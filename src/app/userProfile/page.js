@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
-import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, API_BASE_URL } from '../../lib/api';
+import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, availabilityAPI, API_BASE_URL } from '../../lib/api';
 import Link from 'next/link';
 
-function profile(){
+function Profile(){
     const { user, error, isLoading } = Auth();
     const searchParams = useSearchParams();
     const [ownedGames, setOwnedGames] = useState([]);
@@ -24,16 +24,30 @@ function profile(){
     const [editingUsername, setEditingUsername] = useState(false);
     const [username, setUsername] = useState('');
     const [savingUsername, setSavingUsername] = useState(false);
-
-    useEffect(() => {
-        if (user?.sub) {
-            fetchUserData();
-            fetchOwnedGames();
-            checkGoogleCalendarStatus();
-        }
-    }, [user]);
     
-    const fetchUserData = async () => {
+    // Availability settings state
+    const [availabilityTab, setAvailabilityTab] = useState('recurring'); // 'recurring' or 'specific'
+    const [availabilityPatterns, setAvailabilityPatterns] = useState([]);
+    const [loadingPatterns, setLoadingPatterns] = useState(true);
+    const [showRecurringForm, setShowRecurringForm] = useState(false);
+    const [showSpecificForm, setShowSpecificForm] = useState(false);
+    const [recurringForm, setRecurringForm] = useState({
+        dayOfWeek: 0,
+        startTime: '09:00',
+        endTime: '17:00',
+        start_date: new Date().toISOString().split('T')[0],
+        end_date: '',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    });
+    const [specificForm, setSpecificForm] = useState({
+        date: new Date().toISOString().split('T')[0],
+        startTime: '09:00',
+        endTime: '17:00',
+        isAvailable: true,
+    });
+    const [savingPattern, setSavingPattern] = useState(false);
+
+    const fetchUserData = useCallback(async () => {
         if (!user?.sub) return;
         try {
             const userInfo = await usersAPI.getUser(user.sub);
@@ -44,7 +58,7 @@ function profile(){
             // Fallback to Auth0 user data
             setUsername(user.name || user.email?.split('@')[0] || 'User');
         }
-    };
+    }, [user]);
     
     const handleSaveUsername = async () => {
         if (!user?.sub || !username.trim()) {
@@ -86,7 +100,7 @@ function profile(){
         }
     }, [searchParams]);
 
-    const checkGoogleCalendarStatus = async () => {
+    const checkGoogleCalendarStatus = useCallback(async () => {
         if (!user?.sub) return;
         try {
             setCheckingCalendarStatus(true);
@@ -98,7 +112,7 @@ function profile(){
         } finally {
             setCheckingCalendarStatus(false);
         }
-    };
+    }, [user]);
 
     const handleConnectGoogleCalendar = () => {
         if (!user?.sub) return;
@@ -126,7 +140,7 @@ function profile(){
         }
     };
 
-    const fetchOwnedGames = async () => {
+    const fetchOwnedGames = useCallback(async () => {
         if (!user?.sub) return;
         try {
             setLoadingGames(true);
@@ -138,7 +152,7 @@ function profile(){
         } finally {
             setLoadingGames(false);
         }
-    };
+    }, [user]);
 
     const searchBGG = async () => {
         if (!bggSearchQuery.trim()) return;
@@ -195,6 +209,97 @@ function profile(){
             console.error('Error removing game from collection:', error);
             alert('Failed to remove game from collection. Please try again.');
         }
+    };
+
+    const fetchAvailabilityPatterns = useCallback(async () => {
+        if (!user?.sub) return;
+        try {
+            setLoadingPatterns(true);
+            const patterns = await availabilityAPI.getUserPatterns(user.sub);
+            setAvailabilityPatterns(patterns || []);
+        } catch (error) {
+            console.error('Error fetching availability patterns:', error);
+            setAvailabilityPatterns([]);
+        } finally {
+            setLoadingPatterns(false);
+        }
+    }, [user]);
+
+    useEffect(() => {
+        if (user?.sub) {
+            fetchUserData();
+            fetchOwnedGames();
+            checkGoogleCalendarStatus();
+            fetchAvailabilityPatterns();
+        }
+    }, [user, fetchUserData, fetchOwnedGames, checkGoogleCalendarStatus, fetchAvailabilityPatterns]);
+
+    const handleCreateRecurringPattern = async () => {
+        if (!user?.sub) return;
+        try {
+            setSavingPattern(true);
+            await availabilityAPI.createRecurringPattern(user.sub, recurringForm);
+            await fetchAvailabilityPatterns();
+            setShowRecurringForm(false);
+            setRecurringForm({
+                dayOfWeek: 0,
+                startTime: '09:00',
+                endTime: '17:00',
+                start_date: new Date().toISOString().split('T')[0],
+                end_date: '',
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+            });
+            alert('Recurring pattern created successfully!');
+        } catch (error) {
+            console.error('Error creating recurring pattern:', error);
+            alert(`Failed to create pattern: ${error.message || 'Please try again.'}`);
+        } finally {
+            setSavingPattern(false);
+        }
+    };
+
+    const handleCreateSpecificOverride = async () => {
+        if (!user?.sub) return;
+        try {
+            setSavingPattern(true);
+            await availabilityAPI.createOverride(user.sub, specificForm);
+            await fetchAvailabilityPatterns();
+            setShowSpecificForm(false);
+            setSpecificForm({
+                date: new Date().toISOString().split('T')[0],
+                startTime: '09:00',
+                endTime: '17:00',
+                isAvailable: true,
+            });
+            alert('Specific override created successfully!');
+        } catch (error) {
+            console.error('Error creating specific override:', error);
+            alert(`Failed to create override: ${error.message || 'Please try again.'}`);
+        } finally {
+            setSavingPattern(false);
+        }
+    };
+
+    const handleDeletePattern = async (patternId) => {
+        if (!confirm('Are you sure you want to delete this availability pattern?')) return;
+        try {
+            await availabilityAPI.deleteAvailability(patternId);
+            await fetchAvailabilityPatterns();
+            alert('Pattern deleted successfully!');
+        } catch (error) {
+            console.error('Error deleting pattern:', error);
+            alert('Failed to delete pattern. Please try again.');
+        }
+    };
+
+    const getDayName = (dayOfWeek) => {
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        return days[dayOfWeek];
+    };
+
+    const formatDate = (dateString) => {
+        if (!dateString) return 'No end date';
+        return new Date(dateString).toLocaleDateString();
     };
 
     const importBGGCollection = async () => {
@@ -351,6 +456,251 @@ function profile(){
                     </div>
                 </div>
 
+                {/* Availability Settings Section */}
+                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
+                    <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-4">Availability Settings</h2>
+                    <p className="text-sm text-gray-600 mb-4">
+                        Set your availability to help groups find the best time to schedule game sessions. 
+                        {googleCalendarConnected && ' Your Google Calendar busy times will be automatically included.'}
+                    </p>
+
+                    {/* Tabs */}
+                    <div className="flex gap-2 mb-4 border-b">
+                        <button
+                            onClick={() => setAvailabilityTab('recurring')}
+                            className={`px-4 py-2 font-medium text-sm ${
+                                availabilityTab === 'recurring'
+                                    ? 'border-b-2 border-blue-600 text-blue-600'
+                                    : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                        >
+                            Recurring Patterns
+                        </button>
+                        <button
+                            onClick={() => setAvailabilityTab('specific')}
+                            className={`px-4 py-2 font-medium text-sm ${
+                                availabilityTab === 'specific'
+                                    ? 'border-b-2 border-blue-600 text-blue-600'
+                                    : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                        >
+                            Specific Dates
+                        </button>
+                    </div>
+
+                    {/* Recurring Patterns Tab */}
+                    {availabilityTab === 'recurring' && (
+                        <div>
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="font-semibold text-gray-900">Recurring Availability Patterns</h3>
+                                <button
+                                    onClick={() => setShowRecurringForm(!showRecurringForm)}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                                >
+                                    {showRecurringForm ? 'Cancel' : '+ Add Pattern'}
+                                </button>
+                            </div>
+
+                            {showRecurringForm && (
+                                <div className="mb-6 p-4 border rounded-lg bg-gray-50">
+                                    <h4 className="font-semibold mb-3 text-gray-900">New Recurring Pattern</h4>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Day of Week</label>
+                                            <select
+                                                value={recurringForm.dayOfWeek}
+                                                onChange={(e) => setRecurringForm({ ...recurringForm, dayOfWeek: parseInt(e.target.value) })}
+                                                className="w-full p-2 border rounded text-gray-900 bg-white"
+                                            >
+                                                {[0, 1, 2, 3, 4, 5, 6].map(day => (
+                                                    <option key={day} value={day}>{getDayName(day)}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                                                <input
+                                                    type="time"
+                                                    value={recurringForm.startTime}
+                                                    onChange={(e) => setRecurringForm({ ...recurringForm, startTime: e.target.value })}
+                                                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                                                <input
+                                                    type="time"
+                                                    value={recurringForm.endTime}
+                                                    onChange={(e) => setRecurringForm({ ...recurringForm, endTime: e.target.value })}
+                                                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                                                <input
+                                                    type="date"
+                                                    value={recurringForm.start_date}
+                                                    onChange={(e) => setRecurringForm({ ...recurringForm, start_date: e.target.value })}
+                                                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">End Date (Optional)</label>
+                                                <input
+                                                    type="date"
+                                                    value={recurringForm.end_date}
+                                                    onChange={(e) => setRecurringForm({ ...recurringForm, end_date: e.target.value })}
+                                                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                                                />
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={handleCreateRecurringPattern}
+                                            disabled={savingPattern}
+                                            className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400"
+                                        >
+                                            {savingPattern ? 'Saving...' : 'Save Pattern'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {loadingPatterns ? (
+                                <p className="text-gray-600">Loading patterns...</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {availabilityPatterns
+                                        .filter(p => p.type === 'recurring_pattern')
+                                        .map(pattern => (
+                                            <div key={pattern.id} className="p-3 border rounded-lg flex justify-between items-center">
+                                                <div>
+                                                    <p className="font-medium text-gray-900">
+                                                        {getDayName(pattern.pattern_data.dayOfWeek)}: {pattern.pattern_data.startTime} - {pattern.pattern_data.endTime}
+                                                    </p>
+                                                    <p className="text-sm text-gray-600">
+                                                        {formatDate(pattern.start_date)} - {formatDate(pattern.end_date)}
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleDeletePattern(pattern.id)}
+                                                    className="text-red-600 hover:text-red-700 text-sm"
+                                                >
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        ))}
+                                    {availabilityPatterns.filter(p => p.type === 'recurring_pattern').length === 0 && (
+                                        <p className="text-gray-600 text-sm">No recurring patterns set. Add one to get started!</p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Specific Dates Tab */}
+                    {availabilityTab === 'specific' && (
+                        <div>
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="font-semibold text-gray-900">Specific Date Overrides</h3>
+                                <button
+                                    onClick={() => setShowSpecificForm(!showSpecificForm)}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                                >
+                                    {showSpecificForm ? 'Cancel' : '+ Add Override'}
+                                </button>
+                            </div>
+
+                            {showSpecificForm && (
+                                <div className="mb-6 p-4 border rounded-lg bg-gray-50">
+                                    <h4 className="font-semibold mb-3 text-gray-900">New Specific Override</h4>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                                            <input
+                                                type="date"
+                                                value={specificForm.date}
+                                                onChange={(e) => setSpecificForm({ ...specificForm, date: e.target.value })}
+                                                className="w-full p-2 border rounded text-gray-900 bg-white"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                                                <input
+                                                    type="time"
+                                                    value={specificForm.startTime}
+                                                    onChange={(e) => setSpecificForm({ ...specificForm, startTime: e.target.value })}
+                                                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                                                <input
+                                                    type="time"
+                                                    value={specificForm.endTime}
+                                                    onChange={(e) => setSpecificForm({ ...specificForm, endTime: e.target.value })}
+                                                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="flex items-center gap-2">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={specificForm.isAvailable}
+                                                    onChange={(e) => setSpecificForm({ ...specificForm, isAvailable: e.target.checked })}
+                                                    className="rounded"
+                                                />
+                                                <span className="text-sm text-gray-700">Mark as available (uncheck to mark as busy)</span>
+                                            </label>
+                                        </div>
+                                        <button
+                                            onClick={handleCreateSpecificOverride}
+                                            disabled={savingPattern}
+                                            className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400"
+                                        >
+                                            {savingPattern ? 'Saving...' : 'Save Override'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {loadingPatterns ? (
+                                <p className="text-gray-600">Loading overrides...</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {availabilityPatterns
+                                        .filter(p => p.type === 'specific_override')
+                                        .map(pattern => (
+                                            <div key={pattern.id} className="p-3 border rounded-lg flex justify-between items-center">
+                                                <div>
+                                                    <p className="font-medium text-gray-900">
+                                                        {formatDate(pattern.pattern_data.date)}: {pattern.pattern_data.startTime} - {pattern.pattern_data.endTime}
+                                                    </p>
+                                                    <p className="text-sm text-gray-600">
+                                                        {pattern.is_available ? 'Available' : 'Busy'}
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleDeletePattern(pattern.id)}
+                                                    className="text-red-600 hover:text-red-700 text-sm"
+                                                >
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        ))}
+                                    {availabilityPatterns.filter(p => p.type === 'specific_override').length === 0 && (
+                                        <p className="text-gray-600 text-sm">No specific overrides set. Add one to override your default availability!</p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
                 {/* Owned Games Section */}
                 <div className="bg-white rounded-lg shadow-md p-4 md:p-6">
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
@@ -494,4 +844,4 @@ function profile(){
     );
 }
 
-export default profile;
+export default Profile;

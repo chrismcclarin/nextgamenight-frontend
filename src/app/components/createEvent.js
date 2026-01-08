@@ -35,7 +35,7 @@ const createEventForm = (group_id, groupMembers = []) => ({
   )
 });
 
-function CreateEvent({ group_id, URL, modal, modaltoggle, onEventCreated, editingEvent = null, user }) {
+function CreateEvent({ group_id, URL, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null }) {
   const authUser = user || Auth().user;
   const [groupMembers, setGroupMembers] = useState([]);
   const [newEvent, setNewEvent] = useState(createEventForm(group_id, []));
@@ -149,9 +149,15 @@ function CreateEvent({ group_id, URL, modal, modaltoggle, onEventCreated, editin
       });
     } else if (!editingEvent && groupMembers.length > 0) {
       // Reset to empty form when not editing
-      setNewEvent(createEventForm(group_id, groupMembers));
+      const form = createEventForm(group_id, groupMembers);
+      // Pre-fill date and time if provided from planning page
+      if (prefillDate && prefillTime) {
+        // Combine date and time into datetime-local format (YYYY-MM-DDTHH:mm)
+        form.start_date = `${prefillDate}T${prefillTime}`;
+      }
+      setNewEvent(form);
     }
-  }, [editingEvent, groupMembers, group_id]);
+  }, [editingEvent, groupMembers, group_id, prefillDate, prefillTime]);
 
   const fetchGroupMembers = async () => {
     try {
@@ -161,7 +167,13 @@ function CreateEvent({ group_id, URL, modal, modaltoggle, onEventCreated, editin
       setGroupMembers(data);
       // Only initialize form if not editing (editing form is set by the useEffect above)
       if (!editingEvent) {
-        setNewEvent(createEventForm(group_id, data));
+        const form = createEventForm(group_id, data);
+        // Pre-fill date and time if provided from planning page
+        if (prefillDate && prefillTime) {
+          // Combine date and time into datetime-local format (YYYY-MM-DDTHH:mm)
+          form.start_date = `${prefillDate}T${prefillTime}`;
+        }
+        setNewEvent(form);
       }
     } catch (error) {
       console.error('Error fetching group members:', error);

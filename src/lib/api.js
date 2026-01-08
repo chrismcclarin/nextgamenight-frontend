@@ -380,3 +380,48 @@ export const googleCalendarAPI = {
     }),
 };
 
+/**
+ * API functions for Availability and Planning
+ */
+export const availabilityAPI = {
+  // Get user's availability for a date range
+  getUserAvailability: (user_id, startDate = null, endDate = null, timezone = 'UTC') => {
+    const params = new URLSearchParams({ timezone });
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    return apiFetch(`/availability/user/${encodeURIComponent(user_id)}?${params.toString()}`);
+  },
+  
+  // Get user's availability patterns (for editing/deleting)
+  getUserPatterns: (user_id) => 
+    apiFetch(`/availability/user/${encodeURIComponent(user_id)}/patterns`),
+  
+  // Create recurring availability pattern
+  createRecurringPattern: (user_id, patternData) => 
+    apiFetch(`/availability/user/${encodeURIComponent(user_id)}/recurring`, {
+      method: 'POST',
+      body: JSON.stringify(patternData),
+    }),
+  
+  // Create specific date/time override
+  createOverride: (user_id, overrideData) => 
+    apiFetch(`/availability/user/${encodeURIComponent(user_id)}/override`, {
+      method: 'POST',
+      body: JSON.stringify(overrideData),
+    }),
+  
+  // Delete availability pattern/override
+  deleteAvailability: (availability_id) => 
+    apiFetch(`/availability/${availability_id}`, {
+      method: 'DELETE',
+    }),
+  
+  // Get overlapping free time for all group members
+  getGroupOverlaps: (group_id, startDate = null, endDate = null, timezone = 'UTC') => {
+    const params = new URLSearchParams({ timezone });
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    return apiFetch(`/availability/group/${group_id}/overlaps?${params.toString()}`);
+  },
+};
+

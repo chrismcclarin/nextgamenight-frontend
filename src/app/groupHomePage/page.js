@@ -22,7 +22,11 @@ function GroupHomePage(){
     const [sortBy, setSortBy] = useState('last_played');
     const [sortOrder, setSortOrder] = useState('desc');
 
-    const Router = useSearchParams().get('id');
+    const searchParams = useSearchParams();
+    const Router = searchParams.get('id');
+    const prefillDate = searchParams.get('date');
+    const prefillTime = searchParams.get('time');
+    const shouldCreateEvent = searchParams.get('create_event') === 'true';
 
     const getGroup = async () => {
         if (!Router) return;
@@ -80,7 +84,11 @@ function GroupHomePage(){
             getGroup();
             getGroupMembers();
         }
-    }, [Router, user?.sub]);
+        // Auto-open event modal if coming from planning page
+        if (shouldCreateEvent && prefillDate && prefillTime) {
+            setEventModal(true);
+        }
+    }, [Router, user?.sub, shouldCreateEvent, prefillDate, prefillTime]);
 
     useEffect(() => {
         if (Router && user?.sub) {
@@ -282,6 +290,15 @@ function GroupHomePage(){
                             Manage Members
                         </button>
                     )}
+                    <Link
+                        href={`/groupPlanning?group_id=${Router}`}
+                        className="bg-green-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors shadow-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white text-center"
+                        style={{
+                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.3)',
+                        }}
+                    >
+                        Plan Game Session
+                    </Link>
                     <button
                         onClick={toggleEventModal}
                         className="bg-blue-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white"
@@ -395,6 +412,8 @@ function GroupHomePage(){
                 modaltoggle={toggleEventModal}
                 onEventCreated={handleEventCreated}
                 user={user}
+                prefillDate={prefillDate}
+                prefillTime={prefillTime}
             />
             
             <ManageMembers
