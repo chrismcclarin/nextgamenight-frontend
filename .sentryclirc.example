@@ -1,0 +1,12 @@
+# Sentry CLI Configuration
+# Copy this to .sentryclirc and fill in your values
+# Get these from Sentry Dashboard > Settings > Auth Tokens
+
+[auth]
+token=your_sentry_auth_token_here
+
+[defaults]
+org=your-sentry-org-slug
+project=your-frontend-project-slug
+
+

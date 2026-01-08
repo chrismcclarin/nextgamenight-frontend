@@ -1,0 +1,279 @@
+/* src/components/GroupList.css */
+.group-list-sidebar {
+    width: 100%;
+    max-width: 400px;
+    height: 100vh;
+    background-color: #f8f9fa;
+    border-right: 1px solid #e9ecef;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  
+  @media (max-width: 768px) {
+    .group-list-sidebar {
+      height: auto;
+      min-height: auto;
+    }
+  }
+  
+  
+  .sidebar-header {
+    padding: 1.5rem 1rem;
+    border-bottom: 1px solid #e9ecef;
+    background-color: white;
+  }
+  
+  
+  .sidebar-header h2 {
+    margin: 0 0 1rem 0;
+    color: #343a40;
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+  
+  
+  .create-group-btn {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+  }
+  
+  
+  .create-group-btn:hover {
+    background-color: #0056b3;
+  }
+  
+  
+  .create-group-btn:focus {
+    outline: 2px solid #0056b3;
+    outline-offset: 2px;
+  }
+  
+  
+  .add-member-btn {
+    padding: 0.5rem 1rem;
+    background-color: #28a745;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  }
+  
+  
+  .add-member-btn:hover {
+    background-color: #218838;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    transform: translateY(-1px);
+  }
+  
+  
+  .add-member-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  }
+  
+  
+  .add-member-btn:focus {
+    outline: 2px solid #28a745;
+    outline-offset: 2px;
+  }
+  
+  
+  .groups-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    gap: 1rem;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  
+  .loading, .no-groups {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: #6c757d;
+  }
+  
+  
+  .no-groups p {
+    margin: 0.5rem 0;
+  }
+  
+  
+  .group-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 2px solid transparent;
+  }
+  
+  
+  .group-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+  
+  
+  .group-card:focus {
+    outline: none;
+    border-color: #007bff;
+  }
+  
+  
+  .group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+  }
+  
+  
+  .group-name {
+    margin: 0;
+    color: #343a40;
+    font-size: 1.1rem;
+    font-weight: 600;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  
+  .player-count {
+    background-color: #e9ecef;
+    color: #6c757d;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    margin-left: 0.5rem;
+  }
+  
+  
+  .group-players {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  
+  .player-tag {
+    background-color: #f8f9fa;
+    color: #495057;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    border: 1px solid #e9ecef;
+  }
+  
+  
+  .player-tag.more {
+    background-color: #e9ecef;
+    color: #6c757d;
+    font-weight: 500;
+  }
+  
+  
+  .last-game-info {
+    border-top: 1px solid #f1f3f4;
+    padding-top: 0.75rem;
+  }
+  
+  
+  .last-game {
+    color: #495057;
+    font-size: 0.9rem;
+    margin-bottom: 0.25rem;
+  }
+  
+  
+  .last-game strong {
+    color: #343a40;
+  }
+  
+  
+  .last-game-date {
+    color: #6c757d;
+    font-size: 0.8rem;
+  }
+  
+  
+  /* Mobile Responsiveness */
+  @media (max-width: 768px) {
+    .group-list-sidebar {
+      max-width: 100%;
+      height: auto;
+      border-right: none;
+      border-bottom: 1px solid #e9ecef;
+    }
+    
+    .sidebar-header {
+      padding: 1rem;
+    }
+    
+    .sidebar-header h2 {
+      font-size: 1.3rem;
+    }
+    
+    .groups-container {
+      max-height: 60vh;
+      padding: 0.75rem;
+    }
+    
+    .group-card {
+      padding: 0.75rem;
+    }
+    
+    .group-name {
+      font-size: 1rem;
+    }
+  }
+  
+  
+  @media (max-width: 480px) {
+    .sidebar-header {
+      padding: 0.75rem;
+    }
+    
+    .create-group-btn {
+      padding: 0.6rem 0.8rem;
+      font-size: 0.9rem;
+    }
+    
+    .groups-container {
+      padding: 0.5rem;
+      gap: 0.75rem;
+    }
+    
+    .group-card {
+      padding: 0.6rem;
+    }
+    
+    .group-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+    
+    .player-count {
+      align-self: flex-end;
+    }
+  }

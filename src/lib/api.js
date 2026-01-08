@@ -1,0 +1,382 @@
+/**
+ * API Configuration and Utility Functions
+ * Centralized API base URL and common fetch patterns
+ */
+
+// API Base URL - can be moved to environment variable in production
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+
+/**
+ * Get Auth0 access token for API calls
+ * This function should be called from client components that have access to Auth0
+ */
+export async function getAccessToken() {
+  try {
+    // Get token from Auth0 session
+    const response = await fetch('/api/auth/token');
+    if (!response.ok) {
+      return null;
+    }
+    const data = await response.json();
+    return data.accessToken || null;
+  } catch (error) {
+    console.error('Error getting access token:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Generic fetch wrapper with error handling and Auth0 token injection
+ */
+export async function apiFetch(endpoint, options = {}) {
+  const url = `${API_BASE_URL}${endpoint}`;
+  
+  // Try to get access token if available (for client-side calls)
+  let accessToken = null;
+  if (typeof window !== 'undefined') {
+    try {
+      const tokenResponse = await fetch('/api/auth/token');
+      if (tokenResponse.ok) {
+        const tokenData = await tokenResponse.json();
+        accessToken = tokenData.accessToken;
+      }
+    } catch (error) {
+      // Silently fail if token can't be retrieved
+    }
+  }
+  
+  const defaultOptions = {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken && { 'Authorization': `Bearer ${accessToken}` }),
+      ...options.headers,
+    },
+  };
+
+  try {
+    const response = await fetch(url, { ...defaultOptions, ...options });
+    
+    // Read response as text first (can only be read once)
+    const responseText = await response.text();
+    
+    if (!response.ok) {
+      let errorData;
+      try {
+        // Try to parse as JSON
+        errorData = JSON.parse(responseText);
+      } catch (jsonError) {
+        // If not JSON, use the text as error message
+        errorData = { error: responseText || `HTTP error! status: ${response.status}` };
+      }
+      
+      // If there are validation errors, format them nicely
+      if (errorData.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
+        const errorMessages = errorData.errors.map(err => err.message || `${err.field}: ${err.msg}`).join('. ');
+        throw new Error(errorMessages || errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
+    
+    // Parse successful response as JSON
+    try {
+      return JSON.parse(responseText);
+    } catch (jsonError) {
+      // If response is not JSON, return the text
+      return responseText;
+    }
+  } catch (error) {
+    console.error(`API Error (${endpoint}):`, error.message || 'Unknown error');
+    // Re-throw with more context if it's a network error
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      throw new Error('Network error: Could not connect to the server. Please check if the backend is running.');
+    }
+    throw error;
+  }
+}
+
+/**
+ * API functions for Groups
+ */
+export const groupsAPI = {
+  // Get all groups for a user
+  getUserGroups: (user_id) => 
+    apiFetch(`/groups/user/${encodeURIComponent(user_id)}`),
+  
+  // Get a single group by ID
+  getGroup: (group_id) => 
+    apiFetch(`/groups/${group_id}`),
+  
+  // Get all users in a group
+  getGroupMembers: (group_id) => 
+    apiFetch(`/groups/${group_id}/users`),
+  
+  // Create a new group
+  createGroup: (groupData) => 
+    apiFetch('/groups', {
+      method: 'POST',
+      body: JSON.stringify(groupData),
+    }),
+  
+  // Add user to group
+  addUserToGroup: (group_id, user_id) => 
+    apiFetch(`/groups/${group_id}/users`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id }),
+    }),
+  
+  // Update user role in group (owner only)
+  updateUserRole: (group_id, target_user_id, requesting_user_id, role) => 
+    apiFetch(`/groups/${group_id}/users/${target_user_id}/role`, {
+      method: 'PUT',
+      body: JSON.stringify({ requesting_user_id, role }),
+    }),
+  
+  // Remove user from group (owner or admin)
+  removeUserFromGroup: (group_id, target_user_id, requesting_user_id) => 
+    apiFetch(`/groups/${group_id}/users/${target_user_id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ requesting_user_id }),
+    }),
+  
+  // Update group settings (profile picture, background)
+  updateGroupSettings: (group_id, requesting_user_id, settings) => 
+    apiFetch(`/groups/${group_id}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify({ 
+        requesting_user_id,
+        ...settings 
+      }),
+    }),
+  
+  // Delete group (owner only)
+  deleteGroup: (group_id, requesting_user_id) => 
+    apiFetch(`/groups/${group_id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ requesting_user_id }),
+    }),
+};
+
+/**
+ * API functions for Events
+ */
+export const eventsAPI = {
+  // Get all events for a user across all groups
+  getUserEvents: (user_id) => 
+    apiFetch(`/events/user/${encodeURIComponent(user_id)}`),
+  
+  // Get all events for a group
+  getGroupEvents: (group_id) => 
+    apiFetch(`/events/group/${group_id}`),
+  
+  // Get a single event by ID
+  getEvent: (event_id) => 
+    apiFetch(`/events/${event_id}`),
+  
+  // Create a new event
+  createEvent: (eventData) => 
+    apiFetch('/events', {
+      method: 'POST',
+      body: JSON.stringify(eventData),
+    }),
+  
+  // Update an event (requires owner/admin)
+  updateEvent: (event_id, eventData, requesting_user_id) => 
+    apiFetch(`/events/${event_id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ ...eventData, requesting_user_id }),
+    }),
+  
+  // Delete an event (requires owner/admin)
+  deleteEvent: (event_id, requesting_user_id) => 
+    apiFetch(`/events/${event_id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ requesting_user_id }),
+    }),
+};
+
+/**
+ * API functions for Users
+ */
+export const usersAPI = {
+  // Get user by user_id (Auth0 identifier)
+  getUser: (user_id) => 
+    apiFetch(`/users/${encodeURIComponent(user_id)}`),
+  
+  // Update user's username
+  updateUsername: (user_id, username) =>
+    apiFetch(`/users/${encodeURIComponent(user_id)}/username`, {
+      method: 'PUT',
+      body: JSON.stringify({ username }),
+    }),
+  
+  // Search user by email
+  searchUserByEmail: (email) => 
+    apiFetch(`/users/search/email/${encodeURIComponent(email)}`),
+  
+  // Create or update user
+  createOrUpdateUser: (userData) => 
+    apiFetch('/users', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    }),
+};
+
+/**
+ * API functions for Games
+ */
+export const gamesAPI = {
+  // Get all games (with optional search)
+  getGames: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiFetch(`/games${queryString ? `?${queryString}` : ''}`);
+  },
+  
+  // Get a single game by ID
+  getGame: (game_id) => 
+    apiFetch(`/games/${game_id}`),
+  
+  // Create a custom game
+  createGame: (gameData) => 
+    apiFetch('/games', {
+      method: 'POST',
+      body: JSON.stringify(gameData),
+    }),
+  
+  // Search BGG for games
+  searchBGG: (query) => 
+    apiFetch(`/games/bgg/search?query=${encodeURIComponent(query)}`),
+  
+  // Import game from BGG
+  importFromBGG: (bgg_id) => 
+    apiFetch(`/games/import-bgg/${bgg_id}`, {
+      method: 'POST',
+    }),
+  
+  // Get games for event form (group played + user owned)
+  getGamesForEvent: (group_id, user_id) => 
+    apiFetch(`/games/for-event/${group_id}/${encodeURIComponent(user_id)}`),
+};
+
+/**
+ * API functions for User Owned Games
+ */
+export const userGamesAPI = {
+  // Get all games owned by a user
+  getOwnedGames: (user_id) => 
+    apiFetch(`/user-games/user/${encodeURIComponent(user_id)}`),
+  
+  // Add game to user's collection
+  addOwnedGame: (user_id, game_id) => 
+    apiFetch(`/user-games/user/${encodeURIComponent(user_id)}/game/${game_id}`, {
+      method: 'POST',
+    }),
+  
+  // Remove game from user's collection
+  removeOwnedGame: (user_id, game_id) => 
+    apiFetch(`/user-games/user/${encodeURIComponent(user_id)}/game/${game_id}`, {
+      method: 'DELETE',
+    }),
+  
+  // Import entire BGG collection
+  importBGGCollection: (user_id, bgg_username) => 
+    apiFetch(`/user-games/user/${encodeURIComponent(user_id)}/import-bgg-collection`, {
+      method: 'POST',
+      body: JSON.stringify({ bgg_username }),
+    }),
+};
+
+/**
+ * API functions for Lists (sorted/filtered game lists)
+ */
+export const listsAPI = {
+  // Get games for a group with sorting options
+  // sort: 'name' | 'play_count' | 'last_played' | 'rating'
+  // order: 'asc' | 'desc'
+  getGroupGames: (group_id, user_id, sort = 'last_played', order = 'desc') => {
+    const params = new URLSearchParams({ sort, order });
+    return apiFetch(`/lists/games/${group_id}/${encodeURIComponent(user_id)}?${params.toString()}`);
+  },
+  
+  // Get most played games
+  getMostPlayed: (group_id, user_id) => 
+    apiFetch(`/lists/most-played/${group_id}/${encodeURIComponent(user_id)}`),
+  
+  // Get least played games
+  getLeastPlayed: (group_id, user_id) => 
+    apiFetch(`/lists/least-played/${group_id}/${encodeURIComponent(user_id)}`),
+  
+  // Get games alphabetically
+  getAlphabetical: (group_id, user_id) => 
+    apiFetch(`/lists/alphabetical/${group_id}/${encodeURIComponent(user_id)}`),
+  
+  // Get games by theme
+  getByTheme: (group_id, theme, user_id) => 
+    apiFetch(`/lists/by-theme/${group_id}/${encodeURIComponent(theme)}/${encodeURIComponent(user_id)}`),
+};
+
+/**
+ * API functions for Game Reviews
+ */
+export const gameReviewsAPI = {
+  // Get reviews for a game in a group
+  getGameReviews: (game_id, group_id, user_id = null) => {
+    const params = user_id ? `?user_id=${encodeURIComponent(user_id)}` : '';
+    return apiFetch(`/game-reviews/game/${game_id}/group/${group_id}${params}`);
+  },
+  
+  // Get all reviews by a user in a group
+  getUserReviews: (target_user_id, group_id, requesting_user_id = null) => {
+    const params = requesting_user_id ? `?user_id=${encodeURIComponent(requesting_user_id)}` : '';
+    return apiFetch(`/game-reviews/user/${encodeURIComponent(target_user_id)}/group/${group_id}${params}`);
+  },
+  
+  // Create or update a review
+  submitReview: (reviewData) => 
+    apiFetch('/game-reviews', {
+      method: 'POST',
+      body: JSON.stringify(reviewData),
+    }),
+  
+  // Update a review
+  updateReview: (review_id, reviewData) => 
+    apiFetch(`/game-reviews/${review_id}`, {
+      method: 'PUT',
+      body: JSON.stringify(reviewData),
+    }),
+  
+  // Delete a review
+  deleteReview: (review_id) => 
+    apiFetch(`/game-reviews/${review_id}`, {
+      method: 'DELETE',
+    }),
+};
+
+/**
+ * API functions for Feedback
+ */
+export const feedbackAPI = {
+  // Submit bug report or suggestion
+  submitFeedback: (feedbackData) => 
+    apiFetch('/feedback', {
+      method: 'POST',
+      body: JSON.stringify(feedbackData),
+    }),
+};
+
+/**
+ * API functions for Google Calendar
+ */
+export const googleCalendarAPI = {
+  // Get Google Calendar connection status
+  getStatus: (user_id) => 
+    apiFetch(`/auth/google/status/${encodeURIComponent(user_id)}`),
+  
+  // Disconnect Google Calendar
+  disconnect: (user_id) => 
+    apiFetch('/auth/google/disconnect', {
+      method: 'POST',
+      body: JSON.stringify({ user_id }),
+    }),
+};
+
