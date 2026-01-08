@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import BGGLogo from './BGGLogo';
 
 export default function LandingPage() {
@@ -19,18 +18,18 @@ export default function LandingPage() {
           </p>
           
           <div className="flex flex-col gap-4 justify-center items-center">
-            <Link
+            <a
               href="/api/auth/login"
               className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg hover:shadow-xl w-full sm:w-auto text-center"
             >
               Get Started
-            </Link>
+            </a>
             <div className="flex items-center gap-4 w-full sm:w-auto">
               <div className="flex-1 border-t border-gray-300"></div>
               <span className="text-sm text-gray-600">or</span>
               <div className="flex-1 border-t border-gray-300"></div>
             </div>
-            <Link
+            <a
               href="/api/auth/login?connection=google-oauth2"
               className="bg-white text-gray-700 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors shadow-lg hover:shadow-xl border-2 border-gray-300 w-full sm:w-auto text-center flex items-center justify-center gap-3"
             >
@@ -41,7 +40,7 @@ export default function LandingPage() {
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
               </svg>
               Sign in with Google
-            </Link>
+            </a>
           </div>
 
           <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8 text-left">
