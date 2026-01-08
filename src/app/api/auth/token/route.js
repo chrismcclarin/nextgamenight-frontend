@@ -3,6 +3,9 @@
 import { getAccessToken } from '@auth0/nextjs-auth0';
 import { NextResponse } from 'next/server';
 
+// Force dynamic rendering - this route uses cookies and cannot be statically generated
+export const dynamic = 'force-dynamic';
+
 export async function GET(request) {
   try {
     // Get access token with audience (required for API authentication)
