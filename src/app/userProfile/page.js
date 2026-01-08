@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
-import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, availabilityAPI, API_BASE_URL } from '../../lib/api';
+import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, availabilityAPI } from '../../lib/api';
 import Link from 'next/link';
 
 function Profile(){
@@ -116,13 +116,8 @@ function Profile(){
 
     const handleConnectGoogleCalendar = () => {
         if (!user?.sub) return;
-        // Redirect to backend OAuth endpoint with user info
-        const params = new URLSearchParams({
-            user_id: user.sub,
-            email: user.email || '',
-            username: user.name || user.email?.split('@')[0] || 'User',
-        });
-        window.location.href = `${API_BASE_URL}/auth/google?${params.toString()}`;
+        // Redirect to Next.js API route that handles authentication and redirects to Google OAuth
+        window.location.href = '/api/auth/google-connect';
     };
 
     const handleDisconnectGoogleCalendar = async () => {
