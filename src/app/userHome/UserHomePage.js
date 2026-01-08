@@ -6,7 +6,7 @@ import GroupList from '../components/grouplist';
 import EventCalendar from '../components/EventCalendar';
 
 // List of all the groups for the logged in User
-function UserHome({ GroupList: propGroupList, getGroupList, URL, onCreateGroup, groupListRefreshKey, onMemberAdded: onMemberAddedProp }) {
+function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, groupListRefreshKey, onMemberAdded: onMemberAddedProp }) {
     const { user } = Auth();
     const [selectedGroup, setSelectedGroup] = useState(null);
     const [memberModal, setMemberModal] = useState(false);
@@ -54,7 +54,6 @@ function UserHome({ GroupList: propGroupList, getGroupList, URL, onCreateGroup, 
                     onGroupSelect={handleGroupSelect}
                     onCreateGroup={handleCreateGroup}
                     user={user}
-                    URL={URL}
                     onGroupSettingsUpdated={handleGroupSettingsUpdated}
                     refreshTrigger={groupListRefreshKey}
                 />
@@ -69,7 +68,6 @@ function UserHome({ GroupList: propGroupList, getGroupList, URL, onCreateGroup, 
                 <AddMember 
                     modaltoggle={modaltoggle} 
                     modal={memberModal} 
-                    URL={URL} 
                     group={selectedGroup}
                     onMemberAdded={handleMemberAdded}
                 />

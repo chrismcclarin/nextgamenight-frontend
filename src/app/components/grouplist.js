@@ -60,7 +60,7 @@ const getTextStyleWithOutline = (hasBackgroundImage, backgroundColor) => {
   }
 };
 
-const GroupList = ({ onGroupSelect, onCreateGroup, user, URL, onGroupSettingsUpdated, refreshTrigger }) => {
+const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
   const router = useRouter();
   const { user: authUser } = Auth();
   const [groups, setGroups] = useState([]);
@@ -69,13 +69,13 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, URL, onGroupSettingsUpd
   const [userRoles, setUserRoles] = useState({});
 
   useEffect(() => {
-    if (user && URL) {
+    if (user) {
       fetchGroups();
     }
-  }, [user, URL, refreshTrigger]); // Add refreshTrigger to dependencies
+  }, [user, refreshTrigger]); // Add refreshTrigger to dependencies
 
   const fetchGroups = async () => {
-    if (!user?.sub || !URL) return;
+    if (!user?.sub) return;
     
     try {
       setLoading(true);

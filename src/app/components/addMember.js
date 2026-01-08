@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { usersAPI, groupsAPI } from '../../lib/api';
 
-function AddMember({URL, group, modaltoggle, modal, onMemberAdded}){
+function AddMember({group, modaltoggle, modal, onMemberAdded}){
     const [userSearch, setUserSearch] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");

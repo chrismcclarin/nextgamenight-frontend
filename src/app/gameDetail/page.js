@@ -858,7 +858,6 @@ export default function GameDetailPage() {
             {editEventModal && (
                 <CreateEvent
                     group_id={group_id}
-                    URL={API_BASE_URL}
                     modal={editEventModal}
                     modaltoggle={() => {
                         setEditEventModal(false);

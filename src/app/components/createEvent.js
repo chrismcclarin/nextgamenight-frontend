@@ -35,7 +35,7 @@ const createEventForm = (group_id, groupMembers = []) => ({
   )
 });
 
-function CreateEvent({ group_id, URL, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null }) {
+function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null }) {
   const authUser = user || Auth().user;
   const [groupMembers, setGroupMembers] = useState([]);
   const [newEvent, setNewEvent] = useState(createEventForm(group_id, []));

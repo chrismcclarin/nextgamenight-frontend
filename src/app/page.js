@@ -6,11 +6,9 @@ import "./globals.css"
 import CreateGroup from './components/createGroup';
 import UserHome from './userHome/UserHomePage';
 import LandingPage from './components/LandingPage';
-import { groupsAPI } from '../lib/api';
+import { groupsAPI, API_BASE_URL } from '../lib/api';
 
 function App(){
-  // Backend API URL
-  const URL = `http://localhost:4000/api`;
 
   // List of groups associated with the logged-in user
   const [GroupList, setGroupList] = useState(null);
@@ -72,7 +70,6 @@ function App(){
       {/* Create group modal (button is in GroupList component) */}
       <CreateGroup 
         user={user} 
-        URL={URL} 
         modal={groupModal} 
         modaltoggle={modaltoggle} 
         getGroupList={getGroupList}
@@ -83,7 +80,6 @@ function App(){
       <UserHome 
         getGroupList={getGroupList} 
         GroupList={GroupList} 
-        URL={URL}
         onCreateGroup={modaltoggle}
         groupListRefreshKey={groupListRefreshKey}
         onMemberAdded={() => setGroupListRefreshKey(prev => prev + 1)}

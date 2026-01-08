@@ -407,7 +407,6 @@ function GroupHomePage(){
 
             <CreateEvent
                 group_id={Router}
-                URL={API_BASE_URL}
                 modal={eventModal}
                 modaltoggle={toggleEventModal}
                 onEventCreated={handleEventCreated}

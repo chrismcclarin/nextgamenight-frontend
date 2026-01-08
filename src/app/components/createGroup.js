@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { groupsAPI } from '../../lib/api';
 
-function CreateGroup({user, URL, modal, modaltoggle, getGroupList, onGroupCreated}){
+function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
 
     const groupForm = {
         name: "",
