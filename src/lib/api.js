@@ -59,6 +59,14 @@ export async function apiFetch(endpoint, options = {}) {
     // Read response as text first (can only be read once)
     const responseText = await response.text();
     
+    // Check if response is HTML (means we're hitting the wrong endpoint)
+    if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
+      console.error(`API Error: Received HTML instead of JSON. This usually means NEXT_PUBLIC_API_URL is incorrect.`);
+      console.error(`Attempted URL: ${url}`);
+      console.error(`Current API_BASE_URL: ${API_BASE_URL}`);
+      throw new Error(`API configuration error: Backend URL appears to be incorrect. Check NEXT_PUBLIC_API_URL environment variable. Current: ${API_BASE_URL}`);
+    }
+    
     if (!response.ok) {
       let errorData;
       try {
@@ -87,9 +95,10 @@ export async function apiFetch(endpoint, options = {}) {
     }
   } catch (error) {
     console.error(`API Error (${endpoint}):`, error.message || 'Unknown error');
+    console.error(`API URL: ${url}`);
     // Re-throw with more context if it's a network error
     if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      throw new Error('Network error: Could not connect to the server. Please check if the backend is running.');
+      throw new Error('Network error: Could not connect to the server. Please check if the backend is running and NEXT_PUBLIC_API_URL is set correctly.');
     }
     throw error;
   }
