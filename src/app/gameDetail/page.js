@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
-import { eventsAPI, gameReviewsAPI, usersAPI, groupsAPI, API_BASE_URL } from '../../lib/api';
+import { eventsAPI, gameReviewsAPI, usersAPI, groupsAPI, gamesAPI, API_BASE_URL } from '../../lib/api';
 import CreateEvent from '../components/createEvent';
 
 export default function GameDetailPage() {
@@ -12,8 +12,6 @@ export default function GameDetailPage() {
     const searchParams = useSearchParams();
     const game_id = searchParams.get('game_id');
     const group_id = searchParams.get('group_id');
-    
-    const URL = `http://localhost:4000/api`;
     
     const [game, setGame] = useState(null);
     const [events, setEvents] = useState([]);
@@ -60,9 +58,8 @@ export default function GameDetailPage() {
         
         setLoading(true);
         try {
-            // Fetch game details
-            const gameResponse = await fetch(`${URL}/games/${game_id}`);
-            const gameData = await gameResponse.json();
+            // Fetch game details using gamesAPI which includes proper API URL and auth
+            const gameData = await gamesAPI.getGame(game_id);
             setGame(gameData);
 
             // Fetch events for this game in this group
@@ -861,7 +858,7 @@ export default function GameDetailPage() {
             {editEventModal && (
                 <CreateEvent
                     group_id={group_id}
-                    URL={URL}
+                    URL={API_BASE_URL}
                     modal={editEventModal}
                     modaltoggle={() => {
                         setEditEventModal(false);
