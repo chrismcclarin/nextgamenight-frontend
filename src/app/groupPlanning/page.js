@@ -178,16 +178,44 @@ export default function GroupPlanningPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Minimum Available Members: {minAvailableMembers}
+                            Minimum Available Members
                         </label>
-                        <input
-                            type="range"
-                            min="1"
-                            max={group?.Users?.length || 1}
-                            value={minAvailableMembers}
-                            onChange={(e) => setMinAvailableMembers(parseInt(e.target.value))}
-                            className="w-full"
-                        />
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="number"
+                                min="1"
+                                max={group?.Users?.length || 10}
+                                step="1"
+                                value={minAvailableMembers}
+                                onChange={(e) => {
+                                    const inputValue = e.target.value;
+                                    if (inputValue === '') {
+                                        // Allow empty input temporarily while typing
+                                        return;
+                                    }
+                                    const val = parseInt(inputValue);
+                                    if (!isNaN(val)) {
+                                        const max = group?.Users?.length || 10;
+                                        const clampedValue = Math.min(Math.max(1, val), max);
+                                        setMinAvailableMembers(clampedValue);
+                                    }
+                                }}
+                                onBlur={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    if (isNaN(val) || val < 1) {
+                                        setMinAvailableMembers(1);
+                                    } else {
+                                        const max = group?.Users?.length || 10;
+                                        const clampedValue = Math.min(val, max);
+                                        setMinAvailableMembers(clampedValue);
+                                    }
+                                }}
+                                className="w-20 p-2 border rounded text-gray-900 bg-white text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <span className="text-sm text-gray-600 whitespace-nowrap">
+                                of {group?.Users?.length || '?'} members
+                            </span>
+                        </div>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Time of Day</label>
@@ -211,7 +239,7 @@ export default function GroupPlanningPage() {
                             >
                                 ←
                             </button>
-                            <span className="flex-1 text-center font-medium">
+                            <span className="flex-1 text-center font-medium text-black">
                                 {format(currentMonth, 'MMMM yyyy')}
                             </span>
                             <button
@@ -227,16 +255,17 @@ export default function GroupPlanningPage() {
 
             {/* Calendar View */}
             {viewMode === 'calendar' && (
-                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 overflow-x-auto">
+                <div className="bg-white rounded-lg shadow-md p-4 md:p-6">
                     {loading ? (
                         <p className="text-center text-gray-600 py-8">Loading availability data...</p>
                     ) : (
-                        <div className="min-w-full">
+                        <div className="overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+                            <div style={{ display: 'inline-block', width: 'max-content' }}>
                             {/* Day Headers */}
-                            <div className="grid grid-cols-8 gap-1 mb-2">
-                                <div className="font-semibold text-gray-700 text-sm p-2">Time</div>
+                            <div className="grid gap-1 mb-2" style={{ gridTemplateColumns: `60px repeat(${getDaysInMonth().length}, minmax(60px, 1fr))`, width: 'max-content' }}>
+                                <div className="font-semibold text-gray-700 text-sm p-2 z-20 border-r shadow-sm" style={{ position: 'sticky', left: 0, backgroundColor: 'white', minWidth: '60px', zIndex: 20, boxShadow: '2px 0 4px rgba(0,0,0,0.1)' }}>Time</div>
                                 {getDaysInMonth().map(day => (
-                                    <div key={day.toISOString()} className="font-semibold text-gray-700 text-sm p-2 text-center">
+                                    <div key={day.toISOString()} className="font-semibold text-gray-700 text-sm p-2 text-center border-b">
                                         {format(day, 'EEE')}<br />
                                         <span className="text-xs">{format(day, 'd')}</span>
                                     </div>
@@ -246,8 +275,8 @@ export default function GroupPlanningPage() {
                             {/* Time Slots */}
                             <div className="space-y-1">
                                 {getTimeSlots().map(timeSlot => (
-                                    <div key={timeSlot} className="grid grid-cols-8 gap-1">
-                                        <div className="text-xs text-gray-600 p-1 text-right">
+                                    <div key={timeSlot} className="grid gap-1" style={{ gridTemplateColumns: `60px repeat(${getDaysInMonth().length}, minmax(60px, 1fr))`, width: 'max-content' }}>
+                                        <div className="text-xs text-gray-600 p-1 text-right z-10 border-r shadow-sm" style={{ position: 'sticky', left: 0, backgroundColor: 'white', minWidth: '60px', zIndex: 10, boxShadow: '2px 0 4px rgba(0,0,0,0.1)' }}>
                                             {timeSlot}
                                         </div>
                                         {getDaysInMonth().map(day => {
@@ -260,7 +289,7 @@ export default function GroupPlanningPage() {
                                                 <div
                                                     key={`${dateStr}-${timeSlot}`}
                                                     onClick={() => isClickable && handleSlotClick(dateStr, timeSlot)}
-                                                    className={`${color} ${isClickable ? 'cursor-pointer hover:opacity-80' : 'opacity-50'} p-1 rounded text-xs text-center text-white font-medium`}
+                                                    className={`${color} ${isClickable ? 'cursor-pointer hover:opacity-80' : 'opacity-50'} p-1 rounded text-xs text-center text-white font-medium min-h-[24px] flex items-center justify-center`}
                                                     title={`${slotData.availableCount}/${slotData.totalMembers} available`}
                                                 >
                                                     {slotData.availableCount > 0 && slotData.availableCount}
@@ -289,6 +318,7 @@ export default function GroupPlanningPage() {
                                     <div className="w-4 h-4 bg-red-400 rounded"></div>
                                     <span>None Available</span>
                                 </div>
+                            </div>
                             </div>
                         </div>
                     )}

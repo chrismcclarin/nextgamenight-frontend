@@ -233,7 +233,12 @@ function Profile(){
         if (!user?.sub) return;
         try {
             setSavingPattern(true);
-            await availabilityAPI.createRecurringPattern(user.sub, recurringForm);
+            // Remove end_date if it's empty to avoid validation errors
+            const formData = { ...recurringForm };
+            if (!formData.end_date || formData.end_date.trim() === '') {
+                delete formData.end_date;
+            }
+            await availabilityAPI.createRecurringPattern(user.sub, formData);
             await fetchAvailabilityPatterns();
             setShowRecurringForm(false);
             setRecurringForm({
@@ -455,8 +460,8 @@ function Profile(){
                 <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
                     <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-4">Availability Settings</h2>
                     <p className="text-sm text-gray-600 mb-4">
-                        Set your availability to help groups find the best time to schedule game sessions. 
-                        {googleCalendarConnected && ' Your Google Calendar busy times will be automatically included.'}
+                        Set the times when you are <strong>available</strong> (free) to help groups find the best time to schedule game sessions. 
+                        {googleCalendarConnected && ' Your Google Calendar busy times will be automatically excluded from your availability.'}
                     </p>
 
                     {/* Tabs */}
@@ -487,7 +492,10 @@ function Profile(){
                     {availabilityTab === 'recurring' && (
                         <div>
                             <div className="flex justify-between items-center mb-4">
-                                <h3 className="font-semibold text-gray-900">Recurring Availability Patterns</h3>
+                                <div>
+                                    <h3 className="font-semibold text-gray-900">Recurring Availability Patterns</h3>
+                                    <p className="text-xs text-gray-600 mt-1">Set times when you're available on a recurring basis</p>
+                                </div>
                                 <button
                                     onClick={() => setShowRecurringForm(!showRecurringForm)}
                                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
@@ -514,22 +522,24 @@ function Profile(){
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Available From (Start Time)</label>
                                                 <input
                                                     type="time"
                                                     value={recurringForm.startTime}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, startTime: e.target.value })}
                                                     className="w-full p-2 border rounded text-gray-900 bg-white"
                                                 />
+                                                <p className="text-xs text-gray-500 mt-1">When you become available</p>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Available Until (End Time)</label>
                                                 <input
                                                     type="time"
                                                     value={recurringForm.endTime}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, endTime: e.target.value })}
                                                     className="w-full p-2 border rounded text-gray-900 bg-white"
                                                 />
+                                                <p className="text-xs text-gray-500 mt-1">When you become unavailable</p>
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
@@ -599,7 +609,10 @@ function Profile(){
                     {availabilityTab === 'specific' && (
                         <div>
                             <div className="flex justify-between items-center mb-4">
-                                <h3 className="font-semibold text-gray-900">Specific Date Overrides</h3>
+                                <div>
+                                    <h3 className="font-semibold text-gray-900">Specific Date Overrides</h3>
+                                    <p className="text-xs text-gray-600 mt-1">Override your recurring patterns for specific dates</p>
+                                </div>
                                 <button
                                     onClick={() => setShowSpecificForm(!showSpecificForm)}
                                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
@@ -623,22 +636,24 @@ function Profile(){
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Available From (Start Time)</label>
                                                 <input
                                                     type="time"
                                                     value={specificForm.startTime}
                                                     onChange={(e) => setSpecificForm({ ...specificForm, startTime: e.target.value })}
                                                     className="w-full p-2 border rounded text-gray-900 bg-white"
                                                 />
+                                                <p className="text-xs text-gray-500 mt-1">When you become available</p>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Available Until (End Time)</label>
                                                 <input
                                                     type="time"
                                                     value={specificForm.endTime}
                                                     onChange={(e) => setSpecificForm({ ...specificForm, endTime: e.target.value })}
                                                     className="w-full p-2 border rounded text-gray-900 bg-white"
                                                 />
+                                                <p className="text-xs text-gray-500 mt-1">When you become unavailable</p>
                                             </div>
                                         </div>
                                         <div>
