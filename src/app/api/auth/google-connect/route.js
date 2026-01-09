@@ -21,10 +21,16 @@ export async function GET(request) {
       );
     }
 
+    // Get the frontend URL from the request (for callback redirect)
+    // This ensures the backend knows where to redirect after Google OAuth
+    const requestUrl = new URL(request.url);
+    const frontendOrigin = requestUrl.origin; // e.g., http://localhost:3000 or https://your-domain.vercel.app
+    
     // Call backend to get Google OAuth URL
     // Backend will get user info from the token, so no need to pass email/username
+    // Pass frontend_url as query parameter so backend can include it in the OAuth state
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
-    const backendResponse = await fetch(`${backendUrl}/auth/google/url`, {
+    const backendResponse = await fetch(`${backendUrl}/auth/google/url?frontend_url=${encodeURIComponent(frontendOrigin)}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
