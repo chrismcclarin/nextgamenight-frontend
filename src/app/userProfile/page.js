@@ -85,21 +85,6 @@ function Profile(){
         }
     };
 
-    // Check for Google Calendar connection status from URL params (after OAuth redirect)
-    useEffect(() => {
-        if (!searchParams) return;
-        const calendarStatus = searchParams.get('google_calendar');
-        if (calendarStatus === 'connected') {
-            setGoogleCalendarConnected(true);
-            // Remove query param from URL
-            window.history.replaceState({}, '', '/userProfile/');
-        } else if (calendarStatus === 'error') {
-            const errorMessage = searchParams.get('message');
-            alert(`Failed to connect Google Calendar: ${errorMessage || 'Unknown error'}`);
-            window.history.replaceState({}, '', '/userProfile/');
-        }
-    }, [searchParams]);
-
     const checkGoogleCalendarStatus = useCallback(async () => {
         if (!user?.sub) return;
         try {
@@ -113,6 +98,24 @@ function Profile(){
             setCheckingCalendarStatus(false);
         }
     }, [user]);
+
+    // Check for Google Calendar connection status from URL params (after OAuth redirect)
+    // This must come AFTER checkGoogleCalendarStatus is defined
+    useEffect(() => {
+        if (!searchParams || !user?.sub) return;
+        const calendarStatus = searchParams.get('google_calendar');
+        if (calendarStatus === 'connected') {
+            // Refresh status from backend to verify connection
+            checkGoogleCalendarStatus();
+            // Remove query param from URL
+            window.history.replaceState({}, '', '/userProfile/');
+        } else if (calendarStatus === 'error') {
+            const errorMessage = searchParams.get('message');
+            alert(`Failed to connect Google Calendar: ${errorMessage || 'Unknown error'}`);
+            setGoogleCalendarConnected(false);
+            window.history.replaceState({}, '', '/userProfile/');
+        }
+    }, [searchParams, user, checkGoogleCalendarStatus]);
 
     const handleConnectGoogleCalendar = () => {
         if (!user?.sub) return;

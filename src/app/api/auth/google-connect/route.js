@@ -21,10 +21,19 @@ export async function GET(request) {
       );
     }
 
-    // Get the frontend URL from the request (for callback redirect)
-    // This ensures the backend knows where to redirect after Google OAuth
-    const requestUrl = new URL(request.url);
-    const frontendOrigin = requestUrl.origin; // e.g., http://localhost:3000 or https://your-domain.vercel.app
+    // Get the frontend URL for callback redirect
+    // In production (Vercel), use AUTH0_BASE_URL which is set to the production URL
+    // Fallback to request origin for localhost development
+    let frontendOrigin;
+    if (process.env.AUTH0_BASE_URL) {
+      // Production: Use AUTH0_BASE_URL (already set to production frontend URL)
+      frontendOrigin = process.env.AUTH0_BASE_URL.replace(/\/$/, ''); // Remove trailing slash if present
+    } else {
+      // Development: Use request origin
+      const requestUrl = new URL(request.url);
+      frontendOrigin = requestUrl.origin;
+    }
+    console.log('Frontend origin detected:', frontendOrigin);
     
     // Call backend to get Google OAuth URL
     // Backend will get user info from the token, so no need to pass email/username

@@ -304,19 +304,19 @@ export default function GroupPlanningPage() {
                             <div className="mt-4 flex flex-wrap gap-4 text-sm">
                                 <div className="flex items-center gap-2">
                                     <div className="w-4 h-4 bg-green-500 rounded"></div>
-                                    <span>All Available</span>
+                                    <span className="text-gray-900">All Available</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <div className="w-4 h-4 bg-yellow-400 rounded"></div>
-                                    <span>50%+ Available</span>
+                                    <span className="text-gray-900">50%+ Available</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <div className="w-4 h-4 bg-orange-400 rounded"></div>
-                                    <span>Some Available</span>
+                                    <span className="text-gray-900">Some Available</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <div className="w-4 h-4 bg-red-400 rounded"></div>
-                                    <span>None Available</span>
+                                    <span className="text-gray-900">None Available</span>
                                 </div>
                             </div>
                             </div>
