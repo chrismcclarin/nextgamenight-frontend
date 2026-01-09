@@ -89,20 +89,10 @@ function Profile(){
         if (!user?.sub) return;
         try {
             setCheckingCalendarStatus(true);
-            console.log('[Frontend] Checking Google Calendar status for user:', user.sub);
             const status = await googleCalendarAPI.getStatus(user.sub);
-            console.log('[Frontend] Google Calendar status response:', status);
             setGoogleCalendarConnected(status.connected || false);
-            if (!status.connected) {
-                console.warn('[Frontend] Google Calendar not connected. Status:', status);
-            }
         } catch (error) {
-            console.error('[Frontend] Error checking Google Calendar status:', error);
-            console.error('[Frontend] Error details:', {
-                message: error.message,
-                status: error.status,
-                response: error.response
-            });
+            console.error('Error checking Google Calendar status:', error.message);
             setGoogleCalendarConnected(false);
         } finally {
             setCheckingCalendarStatus(false);
