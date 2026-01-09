@@ -371,6 +371,32 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     try {
       const eventDataToSubmit = prepareEventData(newEvent);
       
+      // Get user's timezone and ensure start_date is properly formatted with timezone
+      const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      
+      // Convert datetime-local string to ISO string with timezone awareness
+      // datetime-local gives us "YYYY-MM-DDTHH:mm" which is in user's local time
+      // We need to treat this as local time and convert to UTC for storage
+      if (eventDataToSubmit.start_date) {
+        // The datetime-local value is in user's local timezone
+        // Create a Date object treating it as local time
+        const localDate = new Date(eventDataToSubmit.start_date);
+        
+        // Check if the string doesn't have timezone info (datetime-local format)
+        if (eventDataToSubmit.start_date && !eventDataToSubmit.start_date.includes('Z') && !eventDataToSubmit.start_date.includes('+') && !eventDataToSubmit.start_date.includes('-', 10)) {
+          // It's a datetime-local string (YYYY-MM-DDTHH:mm), treat as local time
+          // The Date constructor will interpret it as local time
+          // Convert to ISO string (UTC) for storage
+          eventDataToSubmit.start_date = localDate.toISOString();
+        } else {
+          // Already has timezone info, use as-is
+          eventDataToSubmit.start_date = localDate.toISOString();
+        }
+      }
+      
+      // Add timezone to event data for Google Calendar creation
+      eventDataToSubmit.timezone = userTimezone;
+      
       if (editingEvent) {
         // Update existing event
         await eventsAPI.updateEvent(editingEvent.id, eventDataToSubmit, authUser?.sub);

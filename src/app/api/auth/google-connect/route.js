@@ -33,7 +33,6 @@ export async function GET(request) {
       const requestUrl = new URL(request.url);
       frontendOrigin = requestUrl.origin;
     }
-    console.log('Frontend origin detected:', frontendOrigin);
     
     // Call backend to get Google OAuth URL
     // Backend will get user info from the token, so no need to pass email/username
