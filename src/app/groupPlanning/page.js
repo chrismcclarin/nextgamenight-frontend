@@ -1,27 +1,32 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { availabilityAPI, groupsAPI } from '../../lib/api';
 import Link from 'next/link';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, addDays, addMonths, subMonths, isSameDay, parseISO } from 'date-fns';
+import CreateEvent from '../components/createEvent';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, addDays, addMonths, subMonths, isSameDay, parseISO, startOfWeek, endOfWeek } from 'date-fns';
 
 export default function GroupPlanningPage() {
     const { user } = Auth();
     const searchParams = useSearchParams();
-    const router = useRouter();
     const groupId = searchParams.get('group_id');
     
     const [group, setGroup] = useState(null);
     const [overlaps, setOverlaps] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [selectedSlot, setSelectedSlot] = useState(null);
-    const [viewMode, setViewMode] = useState('calendar'); // 'calendar' or 'list'
+    const [selectedDate, setSelectedDate] = useState(null); // Selected date for day view
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [minAvailableMembers, setMinAvailableMembers] = useState(1);
     const [timeFilter, setTimeFilter] = useState('all'); // 'all', 'morning', 'afternoon', 'evening'
     const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+    
+    // Modal state for CreateEvent
+    const [eventModal, setEventModal] = useState(false);
+    const [prefillDate, setPrefillDate] = useState(null);
+    const [prefillTime, setPrefillTime] = useState(null);
+    const [selectedSlotData, setSelectedSlotData] = useState(null); // Store availability data for selected slot
 
     useEffect(() => {
         if (user?.sub && groupId) {
@@ -80,6 +85,51 @@ export default function GroupPlanningPage() {
         return 'bg-red-400';
     };
 
+    // Calculate daily availability (aggregate all time slots for each day)
+    const dailyAvailability = useMemo(() => {
+        const daily = {};
+        overlaps.forEach(slot => {
+            if (!daily[slot.date]) {
+                daily[slot.date] = {
+                    date: slot.date,
+                    totalMembers: slot.totalMembers,
+                    maxAvailable: 0,
+                    minAvailable: slot.totalMembers,
+                    totalSlots: 0,
+                    availableSlots: 0
+                };
+            }
+            const day = daily[slot.date];
+            day.maxAvailable = Math.max(day.maxAvailable, slot.availableCount);
+            day.minAvailable = Math.min(day.minAvailable, slot.availableCount);
+            day.totalSlots++;
+            if (slot.availableCount > 0) {
+                day.availableSlots++;
+            }
+        });
+        
+        // Calculate average availability percentage for the day
+        Object.keys(daily).forEach(date => {
+            const day = daily[date];
+            // Use max available count for the day as the primary indicator
+            day.averagePercentage = day.totalMembers > 0 
+                ? (day.maxAvailable / day.totalMembers) * 100 
+                : 0;
+        });
+        
+        return daily;
+    }, [overlaps]);
+
+    const getDayColor = (dateStr) => {
+        const day = dailyAvailability[dateStr];
+        if (!day || day.totalMembers === 0) return 'bg-gray-200';
+        const percentage = day.averagePercentage;
+        if (percentage === 100) return 'bg-green-500';
+        if (percentage >= 50) return 'bg-yellow-400';
+        if (percentage > 0) return 'bg-orange-400';
+        return 'bg-red-400';
+    };
+
     const getTimeSlots = () => {
         const slots = [];
         for (let hour = 0; hour < 24; hour++) {
@@ -99,28 +149,65 @@ export default function GroupPlanningPage() {
         return slots;
     };
 
-    const getDaysInMonth = () => {
+    // Get calendar grid days (including empty cells for alignment)
+    const getCalendarDays = () => {
         const start = startOfMonth(currentMonth);
+        const startWeek = startOfWeek(start, { weekStartsOn: 0 }); // Sunday = 0
         const end = endOfMonth(currentMonth);
-        return eachDayOfInterval({ start, end });
+        const endWeek = endOfWeek(end, { weekStartsOn: 0 });
+        
+        return eachDayOfInterval({ start: startWeek, end: endWeek });
     };
 
-    const filteredOverlaps = overlaps.filter(slot => {
-        const slotData = getSlotAvailability(slot.date, slot.timeSlot);
-        return slotData.availableCount >= minAvailableMembers;
-    });
-
-    const handleSlotClick = (date, timeSlot) => {
-        const slotData = getSlotAvailability(date, timeSlot);
-        if (slotData.availableCount > 0) {
-            setSelectedSlot({ date, timeSlot, ...slotData });
+    const handleDateClick = (date) => {
+        if (!date) return;
+        const dateStr = format(date, 'yyyy-MM-dd');
+        // Check if this date has any availability data
+        if (dailyAvailability[dateStr] || overlaps.some(o => o.date === dateStr)) {
+            setSelectedDate(dateStr);
         }
     };
 
-    const handleCreateEvent = () => {
-        if (!selectedSlot) return;
-        const dateTime = `${selectedSlot.date}T${selectedSlot.timeSlot}`;
-        router.push(`/groupHomePage?group_id=${groupId}&create_event=true&date=${selectedSlot.date}&time=${selectedSlot.timeSlot}`);
+    const handleTimeSlotClick = (dateStr, timeSlot) => {
+        const slotData = getSlotAvailability(dateStr, timeSlot);
+        if (slotData.availableCount >= minAvailableMembers) {
+            setPrefillDate(dateStr);
+            setPrefillTime(timeSlot);
+            setSelectedSlotData(slotData);
+            setEventModal(true);
+        }
+    };
+
+    const toggleEventModal = () => {
+        setEventModal(!eventModal);
+        if (eventModal) {
+            // Clear prefill data when closing modal
+            setPrefillDate(null);
+            setPrefillTime(null);
+            setSelectedSlotData(null);
+        }
+    };
+
+    const handleEventCreated = (newEvent) => {
+        // Optionally refresh overlaps after event creation
+        // For now, just close the modal
+        toggleEventModal();
+    };
+
+    const isToday = (date) => {
+        if (!date) return false;
+        const today = new Date();
+        return date.toDateString() === today.toDateString();
+    };
+
+    const isSelected = (date) => {
+        if (!date || !selectedDate) return false;
+        return format(date, 'yyyy-MM-dd') === selectedDate;
+    };
+
+    const isCurrentMonth = (date) => {
+        if (!date) return false;
+        return date.getMonth() === currentMonth.getMonth() && date.getFullYear() === currentMonth.getFullYear();
     };
 
     if (!user) {
@@ -135,6 +222,10 @@ export default function GroupPlanningPage() {
             </div>
         );
     }
+
+    const calendarDays = getCalendarDays();
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const selectedDaySlots = selectedDate ? overlaps.filter(o => o.date === selectedDate) : [];
 
     return (
         <div className="p-3 md:p-6 max-w-7xl mx-auto">
@@ -161,21 +252,13 @@ export default function GroupPlanningPage() {
                             {group ? `Plan Game Session - ${group.name}` : 'Plan Game Session'}
                         </h1>
                         <p className="text-sm text-gray-600 mt-1">
-                            Find the best time when all group members are available
+                            Click on a date to see detailed availability for that day
                         </p>
-                    </div>
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => setViewMode(viewMode === 'calendar' ? 'list' : 'calendar')}
-                            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm"
-                        >
-                            {viewMode === 'calendar' ? 'List View' : 'Calendar View'}
-                        </button>
                     </div>
                 </div>
 
                 {/* Filters */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                             Minimum Available Members
@@ -190,7 +273,6 @@ export default function GroupPlanningPage() {
                                 onChange={(e) => {
                                     const inputValue = e.target.value;
                                     if (inputValue === '') {
-                                        // Allow empty input temporarily while typing
                                         return;
                                     }
                                     const val = parseInt(inputValue);
@@ -218,19 +300,6 @@ export default function GroupPlanningPage() {
                         </div>
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Time of Day</label>
-                        <select
-                            value={timeFilter}
-                            onChange={(e) => setTimeFilter(e.target.value)}
-                            className="w-full p-2 border rounded text-gray-900 bg-white"
-                        >
-                            <option value="all">All Day</option>
-                            <option value="morning">Morning (Before 12 PM)</option>
-                            <option value="afternoon">Afternoon (12 PM - 5 PM)</option>
-                            <option value="evening">Evening (After 5 PM)</option>
-                        </select>
-                    </div>
-                    <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Month</label>
                         <div className="flex items-center gap-2">
                             <button
@@ -254,183 +323,190 @@ export default function GroupPlanningPage() {
             </div>
 
             {/* Calendar View */}
-            {viewMode === 'calendar' && (
-                <div className="bg-white rounded-lg shadow-md p-4 md:p-6">
-                    {loading ? (
-                        <p className="text-center text-gray-600 py-8">Loading availability data...</p>
-                    ) : (
-                        <div className="overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
-                            <div style={{ display: 'inline-block', width: 'max-content' }}>
+            <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
+                {loading ? (
+                    <p className="text-center text-gray-600 py-8">Loading availability data...</p>
+                ) : (
+                    <>
+                        {/* Calendar Grid */}
+                        <div className="mb-6">
                             {/* Day Headers */}
-                            <div className="grid gap-1 mb-2" style={{ gridTemplateColumns: `60px repeat(${getDaysInMonth().length}, minmax(60px, 1fr))`, width: 'max-content' }}>
-                                <div className="font-semibold text-gray-700 text-sm p-2 z-20 border-r shadow-sm" style={{ position: 'sticky', left: 0, backgroundColor: 'white', minWidth: '60px', zIndex: 20, boxShadow: '2px 0 4px rgba(0,0,0,0.1)' }}>Time</div>
-                                {getDaysInMonth().map(day => (
-                                    <div key={day.toISOString()} className="font-semibold text-gray-700 text-sm p-2 text-center border-b">
-                                        {format(day, 'EEE')}<br />
-                                        <span className="text-xs">{format(day, 'd')}</span>
+                            <div className="grid grid-cols-7 gap-1 mb-1">
+                                {dayNames.map(day => (
+                                    <div key={day} className="text-center text-sm font-semibold text-gray-700 p-2">
+                                        {day}
                                     </div>
                                 ))}
                             </div>
 
-                            {/* Time Slots */}
-                            <div className="space-y-1">
-                                {getTimeSlots().map(timeSlot => (
-                                    <div key={timeSlot} className="grid gap-1" style={{ gridTemplateColumns: `60px repeat(${getDaysInMonth().length}, minmax(60px, 1fr))`, width: 'max-content' }}>
-                                        <div className="text-xs text-gray-600 p-1 text-right z-10 border-r shadow-sm" style={{ position: 'sticky', left: 0, backgroundColor: 'white', minWidth: '60px', zIndex: 10, boxShadow: '2px 0 4px rgba(0,0,0,0.1)' }}>
-                                            {timeSlot}
-                                        </div>
-                                        {getDaysInMonth().map(day => {
-                                            const dateStr = format(day, 'yyyy-MM-dd');
-                                            const slotData = getSlotAvailability(dateStr, timeSlot);
-                                            const color = getSlotColor(slotData.availableCount, slotData.totalMembers);
-                                            const isClickable = slotData.availableCount >= minAvailableMembers;
-                                            
-                                            return (
-                                                <div
-                                                    key={`${dateStr}-${timeSlot}`}
-                                                    onClick={() => isClickable && handleSlotClick(dateStr, timeSlot)}
-                                                    className={`${color} ${isClickable ? 'cursor-pointer hover:opacity-80' : 'opacity-50'} p-1 rounded text-xs text-center text-white font-medium min-h-[24px] flex items-center justify-center`}
-                                                    title={`${slotData.availableCount}/${slotData.totalMembers} available`}
-                                                >
-                                                    {slotData.availableCount > 0 && slotData.availableCount}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                ))}
-                            </div>
+                            {/* Calendar Days */}
+                            <div className="grid grid-cols-7 gap-1">
+                                {calendarDays.map((day, index) => {
+                                    const dateStr = day ? format(day, 'yyyy-MM-dd') : null;
+                                    const dayData = dateStr ? dailyAvailability[dateStr] : null;
+                                    const color = dateStr ? getDayColor(dateStr) : 'bg-gray-100';
+                                    const inCurrentMonth = day ? isCurrentMonth(day) : false;
+                                    const today = day ? isToday(day) : false;
+                                    const selected = day ? isSelected(day) : false;
 
-                            {/* Legend */}
-                            <div className="mt-4 flex flex-wrap gap-4 text-sm">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 bg-green-500 rounded"></div>
-                                    <span className="text-gray-900">All Available</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 bg-yellow-400 rounded"></div>
-                                    <span className="text-gray-900">50%+ Available</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 bg-orange-400 rounded"></div>
-                                    <span className="text-gray-900">Some Available</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 bg-red-400 rounded"></div>
-                                    <span className="text-gray-900">None Available</span>
-                                </div>
-                            </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* List View */}
-            {viewMode === 'list' && (
-                <div className="bg-white rounded-lg shadow-md p-4 md:p-6">
-                    {loading ? (
-                        <p className="text-center text-gray-600 py-8">Loading availability data...</p>
-                    ) : filteredOverlaps.length > 0 ? (
-                        <div className="space-y-2">
-                            {filteredOverlaps.map((slot, index) => (
-                                <div
-                                    key={`${slot.date}-${slot.timeSlot}-${index}`}
-                                    onClick={() => handleSlotClick(slot.date, slot.timeSlot)}
-                                    className="p-4 border rounded-lg hover:bg-gray-50 cursor-pointer"
-                                >
-                                    <div className="flex justify-between items-center">
-                                        <div>
-                                            <p className="font-semibold text-gray-900">
-                                                {format(parseISO(slot.date), 'EEEE, MMMM d, yyyy')} at {slot.timeSlot}
-                                            </p>
-                                            <p className="text-sm text-gray-600">
-                                                {slot.availableCount} of {slot.totalMembers} members available
-                                            </p>
-                                        </div>
-                                        <div className="text-right">
-                                            <div className={`inline-block px-3 py-1 rounded text-white text-sm font-medium ${
-                                                getSlotColor(slot.availableCount, slot.totalMembers)
-                                            }`}>
-                                                {Math.round((slot.availableCount / slot.totalMembers) * 100)}%
+                                    return (
+                                        <div
+                                            key={index}
+                                            onClick={() => handleDateClick(day)}
+                                            className={`
+                                                aspect-square p-1 rounded cursor-pointer transition-all
+                                                ${inCurrentMonth ? color : 'bg-gray-100'}
+                                                ${!day || !inCurrentMonth ? 'opacity-30' : 'hover:opacity-80'}
+                                                ${selected ? 'ring-2 ring-blue-500 ring-offset-2' : ''}
+                                                ${today ? 'ring-1 ring-gray-400' : ''}
+                                            `}
+                                            title={dayData ? `${dayData.maxAvailable}/${dayData.totalMembers} max available` : ''}
+                                        >
+                                            <div className="flex flex-col h-full justify-center items-center">
+                                                {day && (
+                                                    <span className={`
+                                                        text-sm font-medium
+                                                        ${inCurrentMonth && dayData && dayData.maxAvailable > 0 ? 'text-white' : 'text-gray-900'}
+                                                    `}>
+                                                        {format(day, 'd')}
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Legend */}
+                        <div className="flex flex-wrap gap-4 text-sm mb-4">
+                            <div className="flex items-center gap-2">
+                                <div className="w-4 h-4 bg-green-500 rounded"></div>
+                                <span className="text-gray-900">All Available</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-4 h-4 bg-yellow-400 rounded"></div>
+                                <span className="text-gray-900">50%+ Available</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-4 h-4 bg-orange-400 rounded"></div>
+                                <span className="text-gray-900">Some Available</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-4 h-4 bg-red-400 rounded"></div>
+                                <span className="text-gray-900">None Available</span>
+                            </div>
+                        </div>
+                    </>
+                )}
+            </div>
+
+            {/* Day Detail View (Time Grid) */}
+            {selectedDate && (
+                <div className="bg-white rounded-lg shadow-md p-4 md:p-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-xl font-bold text-gray-900">
+                            {format(parseISO(selectedDate), 'EEEE, MMMM d, yyyy')}
+                        </h2>
+                        <button
+                            onClick={() => setSelectedDate(null)}
+                            className="text-gray-500 hover:text-gray-700 px-3 py-1 rounded hover:bg-gray-100"
+                        >
+                            Close
+                        </button>
+                    </div>
+
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Time of Day</label>
+                        <select
+                            value={timeFilter}
+                            onChange={(e) => setTimeFilter(e.target.value)}
+                            className="w-full md:w-auto p-2 border rounded text-gray-900 bg-white"
+                        >
+                            <option value="all">All Day</option>
+                            <option value="morning">Morning (Before 12 PM)</option>
+                            <option value="afternoon">Afternoon (12 PM - 5 PM)</option>
+                            <option value="evening">Evening (After 5 PM)</option>
+                        </select>
+                    </div>
+
+                    {loading ? (
+                        <p className="text-center text-gray-600 py-8">Loading availability data...</p>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <div className="inline-block min-w-full">
+                                {/* Time Grid */}
+                                <div className="space-y-1">
+                                    {getTimeSlots().map(timeSlot => {
+                                        const slotData = getSlotAvailability(selectedDate, timeSlot);
+                                        const color = getSlotColor(slotData.availableCount, slotData.totalMembers);
+                                        const isClickable = slotData.availableCount >= minAvailableMembers;
+
+                                        return (
+                                            <div
+                                                key={timeSlot}
+                                                onClick={() => handleTimeSlotClick(selectedDate, timeSlot)}
+                                                className={`
+                                                    grid grid-cols-[80px_1fr] gap-2 p-2 rounded
+                                                    ${isClickable ? 'cursor-pointer hover:bg-gray-50' : 'opacity-50'}
+                                                `}
+                                            >
+                                                <div className="text-sm text-gray-600 font-medium">
+                                                    {timeSlot}
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className={`
+                                                        flex-1 h-8 rounded flex items-center justify-center
+                                                        ${color} text-white text-sm font-medium
+                                                    `}>
+                                                        {slotData.availableCount > 0 && (
+                                                            <span>{slotData.availableCount}/{slotData.totalMembers}</span>
+                                                        )}
+                                                    </div>
+                                                    {isClickable && (
+                                                        <span className="text-xs text-gray-500">Click to create event</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Legend for Day View */}
+                                <div className="mt-4 flex flex-wrap gap-4 text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-4 h-4 bg-green-500 rounded"></div>
+                                        <span className="text-gray-900">All Available</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-4 h-4 bg-yellow-400 rounded"></div>
+                                        <span className="text-gray-900">50%+ Available</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-4 h-4 bg-orange-400 rounded"></div>
+                                        <span className="text-gray-900">Some Available</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-4 h-4 bg-red-400 rounded"></div>
+                                        <span className="text-gray-900">None Available</span>
                                     </div>
                                 </div>
-                            ))}
+                            </div>
                         </div>
-                    ) : (
-                        <p className="text-center text-gray-600 py-8">
-                            No time slots found matching your criteria. Try adjusting the filters.
-                        </p>
                     )}
                 </div>
             )}
 
-            {/* Slot Detail Modal */}
-            {selectedSlot && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col">
-                        <div className="flex justify-between items-center p-4 border-b">
-                            <h3 className="text-lg font-semibold text-gray-900">
-                                {format(parseISO(selectedSlot.date), 'EEEE, MMMM d, yyyy')} at {selectedSlot.timeSlot}
-                            </h3>
-                            <button
-                                onClick={() => setSelectedSlot(null)}
-                                className="text-gray-500 hover:text-gray-700 text-2xl"
-                            >
-                                &times;
-                            </button>
-                        </div>
-                        <div className="p-4 overflow-y-auto space-y-4">
-                            <div>
-                                <p className="font-semibold text-gray-900 mb-2">
-                                    {selectedSlot.availableCount} of {selectedSlot.totalMembers} members available
-                                </p>
-                                <div className="space-y-2">
-                                    <div>
-                                        <p className="text-sm font-medium text-gray-700 mb-1">Available Members:</p>
-                                        <div className="flex flex-wrap gap-2">
-                                            {selectedSlot.availableMembers.map(member => (
-                                                <span
-                                                    key={member.user_id}
-                                                    className="px-2 py-1 bg-green-100 text-green-800 rounded text-sm"
-                                                >
-                                                    {member.username || member.email}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    {selectedSlot.unavailableCount > 0 && (
-                                        <div>
-                                            <p className="text-sm font-medium text-gray-700 mb-1">
-                                                Unavailable Members ({selectedSlot.unavailableCount}):
-                                            </p>
-                                            <p className="text-sm text-gray-600">
-                                                Check individual member availability for details
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="p-4 border-t flex gap-2">
-                            <button
-                                onClick={handleCreateEvent}
-                                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                            >
-                                Create Event at This Time
-                            </button>
-                            <button
-                                onClick={() => setSelectedSlot(null)}
-                                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-                            >
-                                Close
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Create Event Modal */}
+            <CreateEvent
+                group_id={groupId}
+                modal={eventModal}
+                modaltoggle={toggleEventModal}
+                onEventCreated={handleEventCreated}
+                user={user}
+                prefillDate={prefillDate}
+                prefillTime={prefillTime}
+            />
         </div>
     );
 }
-
