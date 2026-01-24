@@ -432,5 +432,16 @@ export const availabilityAPI = {
     if (endDate) params.append('end_date', endDate);
     return apiFetch(`/availability/group/${group_id}/overlaps?${params.toString()}`);
   },
+
+  // Submit weekly availability response
+  submitWeeklyAvailability: (group_id, data) =>
+    apiFetch(`/availability/groups/${group_id}/weekly`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Get weekly availability for a group
+  getWeeklyAvailability: (group_id, week_start) =>
+    apiFetch(`/availability/groups/${group_id}/week/${week_start}`),
 };
 

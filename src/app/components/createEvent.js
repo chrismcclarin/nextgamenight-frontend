@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { gamesAPI, eventsAPI, groupsAPI, API_BASE_URL } from '../../lib/api';
+import { format, parseISO, differenceInMinutes } from 'date-fns';
+import EventScheduler from './EventScheduler';
 
 // Helper function to create a participant object
 // Note: user_id here is the User.id (UUID), not the Auth0 user_id string
@@ -35,7 +37,7 @@ const createEventForm = (group_id, groupMembers = []) => ({
   )
 });
 
-function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null }) {
+function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, hideVisualCalendar = false }) {
   const authUser = user || Auth().user;
   const [groupMembers, setGroupMembers] = useState([]);
   const [newEvent, setNewEvent] = useState(createEventForm(group_id, []));
@@ -45,6 +47,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   const [bggSearchResults, setBggSearchResults] = useState([]);
   const [bggSearching, setBggSearching] = useState(false);
   const [showBggSearch, setShowBggSearch] = useState(false);
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState(null);
+  const [useVisualCalendar, setUseVisualCalendar] = useState(true);
 
   // Fetch group members and games when component mounts or group_id changes
   useEffect(() => {
@@ -147,6 +151,19 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         comments: editingEvent.comments || '',
         participants: finalParticipants
       });
+
+      // Set selected time slot for visual calendar
+      if (editingEvent.start_date) {
+        const eventStartDate = new Date(editingEvent.start_date);
+        const eventEndDate = editingEvent.duration_minutes 
+          ? new Date(eventStartDate.getTime() + editingEvent.duration_minutes * 60000)
+          : new Date(eventStartDate.getTime() + 180 * 60000); // Default 3 hours
+        
+        setSelectedTimeSlot({
+          start: eventStartDate,
+          end: eventEndDate
+        });
+      }
     } else if (!editingEvent && groupMembers.length > 0) {
       // Reset to empty form when not editing
       const form = createEventForm(group_id, groupMembers);
@@ -155,9 +172,12 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         // Combine date and time into datetime-local format (YYYY-MM-DDTHH:mm)
         form.start_date = `${prefillDate}T${prefillTime}`;
       }
+      if (prefillDuration) {
+        form.duration_minutes = prefillDuration;
+      }
       setNewEvent(form);
     }
-  }, [editingEvent, groupMembers, group_id, prefillDate, prefillTime]);
+  }, [editingEvent, groupMembers, group_id, prefillDate, prefillTime, prefillDuration]);
 
   const fetchGroupMembers = async () => {
     try {
@@ -172,6 +192,9 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         if (prefillDate && prefillTime) {
           // Combine date and time into datetime-local format (YYYY-MM-DDTHH:mm)
           form.start_date = `${prefillDate}T${prefillTime}`;
+        }
+        if (prefillDuration) {
+          form.duration_minutes = prefillDuration;
         }
         setNewEvent(form);
       }
@@ -414,6 +437,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       modaltoggle();
       // Reset form
       setNewEvent(createEventForm(group_id, groupMembers));
+      setSelectedTimeSlot(null);
+      setUseVisualCalendar(true);
     } catch (error) {
       console.error(`Error ${editingEvent ? 'updating' : 'creating'} event:`, error);
       alert(`Failed to ${editingEvent ? 'update' : 'create'} event. ${error.message || 'Please try again.'}`);
@@ -544,37 +569,79 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             )}
           </div>
 
-          {/* Start Date */}
+          {/* Time Selection */}
           <div>
-            <label htmlFor="start_date" className="block text-sm font-medium mb-1 text-gray-900">
-              Start Date & Time <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="datetime-local"
-              id="start_date"
-              value={newEvent.start_date}
-              onChange={handleChange}
-              required
-              className="w-full p-2 border rounded text-gray-900 bg-white"
-            />
-          </div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-900">
+                Date & Time <span className="text-red-500">*</span>
+              </label>
+              {!hideVisualCalendar && (
+                <button
+                  type="button"
+                  onClick={() => setUseVisualCalendar(!useVisualCalendar)}
+                  className="text-xs text-blue-600 hover:text-blue-700 underline"
+                >
+                  {useVisualCalendar ? 'Switch to Manual Entry' : 'Switch to Visual Calendar'}
+                </button>
+              )}
+            </div>
 
-          {/* Duration */}
-          <div>
-            <label htmlFor="duration_minutes" className="block text-sm font-medium mb-1 text-gray-900">
-              Duration (minutes) <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="number"
-              id="duration_minutes"
-              value={newEvent.duration_minutes || ''}
-              onChange={handleChange}
-              className="w-full p-2 border rounded text-gray-900 bg-white"
-              placeholder="Enter duration in minutes"
-              required
-              min="1"
-              max="1440"
-            />
+            {useVisualCalendar && !hideVisualCalendar ? (
+              <EventScheduler
+                onTimeSelected={(start, end) => {
+                  setSelectedTimeSlot({ start, end });
+                  const dateStr = format(start, 'yyyy-MM-dd');
+                  const timeStr = format(start, 'HH:mm');
+                  const duration = differenceInMinutes(end, start);
+                  
+                  setNewEvent({
+                    ...newEvent,
+                    start_date: `${dateStr}T${timeStr}`,
+                    duration_minutes: duration
+                  });
+                }}
+                initialDate={prefillDate ? parseISO(prefillDate) : (editingEvent?.start_date ? new Date(editingEvent.start_date) : new Date())}
+                initialStart={prefillTime || (editingEvent?.start_date ? format(new Date(editingEvent.start_date), 'HH:mm') : null)}
+                initialEnd={editingEvent?.start_date && editingEvent?.duration_minutes 
+                  ? format(new Date(new Date(editingEvent.start_date).getTime() + editingEvent.duration_minutes * 60000), 'HH:mm')
+                  : null}
+              />
+            ) : (
+              <div className="space-y-4">
+                {/* Start Date */}
+                <div>
+                  <label htmlFor="start_date" className="block text-sm font-medium mb-1 text-gray-900">
+                    Start Date & Time <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="datetime-local"
+                    id="start_date"
+                    value={newEvent.start_date}
+                    onChange={handleChange}
+                    required
+                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                  />
+                </div>
+
+                {/* Duration */}
+                <div>
+                  <label htmlFor="duration_minutes" className="block text-sm font-medium mb-1 text-gray-900">
+                    Duration (minutes) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    id="duration_minutes"
+                    value={newEvent.duration_minutes || ''}
+                    onChange={handleChange}
+                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                    placeholder="Enter duration in minutes"
+                    required
+                    min="1"
+                    max="1440"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Participants Section */}

@@ -31,3 +31,65 @@ body {
   color: black
 }
 
+/* React Big Calendar Styling - Ensure text is visible */
+.rbc-calendar {
+  color: #1f2937 !important;
+}
+
+.rbc-header {
+  color: #1f2937 !important;
+  background-color: white !important;
+}
+
+.rbc-time-header-content {
+  color: #1f2937 !important;
+}
+
+.rbc-time-gutter {
+  color: #374151 !important;
+  font-weight: 500;
+}
+
+.rbc-day-header {
+  color: #1f2937 !important;
+}
+
+.rbc-label {
+  color: #374151 !important;
+}
+
+.rbc-toolbar {
+  color: #1f2937 !important;
+}
+
+.rbc-toolbar button {
+  color: #374151 !important;
+}
+
+.rbc-toolbar button.rbc-active {
+  color: white !important;
+}
+
+.rbc-toolbar-label {
+  color: #1f2937 !important;
+  font-weight: 600;
+}
+
+.rbc-slot-selection {
+  background-color: #3b82f6 !important;
+  opacity: 0.3;
+  border: 2px solid #2563eb !important;
+}
+
+.rbc-event {
+  color: white !important;
+}
+
+.rbc-event-content {
+  color: white !important;
+}
+
+.rbc-event-label {
+  color: white !important;
+}
+
