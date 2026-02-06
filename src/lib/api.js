@@ -445,3 +445,38 @@ export const availabilityAPI = {
     apiFetch(`/availability/groups/${group_id}/week/${week_start}`),
 };
 
+/**
+ * API functions for Prompt Settings
+ */
+export const promptSettingsAPI = {
+  // Get prompt settings for a group (includes schedules array)
+  getGroupPromptSettings: (group_id) =>
+    apiFetch(`/groups/${group_id}/prompt-settings`),
+
+  // Create a new schedule
+  createSchedule: (group_id, scheduleData) =>
+    apiFetch(`/groups/${group_id}/prompt-settings/schedules`, {
+      method: 'POST',
+      body: JSON.stringify(scheduleData),
+    }),
+
+  // Update an existing schedule
+  updateSchedule: (group_id, schedule_id, scheduleData) =>
+    apiFetch(`/groups/${group_id}/prompt-settings/schedules/${schedule_id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(scheduleData),
+    }),
+
+  // Soft delete a schedule
+  deleteSchedule: (group_id, schedule_id) =>
+    apiFetch(`/groups/${group_id}/prompt-settings/schedules/${schedule_id}`, {
+      method: 'DELETE',
+    }),
+
+  // Toggle schedule active status (pause/resume)
+  toggleSchedule: (group_id, schedule_id) =>
+    apiFetch(`/groups/${group_id}/prompt-settings/schedules/${schedule_id}/toggle`, {
+      method: 'PATCH',
+    }),
+};
+
