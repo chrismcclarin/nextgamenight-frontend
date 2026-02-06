@@ -124,7 +124,6 @@ if (typeof document !== 'undefined') {
   styleSheet.innerText = calendarStyles;
   document.head.appendChild(styleSheet);
 }
-import { groupsAPI, availabilityAPI } from '../../../../../lib/api';
 
 const locales = {
   'en-US': enUS,
