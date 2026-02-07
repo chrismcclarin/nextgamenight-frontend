@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { groupsAPI, API_BASE_URL } from '../../lib/api';
+import PromptScheduleManager from './PromptScheduleManager';
 
 // Default profile picture options
 const DEFAULT_PROFILE_PICTURES = [
@@ -38,6 +39,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [showScheduleManager, setShowScheduleManager] = useState(false);
 
   const handleSave = async () => {
     if (!user?.sub) return;
@@ -255,6 +257,26 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
           </div>
         </div>
 
+        {/* Prompt Schedules Section */}
+        <div className="mb-6 pt-6 border-t border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Prompt Schedules</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Configure automated availability prompts for your group.
+          </p>
+          {userRole === 'owner' || userRole === 'admin' ? (
+            <button
+              onClick={() => setShowScheduleManager(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Manage Schedules
+            </button>
+          ) : (
+            <p className="text-sm text-gray-500 italic">
+              Only owners and admins can manage prompt schedules.
+            </p>
+          )}
+        </div>
+
         {/* Delete Group Section - Owner Only */}
         {userRole === 'owner' && (
           <div className="mb-6 pt-6 border-t border-red-200">
@@ -321,6 +343,16 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
           </button>
         </div>
       </div>
+
+      {/* Prompt Schedule Manager Modal */}
+      {showScheduleManager && (
+        <PromptScheduleManager
+          groupId={group.id}
+          group={group}
+          userRole={userRole}
+          onClose={() => setShowScheduleManager(false)}
+        />
+      )}
     </div>
   );
 }
