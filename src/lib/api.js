@@ -446,6 +446,48 @@ export const availabilityAPI = {
 };
 
 /**
+ * API functions for Magic Auth (no Auth0 required)
+ * These use direct fetch without Auth0 token injection
+ */
+export const magicAuthAPI = {
+  // Validate a magic token (returns user info, prompt_id, expiry)
+  validateToken: (token, formLoadedAt = null) =>
+    fetch(`${API_BASE_URL}/magic-auth/validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, formLoadedAt }),
+    }).then(res => res.json()),
+
+  // Request a new magic link (stub - returns 501 currently)
+  requestNew: (promptId) =>
+    fetch(`${API_BASE_URL}/magic-auth/request-new`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt_id: promptId }),
+    }).then(res => res.json()),
+};
+
+/**
+ * API functions for Availability Form submission (magic token auth, no Auth0)
+ * These use direct fetch without Auth0 token injection
+ */
+export const availabilityFormAPI = {
+  // Submit availability response via magic token
+  submitResponse: (data) =>
+    fetch(`${API_BASE_URL}/availability-responses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(res => res.json()),
+
+  // Get existing response for pre-fill (if user returns to edit)
+  getExistingResponse: (promptId, token) =>
+    fetch(`${API_BASE_URL}/availability-responses/${promptId}?magic_token=${encodeURIComponent(token)}`, {
+      headers: { 'Content-Type': 'application/json' },
+    }).then(res => res.ok ? res.json() : null),
+};
+
+/**
  * API functions for Prompt Settings
  */
 export const promptSettingsAPI = {
