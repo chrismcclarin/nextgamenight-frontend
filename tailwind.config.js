@@ -5,6 +5,19 @@ module.exports = {
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
     './src/app/**/*.{js,ts,jsx,tsx,mdx}',
   ],
+  safelist: [
+    // Heatmap intensity colors (prevent purging)
+    'bg-gray-100',
+    'bg-yellow-200',
+    'bg-yellow-400',
+    'bg-orange-400',
+    'bg-red-500',
+    'border-gray-300',
+    'border-yellow-400',
+    'border-yellow-500',
+    'border-orange-500',
+    'border-red-600',
+  ],
   theme: {
     extend: {
       backgroundImage: {
