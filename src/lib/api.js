@@ -522,3 +522,18 @@ export const promptSettingsAPI = {
     }),
 };
 
+/**
+ * API functions for Availability Prompts (respondent tracking, reminders)
+ */
+export const promptAPI = {
+  // Get respondent list for a prompt
+  getRespondents: (promptId) =>
+    apiFetch(`/prompts/${promptId}/respondents`),
+
+  // Send reminder to non-respondent (admin only)
+  sendReminder: (promptId, userId) =>
+    apiFetch(`/prompts/${promptId}/remind/${userId}`, {
+      method: 'POST',
+    }),
+};
+
