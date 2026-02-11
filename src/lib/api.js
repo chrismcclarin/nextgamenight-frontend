@@ -537,3 +537,18 @@ export const promptAPI = {
     }),
 };
 
+/**
+ * API functions for Availability Suggestions (event creation from suggestions)
+ */
+export const suggestionAPI = {
+  /**
+   * Convert a suggestion to an event
+   * @param {string} suggestionId - UUID of the suggestion
+   * @returns {Promise<{success: boolean, event_id: string}>}
+   */
+  convert: (suggestionId) =>
+    apiFetch(`/suggestions/${suggestionId}/convert`, {
+      method: 'POST',
+    }),
+};
+
