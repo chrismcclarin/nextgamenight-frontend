@@ -3,9 +3,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
-import { availabilityAPI, groupsAPI, eventsAPI } from '../../lib/api';
+import { availabilityAPI, groupsAPI, eventsAPI, promptAPI } from '../../lib/api';
 import Link from 'next/link';
 import CreateEvent from '../components/createEvent';
+import HeatmapGrid from '../components/HeatmapGrid';
+import ResponseDashboard from '../components/ResponseDashboard';
 import { format, parseISO, subWeeks, addWeeks } from 'date-fns';
 
 export default function GroupPlanningPage() {
@@ -34,10 +36,37 @@ export default function GroupPlanningPage() {
     const [prefillTime, setPrefillTime] = useState(null);
     const [selectedSlotData, setSelectedSlotData] = useState(null);
 
+    // Heatmap state
+    const [heatmapPrompt, setHeatmapPrompt] = useState(null);
+    const [suggestions, setSuggestions] = useState([]);
+    const [heatmapLoading, setHeatmapLoading] = useState(true);
+    const [heatmapError, setHeatmapError] = useState(null);
+    const [userRole, setUserRole] = useState(null);
+
+    // Derived heatmap data (memos must be before any early returns)
+    const memberMap = useMemo(() => {
+        const map = new Map();
+        (group?.Users || []).forEach(u => map.set(u.user_id, u.username || u.user_id));
+        return map;
+    }, [group]);
+
+    const enrichedSuggestions = useMemo(() => {
+        return suggestions.map(s => ({
+            ...s,
+            participants: (s.participant_user_ids || []).map(uid => ({
+                user_id: uid,
+                username: memberMap.get(uid) || uid,
+                preference: 'if-need-be',
+            })),
+        }));
+    }, [suggestions, memberMap]);
+
     useEffect(() => {
         if (user?.sub && groupId) {
             fetchGroup();
             fetchGroupEvents();
+            fetchHeatmapData();
+            fetchUserRole();
         }
     }, [user, groupId]);
 
@@ -220,6 +249,36 @@ export default function GroupPlanningPage() {
         }
     };
 
+    const fetchHeatmapData = async () => {
+        if (!groupId) return;
+        setHeatmapLoading(true);
+        setHeatmapError(null);
+        try {
+            const { prompt } = await promptAPI.getActivePrompt(groupId);
+            setHeatmapPrompt(prompt);
+            if (prompt) {
+                const data = await promptAPI.getSuggestions(prompt.id);
+                setSuggestions(data.suggestions || []);
+            }
+        } catch (err) {
+            setHeatmapError(err.message || 'Failed to load heatmap data');
+        } finally {
+            setHeatmapLoading(false);
+        }
+    };
+
+    const fetchUserRole = async () => {
+        if (!groupId || !user?.sub) return;
+        try {
+            const members = await groupsAPI.getGroupMembers(groupId);
+            const me = (members || []).find(m => m.user_id === user.sub);
+            if (me?.UserGroup?.role) {
+                setUserRole(me.UserGroup.role);
+            }
+        } catch (err) {
+            console.error('Error fetching user role:', err);
+        }
+    };
 
     // Convert hour/minute to pixel position (60px per hour = 1px per minute)
     const timeToPixels = (hour, minute) => {
@@ -436,6 +495,12 @@ export default function GroupPlanningPage() {
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const totalMembers = group?.Users?.length || 0;
     const hours = Array.from({ length: 24 }, (_, i) => i);
+
+    const isAdmin = ['owner', 'admin'].includes(userRole);
+    const pollClosed = !heatmapPrompt ||
+        heatmapPrompt.status === 'closed' ||
+        heatmapPrompt.status === 'converted' ||
+        (heatmapPrompt.deadline && new Date(heatmapPrompt.deadline) < new Date());
 
     // Debug logging
 
@@ -697,6 +762,43 @@ export default function GroupPlanningPage() {
                 </div>
             </div>
 
+
+            {/* Availability Heatmap Section */}
+            <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-4">Group Availability Heatmap</h2>
+                {heatmapLoading ? (
+                    <p className="text-center text-gray-600 py-8">Loading availability data...</p>
+                ) : heatmapError ? (
+                    <p className="text-center text-red-600 py-8">{heatmapError}</p>
+                ) : !heatmapPrompt ? (
+                    <p className="text-center text-gray-500 py-8">
+                        No active availability poll found. Use Prompt Schedules to send one.
+                    </p>
+                ) : (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:col-span-2">
+                            <HeatmapGrid
+                                suggestions={enrichedSuggestions}
+                                totalMembers={group?.Users?.length || 0}
+                                timezone={timezone}
+                                groupId={groupId}
+                                isAdmin={isAdmin}
+                                pollClosed={pollClosed}
+                                onEventCreated={fetchGroupEvents}
+                            />
+                        </div>
+                        <div>
+                            <ResponseDashboard
+                                promptId={heatmapPrompt.id}
+                                isAdmin={isAdmin}
+                                currentUserId={user?.sub}
+                                blindVotingEnabled={heatmapPrompt.blind_voting_enabled}
+                                pollClosed={pollClosed}
+                            />
+                        </div>
+                    </div>
+                )}
+            </div>
 
             {/* Create Event Modal */}
             <CreateEvent
