@@ -535,6 +535,14 @@ export const promptAPI = {
     apiFetch(`/prompts/${promptId}/remind/${userId}`, {
       method: 'POST',
     }),
+
+  // Fetch the most recent active/pending prompt for a group
+  getActivePrompt: (groupId) =>
+    apiFetch(`/groups/${groupId}/prompts/active`),
+
+  // Fetch heatmap suggestions for a prompt
+  getSuggestions: (promptId) =>
+    apiFetch(`/prompts/${promptId}/suggestions`),
 };
 
 /**
