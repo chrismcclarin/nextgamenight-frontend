@@ -73,10 +73,9 @@ export default function AvailabilityFormPage() {
 
         // Token is valid - store the data
         setTokenData({
-          userId: validation.user_id,
-          userName: validation.user_name || validation.user?.username || 'User',
+          userName: validation.user?.name || 'User',
           promptId: validation.prompt_id,
-          expiresAt: validation.expires_at,
+          expiresAt: validation.expiresAt,
         });
 
         // Try to fetch existing response for pre-fill
