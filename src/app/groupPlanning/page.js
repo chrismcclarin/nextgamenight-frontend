@@ -14,6 +14,7 @@ export default function GroupPlanningPage() {
     const { user } = Auth();
     const searchParams = useSearchParams();
     const groupId = searchParams.get('group_id');
+    const promptId = searchParams.get('prompt_id');
     
     const [group, setGroup] = useState(null);
     const [loading, setLoading] = useState(false); // Start as false, will be set to true when fetching
@@ -254,7 +255,15 @@ export default function GroupPlanningPage() {
         setHeatmapLoading(true);
         setHeatmapError(null);
         try {
-            const { prompt } = await promptAPI.getActivePrompt(groupId);
+            let prompt;
+            if (promptId) {
+                // Navigating from a no-consensus email — load specific prompt by ID
+                const data = await promptAPI.getPromptById(promptId);
+                prompt = data.prompt;
+            } else {
+                const data = await promptAPI.getActivePrompt(groupId);
+                prompt = data.prompt;
+            }
             setHeatmapPrompt(prompt);
             if (prompt) {
                 const data = await promptAPI.getSuggestions(prompt.id);

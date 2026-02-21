@@ -540,6 +540,10 @@ export const promptAPI = {
   getActivePrompt: (groupId) =>
     apiFetch(`/groups/${groupId}/prompts/active`),
 
+  // Fetch a specific prompt by ID regardless of status (used for closed prompts from email links)
+  getPromptById: (promptId) =>
+    apiFetch(`/prompts/${promptId}`),
+
   // Fetch heatmap suggestions for a prompt
   getSuggestions: (promptId) =>
     apiFetch(`/prompts/${promptId}/suggestions`),
