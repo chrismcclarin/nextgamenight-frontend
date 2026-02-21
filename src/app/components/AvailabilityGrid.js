@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'; // useState kept for paintMode
 import { format, addDays, addMinutes, startOfWeek, nextMonday, parseISO } from 'date-fns';
 import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
 import TimeSlotCell from './TimeSlotCell';
@@ -25,8 +25,9 @@ export default function AvailabilityGrid({
   disabled = false,
   weekStartDate,
 }) {
-  // State for drag painting
-  const [isDragging, setIsDragging] = useState(false);
+  // Ref for drag state — must be a ref (not state) so pointer events read the
+  // latest value synchronously without waiting for a re-render
+  const isDraggingRef = useRef(false);
   const [paintMode, setPaintMode] = useState('preferred'); // 'preferred' | 'if-need-be'
   const gridRef = useRef(null);
 
@@ -130,7 +131,7 @@ export default function AvailabilityGrid({
   // Pointer event handlers
   const handlePointerDown = useCallback(
     (slotId) => {
-      setIsDragging(true);
+      isDraggingRef.current = true;
       handleToggleSlot(slotId);
     },
     [handleToggleSlot]
@@ -138,21 +139,21 @@ export default function AvailabilityGrid({
 
   const handlePointerEnter = useCallback(
     (slotId) => {
-      if (isDragging) {
+      if (isDraggingRef.current) {
         handlePaintSlot(slotId);
       }
     },
-    [isDragging, handlePaintSlot]
+    [handlePaintSlot]
   );
 
   const handlePointerUp = useCallback(() => {
-    setIsDragging(false);
+    isDraggingRef.current = false;
   }, []);
 
   // Global pointer up listener for catching release outside grid
   useEffect(() => {
     const handleGlobalPointerUp = () => {
-      setIsDragging(false);
+      isDraggingRef.current = false;
     };
 
     document.addEventListener('pointerup', handleGlobalPointerUp);
