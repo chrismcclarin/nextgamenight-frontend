@@ -11,7 +11,7 @@ import ResponseDashboard from '../components/ResponseDashboard';
 import { format, parseISO, subWeeks, addWeeks } from 'date-fns';
 
 export default function GroupPlanningPage() {
-    const { user } = Auth();
+    const { user, isLoading: authLoading } = Auth();
     const searchParams = useSearchParams();
     const groupId = searchParams.get('group_id');
     const promptId = searchParams.get('prompt_id');
@@ -61,6 +61,13 @@ export default function GroupPlanningPage() {
             })),
         }));
     }, [suggestions, memberMap]);
+
+    useEffect(() => {
+        if (!authLoading && !user) {
+            const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+            window.location.href = `/api/auth/login?returnTo=${returnTo}`;
+        }
+    }, [authLoading, user]);
 
     useEffect(() => {
         if (user?.sub && groupId) {
@@ -488,7 +495,9 @@ export default function GroupPlanningPage() {
     };
 
     if (!user) {
-        return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+        return <div className="flex items-center justify-center min-h-screen">
+            {authLoading ? 'Loading...' : 'Redirecting to login...'}
+        </div>;
     }
 
     if (!groupId) {
