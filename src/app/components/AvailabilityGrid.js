@@ -72,7 +72,7 @@ export default function AvailabilityGrid({
     return date.toISOString();
   }, []);
 
-  // Format time for display in user's timezone
+  // Format time label for the row
   const formatTimeLabel = useCallback((timeSlot) => {
     const date = new Date();
     date.setHours(timeSlot.hour, timeSlot.minute, 0, 0);
@@ -269,18 +269,21 @@ export default function AvailabilityGrid({
           {/* Time slot rows */}
           {timeSlots.map((timeSlot, rowIndex) => (
             <div key={`row-${rowIndex}`} className="flex">
-              {/* First column has time labels */}
-              {days.map((day, colIndex) => {
+              {/* Time label column — mirrors the header spacer width */}
+              <div className="w-16 sm:w-20 flex-shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-gray-600 font-medium">
+                {formatTimeLabel(timeSlot)}
+              </div>
+
+              {/* Day columns */}
+              {days.map((day) => {
                 const slotId = generateSlotId(day, timeSlot);
                 const preference = slotMap.get(slotId) || null;
 
                 return (
-                  <div key={slotId} className="flex-shrink-0" style={{ width: colIndex === 0 ? undefined : undefined }}>
+                  <div key={slotId} className="w-24 sm:w-28 flex-shrink-0">
                     <TimeSlotCell
                       slotId={slotId}
                       preference={preference}
-                      timeLabel={formatTimeLabel(timeSlot)}
-                      showTimeLabel={colIndex === 0}
                       onPointerDown={handlePointerDown}
                       onPointerEnter={handlePointerEnter}
                       disabled={disabled}
