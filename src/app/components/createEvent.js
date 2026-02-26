@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { gamesAPI, eventsAPI, groupsAPI, API_BASE_URL } from '../../lib/api';
 import { format, parseISO, differenceInMinutes } from 'date-fns';
@@ -445,6 +445,15 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     }
   };
 
+  // Memoize initialDate so it doesn't create a new object on every render.
+  // A new object reference causes EventScheduler's useEffect to fire and clear
+  // the drag selection immediately after the user picks a time slot.
+  const calendarInitialDate = useMemo(() => {
+    if (prefillDate) return parseISO(prefillDate);
+    if (editingEvent?.start_date) return new Date(editingEvent.start_date);
+    return new Date();
+  }, [prefillDate, editingEvent?.start_date]);
+
   if (!modal) return null;
 
   if (loading) {
@@ -600,7 +609,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                     duration_minutes: duration
                   });
                 }}
-                initialDate={prefillDate ? parseISO(prefillDate) : (editingEvent?.start_date ? new Date(editingEvent.start_date) : new Date())}
+                initialDate={calendarInitialDate}
                 initialStart={prefillTime || (editingEvent?.start_date ? format(new Date(editingEvent.start_date), 'HH:mm') : null)}
                 initialEnd={editingEvent?.start_date && editingEvent?.duration_minutes 
                   ? format(new Date(new Date(editingEvent.start_date).getTime() + editingEvent.duration_minutes * 60000), 'HH:mm')
