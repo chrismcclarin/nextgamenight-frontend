@@ -27,7 +27,7 @@ export default function Footer() {
             
             {/* Copyright */}
             <p className="text-sm text-gray-500 text-center md:text-right">
-              © {new Date().getFullYear()} Periodic Tabletop
+              © {new Date().getFullYear()} Next Game Night
             </p>
           </div>
         </div>

@@ -1,6 +1,5 @@
 'use client';
 
-import BGGLogo from './BGGLogo';
 import DieLogo from './DieLogo';
 
 export default function LandingPage() {
@@ -77,10 +76,6 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* BGG attribution footer */}
-      <footer className="bg-white border-t border-gray-200 py-4">
-        <BGGLogo />
-      </footer>
     </div>
   );
 }
