@@ -113,6 +113,7 @@ export default function EventCalendar({ refreshKey = 0 }) {
   };
 
   const handleEventClick = (event) => {
+    if (!event.game_id) return; // No game — nothing to navigate to
     router.push(`/gameDetail?game_id=${event.game_id}&group_id=${event.group_id}`);
   };
 
@@ -248,7 +249,7 @@ export default function EventCalendar({ refreshKey = 0 }) {
                             <div
                               key={event.id}
                               onClick={() => handleEventClick(event)}
-                              className="text-xs p-1 rounded cursor-pointer truncate hover:opacity-90 transition-opacity flex items-center gap-1 font-medium"
+                              className={`text-xs p-1 rounded truncate hover:opacity-90 transition-opacity flex items-center gap-1 font-medium ${event.game_id ? 'cursor-pointer' : 'cursor-default'}`}
                               style={{
                                 backgroundColor: groupBgColor,
                                 backgroundImage: groupBgImage ? `url(${groupBgImage})` : 'none',
@@ -259,7 +260,7 @@ export default function EventCalendar({ refreshKey = 0 }) {
                                 zIndex: 1,
                                 border: `1px solid ${isPastDate ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.2)'}`,
                               }}
-                              title={`${event.Game?.name || 'Game'} - ${event.Group?.name || 'Group'}`}
+                              title={`${event.Game?.name || 'Game Night'} - ${event.Group?.name || 'Group'}`}
                             >
                               {groupBgImage && (
                                 <div style={{
@@ -314,7 +315,7 @@ export default function EventCalendar({ refreshKey = 0 }) {
                                     fontWeight: '600',
                                   }}
                                 >
-                                  {event.Game?.name || 'Game'}
+                                  {event.Game?.name || 'Game Night'}
                                 </span>
                               </div>
                             </div>
@@ -395,7 +396,7 @@ export default function EventCalendar({ refreshKey = 0 }) {
                   <div
                     key={event.id}
                     onClick={() => handleEventClick(event)}
-                    className="p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md"
+                    className={`p-4 border rounded-lg transition-all hover:shadow-md ${event.game_id ? 'cursor-pointer' : 'cursor-default'}`}
                     style={{
                       backgroundColor: groupBgColor,
                       backgroundImage: groupBgImage ? `url(${groupBgImage})` : 'none',
@@ -456,7 +457,7 @@ export default function EventCalendar({ refreshKey = 0 }) {
                                 };
                               })()}
                             >
-                              {event.Game?.name || 'Unknown Game'}
+                              {event.Game?.name || 'Game Night'}
                             </h4>
                             <p 
                               className="text-sm"
@@ -568,9 +569,10 @@ export default function EventCalendar({ refreshKey = 0 }) {
                         key={event.id}
                         onClick={() => {
                           handleEventClick(event);
+                          if (!event.game_id) return;
                           setSelectedDay(null);
                         }}
-                        className="p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md"
+                        className={`p-4 border rounded-lg transition-all hover:shadow-md ${event.game_id ? 'cursor-pointer' : 'cursor-default'}`}
                         style={{
                           backgroundColor: groupBgColor,
                           backgroundImage: groupBgImage ? `url(${groupBgImage})` : 'none',
@@ -631,7 +633,7 @@ export default function EventCalendar({ refreshKey = 0 }) {
                                     };
                                   })()}
                                 >
-                                  {event.Game?.name || 'Unknown Game'}
+                                  {event.Game?.name || 'Game Night'}
                                 </h4>
                                 <p 
                                   className="text-sm"

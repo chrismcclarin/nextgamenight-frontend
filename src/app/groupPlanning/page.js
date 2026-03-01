@@ -484,7 +484,7 @@ export default function GroupPlanningPage() {
                 
                 return {
                     id: event.id,
-                    title: event.Game?.name || 'Game Session',
+                    title: event.Game?.name || 'Game Night',
                     startHour,
                     startMin,
                     endHour,
