@@ -5,6 +5,7 @@ import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { gamesAPI, eventsAPI, groupsAPI, API_BASE_URL } from '../../lib/api';
 import { format, parseISO, differenceInMinutes } from 'date-fns';
 import EventScheduler from './EventScheduler';
+import GameComboInput from './GameComboInput';
 
 // Helper function to create a participant object
 // Note: user_id here is the User.id (UUID), not the Auth0 user_id string
@@ -24,6 +25,7 @@ const createEventForm = (group_id, groupMembers = []) => ({
   // Event fields
   group_id: group_id,
   game_id: "",
+  game_name: "",
   start_date: "",
   duration_minutes: null,
   winner_id: null,
@@ -42,11 +44,6 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   const [groupMembers, setGroupMembers] = useState([]);
   const [newEvent, setNewEvent] = useState(createEventForm(group_id, []));
   const [loading, setLoading] = useState(true);
-  const [games, setGames] = useState([]); // For game selection dropdown
-  const [bggSearchQuery, setBggSearchQuery] = useState('');
-  const [bggSearchResults, setBggSearchResults] = useState([]);
-  const [bggSearching, setBggSearching] = useState(false);
-  const [showBggSearch, setShowBggSearch] = useState(false);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState(null);
   const [useVisualCalendar, setUseVisualCalendar] = useState(true);
 
@@ -54,7 +51,6 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   useEffect(() => {
     if (group_id && modal) {
       fetchGroupMembers();
-      fetchGames();
     }
   }, [group_id, modal]);
 
@@ -143,6 +139,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       setNewEvent({
         group_id: editingEvent.group_id,
         game_id: editingEvent.game_id,
+        game_name: editingEvent.Game?.name || '',
         start_date: startDate,
         duration_minutes: editingEvent.duration_minutes || null,
         winner_id: winner_id,
@@ -202,94 +199,6 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       console.error('Error fetching group members:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchGames = async () => {
-    if (!group_id || !authUser?.sub) return;
-    try {
-      const data = await gamesAPI.getGamesForEvent(group_id, authUser.sub);
-      setGames(data || []);
-    } catch (error) {
-      console.error('Error fetching games:', error);
-      setGames([]);
-    }
-  };
-
-  const searchBGG = async () => {
-    if (!bggSearchQuery.trim()) return;
-    try {
-      setBggSearching(true);
-      const results = await gamesAPI.searchBGG(bggSearchQuery);
-      setBggSearchResults(results || []);
-      if (results.length === 0) {
-        alert('No games found. Try a different search term.');
-      }
-    } catch (error) {
-      console.error('Error searching BGG:', error);
-      setBggSearchResults([]);
-      const errorMessage = error.message || 'Failed to search BoardGameGeek';
-      if (errorMessage.includes('401') || errorMessage.includes('403') || errorMessage.includes('rate limiting')) {
-        alert('BoardGameGeek API is currently unavailable or rate-limited. Please try again in a few moments, or manually add the game to your collection from your profile page.');
-      } else {
-        alert(`Error searching BoardGameGeek: ${errorMessage}`);
-      }
-    } finally {
-      setBggSearching(false);
-    }
-  };
-
-  const importBGGGame = async (result) => {
-    try {
-      let gameId;
-      let gameData;
-      
-      // If the game already exists in database (from CSV), use db_id directly
-      if (result.db_id) {
-        gameId = result.db_id;
-        // Fetch the full game data to add to the list
-        try {
-          gameData = await gamesAPI.getGame(gameId);
-        } catch (err) {
-          // Create a game object from the search result
-          gameData = {
-            id: result.db_id,
-            name: result.name,
-            year_published: result.year_published,
-            is_group_game: false,
-            is_owned: false
-          };
-        }
-      } else {
-        // Game not in database yet, import from BGG API
-        gameData = await gamesAPI.importFromBGG(result.bgg_id);
-        gameId = gameData.id;
-      }
-      
-      // Add the game to the games list if it's not already there
-      setGames(prevGames => {
-        const exists = prevGames.some(g => g.id === gameId);
-        if (!exists) {
-          return [...prevGames, {
-            ...gameData,
-            is_group_game: false,
-            is_owned: false
-          }];
-        }
-        return prevGames;
-      });
-      
-      // Select the game
-      setNewEvent(prev => ({
-        ...prev,
-        game_id: gameId
-      }));
-      setShowBggSearch(false);
-      setBggSearchQuery('');
-      setBggSearchResults([]);
-    } catch (error) {
-      console.error('Error importing BGG game:', error.message || 'Unknown error');
-      alert(`Failed to import game from BGG: ${error.message || 'Please try again.'}`);
     }
   };
 
@@ -392,7 +301,26 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   const onSubmit = async (e) => {
     e.preventDefault();
     try {
-      const eventDataToSubmit = prepareEventData(newEvent);
+      let gameId = newEvent.game_id || null;
+
+      // If user typed a custom game name (no game_id selected), resolve it
+      if (!gameId && newEvent.game_name && newEvent.game_name.trim()) {
+        try {
+          const resolvedGame = await gamesAPI.resolveGame(newEvent.game_name.trim());
+          gameId = resolvedGame.id;
+        } catch (resolveError) {
+          console.error('Error resolving game:', resolveError);
+          alert('Failed to create custom game. Please try again.');
+          return;
+        }
+      }
+
+      const eventDataToSubmit = prepareEventData({
+        ...newEvent,
+        game_id: gameId || null,
+      });
+      // Remove game_name from submission data (backend doesn't expect it on events)
+      delete eventDataToSubmit.game_name;
       
       // Get user's timezone and ensure start_date is properly formatted with timezone
       const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
@@ -468,7 +396,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white p-6 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">Create New Game Event</h2>
+          <h2 className="text-2xl font-bold">{editingEvent ? 'Edit Event' : 'Create Event'}</h2>
           <button
             onClick={modaltoggle}
             className="text-gray-500 hover:text-gray-700 text-2xl"
@@ -480,102 +408,18 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         <form onSubmit={onSubmit} className="space-y-4">
           {/* Game Selection */}
           <div>
-            <div className="flex justify-between items-center mb-1">
-              <label htmlFor="game_id" className="block text-sm font-medium text-gray-900">
-                Game <span className="text-red-500">*</span>
-              </label>
-              <button
-                type="button"
-                onClick={() => setShowBggSearch(!showBggSearch)}
-                className="text-sm text-blue-600 hover:text-blue-800 underline"
-              >
-                {showBggSearch ? 'Hide BGG Search' : 'Search BoardGameGeek'}
-              </button>
-            </div>
-            
-            <select
-              id="game_id"
-              value={newEvent.game_id || ''}
-              onChange={handleChange}
-              required
-              className="w-full p-2 border rounded text-gray-900 bg-white mb-2"
-            >
-              <option value="">Select a game...</option>
-              {games.filter(g => g.is_group_game).length > 0 && (
-                <optgroup label="Games Played by Group">
-                  {games.filter(g => g.is_group_game).map((game) => (
-                    <option key={game.id} value={game.id}>
-                      {game.name} {game.year_published ? `(${game.year_published})` : ''}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {games.filter(g => g.is_owned && !g.is_group_game).length > 0 && (
-                <optgroup label="Your Owned Games">
-                  {games.filter(g => g.is_owned && !g.is_group_game).map((game) => (
-                    <option key={game.id} value={game.id}>
-                      {game.name} {game.year_published ? `(${game.year_published})` : ''} ⭐
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {games.filter(g => !g.is_owned && !g.is_group_game).length > 0 && (
-                <optgroup label="Other Games">
-                  {games.filter(g => !g.is_owned && !g.is_group_game).map((game) => (
-                    <option key={game.id} value={game.id}>
-                      {game.name} {game.year_published ? `(${game.year_published})` : ''}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-            
-            {/* BGG Search */}
-            {showBggSearch && (
-              <div className="mt-3 p-3 border rounded bg-gray-50">
-                <div className="flex gap-2 mb-2">
-                  <input
-                    type="text"
-                    value={bggSearchQuery}
-                    onChange={(e) => setBggSearchQuery(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && searchBGG()}
-                    placeholder="Search BoardGameGeek..."
-                    className="flex-1 p-2 border rounded text-gray-900 bg-white"
-                  />
-                  <button
-                    type="button"
-                    onClick={searchBGG}
-                    disabled={bggSearching || !bggSearchQuery.trim()}
-                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400"
-                  >
-                    {bggSearching ? 'Searching...' : 'Search'}
-                  </button>
-                </div>
-                
-                {bggSearchResults.length > 0 && (
-                  <div className="max-h-40 overflow-y-auto space-y-1">
-                    {bggSearchResults.map((result) => (
-                      <div key={result.bgg_id} className="flex items-center justify-between p-2 bg-white border rounded">
-                        <span className="text-sm text-gray-900">
-                          {result.name} {result.year_published ? `(${result.year_published})` : ''}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => importBGGGame(result)}
-                          className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
-                        >
-                          Add & Select
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            
-            {games.length === 0 && !showBggSearch && (
-              <p className="text-xs text-gray-500 mt-1">No games found. Search BoardGameGeek to add games.</p>
-            )}
+            <label className="block text-sm font-medium text-gray-900 mb-1">
+              Game
+            </label>
+            <GameComboInput
+              value={{ game_id: newEvent.game_id, game_name: newEvent.game_name }}
+              onChange={({ game_id, game_name }) => {
+                setNewEvent(prev => ({ ...prev, game_id: game_id || '', game_name: game_name || '' }));
+              }}
+              groupId={group_id}
+              userId={authUser?.sub}
+              placeholder="Search for a game or type a name"
+            />
           </div>
 
           {/* Time Selection */}
