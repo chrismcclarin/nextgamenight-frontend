@@ -15,6 +15,7 @@ function Header(){
     const navLinks = user
         ? [
             { href: '/', label: 'Home', isLink: true },
+            { href: '/friends', label: 'Friends', isLink: true },
             { href: '/userProfile/', label: 'Profile', isLink: true },
             { href: '/api/auth/logout', label: 'Logout', isLink: false },
           ]
