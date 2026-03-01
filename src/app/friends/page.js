@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
-import { friendshipsAPI } from '../../lib/api';
+import { friendshipsAPI, groupsAPI, invitesAPI } from '../../lib/api';
 
 function FriendsPage() {
     const { user, isLoading: authLoading } = useUser();
@@ -36,6 +36,15 @@ function FriendsPage() {
     // Action loading state
     const [actionLoading, setActionLoading] = useState({});
 
+    // Group invite shortcut state
+    const [selectedFriends, setSelectedFriends] = useState(new Set());
+    const [selectedGroupId, setSelectedGroupId] = useState('');
+    const [userGroups, setUserGroups] = useState([]);
+    const [groupMembers, setGroupMembers] = useState([]);
+    const [groupMembersLoading, setGroupMembersLoading] = useState(false);
+    const [bulkInviteLoading, setBulkInviteLoading] = useState(false);
+    const [bulkInviteResult, setBulkInviteResult] = useState(null);
+
     // Fetch all data on mount
     useEffect(() => {
         if (user) {
@@ -48,7 +57,21 @@ function FriendsPage() {
             fetchFriends(),
             fetchReceivedRequests(),
             fetchSentRequests(),
+            fetchUserGroups(),
         ]);
+    };
+
+    const fetchUserGroups = async () => {
+        try {
+            const groups = await groupsAPI.getUserGroups(user.sub);
+            const adminGroups = (Array.isArray(groups) ? groups : []).filter(
+                g => g.role === 'owner' || g.role === 'admin'
+            );
+            setUserGroups(adminGroups);
+        } catch (err) {
+            console.error('Error fetching user groups:', err);
+            setUserGroups([]);
+        }
     };
 
     const fetchFriends = async () => {
@@ -191,6 +214,79 @@ function FriendsPage() {
     const isPendingRequest = (userId) => {
         return sentRequests.some(r => r.addressee?.user_id === userId) ||
                receivedRequests.some(r => r.requester?.user_id === userId);
+    };
+
+    // Fetch group members when selected group changes
+    useEffect(() => {
+        if (!selectedGroupId) {
+            setGroupMembers([]);
+            return;
+        }
+        setGroupMembersLoading(true);
+        setSelectedFriends(new Set());
+        groupsAPI.getGroupMembers(selectedGroupId)
+            .then(members => {
+                const memberList = Array.isArray(members) ? members : members?.members || [];
+                const memberUserIds = memberList.map(m => m.user_id);
+                setGroupMembers(memberUserIds);
+            })
+            .catch(() => setGroupMembers([]))
+            .finally(() => setGroupMembersLoading(false));
+    }, [selectedGroupId]);
+
+    // Toggle a friend in the selectedFriends set
+    const toggleFriendSelection = (friendUserId) => {
+        setSelectedFriends(prev => {
+            const next = new Set(prev);
+            if (next.has(friendUserId)) {
+                next.delete(friendUserId);
+            } else {
+                next.add(friendUserId);
+            }
+            return next;
+        });
+    };
+
+    // Bulk invite handler
+    const handleBulkInvite = async () => {
+        if (!selectedGroupId || selectedFriends.size === 0) return;
+        setBulkInviteLoading(true);
+        setBulkInviteResult(null);
+
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const friendUserId of selectedFriends) {
+            const friendship = friends.find(f => {
+                return f.friend?.user_id === friendUserId ||
+                       f.Requester?.user_id === friendUserId ||
+                       f.Addressee?.user_id === friendUserId;
+            });
+            const email = friendship?.friend?.email ||
+                          friendship?.Requester?.email ||
+                          friendship?.Addressee?.email;
+            if (email && !groupMembers.includes(friendUserId)) {
+                try {
+                    await invitesAPI.sendInvite(selectedGroupId, email);
+                    successCount++;
+                } catch (err) {
+                    failCount++;
+                }
+            }
+        }
+
+        setBulkInviteResult({ successCount, failCount });
+        setSelectedFriends(new Set());
+        setBulkInviteLoading(false);
+
+        // Clear result after 5 seconds
+        setTimeout(() => setBulkInviteResult(null), 5000);
+    };
+
+    // Get selected group name for feedback messages
+    const getSelectedGroupName = () => {
+        const group = userGroups.find(g => String(g.id) === String(selectedGroupId));
+        return group?.name || 'group';
     };
 
     // Determine search result display state
@@ -390,34 +486,119 @@ function FriendsPage() {
                                 <p className="text-gray-500">No friends yet. Search for friends by email above!</p>
                             </div>
                         ) : (
-                            <div className="space-y-3">
-                                {friends.map((friendship) => {
-                                    const friend = friendship.friend;
-                                    if (!friend) return null;
-
-                                    return (
-                                        <div
-                                            key={friendship.id}
-                                            className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
-                                        >
-                                            <div className="flex-1">
-                                                <p className="font-semibold text-gray-900">
-                                                    {friend.username || friend.email}
-                                                </p>
-                                                {friend.email && friend.email !== friend.username && (
-                                                    <p className="text-sm text-gray-500 mt-0.5">{friend.email}</p>
-                                                )}
-                                            </div>
-                                            <button
-                                                onClick={() => handleRemove(friendship.id)}
-                                                disabled={actionLoading[friendship.id] === 'remove'}
-                                                className="text-red-600 hover:text-red-700 text-sm font-medium transition-colors disabled:opacity-50"
+                            <div>
+                                {/* Group Invite Bulk Action Bar */}
+                                {userGroups.length > 0 && (
+                                    <div className="mb-4 p-4 bg-white border border-gray-200 rounded-lg">
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            <label htmlFor="group-invite-select" className="text-sm font-medium text-gray-700">
+                                                Invite to Group:
+                                            </label>
+                                            <select
+                                                id="group-invite-select"
+                                                value={selectedGroupId}
+                                                onChange={(e) => setSelectedGroupId(e.target.value)}
+                                                className="flex-1 min-w-[180px] max-w-xs px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                                             >
-                                                {actionLoading[friendship.id] === 'remove' ? 'Removing...' : 'Remove'}
+                                                <option value="" disabled>Select a group...</option>
+                                                {userGroups.map(group => (
+                                                    <option key={group.id} value={group.id}>
+                                                        {group.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <button
+                                                onClick={handleBulkInvite}
+                                                disabled={!selectedGroupId || selectedFriends.size === 0 || bulkInviteLoading}
+                                                className="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                            >
+                                                {bulkInviteLoading && (
+                                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                                                )}
+                                                Invite to Group
                                             </button>
+                                            {selectedFriends.size > 0 && (
+                                                <span className="text-sm text-gray-500">
+                                                    {selectedFriends.size} selected
+                                                </span>
+                                            )}
                                         </div>
-                                    );
-                                })}
+                                        {groupMembersLoading && (
+                                            <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+                                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-400" />
+                                                <span>Loading group members...</span>
+                                            </div>
+                                        )}
+                                        {/* Bulk invite result feedback */}
+                                        {bulkInviteResult && (
+                                            <div className={`mt-3 p-3 rounded-lg text-sm font-medium ${
+                                                bulkInviteResult.failCount === 0
+                                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                    : bulkInviteResult.successCount > 0
+                                                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                        : 'bg-red-50 text-red-700 border border-red-200'
+                                            }`}>
+                                                {bulkInviteResult.failCount === 0
+                                                    ? `Invited ${bulkInviteResult.successCount} friend(s) to ${getSelectedGroupName()}!`
+                                                    : bulkInviteResult.successCount > 0
+                                                        ? `Invited ${bulkInviteResult.successCount} friend(s), ${bulkInviteResult.failCount} failed`
+                                                        : 'Failed to send invites. Please try again.'
+                                                }
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Friend rows with checkboxes */}
+                                <div className="space-y-3">
+                                    {friends.map((friendship) => {
+                                        const friend = friendship.friend;
+                                        if (!friend) return null;
+
+                                        const friendUserId = friend.user_id;
+                                        const isInGroup = selectedGroupId && groupMembers.includes(friendUserId);
+                                        const checkboxDisabled = !selectedGroupId || isInGroup;
+
+                                        return (
+                                            <div
+                                                key={friendship.id}
+                                                className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
+                                            >
+                                                <div className="flex items-center gap-3 flex-1">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isInGroup || selectedFriends.has(friendUserId)}
+                                                        disabled={checkboxDisabled}
+                                                        onChange={() => toggleFriendSelection(friendUserId)}
+                                                        className={`h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 ${
+                                                            checkboxDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                                                        }`}
+                                                    />
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="font-semibold text-gray-900">
+                                                                {friend.username || friend.email}
+                                                            </p>
+                                                            {isInGroup && (
+                                                                <span className="text-xs text-gray-400 italic">(already in group)</span>
+                                                            )}
+                                                        </div>
+                                                        {friend.email && friend.email !== friend.username && (
+                                                            <p className="text-sm text-gray-500 mt-0.5">{friend.email}</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleRemove(friendship.id)}
+                                                    disabled={actionLoading[friendship.id] === 'remove'}
+                                                    className="text-red-600 hover:text-red-700 text-sm font-medium transition-colors disabled:opacity-50"
+                                                >
+                                                    {actionLoading[friendship.id] === 'remove' ? 'Removing...' : 'Remove'}
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         )}
                     </div>
