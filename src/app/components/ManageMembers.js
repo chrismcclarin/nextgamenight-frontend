@@ -230,12 +230,12 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated })
                                                 </span>
                                             </div>
                                             <div className="text-sm text-gray-600 mt-1">
-                                                {invite.Inviter && (
-                                                    <span>Invited by {invite.Inviter.username || invite.Inviter.email}</span>
+                                                {invite.invited_by_name && (
+                                                    <span>Invited by {invite.invited_by_name}</span>
                                                 )}
-                                                {invite.createdAt && (
+                                                {invite.created_at && (
                                                     <span className="ml-2">
-                                                        on {new Date(invite.createdAt).toLocaleDateString('en-US', {
+                                                        on {new Date(invite.created_at).toLocaleDateString('en-US', {
                                                             month: 'short',
                                                             day: 'numeric',
                                                             year: 'numeric'
