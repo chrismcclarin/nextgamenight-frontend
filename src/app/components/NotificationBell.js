@@ -1,33 +1,52 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { invitesAPI } from '../../lib/api';
+import { invitesAPI, friendshipsAPI } from '../../lib/api';
 
 function NotificationBell({ user }) {
   const [invites, setInvites] = useState([]);
+  const [friendRequests, setFriendRequests] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   const [confirmation, setConfirmation] = useState(null);
   const dropdownRef = useRef(null);
 
-  // Fetch pending invites on mount
+  const totalCount = invites.length + friendRequests.length;
+
+  // Fetch pending invites and friend requests on mount
   useEffect(() => {
     if (!user?.sub) return;
 
-    async function fetchInvites() {
+    async function fetchNotifications() {
       try {
-        const data = await invitesAPI.getPendingInvites();
-        setInvites(Array.isArray(data) ? data : data?.invites || []);
+        const results = await Promise.allSettled([
+          invitesAPI.getPendingInvites(),
+          friendshipsAPI.getReceivedRequests(),
+        ]);
+
+        const inviteResult = results[0];
+        const friendResult = results[1];
+
+        setInvites(
+          inviteResult.status === 'fulfilled'
+            ? (Array.isArray(inviteResult.value) ? inviteResult.value : inviteResult.value?.invites || [])
+            : []
+        );
+        setFriendRequests(
+          friendResult.status === 'fulfilled'
+            ? (Array.isArray(friendResult.value) ? friendResult.value : [])
+            : []
+        );
       } catch (err) {
-        // If invites API isn't available yet, just set empty
-        console.error('Failed to fetch invites:', err.message);
+        console.error('Failed to fetch notifications:', err.message);
         setInvites([]);
+        setFriendRequests([]);
       } finally {
         setLoading(false);
       }
     }
 
-    fetchInvites();
+    fetchNotifications();
   }, [user?.sub]);
 
   // Click-outside detection to close dropdown
@@ -75,6 +94,31 @@ function NotificationBell({ user }) {
     }
   }
 
+  async function handleAcceptFriend(request) {
+    setActionLoading(request.id);
+    try {
+      await friendshipsAPI.acceptRequest(request.id);
+      setFriendRequests((prev) => prev.filter((r) => r.id !== request.id));
+      setConfirmation('Accepted friend request!');
+    } catch (err) {
+      console.error('Failed to accept friend request:', err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleDeclineFriend(request) {
+    setActionLoading(request.id);
+    try {
+      await friendshipsAPI.declineRequest(request.id);
+      setFriendRequests((prev) => prev.filter((r) => r.id !== request.id));
+    } catch (err) {
+      console.error('Failed to decline friend request:', err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   if (!user) return null;
 
   return (
@@ -100,9 +144,9 @@ function NotificationBell({ user }) {
         </svg>
 
         {/* Red badge with count */}
-        {invites.length > 0 && (
+        {totalCount > 0 && (
           <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-            {invites.length > 9 ? '9+' : invites.length}
+            {totalCount > 9 ? '9+' : totalCount}
           </span>
         )}
       </button>
@@ -128,57 +172,115 @@ function NotificationBell({ user }) {
               <div className="px-4 py-8 text-center">
                 <div className="inline-block w-5 h-5 border-2 border-gray-300 border-t-emerald-600 rounded-full animate-spin" />
               </div>
-            ) : invites.length === 0 ? (
+            ) : totalCount === 0 ? (
               <div className="px-4 py-8 text-center">
-                <p className="text-sm text-gray-500">No pending invites</p>
+                <p className="text-sm text-gray-500">No pending notifications</p>
               </div>
             ) : (
-              <ul>
-                {invites.map((invite) => {
-                  const groupName = invite.Group?.name || invite.group_name || 'Unknown Group';
-                  const inviterName = invite.Inviter?.username || invite.inviter_name || 'Someone';
-                  const memberCount = invite.Group?.memberCount || invite.member_count || null;
-                  const isLoading = actionLoading === invite.id;
+              <>
+                {/* Group Invites section */}
+                {invites.length > 0 && (
+                  <>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 pt-3 pb-1">
+                      Group Invites
+                    </p>
+                    <ul>
+                      {invites.map((invite) => {
+                        const groupName = invite.Group?.name || invite.group_name || 'Unknown Group';
+                        const inviterName = invite.Inviter?.username || invite.inviter_name || 'Someone';
+                        const memberCount = invite.Group?.memberCount || invite.member_count || null;
+                        const isLoading = actionLoading === invite.id;
 
-                  return (
-                    <li
-                      key={invite.id}
-                      className="px-4 py-3 border-b border-gray-50 last:border-b-0"
-                    >
-                      <p className="text-sm font-semibold text-gray-900">{groupName}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {inviterName} invited you
-                      </p>
-                      {memberCount && (
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {memberCount} member{memberCount !== 1 ? 's' : ''}
-                        </p>
-                      )}
+                        return (
+                          <li
+                            key={invite.id}
+                            className="px-4 py-3 border-b border-gray-50 last:border-b-0"
+                          >
+                            <p className="text-sm font-semibold text-gray-900">{groupName}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {inviterName} invited you
+                            </p>
+                            {memberCount && (
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {memberCount} member{memberCount !== 1 ? 's' : ''}
+                              </p>
+                            )}
 
-                      <div className="flex gap-2 mt-2">
-                        <button
-                          onClick={() => handleAccept(invite)}
-                          disabled={isLoading}
-                          className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {isLoading ? (
-                            <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            'Accept'
-                          )}
-                        </button>
-                        <button
-                          onClick={() => handleDecline(invite)}
-                          disabled={isLoading}
-                          className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Decline
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+                            <div className="flex gap-2 mt-2">
+                              <button
+                                onClick={() => handleAccept(invite)}
+                                disabled={isLoading}
+                                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {isLoading ? (
+                                  <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                  'Accept'
+                                )}
+                              </button>
+                              <button
+                                onClick={() => handleDecline(invite)}
+                                disabled={isLoading}
+                                className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                Decline
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                )}
+
+                {/* Friend Requests section */}
+                {friendRequests.length > 0 && (
+                  <>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 pt-3 pb-1">
+                      Friend Requests
+                    </p>
+                    <ul>
+                      {friendRequests.map((request) => {
+                        const requesterName = request.Requester?.username || 'Someone';
+                        const isLoading = actionLoading === request.id;
+
+                        return (
+                          <li
+                            key={request.id}
+                            className="px-4 py-3 border-b border-gray-50 last:border-b-0"
+                          >
+                            <p className="text-sm font-semibold text-gray-900">{requesterName}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              wants to be your friend
+                            </p>
+
+                            <div className="flex gap-2 mt-2">
+                              <button
+                                onClick={() => handleAcceptFriend(request)}
+                                disabled={isLoading}
+                                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {isLoading ? (
+                                  <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                  'Accept'
+                                )}
+                              </button>
+                              <button
+                                onClick={() => handleDeclineFriend(request)}
+                                disabled={isLoading}
+                                className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                Decline
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                )}
+              </>
             )}
           </div>
         </div>
