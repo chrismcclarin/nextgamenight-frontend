@@ -212,8 +212,8 @@ function FriendsPage() {
 
     // Check if a request is already pending with a user
     const isPendingRequest = (userId) => {
-        return sentRequests.some(r => r.addressee?.user_id === userId) ||
-               receivedRequests.some(r => r.requester?.user_id === userId);
+        return sentRequests.some(r => r.Addressee?.user_id === userId) ||
+               receivedRequests.some(r => r.Requester?.user_id === userId);
     };
 
     // Fetch group members when selected group changes
@@ -622,7 +622,7 @@ function FriendsPage() {
                         ) : (
                             <div className="space-y-3">
                                 {receivedRequests.map((request) => {
-                                    const requester = request.requester;
+                                    const requester = request.Requester;
                                     if (!requester) return null;
 
                                     return (
@@ -680,7 +680,7 @@ function FriendsPage() {
                         ) : (
                             <div className="space-y-3">
                                 {sentRequests.map((request) => {
-                                    const addressee = request.addressee;
+                                    const addressee = request.Addressee;
                                     if (!addressee) return null;
 
                                     return (
