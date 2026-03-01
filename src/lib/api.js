@@ -564,3 +564,42 @@ export const suggestionAPI = {
     }),
 };
 
+/**
+ * API functions for Group Invites
+ */
+export const invitesAPI = {
+  // Send a group invite by email
+  sendInvite: (group_id, email) =>
+    apiFetch('/invites/send', {
+      method: 'POST',
+      body: JSON.stringify({ group_id, email }),
+    }),
+
+  // Get current user's pending invites
+  getPendingInvites: () =>
+    apiFetch('/invites/pending'),
+
+  // Accept a pending invite by invite ID
+  acceptInvite: (invite_id) =>
+    apiFetch(`/invites/${invite_id}/accept`, { method: 'POST' }),
+
+  // Decline a pending invite by invite ID
+  declineInvite: (invite_id) =>
+    apiFetch(`/invites/${invite_id}/decline`, { method: 'POST' }),
+
+  // Accept invite by token (from email link)
+  acceptInviteByToken: (token) =>
+    apiFetch('/invites/accept-by-token', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
+
+  // Get pending invites for a group (admin view)
+  getGroupPendingInvites: (group_id) =>
+    apiFetch(`/invites/group/${group_id}/pending`),
+
+  // Get invite info by token (public, no auth required)
+  getInviteInfo: (token) =>
+    apiFetch(`/invites/info/${token}`),
+};
+

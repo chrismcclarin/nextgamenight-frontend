@@ -1,21 +1,23 @@
 'use client'
 import { useState } from 'react';
-import { usersAPI, groupsAPI } from '../../lib/api';
+import { invitesAPI } from '../../lib/api';
 
-function AddMember({group, modaltoggle, modal, onMemberAdded}){
-    const [userSearch, setUserSearch] = useState("");
+function InviteMember({ group, modaltoggle, modal, onMemberAdded }) {
+    const [email, setEmail] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [success, setSuccess] = useState("");
 
     const handleChange = (event) => {
-        setUserSearch(event.target.value);
+        setEmail(event.target.value);
         setError(""); // Clear error when user types
+        setSuccess(""); // Clear success when user types
     }
 
     const onSubmit = async (e) => {
         e.preventDefault();
-        
-        if (!userSearch.trim()) {
+
+        if (!email.trim()) {
             setError("Please enter an email address");
             return;
         }
@@ -27,60 +29,36 @@ function AddMember({group, modaltoggle, modal, onMemberAdded}){
 
         setLoading(true);
         setError("");
+        setSuccess("");
 
         try {
-            await addUserToGroup(userSearch.trim());
-            setUserSearch("");
-            modaltoggle();
+            await invitesAPI.sendInvite(group.id, email.trim());
+            setSuccess(`Invite sent to ${email.trim()}`);
+            setEmail("");
+            // Refresh parent data (e.g., member count)
             if (onMemberAdded) {
                 onMemberAdded();
             }
-        } catch (error) {
-            console.error('Error adding member:', error);
-            setError(error.message || "Failed to add member");
+            // Clear success message after 5 seconds
+            setTimeout(() => {
+                setSuccess("");
+            }, 5000);
+        } catch (err) {
+            console.error('Error sending invite:', err);
+            const message = err.message || "";
+            if (message.includes("already a member")) {
+                setError("This person is already a member of the group");
+            } else if (message.includes("pending invite") || message.includes("already been invited")) {
+                setError("This person already has a pending invite");
+            } else {
+                setError("Failed to send invite");
+            }
         } finally {
             setLoading(false);
         }
     }
 
-    const addUserToGroup = async (email) => {
-        // First, find the user by email using usersAPI which includes Authorization header
-        let user;
-        try {
-            user = await usersAPI.searchUserByEmail(email);
-        } catch (error) {
-            if (error.message && error.message.includes('404') || error.message && error.message.includes('not found')) {
-                throw new Error("User not found. Please make sure they have signed up.");
-            }
-            throw new Error(error.message || "Failed to find user");
-        }
-
-        // Check if user is already in the group by fetching current members
-        // Use groupsAPI.getGroupMembers which includes Authorization header
-        try {
-            const members = await groupsAPI.getGroupMembers(group.id);
-            if (Array.isArray(members)) {
-                const isAlreadyMember = members.some(m => m.user_id === user.user_id);
-                if (isAlreadyMember) {
-                    throw new Error("User is already a member of this group");
-                }
-            }
-        } catch (error) {
-            // If error is about already being a member, re-throw it
-            if (error.message && error.message.includes('already a member')) {
-                throw error;
-            }
-            // Otherwise, continue - the check failed but we'll try to add anyway
-        }
-
-        // Add user to group using groupsAPI which includes Authorization header
-        await groupsAPI.addUserToGroup(group.id, user.user_id);
-        
-        return { success: true, user };
-    }
-
-
-if (!modal) return null;
+    if (!modal) return null;
 
     return (
         <div
@@ -92,14 +70,14 @@ if (!modal) return null;
                     {/*header*/}
                     <div className="flex items-start justify-between p-5 border-b border-solid border-blueGray-200 rounded-t">
                         <h3 className="text-3xl text-black font-semibold">
-                            Add Member
+                            Invite Member
                         </h3>
                         <button
                             className="text-gray-500 hover:text-gray-700 text-2xl"
                             onClick={modaltoggle}
                             type="button"
                         >
-                            ×
+                            &times;
                         </button>
                     </div>
                     <form onSubmit={onSubmit} className="relative p-6 flex-auto">
@@ -107,18 +85,21 @@ if (!modal) return null;
                             <label htmlFor="email" className="block text-sm font-medium mb-1">
                                 Email Address
                             </label>
-                            <input 
-                                id="email" 
-                                onChange={handleChange} 
-                                value={userSearch} 
-                                type="email" 
-                                placeholder="user@example.com" 
+                            <input
+                                id="email"
+                                onChange={handleChange}
+                                value={email}
+                                type="email"
+                                placeholder="user@example.com"
                                 required
                                 disabled={loading}
                                 className="px-3 py-3 placeholder-blueGray-300 text-black relative bg-white rounded text-sm border-0 shadow outline-none focus:outline-none focus:ring w-full disabled:opacity-50"
                             />
                             {error && (
                                 <p className="text-red-500 text-sm mt-1">{error}</p>
+                            )}
+                            {success && (
+                                <p className="text-green-600 text-sm mt-1">{success}</p>
                             )}
                         </div>
                         <div className="flex items-center justify-end p-6 border-t border-solid border-blueGray-200 rounded-b gap-2">
@@ -135,7 +116,7 @@ if (!modal) return null;
                                 type="submit"
                                 disabled={loading}
                             >
-                                {loading ? "Adding..." : "Add Member"}
+                                {loading ? "Sending..." : "Send Invite"}
                             </button>
                         </div>
                     </form>
@@ -145,4 +126,5 @@ if (!modal) return null;
     );
 }
 
-export default AddMember;
+export { InviteMember };
+export default InviteMember;
