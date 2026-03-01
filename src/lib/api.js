@@ -603,3 +603,43 @@ export const invitesAPI = {
     apiFetch(`/invites/info/${token}`),
 };
 
+/**
+ * API functions for Friendships (Social Graph)
+ */
+export const friendshipsAPI = {
+  // Get accepted friends for current user
+  getFriends: () =>
+    apiFetch('/friendships?status=accepted'),
+
+  // Get received pending friend requests
+  getReceivedRequests: () =>
+    apiFetch('/friendships?status=pending&direction=received'),
+
+  // Get sent pending friend requests
+  getSentRequests: () =>
+    apiFetch('/friendships?status=pending&direction=sent'),
+
+  // Search for a user by exact email (local DB only, no auto-create)
+  searchUserByEmail: (email) =>
+    apiFetch(`/friendships/search?email=${encodeURIComponent(email)}`),
+
+  // Send a friend request by user_id
+  sendRequest: (addressee_user_id) =>
+    apiFetch('/friendships/request', {
+      method: 'POST',
+      body: JSON.stringify({ addressee_user_id }),
+    }),
+
+  // Accept a pending friend request
+  acceptRequest: (friendship_id) =>
+    apiFetch(`/friendships/${friendship_id}/accept`, { method: 'POST' }),
+
+  // Decline a pending friend request
+  declineRequest: (friendship_id) =>
+    apiFetch(`/friendships/${friendship_id}/decline`, { method: 'POST' }),
+
+  // Remove a friend (unfriend - hard delete)
+  removeFriend: (friendship_id) =>
+    apiFetch(`/friendships/${friendship_id}`, { method: 'DELETE' }),
+};
+
