@@ -3,6 +3,7 @@ import { useState } from 'react';
 import Link from 'next/link'
 import { useUser } from '@auth0/nextjs-auth0/client';
 import DieLogo from './components/DieLogo';
+import NotificationBell from './components/NotificationBell';
 
 function Header(){
     const { user, error, isLoading } = useUser();
@@ -35,9 +36,9 @@ function Header(){
                     </Link>
 
                     {/* Desktop nav */}
-                    <ul className="hidden md:flex gap-x-6 text-white text-sm font-medium">
-                        {navLinks.map(({ href, label, isLink }) => (
-                            <li key={label}>
+                    <ul className="hidden md:flex gap-x-6 items-center text-white text-sm font-medium">
+                        {navLinks.map(({ href, label, isLink }, index) => (
+                            <li key={label} className="flex items-center gap-x-6">
                                 {isLink ? (
                                     <Link
                                         href={href}
@@ -52,6 +53,10 @@ function Header(){
                                     >
                                         {label}
                                     </a>
+                                )}
+                                {/* Insert NotificationBell after Profile (second item for logged-in users) */}
+                                {user && label === 'Profile' && (
+                                    <NotificationBell user={user} />
                                 )}
                             </li>
                         ))}
@@ -99,6 +104,15 @@ function Header(){
                                 </li>
                             ))}
                         </ul>
+                        {/* Mobile notification bell */}
+                        {user && (
+                            <div className="px-4 py-3 border-t border-emerald-800">
+                                <div className="flex items-center gap-3 text-white text-sm">
+                                    <NotificationBell user={user} />
+                                    <span className="text-gray-300">Invites</span>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
