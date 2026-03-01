@@ -263,8 +263,23 @@ export const gamesAPI = {
     }),
   
   // Get games for event form (group played + user owned)
-  getGamesForEvent: (group_id, user_id) => 
+  getGamesForEvent: (group_id, user_id) =>
     apiFetch(`/games/for-event/${group_id}/${encodeURIComponent(user_id)}`),
+
+  // Search all games (local custom + BGG) for combo input
+  searchAll: (query, groupId, userId) => {
+    const params = new URLSearchParams({ query });
+    if (groupId) params.append('group_id', groupId);
+    if (userId) params.append('user_id', userId);
+    return apiFetch(`/games/search-all?${params.toString()}`);
+  },
+
+  // Resolve a game name to an existing or new custom game
+  resolveGame: (name) =>
+    apiFetch('/games/resolve', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
 };
 
 /**
