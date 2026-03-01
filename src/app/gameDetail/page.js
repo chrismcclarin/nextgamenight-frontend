@@ -48,65 +48,68 @@ export default function GameDetailPage() {
     });
 
     useEffect(() => {
-        if (game_id && group_id) {
+        if (game_id) {
             fetchGameData();
         }
     }, [game_id, group_id]);
 
     const fetchGameData = async () => {
-        if (!game_id || !group_id) return;
-        
+        if (!game_id) return;
+
         setLoading(true);
         try {
             // Fetch game details using gamesAPI which includes proper API URL and auth
             const gameData = await gamesAPI.getGame(game_id);
             setGame(gameData);
 
-            // Fetch events for this game in this group
-            // Use eventsAPI.getGroupEvents which automatically includes Authorization header
-            let eventsData;
-            try {
-                eventsData = await eventsAPI.getGroupEvents(group_id);
-            } catch (error) {
-                console.error('Error fetching events:', error);
-                eventsData = [];
-            }
-            
-            // Ensure eventsData is an array before filtering
-            if (!Array.isArray(eventsData)) {
-                console.warn('Events data is not an array:', eventsData);
-                eventsData = [];
-            }
-            
-            const gameEvents = eventsData.filter(event => event.game_id === game_id);
-            setEvents(gameEvents);
-
-            // Fetch reviews for this game in this group
-            // Use gameReviewsAPI.getGameReviews which automatically includes Authorization header
-            const reviewsData = await gameReviewsAPI.getGameReviews(game_id, group_id, user?.sub || null);
-            setReviews(Array.isArray(reviewsData) ? reviewsData : []);
-
-            // Find current user's review
-            if (user?.sub) {
-                // Use usersAPI.getUser which automatically includes Authorization header
-                const currentUserData = await usersAPI.getUser(user.sub);
-                const myReview = Array.isArray(reviewsData) ? reviewsData.find(r => r.User?.id === currentUserData.id) : null;
-                if (myReview) {
-                    setUserReview(myReview);
-                    setReviewForm({
-                        rating: myReview.rating || 2.5,
-                        review_text: myReview.review_text || '',
-                        is_recommended: myReview.is_recommended !== false
-                    });
+            // Only fetch events, reviews, and role when group_id is available
+            if (group_id) {
+                // Fetch events for this game in this group
+                // Use eventsAPI.getGroupEvents which automatically includes Authorization header
+                let eventsData;
+                try {
+                    eventsData = await eventsAPI.getGroupEvents(group_id);
+                } catch (error) {
+                    console.error('Error fetching events:', error);
+                    eventsData = [];
                 }
-                
-                // Get user's role in the group
-                // Use groupsAPI.getGroupMembers which automatically includes Authorization header
-                const groupMembers = await groupsAPI.getGroupMembers(group_id);
-                if (Array.isArray(groupMembers)) {
-                    const currentUserMember = groupMembers.find(m => m.user_id === user.sub);
-                    if (currentUserMember && currentUserMember.UserGroup) {
-                        setUserRole(currentUserMember.UserGroup.role);
+
+                // Ensure eventsData is an array before filtering
+                if (!Array.isArray(eventsData)) {
+                    console.warn('Events data is not an array:', eventsData);
+                    eventsData = [];
+                }
+
+                const gameEvents = eventsData.filter(event => event.game_id === game_id);
+                setEvents(gameEvents);
+
+                // Fetch reviews for this game in this group
+                // Use gameReviewsAPI.getGameReviews which automatically includes Authorization header
+                const reviewsData = await gameReviewsAPI.getGameReviews(game_id, group_id, user?.sub || null);
+                setReviews(Array.isArray(reviewsData) ? reviewsData : []);
+
+                // Find current user's review
+                if (user?.sub) {
+                    // Use usersAPI.getUser which automatically includes Authorization header
+                    const currentUserData = await usersAPI.getUser(user.sub);
+                    const myReview = Array.isArray(reviewsData) ? reviewsData.find(r => r.User?.id === currentUserData.id) : null;
+                    if (myReview) {
+                        setUserReview(myReview);
+                        setReviewForm({
+                            rating: myReview.rating || 2.5,
+                            review_text: myReview.review_text || '',
+                            is_recommended: myReview.is_recommended !== false
+                        });
+                    }
+
+                    // Get user's role in the group
+                    // Use groupsAPI.getGroupMembers which automatically includes Authorization header
+                    const groupMembers = await groupsAPI.getGroupMembers(group_id);
+                    if (Array.isArray(groupMembers)) {
+                        const currentUserMember = groupMembers.find(m => m.user_id === user.sub);
+                        if (currentUserMember && currentUserMember.UserGroup) {
+                            setUserRole(currentUserMember.UserGroup.role);
+                        }
                     }
                 }
             }
@@ -356,6 +359,19 @@ export default function GameDetailPage() {
 
     const displayedEvents = filteredEvents.slice(0, visibleSessions);
 
+    if (!game_id) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="text-center">
+                    <p className="text-gray-600 mb-4">No game selected</p>
+                    <Link href="/" className="text-blue-600 hover:underline">
+                        ← Back to Home
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -369,9 +385,15 @@ export default function GameDetailPage() {
             <div className="flex items-center justify-center min-h-screen">
                 <div className="text-center">
                     <p className="text-red-600 mb-4">Game not found</p>
-                    <Link href={`/groupHomePage?id=${group_id}`} className="text-blue-600 hover:underline">
-                        ← Back to Group
-                    </Link>
+                    {group_id ? (
+                        <Link href={`/groupHomePage?id=${group_id}`} className="text-blue-600 hover:underline">
+                            ← Back to Group
+                        </Link>
+                    ) : (
+                        <Link href="/" className="text-blue-600 hover:underline">
+                            ← Back to Home
+                        </Link>
+                    )}
                 </div>
             </div>
         );
@@ -382,46 +404,59 @@ export default function GameDetailPage() {
             {/* Breadcrumbs */}
             <nav className="mb-4 text-sm bg-gray-800 px-3 py-2 rounded-lg inline-block">
                 <Link href="/" className="text-blue-400 hover:text-blue-300 transition-colors font-medium">Home</Link>
-                <span className="text-gray-400 mx-2">{'>'}</span>
-                <Link href={`/groupHomePage?id=${group_id}`} className="text-blue-400 hover:text-blue-300 transition-colors font-medium">Group</Link>
+                {group_id && (
+                    <>
+                        <span className="text-gray-400 mx-2">{'>'}</span>
+                        <Link href={`/groupHomePage?id=${group_id}`} className="text-blue-400 hover:text-blue-300 transition-colors font-medium">Group</Link>
+                    </>
+                )}
                 <span className="text-gray-400 mx-2">{'>'}</span>
                 <span className="text-white font-semibold">{game.name}</span>
             </nav>
 
             {/* Game Details */}
             <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-                <div className="flex gap-6">
-                    {game.image_url && (
-                        <img
-                            src={game.image_url}
-                            alt={game.name}
-                            className="w-48 h-48 object-cover rounded-lg"
-                            onError={(e) => {
-                                e.target.style.display = 'none';
-                            }}
-                        />
-                    )}
-                    <div className="flex-1">
+                {game.is_custom ? (
+                    /* Custom game: show name-only view */
+                    <div>
                         <h1 className="text-3xl font-bold text-gray-900 mb-2">{game.name}</h1>
-                        {game.year_published && (
-                            <p className="text-gray-600 mb-2">Published: {game.year_published}</p>
-                        )}
-                        {game.theme && (
-                            <p className="text-gray-600 mb-2">Theme: {game.theme}</p>
-                        )}
-                        {game.min_players && game.max_players && (
-                            <p className="text-gray-600 mb-2">
-                                Players: {game.min_players} - {game.max_players}
-                            </p>
-                        )}
-                        {game.playing_time && (
-                            <p className="text-gray-600 mb-2">Playing Time: {game.playing_time} minutes</p>
-                        )}
-                        {game.description && (
-                            <p className="text-gray-700 mt-4">{game.description}</p>
-                        )}
+                        <p className="text-sm text-gray-500">Custom Game</p>
                     </div>
-                </div>
+                ) : (
+                    /* BGG game: show full detail view */
+                    <div className="flex gap-6">
+                        {game.image_url && (
+                            <img
+                                src={game.image_url}
+                                alt={game.name}
+                                className="w-48 h-48 object-cover rounded-lg"
+                                onError={(e) => {
+                                    e.target.style.display = 'none';
+                                }}
+                            />
+                        )}
+                        <div className="flex-1">
+                            <h1 className="text-3xl font-bold text-gray-900 mb-2">{game.name}</h1>
+                            {game.year_published && (
+                                <p className="text-gray-600 mb-2">Published: {game.year_published}</p>
+                            )}
+                            {game.theme && (
+                                <p className="text-gray-600 mb-2">Theme: {game.theme}</p>
+                            )}
+                            {game.min_players && game.max_players && (
+                                <p className="text-gray-600 mb-2">
+                                    Players: {game.min_players} - {game.max_players}
+                                </p>
+                            )}
+                            {game.playing_time && (
+                                <p className="text-gray-600 mb-2">Playing Time: {game.playing_time} minutes</p>
+                            )}
+                            {game.description && (
+                                <p className="text-gray-700 mt-4">{game.description}</p>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Game Sessions */}
