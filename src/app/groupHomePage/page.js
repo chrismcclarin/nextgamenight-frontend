@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import CreateEvent from '../components/createEvent';
 import ManageMembers from '../components/ManageMembers';
+import AddMember from '../components/addMember';
 import { listsAPI, groupsAPI, API_BASE_URL } from '../../lib/api';
 
 // A groups home page
@@ -15,6 +16,7 @@ function GroupHomePage(){
     const [gamesList, setGamesList] = useState([]);
     const [eventModal, setEventModal] = useState(false);
     const [memberModal, setMemberModal] = useState(false);
+    const [inviteModal, setInviteModal] = useState(false);
     const [loading, setLoading] = useState(true);
     const [userRole, setUserRole] = useState(null);
     
@@ -279,7 +281,18 @@ function GroupHomePage(){
                     </div>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 relative z-20 w-full md:w-auto flex-shrink-0">
-                    {userRole === 'owner' && (
+                    {(userRole === 'owner' || userRole === 'admin') && (
+                        <button
+                            onClick={() => setInviteModal(true)}
+                            className="bg-emerald-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-lg font-semibold hover:bg-emerald-700 transition-colors shadow-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white"
+                            style={{
+                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.3)',
+                            }}
+                        >
+                            Invite Member
+                        </button>
+                    )}
+                    {(userRole === 'owner' || userRole === 'admin') && (
                         <button
                             onClick={() => setMemberModal(true)}
                             className="bg-purple-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-lg font-semibold hover:bg-purple-700 transition-colors shadow-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white"
@@ -421,6 +434,13 @@ function GroupHomePage(){
                 modal={memberModal}
                 modaltoggle={() => setMemberModal(false)}
                 onMembersUpdated={getGroupMembers}
+            />
+
+            <AddMember
+                group={Group}
+                modal={inviteModal}
+                modaltoggle={() => setInviteModal(false)}
+                onMemberAdded={getGroupMembers}
             />
         </div>
     );

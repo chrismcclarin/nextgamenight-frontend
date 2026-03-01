@@ -1,12 +1,14 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { groupsAPI, API_BASE_URL } from '../../lib/api';
+import { groupsAPI, invitesAPI, API_BASE_URL } from '../../lib/api';
 
 function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated }) {
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [userRole, setUserRole] = useState(null);
     const [error, setError] = useState(null);
+    const [pendingInvites, setPendingInvites] = useState([]);
+    const [pendingLoading, setPendingLoading] = useState(false);
 
     useEffect(() => {
         if (modal && group_id && user?.sub) {
@@ -21,7 +23,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated })
         try {
             // Use groupsAPI.getGroupMembers which automatically includes Authorization header
             const data = await groupsAPI.getGroupMembers(group_id);
-            
+
             // Ensure data is an array before processing
             if (!Array.isArray(data)) {
                 console.warn('Members data is not an array:', data);
@@ -29,13 +31,25 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated })
                 setLoading(false);
                 return;
             }
-            
+
             setMembers(data || []);
-            
+
             // Find current user's role
             const currentUserMember = data.find(m => m.user_id === user.sub);
             if (currentUserMember && currentUserMember.UserGroup) {
                 setUserRole(currentUserMember.UserGroup.role);
+            }
+
+            // Fetch pending invites (only succeeds for owner/admin)
+            try {
+                setPendingLoading(true);
+                const invites = await invitesAPI.getGroupPendingInvites(group_id);
+                setPendingInvites(Array.isArray(invites) ? invites : []);
+            } catch (inviteErr) {
+                // 403 means user is not owner/admin -- that's expected
+                setPendingInvites([]);
+            } finally {
+                setPendingLoading(false);
             }
         } catch (error) {
             console.error('Error fetching members:', error);
@@ -96,8 +110,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated })
 
     if (!modal) return null;
 
-    // Only owner can manage members
-    const canManageMembers = userRole === 'owner';
+    // Owner and admin can manage members
+    const canManageMembers = userRole === 'owner' || userRole === 'admin';
 
     return (
         <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
@@ -115,7 +129,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated })
                 {!canManageMembers && (
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
                         <p className="text-yellow-800 text-sm">
-                            Only the group owner can manage member roles and remove members.
+                            Only the group owner or admins can manage member roles and remove members.
                         </p>
                     </div>
                 )}
@@ -187,6 +201,53 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated })
                                 </div>
                             );
                         })}
+                    </div>
+                )}
+
+                {/* Pending Invites Section */}
+                {pendingInvites.length > 0 && (
+                    <div className="mt-6">
+                        <div className="flex items-center gap-2 mb-3">
+                            <h3 className="text-lg font-semibold text-gray-900">Pending Invites</h3>
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                                {pendingInvites.length}
+                            </span>
+                        </div>
+                        <div className="space-y-3">
+                            {pendingInvites.map((invite) => (
+                                <div
+                                    key={invite.id}
+                                    className="flex items-center justify-between p-4 border border-gray-200 rounded-lg bg-amber-50"
+                                >
+                                    <div className="flex items-center gap-3 flex-1">
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-semibold text-gray-900">
+                                                    {invite.invited_email}
+                                                </p>
+                                                <span className="px-2 py-1 rounded text-xs font-semibold border bg-amber-100 text-amber-800 border-amber-300">
+                                                    Pending
+                                                </span>
+                                            </div>
+                                            <div className="text-sm text-gray-600 mt-1">
+                                                {invite.Inviter && (
+                                                    <span>Invited by {invite.Inviter.username || invite.Inviter.email}</span>
+                                                )}
+                                                {invite.createdAt && (
+                                                    <span className="ml-2">
+                                                        on {new Date(invite.createdAt).toLocaleDateString('en-US', {
+                                                            month: 'short',
+                                                            day: 'numeric',
+                                                            year: 'numeric'
+                                                        })}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 )}
 

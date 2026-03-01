@@ -267,25 +267,27 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
 
                   {/* Action Buttons */}
                   <div className="flex gap-2 mt-3" style={{ position: 'relative', zIndex: 2 }}>
-                    <button
-                      className="add-member-btn flex-1"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (onGroupSelect) {
-                          onGroupSelect(group);
-                        }
-                      }}
-                      aria-label="Add member to group"
-                      style={{
-                        backgroundColor: '#28a745',
-                        color: '#ffffff',
-                        fontWeight: '600',
-                        boxShadow: '0 2px 6px rgba(0, 0, 0, 0.3)',
-                        border: '2px solid rgba(255, 255, 255, 0.3)',
-                      }}
-                    >
-                      Add Member
-                    </button>
+                    {canEdit && (
+                      <button
+                        className="add-member-btn flex-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onGroupSelect) {
+                            onGroupSelect(group);
+                          }
+                        }}
+                        aria-label="Invite member to group"
+                        style={{
+                          backgroundColor: '#28a745',
+                          color: '#ffffff',
+                          fontWeight: '600',
+                          boxShadow: '0 2px 6px rgba(0, 0, 0, 0.3)',
+                          border: '2px solid rgba(255, 255, 255, 0.3)',
+                        }}
+                      >
+                        Invite Member
+                      </button>
+                    )}
                     {canEdit && (
                       <button
                         className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 text-sm flex-shrink-0"
