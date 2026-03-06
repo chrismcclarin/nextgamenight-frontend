@@ -6,7 +6,7 @@ import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import CreateEvent from '../components/createEvent';
 import ManageMembers from '../components/ManageMembers';
 import AddMember from '../components/addMember';
-import { listsAPI, groupsAPI, API_BASE_URL } from '../../lib/api';
+import { listsAPI, groupsAPI, eventsAPI, API_BASE_URL } from '../../lib/api';
 
 // A groups home page
 function GroupHomePage(){
@@ -20,6 +20,11 @@ function GroupHomePage(){
     const [loading, setLoading] = useState(true);
     const [userRole, setUserRole] = useState(null);
     
+    // Calendar state
+    const [groupEvents, setGroupEvents] = useState([]);
+    const [calendarDate, setCalendarDate] = useState(new Date());
+    const [calendarPrefillDate, setCalendarPrefillDate] = useState(null);
+
     // Sorting state
     const [sortBy, setSortBy] = useState('last_played');
     const [sortOrder, setSortOrder] = useState('desc');
@@ -67,6 +72,17 @@ function GroupHomePage(){
         }
     };
 
+    const fetchGroupEvents = async () => {
+        if (!Router || !user?.sub) return;
+        try {
+            const data = await eventsAPI.getGroupEvents(Router);
+            setGroupEvents(data || []);
+        } catch (error) {
+            console.error('Error fetching group events:', error);
+            setGroupEvents([]);
+        }
+    };
+
     const getGamesForGroup = useCallback(async () => {
         if (!Router || !user?.sub) return;
         try {
@@ -85,6 +101,7 @@ function GroupHomePage(){
         if (Router && user?.sub) {
             getGroup();
             getGroupMembers();
+            fetchGroupEvents();
         }
         // Auto-open event modal if coming from planning page
         if (shouldCreateEvent && prefillDate && prefillTime) {
@@ -99,8 +116,9 @@ function GroupHomePage(){
     }, [Router, user?.sub, getGamesForGroup]);
 
     const handleEventCreated = (newEvent) => {
-        // Refresh games list after creating new event
+        // Refresh games list and calendar events after creating new event
         getGamesForGroup();
+        fetchGroupEvents();
     };
 
     const toggleEventModal = () => {
@@ -131,6 +149,61 @@ function GroupHomePage(){
     const formatRating = (rating) => {
         if (!rating) return 'No ratings';
         return `${parseFloat(rating).toFixed(1)}/5`;
+    };
+
+    // Calendar helpers
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    const getDaysInMonth = (date) => {
+        const year = date.getFullYear();
+        const month = date.getMonth();
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const daysInMonth = lastDay.getDate();
+        const startingDayOfWeek = firstDay.getDay();
+
+        const days = [];
+        for (let i = 0; i < startingDayOfWeek; i++) {
+            days.push(null);
+        }
+        for (let day = 1; day <= daysInMonth; day++) {
+            days.push(new Date(year, month, day));
+        }
+        return days;
+    };
+
+    const getEventsForDate = (date) => {
+        if (!date) return [];
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const dateStr = `${year}-${month}-${day}`;
+
+        return groupEvents.filter(event => {
+            if (!event.start_date) return false;
+            const eventDate = new Date(event.start_date);
+            const eventYear = eventDate.getFullYear();
+            const eventMonth = String(eventDate.getMonth() + 1).padStart(2, '0');
+            const eventDay = String(eventDate.getDate()).padStart(2, '0');
+            const eventDateStr = `${eventYear}-${eventMonth}-${eventDay}`;
+            return eventDateStr === dateStr;
+        });
+    };
+
+    const isToday = (date) => {
+        if (!date) return false;
+        const today = new Date();
+        return date.toDateString() === today.toDateString();
+    };
+
+    const navigateCalendarMonth = (direction) => {
+        setCalendarDate(prev => {
+            const newDate = new Date(prev);
+            newDate.setMonth(prev.getMonth() + direction);
+            return newDate;
+        });
     };
 
     if (loading) {
@@ -321,6 +394,72 @@ function GroupHomePage(){
                     >
                         Add New Game Event
                     </button>
+                </div>
+            </div>
+
+            {/* Group Calendar */}
+            <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold text-gray-900">Calendar</h2>
+                </div>
+
+                {/* Month Navigation */}
+                <div className="flex justify-between items-center mb-4">
+                    <button onClick={() => navigateCalendarMonth(-1)} className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm">
+                        Prev
+                    </button>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                        {monthNames[calendarDate.getMonth()]} {calendarDate.getFullYear()}
+                    </h3>
+                    <button onClick={() => navigateCalendarMonth(1)} className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm">
+                        Next
+                    </button>
+                </div>
+
+                {/* Day headers */}
+                <div className="grid grid-cols-7 gap-1 mb-1">
+                    {dayNames.map(day => (
+                        <div key={day} className="text-center font-semibold text-gray-700 py-1 text-xs">
+                            {day}
+                        </div>
+                    ))}
+                </div>
+
+                {/* Calendar grid */}
+                <div className="grid grid-cols-7 gap-1">
+                    {getDaysInMonth(calendarDate).map((date, index) => {
+                        const dayEvents = getEventsForDate(date);
+                        const isCurrentDay = isToday(date);
+                        return (
+                            <div
+                                key={index}
+                                className={`min-h-[80px] border border-gray-200 rounded p-1 ${
+                                    !date ? 'bg-gray-50' :
+                                    isCurrentDay ? 'bg-blue-50 border-blue-300' :
+                                    dayEvents.length === 0 ? 'bg-white hover:bg-blue-50 hover:border-blue-200 cursor-pointer transition-colors' :
+                                    'bg-white'
+                                }`}
+                            >
+                                {date && (
+                                    <>
+                                        <div className={`text-xs font-medium mb-1 ${isCurrentDay ? 'text-blue-700' : 'text-gray-900'}`}>
+                                            {date.getDate()}
+                                        </div>
+                                        <div className="space-y-0.5">
+                                            {dayEvents.slice(0, 2).map(event => (
+                                                <div key={event.id} className="text-xs p-0.5 bg-blue-100 text-blue-800 rounded truncate font-medium">
+                                                    {event.Game?.name || 'Game Night'}
+                                                </div>
+                                            ))}
+                                            {dayEvents.length > 2 && (
+                                                <div className="text-xs text-blue-600 font-medium">+{dayEvents.length - 2} more</div>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
 
