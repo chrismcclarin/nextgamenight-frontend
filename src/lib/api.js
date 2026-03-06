@@ -381,10 +381,17 @@ export const gameReviewsAPI = {
  */
 export const feedbackAPI = {
   // Submit bug report or suggestion
-  submitFeedback: (feedbackData) => 
+  submitFeedback: (feedbackData) =>
     apiFetch('/feedback', {
       method: 'POST',
       body: JSON.stringify(feedbackData),
+    }),
+
+  // Submit feedback as a GitHub Issue (contextual feedback button)
+  submitGitHubFeedback: (data) =>
+    apiFetch('/feedback/github', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
 };
 
