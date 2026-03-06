@@ -147,7 +147,7 @@ function GroupHomePage(){
             <nav className="mb-4 text-sm bg-gray-800 px-3 py-2 rounded-lg inline-block">
                 <Link href="/" className="text-blue-400 hover:text-blue-300 transition-colors font-medium">Home</Link>
                 <span className="text-gray-400 mx-2">{'>'}</span>
-                <span className="text-white font-semibold">{Group?.name || 'Group'}</span>
+                <span className="text-white font-semibold max-w-[200px] truncate inline-block align-bottom">{Group?.name || 'Group'}</span>
             </nav>
 
             {/* Header */}
@@ -194,7 +194,7 @@ function GroupHomePage(){
                     )}
                     <div className="flex-1 min-w-0">
                         <h1 
-                            className="text-2xl md:text-3xl font-bold"
+                            className="text-2xl md:text-3xl font-bold truncate"
                             style={(() => {
                                 const hasBgImage = !!Group?.background_image_url;
                                 const bgColor = Group?.background_color || '#1f2937';

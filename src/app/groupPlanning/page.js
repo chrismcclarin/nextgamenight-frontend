@@ -530,7 +530,7 @@ export default function GroupPlanningPage() {
                 <span className="text-gray-400 mx-2">{'>'}</span>
                 {group && (
                     <>
-                        <Link href={`/groupHomePage?group_id=${groupId}`} className="text-blue-400 hover:text-blue-300 transition-colors font-medium">
+                        <Link href={`/groupHomePage?group_id=${groupId}`} className="text-blue-400 hover:text-blue-300 transition-colors font-medium max-w-[200px] truncate inline-block align-bottom">
                             {group.name}
                         </Link>
                         <span className="text-gray-400 mx-2">{'>'}</span>
@@ -542,8 +542,8 @@ export default function GroupPlanningPage() {
             {/* Header */}
             <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
-                    <div>
-                        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+                    <div className="min-w-0">
+                        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 truncate">
                             {group ? `Plan Game Session - ${group.name}` : 'Plan Game Session'}
                         </h1>
                         <p className="text-sm text-gray-600 mt-1">
