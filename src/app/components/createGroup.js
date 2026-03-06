@@ -69,21 +69,23 @@ if (modal) return (
                             Create a new Group
                         </h3>
                     </div>
-                    <form onSubmit={onSubmit} className="relative p-6 flex-auto">
+                    <form onSubmit={onSubmit} autoComplete="off" className="relative p-6 flex-auto">
                         <div className="mb-3 pt-0">
                             <div className="relative">
-                                <input 
-                                    id="name" 
-                                    onChange={handleChange} 
-                                    value={newGroup.name} 
-                                    type="text" 
-                                    placeholder="Group Name" 
+                                <input
+                                    id="name"
+                                    name="group-name-create"
+                                    onChange={handleChange}
+                                    value={newGroup.name}
+                                    type="text"
+                                    placeholder="Group Name"
                                     required
-                                    maxLength={50}
+                                    maxLength={40}
+                                    autoComplete="off"
                                     className="px-3 py-3 placeholder-blueGray-300 text-black relative bg-white rounded text-sm border-0 shadow outline-none focus:outline-none focus:ring w-full pr-16"
                                 />
                                 <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
-                                    {newGroup.name.length}/50
+                                    {newGroup.name.length}/40
                                 </span>
                             </div>
                             {errorMessage && (
