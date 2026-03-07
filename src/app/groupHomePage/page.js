@@ -122,6 +122,9 @@ function GroupHomePage(){
     };
 
     const toggleEventModal = () => {
+        if (eventModal) {
+            setCalendarPrefillDate(null); // Clear when closing
+        }
         setEventModal(!eventModal);
     };
 
@@ -433,10 +436,17 @@ function GroupHomePage(){
                         return (
                             <div
                                 key={index}
-                                className={`min-h-[80px] border border-gray-200 rounded p-1 ${
+                                onClick={() => {
+                                    if (date && dayEvents.length === 0) {
+                                        const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                                        setCalendarPrefillDate(dateStr);
+                                        setEventModal(true);
+                                    }
+                                }}
+                                className={`min-h-[80px] border border-gray-200 rounded p-1 flex flex-col ${
                                     !date ? 'bg-gray-50' :
                                     isCurrentDay ? 'bg-blue-50 border-blue-300' :
-                                    dayEvents.length === 0 ? 'bg-white hover:bg-blue-50 hover:border-blue-200 cursor-pointer transition-colors' :
+                                    dayEvents.length === 0 ? 'bg-white hover:bg-blue-50 hover:border-blue-200 cursor-pointer transition-colors group' :
                                     'bg-white'
                                 }`}
                             >
@@ -445,16 +455,22 @@ function GroupHomePage(){
                                         <div className={`text-xs font-medium mb-1 ${isCurrentDay ? 'text-blue-700' : 'text-gray-900'}`}>
                                             {date.getDate()}
                                         </div>
-                                        <div className="space-y-0.5">
-                                            {dayEvents.slice(0, 2).map(event => (
-                                                <div key={event.id} className="text-xs p-0.5 bg-blue-100 text-blue-800 rounded truncate font-medium">
-                                                    {event.Game?.name || 'Game Night'}
-                                                </div>
-                                            ))}
-                                            {dayEvents.length > 2 && (
-                                                <div className="text-xs text-blue-600 font-medium">+{dayEvents.length - 2} more</div>
-                                            )}
-                                        </div>
+                                        {dayEvents.length > 0 ? (
+                                            <div className="space-y-0.5">
+                                                {dayEvents.slice(0, 2).map(event => (
+                                                    <div key={event.id} className="text-xs p-0.5 bg-blue-100 text-blue-800 rounded truncate font-medium">
+                                                        {event.Game?.name || 'Game Night'}
+                                                    </div>
+                                                ))}
+                                                {dayEvents.length > 2 && (
+                                                    <div className="text-xs text-blue-600 font-medium">+{dayEvents.length - 2} more</div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center justify-center flex-1 opacity-0 group-hover:opacity-40 transition-opacity">
+                                                <span className="text-2xl text-gray-400 select-none">+</span>
+                                            </div>
+                                        )}
                                     </>
                                 )}
                             </div>
@@ -560,10 +576,13 @@ function GroupHomePage(){
             <CreateEvent
                 group_id={Router}
                 modal={eventModal}
-                modaltoggle={toggleEventModal}
+                modaltoggle={() => {
+                    setEventModal(false);
+                    setCalendarPrefillDate(null); // Clear calendar prefill on close
+                }}
                 onEventCreated={handleEventCreated}
                 user={user}
-                prefillDate={prefillDate}
+                prefillDate={calendarPrefillDate || prefillDate}
                 prefillTime={prefillTime}
             />
             
