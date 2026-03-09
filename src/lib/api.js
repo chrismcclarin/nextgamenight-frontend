@@ -205,6 +205,27 @@ export const eventsAPI = {
 };
 
 /**
+ * API functions for RSVPs (event responses: yes/no/maybe)
+ */
+export const rsvpAPI = {
+  // Create or update an RSVP for an event
+  submitRsvp: (event_id, status, note) =>
+    apiFetch('/rsvp', {
+      method: 'POST',
+      body: JSON.stringify({ event_id, status, note }),
+    }),
+  // Get all RSVPs for an event (includes summary counts)
+  getEventRsvps: (event_id) =>
+    apiFetch(`/rsvp/event/${event_id}`),
+  // Get all RSVPs for the current user
+  getUserRsvps: (user_id) =>
+    apiFetch(`/rsvp/user/${encodeURIComponent(user_id)}`),
+  // Remove an RSVP
+  removeRsvp: (rsvp_id) =>
+    apiFetch(`/rsvp/${rsvp_id}`, { method: 'DELETE' }),
+};
+
+/**
  * API functions for Users
  */
 export const usersAPI = {
