@@ -226,6 +226,18 @@ export const rsvpAPI = {
 };
 
 /**
+ * API functions for public RSVP (magic link, no Auth0 required)
+ * Uses direct fetch without Auth0 token injection
+ */
+export const rsvpPublicAPI = {
+  // Respond to RSVP via magic link token (no auth required)
+  respondViaToken: (token, eventId, userId, status) =>
+    fetch(
+      `${API_BASE_URL}/rsvp/respond?token=${encodeURIComponent(token)}&e=${eventId}&u=${encodeURIComponent(userId)}&s=${status}`
+    ).then(res => res.json()),
+};
+
+/**
  * API functions for Users
  */
 export const usersAPI = {
