@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { eventsAPI, gameReviewsAPI, usersAPI, groupsAPI, gamesAPI, API_BASE_URL } from '../../lib/api';
 import CreateEvent from '../components/createEvent';
+import RsvpSection from '../components/RsvpSection';
 
 export default function GameDetailPage() {
     const { user } = Auth();
@@ -706,6 +707,12 @@ export default function GameDetailPage() {
                                                 </div>
                                             </div>
                                         )}
+                                        {/* RSVP Section - interactive for future events, read-only for past */}
+                                        <RsvpSection
+                                            eventId={event.id}
+                                            currentUserId={user?.sub}
+                                            eventDate={event.start_date}
+                                        />
                                     </div>
                                 </div>
                             </div>
