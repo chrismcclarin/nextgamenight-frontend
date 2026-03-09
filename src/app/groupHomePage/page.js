@@ -75,7 +75,7 @@ function GroupHomePage(){
     const fetchGroupEvents = async () => {
         if (!Router || !user?.sub) return;
         try {
-            const data = await eventsAPI.getGroupEvents(Router);
+            const data = await eventsAPI.getGroupEvents(Router, { includeRsvpSummary: true });
             setGroupEvents(data || []);
         } catch (error) {
             console.error('Error fetching group events:', error);
@@ -457,11 +457,23 @@ function GroupHomePage(){
                                         </div>
                                         {dayEvents.length > 0 ? (
                                             <div className="space-y-0.5">
-                                                {dayEvents.slice(0, 2).map(event => (
-                                                    <div key={event.id} className="text-xs p-0.5 bg-blue-100 text-blue-800 rounded truncate font-medium">
-                                                        {event.Game?.name || 'Game Night'}
-                                                    </div>
-                                                ))}
+                                                {dayEvents.slice(0, 2).map(event => {
+                                                    const rs = event.rsvp_summary;
+                                                    const hasRsvps = rs && (rs.yes > 0 || rs.maybe > 0 || rs.no > 0);
+                                                    const isFuture = event.start_date && new Date(event.start_date) >= new Date();
+                                                    return (
+                                                        <div key={event.id} className="text-xs p-0.5 bg-blue-100 text-blue-800 rounded font-medium">
+                                                            <div className="truncate">{event.Game?.name || 'Game Night'}</div>
+                                                            {hasRsvps && isFuture && (
+                                                                <div className="flex gap-1 text-[10px] leading-tight mt-0.5">
+                                                                    {rs.yes > 0 && <span className="text-green-700">{rs.yes}Y</span>}
+                                                                    {rs.maybe > 0 && <span className="text-amber-700">{rs.maybe}M</span>}
+                                                                    {rs.no > 0 && <span className="text-red-600">{rs.no}N</span>}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
                                                 {dayEvents.length > 2 && (
                                                     <div className="text-xs text-blue-600 font-medium">+{dayEvents.length - 2} more</div>
                                                 )}

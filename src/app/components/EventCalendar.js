@@ -23,7 +23,7 @@ export default function EventCalendar({ refreshKey = 0 }) {
     if (!user?.sub) return;
     try {
       setLoading(true);
-      const data = await eventsAPI.getUserEvents(user.sub);
+      const data = await eventsAPI.getUserEvents(user.sub, { includeRsvpSummary: true });
       setEvents(data || []);
     } catch (error) {
       console.error('Error fetching events:', error.message || 'Unknown error');
@@ -493,6 +493,20 @@ export default function EventCalendar({ refreshKey = 0 }) {
                             <span>{event.duration_minutes} min</span>
                           )}
                         </div>
+                        {/* RSVP counts for upcoming events */}
+                        {!isPastEvent && event.rsvp_summary && (event.rsvp_summary.yes > 0 || event.rsvp_summary.maybe > 0 || event.rsvp_summary.no > 0) && (
+                          <div className="flex gap-3 mt-1.5 text-xs">
+                            {event.rsvp_summary.yes > 0 && (
+                              <span className="text-green-700 font-medium">{event.rsvp_summary.yes} going</span>
+                            )}
+                            {event.rsvp_summary.maybe > 0 && (
+                              <span className="text-amber-600 font-medium">{event.rsvp_summary.maybe} maybe</span>
+                            )}
+                            {event.rsvp_summary.no > 0 && (
+                              <span className="text-red-500 font-medium">{event.rsvp_summary.no} can't</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                       {event.Game?.image_url && (
                         <img

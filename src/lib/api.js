@@ -171,12 +171,12 @@ export const groupsAPI = {
  */
 export const eventsAPI = {
   // Get all events for a user across all groups
-  getUserEvents: (user_id) => 
-    apiFetch(`/events/user/${encodeURIComponent(user_id)}`),
-  
+  getUserEvents: (user_id, { includeRsvpSummary = false } = {}) =>
+    apiFetch(`/events/user/${encodeURIComponent(user_id)}${includeRsvpSummary ? '?include_rsvp_summary=true' : ''}`),
+
   // Get all events for a group
-  getGroupEvents: (group_id) => 
-    apiFetch(`/events/group/${group_id}`),
+  getGroupEvents: (group_id, { includeRsvpSummary = false } = {}) =>
+    apiFetch(`/events/group/${group_id}${includeRsvpSummary ? '?include_rsvp_summary=true' : ''}`),
   
   // Get a single event by ID
   getEvent: (event_id) => 
