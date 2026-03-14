@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
-import { gamesAPI, eventsAPI, groupsAPI, API_BASE_URL } from '../../lib/api';
+import { gamesAPI, eventsAPI, groupsAPI, ballotAPI, API_BASE_URL } from '../../lib/api';
 import { format, parseISO, differenceInMinutes } from 'date-fns';
 import EventScheduler from './EventScheduler';
 import GameComboInput from './GameComboInput';
@@ -28,6 +28,7 @@ const createEventForm = (group_id, groupMembers = []) => ({
   game_name: "",
   start_date: "",
   duration_minutes: null,
+  rsvp_deadline: "",
   winner_id: null,
   picked_by_id: null,
   is_group_win: false,
@@ -46,6 +47,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   const [loading, setLoading] = useState(true);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState(null);
   const [useVisualCalendar, setUseVisualCalendar] = useState(true);
+  const [ballotOptions, setBallotOptions] = useState([]);
+  const [ballotError, setBallotError] = useState(null);
 
   // Fetch group members and games when component mounts or group_id changes
   useEffect(() => {
@@ -54,11 +57,33 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     }
   }, [group_id, modal]);
 
+  // Load existing ballot options when editing an event
+  useEffect(() => {
+    if (editingEvent && modal) {
+      const loadBallot = async () => {
+        try {
+          const ballot = await ballotAPI.getBallot(editingEvent.id);
+          if (ballot && ballot.ballot_status !== null && ballot.options && ballot.options.length > 0) {
+            setBallotOptions(ballot.options.map(o => ({ game_id: o.game_id || null, game_name: o.game_name })));
+          } else {
+            setBallotOptions([]);
+          }
+        } catch (err) {
+          // No ballot exists or error fetching -- that's fine
+          setBallotOptions([]);
+        }
+      };
+      loadBallot();
+    } else if (!editingEvent) {
+      setBallotOptions([]);
+    }
+  }, [editingEvent, modal]);
+
   // Populate form when editingEvent changes
   useEffect(() => {
     if (editingEvent && groupMembers.length > 0) {
       // Format start_date for datetime-local input (YYYY-MM-DDTHH:mm)
-      const startDate = editingEvent.start_date 
+      const startDate = editingEvent.start_date
         ? new Date(editingEvent.start_date).toISOString().slice(0, 16)
         : '';
       
@@ -136,12 +161,18 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         }
       }
 
+      // Format rsvp_deadline for datetime-local input
+      const rsvpDeadline = editingEvent.rsvp_deadline
+        ? new Date(editingEvent.rsvp_deadline).toISOString().slice(0, 16)
+        : '';
+
       setNewEvent({
         group_id: editingEvent.group_id,
         game_id: editingEvent.game_id,
         game_name: editingEvent.Game?.name || '',
         start_date: startDate,
         duration_minutes: editingEvent.duration_minutes || null,
+        rsvp_deadline: rsvpDeadline,
         winner_id: winner_id,
         picked_by_id: picked_by_id,
         is_group_win: editingEvent.is_group_win || false,
@@ -348,23 +379,68 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       // Add timezone to event data for Google Calendar creation
       eventDataToSubmit.timezone = userTimezone;
       
+      // Validate ballot options: if any are provided, need at least 2
+      const validBallotOptions = ballotOptions.filter(o => o.game_name && o.game_name.trim());
+      if (validBallotOptions.length > 0 && validBallotOptions.length < 2) {
+        alert('A ballot requires at least 2 game options. Please add more or remove all options.');
+        return;
+      }
+
+      // Include rsvp_deadline in the submission data (convert to ISO or null)
+      if (newEvent.rsvp_deadline) {
+        const rsvpDate = new Date(newEvent.rsvp_deadline);
+        eventDataToSubmit.rsvp_deadline = rsvpDate.toISOString();
+      } else {
+        eventDataToSubmit.rsvp_deadline = null;
+      }
+
       if (editingEvent) {
         // Update existing event
         await eventsAPI.updateEvent(editingEvent.id, eventDataToSubmit, authUser?.sub);
+
+        // Update ballot options if we have valid ones
+        if (validBallotOptions.length >= 2) {
+          try {
+            await ballotAPI.updateBallotOptions(editingEvent.id, validBallotOptions.map(o => ({
+              game_id: o.game_id || null,
+              game_name: o.game_name.trim()
+            })));
+          } catch (ballotErr) {
+            console.error('Error updating ballot options:', ballotErr);
+            setBallotError('Event updated but ballot options could not be saved.');
+          }
+        }
+
         if (onEventCreated) {
           onEventCreated(null); // Signal that event was updated
         }
       } else {
         // Create new event using eventsAPI which automatically includes Authorization header
         const data = await eventsAPI.createEvent(eventDataToSubmit);
+
+        // Create ballot options if we have valid ones
+        if (validBallotOptions.length >= 2 && data?.id) {
+          try {
+            await ballotAPI.setBallotOptions(data.id, validBallotOptions.map(o => ({
+              game_id: o.game_id || null,
+              game_name: o.game_name.trim()
+            })));
+          } catch (ballotErr) {
+            console.error('Error creating ballot options:', ballotErr);
+            setBallotError('Event created but ballot options could not be saved.');
+          }
+        }
+
         if (onEventCreated) {
           onEventCreated(data);
         }
       }
-      
+
       modaltoggle();
       // Reset form
       setNewEvent(createEventForm(group_id, groupMembers));
+      setBallotOptions([]);
+      setBallotError(null);
       setSelectedTimeSlot(null);
       setUseVisualCalendar(true);
     } catch (error) {
@@ -496,6 +572,82 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
               </div>
             )}
           </div>
+
+          {/* RSVP Deadline */}
+          {newEvent.start_date && new Date(newEvent.start_date) > new Date() && (
+            <div>
+              <label htmlFor="rsvp_deadline" className="block text-sm font-medium mb-1 text-gray-900">
+                RSVP Deadline
+              </label>
+              <p className="text-xs text-gray-500 mb-1">Required for game voting ballot</p>
+              <input
+                type="datetime-local"
+                id="rsvp_deadline"
+                value={newEvent.rsvp_deadline || ''}
+                onChange={handleChange}
+                className="w-full p-2 border rounded text-gray-900 bg-white"
+                max={newEvent.start_date}
+              />
+            </div>
+          )}
+
+          {/* Game Ballot Section */}
+          {newEvent.rsvp_deadline && (
+            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <div className="mb-3">
+                <h3 className="text-sm font-semibold text-gray-900">Game Ballot (optional)</h3>
+                <p className="text-xs text-gray-500">Add 2-10 games for your group to vote on</p>
+              </div>
+
+              {ballotError && (
+                <p className="text-sm text-red-600 mb-2">{ballotError}</p>
+              )}
+
+              <div className="space-y-2">
+                {ballotOptions.map((option, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <GameComboInput
+                        value={{ game_id: option.game_id, game_name: option.game_name }}
+                        onChange={({ game_id, game_name }) => {
+                          const updated = [...ballotOptions];
+                          updated[index] = { game_id: game_id || null, game_name: game_name || '' };
+                          setBallotOptions(updated);
+                        }}
+                        groupId={group_id}
+                        userId={authUser?.sub}
+                        placeholder={`Game option ${index + 1}`}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBallotOptions(ballotOptions.filter((_, i) => i !== index));
+                      }}
+                      className="text-red-500 hover:text-red-700 text-lg px-2 py-1 flex-shrink-0"
+                      title="Remove option"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {ballotOptions.length < 10 && (
+                <button
+                  type="button"
+                  onClick={() => setBallotOptions([...ballotOptions, { game_id: null, game_name: '' }])}
+                  className="mt-2 px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm font-medium"
+                >
+                  + Add game option
+                </button>
+              )}
+
+              {ballotOptions.length > 0 && ballotOptions.length < 2 && (
+                <p className="text-xs text-amber-600 mt-2">Add at least 2 games to create a ballot</p>
+              )}
+            </div>
+          )}
 
           {/* Participants Section */}
           <div>
