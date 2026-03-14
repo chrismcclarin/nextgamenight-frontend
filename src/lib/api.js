@@ -698,3 +698,40 @@ export const friendshipsAPI = {
     apiFetch(`/friendships/${friendship_id}`, { method: 'DELETE' }),
 };
 
+/**
+ * API functions for Game Voting Ballots
+ */
+export const ballotAPI = {
+  // Get ballot for an event (options, vote state, winner)
+  getBallot: (eventId) =>
+    apiFetch(`/ballot/${eventId}`),
+
+  // Create/set ballot options (organizer only, requires rsvp_deadline on event)
+  setBallotOptions: (eventId, options) =>
+    apiFetch(`/ballot/${eventId}/options`, {
+      method: 'POST',
+      body: JSON.stringify({ options }),
+    }),
+
+  // Update ballot options (organizer only, before close)
+  updateBallotOptions: (eventId, options) =>
+    apiFetch(`/ballot/${eventId}/options`, {
+      method: 'PUT',
+      body: JSON.stringify({ options }),
+    }),
+
+  // Toggle vote on an option (approval voting: add or remove)
+  toggleVote: (eventId, optionId) =>
+    apiFetch(`/ballot/${eventId}/vote`, {
+      method: 'POST',
+      body: JSON.stringify({ option_id: optionId }),
+    }),
+
+  // Resolve a tie or no-vote scenario (organizer picks winner)
+  resolveTie: (eventId, optionId) =>
+    apiFetch(`/ballot/${eventId}/resolve-tie`, {
+      method: 'POST',
+      body: JSON.stringify({ option_id: optionId }),
+    }),
+};
+
