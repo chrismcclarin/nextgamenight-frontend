@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
-import { eventsAPI, gameReviewsAPI, usersAPI, groupsAPI, gamesAPI, API_BASE_URL } from '../../lib/api';
+import { eventsAPI, gameReviewsAPI, usersAPI, groupsAPI, gamesAPI, rsvpAPI, API_BASE_URL } from '../../lib/api';
 import CreateEvent from '../components/createEvent';
 import RsvpSection from '../components/RsvpSection';
+import BallotSection from '../components/BallotSection';
 
 export default function GameDetailPage() {
     const { user } = Auth();
@@ -23,6 +24,7 @@ export default function GameDetailPage() {
     const [userRole, setUserRole] = useState(null);
     const [editEventModal, setEditEventModal] = useState(false);
     const [editingEvent, setEditingEvent] = useState(null);
+    const [eventRsvpStatuses, setEventRsvpStatuses] = useState({});
     
     // Session filtering and pagination state
     const [visibleSessions, setVisibleSessions] = useState(3);
@@ -83,6 +85,21 @@ export default function GameDetailPage() {
 
                 const gameEvents = eventsData.filter(event => event.game_id === game_id);
                 setEvents(gameEvents);
+
+                // Fetch RSVP statuses for each event (for BallotSection)
+                if (user?.sub && gameEvents.length > 0) {
+                    const rsvpStatusMap = {};
+                    await Promise.all(gameEvents.map(async (evt) => {
+                        try {
+                            const rsvpData = await rsvpAPI.getEventRsvps(evt.id);
+                            const myRsvp = (rsvpData.rsvps || []).find(r => r.user_id === user.sub);
+                            rsvpStatusMap[evt.id] = myRsvp?.status || null;
+                        } catch {
+                            rsvpStatusMap[evt.id] = null;
+                        }
+                    }));
+                    setEventRsvpStatuses(rsvpStatusMap);
+                }
 
                 // Fetch reviews for this game in this group
                 // Use gameReviewsAPI.getGameReviews which automatically includes Authorization header
@@ -712,6 +729,14 @@ export default function GameDetailPage() {
                                             eventId={event.id}
                                             currentUserId={user?.sub}
                                             eventDate={event.start_date}
+                                        />
+                                        {/* Ballot Section - game voting */}
+                                        <BallotSection
+                                            eventId={event.id}
+                                            currentUserId={user?.sub}
+                                            eventDate={event.start_date}
+                                            userRole={userRole}
+                                            userRsvpStatus={eventRsvpStatuses[event.id] || null}
                                         />
                                     </div>
                                 </div>
