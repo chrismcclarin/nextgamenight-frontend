@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import CreateEvent from '../components/createEvent';
@@ -11,6 +11,7 @@ import { listsAPI, groupsAPI, eventsAPI, API_BASE_URL } from '../../lib/api';
 // A groups home page
 function GroupHomePage(){
     const { user } = Auth();
+    const router = useRouter();
     const [Group, setGroup] = useState(null);
     const [UserList, setUserList] = useState(null);
     const [gamesList, setGamesList] = useState([]);
@@ -462,7 +463,15 @@ function GroupHomePage(){
                                                     const hasRsvps = rs && (rs.yes > 0 || rs.maybe > 0 || rs.no > 0);
                                                     const isFuture = event.start_date && new Date(event.start_date) >= new Date();
                                                     return (
-                                                        <div key={event.id} className="text-xs p-0.5 bg-blue-100 text-blue-800 rounded font-medium">
+                                                        <div key={event.id} className="text-xs p-0.5 bg-blue-100 text-blue-800 rounded font-medium cursor-pointer hover:bg-blue-200 transition-colors"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (event.game_id) {
+                                                                    router.push(`/gameDetail?game_id=${event.game_id}&group_id=${event.group_id}`);
+                                                                } else {
+                                                                    router.push(`/gameDetail?event_id=${event.id}&group_id=${event.group_id}`);
+                                                                }
+                                                            }}>
                                                             <div className="truncate">{event.Game?.name || 'Game Night'}</div>
                                                             {hasRsvps && isFuture && (
                                                                 <div className="flex gap-1 text-[10px] leading-tight mt-0.5">

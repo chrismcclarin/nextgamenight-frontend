@@ -10,7 +10,7 @@ import { rsvpAPI } from '../../lib/api';
  * @param {string} currentUserId - Auth0 user ID (user.sub)
  * @param {string|Date} eventDate - Event start date for past-event check
  */
-export default function RsvpSection({ eventId, currentUserId, eventDate }) {
+export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpChange }) {
   const [rsvps, setRsvps] = useState([]);
   const [summary, setSummary] = useState({ yes: 0, maybe: 0, no: 0 });
   const [userRsvp, setUserRsvp] = useState(null);
@@ -68,6 +68,8 @@ export default function RsvpSection({ eventId, currentUserId, eventDate }) {
       if (result.note !== undefined) setNote(result.note || '');
       // Re-fetch to get updated summary and full list
       await fetchRsvps();
+      // Notify parent of RSVP change
+      if (onRsvpChange) onRsvpChange(status);
     } catch (err) {
       console.error('Error submitting RSVP:', err);
       setError('Could not save your response. Please try again.');

@@ -14,6 +14,7 @@ export default function GameDetailPage() {
     const searchParams = useSearchParams();
     const game_id = searchParams.get('game_id');
     const group_id = searchParams.get('group_id');
+    const event_id = searchParams.get('event_id');
     
     const [game, setGame] = useState(null);
     const [events, setEvents] = useState([]);
@@ -25,7 +26,9 @@ export default function GameDetailPage() {
     const [editEventModal, setEditEventModal] = useState(false);
     const [editingEvent, setEditingEvent] = useState(null);
     const [eventRsvpStatuses, setEventRsvpStatuses] = useState({});
-    
+    const [singleEvent, setSingleEvent] = useState(null);
+    const [ballotRefreshKey, setBallotRefreshKey] = useState(0);
+
     // Session filtering and pagination state
     const [visibleSessions, setVisibleSessions] = useState(3);
     const [filteredEvents, setFilteredEvents] = useState([]);
@@ -53,8 +56,41 @@ export default function GameDetailPage() {
     useEffect(() => {
         if (game_id) {
             fetchGameData();
+        } else if (event_id) {
+            fetchEventOnly();
         }
-    }, [game_id, group_id]);
+    }, [game_id, group_id, event_id, user?.sub]);
+
+    const fetchEventOnly = async () => {
+        setLoading(true);
+        try {
+            const eventData = await eventsAPI.getEvent(event_id);
+            setSingleEvent(eventData);
+
+            if (group_id && user?.sub) {
+                // Fetch user role
+                const groupMembers = await groupsAPI.getGroupMembers(group_id);
+                if (Array.isArray(groupMembers)) {
+                    const currentUserMember = groupMembers.find(m => m.user_id === user.sub);
+                    if (currentUserMember && currentUserMember.UserGroup) {
+                        setUserRole(currentUserMember.UserGroup.role);
+                    }
+                }
+                // Fetch RSVP status
+                try {
+                    const rsvpData = await rsvpAPI.getEventRsvps(event_id);
+                    const myRsvp = (rsvpData.rsvps || []).find(r => r.user_id === user.sub);
+                    setEventRsvpStatuses({ [event_id]: myRsvp?.status || null });
+                } catch {
+                    setEventRsvpStatuses({ [event_id]: null });
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching event:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const fetchGameData = async () => {
         if (!game_id) return;
@@ -377,7 +413,7 @@ export default function GameDetailPage() {
 
     const displayedEvents = filteredEvents.slice(0, visibleSessions);
 
-    if (!game_id) {
+    if (!game_id && !event_id) {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="text-center">
@@ -386,6 +422,74 @@ export default function GameDetailPage() {
                         ← Back to Home
                     </Link>
                 </div>
+            </div>
+        );
+    }
+
+    // Event-only view (no game_id, e.g. events with ballot voting)
+    if (!game_id && singleEvent) {
+        return (
+            <div className="p-6 max-w-6xl mx-auto">
+                <nav className="mb-4 text-sm bg-gray-800 px-3 py-2 rounded-lg inline-block">
+                    <Link href="/" className="text-blue-400 hover:text-blue-300 transition-colors font-medium">Home</Link>
+                    {group_id && (
+                        <>
+                            <span className="text-gray-400 mx-2">{'>'}</span>
+                            <Link href={`/groupHomePage?id=${group_id}`} className="text-blue-400 hover:text-blue-300 transition-colors font-medium">Group</Link>
+                        </>
+                    )}
+                    <span className="text-gray-400 mx-2">{'>'}</span>
+                    <span className="text-white font-semibold">{singleEvent.title || 'Game Night'}</span>
+                </nav>
+
+                <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h1 className="text-3xl font-bold text-gray-900 mb-2">{singleEvent.title || 'Game Night'}</h1>
+                    <div className="text-gray-600 space-y-1">
+                        <p>{new Date(singleEvent.start_date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} at {new Date(singleEvent.start_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</p>
+                        {singleEvent.duration_minutes && <p>Duration: {singleEvent.duration_minutes} minutes</p>}
+                        {singleEvent.location && <p>Location: {singleEvent.location}</p>}
+                        {singleEvent.notes && <p className="mt-2 text-gray-500">{singleEvent.notes}</p>}
+                    </div>
+                </div>
+
+                <div className="space-y-4">
+                    <RsvpSection
+                        eventId={singleEvent.id}
+                        currentUserId={user?.sub}
+                        eventDate={singleEvent.start_date}
+                        onRsvpChange={(status) => setEventRsvpStatuses(prev => ({ ...prev, [singleEvent.id]: status }))}
+                    />
+                    <BallotSection
+                        key={ballotRefreshKey}
+                        eventId={singleEvent.id}
+                        currentUserId={user?.sub}
+                        eventDate={singleEvent.start_date}
+                        userRole={userRole}
+                        userRsvpStatus={eventRsvpStatuses[singleEvent.id] || null}
+                    />
+                </div>
+
+                {userRole && (
+                    <div className="mt-4 flex gap-2">
+                        <button
+                            onClick={() => { setEditingEvent(singleEvent); setEditEventModal(true); }}
+                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                        >
+                            Edit Event
+                        </button>
+                    </div>
+                )}
+
+                {editEventModal && editingEvent && (
+                    <CreateEvent
+                        group_id={group_id}
+                        modal={editEventModal}
+                        modaltoggle={() => { setEditEventModal(false); setEditingEvent(null); }}
+                        onEventCreated={() => { setEditEventModal(false); setEditingEvent(null); fetchEventOnly(); setBallotRefreshKey(k => k + 1); }}
+                        editingEvent={editingEvent}
+                        user={user}
+                    />
+                )}
             </div>
         );
     }
@@ -729,6 +833,7 @@ export default function GameDetailPage() {
                                             eventId={event.id}
                                             currentUserId={user?.sub}
                                             eventDate={event.start_date}
+                                            onRsvpChange={(status) => setEventRsvpStatuses(prev => ({ ...prev, [event.id]: status }))}
                                         />
                                         {/* Ballot Section - game voting */}
                                         <BallotSection

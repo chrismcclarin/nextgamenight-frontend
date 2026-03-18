@@ -113,8 +113,11 @@ export default function EventCalendar({ refreshKey = 0 }) {
   };
 
   const handleEventClick = (event) => {
-    if (!event.game_id) return; // No game — nothing to navigate to
-    router.push(`/gameDetail?game_id=${event.game_id}&group_id=${event.group_id}`);
+    if (event.game_id) {
+      router.push(`/gameDetail?game_id=${event.game_id}&group_id=${event.group_id}`);
+    } else {
+      router.push(`/gameDetail?event_id=${event.id}&group_id=${event.group_id}`);
+    }
   };
 
   const formatTime = (dateString) => {
@@ -249,7 +252,7 @@ export default function EventCalendar({ refreshKey = 0 }) {
                             <div
                               key={event.id}
                               onClick={() => handleEventClick(event)}
-                              className={`text-xs p-1 rounded truncate hover:opacity-90 transition-opacity flex items-center gap-1 font-medium ${event.game_id ? 'cursor-pointer' : 'cursor-default'}`}
+                              className={`text-xs p-1 rounded truncate hover:opacity-90 transition-opacity flex items-center gap-1 font-medium cursor-pointer`}
                               style={{
                                 backgroundColor: groupBgColor,
                                 backgroundImage: groupBgImage ? `url(${groupBgImage})` : 'none',
@@ -396,7 +399,7 @@ export default function EventCalendar({ refreshKey = 0 }) {
                   <div
                     key={event.id}
                     onClick={() => handleEventClick(event)}
-                    className={`p-4 border rounded-lg transition-all hover:shadow-md ${event.game_id ? 'cursor-pointer' : 'cursor-default'}`}
+                    className={`p-4 border rounded-lg transition-all hover:shadow-md cursor-pointer`}
                     style={{
                       backgroundColor: groupBgColor,
                       backgroundImage: groupBgImage ? `url(${groupBgImage})` : 'none',
@@ -583,10 +586,9 @@ export default function EventCalendar({ refreshKey = 0 }) {
                         key={event.id}
                         onClick={() => {
                           handleEventClick(event);
-                          if (!event.game_id) return;
                           setSelectedDay(null);
                         }}
-                        className={`p-4 border rounded-lg transition-all hover:shadow-md ${event.game_id ? 'cursor-pointer' : 'cursor-default'}`}
+                        className={`p-4 border rounded-lg transition-all hover:shadow-md cursor-pointer`}
                         style={{
                           backgroundColor: groupBgColor,
                           backgroundImage: groupBgImage ? `url(${groupBgImage})` : 'none',
