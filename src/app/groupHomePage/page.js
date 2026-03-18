@@ -466,10 +466,10 @@ function GroupHomePage(){
                                                         <div key={event.id} className="text-xs p-0.5 bg-blue-100 text-blue-800 rounded font-medium cursor-pointer hover:bg-blue-200 transition-colors"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                if (event.game_id) {
-                                                                    router.push(`/gameDetail?game_id=${event.game_id}&group_id=${event.group_id}`);
-                                                                } else {
+                                                                if (isFuture || !event.game_id) {
                                                                     router.push(`/gameDetail?event_id=${event.id}&group_id=${event.group_id}`);
+                                                                } else {
+                                                                    router.push(`/gameDetail?game_id=${event.game_id}&group_id=${event.group_id}`);
                                                                 }
                                                             }}>
                                                             <div className="truncate">{event.Game?.name || 'Game Night'}</div>

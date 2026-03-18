@@ -113,10 +113,13 @@ export default function EventCalendar({ refreshKey = 0 }) {
   };
 
   const handleEventClick = (event) => {
-    if (event.game_id) {
-      router.push(`/gameDetail?game_id=${event.game_id}&group_id=${event.group_id}`);
-    } else {
+    const isFuture = event.start_date && new Date(event.start_date) >= new Date();
+    if (isFuture || !event.game_id) {
+      // Future events or events without a game: show event-focused view (RSVP, ballot, edit)
       router.push(`/gameDetail?event_id=${event.id}&group_id=${event.group_id}`);
+    } else {
+      // Past events with a game: show game detail view (sessions, reviews)
+      router.push(`/gameDetail?game_id=${event.game_id}&group_id=${event.group_id}`);
     }
   };
 

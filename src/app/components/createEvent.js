@@ -82,9 +82,14 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   // Populate form when editingEvent changes
   useEffect(() => {
     if (editingEvent && groupMembers.length > 0) {
-      // Format start_date for datetime-local input (YYYY-MM-DDTHH:mm)
+      // Format start_date for datetime-local input (YYYY-MM-DDTHH:mm) in LOCAL time
+      // datetime-local inputs expect local time, not UTC
       const startDate = editingEvent.start_date
-        ? new Date(editingEvent.start_date).toISOString().slice(0, 16)
+        ? (() => {
+            const d = new Date(editingEvent.start_date);
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+          })()
         : '';
       
       // Map EventParticipations to participants format
@@ -161,9 +166,13 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         }
       }
 
-      // Format rsvp_deadline for datetime-local input
+      // Format rsvp_deadline for datetime-local input in LOCAL time
       const rsvpDeadline = editingEvent.rsvp_deadline
-        ? new Date(editingEvent.rsvp_deadline).toISOString().slice(0, 16)
+        ? (() => {
+            const d = new Date(editingEvent.rsvp_deadline);
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+          })()
         : '';
 
       setNewEvent({
