@@ -1,20 +1,20 @@
 'use client';
 import { useState } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
-import AddMember from '../components/addMember';
 import GroupList from '../components/grouplist';
 import EventCalendar from '../components/EventCalendar';
+import FriendInvitePanel from '../components/FriendInvitePanel';
 
 // List of all the groups for the logged in User
 function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, groupListRefreshKey, onMemberAdded: onMemberAddedProp }) {
     const { user } = Auth();
     const [selectedGroup, setSelectedGroup] = useState(null);
-    const [memberModal, setMemberModal] = useState(false);
+    const [invitePanelOpen, setInvitePanelOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
 
     const handleGroupSelect = (group) => {
         setSelectedGroup(group);
-        setMemberModal(true);
+        setInvitePanelOpen(true);
     };
 
     const handleCreateGroup = () => {
@@ -22,10 +22,6 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
         if (onCreateGroup) {
             onCreateGroup();
         }
-    };
-
-    const modaltoggle = () => {
-        setMemberModal(!memberModal);
     };
 
     const handleMemberAdded = () => {
@@ -50,7 +46,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     return (
         <div className="user-home-container flex flex-col md:flex-row gap-4 md:gap-6 p-4 md:p-6">
             <div className="w-full md:w-auto md:flex-shrink-0 md:flex-[0_0_400px]">
-                <GroupList 
+                <GroupList
                     onGroupSelect={handleGroupSelect}
                     onCreateGroup={handleCreateGroup}
                     user={user}
@@ -58,20 +54,18 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     refreshTrigger={groupListRefreshKey}
                 />
             </div>
-            
+
             {/* Hide calendar on mobile (smaller than md breakpoint) */}
             <div className="hidden md:block flex-1 min-w-0">
                 <EventCalendar refreshKey={refreshKey} />
             </div>
-            
-            {selectedGroup && (
-                <AddMember 
-                    modaltoggle={modaltoggle} 
-                    modal={memberModal} 
-                    group={selectedGroup}
-                    onMemberAdded={handleMemberAdded}
-                />
-            )}
+
+            <FriendInvitePanel
+                group={selectedGroup}
+                open={invitePanelOpen}
+                onClose={() => setInvitePanelOpen(false)}
+                onMemberAdded={handleMemberAdded}
+            />
         </div>
     );
 }

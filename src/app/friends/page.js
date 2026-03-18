@@ -64,9 +64,11 @@ function FriendsPage() {
     const fetchUserGroups = async () => {
         try {
             const groups = await groupsAPI.getUserGroups(user.sub);
-            const adminGroups = (Array.isArray(groups) ? groups : []).filter(
-                g => g.role === 'owner' || g.role === 'admin'
-            );
+            const adminGroups = (Array.isArray(groups) ? groups : []).filter(g => {
+                const currentUser = g.Users?.find(u => u.user_id === user.sub);
+                const role = currentUser?.UserGroup?.role;
+                return role === 'owner' || role === 'admin';
+            });
             setUserGroups(adminGroups);
         } catch (err) {
             console.error('Error fetching user groups:', err);
