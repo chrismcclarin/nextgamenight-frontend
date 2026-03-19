@@ -1,21 +1,23 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
-import { eventsAPI, gameReviewsAPI, usersAPI, groupsAPI, gamesAPI, rsvpAPI, API_BASE_URL } from '../../lib/api';
+import { eventsAPI, gameReviewsAPI, usersAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI, API_BASE_URL } from '../../lib/api';
 import CreateEvent from '../components/createEvent';
 import RsvpSection from '../components/RsvpSection';
 import BallotSection from '../components/BallotSection';
+import GameSuggestionCard from '../components/GameSuggestionCard';
 
 export default function GameDetailPage() {
     const { user } = Auth();
     const searchParams = useSearchParams();
+    const router = useRouter();
     const game_id = searchParams.get('game_id');
     const group_id = searchParams.get('group_id');
     const event_id = searchParams.get('event_id');
-    
+
     const [game, setGame] = useState(null);
     const [events, setEvents] = useState([]);
     const [reviews, setReviews] = useState([]);
@@ -28,6 +30,8 @@ export default function GameDetailPage() {
     const [eventRsvpStatuses, setEventRsvpStatuses] = useState({});
     const [singleEvent, setSingleEvent] = useState(null);
     const [ballotRefreshKey, setBallotRefreshKey] = useState(0);
+    const [eventSuggestions, setEventSuggestions] = useState([]);
+    const [suggestionsPlayerCount, setSuggestionsPlayerCount] = useState(null);
 
     // Session filtering and pagination state
     const [visibleSessions, setVisibleSessions] = useState(3);
@@ -60,6 +64,27 @@ export default function GameDetailPage() {
             fetchEventOnly();
         }
     }, [game_id, group_id, event_id, user?.sub]);
+
+    // Fetch game suggestions for event-only view
+    useEffect(() => {
+        if (!event_id || !group_id) return;
+        const fetchSuggestions = async () => {
+            try {
+                const data = await suggestionsAPI.getEventSuggestions(event_id);
+                if (Array.isArray(data)) {
+                    setEventSuggestions(data);
+                } else if (data && Array.isArray(data.suggestions)) {
+                    setEventSuggestions(data.suggestions);
+                    if (data.player_count) setSuggestionsPlayerCount(data.player_count);
+                } else {
+                    setEventSuggestions([]);
+                }
+            } catch {
+                setEventSuggestions([]);
+            }
+        };
+        fetchSuggestions();
+    }, [event_id, group_id]);
 
     const fetchEventOnly = async () => {
         setLoading(true);
@@ -468,6 +493,35 @@ export default function GameDetailPage() {
                         userRsvpStatus={eventRsvpStatuses[singleEvent.id] || null}
                     />
                 </div>
+
+                {/* Recommended Games Section */}
+                {eventSuggestions.length > 0 && (
+                    <div className="bg-white rounded-lg shadow-md p-6 mt-6">
+                        <h2 className="text-lg font-semibold text-gray-900 mb-1">Recommended Games</h2>
+                        {suggestionsPlayerCount && (
+                            <p className="text-sm text-gray-500 mb-4">
+                                Games from your group that work for {suggestionsPlayerCount} players
+                            </p>
+                        )}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {eventSuggestions.slice(0, 6).map((game) => (
+                                <GameSuggestionCard
+                                    key={game.id}
+                                    game={game}
+                                    onClick={() => router.push(`/gameDetail?game_id=${game.id}&group_id=${group_id}`)}
+                                />
+                            ))}
+                        </div>
+                        <div className="mt-4 text-center">
+                            <button
+                                onClick={() => router.push(`/gameSuggestions?eventId=${event_id}&groupId=${group_id}`)}
+                                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                            >
+                                Browse all suggestions &rarr;
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {userRole && (
                     <div className="mt-4 flex gap-2">
