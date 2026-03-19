@@ -38,8 +38,9 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
             params.maxPlayTime = duration;
           }
           const data = await suggestionsAPI.getGroupSuggestions(groupId, params);
-          // Take top 5 results
-          const items = Array.isArray(data) ? data.slice(0, 5) : [];
+          // Take top 5 results — API returns { suggestions: [...] }
+          const raw = Array.isArray(data) ? data : (data?.suggestions || []);
+          const items = raw.slice(0, 5);
           setSuggestions(items);
         } catch (err) {
           // Silently fail - suggestions are helpful but not critical
@@ -70,9 +71,9 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
             className="flex items-center gap-1.5 px-2 py-1 border border-gray-200 rounded-full bg-white hover:bg-blue-50 transition-colors cursor-pointer flex-shrink-0"
             title={game.name}
           >
-            {game.thumbnail ? (
+            {game.thumbnail_url ? (
               <img
-                src={game.thumbnail}
+                src={game.thumbnail_url}
                 alt=""
                 className="w-6 h-6 rounded object-cover flex-shrink-0"
               />
