@@ -699,6 +699,33 @@ export const friendshipsAPI = {
 };
 
 /**
+ * API functions for Game Suggestions (smart game recommendations)
+ */
+export const suggestionsAPI = {
+  // Get suggestions for a specific event (uses RSVP player count)
+  getEventSuggestions: (eventId, params = {}) => {
+    const query = new URLSearchParams();
+    if (params.maxPlayTime) query.set('maxPlayTime', params.maxPlayTime);
+    if (params.minWeight) query.set('minWeight', params.minWeight);
+    if (params.maxWeight) query.set('maxWeight', params.maxWeight);
+    if (params.sort) query.set('sort', params.sort);
+    const qs = query.toString();
+    return apiFetch(`/suggestions/event/${eventId}${qs ? '?' + qs : ''}`);
+  },
+  // Get suggestions for a group (requires playerCount)
+  getGroupSuggestions: (groupId, params = {}) => {
+    const query = new URLSearchParams();
+    if (params.playerCount) query.set('playerCount', params.playerCount);
+    if (params.maxPlayTime) query.set('maxPlayTime', params.maxPlayTime);
+    if (params.minWeight) query.set('minWeight', params.minWeight);
+    if (params.maxWeight) query.set('maxWeight', params.maxWeight);
+    if (params.sort) query.set('sort', params.sort);
+    const qs = query.toString();
+    return apiFetch(`/suggestions/group/${groupId}${qs ? '?' + qs : ''}`);
+  },
+};
+
+/**
  * API functions for Game Voting Ballots
  */
 export const ballotAPI = {
