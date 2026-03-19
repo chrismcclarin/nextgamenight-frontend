@@ -6,6 +6,7 @@ import { gamesAPI, eventsAPI, groupsAPI, ballotAPI, API_BASE_URL } from '../../l
 import { format, parseISO, differenceInMinutes } from 'date-fns';
 import EventScheduler from './EventScheduler';
 import GameComboInput from './GameComboInput';
+import QuickSuggestions from './QuickSuggestions';
 
 // Helper function to create a participant object
 // Note: user_id here is the User.id (UUID), not the Auth0 user_id string
@@ -338,6 +339,14 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     };
   };
 
+  // Derive participant count for QuickSuggestions
+  const participantCount = newEvent.participants.length;
+
+  // Handle suggestion selection — fill game field in form
+  const handleSuggestionSelect = (game) => {
+    setNewEvent(prev => ({ ...prev, game_id: game.id, game_name: game.name }));
+  };
+
   const onSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -504,6 +513,13 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
               groupId={group_id}
               userId={authUser?.sub}
               placeholder="Search for a game or type a name"
+            />
+            <QuickSuggestions
+              groupId={group_id}
+              playerCount={participantCount}
+              duration={newEvent.duration_minutes}
+              onSelectGame={handleSuggestionSelect}
+              eventId={editingEvent?.id}
             />
           </div>
 
@@ -763,71 +779,76 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             </button>
           </div>
 
-          {/* Winner Selection */}
-          <div>
-            <label htmlFor="winner_id" className="block text-sm font-medium mb-1 text-gray-900">
-              Winner
-            </label>
-            <select
-              id="winner_id"
-              value={newEvent.winner_id || ''}
-              onChange={handleChange}
-              className="w-full p-2 border rounded text-gray-900 bg-white"
-            >
-              <option value="">Select winner (optional)</option>
-              {newEvent.participants
-                .filter(p => p.username && p.username.trim() !== "")
-                .map((participant, index) => {
-                  // Use user_id if available, otherwise use a custom identifier
-                  const value = participant.user_id || `custom_${index}_${participant.username}`;
-                  return (
-                    <option key={index} value={value}>
-                      {participant.username}
-                    </option>
-                  );
-                })}
-            </select>
-          </div>
+          {/* Winner, Picked By, and Group Win - only show for past events */}
+          {newEvent.start_date && new Date(newEvent.start_date) <= new Date() && (
+            <>
+              {/* Winner Selection */}
+              <div>
+                <label htmlFor="winner_id" className="block text-sm font-medium mb-1 text-gray-900">
+                  Winner
+                </label>
+                <select
+                  id="winner_id"
+                  value={newEvent.winner_id || ''}
+                  onChange={handleChange}
+                  className="w-full p-2 border rounded text-gray-900 bg-white"
+                >
+                  <option value="">Select winner (optional)</option>
+                  {newEvent.participants
+                    .filter(p => p.username && p.username.trim() !== "")
+                    .map((participant, index) => {
+                      // Use user_id if available, otherwise use a custom identifier
+                      const value = participant.user_id || `custom_${index}_${participant.username}`;
+                      return (
+                        <option key={index} value={value}>
+                          {participant.username}
+                        </option>
+                      );
+                    })}
+                </select>
+              </div>
 
-          {/* Picked By Selection */}
-          <div>
-            <label htmlFor="picked_by_id" className="block text-sm font-medium mb-1 text-gray-900">
-              Picked By
-            </label>
-            <select
-              id="picked_by_id"
-              value={newEvent.picked_by_id || ''}
-              onChange={handleChange}
-              className="w-full p-2 border rounded text-gray-900 bg-white"
-            >
-              <option value="">Select who picked the game (optional)</option>
-              {newEvent.participants
-                .filter(p => p.username && p.username.trim() !== "")
-                .map((participant, index) => {
-                  // Use user_id if available, otherwise use a custom identifier
-                  const value = participant.user_id || `custom_${index}_${participant.username}`;
-                  return (
-                    <option key={index} value={value}>
-                      {participant.username}
-                    </option>
-                  );
-                })}
-            </select>
-          </div>
+              {/* Picked By Selection */}
+              <div>
+                <label htmlFor="picked_by_id" className="block text-sm font-medium mb-1 text-gray-900">
+                  Picked By
+                </label>
+                <select
+                  id="picked_by_id"
+                  value={newEvent.picked_by_id || ''}
+                  onChange={handleChange}
+                  className="w-full p-2 border rounded text-gray-900 bg-white"
+                >
+                  <option value="">Select who picked the game (optional)</option>
+                  {newEvent.participants
+                    .filter(p => p.username && p.username.trim() !== "")
+                    .map((participant, index) => {
+                      // Use user_id if available, otherwise use a custom identifier
+                      const value = participant.user_id || `custom_${index}_${participant.username}`;
+                      return (
+                        <option key={index} value={value}>
+                          {participant.username}
+                        </option>
+                      );
+                    })}
+                </select>
+              </div>
 
-          {/* Group Win Checkbox */}
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="is_group_win"
-              checked={newEvent.is_group_win}
-              onChange={handleChange}
-              className="mr-2"
-            />
-            <label htmlFor="is_group_win" className="text-sm font-medium text-gray-900">
-              Group Win
-            </label>
-          </div>
+              {/* Group Win Checkbox */}
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="is_group_win"
+                  checked={newEvent.is_group_win}
+                  onChange={handleChange}
+                  className="mr-2"
+                />
+                <label htmlFor="is_group_win" className="text-sm font-medium text-gray-900">
+                  Group Win
+                </label>
+              </div>
+            </>
+          )}
 
           {/* Comments */}
           <div>
