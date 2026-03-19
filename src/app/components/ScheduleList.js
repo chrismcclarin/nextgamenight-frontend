@@ -56,7 +56,7 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
         const dayName = DAYS[schedule.schedule_day_of_week] || 'Unknown';
         const timeFormatted = formatTime(schedule.schedule_time);
         const game = games.find(g => g.id === schedule.game_id);
-        const gameName = game?.name || 'Any game';
+        const gameName = game?.name || 'Game TBD';
         const isActive = schedule.is_active;
         const scheduleName = schedule.template_name || `${dayName} ${timeFormatted}`;
 

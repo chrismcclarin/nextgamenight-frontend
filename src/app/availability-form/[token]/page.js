@@ -76,6 +76,7 @@ export default function AvailabilityFormPage() {
           userName: validation.user?.name || 'User',
           promptId: validation.prompt_id,
           expiresAt: validation.expiresAt,
+          gameName: validation.game?.name || null,
         });
 
         // Try to fetch existing response for pre-fill
@@ -232,7 +233,7 @@ export default function AvailabilityFormPage() {
             Submit Your Availability
           </h1>
           <p className="text-gray-600">
-            Select the times you&apos;re available for this week&apos;s game session.
+            Select the times you&apos;re available for this week&apos;s {tokenData?.gameName || 'Game TBD'} session.
           </p>
 
           {/* Token expiry warning */}
