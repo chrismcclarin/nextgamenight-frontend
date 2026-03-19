@@ -99,7 +99,7 @@ export default function ScheduleForm({
   useEffect(() => {
     if (!watchedTemplateName && !isEditMode) {
       const selectedGame = games.find(g => g.id === watchedGameId);
-      const gameName = selectedGame?.name || 'General';
+      const gameName = selectedGame?.name || 'Game TBD';
       const dayName = DAYS_OF_WEEK.find(d => d.value === watchedDayOfWeek)?.label || '';
       const autoName = `${gameName} - ${dayName} ${watchedTime}`;
       // Don't set if user has typed something
@@ -119,12 +119,17 @@ export default function ScheduleForm({
   // Form submission handler
   const onSubmit = async (data) => {
     setServerError(null);
+    // Normalize game_id: empty string -> null
+    const normalizedData = {
+      ...data,
+      game_id: data.game_id || null,
+    };
 
     try {
       if (isEditMode) {
-        await promptSettingsAPI.updateSchedule(groupId, existingSchedule.id, data);
+        await promptSettingsAPI.updateSchedule(groupId, existingSchedule.id, normalizedData);
       } else {
-        await promptSettingsAPI.createSchedule(groupId, data);
+        await promptSettingsAPI.createSchedule(groupId, normalizedData);
       }
       onSuccess?.();
     } catch (error) {
@@ -268,22 +273,33 @@ export default function ScheduleForm({
           {/* Game Selection */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Game (optional)
+              Game
             </label>
-            <select
-              {...register('game_id')}
-              className="w-full p-2 border border-gray-300 rounded-lg text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">No specific game (general availability)</option>
-              {games.map((game) => (
-                <option key={game.id} value={game.id}>
-                  {game.name}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              Leave empty for general &ldquo;when are you free?&rdquo; prompts
-            </p>
+            <div className="flex items-center gap-2">
+              <select
+                {...register('game_id')}
+                className="flex-1 p-2 border border-gray-300 rounded-lg text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Game TBD</option>
+                {games.map((game) => (
+                  <option key={game.id} value={game.id}>
+                    {game.name}
+                  </option>
+                ))}
+              </select>
+              {watchedGameId && (
+                <button
+                  type="button"
+                  onClick={() => setValue('game_id', '', { shouldValidate: true })}
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Clear game selection"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
             {errors.game_id && (
               <p className="text-red-500 text-sm mt-1">{errors.game_id.message}</p>
             )}
