@@ -1,41 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import { promptSettingsAPI } from '../../lib/api';
-
-// Day of week options for dropdown
-const DAYS_OF_WEEK = [
-  { value: 0, label: 'Sunday' },
-  { value: 1, label: 'Monday' },
-  { value: 2, label: 'Tuesday' },
-  { value: 3, label: 'Wednesday' },
-  { value: 4, label: 'Thursday' },
-  { value: 5, label: 'Friday' },
-  { value: 6, label: 'Saturday' },
-];
-
-// Token expiry options per PROMPT-05 requirement
-const TOKEN_EXPIRY_OPTIONS = [
-  { value: 24, label: '24 hours (1 day)' },
-  { value: 72, label: '72 hours (3 days)' },
-  { value: 168, label: '168 hours (7 days)' },
-];
-
-// Zod validation schema for schedule form
-const scheduleSchema = z.object({
-  schedule_day_of_week: z.number().min(0).max(6),
-  schedule_time: z.string().regex(/^\d{2}:\d{2}$/, 'Time must be HH:MM format'),
-  schedule_timezone: z.string().min(1, 'Timezone is required'),
-  default_deadline_hours: z.number().min(1, 'Minimum 1 hour').max(336, 'Maximum 336 hours (2 weeks)'),
-  default_token_expiry_hours: z.number().min(24).max(168),
-  game_id: z.string().uuid().nullable().optional(),
-  template_name: z.string().optional(),
-  min_participants: z.number().min(1).nullable().optional(),
-  selected_member_ids: z.array(z.string()).default([]),
-});
+import { DAYS_OF_WEEK, TOKEN_EXPIRY_OPTIONS, scheduleSchema } from '../../lib/scheduleFormSchema';
+import MemberSelector from './MemberSelector';
 
 /**
  * ScheduleForm - Form component for creating/editing prompt schedules
@@ -107,15 +77,6 @@ export default function ScheduleForm({
     }
   }, [watchedGameId, watchedDayOfWeek, watchedTime, games, setValue, watchedTemplateName, isEditMode]);
 
-  // Handle "Select All" for members
-  const handleSelectAllMembers = (checked) => {
-    if (checked) {
-      setValue('selected_member_ids', members.map(m => m.user_id || m.id));
-    } else {
-      setValue('selected_member_ids', []);
-    }
-  };
-
   // Form submission handler
   const onSubmit = async (data) => {
     setServerError(null);
@@ -149,9 +110,8 @@ export default function ScheduleForm({
     });
   };
 
-  // Get watched selected_member_ids for "Select All" checkbox state
+  // Get watched selected_member_ids for MemberSelector
   const selectedMemberIds = watch('selected_member_ids') || [];
-  const allMembersSelected = members.length > 0 && selectedMemberIds.length === members.length;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center" style={{ zIndex: 100 }}>
@@ -349,57 +309,19 @@ export default function ScheduleForm({
 
           {/* Member Selection */}
           {members.length > 0 && (
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Send to Members
-              </label>
-              <div className="border border-gray-200 rounded-lg p-3 max-h-48 overflow-y-auto">
-                {/* Select All */}
-                <label className="flex items-center mb-2 pb-2 border-b border-gray-200">
-                  <input
-                    type="checkbox"
-                    checked={allMembersSelected}
-                    onChange={(e) => handleSelectAllMembers(e.target.checked)}
-                    className="mr-2 h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                  />
-                  <span className="font-medium text-gray-700">Select All</span>
-                </label>
-
-                {/* Individual members */}
-                {members.map((member) => (
-                  <Controller
-                    key={member.user_id || member.id}
-                    name="selected_member_ids"
-                    control={control}
-                    render={({ field }) => (
-                      <label className="flex items-center py-1">
-                        <input
-                          type="checkbox"
-                          checked={field.value?.includes(member.user_id || member.id)}
-                          onChange={(e) => {
-                            const memberId = member.user_id || member.id;
-                            const newValue = e.target.checked
-                              ? [...(field.value || []), memberId]
-                              : (field.value || []).filter(id => id !== memberId);
-                            field.onChange(newValue);
-                          }}
-                          className="mr-2 h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                        />
-                        <span className="text-gray-700">
-                          {member.display_name || member.username || member.email || member.user_id}
-                        </span>
-                      </label>
-                    )}
-                  />
-                ))}
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Selected: {selectedMemberIds.length} of {members.length} members
-              </p>
-              {errors.selected_member_ids && (
-                <p className="text-red-500 text-sm mt-1">{errors.selected_member_ids.message}</p>
-              )}
-            </div>
+            <MemberSelector
+              members={members}
+              control={control}
+              selectedMemberIds={selectedMemberIds}
+              onSelectAllMembers={(checked) => {
+                if (checked) {
+                  setValue('selected_member_ids', members.map(m => m.user_id || m.id));
+                } else {
+                  setValue('selected_member_ids', []);
+                }
+              }}
+              error={errors.selected_member_ids?.message}
+            />
           )}
 
           {/* Server Error */}
