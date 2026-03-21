@@ -7,39 +7,10 @@ import { format, parseISO, differenceInMinutes } from 'date-fns';
 import EventScheduler from './EventScheduler';
 import GameComboInput from './GameComboInput';
 import QuickSuggestions from './QuickSuggestions';
-
-// Helper function to create a participant object
-// Note: user_id here is the User.id (UUID), not the Auth0 user_id string
-const createParticipant = (user_id = "", username = "", auth0_user_id = "", isFromGroup = false) => ({
-  user_id: user_id, // User.id (UUID) for database
-  username: username, // For display purposes
-  auth0_user_id: auth0_user_id, // Auth0 identifier for reference
-  score: null,
-  faction: "",
-  is_new_player: false,
-  placement: null,
-  isFromGroup: isFromGroup // Track if this is an auto-filled group member
-});
-
-// Helper function to create initial event form
-const createEventForm = (group_id, groupMembers = []) => ({
-  // Event fields
-  group_id: group_id,
-  game_id: "",
-  game_name: "",
-  start_date: "",
-  duration_minutes: null,
-  rsvp_deadline: "",
-  winner_id: null,
-  picked_by_id: null,
-  is_group_win: false,
-  comments: "",
-  // Participants array - auto-populated with all group members (read-only)
-  // Use member.id (UUID) for user_id, not member.user_id (Auth0 string)
-  participants: groupMembers.map(member => 
-    createParticipant(member.id, member.username, member.user_id, true)
-  )
-});
+import { createParticipant, createEventForm, prepareEventData } from '../../lib/eventFormUtils';
+import ParticipantRow from './ParticipantRow';
+import BallotOptionsEditor from './BallotOptionsEditor';
+import EventResultFields from './EventResultFields';
 
 function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, hideVisualCalendar = false }) {
   const authUser = user || Auth().user;
@@ -275,68 +246,6 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       ...newEvent,
       participants: [...newEvent.participants, createParticipant("", "", "", false)]
     });
-  };
-
-  // Prepare participants for submission
-  // Separate group members (with user_id) and custom participants (without user_id)
-  const prepareEventData = (eventData) => {
-    // Group members with user_id
-    const groupMemberParticipants = eventData.participants
-      .filter(p => p.username && p.username.trim() !== "" && p.user_id && p.user_id.trim() !== "")
-      .map(p => ({
-        user_id: p.user_id,
-        score: p.score || null,
-        faction: p.faction || null,
-        is_new_player: p.is_new_player || false,
-        placement: p.placement || null
-      }));
-    
-    // Custom participants without user_id
-    const customParticipants = eventData.participants
-      .filter(p => p.username && p.username.trim() !== "" && (!p.user_id || p.user_id.trim() === ""))
-      .map(p => ({
-        username: p.username,
-        score: p.score || null,
-        faction: p.faction || null,
-        is_new_player: p.is_new_player || false,
-        placement: p.placement || null
-      }));
-    
-    // Handle winner_id and picked_by_id - extract custom participant names if needed
-    let winner_id = eventData.winner_id || null;
-    let winner_name = null;
-    let picked_by_id = eventData.picked_by_id || null;
-    let picked_by_name = null;
-    
-    if (winner_id && winner_id.startsWith('custom_')) {
-      // Extract username from custom identifier (format: custom_index_username)
-      const match = winner_id.match(/^custom_\d+_(.+)$/);
-      if (match) {
-        winner_name = match[1];
-        winner_id = null; // Clear user_id for custom participants
-      }
-    }
-    
-    if (picked_by_id && picked_by_id.startsWith('custom_')) {
-      // Extract username from custom identifier (format: custom_index_username)
-      const match = picked_by_id.match(/^custom_\d+_(.+)$/);
-      if (match) {
-        picked_by_name = match[1];
-        picked_by_id = null; // Clear user_id for custom participants
-      }
-    }
-    
-    return {
-      ...eventData,
-      participants: groupMemberParticipants, // Group members with user_id
-      custom_participants: customParticipants, // Custom participants without user_id
-      // Convert empty strings to null for optional fields
-      duration_minutes: eventData.duration_minutes || null,
-      winner_id: winner_id,
-      winner_name: winner_name,
-      picked_by_id: picked_by_id,
-      picked_by_name: picked_by_name,
-    };
   };
 
   // Derive participant count for QuickSuggestions
@@ -618,60 +527,13 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
           {/* Game Ballot Section */}
           {newEvent.rsvp_deadline && (
-            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-              <div className="mb-3">
-                <h3 className="text-sm font-semibold text-gray-900">Game Ballot (optional)</h3>
-                <p className="text-xs text-gray-500">Add 2-10 games for your group to vote on</p>
-              </div>
-
-              {ballotError && (
-                <p className="text-sm text-red-600 mb-2">{ballotError}</p>
-              )}
-
-              <div className="space-y-2">
-                {ballotOptions.map((option, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <div className="flex-1">
-                      <GameComboInput
-                        value={{ game_id: option.game_id, game_name: option.game_name }}
-                        onChange={({ game_id, game_name }) => {
-                          const updated = [...ballotOptions];
-                          updated[index] = { game_id: game_id || null, game_name: game_name || '' };
-                          setBallotOptions(updated);
-                        }}
-                        groupId={group_id}
-                        userId={authUser?.sub}
-                        placeholder={`Game option ${index + 1}`}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBallotOptions(ballotOptions.filter((_, i) => i !== index));
-                      }}
-                      className="text-red-500 hover:text-red-700 text-lg px-2 py-1 flex-shrink-0"
-                      title="Remove option"
-                    >
-                      &times;
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              {ballotOptions.length < 10 && (
-                <button
-                  type="button"
-                  onClick={() => setBallotOptions([...ballotOptions, { game_id: null, game_name: '' }])}
-                  className="mt-2 px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm font-medium"
-                >
-                  + Add game option
-                </button>
-              )}
-
-              {ballotOptions.length > 0 && ballotOptions.length < 2 && (
-                <p className="text-xs text-amber-600 mt-2">Add at least 2 games to create a ballot</p>
-              )}
-            </div>
+            <BallotOptionsEditor
+              ballotOptions={ballotOptions}
+              setBallotOptions={setBallotOptions}
+              ballotError={ballotError}
+              groupId={group_id}
+              userId={authUser?.sub}
+            />
           )}
 
           {/* Participants Section */}
@@ -681,93 +543,14 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             </label>
             <div className="space-y-2 max-h-60 overflow-y-auto border p-2 rounded bg-white">
               {newEvent.participants.map((participant, index) => (
-                <div key={index} className="flex items-center gap-4 p-2 border-b">
-                  <div className="flex-1">
-                    <label className="text-xs text-gray-700 mb-1 block">Participant Name</label>
-                    {participant.isFromGroup ? (
-                      // Read-only display for group members
-                      <div className="p-2 border rounded bg-gray-50 text-gray-900 text-sm">
-                        {participant.username || `Participant ${index + 1}`}
-                      </div>
-                    ) : (
-                      // Editable input for custom participants
-                      <input
-                        type="text"
-                        value={participant.username || ''}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          // Allow typing any name (group member or custom)
-                          handleParticipantChange(index, 'username', value);
-                          
-                          // Try to find matching group member
-                          const matchingMember = groupMembers.find(m => 
-                            m.username?.toLowerCase() === value.toLowerCase() || 
-                            m.email?.toLowerCase() === value.toLowerCase()
-                          );
-                          
-                          if (matchingMember) {
-                            // If it matches a group member, set the user_id and mark as from group
-                            handleParticipantChange(index, 'user_id', matchingMember.id);
-                            handleParticipantChange(index, 'auth0_user_id', matchingMember.user_id);
-                            // Note: We can't change isFromGroup here, but the user_id will be set
-                          } else {
-                            // If it doesn't match, clear user_id (custom participant)
-                            if (participant.user_id) {
-                              handleParticipantChange(index, 'user_id', '');
-                              handleParticipantChange(index, 'auth0_user_id', '');
-                            }
-                          }
-                        }}
-                        placeholder="Type name (group member or custom)"
-                        className="w-full p-2 border rounded text-gray-900 bg-white text-sm"
-                      />
-                    )}
-                  </div>
-                  
-                  <div className="flex gap-2 items-center">
-                    <div>
-                      <label className="text-xs text-gray-900">Score</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={participant.score || ''}
-                        onChange={(e) => handleParticipantChange(index, 'score', e.target.value)}
-                        className="w-20 p-1 border rounded text-gray-900 bg-white"
-                        placeholder="0"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="text-xs text-gray-900">Faction</label>
-                      <input
-                        type="text"
-                        value={participant.faction || ''}
-                        onChange={(e) => handleParticipantChange(index, 'faction', e.target.value)}
-                        className="w-24 p-1 border rounded text-gray-900 bg-white"
-                        placeholder="Optional"
-                      />
-                    </div>
-                    
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={participant.is_new_player || false}
-                        onChange={(e) => handleParticipantChange(index, 'is_new_player', e.target.checked)}
-                        className="mr-1"
-                      />
-                      <label className="text-xs text-gray-900">New Player</label>
-                    </div>
-                    
-                    <button
-                      type="button"
-                      onClick={() => toggleParticipant(index)}
-                      className="text-red-500 hover:text-red-700 text-sm px-2 py-1 border border-red-300 rounded hover:bg-red-50"
-                      title="Remove participant"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
+                <ParticipantRow
+                  key={index}
+                  participant={participant}
+                  index={index}
+                  groupMembers={groupMembers}
+                  onParticipantChange={handleParticipantChange}
+                  onToggleParticipant={toggleParticipant}
+                />
               ))}
             </div>
             <button
@@ -781,73 +564,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
           {/* Winner, Picked By, and Group Win - only show for past events */}
           {newEvent.start_date && new Date(newEvent.start_date) <= new Date() && (
-            <>
-              {/* Winner Selection */}
-              <div>
-                <label htmlFor="winner_id" className="block text-sm font-medium mb-1 text-gray-900">
-                  Winner
-                </label>
-                <select
-                  id="winner_id"
-                  value={newEvent.winner_id || ''}
-                  onChange={handleChange}
-                  className="w-full p-2 border rounded text-gray-900 bg-white"
-                >
-                  <option value="">Select winner (optional)</option>
-                  {newEvent.participants
-                    .filter(p => p.username && p.username.trim() !== "")
-                    .map((participant, index) => {
-                      // Use user_id if available, otherwise use a custom identifier
-                      const value = participant.user_id || `custom_${index}_${participant.username}`;
-                      return (
-                        <option key={index} value={value}>
-                          {participant.username}
-                        </option>
-                      );
-                    })}
-                </select>
-              </div>
-
-              {/* Picked By Selection */}
-              <div>
-                <label htmlFor="picked_by_id" className="block text-sm font-medium mb-1 text-gray-900">
-                  Picked By
-                </label>
-                <select
-                  id="picked_by_id"
-                  value={newEvent.picked_by_id || ''}
-                  onChange={handleChange}
-                  className="w-full p-2 border rounded text-gray-900 bg-white"
-                >
-                  <option value="">Select who picked the game (optional)</option>
-                  {newEvent.participants
-                    .filter(p => p.username && p.username.trim() !== "")
-                    .map((participant, index) => {
-                      // Use user_id if available, otherwise use a custom identifier
-                      const value = participant.user_id || `custom_${index}_${participant.username}`;
-                      return (
-                        <option key={index} value={value}>
-                          {participant.username}
-                        </option>
-                      );
-                    })}
-                </select>
-              </div>
-
-              {/* Group Win Checkbox */}
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="is_group_win"
-                  checked={newEvent.is_group_win}
-                  onChange={handleChange}
-                  className="mr-2"
-                />
-                <label htmlFor="is_group_win" className="text-sm font-medium text-gray-900">
-                  Group Win
-                </label>
-              </div>
-            </>
+            <EventResultFields newEvent={newEvent} handleChange={handleChange} />
           )}
 
           {/* Comments */}
