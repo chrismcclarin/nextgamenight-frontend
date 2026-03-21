@@ -5,6 +5,8 @@ import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
 import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, availabilityAPI } from '../../lib/api';
 import Link from 'next/link';
+import { formatDate } from '../../lib/dateUtils';
+import SafeImage from '../components/SafeImage';
 
 function Profile(){
     const { user, error, isLoading } = Auth();
@@ -300,10 +302,6 @@ function Profile(){
         return days[dayOfWeek];
     };
 
-    const formatDate = (dateString) => {
-        if (!dateString) return 'No end date';
-        return new Date(dateString).toLocaleDateString();
-    };
 
     const importBGGCollection = async () => {
         if (!user?.sub || !bggUsername.trim()) {
@@ -837,14 +835,11 @@ function Profile(){
                                             ×
                                         </button>
                                     </div>
-                                    {game.image_url && (
-                                        <img 
-                                            src={game.image_url} 
-                                            alt={game.name}
-                                            className="w-full h-32 object-cover rounded mb-2"
-                                            onError={(e) => e.target.style.display = 'none'}
-                                        />
-                                    )}
+                                    <SafeImage
+                                        src={game.image_url}
+                                        alt={game.name}
+                                        className="w-full h-32 object-cover rounded mb-2"
+                                    />
                                 </div>
                             ))}
                         </div>

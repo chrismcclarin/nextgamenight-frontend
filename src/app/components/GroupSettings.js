@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { groupsAPI, API_BASE_URL } from '../../lib/api';
 import PromptScheduleManager from './PromptScheduleManager';
+import SafeImage from './SafeImage';
 
 // Default profile picture options
 const DEFAULT_PROFILE_PICTURES = [
@@ -143,14 +144,11 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
               <div className="inline-block w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center text-4xl mb-2">
                 {profilePictureUrl ? (
                   profilePictureUrl.startsWith('http') || profilePictureUrl.startsWith('/') ? (
-                    <img 
-                      src={profilePictureUrl} 
-                      alt="Profile" 
+                    <SafeImage
+                      src={profilePictureUrl}
+                      alt="Profile"
+                      fallbackIcon="👥"
                       className="w-20 h-20 rounded-full object-cover"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                        e.target.nextSibling.style.display = 'block';
-                      }}
                     />
                   ) : (
                     <span>{profilePictureUrl}</span>

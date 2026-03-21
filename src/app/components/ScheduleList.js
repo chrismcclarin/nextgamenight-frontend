@@ -1,19 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { formatTime } from '../../lib/dateUtils';
 
 // Day of week helper
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-// Time formatting helper: Convert 24h to 12h format
-const formatTime = (time) => {
-  if (!time) return '';
-  const [hours, minutes] = time.split(':');
-  const h = parseInt(hours);
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const displayHour = h % 12 || 12;
-  return `${displayHour}:${minutes} ${ampm}`;
-};
 
 /**
  * ScheduleList - Displays schedules in a list format with actions

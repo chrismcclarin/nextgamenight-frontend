@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { suggestionAPI } from '@/lib/api';
+import { formatDate, formatTime } from '../../lib/dateUtils';
 
 /**
  * SuggestionCard - Displays a single availability suggestion with action buttons
@@ -25,24 +26,9 @@ export default function SuggestionCard({
   const [isConverting, setIsConverting] = useState(false);
   const [error, setError] = useState(null);
 
-  const formatDateTime = (dateString) => {
-    const date = new Date(dateString);
-    return {
-      date: date.toLocaleDateString('en-US', {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric'
-      }),
-      time: date.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-      })
-    };
-  };
-
-  const start = formatDateTime(suggestion.suggested_start);
-  const end = formatDateTime(suggestion.suggested_end);
+  const startDate = formatDate(suggestion.suggested_start);
+  const startTime = formatTime(suggestion.suggested_start);
+  const endTime = formatTime(suggestion.suggested_end);
 
   const handleCreateEvent = async () => {
     if (isConverting) return;
@@ -89,10 +75,10 @@ export default function SuggestionCard({
       <div className="flex justify-between items-start mb-3">
         <div>
           <div className="font-semibold text-gray-900">
-            {start.date}
+            {startDate}
           </div>
           <div className="text-sm text-gray-600">
-            {start.time} - {end.time}
+            {startTime} - {endTime}
           </div>
         </div>
 

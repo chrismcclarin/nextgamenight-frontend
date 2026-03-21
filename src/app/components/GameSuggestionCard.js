@@ -1,5 +1,7 @@
 'use client';
 
+import SafeImage from './SafeImage';
+
 /**
  * GameSuggestionCard - Displays a single game suggestion with metadata
  * Used in both the dedicated suggestions page and event detail recommendations.
@@ -20,18 +22,11 @@ export default function GameSuggestionCard({ game, onClick }) {
       }`}
     >
       {/* Thumbnail */}
-      {game.thumbnail_url ? (
-        <img
-          src={game.thumbnail_url}
-          alt={game.name}
-          className="w-16 h-16 rounded object-cover flex-shrink-0"
-          onError={(e) => { e.target.style.display = 'none'; }}
-        />
-      ) : (
-        <div className="w-16 h-16 rounded bg-gray-200 flex items-center justify-center flex-shrink-0 text-2xl text-gray-400">
-          🎲
-        </div>
-      )}
+      <SafeImage
+        src={game.thumbnail_url}
+        alt={game.name}
+        className="w-16 h-16 rounded object-cover flex-shrink-0"
+      />
 
       {/* Details */}
       <div className="flex-1 min-w-0 flex flex-col gap-1">

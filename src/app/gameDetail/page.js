@@ -9,6 +9,8 @@ import CreateEvent from '../components/createEvent';
 import RsvpSection from '../components/RsvpSection';
 import BallotSection from '../components/BallotSection';
 import GameSuggestionCard from '../components/GameSuggestionCard';
+import { formatDate, formatDateTime, formatDuration } from '../../lib/dateUtils';
+import SafeImage from '../components/SafeImage';
 
 export default function GameDetailPage() {
     const { user } = Auth();
@@ -263,47 +265,6 @@ export default function GameDetailPage() {
         }
     };
 
-    const formatDate = (date) => {
-        if (!date) return 'Never';
-        try {
-            return new Date(date).toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric'
-            });
-        } catch {
-            return 'Invalid date';
-        }
-    };
-
-    const formatDateTime = (date) => {
-        if (!date) return '';
-        try {
-            return new Date(date).toLocaleString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-                hour: 'numeric',
-                minute: '2-digit'
-            });
-        } catch {
-            return '';
-        }
-    };
-
-    const formatDuration = (minutes) => {
-        if (!minutes || minutes === 0) return '';
-        if (minutes < 60) {
-            return `${minutes} min`;
-        }
-        const hours = minutes / 60;
-        // If it's exactly a whole number, show without decimal
-        if (hours % 1 === 0) {
-            return `${hours} hour${hours !== 1 ? 's' : ''}`;
-        }
-        // Otherwise, show with one decimal place
-        return `${hours.toFixed(1)} hours`;
-    };
 
     const renderStars = (rating) => {
         // Ratings are stored on a 0-5 scale, display directly
@@ -601,16 +562,11 @@ export default function GameDetailPage() {
                 ) : (
                     /* BGG game: show full detail view */
                     <div className="flex gap-6">
-                        {game.image_url && (
-                            <img
-                                src={game.image_url}
-                                alt={game.name}
-                                className="w-48 h-48 object-cover rounded-lg"
-                                onError={(e) => {
-                                    e.target.style.display = 'none';
-                                }}
-                            />
-                        )}
+                        <SafeImage
+                            src={game.image_url}
+                            alt={game.name}
+                            className="w-48 h-48 object-cover rounded-lg"
+                        />
                         <div className="flex-1">
                             <h1 className="text-3xl font-bold text-gray-900 mb-2">{game.name}</h1>
                             {game.year_published && (
