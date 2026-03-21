@@ -9,17 +9,27 @@ import { getDaysInMonth, getEventsForDate, isToday } from '../../lib/calendarUti
 import SafeImage from './SafeImage';
 import RsvpCount from './RsvpCount';
 
-export default function EventCalendar({ refreshKey = 0 }) {
+export default function EventCalendar({
+  refreshKey = 0,
+  events: externalEvents = null,   // If provided, use these instead of fetching
+  variant = 'full',                // 'full' (user home) or 'compact' (group home)
+  onEmptyDayClick = null,          // Callback: (dateString) => void -- for click-to-create
+  onEventClick: externalOnEventClick = null, // Override default event click navigation
+  title = 'Game Sessions Calendar', // Configurable header title
+  showListView = true,             // Whether to show list view toggle
+}) {
   const { user } = Auth();
   const router = useRouter();
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [internalEvents, setInternalEvents] = useState([]);
+  const [loading, setLoading] = useState(externalEvents === null);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState('month'); // 'month' or 'list'
   const [selectedDay, setSelectedDay] = useState(null); // For modal: { date, events }
 
+  const activeEvents = externalEvents !== null ? externalEvents : internalEvents;
+
   useEffect(() => {
-    if (user?.sub) {
+    if (externalEvents === null && user?.sub) {
       fetchEvents();
     }
   }, [user, refreshKey]); // Refetch when refreshKey changes
@@ -29,10 +39,10 @@ export default function EventCalendar({ refreshKey = 0 }) {
     try {
       setLoading(true);
       const data = await eventsAPI.getUserEvents(user.sub, { includeRsvpSummary: true });
-      setEvents(data || []);
+      setInternalEvents(data || []);
     } catch (error) {
       console.error('Error fetching events:', error.message || 'Unknown error');
-      setEvents([]);
+      setInternalEvents([]);
     } finally {
       setLoading(false);
     }
@@ -68,9 +78,9 @@ export default function EventCalendar({ refreshKey = 0 }) {
     setCurrentDate(new Date());
   };
 
-  const handleEventClick = (event) => {
-    const isFuture = event.start_date && new Date(event.start_date) >= new Date();
-    if (isFuture || !event.game_id) {
+  const defaultEventClick = (event) => {
+    const isFutureEvent = event.start_date && new Date(event.start_date) >= new Date();
+    if (isFutureEvent || !event.game_id) {
       // Future events or events without a game: show event-focused view (RSVP, ballot, edit)
       router.push(`/gameDetail?event_id=${event.id}&group_id=${event.group_id}`);
     } else {
@@ -79,13 +89,15 @@ export default function EventCalendar({ refreshKey = 0 }) {
     }
   };
 
+  const handleEventClick = externalOnEventClick || defaultEventClick;
+
 
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   const days = getDaysInMonth(currentDate);
-  const sortedEvents = [...events].sort((a, b) => 
+  const sortedEvents = [...activeEvents].sort((a, b) =>
     new Date(a.start_date) - new Date(b.start_date)
   );
 
@@ -100,15 +112,17 @@ export default function EventCalendar({ refreshKey = 0 }) {
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Game Sessions Calendar</h2>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setViewMode(viewMode === 'month' ? 'list' : 'month')}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm"
-          >
-            {viewMode === 'month' ? 'List View' : 'Month View'}
-          </button>
-        </div>
+        <h2 className="text-2xl font-bold text-gray-900">{title}</h2>
+        {showListView && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => setViewMode(viewMode === 'month' ? 'list' : 'month')}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm"
+            >
+              {viewMode === 'month' ? 'List View' : 'Month View'}
+            </button>
+          </div>
+        )}
       </div>
 
       {viewMode === 'month' ? (
@@ -151,119 +165,156 @@ export default function EventCalendar({ refreshKey = 0 }) {
 
           <div className="grid grid-cols-7 gap-1">
             {days.map((date, index) => {
-              const dayEvents = getEventsForDate(date, events);
+              const dayEvents = getEventsForDate(date, activeEvents);
               const isCurrentDay = isToday(date);
               const isPastDate = isPast(date);
               const isFutureDate = isFuture(date);
+              const isEmpty = date && dayEvents.length === 0;
 
               return (
                 <div
                   key={index}
-                  className={`min-h-[100px] border border-gray-200 rounded p-1 ${
-                    !date ? 'bg-gray-50' : 
+                  onClick={() => {
+                    if (isEmpty && onEmptyDayClick) {
+                      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                      onEmptyDayClick(dateStr);
+                    }
+                  }}
+                  className={`${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} border border-gray-200 rounded p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
+                    !date ? 'bg-gray-50' :
                     isCurrentDay ? 'bg-blue-50 border-blue-300' :
-                    isPastDate ? 'bg-gray-50' :
+                    variant === 'full' && isPastDate ? 'bg-gray-50' :
+                    isEmpty && onEmptyDayClick ? 'bg-white hover:bg-blue-50 hover:border-blue-200 cursor-pointer transition-colors group' :
                     'bg-white'
                   }`}
                 >
                   {date && (
                     <>
-                      <div className={`text-sm font-medium mb-1 ${
-                        isCurrentDay ? 'text-blue-700' : 
-                        isPastDate ? 'text-gray-400' :
+                      <div className={`${variant === 'compact' ? 'text-xs' : 'text-sm'} font-medium mb-1 ${
+                        isCurrentDay ? 'text-blue-700' :
+                        variant === 'full' && isPastDate ? 'text-gray-400' :
                         'text-gray-900'
                       }`}>
                         {date.getDate()}
                       </div>
-                      <div className="space-y-1">
-                        {dayEvents.slice(0, 2).map(event => {
-                          const groupBgColor = event.Group?.background_color || '#ffffff';
-                          const groupProfilePic = event.Group?.profile_picture_url;
-                          const groupBgImage = event.Group?.background_image_url;
-                          
-                          return (
-                            <div
-                              key={event.id}
-                              onClick={() => handleEventClick(event)}
-                              className={`text-xs p-1 rounded truncate hover:opacity-90 transition-opacity flex items-center gap-1 font-medium cursor-pointer`}
-                              style={{
-                                backgroundColor: groupBgColor,
-                                backgroundImage: groupBgImage ? `url(${groupBgImage})` : 'none',
-                                backgroundSize: 'cover',
-                                backgroundPosition: 'center',
-                                color: isPastDate ? '#6b7280' : getEventTileTextColor(groupBgColor),
-                                position: 'relative',
-                                zIndex: 1,
-                                border: `1px solid ${isPastDate ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.2)'}`,
-                              }}
-                              title={`${event.Game?.name || 'Game Night'} - ${event.Group?.name || 'Group'}`}
-                            >
-                              {groupBgImage && (
-                                <div style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  left: 0,
-                                  right: 0,
-                                  bottom: 0,
-                                  backgroundColor: 'rgba(255, 255, 255, 0.7)',
-                                  borderRadius: '0.25rem',
-                                  zIndex: 0,
-                                }} />
-                              )}
-                              <div className="flex items-center gap-1 relative z-10 flex-1 min-w-0">
-                                {groupProfilePic && (
-                                  <span className="flex-shrink-0 text-xs leading-none">
-                                    {groupProfilePic.startsWith('http') || groupProfilePic.startsWith('/') ? (
-                                      <SafeImage
-                                        src={groupProfilePic}
-                                        alt={event.Group?.name || ''}
-                                        fallbackIcon="👥"
-                                        className="w-4 h-4 rounded-full object-cover border border-gray-300"
-                                      />
-                                    ) : (
-                                      <span className="text-sm">{groupProfilePic}</span>
-                                    )}
-                                  </span>
+                      {dayEvents.length > 0 ? (
+                        <div className={variant === 'compact' ? 'space-y-0.5' : 'space-y-1'}>
+                          {dayEvents.slice(0, 2).map(event => {
+                            if (variant === 'compact') {
+                              const rs = event.rsvp_summary;
+                              const hasRsvps = rs && (rs.yes > 0 || rs.maybe > 0 || rs.no > 0);
+                              const isFutureEvent = event.start_date && new Date(event.start_date) >= new Date();
+                              return (
+                                <div
+                                  key={event.id}
+                                  className="text-xs p-0.5 bg-blue-100 text-blue-800 rounded font-medium cursor-pointer hover:bg-blue-200 transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEventClick(event);
+                                  }}
+                                >
+                                  <div className="truncate">{event.Game?.name || 'Game Night'}</div>
+                                  {hasRsvps && isFutureEvent && (
+                                    <RsvpCount rsvpSummary={rs} variant="compact" className="text-[10px] leading-tight mt-0.5" />
+                                  )}
+                                </div>
+                              );
+                            }
+                            // Full variant (user-home)
+                            const groupBgColor = event.Group?.background_color || '#ffffff';
+                            const groupProfilePic = event.Group?.profile_picture_url;
+                            const groupBgImage = event.Group?.background_image_url;
+
+                            return (
+                              <div
+                                key={event.id}
+                                onClick={() => handleEventClick(event)}
+                                className={`text-xs p-1 rounded truncate hover:opacity-90 transition-opacity flex items-center gap-1 font-medium cursor-pointer`}
+                                style={{
+                                  backgroundColor: groupBgColor,
+                                  backgroundImage: groupBgImage ? `url(${groupBgImage})` : 'none',
+                                  backgroundSize: 'cover',
+                                  backgroundPosition: 'center',
+                                  color: isPastDate ? '#6b7280' : getEventTileTextColor(groupBgColor),
+                                  position: 'relative',
+                                  zIndex: 1,
+                                  border: `1px solid ${isPastDate ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.2)'}`,
+                                }}
+                                title={`${event.Game?.name || 'Game Night'} - ${event.Group?.name || 'Group'}`}
+                              >
+                                {groupBgImage && (
+                                  <div style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                                    borderRadius: '0.25rem',
+                                    zIndex: 0,
+                                  }} />
                                 )}
-                                <span
-                                  className="truncate"
-                                  style={(() => {
-                                    if (groupBgImage) {
+                                <div className="flex items-center gap-1 relative z-10 flex-1 min-w-0">
+                                  {groupProfilePic && (
+                                    <span className="flex-shrink-0 text-xs leading-none">
+                                      {groupProfilePic.startsWith('http') || groupProfilePic.startsWith('/') ? (
+                                        <SafeImage
+                                          src={groupProfilePic}
+                                          alt={event.Group?.name || ''}
+                                          fallbackIcon="👥"
+                                          className="w-4 h-4 rounded-full object-cover border border-gray-300"
+                                        />
+                                      ) : (
+                                        <span className="text-sm">{groupProfilePic}</span>
+                                      )}
+                                    </span>
+                                  )}
+                                  <span
+                                    className="truncate"
+                                    style={(() => {
+                                      if (groupBgImage) {
+                                        return {
+                                          textShadow: '2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 2px rgba(0, 0, 0, 0.9)',
+                                          WebkitTextStroke: groupBgImage,
+                                          fontWeight: '600',
+                                        };
+                                      }
+                                      const brightness = getBrightness(groupBgColor);
                                       return {
-                                        textShadow: '2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 2px rgba(0, 0, 0, 0.9)',
-                                        WebkitTextStroke: groupBgImage,
+                                        textShadow: brightness > 128
+                                          ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
+                                          : '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)',
+                                        WebkitTextStroke: brightness <= 128 ? '0.5px rgba(0, 0, 0, 0.9)' : 'none',
                                         fontWeight: '600',
                                       };
-                                    }
-                                    const brightness = getBrightness(groupBgColor);
-                                    return {
-                                      textShadow: brightness > 128
-                                        ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
-                                        : '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)',
-                                      WebkitTextStroke: brightness <= 128 ? '0.5px rgba(0, 0, 0, 0.9)' : 'none',
-                                      fontWeight: '600',
-                                    };
-                                  })()}
-                                >
-                                  {event.Game?.name || 'Game Night'}
-                                </span>
+                                    })()}
+                                  >
+                                    {event.Game?.name || 'Game Night'}
+                                  </span>
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })}
-                        {dayEvents.length > 2 && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedDay({ date, events: dayEvents });
-                            }}
-                            className="text-xs text-blue-600 hover:text-blue-700 hover:underline cursor-pointer font-medium"
-                            title={`Click to see all ${dayEvents.length} games on this day`}
-                          >
-                            +{dayEvents.length - 2} more
-                          </button>
-                        )}
-                      </div>
+                            );
+                          })}
+                          {dayEvents.length > 2 && (
+                            variant === 'compact'
+                              ? <div className="text-xs text-blue-600 font-medium">+{dayEvents.length - 2} more</div>
+                              : <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedDay({ date, events: dayEvents });
+                                  }}
+                                  className="text-xs text-blue-600 hover:text-blue-700 hover:underline cursor-pointer font-medium"
+                                  title={`Click to see all ${dayEvents.length} games on this day`}
+                                >
+                                  +{dayEvents.length - 2} more
+                                </button>
+                          )}
+                        </div>
+                      ) : onEmptyDayClick ? (
+                        <div className="flex items-center justify-center flex-1 opacity-0 group-hover:opacity-40 transition-opacity">
+                          <span className="text-2xl text-gray-400 select-none">+</span>
+                        </div>
+                      ) : null}
                     </>
                   )}
                 </div>
