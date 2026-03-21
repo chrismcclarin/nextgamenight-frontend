@@ -9,6 +9,7 @@ import AddMember from '../components/addMember';
 import { listsAPI, groupsAPI, eventsAPI, API_BASE_URL } from '../../lib/api';
 import { getTextStyle, getSubtitleStyle } from '../../lib/colorUtils';
 import { formatDate } from '../../lib/dateUtils';
+import { getDaysInMonth, getEventsForDate, isToday } from '../../lib/calendarUtils';
 import SafeImage from '../components/SafeImage';
 import RsvpCount from '../components/RsvpCount';
 
@@ -147,60 +148,8 @@ function GroupHomePage(){
         return `${parseFloat(rating).toFixed(1)}/5`;
     };
 
-    // Calendar helpers
-    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'];
+    // Calendar day header labels
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-    const getDaysInMonth = (date) => {
-        const year = date.getFullYear();
-        const month = date.getMonth();
-        const firstDay = new Date(year, month, 1);
-        const lastDay = new Date(year, month + 1, 0);
-        const daysInMonth = lastDay.getDate();
-        const startingDayOfWeek = firstDay.getDay();
-
-        const days = [];
-        for (let i = 0; i < startingDayOfWeek; i++) {
-            days.push(null);
-        }
-        for (let day = 1; day <= daysInMonth; day++) {
-            days.push(new Date(year, month, day));
-        }
-        return days;
-    };
-
-    const getEventsForDate = (date) => {
-        if (!date) return [];
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const dateStr = `${year}-${month}-${day}`;
-
-        return groupEvents.filter(event => {
-            if (!event.start_date) return false;
-            const eventDate = new Date(event.start_date);
-            const eventYear = eventDate.getFullYear();
-            const eventMonth = String(eventDate.getMonth() + 1).padStart(2, '0');
-            const eventDay = String(eventDate.getDate()).padStart(2, '0');
-            const eventDateStr = `${eventYear}-${eventMonth}-${eventDay}`;
-            return eventDateStr === dateStr;
-        });
-    };
-
-    const isToday = (date) => {
-        if (!date) return false;
-        const today = new Date();
-        return date.toDateString() === today.toDateString();
-    };
-
-    const navigateCalendarMonth = (direction) => {
-        setCalendarDate(prev => {
-            const newDate = new Date(prev);
-            newDate.setMonth(prev.getMonth() + direction);
-            return newDate;
-        });
-    };
 
     if (loading) {
         return (
@@ -326,13 +275,13 @@ function GroupHomePage(){
 
                 {/* Month Navigation */}
                 <div className="flex justify-between items-center mb-4">
-                    <button onClick={() => navigateCalendarMonth(-1)} className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm">
+                    <button onClick={() => setCalendarDate(prev => { const d = new Date(prev); d.setMonth(d.getMonth() - 1); return d; })} className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm">
                         Prev
                     </button>
                     <h3 className="text-lg font-semibold text-gray-900">
-                        {monthNames[calendarDate.getMonth()]} {calendarDate.getFullYear()}
+                        {calendarDate.toLocaleString('default', { month: 'long' })} {calendarDate.getFullYear()}
                     </h3>
-                    <button onClick={() => navigateCalendarMonth(1)} className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm">
+                    <button onClick={() => setCalendarDate(prev => { const d = new Date(prev); d.setMonth(d.getMonth() + 1); return d; })} className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm">
                         Next
                     </button>
                 </div>
@@ -349,7 +298,7 @@ function GroupHomePage(){
                 {/* Calendar grid */}
                 <div className="grid grid-cols-7 gap-1">
                     {getDaysInMonth(calendarDate).map((date, index) => {
-                        const dayEvents = getEventsForDate(date);
+                        const dayEvents = getEventsForDate(date, groupEvents);
                         const isCurrentDay = isToday(date);
                         return (
                             <div

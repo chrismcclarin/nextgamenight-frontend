@@ -5,6 +5,7 @@ import { eventsAPI, API_BASE_URL } from '../../lib/api';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { getContrastColor, getEventTileTextColor, getBrightness } from '../../lib/colorUtils';
 import { formatDate, formatTime } from '../../lib/dateUtils';
+import { getDaysInMonth, getEventsForDate, isToday } from '../../lib/calendarUtils';
 import SafeImage from './SafeImage';
 import RsvpCount from './RsvpCount';
 
@@ -35,55 +36,6 @@ export default function EventCalendar({ refreshKey = 0 }) {
     } finally {
       setLoading(false);
     }
-  };
-
-  const getDaysInMonth = (date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const daysInMonth = lastDay.getDate();
-    const startingDayOfWeek = firstDay.getDay();
-    
-    const days = [];
-    
-    // Add empty cells for days before the first day of the month
-    for (let i = 0; i < startingDayOfWeek; i++) {
-      days.push(null);
-    }
-    
-    // Add all days of the month
-    for (let day = 1; day <= daysInMonth; day++) {
-      days.push(new Date(year, month, day));
-    }
-    
-    return days;
-  };
-
-  const getEventsForDate = (date) => {
-    if (!date) return [];
-    // Get date in local timezone (YYYY-MM-DD)
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const dateStr = `${year}-${month}-${day}`;
-    
-    return events.filter(event => {
-      if (!event.start_date) return false;
-      // Convert event date to local date string
-      const eventDate = new Date(event.start_date);
-      const eventYear = eventDate.getFullYear();
-      const eventMonth = String(eventDate.getMonth() + 1).padStart(2, '0');
-      const eventDay = String(eventDate.getDate()).padStart(2, '0');
-      const eventDateStr = `${eventYear}-${eventMonth}-${eventDay}`;
-      return eventDateStr === dateStr;
-    });
-  };
-
-  const isToday = (date) => {
-    if (!date) return false;
-    const today = new Date();
-    return date.toDateString() === today.toDateString();
   };
 
   const isPast = (date) => {
@@ -199,7 +151,7 @@ export default function EventCalendar({ refreshKey = 0 }) {
 
           <div className="grid grid-cols-7 gap-1">
             {days.map((date, index) => {
-              const dayEvents = getEventsForDate(date);
+              const dayEvents = getEventsForDate(date, events);
               const isCurrentDay = isToday(date);
               const isPastDate = isPast(date);
               const isFutureDate = isFuture(date);
