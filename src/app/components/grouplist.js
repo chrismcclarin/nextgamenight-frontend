@@ -7,58 +7,9 @@ import Link from 'next/link';
 import GroupSettings from './GroupSettings';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { groupsAPI } from '../../lib/api';
-
-// Helper function to get text style with outline for better visibility
-const getTextStyleWithOutline = (hasBackgroundImage, backgroundColor) => {
-  // If there's a background image, always use white text with dark outline
-  if (hasBackgroundImage) {
-    return {
-      color: '#ffffff',
-      textShadow: '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8), 1px -1px 2px rgba(0, 0, 0, 0.8), -1px 1px 2px rgba(0, 0, 0, 0.8)',
-      WebkitTextStroke: '0.5px rgba(0, 0, 0, 0.9)',
-      fontWeight: '600',
-    };
-  }
-  
-  // For solid colors, determine if we need light or dark text
-  if (!backgroundColor || backgroundColor === '#ffffff') {
-    return {
-      color: '#1f2937',
-      textShadow: 'none',
-    };
-  }
-  
-  // Calculate brightness
-  const hex = backgroundColor.replace('#', '');
-  const r = parseInt(hex.substr(0, 2), 16);
-  const g = parseInt(hex.substr(2, 2), 16);
-  const b = parseInt(hex.substr(4, 2), 16);
-  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-  
-  if (brightness > 180) {
-    // Very light background - use dark text with light outline
-    return {
-      color: '#1f2937',
-      textShadow: '1px 1px 2px rgba(255, 255, 255, 0.8), -1px -1px 2px rgba(255, 255, 255, 0.8)',
-      fontWeight: '600',
-    };
-  } else if (brightness > 128) {
-    // Medium-light background - use dark text with subtle outline
-    return {
-      color: '#1f2937',
-      textShadow: '1px 1px 3px rgba(255, 255, 255, 0.9)',
-      fontWeight: '600',
-    };
-  } else {
-    // Dark background - use white text with dark outline
-    return {
-      color: '#ffffff',
-      textShadow: '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8), 1px -1px 2px rgba(0, 0, 0, 0.8), -1px 1px 2px rgba(0, 0, 0, 0.8)',
-      WebkitTextStroke: '0.5px rgba(0, 0, 0, 0.9)',
-      fontWeight: '600',
-    };
-  }
-};
+import { getTextStyle } from '../../lib/colorUtils';
+import { formatDate } from '../../lib/dateUtils';
+import SafeImage from './SafeImage';
 
 const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
   const router = useRouter();
@@ -105,18 +56,6 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     }
   };
 
-  const formatDate = (date) => {
-    if (!date) return 'No games yet';
-    try {
-      return new Date(date).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric'
-      });
-    } catch {
-      return 'Invalid date';
-    }
-  };
 
   const handleGroupClick = (group, e) => {
     // Navigate to group page instead of opening modal
@@ -209,16 +148,11 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       {profilePic && (
                         <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden">
                           {profilePic.startsWith('http') || profilePic.startsWith('/') ? (
-                            <img 
-                              src={profilePic} 
+                            <SafeImage
+                              src={profilePic}
                               alt={group.name}
+                              fallbackIcon="👥"
                               className="w-full h-full object-cover"
-                              onError={(e) => {
-                                e.target.style.display = 'none';
-                                if (e.target.nextSibling) {
-                                  e.target.nextSibling.style.display = 'block';
-                                }
-                              }}
                             />
                           ) : (
                             <span>{profilePic}</span>
@@ -227,14 +161,14 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       )}
                       <h3 
                         className="group-name"
-                        style={getTextStyleWithOutline(bgImage, bgColor)}
+                        style={getTextStyle(bgImage, bgColor)}
                       >
                         {group.name}
                       </h3>
                     </div>
                     <span 
                       className="player-count"
-                      style={getTextStyleWithOutline(bgImage, bgColor)}
+                      style={getTextStyle(bgImage, bgColor)}
                     >
                       {groupUsers.length} {groupUsers.length === 1 ? 'player' : 'players'}
                     </span>
@@ -256,7 +190,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   )}
                 </div>
 
-                <div className="last-game-info" style={getTextStyleWithOutline(bgImage, bgColor)}>
+                <div className="last-game-info" style={getTextStyle(bgImage, bgColor)}>
                   <div className="last-game">
                     <strong>Last Game:</strong> {lastGame?.name || 'None'}
                   </div>

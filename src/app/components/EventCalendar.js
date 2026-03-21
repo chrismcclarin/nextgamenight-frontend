@@ -3,6 +3,10 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { eventsAPI, API_BASE_URL } from '../../lib/api';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
+import { getContrastColor, getEventTileTextColor, getBrightness } from '../../lib/colorUtils';
+import { formatDate, formatTime } from '../../lib/dateUtils';
+import SafeImage from './SafeImage';
+import RsvpCount from './RsvpCount';
 
 export default function EventCalendar({ refreshKey = 0 }) {
   const { user } = Auth();
@@ -123,20 +127,6 @@ export default function EventCalendar({ refreshKey = 0 }) {
     }
   };
 
-  const formatTime = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'short',
-      month: 'short', 
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
 
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
@@ -239,18 +229,6 @@ export default function EventCalendar({ refreshKey = 0 }) {
                           const groupProfilePic = event.Group?.profile_picture_url;
                           const groupBgImage = event.Group?.background_image_url;
                           
-                          // Determine text color based on background brightness
-                          const getTextColor = (bgColor) => {
-                            if (!bgColor || bgColor === '#ffffff') return '#1e40af';
-                            // Simple brightness check - if light color, use dark text
-                            const hex = bgColor.replace('#', '');
-                            const r = parseInt(hex.substr(0, 2), 16);
-                            const g = parseInt(hex.substr(2, 2), 16);
-                            const b = parseInt(hex.substr(4, 2), 16);
-                            const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-                            return brightness > 128 ? '#1e40af' : '#ffffff';
-                          };
-                          
                           return (
                             <div
                               key={event.id}
@@ -261,7 +239,7 @@ export default function EventCalendar({ refreshKey = 0 }) {
                                 backgroundImage: groupBgImage ? `url(${groupBgImage})` : 'none',
                                 backgroundSize: 'cover',
                                 backgroundPosition: 'center',
-                                color: isPastDate ? '#6b7280' : getTextColor(groupBgColor),
+                                color: isPastDate ? '#6b7280' : getEventTileTextColor(groupBgColor),
                                 position: 'relative',
                                 zIndex: 1,
                                 border: `1px solid ${isPastDate ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.2)'}`,
@@ -284,42 +262,36 @@ export default function EventCalendar({ refreshKey = 0 }) {
                                 {groupProfilePic && (
                                   <span className="flex-shrink-0 text-xs leading-none">
                                     {groupProfilePic.startsWith('http') || groupProfilePic.startsWith('/') ? (
-                                      <img 
-                                        src={groupProfilePic} 
+                                      <SafeImage
+                                        src={groupProfilePic}
                                         alt={event.Group?.name || ''}
+                                        fallbackIcon="👥"
                                         className="w-4 h-4 rounded-full object-cover border border-gray-300"
-                                        onError={(e) => e.target.style.display = 'none'}
                                       />
                                     ) : (
                                       <span className="text-sm">{groupProfilePic}</span>
                                     )}
                                   </span>
                                 )}
-                                <span 
+                                <span
                                   className="truncate"
-                                  style={{
-                                    textShadow: groupBgImage 
-                                      ? '2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 2px rgba(0, 0, 0, 0.9)'
-                                      : (() => {
-                                          const hex = groupBgColor.replace('#', '');
-                                          const r = parseInt(hex.substr(0, 2), 16);
-                                          const g = parseInt(hex.substr(2, 2), 16);
-                                          const b = parseInt(hex.substr(4, 2), 16);
-                                          const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-                                          return brightness > 128 
-                                            ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
-                                            : '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)';
-                                        })(),
-                                    WebkitTextStroke: groupBgImage || (() => {
-                                        const hex = groupBgColor.replace('#', '');
-                                        const r = parseInt(hex.substr(0, 2), 16);
-                                        const g = parseInt(hex.substr(2, 2), 16);
-                                        const b = parseInt(hex.substr(4, 2), 16);
-                                        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-                                        return brightness <= 128 ? '0.5px rgba(0, 0, 0, 0.9)' : 'none';
-                                      })(),
-                                    fontWeight: '600',
-                                  }}
+                                  style={(() => {
+                                    if (groupBgImage) {
+                                      return {
+                                        textShadow: '2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 2px rgba(0, 0, 0, 0.9)',
+                                        WebkitTextStroke: groupBgImage,
+                                        fontWeight: '600',
+                                      };
+                                    }
+                                    const brightness = getBrightness(groupBgColor);
+                                    return {
+                                      textShadow: brightness > 128
+                                        ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
+                                        : '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)',
+                                      WebkitTextStroke: brightness <= 128 ? '0.5px rgba(0, 0, 0, 0.9)' : 'none',
+                                      fontWeight: '600',
+                                    };
+                                  })()}
                                 >
                                   {event.Game?.name || 'Game Night'}
                                 </span>
@@ -386,18 +358,7 @@ export default function EventCalendar({ refreshKey = 0 }) {
                 const groupBgColor = event.Group?.background_color || '#ffffff';
                 const groupProfilePic = event.Group?.profile_picture_url;
                 const groupBgImage = event.Group?.background_image_url;
-                
-                // Determine text color based on background brightness
-                const getTextColor = (bgColor) => {
-                  if (!bgColor || bgColor === '#ffffff') return '#1f2937';
-                  const hex = bgColor.replace('#', '');
-                  const r = parseInt(hex.substr(0, 2), 16);
-                  const g = parseInt(hex.substr(2, 2), 16);
-                  const b = parseInt(hex.substr(4, 2), 16);
-                  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-                  return brightness > 128 ? '#1f2937' : '#ffffff';
-                };
-                
+
                 return (
                   <div
                     key={event.id}
@@ -428,16 +389,11 @@ export default function EventCalendar({ refreshKey = 0 }) {
                           {groupProfilePic && (
                             <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl flex-shrink-0 overflow-hidden border-2 border-gray-300 shadow-sm">
                               {groupProfilePic.startsWith('http') || groupProfilePic.startsWith('/') ? (
-                                <img 
-                                  src={groupProfilePic} 
+                                <SafeImage
+                                  src={groupProfilePic}
                                   alt={event.Group?.name}
+                                  fallbackIcon="👥"
                                   className="w-full h-full object-cover"
-                                  onError={(e) => {
-                                    e.target.style.display = 'none';
-                                    if (e.target.nextSibling) {
-                                      e.target.nextSibling.style.display = 'block';
-                                    }
-                                  }}
                                 />
                               ) : (
                                 <span>{groupProfilePic}</span>
@@ -445,18 +401,18 @@ export default function EventCalendar({ refreshKey = 0 }) {
                             </div>
                           )}
                           <div>
-                            <h4 
+                            <h4
                               className="font-semibold"
                               style={(() => {
                                 const hasBgImage = !!groupBgImage;
-                                const textColor = hasBgImage ? '#1f2937' : getTextColor(groupBgColor);
-                                const isDark = !hasBgImage && getTextColor(groupBgColor) === '#ffffff';
-                                
+                                const textColor = hasBgImage ? '#1f2937' : getContrastColor(groupBgColor);
+                                const isDark = !hasBgImage && getContrastColor(groupBgColor) === '#ffffff';
+
                                 return {
                                   color: textColor,
-                                  textShadow: hasBgImage 
+                                  textShadow: hasBgImage
                                     ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
-                                    : (isDark 
+                                    : (isDark
                                       ? '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)'
                                       : '1px 1px 2px rgba(255, 255, 255, 0.9)'),
                                   WebkitTextStroke: isDark ? '0.5px rgba(0, 0, 0, 0.9)' : 'none',
@@ -465,18 +421,18 @@ export default function EventCalendar({ refreshKey = 0 }) {
                             >
                               {event.Game?.name || 'Game Night'}
                             </h4>
-                            <p 
+                            <p
                               className="text-sm"
                               style={(() => {
                                 const hasBgImage = !!groupBgImage;
-                                const textColor = hasBgImage ? '#4b5563' : (getTextColor(groupBgColor) === '#ffffff' ? 'rgba(255,255,255,0.9)' : '#6b7280');
-                                const isDark = !hasBgImage && getTextColor(groupBgColor) === '#ffffff';
-                                
+                                const textColor = hasBgImage ? '#4b5563' : (getContrastColor(groupBgColor) === '#ffffff' ? 'rgba(255,255,255,0.9)' : '#6b7280');
+                                const isDark = !hasBgImage && getContrastColor(groupBgColor) === '#ffffff';
+
                                 return {
                                   color: textColor,
-                                  textShadow: hasBgImage 
+                                  textShadow: hasBgImage
                                     ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
-                                    : (isDark 
+                                    : (isDark
                                       ? '1px 1px 3px rgba(0, 0, 0, 0.8)'
                                       : '1px 1px 2px rgba(255, 255, 255, 0.9)'),
                                   WebkitTextStroke: isDark ? '0.3px rgba(0, 0, 0, 0.9)' : 'none',
@@ -500,28 +456,15 @@ export default function EventCalendar({ refreshKey = 0 }) {
                           )}
                         </div>
                         {/* RSVP counts for upcoming events */}
-                        {!isPastEvent && event.rsvp_summary && (event.rsvp_summary.yes > 0 || event.rsvp_summary.maybe > 0 || event.rsvp_summary.no > 0) && (
-                          <div className="flex gap-3 mt-1.5 text-xs">
-                            {event.rsvp_summary.yes > 0 && (
-                              <span className="text-green-700 font-medium">{event.rsvp_summary.yes} going</span>
-                            )}
-                            {event.rsvp_summary.maybe > 0 && (
-                              <span className="text-amber-600 font-medium">{event.rsvp_summary.maybe} maybe</span>
-                            )}
-                            {event.rsvp_summary.no > 0 && (
-                              <span className="text-red-500 font-medium">{event.rsvp_summary.no} can't</span>
-                            )}
-                          </div>
+                        {!isPastEvent && (
+                          <RsvpCount rsvpSummary={event.rsvp_summary} variant="full" className="mt-1.5 text-xs" />
                         )}
                       </div>
-                      {event.Game?.image_url && (
-                        <img
-                          src={event.Game.image_url}
-                          alt={event.Game.name}
-                          className="w-16 h-16 object-cover rounded"
-                          onError={(e) => e.target.style.display = 'none'}
-                        />
-                      )}
+                      <SafeImage
+                        src={event.Game?.image_url}
+                        alt={event.Game?.name}
+                        className="w-16 h-16 object-cover rounded"
+                      />
                     </div>
                   </div>
                 );
@@ -572,18 +515,7 @@ export default function EventCalendar({ refreshKey = 0 }) {
                     const groupBgColor = event.Group?.background_color || '#ffffff';
                     const groupProfilePic = event.Group?.profile_picture_url;
                     const groupBgImage = event.Group?.background_image_url;
-                    
-                    // Determine text color based on background brightness
-                    const getTextColor = (bgColor) => {
-                      if (!bgColor || bgColor === '#ffffff') return '#1f2937';
-                      const hex = bgColor.replace('#', '');
-                      const r = parseInt(hex.substr(0, 2), 16);
-                      const g = parseInt(hex.substr(2, 2), 16);
-                      const b = parseInt(hex.substr(4, 2), 16);
-                      const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-                      return brightness > 128 ? '#1f2937' : '#ffffff';
-                    };
-                    
+
                     return (
                       <div
                         key={event.id}
@@ -617,16 +549,11 @@ export default function EventCalendar({ refreshKey = 0 }) {
                               {groupProfilePic && (
                                 <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl flex-shrink-0 overflow-hidden border-2 border-gray-300 shadow-sm">
                                   {groupProfilePic.startsWith('http') || groupProfilePic.startsWith('/') ? (
-                                    <img 
-                                      src={groupProfilePic} 
+                                    <SafeImage
+                                      src={groupProfilePic}
                                       alt={event.Group?.name}
+                                      fallbackIcon="👥"
                                       className="w-full h-full object-cover"
-                                      onError={(e) => {
-                                        e.target.style.display = 'none';
-                                        if (e.target.nextSibling) {
-                                          e.target.nextSibling.style.display = 'block';
-                                        }
-                                      }}
                                     />
                                   ) : (
                                     <span>{groupProfilePic}</span>
@@ -634,18 +561,18 @@ export default function EventCalendar({ refreshKey = 0 }) {
                                 </div>
                               )}
                               <div>
-                                <h4 
+                                <h4
                                   className="font-semibold"
                                   style={(() => {
                                     const hasBgImage = !!groupBgImage;
-                                    const textColor = hasBgImage ? '#1f2937' : getTextColor(groupBgColor);
-                                    const isDark = !hasBgImage && getTextColor(groupBgColor) === '#ffffff';
-                                    
+                                    const textColor = hasBgImage ? '#1f2937' : getContrastColor(groupBgColor);
+                                    const isDark = !hasBgImage && getContrastColor(groupBgColor) === '#ffffff';
+
                                     return {
                                       color: textColor,
-                                      textShadow: hasBgImage 
+                                      textShadow: hasBgImage
                                         ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
-                                        : (isDark 
+                                        : (isDark
                                           ? '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)'
                                           : '1px 1px 2px rgba(255, 255, 255, 0.9)'),
                                       WebkitTextStroke: isDark ? '0.5px rgba(0, 0, 0, 0.9)' : 'none',
@@ -654,18 +581,18 @@ export default function EventCalendar({ refreshKey = 0 }) {
                                 >
                                   {event.Game?.name || 'Game Night'}
                                 </h4>
-                                <p 
+                                <p
                                   className="text-sm"
                                   style={(() => {
                                     const hasBgImage = !!groupBgImage;
-                                    const textColor = hasBgImage ? '#4b5563' : (getTextColor(groupBgColor) === '#ffffff' ? 'rgba(255,255,255,0.9)' : '#6b7280');
-                                    const isDark = !hasBgImage && getTextColor(groupBgColor) === '#ffffff';
-                                    
+                                    const textColor = hasBgImage ? '#4b5563' : (getContrastColor(groupBgColor) === '#ffffff' ? 'rgba(255,255,255,0.9)' : '#6b7280');
+                                    const isDark = !hasBgImage && getContrastColor(groupBgColor) === '#ffffff';
+
                                     return {
                                       color: textColor,
-                                      textShadow: hasBgImage 
+                                      textShadow: hasBgImage
                                         ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
-                                        : (isDark 
+                                        : (isDark
                                           ? '1px 1px 3px rgba(0, 0, 0, 0.8)'
                                           : '1px 1px 2px rgba(255, 255, 255, 0.9)'),
                                       WebkitTextStroke: isDark ? '0.3px rgba(0, 0, 0, 0.9)' : 'none',
@@ -687,14 +614,11 @@ export default function EventCalendar({ refreshKey = 0 }) {
                               )}
                             </div>
                           </div>
-                          {event.Game?.image_url && (
-                            <img
-                              src={event.Game.image_url}
-                              alt={event.Game.name}
-                              className="w-16 h-16 object-cover rounded"
-                              onError={(e) => e.target.style.display = 'none'}
-                            />
-                          )}
+                          <SafeImage
+                            src={event.Game?.image_url}
+                            alt={event.Game?.name}
+                            className="w-16 h-16 object-cover rounded"
+                          />
                         </div>
                       </div>
                     );

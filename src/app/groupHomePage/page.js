@@ -7,6 +7,10 @@ import CreateEvent from '../components/createEvent';
 import ManageMembers from '../components/ManageMembers';
 import AddMember from '../components/addMember';
 import { listsAPI, groupsAPI, eventsAPI, API_BASE_URL } from '../../lib/api';
+import { getTextStyle, getSubtitleStyle } from '../../lib/colorUtils';
+import { formatDate } from '../../lib/dateUtils';
+import SafeImage from '../components/SafeImage';
+import RsvpCount from '../components/RsvpCount';
 
 // A groups home page
 function GroupHomePage(){
@@ -137,18 +141,6 @@ function GroupHomePage(){
         setSortOrder(e.target.value);
     }; 
 
-    const formatDate = (date) => {
-        if (!date) return 'Never';
-        try {
-            return new Date(date).toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric'
-            });
-        } catch {
-            return 'Invalid date';
-        }
-    };
 
     const formatRating = (rating) => {
         if (!rating) return 'No ratings';
@@ -253,16 +245,11 @@ function GroupHomePage(){
                     {Group?.profile_picture_url && (
                         <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white flex items-center justify-center text-2xl md:text-4xl flex-shrink-0 overflow-hidden border-2 md:border-4 border-white shadow-lg">
                             {Group.profile_picture_url.startsWith('http') || Group.profile_picture_url.startsWith('/') ? (
-                                <img 
-                                    src={Group.profile_picture_url} 
+                                <SafeImage
+                                    src={Group.profile_picture_url}
                                     alt={Group.name}
+                                    fallbackIcon="👥"
                                     className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                        e.target.style.display = 'none';
-                                        if (e.target.nextSibling) {
-                                            e.target.nextSibling.style.display = 'block';
-                                        }
-                                    }}
                                 />
                             ) : (
                                 <span>{Group.profile_picture_url}</span>
@@ -270,85 +257,15 @@ function GroupHomePage(){
                         </div>
                     )}
                     <div className="flex-1 min-w-0">
-                        <h1 
+                        <h1
                             className="text-2xl md:text-3xl font-bold truncate"
-                            style={(() => {
-                                const hasBgImage = !!Group?.background_image_url;
-                                const bgColor = Group?.background_color || '#1f2937';
-                                
-                                if (hasBgImage) {
-                                    return {
-                                        color: '#ffffff',
-                                        textShadow: '3px 3px 6px rgba(0, 0, 0, 0.9), -1px -1px 3px rgba(0, 0, 0, 0.9), 1px -1px 3px rgba(0, 0, 0, 0.9), -1px 1px 3px rgba(0, 0, 0, 0.9)',
-                                        WebkitTextStroke: '1px rgba(0, 0, 0, 0.95)',
-                                    };
-                                }
-                                
-                                const hex = bgColor.replace('#', '');
-                                const r = parseInt(hex.substr(0, 2), 16);
-                                const g = parseInt(hex.substr(2, 2), 16);
-                                const b = parseInt(hex.substr(4, 2), 16);
-                                const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-                                
-                                if (brightness > 180) {
-                                    return {
-                                        color: '#1f2937',
-                                        textShadow: '2px 2px 4px rgba(255, 255, 255, 0.9), -1px -1px 2px rgba(255, 255, 255, 0.9)',
-                                    };
-                                } else if (brightness > 128) {
-                                    return {
-                                        color: '#1f2937',
-                                        textShadow: '1px 1px 3px rgba(255, 255, 255, 0.95)',
-                                    };
-                                } else {
-                                    return {
-                                        color: '#ffffff',
-                                        textShadow: '3px 3px 6px rgba(0, 0, 0, 0.9), -1px -1px 3px rgba(0, 0, 0, 0.9), 1px -1px 3px rgba(0, 0, 0, 0.9), -1px 1px 3px rgba(0, 0, 0, 0.9)',
-                                        WebkitTextStroke: '1px rgba(0, 0, 0, 0.95)',
-                                    };
-                                }
-                            })()}
+                            style={getTextStyle(!!Group?.background_image_url, Group?.background_color || '#1f2937')}
                         >
                             {Group?.name || 'Group'}
                         </h1>
-                        <p 
+                        <p
                             className="mt-1"
-                            style={(() => {
-                                const hasBgImage = !!Group?.background_image_url;
-                                const bgColor = Group?.background_color || '#1f2937';
-                                
-                                if (hasBgImage) {
-                                    return {
-                                        color: 'rgba(255, 255, 255, 0.95)',
-                                        textShadow: '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)',
-                                        WebkitTextStroke: '0.5px rgba(0, 0, 0, 0.9)',
-                                    };
-                                }
-                                
-                                const hex = bgColor.replace('#', '');
-                                const r = parseInt(hex.substr(0, 2), 16);
-                                const g = parseInt(hex.substr(2, 2), 16);
-                                const b = parseInt(hex.substr(4, 2), 16);
-                                const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-                                
-                                if (brightness > 180) {
-                                    return {
-                                        color: '#374151',
-                                        textShadow: '1px 1px 2px rgba(255, 255, 255, 0.8)',
-                                    };
-                                } else if (brightness > 128) {
-                                    return {
-                                        color: '#4b5563',
-                                        textShadow: '1px 1px 2px rgba(255, 255, 255, 0.9)',
-                                    };
-                                } else {
-                                    return {
-                                        color: 'rgba(255, 255, 255, 0.95)',
-                                        textShadow: '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)',
-                                        WebkitTextStroke: '0.5px rgba(0, 0, 0, 0.9)',
-                                    };
-                                }
-                            })()}
+                            style={getSubtitleStyle(!!Group?.background_image_url, Group?.background_color || '#1f2937')}
                         >
                             {gamesList.length} {gamesList.length === 1 ? 'game' : 'games'} played
                             {UserList && UserList.length > 0 && (
@@ -474,11 +391,7 @@ function GroupHomePage(){
                                                             }}>
                                                             <div className="truncate">{event.Game?.name || 'Game Night'}</div>
                                                             {hasRsvps && isFuture && (
-                                                                <div className="flex gap-1 text-[10px] leading-tight mt-0.5">
-                                                                    {rs.yes > 0 && <span className="text-green-700">{rs.yes}Y</span>}
-                                                                    {rs.maybe > 0 && <span className="text-amber-700">{rs.maybe}M</span>}
-                                                                    {rs.no > 0 && <span className="text-red-600">{rs.no}N</span>}
-                                                                </div>
+                                                                <RsvpCount rsvpSummary={rs} variant="compact" className="text-[10px] leading-tight mt-0.5" />
                                                             )}
                                                         </div>
                                                     );
@@ -541,16 +454,11 @@ function GroupHomePage(){
                             className="block bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg transition-shadow hover:border-blue-300"
                         >
                             <div className="flex items-start gap-4">
-                                {game.image_url && (
-                                    <img
-                                        src={game.image_url}
-                                        alt={game.name}
-                                        className="w-16 h-16 object-cover rounded"
-                                        onError={(e) => {
-                                            e.target.style.display = 'none';
-                                        }}
-                                    />
-                                )}
+                                <SafeImage
+                                    src={game.image_url}
+                                    alt={game.name}
+                                    className="w-16 h-16 object-cover rounded"
+                                />
                                 <div className="flex-1 min-w-0">
                                     <h3 className="text-lg font-semibold text-gray-900 mb-1 truncate">
                                         {game.name}
