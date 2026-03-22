@@ -159,10 +159,28 @@ export const groupsAPI = {
     }),
   
   // Delete group (owner only)
-  deleteGroup: (group_id, requesting_user_id) => 
+  deleteGroup: (group_id, requesting_user_id) =>
     apiFetch(`/groups/${group_id}`, {
       method: 'DELETE',
       body: JSON.stringify({ requesting_user_id }),
+    }),
+
+  // Approve a pending member (owner/admin only)
+  approveMember: (group_id, target_user_id) =>
+    apiFetch(`/groups/${group_id}/users/${encodeURIComponent(target_user_id)}/approve`, {
+      method: 'POST',
+    }),
+
+  // Reject a pending member (owner/admin only)
+  rejectMember: (group_id, target_user_id) =>
+    apiFetch(`/groups/${group_id}/users/${encodeURIComponent(target_user_id)}/reject`, {
+      method: 'POST',
+    }),
+
+  // Leave a group (self-removal, non-owner only)
+  leaveGroup: (group_id) =>
+    apiFetch(`/groups/${group_id}/leave`, {
+      method: 'POST',
     }),
 };
 

@@ -213,7 +213,7 @@ function GroupHomePage(){
                             Invite Member
                         </button>
                     )}
-                    {(userRole === 'owner' || userRole === 'admin') && (
+                    {userRole && userRole !== 'pending' && (
                         <button
                             onClick={() => setMemberModal(true)}
                             className="bg-purple-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-lg font-semibold hover:bg-purple-700 transition-colors shadow-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white"
@@ -288,6 +288,7 @@ function GroupHomePage(){
                 modal={memberModal}
                 modaltoggle={() => setMemberModal(false)}
                 onMembersUpdated={getGroupMembers}
+                group_name={Group?.name || 'this group'}
             />
 
             <AddMember
