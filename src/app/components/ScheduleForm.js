@@ -309,6 +309,9 @@ export default function ScheduleForm({
 
           {/* Member Selection */}
           {members.length > 0 && (
+            <div className="border-t border-gray-200 pt-4 mt-4" />
+          )}
+          {members.length > 0 && (
             <MemberSelector
               members={members}
               control={control}
