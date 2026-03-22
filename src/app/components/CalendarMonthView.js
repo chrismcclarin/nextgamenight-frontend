@@ -207,18 +207,16 @@ export default function CalendarMonthView({
                         );
                       })}
                       {dayEvents.length > 2 && (
-                        variant === 'compact'
-                          ? <div className="text-xs text-blue-600 font-medium">+{dayEvents.length - 2} more</div>
-                          : <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onShowDayModal({ date, events: dayEvents });
-                              }}
-                              className="text-xs text-blue-600 hover:text-blue-700 hover:underline cursor-pointer font-medium"
-                              title={`Click to see all ${dayEvents.length} games on this day`}
-                            >
-                              +{dayEvents.length - 2} more
-                            </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onShowDayModal({ date, events: dayEvents });
+                          }}
+                          className="text-xs text-blue-600 hover:text-blue-700 hover:underline cursor-pointer font-medium"
+                          title={`Click to see all ${dayEvents.length} games on this day`}
+                        >
+                          +{dayEvents.length - 2} more
+                        </button>
                       )}
                     </div>
                   ) : onEmptyDayClick ? (
