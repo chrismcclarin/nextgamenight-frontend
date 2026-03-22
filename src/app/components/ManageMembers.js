@@ -131,7 +131,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         try {
             await groupsAPI.leaveGroup(group_id);
             modaltoggle(); // Close the modal
-            router.push('/userHome');
+            router.push('/');
         } catch (error) {
             console.error('Error leaving group:', error);
             alert(error.message || 'Failed to leave group. Please try again.');
