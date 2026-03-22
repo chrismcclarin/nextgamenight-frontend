@@ -11,6 +11,7 @@ import GroupGamesList from '../components/GroupGamesList';
 import { getTextStyle, getSubtitleStyle } from '../../lib/colorUtils';
 import SafeImage from '../components/SafeImage';
 import EventCalendar from '../components/EventCalendar';
+import PendingMemberBanner from '../components/PendingMemberBanner';
 
 // A groups home page
 function GroupHomePage(){
@@ -232,17 +233,21 @@ function GroupHomePage(){
                     >
                         Plan Game Session
                     </Link>
-                    <button
-                        onClick={toggleEventModal}
-                        className="bg-blue-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white"
-                        style={{
-                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.3)',
-                        }}
-                    >
-                        Add New Game Event
-                    </button>
+                    {userRole && userRole !== 'pending' && (
+                        <button
+                            onClick={toggleEventModal}
+                            className="bg-blue-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white"
+                            style={{
+                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.3)',
+                            }}
+                        >
+                            Add New Game Event
+                        </button>
+                    )}
                 </div>
             </div>
+
+            {userRole === 'pending' && <PendingMemberBanner groupId={Router} />}
 
             {/* Group Calendar */}
             <EventCalendar
@@ -250,10 +255,10 @@ function GroupHomePage(){
                 variant="compact"
                 title="Calendar"
                 showListView={false}
-                onEmptyDayClick={(dateStr) => {
+                onEmptyDayClick={userRole && userRole !== 'pending' ? (dateStr) => {
                     setCalendarPrefillDate(dateStr);
                     setEventModal(true);
-                }}
+                } : undefined}
             />
 
             {/* Group Games Section */}
@@ -261,6 +266,7 @@ function GroupHomePage(){
                 games={gamesList}
                 groupId={Router}
                 onAddEvent={toggleEventModal}
+                userRole={userRole}
             />
 
             <CreateEvent

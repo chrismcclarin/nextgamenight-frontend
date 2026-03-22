@@ -484,7 +484,7 @@ export default function GameDetailPage() {
                     </div>
                 )}
 
-                {userRole && (
+                {(userRole === 'owner' || userRole === 'admin') && (
                     <div className="mt-4 flex gap-2">
                         <button
                             onClick={() => { setEditingEvent(singleEvent); setEditEventModal(true); }}
@@ -884,7 +884,7 @@ export default function GameDetailPage() {
             <div className="bg-white rounded-lg shadow-md p-6">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold text-gray-900">Reviews ({reviews.length})</h2>
-                    {user && !userReview && (
+                    {user && !userReview && userRole && userRole !== 'pending' && (
                         <button
                             onClick={() => setShowReviewForm(true)}
                             className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import SafeImage from './SafeImage';
 import { formatDate } from '../../lib/dateUtils';
 
-export default function GroupGamesList({ games, groupId, onAddEvent }) {
+export default function GroupGamesList({ games, groupId, onAddEvent, userRole }) {
     const [sortBy, setSortBy] = useState('last_played');
     const [sortOrder, setSortOrder] = useState('desc');
 
@@ -44,12 +44,14 @@ export default function GroupGamesList({ games, groupId, onAddEvent }) {
             <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
                 <p className="text-gray-600 text-lg mb-2">No games played yet</p>
                 <p className="text-gray-500 mb-4">Start tracking your game sessions!</p>
-                <button
-                    onClick={onAddEvent}
-                    className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-                >
-                    Add Your First Game Event
-                </button>
+                {userRole && userRole !== 'pending' && (
+                    <button
+                        onClick={onAddEvent}
+                        className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                    >
+                        Add Your First Game Event
+                    </button>
+                )}
             </div>
         );
     }
