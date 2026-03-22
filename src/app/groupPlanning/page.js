@@ -408,6 +408,7 @@ export default function GroupPlanningPage() {
             const startMin = startMinute % 60;
             const timeStr = `${String(startHour).padStart(2, '0')}:${String(startMin).padStart(2, '0')}`;
             const durationMinutes = endMinute - startMinute;
+            if (userRole === 'pending') return;
             setPrefillDate(dateStr);
             setPrefillTime(timeStr);
             setSelectedSlotData({ durationMinutes });
