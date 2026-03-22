@@ -74,9 +74,12 @@ export default function EventCalendar({
     'July', 'August', 'September', 'October', 'November', 'December'];
 
   const days = getDaysInMonth(currentDate);
-  const sortedEvents = [...activeEvents].sort((a, b) =>
-    new Date(a.start_date) - new Date(b.start_date)
-  );
+  const sortedEvents = [...activeEvents]
+    .filter(event => {
+      const d = new Date(event.start_date);
+      return d.getMonth() === currentDate.getMonth() && d.getFullYear() === currentDate.getFullYear();
+    })
+    .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
 
   if (loading) {
     return (

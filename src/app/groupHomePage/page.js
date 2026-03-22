@@ -273,6 +273,11 @@ function GroupHomePage(){
                 }}
             />
 
+            {/* Group Games Section */}
+            {gamesList.length > 0 && (
+                <h2 className="text-2xl font-bold text-gray-900 mt-8 mb-4">Group Games</h2>
+            )}
+
             {/* Sorting Controls */}
             {gamesList.length > 0 && (
                 <div className="mb-6 flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center bg-gray-50 p-3 md:p-4 rounded-lg">
