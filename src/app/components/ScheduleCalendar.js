@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
@@ -61,19 +61,31 @@ const generateEvents = (schedules) => {
  * @param {Function} props.onSelectEvent - Callback when event clicked (passes schedule)
  */
 export default function ScheduleCalendar({ schedules = [], onSelectEvent }) {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentView, setCurrentView] = useState('week');
+
   // Generate events from schedules (memoized to prevent recalculation)
   const events = useMemo(() => generateEvents(schedules), [schedules]);
 
   // Handle event click
-  const handleSelectEvent = (event) => {
-    // Pass the original schedule object to parent
+  const handleSelectEvent = useCallback((event) => {
     if (onSelectEvent && event.resource) {
       onSelectEvent(event.resource);
     }
-  };
+  }, [onSelectEvent]);
+
+  // Handle navigation (Back, Today, Next)
+  const handleNavigate = useCallback((newDate) => {
+    setCurrentDate(newDate);
+  }, []);
+
+  // Handle view change (Week, Month)
+  const handleViewChange = useCallback((newView) => {
+    setCurrentView(newView);
+  }, []);
 
   // Custom event style getter
-  const eventStyleGetter = (event) => {
+  const eventStyleGetter = useCallback((event) => {
     return {
       style: {
         backgroundColor: event.style?.backgroundColor || '#3b82f6',
@@ -85,7 +97,7 @@ export default function ScheduleCalendar({ schedules = [], onSelectEvent }) {
         display: 'block',
       },
     };
-  };
+  }, []);
 
   return (
     <div className="border border-gray-200 rounded-lg p-4 bg-white">
@@ -108,7 +120,10 @@ export default function ScheduleCalendar({ schedules = [], onSelectEvent }) {
           events={events}
           startAccessor="start"
           endAccessor="end"
-          defaultView="week"
+          date={currentDate}
+          view={currentView}
+          onNavigate={handleNavigate}
+          onView={handleViewChange}
           views={['week', 'month']}
           onSelectEvent={handleSelectEvent}
           eventPropGetter={eventStyleGetter}
