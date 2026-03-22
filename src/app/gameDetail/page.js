@@ -554,9 +554,12 @@ export default function GameDetailPage() {
             {/* Game Details */}
             <div className="bg-white rounded-lg shadow-md p-6 mb-6">
                 {game.is_custom ? (
-                    /* Custom game: show name-only view */
+                    /* Custom game: show available details */
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900 mb-2">{game.name}</h1>
+                        {game.theme && (
+                            <p className="text-gray-600 mb-2">Theme: {game.theme}</p>
+                        )}
                         <p className="text-sm text-gray-500">Custom Game</p>
                     </div>
                 ) : (
