@@ -126,7 +126,7 @@ export default function ScheduleCalendar({ schedules = [], onSelectEvent }) {
 
       {/* Empty state */}
       {events.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center">
+        <div className="text-center py-8">
           <p className="text-gray-500">No schedules to display</p>
         </div>
       )}
