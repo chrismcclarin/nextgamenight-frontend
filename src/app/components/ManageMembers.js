@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { groupsAPI, invitesAPI, API_BASE_URL } from '../../lib/api';
+import QRCodeModal from './QRCodeModal';
 
 function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, group_name }) {
     const router = useRouter();
@@ -11,6 +12,9 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     const [error, setError] = useState(null);
     const [pendingInvites, setPendingInvites] = useState([]);
     const [pendingLoading, setPendingLoading] = useState(false);
+    const [showQR, setShowQR] = useState(false);
+    const [inviteUrl, setInviteUrl] = useState(null);
+    const [tokenLoading, setTokenLoading] = useState(false);
 
     useEffect(() => {
         if (modal && group_id && user?.sub) {
@@ -138,6 +142,28 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         }
     };
 
+    const handleShowQR = async () => {
+        setTokenLoading(true);
+        try {
+            const data = await groupsAPI.getInviteToken(group_id);
+            setInviteUrl(data.invite_url);
+            setShowQR(true);
+        } catch (err) {
+            console.error('Failed to get invite token:', err);
+        } finally {
+            setTokenLoading(false);
+        }
+    };
+
+    const handleResetToken = async () => {
+        try {
+            const data = await groupsAPI.resetInviteToken(group_id);
+            setInviteUrl(data.invite_url);
+        } catch (err) {
+            console.error('Failed to reset invite token:', err);
+        }
+    };
+
     const getRoleBadge = (role) => {
         const roleStyles = {
             owner: 'bg-purple-100 text-purple-800 border-purple-300',
@@ -176,6 +202,19 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                         <p className="text-yellow-800 text-sm">
                             Only the group owner or admins can manage member roles and remove members.
                         </p>
+                    </div>
+                )}
+
+                {/* Share Invite QR Button (visible to all non-pending members) */}
+                {userRole && userRole !== 'pending' && (
+                    <div className="mb-4">
+                        <button
+                            onClick={handleShowQR}
+                            disabled={tokenLoading}
+                            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-medium disabled:opacity-50"
+                        >
+                            {tokenLoading ? 'Loading...' : 'Share Invite QR'}
+                        </button>
                     </div>
                 )}
 
@@ -356,6 +395,16 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                         Close
                     </button>
                 </div>
+
+                {/* QR Code Modal */}
+                <QRCodeModal
+                    isOpen={showQR}
+                    onClose={() => setShowQR(false)}
+                    url={inviteUrl}
+                    title={`Invite to ${group_name || 'Group'}`}
+                    showReset={userRole === 'owner' || userRole === 'admin'}
+                    onReset={handleResetToken}
+                />
             </div>
         </div>
     );
