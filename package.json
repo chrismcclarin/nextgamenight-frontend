@@ -22,6 +22,7 @@
     "nanoid": "^5.0.7",
     "next": "14.0.2",
     "papaparse": "^5.4.1",
+    "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
     "react-big-calendar": "^1.12.1",
     "react-dom": "^18.2.0",

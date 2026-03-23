@@ -182,6 +182,25 @@ export const groupsAPI = {
     apiFetch(`/groups/${group_id}/leave`, {
       method: 'POST',
     }),
+
+  // Get (or lazy-generate) group invite token
+  getInviteToken: (group_id) =>
+    apiFetch(`/groups/${group_id}/invite-token`),
+
+  // Reset group invite token (owner/admin only)
+  resetInviteToken: (group_id) =>
+    apiFetch(`/groups/${group_id}/reset-invite-token`, { method: 'POST' }),
+
+  // Join group by invite token (authenticated)
+  joinByToken: (token) =>
+    apiFetch('/groups/join-by-token', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
+
+  // Get group invite preview (public, no auth needed)
+  getInvitePreview: (token) =>
+    apiFetch(`/groups/invite-preview/${token}`),
 };
 
 /**
