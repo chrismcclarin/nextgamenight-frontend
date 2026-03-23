@@ -234,11 +234,26 @@ export const eventsAPI = {
     }),
   
   // Delete an event (requires owner/admin)
-  deleteEvent: (event_id, requesting_user_id) => 
+  deleteEvent: (event_id, requesting_user_id) =>
     apiFetch(`/events/${event_id}`, {
       method: 'DELETE',
       body: JSON.stringify({ requesting_user_id }),
     }),
+
+  // Get (or lazy-generate) event invite token
+  getEventInviteToken: (event_id) =>
+    apiFetch(`/events/${event_id}/invite-token`),
+
+  // Join game by invite token (authenticated)
+  joinGameByToken: (token) =>
+    apiFetch('/events/join-game-by-token', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
+
+  // Get event invite preview (public, no auth needed)
+  getEventInvitePreview: (token) =>
+    apiFetch(`/events/invite-preview/${token}`),
 };
 
 /**
