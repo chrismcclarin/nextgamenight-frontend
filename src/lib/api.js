@@ -309,10 +309,22 @@ export const usersAPI = {
     apiFetch(`/users/search/email/${encodeURIComponent(email)}`),
   
   // Create or update user
-  createOrUpdateUser: (userData) => 
+  createOrUpdateUser: (userData) =>
     apiFetch('/users', {
       method: 'POST',
       body: JSON.stringify(userData),
+    }),
+
+  // Mark tutorial as completed
+  completeTutorial: (user_id) =>
+    apiFetch(`/users/${encodeURIComponent(user_id)}/tutorial`, {
+      method: 'PUT',
+    }),
+
+  // Reset tutorial for replay
+  resetTutorial: (user_id) =>
+    apiFetch(`/users/${encodeURIComponent(user_id)}/tutorial`, {
+      method: 'DELETE',
     }),
 };
 
