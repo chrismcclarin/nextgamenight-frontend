@@ -4,13 +4,47 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
-import { eventsAPI, gameReviewsAPI, usersAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI, API_BASE_URL } from '../../lib/api';
+import { eventsAPI, gameReviewsAPI, usersAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI, invitesAPI, API_BASE_URL } from '../../lib/api';
 import CreateEvent from '../components/createEvent';
 import RsvpSection from '../components/RsvpSection';
 import BallotSection from '../components/BallotSection';
 import GameSuggestionCard from '../components/GameSuggestionCard';
 import { formatDate, formatDateTime, formatDuration } from '../../lib/dateUtils';
 import SafeImage from '../components/SafeImage';
+
+function GuestInviteButton({ groupId, email }) {
+    const [status, setStatus] = useState(null); // null | 'sending' | 'sent' | 'error'
+
+    const handleInvite = async () => {
+        setStatus('sending');
+        try {
+            await invitesAPI.sendInvite(groupId, email);
+            setStatus('sent');
+        } catch (err) {
+            setStatus('error');
+        }
+    };
+
+    return (
+        <button
+            onClick={handleInvite}
+            disabled={status === 'sending' || status === 'sent'}
+            className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                status === 'sent'
+                    ? 'text-emerald-600 border-emerald-300 bg-emerald-50'
+                    : status === 'error'
+                        ? 'text-red-600 border-red-300 bg-red-50 hover:bg-red-100'
+                        : 'text-blue-600 border-blue-300 hover:bg-blue-50'
+            }`}
+            title={status === 'sent' ? 'Invite sent!' : 'Invite this guest to join the group'}
+        >
+            {status === 'sending' && 'Sending...'}
+            {status === 'sent' && 'Invite sent!'}
+            {status === 'error' && 'Retry'}
+            {!status && 'Invite to group'}
+        </button>
+    );
+}
 
 export default function GameDetailPage() {
     const { user } = Auth();
@@ -815,6 +849,11 @@ export default function GameDetailPage() {
                                                                     {participation.User?.username || participation.username || 'Unknown'}
                                                                     {participation.is_custom && <span className="text-xs text-gray-500 ml-1">(Guest)</span>}
                                                                 </span>
+                                                                {participation.is_guest && (
+                                                                    <span className="text-xs bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded-full font-medium">
+                                                                        Guest
+                                                                    </span>
+                                                                )}
                                                                 {participation.is_new_player && (
                                                                     <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold">
                                                                         New Player
@@ -836,6 +875,9 @@ export default function GameDetailPage() {
                                                                     </span>
                                                                 )}
                                                             </span>
+                                                            {participation.is_guest && (userRole === 'owner' || userRole === 'admin') && participation.email && (
+                                                                <GuestInviteButton groupId={group_id} email={participation.email} />
+                                                            )}
                                                         </div>
                                                     ))}
                                                 </div>

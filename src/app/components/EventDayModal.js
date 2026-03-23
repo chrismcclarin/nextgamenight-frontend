@@ -1,14 +1,38 @@
 'use client';
+import { useState } from 'react';
 import { getContrastColor } from '../../lib/colorUtils';
 import { formatTime } from '../../lib/dateUtils';
 import SafeImage from './SafeImage';
+import QRCodeModal from './QRCodeModal';
+import { eventsAPI } from '../../lib/api';
 
 export default function EventDayModal({
   selectedDay,
   onClose,
   onEventClick,
 }) {
+  const [showGameQR, setShowGameQR] = useState(false);
+  const [gameInviteUrl, setGameInviteUrl] = useState('');
+  const [gameQRLoading, setGameQRLoading] = useState(false);
+  const [qrEventId, setQrEventId] = useState(null);
+
   if (!selectedDay) return null;
+
+  const handleShowGameQR = async (e, event) => {
+    e.stopPropagation(); // Prevent navigating to event detail
+    setGameQRLoading(true);
+    setQrEventId(event.id);
+    try {
+      const data = await eventsAPI.getEventInviteToken(event.id);
+      setGameInviteUrl(data.invite_url);
+      setShowGameQR(true);
+    } catch (err) {
+      console.error('Failed to get game invite token:', err);
+    } finally {
+      setGameQRLoading(false);
+      setQrEventId(null);
+    }
+  };
 
   return (
     <div
@@ -145,6 +169,21 @@ export default function EventDayModal({
                             <span>Duration: {event.duration_minutes} min</span>
                           )}
                         </div>
+                        {/* Share Game QR button - visible for upcoming events */}
+                        {!isPastEvent && (
+                          <button
+                            onClick={(e) => handleShowGameQR(e, event)}
+                            disabled={gameQRLoading && qrEventId === event.id}
+                            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md transition-colors disabled:opacity-50"
+                            title="Share Game QR"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
+                            </svg>
+                            {gameQRLoading && qrEventId === event.id ? 'Loading...' : 'Share Game QR'}
+                          </button>
+                        )}
                       </div>
                       <SafeImage
                         src={event.Game?.image_url}
@@ -159,6 +198,15 @@ export default function EventDayModal({
           )}
         </div>
       </div>
+
+      {/* Game QR Code Modal */}
+      <QRCodeModal
+        isOpen={showGameQR}
+        onClose={() => setShowGameQR(false)}
+        url={gameInviteUrl}
+        title="Game Night Invite QR"
+        showReset={false}
+      />
     </div>
   );
 }
