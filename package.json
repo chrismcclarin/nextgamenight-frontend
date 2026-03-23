@@ -13,6 +13,7 @@
     "@auth0/nextjs-auth0": "^3.5.0",
     "@floating-ui/react": "^0.27.17",
     "@hookform/resolvers": "^5.2.2",
+    "@reactour/tour": "^3.8.0",
     "@sentry/nextjs": "^8.0.0",
     "@uidotdev/usehooks": "^2.4.1",
     "date-fns": "^2.30.0",
