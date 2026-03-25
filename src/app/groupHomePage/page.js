@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import CreateEvent from '../components/createEvent';
 import ManageMembers from '../components/ManageMembers';
-import AddMember from '../components/addMember';
+import FriendInvitePanel from '../components/FriendInvitePanel';
 import { listsAPI, groupsAPI, eventsAPI, API_BASE_URL } from '../../lib/api';
 import GroupGamesList from '../components/GroupGamesList';
 import { getTextStyle, getSubtitleStyle } from '../../lib/colorUtils';
@@ -291,10 +291,10 @@ function GroupHomePage(){
                 group_name={Group?.name || 'this group'}
             />
 
-            <AddMember
+            <FriendInvitePanel
                 group={Group}
-                modal={inviteModal}
-                modaltoggle={() => setInviteModal(false)}
+                open={inviteModal}
+                onClose={() => setInviteModal(false)}
                 onMemberAdded={getGroupMembers}
             />
         </div>
