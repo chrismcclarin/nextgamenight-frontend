@@ -15,8 +15,9 @@ import ScheduleCalendar from './ScheduleCalendar';
  * @param {Object} props.group - Full group object (for members, games)
  * @param {string} props.userRole - 'owner' | 'admin' | 'member' (controls permissions)
  * @param {Function} props.onClose - Optional callback to close manager
+ * @param {string} props.variant - 'modal' (default) or 'inline' rendering mode
  */
-export default function PromptScheduleManager({ groupId, group, userRole, onClose }) {
+export default function PromptScheduleManager({ groupId, group, userRole, onClose, variant = 'modal' }) {
   const [schedules, setSchedules] = useState([]);
   const [games, setGames] = useState([]);
   const [members, setMembers] = useState([]);
@@ -100,6 +101,120 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
   // Check if user has permission to create/edit
   const canManageSchedules = ['owner', 'admin'].includes(userRole);
 
+  // Shared content rendered in both modal and inline variants
+  const renderContent = () => (
+    <>
+      {/* Error message */}
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-red-700 text-sm">{error}</p>
+        </div>
+      )}
+
+      {/* Create button (owner/admin only) */}
+      {canManageSchedules && !showForm && !loading && (
+        <button
+          onClick={handleCreate}
+          className="mb-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+        >
+          + New Schedule
+        </button>
+      )}
+
+      {/* Content */}
+      {showForm ? (
+        // Show form for create/edit
+        <ScheduleForm
+          groupId={groupId}
+          existingSchedule={editingSchedule}
+          games={games}
+          members={members}
+          onSuccess={handleFormSuccess}
+          onCancel={handleFormCancel}
+        />
+      ) : loading ? (
+        // Loading state
+        <div className="text-center py-12">
+          <p className="text-gray-500">Loading schedules...</p>
+        </div>
+      ) : view === 'list' ? (
+        // List view
+        <ScheduleList
+          schedules={schedules}
+          games={games}
+          onEdit={canManageSchedules ? handleEdit : null}
+          onToggle={canManageSchedules ? handleToggle : null}
+          onDelete={canManageSchedules ? handleDelete : null}
+        />
+      ) : (
+        // Calendar view
+        <ScheduleCalendar
+          schedules={schedules}
+          onSelectEvent={canManageSchedules ? handleEdit : null}
+        />
+      )}
+
+      {/* Permission notice for members */}
+      {!canManageSchedules && !loading && (
+        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-blue-700 text-sm">
+            You are viewing schedules as a member. Only group owners and admins can create or edit schedules.
+          </p>
+        </div>
+      )}
+    </>
+  );
+
+  // View toggle buttons shared between variants
+  const renderViewToggle = () => (
+    <>
+      {!showForm && (
+        <>
+          <button
+            onClick={() => setView('list')}
+            className={`px-4 py-2 rounded transition-colors ${
+              view === 'list'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            List
+          </button>
+          <button
+            onClick={() => setView('calendar')}
+            className={`px-4 py-2 rounded transition-colors ${
+              view === 'calendar'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            Calendar
+          </button>
+        </>
+      )}
+    </>
+  );
+
+  // Inline variant: no modal backdrop, rendered directly in page flow
+  if (variant === 'inline') {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200">
+        {/* Header without close button */}
+        <div className="flex justify-between items-center p-4 pb-3 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900">Prompt Schedules</h3>
+          <div className="flex items-center gap-2">
+            {renderViewToggle()}
+          </div>
+        </div>
+        {/* Content */}
+        <div className="p-4 pt-3">
+          {renderContent()}
+        </div>
+      </div>
+    );
+  }
+
+  // Modal variant (default): full-screen backdrop with centered card
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
@@ -108,31 +223,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
           <h2 className="text-2xl font-bold text-gray-900">Prompt Schedules</h2>
 
           <div className="flex items-center gap-2">
-            {/* View toggle buttons */}
-            {!showForm && (
-              <>
-                <button
-                  onClick={() => setView('list')}
-                  className={`px-4 py-2 rounded transition-colors ${
-                    view === 'list'
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  List
-                </button>
-                <button
-                  onClick={() => setView('calendar')}
-                  className={`px-4 py-2 rounded transition-colors ${
-                    view === 'calendar'
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Calendar
-                </button>
-              </>
-            )}
+            {renderViewToggle()}
 
             {/* Close button */}
             {onClose && (
@@ -149,65 +240,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
 
         {/* Scrollable content area */}
         <div className="p-6 pt-4 overflow-y-auto flex-1">
-
-        {/* Error message */}
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-700 text-sm">{error}</p>
-          </div>
-        )}
-
-        {/* Create button (owner/admin only) */}
-        {canManageSchedules && !showForm && !loading && (
-          <button
-            onClick={handleCreate}
-            className="mb-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
-          >
-            + New Schedule
-          </button>
-        )}
-
-        {/* Content */}
-        {showForm ? (
-          // Show form for create/edit
-          <ScheduleForm
-            groupId={groupId}
-            existingSchedule={editingSchedule}
-            games={games}
-            members={members}
-            onSuccess={handleFormSuccess}
-            onCancel={handleFormCancel}
-          />
-        ) : loading ? (
-          // Loading state
-          <div className="text-center py-12">
-            <p className="text-gray-500">Loading schedules...</p>
-          </div>
-        ) : view === 'list' ? (
-          // List view
-          <ScheduleList
-            schedules={schedules}
-            games={games}
-            onEdit={canManageSchedules ? handleEdit : null}
-            onToggle={canManageSchedules ? handleToggle : null}
-            onDelete={canManageSchedules ? handleDelete : null}
-          />
-        ) : (
-          // Calendar view
-          <ScheduleCalendar
-            schedules={schedules}
-            onSelectEvent={canManageSchedules ? handleEdit : null}
-          />
-        )}
-
-        {/* Permission notice for members */}
-        {!canManageSchedules && !loading && (
-          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-blue-700 text-sm">
-              You are viewing schedules as a member. Only group owners and admins can create or edit schedules.
-            </p>
-          </div>
-        )}
+          {renderContent()}
         </div>
       </div>
     </div>
