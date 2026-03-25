@@ -4,8 +4,26 @@
  */
 
 export const MOCK_GROUPS = [
-  { id: 1, name: 'Friday Night Games', memberCount: 5, color: '#3B82F6' },
-  { id: 2, name: 'The Settlers', memberCount: 3, color: '#10B981' },
+  {
+    id: 1,
+    name: 'Friday Night Games',
+    memberCount: 5,
+    color: '#3B82F6',
+    profilePic: '🎲',
+    players: ['Alex', 'Jordan', 'Sam', 'Taylor'],
+    lastGame: 'Catan',
+    lastGameDate: 'Mar 21, 2026',
+  },
+  {
+    id: 2,
+    name: 'The Settlers',
+    memberCount: 3,
+    color: '#10B981',
+    profilePic: '🏰',
+    players: ['Jordan', 'Riley'],
+    lastGame: 'Ticket to Ride',
+    lastGameDate: 'Mar 18, 2026',
+  },
 ];
 
 export const MOCK_PLAYERS = [
@@ -16,10 +34,10 @@ export const MOCK_PLAYERS = [
 ];
 
 export const MOCK_GAMES = [
-  { id: 1, name: 'Catan', playerCount: '3-4' },
-  { id: 2, name: 'Ticket to Ride', playerCount: '2-5' },
-  { id: 3, name: 'Wingspan', playerCount: '1-5' },
-  { id: 4, name: 'Azul', playerCount: '2-4' },
+  { id: 1, name: 'Catan', playCount: 8, lastPlayed: 'Mar 21, 2026', rating: '4.2' },
+  { id: 2, name: 'Ticket to Ride', playCount: 5, lastPlayed: 'Mar 18, 2026', rating: '4.5' },
+  { id: 3, name: 'Wingspan', playCount: 3, lastPlayed: 'Mar 14, 2026', rating: '4.8' },
+  { id: 4, name: 'Azul', playCount: 2, lastPlayed: 'Mar 10, 2026', rating: '3.9' },
 ];
 
 export const MOCK_EVENTS = [

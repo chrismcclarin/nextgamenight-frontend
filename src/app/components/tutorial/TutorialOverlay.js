@@ -12,7 +12,7 @@ import SimulatedAvailability from './simulated/SimulatedAvailability';
 /**
  * Mapping from tour step index to the simulated page component to display.
  * Steps 0-1: SimulatedUserHome (create group + QR mention)
- * Steps 2-3: SimulatedGroupHome (event creation + game voting)
+ * Steps 2-3: SimulatedGroupHome (event creation + plan session)
  * Steps 4-5: SimulatedAvailability (heatmap view + interactive slots)
  */
 function getPageForStep(stepIndex) {
@@ -93,7 +93,7 @@ export default function TutorialOverlay({ onComplete }) {
         showDots={false}
         showBadge={false}
         showCloseButton={false}
-        disableInteraction={true}
+        disableInteraction={false}
         scrollSmooth={true}
         onClickMask={() => {}}
         padding={{ mask: 8, popover: [6, 10] }}

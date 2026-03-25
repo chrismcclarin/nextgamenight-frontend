@@ -5,13 +5,14 @@ import { MOCK_AVAILABILITY, MOCK_PLAYERS } from '../mockData';
 
 /**
  * Color scale for heatmap cells based on overlap count (0-4 people).
+ * Matches real HeatmapCell: gray -> yellow -> orange -> red (warm scale).
  */
 const HEAT_COLORS = [
-  'bg-gray-100',       // 0 - nobody
-  'bg-green-200',      // 1 - light green
-  'bg-green-400',      // 2 - green
-  'bg-green-600 text-white', // 3 - dark green
-  'bg-green-800 text-white', // 4 - darkest green
+  'bg-gray-100',                        // 0 - nobody
+  'bg-yellow-200 border-yellow-400',    // 1 - light warm
+  'bg-yellow-400 border-yellow-500',    // 2 - warm
+  'bg-orange-400 border-orange-500',    // 3 - hot
+  'bg-red-500 border-red-600 text-white', // 4 - hottest
 ];
 
 /**
@@ -61,15 +62,17 @@ export default function SimulatedAvailability() {
       >
         <h3 className="text-sm font-semibold text-gray-700 mb-3">When is everyone free?</h3>
 
-        {/* Legend */}
+        {/* Legend - matches real HeatmapGrid */}
         <div className="flex items-center gap-3 mb-3 text-xs">
-          <span className="text-gray-500">Fewer</span>
+          <span className="text-gray-500">Fewer available</span>
           <div className="flex gap-0.5">
-            {HEAT_COLORS.map((color, i) => (
-              <div key={i} className={`w-5 h-3 rounded-sm ${color.split(' ')[0]}`} />
-            ))}
+            <div className="w-5 h-3 rounded-sm bg-gray-100 border border-gray-300" />
+            <div className="w-5 h-3 rounded-sm bg-yellow-200 border border-yellow-400" />
+            <div className="w-5 h-3 rounded-sm bg-yellow-400 border border-yellow-500" />
+            <div className="w-5 h-3 rounded-sm bg-orange-400 border border-orange-500" />
+            <div className="w-5 h-3 rounded-sm bg-red-500 border border-red-600" />
           </div>
-          <span className="text-gray-500">More</span>
+          <span className="text-gray-500">More available</span>
         </div>
 
         <div className="min-w-max">
@@ -95,7 +98,7 @@ export default function SimulatedAvailability() {
               {MOCK_AVAILABILITY.data[rowIdx].map((count, colIdx) => (
                 <div
                   key={`${rowIdx}-${colIdx}`}
-                  className={`w-14 h-8 flex-shrink-0 flex items-center justify-center text-xs font-medium rounded-sm m-0.5 ${
+                  className={`w-14 h-8 flex-shrink-0 flex items-center justify-center text-xs font-medium rounded-sm m-0.5 border ${
                     HEAT_COLORS[Math.min(count, HEAT_COLORS.length - 1)]
                   }`}
                 >
