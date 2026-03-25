@@ -531,7 +531,7 @@ export default function GroupPlanningPage() {
                 <span className="text-gray-400 mx-2">{'>'}</span>
                 {group && (
                     <>
-                        <Link href={`/groupHomePage?group_id=${groupId}`} className="text-blue-400 hover:text-blue-300 transition-colors font-medium max-w-[200px] truncate inline-block align-bottom">
+                        <Link href={`/groupHomePage?id=${groupId}`} className="text-blue-400 hover:text-blue-300 transition-colors font-medium max-w-[200px] truncate inline-block align-bottom">
                             {group.name}
                         </Link>
                         <span className="text-gray-400 mx-2">{'>'}</span>
