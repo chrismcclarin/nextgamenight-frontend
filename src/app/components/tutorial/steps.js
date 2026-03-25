@@ -48,7 +48,9 @@ const STEP_TEXTS = [
 /**
  * Generates step content JSX with skip link and progress dots.
  */
-export const makeStepContent = (text, stepIndex, totalSteps, onSkip) => () => (
+export const makeStepContent = (text, stepIndex, totalSteps, onSkip) => {
+  // eslint-disable-next-line react/display-name
+  return () => (
   <div className="p-1">
     <p className="text-gray-700 text-sm mb-3">{text}</p>
     <div className="flex justify-between items-center">
@@ -65,7 +67,8 @@ export const makeStepContent = (text, stepIndex, totalSteps, onSkip) => () => (
       </div>
     </div>
   </div>
-);
+  );
+};
 
 /**
  * Returns the full steps array with content functions pre-bound with skip callback.
