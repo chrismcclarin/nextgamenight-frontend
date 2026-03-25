@@ -12,12 +12,12 @@ import SimulatedAvailability from './simulated/SimulatedAvailability';
 /**
  * Mapping from tour step index to the simulated page component to display.
  * Steps 0-1: SimulatedUserHome (create group + QR mention)
- * Steps 2-3: SimulatedGroupHome (event creation + plan session)
- * Steps 4-5: SimulatedAvailability (heatmap view + interactive slots)
+ * Steps 2-4: SimulatedGroupHome (event creation + plan session + prompt schedule)
+ * Steps 5-6: SimulatedAvailability (heatmap view + interactive slots)
  */
 function getPageForStep(stepIndex) {
   if (stepIndex <= 1) return SimulatedUserHome;
-  if (stepIndex <= 3) return SimulatedGroupHome;
+  if (stepIndex <= 4) return SimulatedGroupHome;
   return SimulatedAvailability;
 }
 
