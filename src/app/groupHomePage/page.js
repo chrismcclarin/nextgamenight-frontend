@@ -12,6 +12,8 @@ import { getTextStyle, getSubtitleStyle } from '../../lib/colorUtils';
 import SafeImage from '../components/SafeImage';
 import EventCalendar from '../components/EventCalendar';
 import PendingMemberBanner from '../components/PendingMemberBanner';
+import FriendshipStatusProvider from '../components/FriendshipStatusProvider';
+import PromptScheduleSection from '../components/PromptScheduleSection';
 
 // A groups home page
 function GroupHomePage(){
@@ -138,6 +140,7 @@ function GroupHomePage(){
     }
 
     return (
+        <FriendshipStatusProvider>
         <div className="p-3 md:p-6">
             {/* Breadcrumbs */}
             <nav className="mb-4 text-sm bg-gray-800 px-3 py-2 rounded-lg inline-block">
@@ -249,6 +252,13 @@ function GroupHomePage(){
 
             {userRole === 'pending' && <PendingMemberBanner groupId={Router} />}
 
+            {/* Prompt Schedule (owner/admin only) */}
+            <PromptScheduleSection
+                groupId={Router}
+                group={Group}
+                userRole={userRole}
+            />
+
             {/* Group Calendar */}
             <EventCalendar
                 events={groupEvents}
@@ -298,6 +308,7 @@ function GroupHomePage(){
                 onMemberAdded={getGroupMembers}
             />
         </div>
+        </FriendshipStatusProvider>
     );
 }
 
