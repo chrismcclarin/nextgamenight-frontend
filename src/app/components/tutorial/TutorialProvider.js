@@ -27,7 +27,7 @@ export function useTutorial() {
  * TutorialProvider -- Global context provider managing tutorial lifecycle.
  *
  * Auto-trigger logic:
- *   - Only fires when user is on /userHome (pathname gate)
+ *   - Only fires when user is on / (home page pathname gate)
  *   - Checks backend tutorial_completed flag via usersAPI.getUser
  *   - If tutorial_completed is false, shows tutorial overlay
  *   - Fail-open: if API check fails, do not block the app
@@ -46,10 +46,10 @@ export default function TutorialProvider({ children }) {
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialChecked, setTutorialChecked] = useState(false);
 
-  // Auto-trigger: check tutorial status when user lands on /userHome
+  // Auto-trigger: check tutorial status when user lands on / (home page)
   useEffect(() => {
     if (!user?.sub || isLoading || tutorialChecked) return;
-    if (!pathname || !pathname.startsWith('/userHome')) return;
+    if (!pathname || pathname !== '/') return;
 
     let cancelled = false;
 
