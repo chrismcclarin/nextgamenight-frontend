@@ -7,6 +7,7 @@ import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, availabilityAPI } 
 import Link from 'next/link';
 import { formatDate } from '../../lib/dateUtils';
 import SafeImage from '../components/SafeImage';
+import { useTutorial } from '../components/tutorial/TutorialProvider';
 
 function Profile(){
     const { user, error, isLoading } = Auth();
@@ -48,6 +49,23 @@ function Profile(){
         isAvailable: true,
     });
     const [savingPattern, setSavingPattern] = useState(false);
+    const [replayingTutorial, setReplayingTutorial] = useState(false);
+
+    const { replayTutorial } = useTutorial();
+
+    const handleReplayTutorial = async () => {
+        if (!user?.sub) return;
+        try {
+            setReplayingTutorial(true);
+            await usersAPI.resetTutorial(user.sub);
+            replayTutorial();
+        } catch (error) {
+            console.error('Error replaying tutorial:', error);
+            alert('Failed to replay tutorial. Please try again.');
+        } finally {
+            setReplayingTutorial(false);
+        }
+    };
 
     const fetchUserData = useCallback(async () => {
         if (!user?.sub) return;
@@ -710,6 +728,21 @@ function Profile(){
                             )}
                         </div>
                     )}
+                </div>
+
+                {/* Tutorial Section */}
+                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
+                    <h2 className="text-lg font-bold text-gray-900 mb-2">Tutorial</h2>
+                    <p className="text-sm text-gray-600 mb-4">
+                        Need a refresher on how to use Next Game Night? Replay the onboarding tutorial to walk through the key features.
+                    </p>
+                    <button
+                        onClick={handleReplayTutorial}
+                        disabled={replayingTutorial}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:bg-gray-400"
+                    >
+                        {replayingTutorial ? 'Starting...' : 'Replay Tutorial'}
+                    </button>
                 </div>
 
                 {/* Owned Games Section */}
