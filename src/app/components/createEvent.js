@@ -12,7 +12,7 @@ import ParticipantRow from './ParticipantRow';
 import BallotOptionsEditor from './BallotOptionsEditor';
 import EventResultFields from './EventResultFields';
 
-function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, hideVisualCalendar = false }) {
+function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, hideVisualCalendar = false, userRole }) {
   const authUser = user || Auth().user;
   const [groupMembers, setGroupMembers] = useState([]);
   const [newEvent, setNewEvent] = useState(createEventForm(group_id, []));
@@ -429,6 +429,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
               duration={newEvent.duration_minutes}
               onSelectGame={handleSuggestionSelect}
               eventId={editingEvent?.id}
+              userRole={userRole}
             />
           </div>
 

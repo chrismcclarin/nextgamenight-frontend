@@ -290,6 +290,7 @@ function GroupHomePage(){
                 user={user}
                 prefillDate={calendarPrefillDate || prefillDate}
                 prefillTime={prefillTime}
+                userRole={userRole}
             />
             
             <ManageMembers

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { suggestionsAPI } from '../../lib/api';
 
-export default function QuickSuggestions({ groupId, playerCount, duration, onSelectGame, eventId }) {
+export default function QuickSuggestions({ groupId, playerCount, duration, onSelectGame, eventId, userRole }) {
   const [suggestions, setSuggestions] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const debounceRef = useRef(null);
@@ -52,8 +52,18 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
     }, 500);
   }, [groupId, playerCount, duration]);
 
-  // Render nothing if no suggestions or not yet loaded
-  if (!loaded || suggestions.length === 0) {
+  // Render nothing if not yet loaded
+  if (!loaded) return null;
+
+  // Empty suggestions: admins/owners see a subtle hint, members see nothing
+  if (suggestions.length === 0) {
+    if (userRole === 'owner' || userRole === 'admin') {
+      return (
+        <div className="mt-1 mb-1">
+          <p className="text-xs text-gray-400 italic">Add games to enable suggestions</p>
+        </div>
+      );
+    }
     return null;
   }
 

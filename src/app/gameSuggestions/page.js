@@ -65,6 +65,7 @@ export default function GameSuggestionsPage() {
         setSuggestions([]);
       }
     } catch (err) {
+      console.warn('Game suggestions fetch failed:', err.message);
       console.error('Error fetching suggestions:', err);
       setSuggestions([]);
     } finally {
