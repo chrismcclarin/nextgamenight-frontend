@@ -89,15 +89,20 @@ export default function SimulatedUserHome() {
             ))}
           </div>
 
-          {/* QR code join area */}
+          {/* Invite friends area */}
           <div
-            data-tutorial="qr-join"
-            className="mx-4 mb-4 p-3 border border-dashed border-gray-300 rounded-lg text-center bg-gray-50"
+            data-tutorial="invite-friends"
+            className="mx-4 mb-4 p-3 border border-dashed border-gray-300 rounded-lg bg-gray-50"
           >
-            <div className="text-2xl mb-1">📱</div>
-            <p className="text-sm text-gray-600">
-              Have a QR code? Scan it to instantly join a group.
-            </p>
+            <p className="text-sm font-medium text-gray-700 mb-2">Invite Friends</p>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-lg">👥</span>
+              <p className="text-xs text-gray-600">Add from your friends list</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-lg">📱</span>
+              <p className="text-xs text-gray-600">Share a QR code to invite them</p>
+            </div>
           </div>
         </div>
       </div>

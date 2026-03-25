@@ -14,8 +14,8 @@ const STEP_TEXTS = [
     stepInteraction: false,
   },
   {
-    selector: '[data-tutorial="qr-join"]',
-    text: 'You can also join groups by scanning a QR code shared by a friend.',
+    selector: '[data-tutorial="invite-friends"]',
+    text: 'Invite friends from your friends list or share a QR code to bring them into your group.',
     position: 'bottom',
     stepInteraction: false,
   },
