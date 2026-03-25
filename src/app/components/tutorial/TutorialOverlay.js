@@ -116,47 +116,38 @@ export default function TutorialOverlay({ onComplete }) {
           // Allow clicks on highlighted elements for interactive steps
           // stepInteraction per-step already controls this
         }}
-        nextButton={({ Button, currentStep, stepsLength, setCurrentStep, setIsOpen }) => {
+        nextButton={({ currentStep, stepsLength, setCurrentStep, setIsOpen }) => {
           const isLast = currentStep === stepsLength - 1;
-          if (isLast) {
-            return (
-              <Button
-                onClick={() => {
+          return (
+            <button
+              onClick={() => {
+                if (isLast) {
                   setIsOpen(false);
                   handleTourFinish();
-                }}
-              >
-                Done
-              </Button>
-            );
-          }
-          return (
-            <Button
-              onClick={() => setCurrentStep((s) => Math.min(s + 1, stepsLength - 1))}
+                } else {
+                  setCurrentStep((s) => Math.min(s + 1, stepsLength - 1));
+                }
+              }}
+              className="text-sm font-medium text-blue-600 hover:text-blue-800 px-3 py-1"
             >
-              Next
-            </Button>
+              {isLast ? 'Done' : 'Next \u203A'}
+            </button>
           );
         }}
-        prevButton={({ Button, currentStep, setCurrentStep }) => {
-          if (currentStep === 0) {
-            return (
-              <Button
-                onClick={() => {
-                  // Go back to welcome
-                  setPhase('welcome');
-                }}
-              >
-                Back
-              </Button>
-            );
-          }
-          return (
-            <Button onClick={() => setCurrentStep((s) => Math.max(s - 1, 0))}>
-              Back
-            </Button>
-          );
-        }}
+        prevButton={({ currentStep, setCurrentStep }) => (
+          <button
+            onClick={() => {
+              if (currentStep === 0) {
+                setPhase('welcome');
+              } else {
+                setCurrentStep((s) => Math.max(s - 1, 0));
+              }
+            }}
+            className="text-sm font-medium text-gray-500 hover:text-gray-700 px-3 py-1"
+          >
+            {'\u2039 Back'}
+          </button>
+        )}
       >
         <TourContent
           onTourFinish={handleTourFinish}

@@ -20,6 +20,17 @@ export default function SimulatedUserHome() {
               data-tutorial="create-group-btn"
               className="create-group-btn"
               onClick={() => {}}
+              style={{
+                width: '100%',
+                padding: '0.75rem 1rem',
+                backgroundColor: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '1rem',
+                fontWeight: '500',
+                cursor: 'pointer',
+              }}
             >
               + Create New Group
             </button>
