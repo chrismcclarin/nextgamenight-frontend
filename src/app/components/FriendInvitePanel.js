@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { friendshipsAPI, invitesAPI, groupsAPI } from '../../lib/api';
+import { QRCodeSVG } from 'qrcode.react';
 
 function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
     const { user } = useUser();
@@ -20,6 +21,16 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
     const [emailLoading, setEmailLoading] = useState(false);
     const [emailError, setEmailError] = useState('');
     const [emailSuccess, setEmailSuccess] = useState('');
+
+    // Add friend prompt state
+    const [friendPrompt, setFriendPrompt] = useState(null); // { user_id, username, email }
+    const [addingFriend, setAddingFriend] = useState(false);
+    const [friendRequestSent, setFriendRequestSent] = useState(false);
+
+    // QR code invite state
+    const [inviteUrl, setInviteUrl] = useState(null);
+    const [tokenLoading, setTokenLoading] = useState(false);
+    const [copied, setCopied] = useState(false);
 
     // Fetch friends on open
     useEffect(() => {
@@ -50,6 +61,17 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
         }
     }, [open, group?.id]);
 
+    // Fetch invite token for QR code when panel opens
+    useEffect(() => {
+        if (open && group?.id) {
+            setTokenLoading(true);
+            groupsAPI.getInviteToken(group.id)
+                .then(data => setInviteUrl(data.invite_url))
+                .catch(() => setInviteUrl(null))
+                .finally(() => setTokenLoading(false));
+        }
+    }, [open, group?.id]);
+
     // Reset state when panel closes
     useEffect(() => {
         if (!open) {
@@ -58,6 +80,10 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
             setEmail('');
             setEmailError('');
             setEmailSuccess('');
+            setFriendPrompt(null);
+            setFriendRequestSent(false);
+            setInviteUrl(null);
+            setCopied(false);
         }
     }, [open]);
 
@@ -107,16 +133,35 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
         e.preventDefault();
         if (!email.trim() || !group?.id) return;
 
+        const invitedEmail = email.trim();
         setEmailLoading(true);
         setEmailError('');
         setEmailSuccess('');
+        setFriendPrompt(null);
+        setFriendRequestSent(false);
 
         try {
-            await invitesAPI.sendInvite(group.id, email.trim());
-            setEmailSuccess(`Invite sent to ${email.trim()}`);
+            await invitesAPI.sendInvite(group.id, invitedEmail);
+            setEmailSuccess(`Invite sent to ${invitedEmail}`);
             setEmail('');
             if (onMemberAdded) onMemberAdded();
-            setTimeout(() => setEmailSuccess(''), 5000);
+
+            // Check if this person is a registered user and not already a friend
+            const isAlreadyFriend = friends.some(f => f.friend?.email === invitedEmail);
+            if (!isAlreadyFriend) {
+                try {
+                    const foundUser = await friendshipsAPI.searchUserByEmail(invitedEmail);
+                    if (foundUser && foundUser.user_id && foundUser.user_id !== user?.sub) {
+                        setFriendPrompt({
+                            user_id: foundUser.user_id,
+                            username: foundUser.username,
+                            email: foundUser.email,
+                        });
+                    }
+                } catch {
+                    // User not found or search failed — no prompt, that's fine
+                }
+            }
         } catch (err) {
             const message = err.message || '';
             if (message.includes('already a member')) {
@@ -128,6 +173,31 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
             }
         } finally {
             setEmailLoading(false);
+        }
+    };
+
+    const handleAddFriend = async () => {
+        if (!friendPrompt?.user_id) return;
+        setAddingFriend(true);
+        try {
+            await friendshipsAPI.sendRequest(friendPrompt.user_id);
+            setFriendRequestSent(true);
+        } catch {
+            // Silently fail — they may already have a pending request
+            setFriendRequestSent(true);
+        } finally {
+            setAddingFriend(false);
+        }
+    };
+
+    const handleCopyLink = async () => {
+        if (!inviteUrl) return;
+        try {
+            await navigator.clipboard.writeText(inviteUrl);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+            console.error('Failed to copy link:', err);
         }
     };
 
@@ -306,7 +376,68 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
                         {emailSuccess && (
                             <p className="text-emerald-600 text-sm mt-2">{emailSuccess}</p>
                         )}
+                        {friendPrompt && !friendRequestSent && (
+                            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between gap-3">
+                                <p className="text-sm text-blue-800">
+                                    Add <span className="font-medium">{friendPrompt.username || friendPrompt.email}</span> as a friend?
+                                </p>
+                                <button
+                                    onClick={handleAddFriend}
+                                    disabled={addingFriend}
+                                    className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex-shrink-0"
+                                >
+                                    {addingFriend ? 'Sending...' : 'Add Friend'}
+                                </button>
+                            </div>
+                        )}
+                        {friendRequestSent && (
+                            <p className="text-blue-600 text-sm mt-2">Friend request sent!</p>
+                        )}
                     </div>
+
+                    {/* QR Code invite section -- only when group context exists */}
+                    {group?.id && (
+                        <>
+                            {/* Divider */}
+                            <div className="px-5">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex-1 border-t border-gray-200" />
+                                    <span className="text-xs text-gray-400 uppercase tracking-wide">or</span>
+                                    <div className="flex-1 border-t border-gray-200" />
+                                </div>
+                            </div>
+
+                            {/* QR Code section */}
+                            <div className="p-5">
+                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                                    Share QR Code
+                                </h3>
+                                {tokenLoading ? (
+                                    <div className="flex items-center gap-2 text-gray-500 py-6 justify-center">
+                                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600" />
+                                        <span>Loading...</span>
+                                    </div>
+                                ) : inviteUrl ? (
+                                    <div className="flex flex-col items-center">
+                                        <QRCodeSVG value={inviteUrl} size={160} level="M" marginSize={2} />
+                                        <p className="text-xs text-gray-500 mt-2 text-center">
+                                            Scan to join group
+                                        </p>
+                                        <button
+                                            onClick={handleCopyLink}
+                                            className="mt-3 w-full px-4 py-2.5 text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg font-medium text-center transition-colors text-sm"
+                                        >
+                                            {copied ? 'Copied!' : 'Copy Invite Link'}
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <p className="text-gray-500 text-sm text-center py-4">
+                                        Unable to generate QR code
+                                    </p>
+                                )}
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 {/* Footer */}
