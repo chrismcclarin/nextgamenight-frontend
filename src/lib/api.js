@@ -524,7 +524,7 @@ export const availabilityAPI = {
   getUserPatterns: (user_id) => 
     apiFetch(`/availability/user/${encodeURIComponent(user_id)}/patterns`),
   
-  // Create recurring availability pattern
+  // Create recurring availability schedule
   createRecurringPattern: (user_id, patternData) => 
     apiFetch(`/availability/user/${encodeURIComponent(user_id)}/recurring`, {
       method: 'POST',

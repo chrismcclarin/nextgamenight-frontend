@@ -272,9 +272,9 @@ function Profile(){
                 end_date: '',
                 timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
             });
-            alert('Recurring pattern created successfully!');
+            alert('Schedule created successfully!');
         } catch (error) {
-            console.error('Error creating recurring pattern:', error);
+            console.error('Error creating schedule:', error);
             alert(`Failed to create pattern: ${error.message || 'Please try again.'}`);
         } finally {
             setSavingPattern(false);
@@ -493,7 +493,7 @@ function Profile(){
                                     : 'text-gray-600 hover:text-gray-900'
                             }`}
                         >
-                            Recurring Patterns
+                            Schedules
                         </button>
                         <button
                             onClick={() => setAvailabilityTab('specific')}
@@ -507,25 +507,25 @@ function Profile(){
                         </button>
                     </div>
 
-                    {/* Recurring Patterns Tab */}
+                    {/* Schedules Tab */}
                     {availabilityTab === 'recurring' && (
                         <div>
                             <div className="flex justify-between items-center mb-4">
                                 <div>
-                                    <h3 className="font-semibold text-gray-900">Recurring Availability Patterns</h3>
-                                    <p className="text-xs text-gray-600 mt-1">Set times when you're available on a recurring basis</p>
+                                    <h3 className="font-semibold text-gray-900">Availability Schedules</h3>
+                                    <p className="text-xs text-gray-600 mt-1">Set your recurring availability schedule</p>
                                 </div>
                                 <button
                                     onClick={() => setShowRecurringForm(!showRecurringForm)}
                                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
                                 >
-                                    {showRecurringForm ? 'Cancel' : '+ Add Pattern'}
+                                    {showRecurringForm ? 'Cancel' : '+ Add Schedule'}
                                 </button>
                             </div>
 
                             {showRecurringForm && (
                                 <div className="mb-6 p-4 border rounded-lg bg-gray-50">
-                                    <h4 className="font-semibold mb-3 text-gray-900">New Recurring Pattern</h4>
+                                    <h4 className="font-semibold mb-3 text-gray-900">New Schedule</h4>
                                     <div className="space-y-3">
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-1">Day of Week</label>
@@ -586,14 +586,14 @@ function Profile(){
                                             disabled={savingPattern}
                                             className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400"
                                         >
-                                            {savingPattern ? 'Saving...' : 'Save Pattern'}
+                                            {savingPattern ? 'Saving...' : 'Save Schedule'}
                                         </button>
                                     </div>
                                 </div>
                             )}
 
                             {loadingPatterns ? (
-                                <p className="text-gray-600">Loading patterns...</p>
+                                <p className="text-gray-600">Loading schedules...</p>
                             ) : (
                                 <div className="space-y-2">
                                     {availabilityPatterns
@@ -617,7 +617,7 @@ function Profile(){
                                             </div>
                                         ))}
                                     {availabilityPatterns.filter(p => p.type === 'recurring_pattern').length === 0 && (
-                                        <p className="text-gray-600 text-sm">No recurring patterns set. Add one to get started!</p>
+                                        <p className="text-gray-600 text-sm">No schedules set. Add one to get started!</p>
                                     )}
                                 </div>
                             )}
@@ -630,7 +630,7 @@ function Profile(){
                             <div className="flex justify-between items-center mb-4">
                                 <div>
                                     <h3 className="font-semibold text-gray-900">Specific Date Overrides</h3>
-                                    <p className="text-xs text-gray-600 mt-1">Override your recurring patterns for specific dates</p>
+                                    <p className="text-xs text-gray-600 mt-1">Override your schedules for specific dates</p>
                                 </div>
                                 <button
                                     onClick={() => setShowSpecificForm(!showSpecificForm)}
