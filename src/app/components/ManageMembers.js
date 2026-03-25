@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { groupsAPI, invitesAPI, API_BASE_URL } from '../../lib/api';
 import QRCodeModal from './QRCodeModal';
+import ClickableMemberName from './ClickableMemberName';
 
 function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, group_name }) {
     const router = useRouter();
@@ -242,7 +243,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                             <div className="flex items-center gap-3 flex-1">
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-2">
-                                                        <p className="font-semibold text-gray-900">{member.username || member.email}</p>
+                                                        <p className="font-semibold text-gray-900"><ClickableMemberName userId={member.user_id} username={member.username || member.email} /></p>
                                                         {getRoleBadge('pending')}
                                                     </div>
                                                 </div>
@@ -283,7 +284,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-2">
                                                     <p className="font-semibold text-gray-900">
-                                                        {member.username || member.email}
+                                                        <ClickableMemberName userId={member.user_id} username={member.username || member.email} />
                                                     </p>
                                                     {isCurrentUser && (
                                                         <span className="text-xs text-blue-600 font-medium">(You)</span>

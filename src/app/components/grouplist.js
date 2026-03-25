@@ -10,6 +10,8 @@ import { groupsAPI } from '../../lib/api';
 import { getTextStyle } from '../../lib/colorUtils';
 import { formatDate } from '../../lib/dateUtils';
 import SafeImage from './SafeImage';
+import FriendshipStatusProvider from './FriendshipStatusProvider';
+import ClickableMemberName from './ClickableMemberName';
 
 const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
   const router = useRouter();
@@ -72,6 +74,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   }
 
   return (
+    <FriendshipStatusProvider>
     <div className="group-list-sidebar">
       <div className="sidebar-header">
         <h2>Your Groups</h2>
@@ -180,7 +183,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                     .slice(0, 4)
                     .map((member, index) => (
                       <span key={member.id || index} className="player-tag">
-                        {member.username || member.email}
+                        <ClickableMemberName userId={member.user_id} username={member.username || member.email} />
                       </span>
                     ))}
                   {groupUsers.filter((member) => member.user_id !== user?.sub).length > 4 && (
@@ -268,6 +271,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
         />
       )}
     </div>
+    </FriendshipStatusProvider>
   );
 };
 

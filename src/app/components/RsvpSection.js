@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { rsvpAPI } from '../../lib/api';
+import ClickableMemberName from './ClickableMemberName';
 
 /**
  * RsvpSection - RSVP interface for a single event
@@ -265,7 +266,11 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
                     {group.map((rsvp) => (
                       <div key={rsvp.id} className="flex flex-col">
                         <span className="text-sm text-gray-900">
-                          {rsvp.User?.username || 'Unknown'}
+                          {rsvp.User?.user_id ? (
+                            <ClickableMemberName userId={rsvp.User.user_id} username={rsvp.User.username || 'Unknown'} />
+                          ) : (
+                            'Unknown'
+                          )}
                         </span>
                         {rsvp.note && (
                           <span className="text-xs text-gray-500 ml-0 mt-0.5">{rsvp.note}</span>

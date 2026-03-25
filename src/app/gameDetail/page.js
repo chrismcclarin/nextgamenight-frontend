@@ -11,6 +11,8 @@ import BallotSection from '../components/BallotSection';
 import GameSuggestionCard from '../components/GameSuggestionCard';
 import { formatDate, formatDateTime, formatDuration } from '../../lib/dateUtils';
 import SafeImage from '../components/SafeImage';
+import FriendshipStatusProvider from '../components/FriendshipStatusProvider';
+import ClickableMemberName from '../components/ClickableMemberName';
 
 function GuestInviteButton({ groupId, email }) {
     const [status, setStatus] = useState(null); // null | 'sending' | 'sent' | 'error'
@@ -571,6 +573,7 @@ export default function GameDetailPage() {
     }
 
     return (
+        <FriendshipStatusProvider>
         <div className="p-6 max-w-6xl mx-auto">
             {/* Breadcrumbs */}
             <nav className="mb-4 text-sm bg-gray-800 px-3 py-2 rounded-lg inline-block">
@@ -810,8 +813,11 @@ export default function GameDetailPage() {
                                                 ) : event.Winner && (
                                                     <p className="text-sm text-gray-600 mb-1">
                                                         Winner: <span className="font-semibold text-blue-600">
-                                                            {event.Winner.username || event.Winner.name || 'Unknown'}
-                                                            {event.Winner.is_custom && <span className="text-xs text-gray-500 ml-1">(Guest)</span>}
+                                                            {event.Winner.is_custom ? (
+                                                                <>{event.Winner.username || event.Winner.name || 'Unknown'}<span className="text-xs text-gray-500 ml-1">(Guest)</span></>
+                                                            ) : (
+                                                                <ClickableMemberName userId={event.Winner.user_id} username={event.Winner.username || 'Unknown'} />
+                                                            )}
                                                         </span>
                                                     </p>
                                                 )}
@@ -846,8 +852,11 @@ export default function GameDetailPage() {
                                                         <div key={idx} className="flex items-center gap-2 flex-wrap">
                                                             <span className="bg-gray-200 text-gray-800 px-3 py-1 rounded border border-gray-300 inline-flex items-center gap-2">
                                                                 <span className="font-medium">
-                                                                    {participation.User?.username || participation.username || 'Unknown'}
-                                                                    {participation.is_custom && <span className="text-xs text-gray-500 ml-1">(Guest)</span>}
+                                                                    {participation.is_custom ? (
+                                                                        <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-gray-500 ml-1">(Guest)</span></>
+                                                                    ) : (
+                                                                        <ClickableMemberName userId={participation.User?.user_id || participation.user_id} username={participation.User?.username || participation.username || 'Unknown'} />
+                                                                    )}
                                                                 </span>
                                                                 {participation.is_guest && (
                                                                     <span className="text-xs bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded-full font-medium">
@@ -942,7 +951,11 @@ export default function GameDetailPage() {
                         <div className="flex justify-between items-start mb-2">
                             <div>
                                 <p className="font-semibold text-gray-900">
-                                    {userReview.User?.username || 'You'} <span className="text-xs text-blue-600 ml-1">(You)</span>
+                                    {userReview.User?.user_id ? (
+                                        <ClickableMemberName userId={userReview.User.user_id} username={userReview.User.username || 'You'} />
+                                    ) : (
+                                        userReview.User?.username || 'You'
+                                    )} <span className="text-xs text-blue-600 ml-1">(You)</span>
                                 </p>
                                 <p className="text-sm text-gray-600">
                                     {formatDate(userReview.createdAt)}
@@ -982,7 +995,11 @@ export default function GameDetailPage() {
                                             <div>
                                                 <div className="flex items-center gap-2">
                                                     <p className="font-semibold text-gray-900">
-                                                        {review.User?.username || 'Unknown'}
+                                                        {review.User?.user_id ? (
+                                                            <ClickableMemberName userId={review.User.user_id} username={review.User.username || 'Unknown'} />
+                                                        ) : (
+                                                            <span>{review.User?.username || 'Unknown'}</span>
+                                                        )}
                                                     </p>
                                                     {isUserReview && (
                                                         <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
@@ -1098,5 +1115,6 @@ export default function GameDetailPage() {
                 />
             )}
         </div>
+        </FriendshipStatusProvider>
     );
 }
