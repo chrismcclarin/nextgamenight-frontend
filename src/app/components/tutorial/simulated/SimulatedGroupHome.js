@@ -58,6 +58,24 @@ export default function SimulatedGroupHome() {
         </div>
       </div>
 
+      {/* Prompt Schedule section - matches real PromptScheduleSection collapsed state */}
+      <div data-tutorial="prompt-schedule" className="mb-4">
+        <button
+          className="flex items-center gap-2 text-sm font-medium text-gray-700"
+          onClick={() => {}}
+        >
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          Prompt Schedule
+        </button>
+      </div>
+
       {/* Calendar section - compact like real GroupHomePage */}
       <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
         <h3 className="text-lg font-semibold text-gray-900 mb-3">Calendar</h3>

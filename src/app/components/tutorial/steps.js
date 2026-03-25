@@ -32,6 +32,12 @@ const STEP_TEXTS = [
     stepInteraction: false,
   },
   {
+    selector: '[data-tutorial="prompt-schedule"]',
+    text: 'Set up automatic reminders to keep your group scheduling game nights. Owners and admins can manage prompt schedules here.',
+    position: 'bottom',
+    stepInteraction: false,
+  },
+  {
     selector: '[data-tutorial="availability-heatmap"]',
     text: 'See when everyone is free. Darker, warmer cells mean more people are available.',
     position: 'top',
@@ -86,4 +92,4 @@ export function getTutorialSteps(onSkip) {
   }));
 }
 
-export const TOTAL_SLIDES = 8; // welcome (1) + tour steps (6) + done (1)
+export const TOTAL_SLIDES = 9; // welcome (1) + tour steps (7) + done (1)
