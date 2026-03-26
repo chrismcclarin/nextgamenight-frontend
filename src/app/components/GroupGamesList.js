@@ -4,6 +4,54 @@ import Link from 'next/link';
 import SafeImage from './SafeImage';
 import { formatDate } from '../../lib/dateUtils';
 
+function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount }) {
+    return (
+        <Link
+            href={`/gameDetail?game_id=${encodeURIComponent(game.id)}&group_id=${encodeURIComponent(groupId)}`}
+            className="block bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg transition-shadow hover:border-blue-300"
+        >
+            <div className="flex items-start gap-4">
+                <SafeImage
+                    src={game.image_url}
+                    alt={game.name}
+                    className="w-16 h-16 object-cover rounded"
+                />
+                <div className="flex-1 min-w-0">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1 truncate">
+                        {game.name}
+                    </h3>
+                    <div className="text-sm text-gray-600 space-y-1">
+                        <p>
+                            Played <span className="font-semibold">{game.play_count}</span> {game.play_count === 1 ? 'time' : 'times'}
+                        </p>
+                        <p>
+                            Last played: {formatDate(game.last_played)}
+                        </p>
+                        {game.avg_rating && (
+                            <p>
+                                Rating: <span className="font-semibold text-yellow-600">{formatRating(game.avg_rating)}</span>
+                                {game.review_count > 0 && (
+                                    <span className="text-gray-500"> ({game.review_count} {game.review_count === 1 ? 'review' : 'reviews'})</span>
+                                )}
+                            </p>
+                        )}
+                        {game.theme && (
+                            <p className="text-xs text-gray-500">
+                                Theme: {game.theme}
+                            </p>
+                        )}
+                        {(game.min_players || game.max_players || sortBy === 'player_count') && (
+                            <p className="text-xs text-gray-500">
+                                {formatPlayerCount(game)}
+                            </p>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </Link>
+    );
+}
+
 export default function GroupGamesList({ games, groupId, onAddEvent, userRole }) {
     const [sortBy, setSortBy] = useState('name');
     const [sortOrder, setSortOrder] = useState('asc');
@@ -71,9 +119,43 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole })
         return sorted;
     }, [games, sortBy, sortOrder]);
 
+    const groupedByTheme = useMemo(() => {
+        if (sortBy !== 'theme' || sortedGames.length === 0) return [];
+
+        const groups = [];
+        let currentKey = null;
+        let currentGroup = null;
+
+        for (const game of sortedGames) {
+            const hasTheme = !!game.theme && game.theme.trim() !== '';
+            const key = hasTheme ? game.theme.trim().toLowerCase() : '__no_theme__';
+
+            if (key !== currentKey) {
+                currentGroup = {
+                    theme: hasTheme ? game.theme.trim() : 'No Theme',
+                    games: [],
+                };
+                groups.push(currentGroup);
+                currentKey = key;
+            }
+            currentGroup.games.push(game);
+        }
+
+        return groups;
+    }, [sortBy, sortedGames]);
+
     const formatRating = (rating) => {
         if (!rating) return 'No ratings';
         return `${parseFloat(rating).toFixed(1)}/5`;
+    };
+
+    const formatPlayerCount = (game) => {
+        const min = game.min_players;
+        const max = game.max_players;
+        if (min && max) return `Players: ${min}-${max}`;
+        if (min) return `Players: ${min}+`;
+        if (max) return `Players: up to ${max}`;
+        return 'Players: Unknown';
     };
 
     if (!games || games.length === 0) {
@@ -123,50 +205,31 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole })
                 {/* Right side reserved for future Phase 47 filter controls */}
             </div>
 
-            {/* Games Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {sortedGames.map((game) => (
-                    <Link
-                        key={game.id}
-                        href={`/gameDetail?game_id=${encodeURIComponent(game.id)}&group_id=${encodeURIComponent(groupId)}`}
-                        className="block bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg transition-shadow hover:border-blue-300"
-                    >
-                        <div className="flex items-start gap-4">
-                            <SafeImage
-                                src={game.image_url}
-                                alt={game.name}
-                                className="w-16 h-16 object-cover rounded"
-                            />
-                            <div className="flex-1 min-w-0">
-                                <h3 className="text-lg font-semibold text-gray-900 mb-1 truncate">
-                                    {game.name}
-                                </h3>
-                                <div className="text-sm text-gray-600 space-y-1">
-                                    <p>
-                                        Played <span className="font-semibold">{game.play_count}</span> {game.play_count === 1 ? 'time' : 'times'}
-                                    </p>
-                                    <p>
-                                        Last played: {formatDate(game.last_played)}
-                                    </p>
-                                    {game.avg_rating && (
-                                        <p>
-                                            Rating: <span className="font-semibold text-yellow-600">{formatRating(game.avg_rating)}</span>
-                                            {game.review_count > 0 && (
-                                                <span className="text-gray-500"> ({game.review_count} {game.review_count === 1 ? 'review' : 'reviews'})</span>
-                                            )}
-                                        </p>
-                                    )}
-                                    {game.theme && (
-                                        <p className="text-xs text-gray-500">
-                                            Theme: {game.theme}
-                                        </p>
-                                    )}
-                                </div>
+            {/* Games Display */}
+            {sortBy === 'theme' ? (
+                /* Theme-grouped layout with dividers */
+                <div>
+                    {groupedByTheme.map((group, groupIndex) => (
+                        <div key={group.theme}>
+                            <div className={`text-sm font-semibold text-gray-600 uppercase tracking-wide border-b border-gray-200 pb-1 mb-3${groupIndex > 0 ? ' mt-6' : ''}`}>
+                                {group.theme}
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {group.games.map((game) => (
+                                    <GameCard key={game.id} game={game} groupId={groupId} sortBy={sortBy} formatRating={formatRating} formatPlayerCount={formatPlayerCount} />
+                                ))}
                             </div>
                         </div>
-                    </Link>
-                ))}
-            </div>
+                    ))}
+                </div>
+            ) : (
+                /* Flat grid layout */
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {sortedGames.map((game) => (
+                        <GameCard key={game.id} game={game} groupId={groupId} sortBy={sortBy} formatRating={formatRating} formatPlayerCount={formatPlayerCount} />
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
