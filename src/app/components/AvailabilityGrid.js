@@ -29,7 +29,25 @@ export default function AvailabilityGrid({
   // latest value synchronously without waiting for a re-render
   const isDraggingRef = useRef(false);
   const [paintMode, setPaintMode] = useState('preferred'); // 'preferred' | 'if-need-be'
+  const [checkedDays, setCheckedDays] = useState([]); // array of day indices (0-6)
   const gridRef = useRef(null);
+
+  // Derived: are all 7 days checked?
+  const allChecked = checkedDays.length === 7;
+
+  // Toggle a single day checkbox
+  const toggleDayCheck = useCallback((dayIndex) => {
+    setCheckedDays((prev) =>
+      prev.includes(dayIndex)
+        ? prev.filter((d) => d !== dayIndex)
+        : [...prev, dayIndex]
+    );
+  }, []);
+
+  // Toggle Select All: check all 7 or uncheck all
+  const toggleSelectAll = useCallback(() => {
+    setCheckedDays((prev) => (prev.length === 7 ? [] : [0, 1, 2, 3, 4, 5, 6]));
+  }, []);
 
   // Calculate the week start date (next Monday if not provided)
   const weekStart = useMemo(() => {
@@ -262,6 +280,39 @@ export default function AvailabilityGrid({
                 className="w-24 sm:w-28 flex-shrink-0 text-center py-2 text-sm font-medium text-gray-700 border-b border-gray-300"
               >
                 {formatDayHeader(day)}
+              </div>
+            ))}
+          </div>
+
+          {/* Day checkboxes row */}
+          <div className="flex">
+            {/* Select All toggle in the time-label spacer */}
+            <div className="w-16 sm:w-20 flex-shrink-0 flex items-center justify-end pr-2">
+              <label className="flex items-center gap-1 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={allChecked}
+                  onChange={toggleSelectAll}
+                  disabled={disabled}
+                  className="w-3.5 h-3.5 accent-blue-600 cursor-pointer disabled:cursor-not-allowed"
+                />
+                <span className="text-xs text-gray-500 font-medium">All</span>
+              </label>
+            </div>
+
+            {/* Individual day checkboxes */}
+            {days.map((day, index) => (
+              <div
+                key={`cb-${day.toISOString()}`}
+                className="w-24 sm:w-28 flex-shrink-0 flex items-center justify-center py-1"
+              >
+                <input
+                  type="checkbox"
+                  checked={checkedDays.includes(index)}
+                  onChange={() => toggleDayCheck(index)}
+                  disabled={disabled}
+                  className="w-4 h-4 accent-blue-600 cursor-pointer disabled:cursor-not-allowed"
+                />
               </div>
             ))}
           </div>
