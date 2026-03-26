@@ -14,6 +14,7 @@ import EventCalendar from '../components/EventCalendar';
 import PendingMemberBanner from '../components/PendingMemberBanner';
 import FriendshipStatusProvider from '../components/FriendshipStatusProvider';
 import PromptScheduleSection from '../components/PromptScheduleSection';
+import UpcomingEventsCard from '../components/UpcomingEventsCard';
 
 // A groups home page
 function GroupHomePage(){
@@ -258,6 +259,9 @@ function GroupHomePage(){
                 group={Group}
                 userRole={userRole}
             />
+
+            {/* Upcoming Events */}
+            <UpcomingEventsCard events={groupEvents} />
 
             {/* Group Calendar */}
             <EventCalendar
