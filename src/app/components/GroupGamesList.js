@@ -5,8 +5,8 @@ import SafeImage from './SafeImage';
 import { formatDate } from '../../lib/dateUtils';
 
 export default function GroupGamesList({ games, groupId, onAddEvent, userRole }) {
-    const [sortBy, setSortBy] = useState('last_played');
-    const [sortOrder, setSortOrder] = useState('desc');
+    const [sortBy, setSortBy] = useState('name');
+    const [sortOrder, setSortOrder] = useState('asc');
 
     const sortedGames = useMemo(() => {
         if (!games || games.length === 0) return [];
@@ -17,15 +17,52 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole })
                 case 'name':
                     cmp = (a.name || '').localeCompare(b.name || '');
                     break;
-                case 'play_count':
-                    cmp = (a.play_count || 0) - (b.play_count || 0);
-                    break;
-                case 'rating':
-                    cmp = (parseFloat(a.avg_rating) || 0) - (parseFloat(b.avg_rating) || 0);
-                    break;
-                case 'last_played':
+                case 'theme': {
+                    const aTheme = (a.theme || '').trim().toLowerCase();
+                    const bTheme = (b.theme || '').trim().toLowerCase();
+                    const aHasTheme = !!a.theme && a.theme.trim() !== '';
+                    const bHasTheme = !!b.theme && b.theme.trim() !== '';
+
+                    // Games with no theme always sort last
+                    if (!aHasTheme && !bHasTheme) {
+                        cmp = (a.name || '').localeCompare(b.name || '');
+                        return cmp; // No theme games: always alphabetical, skip direction flip
+                    }
+                    if (!aHasTheme) return 1;  // a goes last
+                    if (!bHasTheme) return -1; // b goes last
+
+                    // Primary: theme name alphabetically
+                    cmp = aTheme.localeCompare(bTheme);
+                    // Secondary: game name within same theme
+                    if (cmp === 0) {
+                        cmp = (a.name || '').localeCompare(b.name || '');
+                    }
+                    return sortOrder === 'asc' ? cmp : -cmp;
+                }
+                case 'player_count': {
+                    const aPlayers = a.min_players;
+                    const bPlayers = b.min_players;
+                    const aHasPlayers = aPlayers != null && aPlayers > 0;
+                    const bHasPlayers = bPlayers != null && bPlayers > 0;
+
+                    // Games with no player data always sort last
+                    if (!aHasPlayers && !bHasPlayers) {
+                        cmp = (a.name || '').localeCompare(b.name || '');
+                        return cmp; // No data games: always alphabetical, skip direction flip
+                    }
+                    if (!aHasPlayers) return 1;  // a goes last
+                    if (!bHasPlayers) return -1; // b goes last
+
+                    // Primary: min_players
+                    cmp = aPlayers - bPlayers;
+                    // Secondary: game name within same player count
+                    if (cmp === 0) {
+                        cmp = (a.name || '').localeCompare(b.name || '');
+                    }
+                    return sortOrder === 'asc' ? cmp : -cmp;
+                }
                 default:
-                    cmp = new Date(a.last_played || 0) - new Date(b.last_played || 0);
+                    cmp = (a.name || '').localeCompare(b.name || '');
                     break;
             }
             return sortOrder === 'asc' ? cmp : -cmp;
@@ -61,32 +98,29 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole })
             <h2 className="text-2xl font-bold text-gray-900 mt-8 mb-4">Group Games</h2>
 
             {/* Sorting Controls */}
-            <div className="mb-6 flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center bg-gray-50 p-3 md:p-4 rounded-lg">
-                <label className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <span className="text-sm font-medium text-gray-700 whitespace-nowrap">Sort by:</span>
-                    <select
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value)}
-                        className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-auto"
+            <div className="mb-6 flex items-center justify-between bg-gray-50 p-3 md:p-4 rounded-lg">
+                <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-700 whitespace-nowrap">Sort by:</span>
+                        <select
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value)}
+                            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value="name">Name</option>
+                            <option value="theme">Theme</option>
+                            <option value="player_count">Player Count</option>
+                        </select>
+                    </label>
+                    <button
+                        onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                        className="px-3 py-2 border border-gray-300 rounded-md text-sm hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                        title={sortOrder === 'asc' ? 'Ascending (click to reverse)' : 'Descending (click to reverse)'}
                     >
-                        <option value="last_played">Last Played</option>
-                        <option value="name">Name</option>
-                        <option value="play_count">Play Count</option>
-                        <option value="rating">Rating</option>
-                    </select>
-                </label>
-
-                <label className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <span className="text-sm font-medium text-gray-700 whitespace-nowrap">Order:</span>
-                    <select
-                        value={sortOrder}
-                        onChange={(e) => setSortOrder(e.target.value)}
-                        className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-auto"
-                    >
-                        <option value="desc">Descending</option>
-                        <option value="asc">Ascending</option>
-                    </select>
-                </label>
+                        {sortOrder === 'asc' ? '\u2191' : '\u2193'}
+                    </button>
+                </div>
+                {/* Right side reserved for future Phase 47 filter controls */}
             </div>
 
             {/* Games Grid */}
