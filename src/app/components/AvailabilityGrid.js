@@ -117,33 +117,93 @@ export default function AvailabilityGrid({
     }
   }, []);
 
+  // Helper: get the day index (0-6) from a slotId (ISO date string)
+  const getDayIndexFromSlotId = useCallback(
+    (slotId) => {
+      const slotDate = new Date(slotId);
+      const slotY = slotDate.getFullYear();
+      const slotM = slotDate.getMonth();
+      const slotD = slotDate.getDate();
+      return days.findIndex((d) => {
+        return d.getFullYear() === slotY && d.getMonth() === slotM && d.getDate() === slotD;
+      });
+    },
+    [days]
+  );
+
+  // Helper: extract { hour, minute } from a slotId
+  const getTimeSlotFromSlotId = useCallback((slotId) => {
+    const d = new Date(slotId);
+    return { hour: d.getHours(), minute: d.getMinutes() };
+  }, []);
+
   // Handle slot toggle (click)
   const handleToggleSlot = useCallback(
     (slotId) => {
       const currentPreference = slotMap.get(slotId);
 
       if (currentPreference) {
-        // Remove slot
+        // Remove: always per-day only (remove just this one slot)
         const newValue = value.filter((s) => s.slotId !== slotId);
         onChange?.(newValue);
       } else {
         // Add slot with current paint mode
-        const newValue = [...value, { slotId, preference: paintMode }];
-        onChange?.(newValue);
+        if (checkedDays.length === 0) {
+          // No checkboxes checked — single-day behavior
+          const newValue = [...value, { slotId, preference: paintMode }];
+          onChange?.(newValue);
+        } else {
+          // Cross-day: add matching time on all checked days
+          const clickedDayIndex = getDayIndexFromSlotId(slotId);
+          const timeSlot = getTimeSlotFromSlotId(slotId);
+          const daysToFill = checkedDays.includes(clickedDayIndex)
+            ? checkedDays
+            : [clickedDayIndex]; // unchecked day = single slot only
+          const newSlots = [];
+          daysToFill.forEach((di) => {
+            const id = generateSlotId(days[di], timeSlot);
+            if (!slotMap.has(id)) {
+              newSlots.push({ slotId: id, preference: paintMode });
+            }
+          });
+          if (newSlots.length > 0) {
+            onChange?.([...value, ...newSlots]);
+          }
+        }
       }
     },
-    [value, onChange, slotMap, paintMode]
+    [value, onChange, slotMap, paintMode, checkedDays, days, generateSlotId, getDayIndexFromSlotId, getTimeSlotFromSlotId]
   );
 
-  // Handle slot paint (drag - add only)
+  // Handle slot paint (drag - add only, additive across checked days)
   const handlePaintSlot = useCallback(
     (slotId) => {
-      if (!slotMap.has(slotId)) {
-        const newValue = [...value, { slotId, preference: paintMode }];
-        onChange?.(newValue);
+      if (checkedDays.length === 0) {
+        // No checkboxes — single slot paint (original behavior)
+        if (!slotMap.has(slotId)) {
+          const newValue = [...value, { slotId, preference: paintMode }];
+          onChange?.(newValue);
+        }
+      } else {
+        // Cross-day paint: add matching time on all checked days
+        const paintedDayIndex = getDayIndexFromSlotId(slotId);
+        const timeSlot = getTimeSlotFromSlotId(slotId);
+        const daysToFill = checkedDays.includes(paintedDayIndex)
+          ? checkedDays
+          : [paintedDayIndex]; // unchecked day = single cell only
+        const newSlots = [];
+        daysToFill.forEach((di) => {
+          const id = generateSlotId(days[di], timeSlot);
+          if (!slotMap.has(id)) {
+            newSlots.push({ slotId: id, preference: paintMode });
+          }
+        });
+        if (newSlots.length > 0) {
+          onChange?.([...value, ...newSlots]);
+        }
       }
     },
-    [value, onChange, slotMap, paintMode]
+    [value, onChange, slotMap, paintMode, checkedDays, days, generateSlotId, getDayIndexFromSlotId, getTimeSlotFromSlotId]
   );
 
   // Pointer event handlers
@@ -188,10 +248,20 @@ export default function AvailabilityGrid({
     setPaintMode((prev) => (prev === 'preferred' ? 'if-need-be' : 'preferred'));
   }, []);
 
-  // Clear all selections
+  // Clear all selections (checkbox-aware)
   const handleClearAll = useCallback(() => {
-    onChange?.([]);
-  }, [onChange]);
+    if (checkedDays.length === 0) {
+      // No checkboxes — clear everything
+      onChange?.([]);
+    } else {
+      // Only clear slots belonging to checked days
+      const filtered = value.filter((s) => {
+        const dayIdx = getDayIndexFromSlotId(s.slotId);
+        return !checkedDays.includes(dayIdx);
+      });
+      onChange?.(filtered);
+    }
+  }, [onChange, value, checkedDays, getDayIndexFromSlotId]);
 
   return (
     <div className="w-full">
