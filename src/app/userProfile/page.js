@@ -35,7 +35,7 @@ function Profile(){
     const [showRecurringForm, setShowRecurringForm] = useState(false);
     const [showSpecificForm, setShowSpecificForm] = useState(false);
     const [recurringForm, setRecurringForm] = useState({
-        dayOfWeek: 0,
+        daysOfWeek: [],
         startTime: '09:00',
         endTime: '17:00',
         start_date: new Date().toISOString().split('T')[0],
@@ -254,25 +254,33 @@ function Profile(){
 
     const handleCreateRecurringPattern = async () => {
         if (!user?.sub) return;
+        if (recurringForm.daysOfWeek.length === 0) {
+            alert('Please select at least one day.');
+            return;
+        }
         try {
             setSavingPattern(true);
-            // Remove end_date if it's empty to avoid validation errors
-            const formData = { ...recurringForm };
-            if (!formData.end_date || formData.end_date.trim() === '') {
-                delete formData.end_date;
+            // Create one schedule per selected day
+            for (const dayOfWeek of recurringForm.daysOfWeek) {
+                const formData = { ...recurringForm, dayOfWeek };
+                delete formData.daysOfWeek;
+                if (!formData.end_date || formData.end_date.trim() === '') {
+                    delete formData.end_date;
+                }
+                await availabilityAPI.createRecurringPattern(user.sub, formData);
             }
-            await availabilityAPI.createRecurringPattern(user.sub, formData);
             await fetchAvailabilityPatterns();
             setShowRecurringForm(false);
             setRecurringForm({
-                dayOfWeek: 0,
+                daysOfWeek: [],
                 startTime: '09:00',
                 endTime: '17:00',
                 start_date: new Date().toISOString().split('T')[0],
                 end_date: '',
                 timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
             });
-            alert('Schedule created successfully!');
+            const count = recurringForm.daysOfWeek.length;
+            alert(`${count} schedule${count > 1 ? 's' : ''} created successfully!`);
         } catch (error) {
             console.error('Error creating schedule:', error);
             alert(`Failed to create pattern: ${error.message || 'Please try again.'}`);
@@ -528,16 +536,43 @@ function Profile(){
                                     <h4 className="font-semibold mb-3 text-gray-900">New Schedule</h4>
                                     <div className="space-y-3">
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">Day of Week</label>
-                                            <select
-                                                value={recurringForm.dayOfWeek}
-                                                onChange={(e) => setRecurringForm({ ...recurringForm, dayOfWeek: parseInt(e.target.value) })}
-                                                className="w-full p-2 border rounded text-gray-900 bg-white"
-                                            >
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Days of Week</label>
+                                            <div className="flex flex-wrap gap-2 mt-1">
                                                 {[0, 1, 2, 3, 4, 5, 6].map(day => (
-                                                    <option key={day} value={day}>{getDayName(day)}</option>
+                                                    <button
+                                                        key={day}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const days = recurringForm.daysOfWeek;
+                                                            setRecurringForm({
+                                                                ...recurringForm,
+                                                                daysOfWeek: days.includes(day)
+                                                                    ? days.filter(d => d !== day)
+                                                                    : [...days, day].sort((a, b) => a - b)
+                                                            });
+                                                        }}
+                                                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                                                            recurringForm.daysOfWeek.includes(day)
+                                                                ? 'bg-blue-600 text-white border-blue-600'
+                                                                : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                                                        }`}
+                                                    >
+                                                        {getDayName(day).slice(0, 3)}
+                                                    </button>
                                                 ))}
-                                            </select>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setRecurringForm({
+                                                            ...recurringForm,
+                                                            daysOfWeek: recurringForm.daysOfWeek.length === 7 ? [] : [0, 1, 2, 3, 4, 5, 6]
+                                                        });
+                                                    }}
+                                                    className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-600 hover:border-blue-400 transition-colors"
+                                                >
+                                                    {recurringForm.daysOfWeek.length === 7 ? 'Clear' : 'All'}
+                                                </button>
+                                            </div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
