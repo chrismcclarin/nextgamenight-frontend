@@ -281,6 +281,7 @@ function GroupHomePage(){
                 groupId={Router}
                 onAddEvent={toggleEventModal}
                 userRole={userRole}
+                members={UserList}
             />
 
             <CreateEvent

@@ -52,9 +52,12 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount }) {
     );
 }
 
-export default function GroupGamesList({ games, groupId, onAddEvent, userRole }) {
+export default function GroupGamesList({ games, groupId, onAddEvent, userRole, members }) {
     const [sortBy, setSortBy] = useState('name');
     const [sortOrder, setSortOrder] = useState('asc');
+    const [filterOpen, setFilterOpen] = useState(false);
+    const [filterWinner, setFilterWinner] = useState('');
+    const [filterPicker, setFilterPicker] = useState('');
 
     const sortedGames = useMemo(() => {
         if (!games || games.length === 0) return [];
@@ -119,14 +122,87 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole })
         return sorted;
     }, [games, sortBy, sortOrder]);
 
+    const { winnerOptions, pickerOptions } = useMemo(() => {
+        if (!games || games.length === 0) return { winnerOptions: [], pickerOptions: [] };
+
+        const winnerMap = new Map();
+        const pickerMap = new Map();
+
+        games.forEach(game => {
+            (game.winners || []).forEach(w => {
+                const key = w.is_custom ? `custom:${w.username}` : w.user_id;
+                const existing = winnerMap.get(key);
+                if (existing) {
+                    existing.totalCount += w.count;
+                } else {
+                    winnerMap.set(key, { key, username: w.username, user_id: w.user_id, totalCount: w.count, is_custom: w.is_custom });
+                }
+            });
+            (game.pickers || []).forEach(p => {
+                const key = p.is_custom ? `custom:${p.username}` : p.user_id;
+                const existing = pickerMap.get(key);
+                if (existing) {
+                    existing.totalCount += p.count;
+                } else {
+                    pickerMap.set(key, { key, username: p.username, user_id: p.user_id, totalCount: p.count, is_custom: p.is_custom });
+                }
+            });
+        });
+
+        if (members && Array.isArray(members)) {
+            members.forEach(m => {
+                if (!winnerMap.has(m.user_id)) {
+                    winnerMap.set(m.user_id, { key: m.user_id, username: m.username, user_id: m.user_id, totalCount: 0, is_custom: false });
+                }
+                if (!pickerMap.has(m.user_id)) {
+                    pickerMap.set(m.user_id, { key: m.user_id, username: m.username, user_id: m.user_id, totalCount: 0, is_custom: false });
+                }
+            });
+        }
+
+        const sortByName = (a, b) => (a.username || '').localeCompare(b.username || '');
+        return {
+            winnerOptions: Array.from(winnerMap.values()).sort(sortByName),
+            pickerOptions: Array.from(pickerMap.values()).sort(sortByName),
+        };
+    }, [games, members]);
+
+    const filteredGames = useMemo(() => {
+        let result = sortedGames;
+
+        if (filterWinner) {
+            result = result.filter(game => {
+                return (game.winners || []).some(w => {
+                    if (filterWinner.startsWith('custom:')) {
+                        return w.is_custom && w.username === filterWinner.slice(7);
+                    }
+                    return w.user_id === filterWinner;
+                });
+            });
+        }
+
+        if (filterPicker) {
+            result = result.filter(game => {
+                return (game.pickers || []).some(p => {
+                    if (filterPicker.startsWith('custom:')) {
+                        return p.is_custom && p.username === filterPicker.slice(7);
+                    }
+                    return p.user_id === filterPicker;
+                });
+            });
+        }
+
+        return result;
+    }, [sortedGames, filterWinner, filterPicker]);
+
     const groupedByTheme = useMemo(() => {
-        if (sortBy !== 'theme' || sortedGames.length === 0) return [];
+        if (sortBy !== 'theme' || filteredGames.length === 0) return [];
 
         const groups = [];
         let currentKey = null;
         let currentGroup = null;
 
-        for (const game of sortedGames) {
+        for (const game of filteredGames) {
             const hasTheme = !!game.theme && game.theme.trim() !== '';
             const key = hasTheme ? game.theme.trim().toLowerCase() : '__no_theme__';
 
@@ -142,7 +218,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole })
         }
 
         return groups;
-    }, [sortBy, sortedGames]);
+    }, [sortBy, filteredGames]);
 
     const formatRating = (rating) => {
         if (!rating) return 'No ratings';
@@ -202,33 +278,101 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole })
                         {sortOrder === 'asc' ? '\u2191' : '\u2193'}
                     </button>
                 </div>
-                {/* Right side reserved for future Phase 47 filter controls */}
+                <button
+                    onClick={() => setFilterOpen(prev => !prev)}
+                    className={`px-3 py-2 border rounded-md text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        (filterWinner || filterPicker)
+                            ? 'border-blue-500 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                            : 'border-gray-300 text-gray-700 hover:bg-gray-100'
+                    }`}
+                >
+                    Filter{(filterWinner || filterPicker) ? ` (${(filterWinner ? 1 : 0) + (filterPicker ? 1 : 0)})` : ''}
+                </button>
             </div>
 
-            {/* Games Display */}
-            {sortBy === 'theme' ? (
-                /* Theme-grouped layout with dividers */
-                <div>
-                    {groupedByTheme.map((group, groupIndex) => (
-                        <div key={group.theme}>
-                            <div className={`text-sm font-semibold text-gray-600 uppercase tracking-wide border-b border-gray-200 pb-1 mb-3${groupIndex > 0 ? ' mt-6' : ''}`}>
-                                {group.theme}
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {group.games.map((game) => (
-                                    <GameCard key={game.id} game={game} groupId={groupId} sortBy={sortBy} formatRating={formatRating} formatPlayerCount={formatPlayerCount} />
+            {filterOpen && (
+                <div className="mb-6 bg-gray-50 p-3 md:p-4 rounded-lg border border-gray-200 -mt-3 rounded-t-none">
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <label className="flex-1">
+                            <span className="text-sm font-medium text-gray-700 block mb-1">Winner</span>
+                            <select
+                                value={filterWinner}
+                                onChange={(e) => setFilterWinner(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="">All</option>
+                                {winnerOptions.map(opt => (
+                                    <option key={opt.key} value={opt.key}>
+                                        {opt.username}{opt.is_custom ? ' (guest)' : ''} ({opt.totalCount} {opt.totalCount === 1 ? 'win' : 'wins'})
+                                    </option>
                                 ))}
+                            </select>
+                        </label>
+                        <label className="flex-1">
+                            <span className="text-sm font-medium text-gray-700 block mb-1">Picker</span>
+                            <select
+                                value={filterPicker}
+                                onChange={(e) => setFilterPicker(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="">All</option>
+                                {pickerOptions.map(opt => (
+                                    <option key={opt.key} value={opt.key}>
+                                        {opt.username}{opt.is_custom ? ' (guest)' : ''} ({opt.totalCount} {opt.totalCount === 1 ? 'pick' : 'picks'})
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                    </div>
+                </div>
+            )}
+
+            {/* Filtered count */}
+            {(filterWinner || filterPicker) && filteredGames.length > 0 && (
+                <p className="text-sm text-gray-500 mb-4">
+                    Showing {filteredGames.length} of {games.length} {games.length === 1 ? 'game' : 'games'}
+                </p>
+            )}
+
+            {/* Empty filter state */}
+            {(filterWinner || filterPicker) && filteredGames.length === 0 && (
+                <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="text-gray-600 mb-3">No games match these filters</p>
+                    <button
+                        onClick={() => { setFilterWinner(''); setFilterPicker(''); }}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                    >
+                        Clear filters
+                    </button>
+                </div>
+            )}
+
+            {/* Games Display */}
+            {(!(filterWinner || filterPicker) || filteredGames.length > 0) && (
+                sortBy === 'theme' ? (
+                    /* Theme-grouped layout with dividers */
+                    <div>
+                        {groupedByTheme.map((group, groupIndex) => (
+                            <div key={group.theme}>
+                                <div className={`text-sm font-semibold text-gray-600 uppercase tracking-wide border-b border-gray-200 pb-1 mb-3${groupIndex > 0 ? ' mt-6' : ''}`}>
+                                    {group.theme}
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {group.games.map((game) => (
+                                        <GameCard key={game.id} game={game} groupId={groupId} sortBy={sortBy} formatRating={formatRating} formatPlayerCount={formatPlayerCount} />
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                    ))}
-                </div>
-            ) : (
-                /* Flat grid layout */
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {sortedGames.map((game) => (
-                        <GameCard key={game.id} game={game} groupId={groupId} sortBy={sortBy} formatRating={formatRating} formatPlayerCount={formatPlayerCount} />
-                    ))}
-                </div>
+                        ))}
+                    </div>
+                ) : (
+                    /* Flat grid layout */
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {filteredGames.map((game) => (
+                            <GameCard key={game.id} game={game} groupId={groupId} sortBy={sortBy} formatRating={formatRating} formatPlayerCount={formatPlayerCount} />
+                        ))}
+                    </div>
+                )
             )}
         </div>
     );
