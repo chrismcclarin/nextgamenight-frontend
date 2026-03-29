@@ -562,6 +562,13 @@ export const availabilityAPI = {
   // Get weekly availability for a group
   getWeeklyAvailability: (group_id, week_start) =>
     apiFetch(`/availability/groups/${group_id}/week/${week_start}`),
+
+  // Get merged availability heatmap for a group (1-hour bucketed, 12pm-11pm)
+  getGroupHeatmap: (group_id, weekStart, timezone = 'UTC') => {
+    const params = new URLSearchParams({ timezone });
+    if (weekStart) params.append('week_start', weekStart);
+    return apiFetch(`/availability/group/${group_id}/heatmap?${params.toString()}`);
+  },
 };
 
 /**
