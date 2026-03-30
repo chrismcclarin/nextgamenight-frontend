@@ -13,7 +13,6 @@ import SafeImage from '../components/SafeImage';
 import EventCalendar from '../components/EventCalendar';
 import PendingMemberBanner from '../components/PendingMemberBanner';
 import FriendshipStatusProvider from '../components/FriendshipStatusProvider';
-import PromptScheduleSection from '../components/PromptScheduleSection';
 import UpcomingEventsCard from '../components/UpcomingEventsCard';
 
 // A groups home page
@@ -252,13 +251,6 @@ function GroupHomePage(){
             </div>
 
             {userRole === 'pending' && <PendingMemberBanner groupId={Router} />}
-
-            {/* Prompt Schedule (owner/admin only) */}
-            <PromptScheduleSection
-                groupId={Router}
-                group={Group}
-                userRole={userRole}
-            />
 
             {/* Upcoming Events */}
             <UpcomingEventsCard events={groupEvents} />

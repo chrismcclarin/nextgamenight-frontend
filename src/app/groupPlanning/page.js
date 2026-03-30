@@ -1,66 +1,31 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
-import { availabilityAPI, groupsAPI, eventsAPI, promptAPI } from '../../lib/api';
+import { groupsAPI, eventsAPI, promptAPI } from '../../lib/api';
 import Link from 'next/link';
 import CreateEvent from '../components/createEvent';
-import MergedHeatmap from '../components/MergedHeatmap';
-import HeatmapGrid from '../components/HeatmapGrid';
 import ResponseDashboard from '../components/ResponseDashboard';
-import { format, startOfWeek } from 'date-fns';
+import PromptScheduleSection from '../components/PromptScheduleSection';
 
 export default function GroupPlanningPage() {
     const { user, isLoading: authLoading } = Auth();
     const searchParams = useSearchParams();
     const groupId = searchParams.get('group_id');
     const promptId = searchParams.get('prompt_id');
-    
+
     const [group, setGroup] = useState(null);
-    const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
     const [groupEvents, setGroupEvents] = useState([]);
 
     // Modal state for CreateEvent
     const [eventModal, setEventModal] = useState(false);
-    const [prefillDate, setPrefillDate] = useState(null);
-    const [prefillTime, setPrefillTime] = useState(null);
-    const [selectedSlotData, setSelectedSlotData] = useState(null);
 
-    // Merged heatmap state
-    const [heatmapSlots, setHeatmapSlots] = useState(null);
-    const [heatmapMeta, setHeatmapMeta] = useState(null);
-    const [mergedHeatmapLoading, setMergedHeatmapLoading] = useState(true);
-    const [mergedHeatmapError, setMergedHeatmapError] = useState(null);
-    const [selectedWeek, setSelectedWeek] = useState(() =>
-      startOfWeek(new Date(), { weekStartsOn: 1 })
-    );
-    const [selectedHeatmapSlot, setSelectedHeatmapSlot] = useState(null);
-
-    // Heatmap state
+    // Heatmap/prompt state (needed for ResponseDashboard)
     const [heatmapPrompt, setHeatmapPrompt] = useState(null);
-    const [suggestions, setSuggestions] = useState([]);
     const [heatmapLoading, setHeatmapLoading] = useState(true);
     const [heatmapError, setHeatmapError] = useState(null);
     const [userRole, setUserRole] = useState(null);
-
-    // Derived heatmap data (memos must be before any early returns)
-    const memberMap = useMemo(() => {
-        const map = new Map();
-        (group?.Users || []).forEach(u => map.set(u.user_id, u.username || u.user_id));
-        return map;
-    }, [group]);
-
-    const enrichedSuggestions = useMemo(() => {
-        return suggestions.map(s => ({
-            ...s,
-            participants: (s.participant_user_ids || []).map(uid => ({
-                user_id: uid,
-                username: memberMap.get(uid) || uid,
-                preference: 'if-need-be',
-            })),
-        }));
-    }, [suggestions, memberMap]);
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -78,18 +43,11 @@ export default function GroupPlanningPage() {
         }
     }, [user, groupId]);
 
-    // Fetch merged heatmap data when week or group changes
-    useEffect(() => {
-        if (user?.sub && groupId) {
-            fetchMergedHeatmap();
-        }
-    }, [user, groupId, selectedWeek, timezone]);
-
     const fetchGroup = async () => {
         if (!groupId) return;
         try {
             const groupData = await groupsAPI.getGroup(groupId);
-            
+
             // If Users are not included, fetch them separately
             if (!groupData?.Users || groupData.Users.length === 0) {
                 try {
@@ -99,51 +57,11 @@ export default function GroupPlanningPage() {
                     console.error('Error fetching group members:', memberError);
                 }
             }
-            
+
             setGroup(groupData);
         } catch (error) {
             console.error('Error fetching group:', error);
             alert('Failed to load group. Please try again.');
-        }
-    };
-
-    const fetchMergedHeatmap = async () => {
-        if (!groupId) return;
-        try {
-            setMergedHeatmapLoading(true);
-            setMergedHeatmapError(null);
-            const weekStartStr = format(selectedWeek, 'yyyy-MM-dd');
-            const data = await availabilityAPI.getGroupHeatmap(groupId, weekStartStr, timezone);
-            setHeatmapSlots(data.slots);
-            setHeatmapMeta({
-                weekStart: data.weekStart,
-                weekEnd: data.weekEnd,
-                totalMembers: data.totalMembers,
-                membersWithData: data.membersWithData,
-                membersWithoutData: data.membersWithoutData,
-            });
-        } catch (err) {
-            console.error('Error fetching merged heatmap:', err);
-            setMergedHeatmapError(err.message || 'Failed to load availability heatmap');
-        } finally {
-            setMergedHeatmapLoading(false);
-        }
-    };
-
-    const handleWeekChange = (newWeek) => {
-        setSelectedWeek(newWeek);
-        setSelectedHeatmapSlot(null);
-    };
-
-    const handleSlotSelect = (slot) => {
-        if (selectedHeatmapSlot?.date === slot.date && selectedHeatmapSlot?.hour === slot.hour) {
-            setSelectedHeatmapSlot(null);
-            setPrefillDate(null);
-            setPrefillTime(null);
-        } else {
-            setSelectedHeatmapSlot(slot);
-            setPrefillDate(slot.date);
-            setPrefillTime(`${String(slot.hour).padStart(2, '0')}:00`);
         }
     };
 
@@ -165,7 +83,7 @@ export default function GroupPlanningPage() {
         try {
             let prompt;
             if (promptId) {
-                // Navigating from a no-consensus email — load specific prompt by ID
+                // Navigating from a no-consensus email -- load specific prompt by ID
                 const data = await promptAPI.getPromptById(promptId);
                 prompt = data.prompt;
             } else {
@@ -173,12 +91,8 @@ export default function GroupPlanningPage() {
                 prompt = data.prompt;
             }
             setHeatmapPrompt(prompt);
-            if (prompt) {
-                const data = await promptAPI.getSuggestions(prompt.id);
-                setSuggestions(data.suggestions || []);
-            }
         } catch (err) {
-            setHeatmapError(err.message || 'Failed to load heatmap data');
+            setHeatmapError(err.message || 'Failed to load poll data');
         } finally {
             setHeatmapLoading(false);
         }
@@ -199,12 +113,6 @@ export default function GroupPlanningPage() {
 
     const toggleEventModal = () => {
         setEventModal(!eventModal);
-        if (eventModal) {
-            // Clear prefill data when closing modal
-            setPrefillDate(null);
-            setPrefillTime(null);
-            setSelectedSlotData(null);
-        }
     };
 
     const handleEventCreated = (newEvent) => {
@@ -228,15 +136,11 @@ export default function GroupPlanningPage() {
         );
     }
 
-    const totalMembers = group?.Users?.length || 0;
-
     const isAdmin = ['owner', 'admin'].includes(userRole);
     const pollClosed = !heatmapPrompt ||
         heatmapPrompt.status === 'closed' ||
         heatmapPrompt.status === 'converted' ||
         (heatmapPrompt.deadline && new Date(heatmapPrompt.deadline) < new Date());
-
-    // Debug logging
 
     return (
         <div className="p-3 md:p-6 max-w-7xl mx-auto">
@@ -263,64 +167,50 @@ export default function GroupPlanningPage() {
                             {group ? `Plan Game Session - ${group.name}` : 'Plan Game Session'}
                         </h1>
                         <p className="text-sm text-gray-600 mt-1">
-                            See when your group is available and pick a time to play
+                            Send availability polls and manage responses
                         </p>
                     </div>
                 </div>
             </div>
 
-            {/* Merged Availability Heatmap */}
+            {/* Prompt Schedule Management -- moved from group home */}
             <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
-                <h2 className="text-xl font-bold text-gray-900 mb-4">Group Availability</h2>
-                <MergedHeatmap
+                <h2 className="text-xl font-bold text-gray-900 mb-4">Availability Polls</h2>
+                <PromptScheduleSection
                     groupId={groupId}
-                    heatmapData={heatmapMeta ? { ...heatmapMeta, slots: heatmapSlots } : null}
-                    loading={mergedHeatmapLoading}
-                    error={mergedHeatmapError}
-                    selectedWeek={selectedWeek}
-                    onWeekChange={handleWeekChange}
-                    selectedSlot={selectedHeatmapSlot}
-                    onSlotSelect={handleSlotSelect}
+                    group={group}
+                    userRole={userRole}
+                    defaultExpanded={true}
                 />
             </div>
 
-
-            {/* Availability Heatmap Section */}
-            <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
-                <h2 className="text-xl font-bold text-gray-900 mb-4">Group Availability Heatmap</h2>
-                {heatmapLoading ? (
-                    <p className="text-center text-gray-600 py-8">Loading availability data...</p>
-                ) : heatmapError ? (
+            {/* Response Dashboard -- who has responded to active poll */}
+            {heatmapLoading ? (
+                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
+                    <p className="text-center text-gray-600 py-8">Loading poll data...</p>
+                </div>
+            ) : heatmapError ? (
+                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
                     <p className="text-center text-red-600 py-8">{heatmapError}</p>
-                ) : !heatmapPrompt ? (
+                </div>
+            ) : heatmapPrompt ? (
+                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
+                    <h2 className="text-xl font-bold text-gray-900 mb-4">Poll Responses</h2>
+                    <ResponseDashboard
+                        promptId={heatmapPrompt.id}
+                        isAdmin={isAdmin}
+                        currentUserId={user?.sub}
+                        blindVotingEnabled={heatmapPrompt.blind_voting_enabled}
+                        pollClosed={pollClosed}
+                    />
+                </div>
+            ) : (
+                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
                     <p className="text-center text-gray-500 py-8">
-                        No active availability poll found. Use Prompt Schedules to send one.
+                        No active availability poll found. Use the schedule manager above to send one.
                     </p>
-                ) : (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div className="lg:col-span-2">
-                            <HeatmapGrid
-                                suggestions={enrichedSuggestions}
-                                totalMembers={group?.Users?.length || 0}
-                                timezone={timezone}
-                                groupId={groupId}
-                                isAdmin={isAdmin}
-                                pollClosed={pollClosed}
-                                onEventCreated={fetchGroupEvents}
-                            />
-                        </div>
-                        <div>
-                            <ResponseDashboard
-                                promptId={heatmapPrompt.id}
-                                isAdmin={isAdmin}
-                                currentUserId={user?.sub}
-                                blindVotingEnabled={heatmapPrompt.blind_voting_enabled}
-                                pollClosed={pollClosed}
-                            />
-                        </div>
-                    </div>
-                )}
-            </div>
+                </div>
+            )}
 
             {/* Create Event Modal */}
             <CreateEvent
@@ -329,13 +219,9 @@ export default function GroupPlanningPage() {
                 modaltoggle={toggleEventModal}
                 onEventCreated={(newEvent) => {
                     handleEventCreated(newEvent);
-                    // Refresh events after creation
                     fetchGroupEvents();
                 }}
                 user={user}
-                prefillDate={prefillDate}
-                prefillTime={prefillTime}
-                prefillDuration={selectedSlotData?.durationMinutes || null}
                 hideVisualCalendar={true}
             />
         </div>

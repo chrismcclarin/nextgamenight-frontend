@@ -16,8 +16,8 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
  * @param {Object} props.group - Full group object
  * @param {string} props.userRole - 'owner' | 'admin' | 'member' | 'pending'
  */
-export default function PromptScheduleSection({ groupId, group, userRole }) {
-  const [isExpanded, setIsExpanded] = useState(false);
+export default function PromptScheduleSection({ groupId, group, userRole, defaultExpanded = false }) {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [schedules, setSchedules] = useState([]);
   const [loading, setLoading] = useState(true);
 
