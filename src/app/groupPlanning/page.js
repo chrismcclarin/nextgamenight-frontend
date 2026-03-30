@@ -173,7 +173,7 @@ export default function GroupPlanningPage() {
                 </div>
             </div>
 
-            {/* Prompt Schedule Management -- moved from group home */}
+            {/* Availability Polls + Response Dashboard in one card */}
             <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">Availability Polls</h2>
                 <PromptScheduleSection
@@ -182,35 +182,31 @@ export default function GroupPlanningPage() {
                     userRole={userRole}
                     defaultExpanded={true}
                 />
-            </div>
 
-            {/* Response Dashboard -- who has responded to active poll */}
-            {heatmapLoading ? (
-                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
-                    <p className="text-center text-gray-600 py-8">Loading poll data...</p>
+                {/* Response Dashboard -- visually part of the same card */}
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                    {heatmapLoading ? (
+                        <p className="text-center text-gray-600 py-4">Loading poll data...</p>
+                    ) : heatmapError ? (
+                        <p className="text-center text-red-600 py-4">{heatmapError}</p>
+                    ) : heatmapPrompt ? (
+                        <>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-3">Poll Responses</h3>
+                            <ResponseDashboard
+                                promptId={heatmapPrompt.id}
+                                isAdmin={isAdmin}
+                                currentUserId={user?.sub}
+                                blindVotingEnabled={heatmapPrompt.blind_voting_enabled}
+                                pollClosed={pollClosed}
+                            />
+                        </>
+                    ) : (
+                        <p className="text-center text-gray-500 py-4">
+                            No active availability poll found. Use the schedule manager above to send one.
+                        </p>
+                    )}
                 </div>
-            ) : heatmapError ? (
-                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
-                    <p className="text-center text-red-600 py-8">{heatmapError}</p>
-                </div>
-            ) : heatmapPrompt ? (
-                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
-                    <h2 className="text-xl font-bold text-gray-900 mb-4">Poll Responses</h2>
-                    <ResponseDashboard
-                        promptId={heatmapPrompt.id}
-                        isAdmin={isAdmin}
-                        currentUserId={user?.sub}
-                        blindVotingEnabled={heatmapPrompt.blind_voting_enabled}
-                        pollClosed={pollClosed}
-                    />
-                </div>
-            ) : (
-                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
-                    <p className="text-center text-gray-500 py-8">
-                        No active availability poll found. Use the schedule manager above to send one.
-                    </p>
-                </div>
-            )}
+            </div>
 
             {/* Create Event Modal */}
             <CreateEvent

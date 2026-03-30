@@ -426,7 +426,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         <div className="relative">
           {/* Heatmap background layer -- sits behind the form */}
           <div className="absolute inset-0 overflow-hidden rounded-lg pointer-events-none z-0">
-            <div className="p-4 opacity-20" style={{ marginTop: '-7rem' }}>
+            <div className="p-4 opacity-20">
               <EventHeatmapBackground
                 heatmapData={heatmapData}
                 loading={heatmapLoading}
