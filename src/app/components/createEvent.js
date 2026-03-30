@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
-import { gamesAPI, eventsAPI, groupsAPI, ballotAPI, API_BASE_URL } from '../../lib/api';
-import { format, parseISO, differenceInMinutes } from 'date-fns';
+import { gamesAPI, eventsAPI, groupsAPI, ballotAPI, availabilityAPI, API_BASE_URL } from '../../lib/api';
+import { format, parseISO, differenceInMinutes, startOfWeek } from 'date-fns';
 import EventScheduler from './EventScheduler';
+import EventHeatmapBackground from './EventHeatmapBackground';
 import GameComboInput from './GameComboInput';
 import QuickSuggestions from './QuickSuggestions';
 import { createParticipant, createEventForm, prepareEventData } from '../../lib/eventFormUtils';
@@ -21,6 +22,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   const [useVisualCalendar, setUseVisualCalendar] = useState(true);
   const [ballotOptions, setBallotOptions] = useState([]);
   const [ballotError, setBallotError] = useState(null);
+  const [heatmapData, setHeatmapData] = useState(null);
+  const [heatmapLoading, setHeatmapLoading] = useState(false);
 
   // Fetch group members and games when component mounts or group_id changes
   useEffect(() => {
@@ -187,6 +190,28 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       setNewEvent(form);
     }
   }, [editingEvent, groupMembers, group_id, prefillDate, prefillTime, prefillDuration]);
+
+  // Fetch heatmap data when modal opens
+  useEffect(() => {
+    if (modal && group_id) {
+      const fetchHeatmap = async () => {
+        try {
+          setHeatmapLoading(true);
+          const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+          const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+          const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+          const data = await availabilityAPI.getGroupHeatmap(group_id, weekStartStr, tz);
+          setHeatmapData(data);
+        } catch (err) {
+          console.error('Failed to load heatmap:', err);
+          // Silently fail -- heatmap is a nice-to-have visual, not critical
+        } finally {
+          setHeatmapLoading(false);
+        }
+      };
+      fetchHeatmap();
+    }
+  }, [modal, group_id]);
 
   const fetchGroupMembers = async () => {
     try {
@@ -397,7 +422,20 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={modaltoggle}>
-      <div className="bg-white p-6 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="relative">
+          {/* Heatmap background layer -- sits behind the form */}
+          <div className="absolute inset-0 overflow-hidden rounded-lg pointer-events-none z-0">
+            <div className="p-4 opacity-20" style={{ marginTop: '-7rem' }}>
+              <EventHeatmapBackground
+                heatmapData={heatmapData}
+                loading={heatmapLoading}
+              />
+            </div>
+          </div>
+
+          {/* Form content -- sits on top */}
+          <div className="relative z-10 p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">{editingEvent ? 'Edit Event' : 'Create Event'}</h2>
           <button
@@ -600,6 +638,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             </button>
           </div>
         </form>
+          </div>
+        </div>
       </div>
     </div>
   );
