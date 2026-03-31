@@ -326,6 +326,27 @@ export const usersAPI = {
     apiFetch(`/users/${encodeURIComponent(user_id)}/tutorial`, {
       method: 'DELETE',
     }),
+
+  // Update notification preferences
+  updateNotificationPreferences: (user_id, preferences) =>
+    apiFetch(`/users/${encodeURIComponent(user_id)}/notification-preferences`, {
+      method: 'PATCH',
+      body: JSON.stringify({ preferences }),
+    }),
+
+  // Save phone number and initiate verification
+  savePhone: (user_id, phone) =>
+    apiFetch(`/users/${encodeURIComponent(user_id)}/phone`, {
+      method: 'POST',
+      body: JSON.stringify({ phone }),
+    }),
+
+  // Verify phone with SMS code
+  verifyPhone: (user_id, code) =>
+    apiFetch(`/users/${encodeURIComponent(user_id)}/phone/verify`, {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
 };
 
 /**
