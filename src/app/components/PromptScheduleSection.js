@@ -91,10 +91,10 @@ export default function PromptScheduleSection({ groupId, group, userRole, defaul
   };
 
   return (
-    <div className="mb-4">
+    <div>
       <div
         onClick={() => setIsExpanded(!isExpanded)}
-        className="bg-white rounded-lg border border-gray-200 p-4 cursor-pointer hover:shadow-sm transition-shadow"
+        className="p-3 cursor-pointer hover:bg-gray-50 rounded-lg transition-colors"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { format, parseISO, isToday } from 'date-fns';
 import MergedHeatmapCell from './MergedHeatmapCell';
 
@@ -86,10 +86,9 @@ export default function MergedHeatmapGrid({ slots = [], totalMembers, selectedSl
 
       {/* Body rows: hour label + 7 cells per row */}
       {HOURS.map((hour) => (
-        <>
+        <React.Fragment key={`hour-${hour}`}>
           {/* Hour label */}
           <div
-            key={`label-${hour}`}
             className="bg-white p-2 flex items-center justify-end"
           >
             <span className="text-xs text-gray-500 font-medium whitespace-nowrap">
@@ -118,7 +117,7 @@ export default function MergedHeatmapGrid({ slots = [], totalMembers, selectedSl
               </div>
             );
           })}
-        </>
+        </React.Fragment>
       ))}
     </div>
   );

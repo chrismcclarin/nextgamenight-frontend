@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { format, addDays, nextMonday } from 'date-fns';
 import HeatmapCell from './HeatmapCell';
 import ThresholdSlider from './ThresholdSlider';
+import SuggestionCard from './SuggestionCard';
 
 /**
  * HeatmapGrid - Displays collective availability as a color-coded heatmap
@@ -28,6 +29,11 @@ export default function HeatmapGrid({
   weekStartDate,
   defaultThreshold = 1,
   onSlotSelect,
+  // Props for SuggestionCard integration
+  groupId,
+  isAdmin = false,
+  pollClosed = false,
+  onEventCreated,
 }) {
   const [threshold, setThreshold] = useState(defaultThreshold);
 
@@ -69,6 +75,14 @@ export default function HeatmapGrid({
   // Calculate viable count (slots meeting threshold)
   const viableCount = useMemo(() => {
     return suggestions.filter((s) => s.participant_count >= threshold).length;
+  }, [suggestions, threshold]);
+
+  // Get top 5 suggestions meeting threshold for card display
+  const topSuggestions = useMemo(() => {
+    return suggestions
+      .filter((s) => s.participant_count >= threshold)
+      .sort((a, b) => b.score - a.score || b.participant_count - a.participant_count)
+      .slice(0, 5);
   }, [suggestions, threshold]);
 
   // Generate slot ID from date and time (matching AvailabilityGrid format)
@@ -217,6 +231,27 @@ export default function HeatmapGrid({
           </span>
         )}
       </div>
+
+      {/* Top Suggestions Cards - Show when there are viable slots */}
+      {topSuggestions.length > 0 && groupId && (
+        <div className="mt-6 border-t border-gray-200 pt-4">
+          <h4 className="text-sm font-semibold text-gray-700 mb-3">
+            Top Available Time Slots
+          </h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {topSuggestions.map((suggestion) => (
+              <SuggestionCard
+                key={suggestion.id}
+                suggestion={suggestion}
+                groupId={groupId}
+                isAdmin={isAdmin}
+                pollClosed={pollClosed}
+                onEventCreated={onEventCreated}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

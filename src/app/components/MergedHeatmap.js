@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { startOfWeek, addWeeks, subWeeks, addDays, differenceInWeeks, format } from 'date-fns';
 import MergedHeatmapGrid from './MergedHeatmapGrid';
 
@@ -148,8 +148,8 @@ export default function MergedHeatmap({
           ))}
           {/* Skeleton body rows */}
           {Array.from({ length: 11 }).map((_, row) => (
-            <>
-              <div key={`skel-l-${row}`} className="bg-white p-2 h-12">
+            <React.Fragment key={`skel-row-${row}`}>
+              <div className="bg-white p-2 h-12">
                 <div className="h-4 w-10 ml-auto bg-gray-200 rounded animate-pulse" />
               </div>
               {Array.from({ length: 7 }).map((_, col) => (
@@ -157,7 +157,7 @@ export default function MergedHeatmap({
                   <div className="h-[44px] w-full bg-gray-100 rounded animate-pulse" />
                 </div>
               ))}
-            </>
+            </React.Fragment>
           ))}
         </div>
       )}
