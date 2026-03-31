@@ -244,7 +244,7 @@ export default function BallotSection({ eventId, currentUserId, eventDate, userR
 
   // --- OPEN BALLOT ---
   return (
-    <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
+    <div id="vote" className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
       <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
         <h3 className="font-semibold text-gray-900 text-sm">Game Vote</h3>
         <p className="text-xs text-gray-500 mt-0.5">Tap games you'd enjoy playing</p>

@@ -367,21 +367,17 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           onEventCreated(null); // Signal that event was updated
         }
       } else {
-        // Create new event using eventsAPI which automatically includes Authorization header
-        const data = await eventsAPI.createEvent(eventDataToSubmit);
-
-        // Create ballot options if we have valid ones
-        if (validBallotOptions.length >= 2 && data?.id) {
-          try {
-            await ballotAPI.setBallotOptions(data.id, validBallotOptions.map(o => ({
-              game_id: o.game_id || null,
-              game_name: o.game_name.trim()
-            })));
-          } catch (ballotErr) {
-            console.error('Error creating ballot options:', ballotErr);
-            setBallotError('Event created but ballot options could not be saved.');
-          }
+        // Include ballot options in the event creation payload for atomic creation
+        // This ensures ballot exists BEFORE notifications fire (so ballot link is included)
+        if (validBallotOptions.length >= 2) {
+          eventDataToSubmit.ballot_options = validBallotOptions.map(o => ({
+            game_id: o.game_id || null,
+            game_name: o.game_name.trim()
+          }));
         }
+
+        // Create new event (with ballot options atomically if provided)
+        const data = await eventsAPI.createEvent(eventDataToSubmit);
 
         if (onEventCreated) {
           onEventCreated(data);

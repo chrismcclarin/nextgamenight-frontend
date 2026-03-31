@@ -124,6 +124,20 @@ export default function GameDetailPage() {
         fetchSuggestions();
     }, [event_id, group_id]);
 
+    // Scroll to ballot section when #vote hash is in URL (from notification links)
+    useEffect(() => {
+        if (typeof window !== 'undefined' && window.location.hash === '#vote') {
+            // Small delay to ensure BallotSection has rendered
+            const timer = setTimeout(() => {
+                const voteSection = document.getElementById('vote');
+                if (voteSection) {
+                    voteSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, []);
+
     const fetchEventOnly = async () => {
         setLoading(true);
         try {
