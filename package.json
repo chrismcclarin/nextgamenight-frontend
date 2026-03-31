@@ -19,6 +19,7 @@
     "date-fns": "^2.30.0",
     "date-fns-tz": "^2.0.1",
     "fastest-levenshtein": "^1.0.16",
+    "libphonenumber-js": "^1.12.41",
     "moment": "^2.30.1",
     "nanoid": "^5.0.7",
     "next": "14.0.2",

@@ -4,10 +4,32 @@ import { useState, useEffect, useCallback } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
 import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, availabilityAPI } from '../../lib/api';
+import { parsePhoneNumber } from 'libphonenumber-js';
 import Link from 'next/link';
 import { formatDate } from '../../lib/dateUtils';
 import SafeImage from '../components/SafeImage';
 import { useTutorial } from '../components/tutorial/TutorialProvider';
+
+const NOTIFICATION_TYPES = [
+    { key: 'event_created', label: 'New Event', description: 'When a game session is scheduled' },
+    { key: 'reminder', label: 'Event Reminders', description: 'Before upcoming events' },
+    { key: 'event_updated', label: 'Event Updates', description: 'When event details change' },
+    { key: 'event_cancelled', label: 'Event Cancelled', description: 'When an event is cancelled' },
+];
+
+const REMINDER_WINDOWS = [
+    { value: 0.5, label: '30 minutes before' },
+    { value: 1, label: '1 hour before' },
+    { value: 2, label: '2 hours before' },
+    { value: 24, label: '1 day before' },
+];
+
+const DEFAULT_PREFERENCES = {
+    event_created: { email: true, sms: false },
+    reminder: { email: true, sms: false, window_hours: 1 },
+    event_updated: { email: true, sms: false },
+    event_cancelled: { email: true, sms: false },
+};
 
 function Profile(){
     const { user, error, isLoading } = Auth();
@@ -51,6 +73,18 @@ function Profile(){
     const [savingPattern, setSavingPattern] = useState(false);
     const [replayingTutorial, setReplayingTutorial] = useState(false);
 
+    // Phone verification state machine: idle | editing | saving | verifying | verified
+    const [phoneState, setPhoneState] = useState('idle');
+    const [phoneInput, setPhoneInput] = useState('');
+    const [phoneValidation, setPhoneValidation] = useState({ valid: false, error: null });
+    const [verificationCode, setVerificationCode] = useState('');
+    const [phoneError, setPhoneError] = useState(null);
+    const [resendCooldown, setResendCooldown] = useState(0);
+
+    // Notification preferences state
+    const [preferences, setPreferences] = useState(null);
+    const [saveStatus, setSaveStatus] = useState(null); // { type, channel, status: 'saving'|'saved'|'error'|'guard' }
+
     const { replayTutorial } = useTutorial();
 
     const handleReplayTutorial = async () => {
@@ -67,16 +101,178 @@ function Profile(){
         }
     };
 
+    // Phone validation
+    const validatePhoneInput = (value) => {
+        if (!value) return { valid: false, error: null };
+        try {
+            const phoneNumber = parsePhoneNumber(value, 'US');
+            if (phoneNumber && phoneNumber.isValid()) {
+                return { valid: true, formatted: phoneNumber.formatInternational() };
+            }
+            return { valid: false, error: 'Invalid phone number' };
+        } catch {
+            return { valid: false, error: value.length > 5 ? 'Invalid phone number' : null };
+        }
+    };
+
+    const handlePhoneChange = (value) => {
+        setPhoneInput(value);
+        setPhoneValidation(validatePhoneInput(value));
+        setPhoneError(null);
+        if (phoneState === 'idle' || phoneState === 'verified') {
+            setPhoneState('editing');
+        }
+    };
+
+    const handleSaveAndVerify = async () => {
+        if (!user?.sub || !phoneValidation.valid) return;
+        try {
+            setPhoneState('saving');
+            setPhoneError(null);
+            await usersAPI.savePhone(user.sub, phoneInput);
+            setPhoneState('verifying');
+        } catch (error) {
+            console.error('Error saving phone:', error);
+            setPhoneError(error.message || 'Failed to send verification code');
+            setPhoneState('editing');
+        }
+    };
+
+    const handleVerifyCode = async () => {
+        if (!user?.sub || !verificationCode) return;
+        try {
+            setPhoneError(null);
+            await usersAPI.verifyPhone(user.sub, verificationCode);
+            setPhoneState('verified');
+            setVerificationCode('');
+            // Refetch user data to get updated phone_verified
+            await fetchUserData();
+        } catch (error) {
+            console.error('Error verifying code:', error);
+            setPhoneError(error.message || 'Invalid verification code');
+        }
+    };
+
+    const handleChangeNumber = () => {
+        setPhoneState('editing');
+        setVerificationCode('');
+        setPhoneError(null);
+    };
+
+    const handleResendCode = async () => {
+        if (!user?.sub || resendCooldown > 0) return;
+        try {
+            setPhoneError(null);
+            await usersAPI.savePhone(user.sub, phoneInput);
+            setResendCooldown(60);
+            const timer = setInterval(() => {
+                setResendCooldown(prev => {
+                    if (prev <= 1) {
+                        clearInterval(timer);
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+        } catch (error) {
+            console.error('Error resending code:', error);
+            setPhoneError(error.message || 'Failed to resend code');
+        }
+    };
+
+    // Notification preference toggle handler (auto-save with optimistic update)
+    const handleToggle = async (notificationType, channel, newValue) => {
+        // Guard: at least one channel must be enabled
+        const currentPrefs = preferences[notificationType];
+        const otherChannel = channel === 'email' ? 'sms' : 'email';
+        if (!newValue && !currentPrefs[otherChannel]) {
+            setSaveStatus({ type: notificationType, channel, status: 'guard' });
+            setTimeout(() => setSaveStatus(null), 3000);
+            return;
+        }
+
+        // Optimistic update
+        const previousPrefs = { ...preferences };
+        const updatedPrefs = {
+            ...preferences,
+            [notificationType]: { ...preferences[notificationType], [channel]: newValue }
+        };
+        setPreferences(updatedPrefs);
+        setSaveStatus({ type: notificationType, channel, status: 'saving' });
+
+        try {
+            await usersAPI.updateNotificationPreferences(user.sub, updatedPrefs);
+            setSaveStatus({ type: notificationType, channel, status: 'saved' });
+            setTimeout(() => setSaveStatus(null), 2000);
+        } catch (error) {
+            console.error('Error updating preference:', error);
+            setPreferences(previousPrefs);
+            setSaveStatus({ type: notificationType, channel, status: 'error' });
+            setTimeout(() => setSaveStatus(null), 3000);
+        }
+    };
+
+    // Reminder timing handler
+    const handleReminderWindowChange = async (newWindowHours) => {
+        const previousPrefs = { ...preferences };
+        const updatedPrefs = {
+            ...preferences,
+            reminder: { ...preferences.reminder, window_hours: newWindowHours }
+        };
+        setPreferences(updatedPrefs);
+        setSaveStatus({ type: 'reminder', channel: 'window', status: 'saving' });
+
+        try {
+            await usersAPI.updateNotificationPreferences(user.sub, updatedPrefs);
+            setSaveStatus({ type: 'reminder', channel: 'window', status: 'saved' });
+            setTimeout(() => setSaveStatus(null), 2000);
+        } catch (error) {
+            console.error('Error updating reminder window:', error);
+            setPreferences(previousPrefs);
+            setSaveStatus({ type: 'reminder', channel: 'window', status: 'error' });
+            setTimeout(() => setSaveStatus(null), 3000);
+        }
+    };
+
+    // Reset to defaults handler
+    const handleResetPreferences = async () => {
+        const previousPrefs = { ...preferences };
+        setPreferences(DEFAULT_PREFERENCES);
+        setSaveStatus({ type: 'all', channel: 'reset', status: 'saving' });
+
+        try {
+            await usersAPI.updateNotificationPreferences(user.sub, DEFAULT_PREFERENCES);
+            setSaveStatus({ type: 'all', channel: 'reset', status: 'saved' });
+            setTimeout(() => setSaveStatus(null), 2000);
+        } catch (error) {
+            console.error('Error resetting preferences:', error);
+            setPreferences(previousPrefs);
+            setSaveStatus({ type: 'all', channel: 'reset', status: 'error' });
+            setTimeout(() => setSaveStatus(null), 3000);
+        }
+    };
+
     const fetchUserData = useCallback(async () => {
         if (!user?.sub) return;
         try {
             const userInfo = await usersAPI.getUser(user.sub);
             setUserData(userInfo);
             setUsername(userInfo.username || user.name || user.email?.split('@')[0] || '');
+            // Initialize phone state
+            if (userInfo.phone && userInfo.phone_verified) {
+                setPhoneState('verified');
+                setPhoneInput(userInfo.phone);
+            } else if (userInfo.phone) {
+                setPhoneState('idle');
+                setPhoneInput(userInfo.phone);
+            }
+            // Initialize notification preferences
+            setPreferences(userInfo.notification_preferences || DEFAULT_PREFERENCES);
         } catch (error) {
             console.error('Error fetching user data:', error);
             // Fallback to Auth0 user data
             setUsername(user.name || user.email?.split('@')[0] || 'User');
+            setPreferences(DEFAULT_PREFERENCES);
         }
     }, [user]);
     
@@ -442,9 +638,125 @@ function Profile(){
                                     Display name: {userData.username} (from Google: {user.name})
                                 </p>
                             )}
+
+                            {/* Phone Input - only when sms_enabled */}
+                            {userData?.sms_enabled && (
+                                <div className="mt-2">
+                                    {(phoneState === 'idle' || phoneState === 'editing') && (
+                                        <div className="flex flex-col sm:flex-row sm:items-start gap-2">
+                                            <div className="flex-1 relative">
+                                                <input
+                                                    type="tel"
+                                                    value={phoneInput}
+                                                    onChange={(e) => handlePhoneChange(e.target.value)}
+                                                    placeholder="+1 555-123-4567"
+                                                    className={`w-full px-3 py-2 border rounded-lg text-sm ${
+                                                        phoneValidation.valid ? 'border-green-500' :
+                                                        phoneValidation.error ? 'border-red-500' :
+                                                        'border-gray-300'
+                                                    }`}
+                                                />
+                                                {phoneValidation.valid && (
+                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-600">
+                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                        </svg>
+                                                    </span>
+                                                )}
+                                                {phoneValidation.error && (
+                                                    <p className="text-red-500 text-xs mt-1">{phoneValidation.error}</p>
+                                                )}
+                                            </div>
+                                            <button
+                                                onClick={handleSaveAndVerify}
+                                                disabled={!phoneValidation.valid}
+                                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                            >
+                                                Save & Verify
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {phoneState === 'saving' && (
+                                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                            <input
+                                                type="tel"
+                                                value={phoneInput}
+                                                disabled
+                                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50"
+                                            />
+                                            <button
+                                                disabled
+                                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm opacity-50 cursor-not-allowed whitespace-nowrap"
+                                            >
+                                                Sending code...
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {phoneState === 'verifying' && (
+                                        <div>
+                                            <p className="text-sm text-gray-700 mb-2">
+                                                Code sent to <span className="font-medium">{phoneValidation.formatted || phoneInput}</span>
+                                            </p>
+                                            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={verificationCode}
+                                                    onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                                    placeholder="Enter 6-digit code"
+                                                    maxLength={6}
+                                                    className="w-32 px-3 py-2 border rounded-lg text-sm text-center tracking-widest"
+                                                />
+                                                <button
+                                                    onClick={handleVerifyCode}
+                                                    disabled={verificationCode.length !== 6}
+                                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                                >
+                                                    Verify
+                                                </button>
+                                                <button
+                                                    onClick={handleResendCode}
+                                                    disabled={resendCooldown > 0}
+                                                    className="text-sm text-indigo-600 hover:text-indigo-700 disabled:text-gray-400 whitespace-nowrap"
+                                                >
+                                                    {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
+                                                </button>
+                                            </div>
+                                            <button
+                                                onClick={handleChangeNumber}
+                                                className="text-sm text-gray-500 hover:text-gray-700 mt-1"
+                                            >
+                                                Change number
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {phoneState === 'verified' && (
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-green-600">
+                                                <svg className="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </span>
+                                            <span className="text-sm text-green-700 font-medium">Phone verified</span>
+                                            <button
+                                                onClick={handleChangeNumber}
+                                                className="text-sm text-gray-500 hover:text-gray-700 underline ml-2"
+                                            >
+                                                Change number
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {phoneError && (
+                                        <p className="text-red-500 text-xs mt-1">{phoneError}</p>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
-                    
+
                     {/* Google Calendar Connection */}
                     <div className="mt-4 pt-4 border-t border-gray-200">
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -482,6 +794,124 @@ function Profile(){
                         </div>
                     </div>
                 </div>
+
+                {/* Notification Preferences Section */}
+                {preferences && (
+                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
+                    <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-1">Notification Preferences</h2>
+                    <p className="text-sm text-gray-600 mb-4">Choose how you receive notifications</p>
+
+                    {/* Preferences Matrix */}
+                    <div className="space-y-0">
+                        {/* Header row */}
+                        <div className="flex items-center py-2 border-b border-gray-200">
+                            <div className="flex-1 text-sm font-medium text-gray-500">Notification Type</div>
+                            <div className="w-16 text-center text-sm font-medium text-gray-500">Email</div>
+                            {userData?.sms_enabled && (
+                                <div className="w-16 text-center text-sm font-medium text-gray-500">SMS</div>
+                            )}
+                            <div className="w-20"></div>
+                        </div>
+
+                        {NOTIFICATION_TYPES.map(type => (
+                            <div key={type.key} className="py-3 border-b border-gray-100 last:border-b-0">
+                                <div className="flex items-center">
+                                    <div className="flex-1">
+                                        <p className="text-sm font-medium text-gray-900">{type.label}</p>
+                                        <p className="text-xs text-gray-500">{type.description}</p>
+                                    </div>
+
+                                    {/* Email Toggle */}
+                                    <div className="w-16 flex justify-center">
+                                        <button
+                                            onClick={() => handleToggle(type.key, 'email', !preferences[type.key]?.email)}
+                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                                preferences[type.key]?.email ? 'bg-indigo-600' : 'bg-gray-200'
+                                            }`}
+                                            aria-label={`${type.label} email notifications`}
+                                        >
+                                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                                preferences[type.key]?.email ? 'translate-x-6' : 'translate-x-1'
+                                            }`} />
+                                        </button>
+                                    </div>
+
+                                    {/* SMS Toggle (only when sms_enabled) */}
+                                    {userData?.sms_enabled && (
+                                        <div className="w-16 flex justify-center">
+                                            <button
+                                                onClick={() => handleToggle(type.key, 'sms', !preferences[type.key]?.sms)}
+                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                                    preferences[type.key]?.sms ? 'bg-indigo-600' : 'bg-gray-200'
+                                                }`}
+                                                aria-label={`${type.label} SMS notifications`}
+                                            >
+                                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                                    preferences[type.key]?.sms ? 'translate-x-6' : 'translate-x-1'
+                                                }`} />
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {/* Status indicator */}
+                                    <div className="w-20 text-right">
+                                        {saveStatus?.type === type.key && saveStatus.status === 'saving' && (
+                                            <span className="text-xs text-gray-400">Saving...</span>
+                                        )}
+                                        {saveStatus?.type === type.key && saveStatus.status === 'saved' && (
+                                            <span className="text-xs text-green-600">Saved</span>
+                                        )}
+                                        {saveStatus?.type === type.key && saveStatus.status === 'error' && (
+                                            <span className="text-xs text-red-500">Error</span>
+                                        )}
+                                        {saveStatus?.type === type.key && saveStatus.status === 'guard' && (
+                                            <span className="text-xs text-red-500">At least one channel must be enabled</span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Reminder timing dropdown */}
+                                {type.key === 'reminder' && (
+                                    <div className="mt-2 ml-0 sm:ml-4 flex items-center gap-2">
+                                        <span className="text-xs text-gray-500">Remind me:</span>
+                                        <select
+                                            value={preferences.reminder?.window_hours ?? 1}
+                                            onChange={(e) => handleReminderWindowChange(parseFloat(e.target.value))}
+                                            className="text-sm border border-gray-300 rounded px-2 py-1 text-gray-700 bg-white"
+                                        >
+                                            {REMINDER_WINDOWS.map(w => (
+                                                <option key={w.value} value={w.value}>{w.label}</option>
+                                            ))}
+                                        </select>
+                                        {saveStatus?.type === 'reminder' && saveStatus.channel === 'window' && saveStatus.status === 'saved' && (
+                                            <span className="text-xs text-green-600">Saved</span>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Reset status */}
+                    {saveStatus?.type === 'all' && saveStatus.channel === 'reset' && (
+                        <div className="mt-2 text-center">
+                            {saveStatus.status === 'saving' && <span className="text-xs text-gray-400">Resetting...</span>}
+                            {saveStatus.status === 'saved' && <span className="text-xs text-green-600">Reset to defaults</span>}
+                            {saveStatus.status === 'error' && <span className="text-xs text-red-500">Failed to reset</span>}
+                        </div>
+                    )}
+
+                    {/* Reset to defaults */}
+                    <div className="mt-4 text-right">
+                        <button
+                            onClick={handleResetPreferences}
+                            className="text-sm text-gray-500 hover:text-gray-700 underline"
+                        >
+                            Reset to defaults
+                        </button>
+                    </div>
+                </div>
+                )}
 
                 {/* Availability Settings Section */}
                 <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
