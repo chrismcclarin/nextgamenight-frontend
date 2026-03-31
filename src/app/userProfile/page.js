@@ -182,13 +182,20 @@ function Profile(){
 
     // Notification preference toggle handler (auto-save with optimistic update)
     const handleToggle = async (notificationType, channel, newValue) => {
-        // Guard: at least one channel must be enabled
-        const currentPrefs = preferences[notificationType];
-        const otherChannel = channel === 'email' ? 'sms' : 'email';
-        if (!newValue && !currentPrefs[otherChannel]) {
-            setSaveStatus({ type: notificationType, channel, status: 'guard' });
-            setTimeout(() => setSaveStatus(null), 3000);
-            return;
+        // Guard: at least one channel must be enabled globally across all notification types
+        if (!newValue) {
+            const testPrefs = {
+                ...preferences,
+                [notificationType]: { ...preferences[notificationType], [channel]: false }
+            };
+            const anyEnabled = NOTIFICATION_TYPES.some(t =>
+                testPrefs[t.key]?.email || testPrefs[t.key]?.sms
+            );
+            if (!anyEnabled) {
+                setSaveStatus({ type: notificationType, channel, status: 'guard' });
+                setTimeout(() => setSaveStatus(null), 3000);
+                return;
+            }
         }
 
         // Optimistic update
@@ -865,7 +872,7 @@ function Profile(){
                                             <span className="text-xs text-red-500">Error</span>
                                         )}
                                         {saveStatus?.type === type.key && saveStatus.status === 'guard' && (
-                                            <span className="text-xs text-red-500">At least one channel must be enabled</span>
+                                            <span className="text-xs text-red-500">At least one notification must stay enabled</span>
                                         )}
                                     </div>
                                 </div>
