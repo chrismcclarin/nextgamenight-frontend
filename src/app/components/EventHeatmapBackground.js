@@ -1,9 +1,9 @@
 'use client';
 
 /**
- * EventHeatmapBackground - Visual-only heatmap grid rendered behind the Create Event form.
- * Shows merged group availability as a color-coded grid (green = more available).
- * Purely decorative -- no click handlers or selection.
+ * EventHeatmapBackground - Visual heatmap grid for group availability.
+ * Shows merged availability as a color-coded grid (green = more available).
+ * Hover over cells to see who is available.
  *
  * @param {Object} props
  * @param {Object|null} props.heatmapData - Full API response from getGroupHeatmap
@@ -39,17 +39,34 @@ export default function EventHeatmapBackground({ heatmapData, loading }) {
 
   const { slots, totalMembers, gcalConflicts = [] } = heatmapData;
 
-  // Build a lookup: "date_hour" -> slot
-  const slotMap = new Map();
-  for (const slot of slots) {
-    slotMap.set(`${slot.date}_${slot.hour}`, slot);
+  // Helper: format Date to "YYYY-MM-DD" in local timezone (more reliable than toLocaleDateString)
+  function toLocalDateStr(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
-  // Get unique dates (columns) in order
-  const dates = [...new Set(slots.map(s => s.date))].sort();
+  // Build a lookup keyed by LOCAL date and hour (backend returns UTC dates/hours)
+  const slotMap = new Map();
+  for (const slot of slots) {
+    const utcDate = new Date(`${slot.date}T${String(slot.hour).padStart(2, '0')}:00:00Z`);
+    const localDateStr = toLocalDateStr(utcDate);
+    const localHour = utcDate.getHours();
+    slotMap.set(`${localDateStr}_${localHour}`, slot);
+  }
+
+  // Get 7 local dates starting from Monday of the current week
+  const now = new Date();
+  const mondayOffset = (now.getDay() + 6) % 7; // days since Monday
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayOffset);
+
+  const dates = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(d.getDate() + i);
+    dates.push(toLocalDateStr(d));
+  }
   const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-  // Hours 10-22 (rows)
+  // Local hours 10-22 (matching display range)
   const hours = [];
   for (let h = 10; h <= 22; h++) hours.push(h);
 
@@ -69,6 +86,13 @@ export default function EventHeatmapBackground({ heatmapData, loading }) {
     if (ratio <= 0.6) return 'bg-green-300';
     if (ratio <= 0.8) return 'bg-green-400';
     return 'bg-green-500';
+  }
+
+  // Build hover tooltip text
+  function getTooltip(slot) {
+    if (!slot || slot.availableCount === 0) return '';
+    const names = (slot.availableMembers || []).map(m => m.username).join(', ');
+    return `${slot.availableCount}/${totalMembers} available: ${names}`;
   }
 
   // Group gcal conflicts by username for the warning
@@ -107,10 +131,12 @@ export default function EventHeatmapBackground({ heatmapData, loading }) {
               const slot = slotMap.get(`${date}_${hour}`);
               const count = slot?.availableCount || 0;
               const bg = getCellBg(count, totalMembers);
+              const tip = getTooltip(slot);
               return (
                 <div
                   key={`${date}_${hour}`}
-                  className={`${bg} rounded-sm flex items-center justify-center`}
+                  title={tip}
+                  className={`${bg} rounded-sm flex items-center justify-center cursor-default`}
                   style={{ minHeight: '18px' }}
                 >
                   {count > 0 && (
@@ -133,6 +159,7 @@ export default function EventHeatmapBackground({ heatmapData, loading }) {
         <div className="w-3 h-3 bg-green-400 rounded-sm" />
         <div className="w-3 h-3 bg-green-500 rounded-sm" />
         <span className="text-[9px] text-gray-400">More available</span>
+        <span className="text-[9px] text-gray-300 ml-1">(hover for names)</span>
       </div>
 
       {/* gcal conflict warning */}
