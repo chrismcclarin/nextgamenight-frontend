@@ -423,19 +423,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={modaltoggle}>
       <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="relative">
-          {/* Heatmap background layer -- sits behind the form */}
-          <div className="absolute inset-0 overflow-hidden rounded-lg pointer-events-none z-0">
-            <div className="p-4 opacity-20">
-              <EventHeatmapBackground
-                heatmapData={heatmapData}
-                loading={heatmapLoading}
-              />
-            </div>
-          </div>
-
-          {/* Form content -- sits on top */}
-          <div className="relative z-10 p-6">
+        <div className="p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">{editingEvent ? 'Edit Event' : 'Create Event'}</h2>
           <button
@@ -495,7 +483,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   const dateStr = format(start, 'yyyy-MM-dd');
                   const timeStr = format(start, 'HH:mm');
                   const duration = differenceInMinutes(end, start);
-                  
+
                   setNewEvent({
                     ...newEvent,
                     start_date: `${dateStr}T${timeStr}`,
@@ -504,12 +492,20 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 }}
                 initialDate={calendarInitialDate}
                 initialStart={prefillTime || (editingEvent?.start_date ? format(new Date(editingEvent.start_date), 'HH:mm') : null)}
-                initialEnd={editingEvent?.start_date && editingEvent?.duration_minutes 
+                initialEnd={editingEvent?.start_date && editingEvent?.duration_minutes
                   ? format(new Date(new Date(editingEvent.start_date).getTime() + editingEvent.duration_minutes * 60000), 'HH:mm')
                   : null}
+                heatmapData={heatmapData}
               />
             ) : (
               <div className="space-y-4">
+                {/* Heatmap reference for manual entry mode */}
+                {(heatmapData || heatmapLoading) && (
+                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                    <p className="text-xs font-medium text-gray-500 mb-2">Group Availability This Week</p>
+                    <EventHeatmapBackground heatmapData={heatmapData} loading={heatmapLoading} />
+                  </div>
+                )}
                 {/* Start Date */}
                 <div>
                   <label htmlFor="start_date" className="block text-sm font-medium mb-1 text-gray-900">
@@ -638,7 +634,6 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             </button>
           </div>
         </form>
-          </div>
         </div>
       </div>
     </div>

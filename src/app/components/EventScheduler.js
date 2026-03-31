@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay, differenceInMinutes, parseISO, setHours, setMinutes } from 'date-fns';
 import { enUS } from 'date-fns/locale';
@@ -94,27 +94,44 @@ const locales = {
 const localizer = dateFnsLocalizer({
   format,
   parse,
-  startOfWeek,
+  startOfWeek: (date) => startOfWeek(date, { weekStartsOn: 1 }),
   getDay,
   locales,
 });
 
-export default function EventScheduler({ 
-  onTimeSelected, 
-  initialDate, 
-  initialStart, 
+export default function EventScheduler({
+  onTimeSelected,
+  initialDate,
+  initialStart,
   initialEnd,
   minTime,
   maxTime,
   step = 30,
-  events = []
+  events = [],
+  heatmapData = null
 }) {
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [currentDate, setCurrentDate] = useState(initialDate || new Date());
   const [currentView, setCurrentView] = useState('week');
 
-  // Set default min/max times (4 PM to midnight)
-  const defaultMinTime = minTime || setHours(setMinutes(new Date(0, 0, 0), 0), 16); // 4:00 PM
+  // Build heatmap lookup: "localDate_localHour" -> slot
+  // Backend returns UTC dates/hours -- convert to local so keys match the calendar
+  const heatmapLookup = useMemo(() => {
+    if (!heatmapData?.slots) return new Map();
+    const map = new Map();
+    for (const slot of heatmapData.slots) {
+      const utcDate = new Date(`${slot.date}T${String(slot.hour).padStart(2, '0')}:00:00Z`);
+      const localDateStr = format(utcDate, 'yyyy-MM-dd');
+      const localHour = utcDate.getHours();
+      map.set(`${localDateStr}_${localHour}`, slot);
+    }
+    return map;
+  }, [heatmapData]);
+
+  const totalMembers = heatmapData?.totalMembers || 0;
+
+  // Set default min/max times (10 AM to midnight)
+  const defaultMinTime = minTime || setHours(setMinutes(new Date(0, 0, 0), 0), 10); // 10:00 AM
   const defaultMaxTime = maxTime || setHours(setMinutes(new Date(0, 0, 0), 59), 23); // 11:59 PM
 
   // Initialize from props if provided
@@ -185,10 +202,70 @@ export default function EventScheduler({
     }] : [])
   ];
 
+  // Tint time slots based on group availability
+  const getSlotProps = useCallback((date) => {
+    const dateStr = format(date, 'yyyy-MM-dd');
+    const hour = date.getHours();
+    const key = `${dateStr}_${hour}`;
+    const slot = heatmapLookup.get(key);
+    const count = slot?.availableCount || 0;
+
+    let bgColor = undefined;
+    if (totalMembers > 0 && count > 0) {
+      const ratio = count / totalMembers;
+      if (ratio <= 0.25) bgColor = '#dcfce7';       // green-100
+      else if (ratio <= 0.5) bgColor = '#bbf7d0';   // green-200
+      else if (ratio <= 0.75) bgColor = '#86efac';   // green-300
+      else bgColor = '#4ade80';                       // green-400
+    }
+
+    return {
+      style: {
+        minHeight: '60px',
+        ...(bgColor && { backgroundColor: bgColor }),
+      },
+    };
+  }, [heatmapLookup, totalMembers]);
+
+  // Custom time slot wrapper: adds availability count + hover tooltip
+  const calendarComponents = useMemo(() => ({
+    timeSlotWrapper: ({ children, value }) => {
+      if (!value || !(value instanceof Date)) return children;
+
+      const dateStr = format(value, 'yyyy-MM-dd');
+      const hour = value.getHours();
+      const slot = heatmapLookup.get(`${dateStr}_${hour}`);
+
+      if (!slot || slot.availableCount === 0) return children;
+
+      const names = (slot.availableMembers || []).map(m => m.username).join(', ');
+      const tip = `${slot.availableCount}/${totalMembers} available: ${names}`;
+
+      return (
+        <div title={tip} style={{ position: 'relative', height: '100%' }}>
+          {children}
+          <span style={{
+            position: 'absolute',
+            top: '2px',
+            right: '4px',
+            fontSize: '10px',
+            color: '#15803d',
+            fontWeight: 600,
+            pointerEvents: 'none',
+            zIndex: 1,
+          }}>
+            {slot.availableCount}
+          </span>
+        </div>
+      );
+    },
+  }), [heatmapLookup, totalMembers]);
+
   return (
     <div className="space-y-4">
       <div className="h-[600px] bg-white rounded-lg border border-gray-300 overflow-hidden">
         <Calendar
+          key={heatmapData ? 'heatmap-loaded' : 'heatmap-empty'}
           localizer={localizer}
           selectable
           onSelectSlot={handleSelectSlot}
@@ -218,13 +295,24 @@ export default function EventScheduler({
               },
             };
           }}
-          slotPropGetter={() => ({
-            style: {
-              minHeight: '60px',
-            },
-          })}
+          slotPropGetter={getSlotProps}
+          components={calendarComponents}
         />
       </div>
+
+      {totalMembers > 0 && (
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <span>Availability:</span>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#dcfce7' }} />
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#bbf7d0' }} />
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#86efac' }} />
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#4ade80' }} />
+          </div>
+          <span>More available</span>
+          <span className="text-gray-400 ml-1">(hover for names)</span>
+        </div>
+      )}
 
       {selectedSlot && (
         <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
