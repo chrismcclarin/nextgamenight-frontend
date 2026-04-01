@@ -157,7 +157,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, currentUserI
                 const game = item.Game || item;
                 const gameId = game.id;
                 const gameName = game.name || game.title || 'Unknown Game';
-                const thumbnail = game.thumbnail || game.image_url;
+                const thumbnail = game.thumbnail_url || game.thumbnail || game.image_url;
                 const isSelected = selectedGameIds.has(gameId);
                 const othersCount = othersBringing[gameId] || 0;
 
