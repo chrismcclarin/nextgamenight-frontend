@@ -12,12 +12,14 @@
 /**
  * Format a date in casual style.
  * Current year: "Mar 20". Different year: "Mar 20, 2026".
+ * When timezone is provided, appends abbreviation (e.g., "Mar 20 EDT").
  * Returns 'Never' for null/undefined input.
  *
  * @param {string|Date} date - Date string or Date object
+ * @param {string} [timezone] - Optional IANA timezone (e.g., 'America/New_York')
  * @returns {string} Formatted date string
  */
-export function formatDate(date) {
+export function formatDate(date, timezone) {
   if (!date) return 'Never';
 
   try {
@@ -25,9 +27,18 @@ export function formatDate(date) {
     if (isNaN(d.getTime())) return 'Invalid date';
 
     const currentYear = new Date().getFullYear();
-    const dateYear = d.getFullYear();
 
     const options = { month: 'short', day: 'numeric' };
+    if (timezone) {
+      options.timeZone = timezone;
+      options.timeZoneName = 'short';
+    }
+
+    // Check year in the target timezone
+    const dateYear = timezone
+      ? parseInt(new Intl.DateTimeFormat('en-US', { year: 'numeric', timeZone: timezone }).format(d), 10)
+      : d.getFullYear();
+
     if (dateYear !== currentYear) {
       options.year = 'numeric';
     }
@@ -42,12 +53,14 @@ export function formatDate(date) {
  * Format a time in 12-hour format: "7:00 PM".
  * Handles both ISO date strings (extracts time) and "HH:MM" time strings
  * (24h to 12h conversion, matching ScheduleList pattern).
+ * When timezone is provided, appends abbreviation (e.g., "7:00 PM EDT").
  * Returns empty string for null/undefined input.
  *
  * @param {string|Date} dateOrTimeString - ISO date string, Date object, or "HH:MM" time string
- * @returns {string} Formatted time string (e.g., "7:00 PM")
+ * @param {string} [timezone] - Optional IANA timezone (e.g., 'America/New_York')
+ * @returns {string} Formatted time string (e.g., "7:00 PM" or "7:00 PM EDT")
  */
-export function formatTime(dateOrTimeString) {
+export function formatTime(dateOrTimeString, timezone) {
   if (!dateOrTimeString) return '';
 
   try {
@@ -57,14 +70,33 @@ export function formatTime(dateOrTimeString) {
       const h = parseInt(hours, 10);
       const ampm = h >= 12 ? 'PM' : 'AM';
       const displayHour = h % 12 || 12;
-      return `${displayHour}:${minutes} ${ampm}`;
+      const base = `${displayHour}:${minutes} ${ampm}`;
+
+      // Append timezone abbreviation if provided
+      if (timezone) {
+        try {
+          const abbr = new Intl.DateTimeFormat('en-US', { timeZone: timezone, timeZoneName: 'short' })
+            .formatToParts(new Date())
+            .find(p => p.type === 'timeZoneName')?.value;
+          return abbr ? `${base} ${abbr}` : base;
+        } catch {
+          return base;
+        }
+      }
+      return base;
     }
 
     // Handle ISO date strings and Date objects
     const d = new Date(dateOrTimeString);
     if (isNaN(d.getTime())) return '';
 
-    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    const options = { hour: 'numeric', minute: '2-digit' };
+    if (timezone) {
+      options.timeZone = timezone;
+      options.timeZoneName = 'short';
+    }
+
+    return d.toLocaleTimeString('en-US', options);
   } catch {
     return '';
   }
@@ -73,12 +105,14 @@ export function formatTime(dateOrTimeString) {
 /**
  * Format a date and time combined.
  * Current year: "Mar 20, 7:00 PM". Different year: "Mar 20, 2026, 7:00 PM".
+ * When timezone is provided, appends abbreviation (e.g., "Mar 20, 7:00 PM EDT").
  * Returns empty string for null/undefined input.
  *
  * @param {string|Date} date - Date string or Date object
+ * @param {string} [timezone] - Optional IANA timezone (e.g., 'America/New_York')
  * @returns {string} Formatted date-time string
  */
-export function formatDateTime(date) {
+export function formatDateTime(date, timezone) {
   if (!date) return '';
 
   try {
@@ -86,7 +120,6 @@ export function formatDateTime(date) {
     if (isNaN(d.getTime())) return '';
 
     const currentYear = new Date().getFullYear();
-    const dateYear = d.getFullYear();
 
     const options = {
       month: 'short',
@@ -94,6 +127,16 @@ export function formatDateTime(date) {
       hour: 'numeric',
       minute: '2-digit',
     };
+    if (timezone) {
+      options.timeZone = timezone;
+      options.timeZoneName = 'short';
+    }
+
+    // Check year in the target timezone
+    const dateYear = timezone
+      ? parseInt(new Intl.DateTimeFormat('en-US', { year: 'numeric', timeZone: timezone }).format(d), 10)
+      : d.getFullYear();
+
     if (dateYear !== currentYear) {
       options.year = 'numeric';
     }
