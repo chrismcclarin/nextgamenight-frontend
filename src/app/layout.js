@@ -5,6 +5,7 @@ import Footer from './components/Footer'
 import FeedbackButton from './components/FeedbackButton'
 import { UserProvider } from '@auth0/nextjs-auth0/client';
 import TutorialProvider from './components/tutorial/TutorialProvider'
+import TimezoneProvider from './components/TimezoneProvider'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -18,14 +19,16 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <UserProvider>
         <body className={inter.className}>
-          <TutorialProvider>
-            <Header />
-            <main className="min-h-screen">
-              {children}
-            </main>
-            <Footer />
-            <FeedbackButton />
-          </TutorialProvider>
+          <TimezoneProvider>
+            <TutorialProvider>
+              <Header />
+              <main className="min-h-screen">
+                {children}
+              </main>
+              <Footer />
+              <FeedbackButton />
+            </TutorialProvider>
+          </TimezoneProvider>
         </body>
       </UserProvider>
     </html>

@@ -334,6 +334,13 @@ export const usersAPI = {
       body: JSON.stringify({ preferences }),
     }),
 
+  // Update user's timezone
+  updateTimezone: (user_id, timezone) =>
+    apiFetch(`/users/${encodeURIComponent(user_id)}/timezone`, {
+      method: 'PATCH',
+      body: JSON.stringify({ timezone }),
+    }),
+
   // Save phone number and initiate verification
   savePhone: (user_id, phone) =>
     apiFetch(`/users/${encodeURIComponent(user_id)}/phone`, {
