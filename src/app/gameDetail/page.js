@@ -10,6 +10,7 @@ import RsvpSection from '../components/RsvpSection';
 import BallotSection from '../components/BallotSection';
 import GameSuggestionCard from '../components/GameSuggestionCard';
 import { formatDate, formatDateTime, formatDuration } from '../../lib/dateUtils';
+import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from '../components/SafeImage';
 import FriendshipStatusProvider from '../components/FriendshipStatusProvider';
 import ClickableMemberName from '../components/ClickableMemberName';
@@ -50,6 +51,7 @@ function GuestInviteButton({ groupId, email }) {
 
 export default function GameDetailPage() {
     const { user } = Auth();
+    const { timezone } = useTimezone();
     const searchParams = useSearchParams();
     const router = useRouter();
     const game_id = searchParams.get('game_id');
@@ -812,7 +814,7 @@ export default function GameDetailPage() {
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-3 mb-2">
                                                     <p className="font-semibold text-gray-900">
-                                                        {formatDate(event.start_date)}
+                                                        {formatDate(event.start_date, timezone)}
                                                     </p>
                                                     {event.duration_minutes && (
                                                         <span className="text-sm text-gray-600">
@@ -972,7 +974,7 @@ export default function GameDetailPage() {
                                     )} <span className="text-xs text-blue-600 ml-1">(You)</span>
                                 </p>
                                 <p className="text-sm text-gray-600">
-                                    {formatDate(userReview.createdAt)}
+                                    {formatDate(userReview.createdAt, timezone)}
                                 </p>
                             </div>
                             <div className="text-right">
@@ -1022,7 +1024,7 @@ export default function GameDetailPage() {
                                                     )}
                                                 </div>
                                                 <p className="text-sm text-gray-600">
-                                                    {formatDate(review.createdAt)}
+                                                    {formatDate(review.createdAt, timezone)}
                                                 </p>
                                             </div>
                                             <div className="text-right">

@@ -5,6 +5,7 @@ import { format, addDays, nextMonday } from 'date-fns';
 import HeatmapCell from './HeatmapCell';
 import ThresholdSlider from './ThresholdSlider';
 import SuggestionCard from './SuggestionCard';
+import { useTimezone } from '../components/TimezoneProvider';
 
 /**
  * HeatmapGrid - Displays collective availability as a color-coded heatmap
@@ -25,7 +26,7 @@ import SuggestionCard from './SuggestionCard';
 export default function HeatmapGrid({
   suggestions = [],
   totalMembers = 1,
-  timezone = Intl.DateTimeFormat().resolvedOptions().timeZone,
+  timezone: timezoneProp,
   weekStartDate,
   defaultThreshold = 1,
   onSlotSelect,
@@ -35,6 +36,8 @@ export default function HeatmapGrid({
   pollClosed = false,
   onEventCreated,
 }) {
+  const { timezone: contextTimezone } = useTimezone();
+  const timezone = timezoneProp || contextTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [threshold, setThreshold] = useState(defaultThreshold);
 
   // Calculate the week start date (next Monday if not provided)

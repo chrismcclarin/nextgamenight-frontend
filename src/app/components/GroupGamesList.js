@@ -3,8 +3,9 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import SafeImage from './SafeImage';
 import { formatDate } from '../../lib/dateUtils';
+import { useTimezone } from '../components/TimezoneProvider';
 
-function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount }) {
+function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, timezone }) {
     return (
         <Link
             href={`/gameDetail?game_id=${encodeURIComponent(game.id)}&group_id=${encodeURIComponent(groupId)}`}
@@ -25,7 +26,7 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount }) {
                             Played <span className="font-semibold">{game.play_count}</span> {game.play_count === 1 ? 'time' : 'times'}
                         </p>
                         <p>
-                            Last played: {formatDate(game.last_played)}
+                            Last played: {formatDate(game.last_played, timezone)}
                         </p>
                         {game.avg_rating && (
                             <p>
@@ -53,6 +54,7 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount }) {
 }
 
 export default function GroupGamesList({ games, groupId, onAddEvent, userRole, members }) {
+    const { timezone } = useTimezone();
     const [sortBy, setSortBy] = useState('name');
     const [sortOrder, setSortOrder] = useState('asc');
     const [filterOpen, setFilterOpen] = useState(false);
@@ -359,7 +361,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                     {group.games.map((game) => (
-                                        <GameCard key={game.id} game={game} groupId={groupId} sortBy={sortBy} formatRating={formatRating} formatPlayerCount={formatPlayerCount} />
+                                        <GameCard key={game.id} game={game} groupId={groupId} sortBy={sortBy} formatRating={formatRating} formatPlayerCount={formatPlayerCount} timezone={timezone} />
                                     ))}
                                 </div>
                             </div>
@@ -369,7 +371,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                     /* Flat grid layout */
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {filteredGames.map((game) => (
-                            <GameCard key={game.id} game={game} groupId={groupId} sortBy={sortBy} formatRating={formatRating} formatPlayerCount={formatPlayerCount} />
+                            <GameCard key={game.id} game={game} groupId={groupId} sortBy={sortBy} formatRating={formatRating} formatPlayerCount={formatPlayerCount} timezone={timezone} />
                         ))}
                     </div>
                 )

@@ -9,6 +9,7 @@ import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { groupsAPI } from '../../lib/api';
 import { getTextStyle } from '../../lib/colorUtils';
 import { formatDate } from '../../lib/dateUtils';
+import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
 import FriendshipStatusProvider from './FriendshipStatusProvider';
 import ClickableMemberName from './ClickableMemberName';
@@ -16,6 +17,7 @@ import ClickableMemberName from './ClickableMemberName';
 const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
   const router = useRouter();
   const { user: authUser } = Auth();
+  const { timezone } = useTimezone();
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [settingsGroup, setSettingsGroup] = useState(null);
@@ -198,7 +200,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                     <strong>Last Game:</strong> {lastGame?.name || 'None'}
                   </div>
                   <div className="last-game-date">
-                    {formatDate(lastEvent?.start_date || lastEvent?.createdAt)}
+                    {formatDate(lastEvent?.start_date || lastEvent?.createdAt, timezone)}
                   </div>
                 </div>
 

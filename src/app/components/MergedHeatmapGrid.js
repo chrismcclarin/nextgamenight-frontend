@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import { format, parseISO, isToday } from 'date-fns';
 import MergedHeatmapCell from './MergedHeatmapCell';
+import { useTimezone } from '../components/TimezoneProvider';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const HOURS = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
@@ -27,6 +28,7 @@ function formatHourLabel(hour) {
  * @param {function} props.onSlotSelect - Callback when a slot is clicked
  */
 export default function MergedHeatmapGrid({ slots = [], totalMembers, selectedSlot, onSlotSelect }) {
+  const { timezone } = useTimezone();
   // Build a lookup map: slotsMap[date][hour] for O(1) access
   const slotsMap = useMemo(() => {
     const map = {};

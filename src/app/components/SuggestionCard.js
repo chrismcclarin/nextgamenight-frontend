@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { suggestionAPI } from '@/lib/api';
 import { formatDate, formatTime } from '../../lib/dateUtils';
+import { useTimezone } from '../components/TimezoneProvider';
 
 /**
  * SuggestionCard - Displays a single availability suggestion with action buttons
@@ -23,12 +24,13 @@ export default function SuggestionCard({
   onEventCreated
 }) {
   const router = useRouter();
+  const { timezone } = useTimezone();
   const [isConverting, setIsConverting] = useState(false);
   const [error, setError] = useState(null);
 
-  const startDate = formatDate(suggestion.suggested_start);
-  const startTime = formatTime(suggestion.suggested_start);
-  const endTime = formatTime(suggestion.suggested_end);
+  const startDate = formatDate(suggestion.suggested_start, timezone);
+  const startTime = formatTime(suggestion.suggested_start, timezone);
+  const endTime = formatTime(suggestion.suggested_end, timezone);
 
   const handleCreateEvent = async () => {
     if (isConverting) return;

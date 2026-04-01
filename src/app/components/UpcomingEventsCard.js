@@ -2,40 +2,71 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTimezone } from '../components/TimezoneProvider';
 
 /**
- * Format event date/time in relative + compact format.
- * - Today: "Today 7pm"
- * - Tomorrow: "Tomorrow 2pm"
- * - Within 6 days: "Fri 6pm"
+ * Format event date/time in relative + compact format with timezone support.
+ * - Today: "Today 7pm EST"
+ * - Tomorrow: "Tomorrow 2pm EST"
+ * - Within 6 days: "Fri 6pm EST"
  * - Time: 12-hour, no minutes on the hour (7pm), with minutes otherwise (7:30pm)
+ *
+ * @param {string} dateStr - ISO date string
+ * @param {string} [timezone] - Optional IANA timezone (e.g., 'America/New_York')
  */
-function formatRelativeDateTime(dateStr) {
+function formatRelativeDateTime(dateStr, timezone) {
   const eventDate = new Date(dateStr);
   const now = new Date();
 
-  // Build date part
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const tomorrowStart = new Date(todayStart);
-  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
-  const dayAfterTomorrow = new Date(todayStart);
-  dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
+  // Helper to get date parts in the target timezone
+  const getDateParts = (d, tz) => {
+    if (!tz) {
+      return { year: d.getFullYear(), month: d.getMonth(), day: d.getDate(), weekday: d.getDay(), hours: d.getHours(), minutes: d.getMinutes() };
+    }
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric',
+      weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true,
+    }).formatToParts(d);
+    const get = (type) => parts.find(p => p.type === type)?.value;
+    const dayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    return {
+      year: parseInt(get('year'), 10),
+      month: parseInt(get('month'), 10) - 1,
+      day: parseInt(get('day'), 10),
+      weekday: dayMap[get('weekday')] ?? 0,
+      hours: (() => {
+        let h = parseInt(get('hour'), 10);
+        const dp = get('dayPeriod');
+        if (dp === 'PM' && h !== 12) h += 12;
+        if (dp === 'AM' && h === 12) h = 0;
+        return h;
+      })(),
+      minutes: parseInt(get('minute'), 10),
+    };
+  };
 
-  const eventDayStart = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
+  const nowParts = getDateParts(now, timezone);
+  const eventParts = getDateParts(eventDate, timezone);
+
+  // Compare dates
+  const todayKey = `${nowParts.year}-${nowParts.month}-${nowParts.day}`;
+  const tomorrowDate = new Date(nowParts.year, nowParts.month, nowParts.day + 1);
+  const tomorrowKey = `${tomorrowDate.getFullYear()}-${tomorrowDate.getMonth()}-${tomorrowDate.getDate()}`;
+  const eventKey = `${eventParts.year}-${eventParts.month}-${eventParts.day}`;
 
   let datePart;
-  if (eventDayStart.getTime() === todayStart.getTime()) {
+  if (eventKey === todayKey) {
     datePart = 'Today';
-  } else if (eventDayStart.getTime() === tomorrowStart.getTime()) {
+  } else if (eventKey === tomorrowKey) {
     datePart = 'Tomorrow';
   } else {
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    datePart = dayNames[eventDate.getDay()];
+    datePart = dayNames[eventParts.weekday];
   }
 
   // Build time part
-  let hours = eventDate.getHours();
-  const minutes = eventDate.getMinutes();
+  let hours = eventParts.hours;
+  const minutes = eventParts.minutes;
   const ampm = hours >= 12 ? 'pm' : 'am';
   hours = hours % 12;
   if (hours === 0) hours = 12;
@@ -44,7 +75,17 @@ function formatRelativeDateTime(dateStr) {
     ? `${hours}${ampm}`
     : `${hours}:${String(minutes).padStart(2, '0')}${ampm}`;
 
-  return `${datePart} ${timePart}`;
+  // Append timezone abbreviation if provided
+  let tzAbbr = '';
+  if (timezone) {
+    try {
+      tzAbbr = ' ' + new Intl.DateTimeFormat('en-US', { timeZone: timezone, timeZoneName: 'short' })
+        .formatToParts(eventDate)
+        .find(p => p.type === 'timeZoneName')?.value;
+    } catch { /* ignore */ }
+  }
+
+  return `${datePart} ${timePart}${tzAbbr}`;
 }
 
 /**
@@ -57,6 +98,7 @@ function formatRelativeDateTime(dateStr) {
  */
 export default function UpcomingEventsCard({ events, showGroupName = false, loading = false }) {
   const router = useRouter();
+  const { timezone } = useTimezone();
   const [expanded, setExpanded] = useState(false);
 
   // Defensive: treat null/undefined as empty array
@@ -96,7 +138,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
         <div className="mt-2">
           {displayEvents.map(event => {
             const gameName = event.Game?.name || 'Game TBD';
-            const dateTime = formatRelativeDateTime(event.start_date);
+            const dateTime = formatRelativeDateTime(event.start_date, timezone);
             const groupName = event.Group?.name;
 
             return (

@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { getContrastColor } from '../../lib/colorUtils';
 import { formatTime } from '../../lib/dateUtils';
+import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
 import QRCodeModal from './QRCodeModal';
 import { eventsAPI } from '../../lib/api';
@@ -11,6 +12,7 @@ export default function EventDayModal({
   onClose,
   onEventClick,
 }) {
+  const { timezone } = useTimezone();
   const [showGameQR, setShowGameQR] = useState(false);
   const [gameInviteUrl, setGameInviteUrl] = useState('');
   const [gameQRLoading, setGameQRLoading] = useState(false);
@@ -155,7 +157,7 @@ export default function EventDayModal({
                                 };
                               })()}
                             >
-                              {event.Group?.name || 'Unknown Group'} - {formatTime(event.start_date)}
+                              {event.Group?.name || 'Unknown Group'} - {formatTime(event.start_date, timezone)}
                             </p>
                           </div>
                           {!isPastEvent && (

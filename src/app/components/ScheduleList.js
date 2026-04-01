@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { formatTime } from '../../lib/dateUtils';
+import { useTimezone } from '../components/TimezoneProvider';
 
 // Day of week helper
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -17,6 +18,7 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
  * @param {Array} props.games - Array of games for displaying game names
  */
 export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelete, games = [] }) {
+  const { timezone } = useTimezone();
   const [deleteConfirm, setDeleteConfirm] = useState(null); // schedule_id to confirm deletion
 
   const handleDeleteClick = (schedule) => {
@@ -45,7 +47,7 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
     <div className="space-y-4">
       {schedules.map((schedule) => {
         const dayName = DAYS[schedule.schedule_day_of_week] || 'Unknown';
-        const timeFormatted = formatTime(schedule.schedule_time);
+        const timeFormatted = formatTime(schedule.schedule_time, timezone);
         const game = games.find(g => g.id === schedule.game_id);
         const gameName = game?.name || 'Game TBD';
         const isActive = schedule.is_active;

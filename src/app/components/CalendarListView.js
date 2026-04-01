@@ -1,6 +1,7 @@
 'use client';
 import { getContrastColor } from '../../lib/colorUtils';
 import { formatDate, formatTime } from '../../lib/dateUtils';
+import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
 import RsvpCount from './RsvpCount';
 
@@ -12,6 +13,8 @@ export default function CalendarListView({
   onGoToday,
   monthNames,
 }) {
+  const { timezone } = useTimezone();
+
   return (
     <div className="space-y-4">
       <div className="flex gap-2 mb-4">
@@ -131,7 +134,7 @@ export default function CalendarListView({
                             };
                           })()}
                         >
-                          {event.Group?.name || 'Unknown Group'} - {eventDate.toLocaleDateString()} {eventDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {event.Group?.name || 'Unknown Group'} - {formatDate(event.start_date, timezone)} {formatTime(event.start_date, timezone)}
                         </p>
                       </div>
                       {!isPastEvent && (
@@ -141,8 +144,8 @@ export default function CalendarListView({
                       )}
                     </div>
                     <div className="flex gap-4 mt-2 text-sm text-gray-500">
-                      <span>{formatDate(event.start_date)}</span>
-                      <span>{formatTime(event.start_date)}</span>
+                      <span>{formatDate(event.start_date, timezone)}</span>
+                      <span>{formatTime(event.start_date, timezone)}</span>
                       {event.duration_minutes && (
                         <span>{event.duration_minutes} min</span>
                       )}

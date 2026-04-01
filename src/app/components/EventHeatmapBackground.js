@@ -1,5 +1,7 @@
 'use client';
 
+import { useTimezone } from '../components/TimezoneProvider';
+
 /**
  * EventHeatmapBackground - Visual heatmap grid for group availability.
  * Shows merged availability as a color-coded grid (green = more available).
@@ -10,6 +12,7 @@
  * @param {boolean} props.loading - Whether data is still being fetched
  */
 export default function EventHeatmapBackground({ heatmapData, loading }) {
+  const { timezone } = useTimezone();
   // No-data state: render nothing
   if (!heatmapData && !loading) return null;
 
@@ -39,34 +42,54 @@ export default function EventHeatmapBackground({ heatmapData, loading }) {
 
   const { slots, totalMembers, gcalConflicts = [] } = heatmapData;
 
-  // Helper: format Date to "YYYY-MM-DD" in local timezone (more reliable than toLocaleDateString)
-  function toLocalDateStr(d) {
+  // Helper: format Date to "YYYY-MM-DD" in the viewer's timezone
+  function toTzDateStr(d) {
+    if (timezone) {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+      }).formatToParts(d);
+      const get = (type) => parts.find(p => p.type === type)?.value;
+      return `${get('year')}-${get('month')}-${get('day')}`;
+    }
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
-  // Build a lookup keyed by LOCAL date and hour (backend returns UTC dates/hours)
+  // Helper: get hour in the viewer's timezone
+  function toTzHour(d) {
+    if (timezone) {
+      return parseInt(new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone, hour: 'numeric', hour12: false,
+      }).format(d), 10);
+    }
+    return d.getHours();
+  }
+
+  // Build a lookup keyed by viewer-timezone date and hour (backend returns UTC dates/hours)
   const slotMap = new Map();
   for (const slot of slots) {
     const utcDate = new Date(`${slot.date}T${String(slot.hour).padStart(2, '0')}:00:00Z`);
-    const localDateStr = toLocalDateStr(utcDate);
-    const localHour = utcDate.getHours();
-    slotMap.set(`${localDateStr}_${localHour}`, slot);
+    const tzDateStr = toTzDateStr(utcDate);
+    const tzHour = toTzHour(utcDate);
+    slotMap.set(`${tzDateStr}_${tzHour}`, slot);
   }
 
-  // Get 7 local dates starting from Monday of the current week
+  // Get 7 dates starting from Monday of the current week in the viewer's timezone
   const now = new Date();
-  const mondayOffset = (now.getDay() + 6) % 7; // days since Monday
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayOffset);
+  const nowDateStr = toTzDateStr(now);
+  const [ny, nm, nd] = nowDateStr.split('-').map(Number);
+  const nowLocal = new Date(ny, nm - 1, nd);
+  const mondayOffset = (nowLocal.getDay() + 6) % 7; // days since Monday
+  const monday = new Date(ny, nm - 1, nd - mondayOffset);
 
   const dates = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday);
     d.setDate(d.getDate() + i);
-    dates.push(toLocalDateStr(d));
+    dates.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
   }
   const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-  // Local hours 10-22 (matching display range)
+  // Hours 10-22 in viewer's timezone (matching display range)
   const hours = [];
   for (let h = 10; h <= 22; h++) hours.push(h);
 
