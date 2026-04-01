@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { formatDate } from '../../lib/dateUtils';
 import SafeImage from '../components/SafeImage';
 import { useTutorial } from '../components/tutorial/TutorialProvider';
+import { useTimezone } from '../components/TimezoneProvider';
 
 const NOTIFICATION_TYPES = [
     { key: 'event_created', label: 'New Event', description: 'When a game session is scheduled' },
@@ -86,6 +87,85 @@ function Profile(){
     const [saveStatus, setSaveStatus] = useState(null); // { type, channel, status: 'saving'|'saved'|'error'|'guard' }
 
     const { replayTutorial } = useTutorial();
+    const { timezone, setTimezone } = useTimezone();
+
+    // Timezone picker state
+    const [tzPickerOpen, setTzPickerOpen] = useState(false);
+    const [tzSearch, setTzSearch] = useState('');
+
+    // Get all IANA timezones with UTC offset info
+    const getTimezoneList = useCallback(() => {
+        try {
+            const zones = Intl.supportedValuesOf('timeZone');
+            return zones.map(tz => {
+                try {
+                    const formatter = new Intl.DateTimeFormat('en-US', {
+                        timeZone: tz,
+                        timeZoneName: 'short',
+                    });
+                    const parts = formatter.formatToParts(new Date());
+                    const abbr = parts.find(p => p.type === 'timeZoneName')?.value || '';
+
+                    const offsetFormatter = new Intl.DateTimeFormat('en-US', {
+                        timeZone: tz,
+                        timeZoneName: 'longOffset',
+                    });
+                    const offsetParts = offsetFormatter.formatToParts(new Date());
+                    const offset = offsetParts.find(p => p.type === 'timeZoneName')?.value || '';
+
+                    return { value: tz, abbr, offset, label: `${tz} (${abbr}, ${offset})` };
+                } catch {
+                    return { value: tz, abbr: '', offset: '', label: tz };
+                }
+            });
+        } catch {
+            // Fallback for older browsers that don't support supportedValuesOf
+            return [{ value: timezone || 'UTC', abbr: '', offset: '', label: timezone || 'UTC' }];
+        }
+    }, [timezone]);
+
+    const filteredTimezones = useCallback(() => {
+        const all = getTimezoneList();
+        if (!tzSearch.trim()) return all;
+        const query = tzSearch.toLowerCase().replace(/[_/]/g, ' ');
+        return all.filter(tz => {
+            const searchable = tz.label.toLowerCase().replace(/[_/]/g, ' ');
+            return searchable.includes(query);
+        });
+    }, [getTimezoneList, tzSearch]);
+
+    // Group timezones by region prefix
+    const groupedTimezones = useCallback(() => {
+        const zones = filteredTimezones();
+        const groups = {};
+        zones.forEach(tz => {
+            const slashIndex = tz.value.indexOf('/');
+            const region = slashIndex > -1 ? tz.value.substring(0, slashIndex) : 'Other';
+            if (!groups[region]) groups[region] = [];
+            groups[region].push(tz);
+        });
+        return groups;
+    }, [filteredTimezones]);
+
+    const handleTimezoneSelect = (tz) => {
+        setTimezone(tz);
+        setTzPickerOpen(false);
+        setTzSearch('');
+    };
+
+    // Get current timezone abbreviation for display
+    const currentTzAbbr = useCallback(() => {
+        try {
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: timezone,
+                timeZoneName: 'short',
+            });
+            const parts = formatter.formatToParts(new Date());
+            return parts.find(p => p.type === 'timeZoneName')?.value || '';
+        } catch {
+            return '';
+        }
+    }, [timezone]);
 
     const handleReplayTutorial = async () => {
         if (!user?.sub) return;
@@ -799,6 +879,65 @@ function Profile(){
                                 </button>
                             )}
                         </div>
+                    </div>
+                </div>
+
+                {/* Timezone Setting */}
+                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
+                    <h2 className="text-lg font-bold text-gray-900 mb-1">Timezone</h2>
+                    <p className="text-sm text-gray-600 mb-3">All event times and schedules use this timezone</p>
+                    <div className="relative">
+                        <button
+                            onClick={() => setTzPickerOpen(!tzPickerOpen)}
+                            className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white hover:border-blue-400 transition-colors"
+                        >
+                            <span>
+                                {timezone ? timezone.replace(/_/g, ' ') : 'Select timezone'}
+                                {currentTzAbbr() && <span className="text-gray-500 ml-2">({currentTzAbbr()})</span>}
+                            </span>
+                            <svg className={`w-4 h-4 text-gray-500 transition-transform ${tzPickerOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+
+                        {tzPickerOpen && (
+                            <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg">
+                                <div className="p-2 border-b border-gray-200">
+                                    <input
+                                        type="text"
+                                        value={tzSearch}
+                                        onChange={(e) => setTzSearch(e.target.value)}
+                                        placeholder="Search timezones..."
+                                        className="w-full px-3 py-2 border border-gray-300 rounded text-sm text-gray-900 bg-white focus:outline-none focus:border-blue-500"
+                                        autoFocus
+                                    />
+                                </div>
+                                <div className="max-h-64 overflow-y-auto">
+                                    {Object.entries(groupedTimezones()).map(([region, zones]) => (
+                                        <div key={region}>
+                                            <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 bg-gray-50 sticky top-0">
+                                                {region}
+                                            </div>
+                                            {zones.map(tz => (
+                                                <button
+                                                    key={tz.value}
+                                                    onClick={() => handleTimezoneSelect(tz.value)}
+                                                    className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition-colors ${
+                                                        tz.value === timezone ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-900'
+                                                    }`}
+                                                >
+                                                    <span>{tz.value.replace(/_/g, ' ')}</span>
+                                                    {tz.abbr && <span className="text-gray-500 ml-1">({tz.abbr}, {tz.offset})</span>}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    ))}
+                                    {filteredTimezones().length === 0 && (
+                                        <div className="px-3 py-4 text-sm text-gray-500 text-center">No timezones match your search</div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
