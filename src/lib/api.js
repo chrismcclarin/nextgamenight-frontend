@@ -201,6 +201,10 @@ export const groupsAPI = {
   // Get group invite preview (public, no auth needed)
   getInvitePreview: (token) =>
     apiFetch(`/groups/invite-preview/${token}`),
+
+  // Get the group's shared game library (all members' games, deduplicated with owners)
+  getGroupLibrary: (group_id) =>
+    apiFetch(`/groups/${group_id}/library`),
 };
 
 /**
