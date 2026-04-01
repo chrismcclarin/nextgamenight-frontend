@@ -294,6 +294,18 @@ export const rsvpPublicAPI = {
 };
 
 /**
+ * API functions for Event Brings (who is bringing which games)
+ */
+export const eventBringsAPI = {
+  getEventBrings: (event_id) => apiFetch(`/event-brings/event/${event_id}`),
+  updateMyBrings: (event_id, game_ids) => apiFetch(`/event-brings/event/${event_id}/my-brings`, {
+    method: 'PUT',
+    body: JSON.stringify({ game_ids }),
+  }),
+  removeBring: (bring_id) => apiFetch(`/event-brings/${bring_id}`, { method: 'DELETE' }),
+};
+
+/**
  * API functions for Users
  */
 export const usersAPI = {
