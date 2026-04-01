@@ -8,6 +8,8 @@ import { eventsAPI, gameReviewsAPI, usersAPI, groupsAPI, gamesAPI, rsvpAPI, sugg
 import CreateEvent from '../components/createEvent';
 import RsvpSection from '../components/RsvpSection';
 import BallotSection from '../components/BallotSection';
+import BringGamePicker from '../components/BringGamePicker';
+import BringSummary from '../components/BringSummary';
 import GameSuggestionCard from '../components/GameSuggestionCard';
 import { formatDate, formatDateTime, formatDuration } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
@@ -70,6 +72,9 @@ export default function GameDetailPage() {
     const [eventRsvpStatuses, setEventRsvpStatuses] = useState({});
     const [singleEvent, setSingleEvent] = useState(null);
     const [ballotRefreshKey, setBallotRefreshKey] = useState(0);
+    const [showBringPicker, setShowBringPicker] = useState(false);
+    const [bringPickerEventId, setBringPickerEventId] = useState(null);
+    const [bringRefreshKey, setBringRefreshKey] = useState(0);
     const [eventSuggestions, setEventSuggestions] = useState([]);
     const [suggestionsPlayerCount, setSuggestionsPlayerCount] = useState(null);
 
@@ -495,7 +500,15 @@ export default function GameDetailPage() {
                         eventId={singleEvent.id}
                         currentUserId={user?.sub}
                         eventDate={singleEvent.start_date}
-                        onRsvpChange={(status) => setEventRsvpStatuses(prev => ({ ...prev, [singleEvent.id]: status }))}
+                        onRsvpChange={(status) => {
+                            const prevStatus = eventRsvpStatuses[singleEvent.id];
+                            setEventRsvpStatuses(prev => ({ ...prev, [singleEvent.id]: status }));
+                            if (status === 'yes' && prevStatus !== 'yes') {
+                                setBringPickerEventId(singleEvent.id);
+                                setShowBringPicker(true);
+                            }
+                            setBringRefreshKey(k => k + 1);
+                        }}
                     />
                     <BallotSection
                         key={ballotRefreshKey}
@@ -504,6 +517,13 @@ export default function GameDetailPage() {
                         eventDate={singleEvent.start_date}
                         userRole={userRole}
                         userRsvpStatus={eventRsvpStatuses[singleEvent.id] || null}
+                    />
+                    <BringSummary
+                        eventId={singleEvent.id}
+                        groupId={group_id}
+                        currentUserId={user?.sub}
+                        refreshKey={bringRefreshKey}
+                        onEditClick={() => { setBringPickerEventId(singleEvent.id); setShowBringPicker(true); }}
                     />
                 </div>
 
@@ -913,7 +933,15 @@ export default function GameDetailPage() {
                                             eventId={event.id}
                                             currentUserId={user?.sub}
                                             eventDate={event.start_date}
-                                            onRsvpChange={(status) => setEventRsvpStatuses(prev => ({ ...prev, [event.id]: status }))}
+                                            onRsvpChange={(status) => {
+                                                const prevStatus = eventRsvpStatuses[event.id];
+                                                setEventRsvpStatuses(prev => ({ ...prev, [event.id]: status }));
+                                                if (status === 'yes' && prevStatus !== 'yes') {
+                                                    setBringPickerEventId(event.id);
+                                                    setShowBringPicker(true);
+                                                }
+                                                setBringRefreshKey(k => k + 1);
+                                            }}
                                         />
                                         {/* Ballot Section - game voting */}
                                         <BallotSection
@@ -922,6 +950,14 @@ export default function GameDetailPage() {
                                             eventDate={event.start_date}
                                             userRole={userRole}
                                             userRsvpStatus={eventRsvpStatuses[event.id] || null}
+                                        />
+                                        {/* Bring Summary - who is bringing which games */}
+                                        <BringSummary
+                                            eventId={event.id}
+                                            groupId={group_id}
+                                            currentUserId={user?.sub}
+                                            refreshKey={bringRefreshKey}
+                                            onEditClick={() => { setBringPickerEventId(event.id); setShowBringPicker(true); }}
                                         />
                                     </div>
                                 </div>
@@ -1130,6 +1166,15 @@ export default function GameDetailPage() {
                     user={user}
                 />
             )}
+
+            {/* Bring Game Picker Modal */}
+            <BringGamePicker
+                isOpen={showBringPicker}
+                onClose={() => { setShowBringPicker(false); setBringPickerEventId(null); }}
+                eventId={bringPickerEventId}
+                currentUserId={user?.sub}
+                onSave={() => setBringRefreshKey(k => k + 1)}
+            />
         </div>
         </FriendshipStatusProvider>
     );
