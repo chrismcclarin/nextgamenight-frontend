@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useContext } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import {
   useFloating,
-  useClick,
+  useHover,
   useDismiss,
   useInteractions,
+  safePolygon,
   offset,
   flip,
   shift,
@@ -15,8 +16,8 @@ import {
 import { FriendshipContext } from './FriendshipStatusProvider';
 
 /**
- * ClickableMemberName - Wraps a member name with a click-to-open tooltip
- * for sending friend requests.
+ * ClickableMemberName - Wraps a member name with a hover-to-open tooltip
+ * for sending friend requests (desktop hover, mobile tap).
  *
  * Non-clickable cases (renders as plain span):
  * - self: own name
@@ -43,9 +44,24 @@ export default function ClickableMemberName({ userId, username, children }) {
     whileElementsMounted: autoUpdate,
   });
 
-  const click = useClick(context);
+  const hover = useHover(context, {
+    delay: { open: 300 },
+    handleClose: safePolygon({ blockPointerEvents: true }),
+    mouseOnly: true,
+  });
   const dismiss = useDismiss(context);
-  const { getReferenceProps, getFloatingProps } = useInteractions([click, dismiss]);
+  const { getReferenceProps, getFloatingProps } = useInteractions([hover, dismiss]);
+
+  // Reset sent/error state when tooltip closes so stale messages don't persist
+  useEffect(() => {
+    if (!isOpen) {
+      const timer = setTimeout(() => {
+        setSent(false);
+        setSendError(false);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
 
   // Non-clickable cases: render as plain text
   if (status === 'self' || status === 'accepted' || status === 'unknown') {
@@ -112,6 +128,15 @@ export default function ClickableMemberName({ userId, username, children }) {
         ref={refs.setReference}
         {...getReferenceProps()}
         className="cursor-pointer hover:underline"
+        onClick={(e) => {
+          e.stopPropagation();
+          if ('ontouchstart' in window) {
+            setIsOpen((prev) => !prev);
+          }
+        }}
+        onTouchStart={(e) => {
+          e.stopPropagation();
+        }}
       >
         {children || username}
       </span>
