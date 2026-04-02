@@ -22,7 +22,7 @@ export default function RsvpCount({ rsvpSummary, variant = 'full', className = '
 
   if (!hasAny) {
     return (
-      <span className={`text-gray-400 text-sm ${className}`.trim()}>
+      <span className={`text-content-muted text-sm ${className}`.trim()}>
         No RSVPs yet
       </span>
     );
@@ -31,9 +31,9 @@ export default function RsvpCount({ rsvpSummary, variant = 'full', className = '
   if (variant === 'compact') {
     return (
       <div className={`flex gap-1 ${className}`.trim()}>
-        {yes > 0 && <span className="text-green-700">{yes}Y</span>}
-        {maybe > 0 && <span className="text-amber-700">{maybe}M</span>}
-        {no > 0 && <span className="text-red-600">{no}N</span>}
+        {yes > 0 && <span className="text-status-success">{yes}Y</span>}
+        {maybe > 0 && <span className="text-status-warning">{maybe}M</span>}
+        {no > 0 && <span className="text-status-error">{no}N</span>}
       </div>
     );
   }
@@ -42,21 +42,21 @@ export default function RsvpCount({ rsvpSummary, variant = 'full', className = '
   const parts = [];
   if (yes > 0) {
     parts.push(
-      <span key="yes" className="text-green-700 font-medium">
+      <span key="yes" className="text-status-success font-medium">
         {yes} going
       </span>
     );
   }
   if (maybe > 0) {
     parts.push(
-      <span key="maybe" className="text-amber-600 font-medium">
+      <span key="maybe" className="text-status-warning font-medium">
         {maybe} maybe
       </span>
     );
   }
   if (no > 0) {
     parts.push(
-      <span key="no" className="text-red-500 font-medium">
+      <span key="no" className="text-status-error font-medium">
         {no} can&apos;t
       </span>
     );
@@ -66,7 +66,7 @@ export default function RsvpCount({ rsvpSummary, variant = 'full', className = '
     <div className={`flex gap-3 ${className}`.trim()}>
       {parts.map((part, i) => (
         <span key={part.key} className="flex items-center gap-1">
-          {i > 0 && <span className="text-gray-300 mr-2">&middot;</span>}
+          {i > 0 && <span className="text-line-strong mr-2">&middot;</span>}
           {part}
         </span>
       ))}

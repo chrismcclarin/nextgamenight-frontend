@@ -85,7 +85,7 @@ export default function TutorialOverlay({ onComplete }) {
 
   // Tour phase
   return (
-    <div className="fixed inset-0 z-[9998] bg-[#fef9ef] overflow-hidden">
+    <div className="fixed inset-0 z-[9998] bg-surface-page overflow-hidden">
       <TourProvider
         steps={steps}
         defaultOpen={false}
@@ -128,7 +128,7 @@ export default function TutorialOverlay({ onComplete }) {
                   setCurrentStep((s) => Math.min(s + 1, stepsLength - 1));
                 }
               }}
-              className="text-sm font-medium text-blue-600 hover:text-blue-800 px-3 py-1"
+              className="text-sm font-medium text-accent hover:text-accent px-3 py-1"
             >
               {isLast ? 'Done' : 'Next \u203A'}
             </button>
@@ -143,7 +143,7 @@ export default function TutorialOverlay({ onComplete }) {
                 setCurrentStep((s) => Math.max(s - 1, 0));
               }
             }}
-            className="text-sm font-medium text-gray-500 hover:text-gray-700 px-3 py-1"
+            className="text-sm font-medium text-content-muted hover:text-content-secondary px-3 py-1"
           >
             {'\u2039 Back'}
           </button>

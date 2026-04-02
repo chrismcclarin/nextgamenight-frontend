@@ -94,13 +94,13 @@ export default function ResponseDashboard({
   // Loading state
   if (loading) {
     return (
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <div className="bg-surface-card rounded-card border border-line p-4">
         <div className="animate-pulse">
-          <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
+          <div className="h-6 bg-surface-elevated rounded w-1/3 mb-4"></div>
           <div className="space-y-3">
-            <div className="h-10 bg-gray-100 rounded"></div>
-            <div className="h-10 bg-gray-100 rounded"></div>
-            <div className="h-10 bg-gray-100 rounded"></div>
+            <div className="h-10 bg-surface-elevated rounded"></div>
+            <div className="h-10 bg-surface-elevated rounded"></div>
+            <div className="h-10 bg-surface-elevated rounded"></div>
           </div>
         </div>
       </div>
@@ -110,14 +110,14 @@ export default function ResponseDashboard({
   // Error state
   if (error) {
     return (
-      <div className="bg-white rounded-lg border border-red-200 p-4">
-        <div className="flex items-center gap-2 text-red-600">
+      <div className="bg-surface-card rounded-card border border-status-error/30 p-4">
+        <div className="flex items-center gap-2 text-status-error">
           <ExclamationIcon className="w-5 h-5" />
           <span>{error}</span>
         </div>
         <button
           onClick={fetchRespondents}
-          className="mt-3 text-sm text-blue-600 hover:text-blue-800"
+          className="mt-3 text-sm text-content-link hover:text-content-link-hover"
         >
           Try again
         </button>
@@ -126,64 +126,64 @@ export default function ResponseDashboard({
   }
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
-      <h3 className="text-lg font-semibold text-gray-900 mb-3">
+    <div className="bg-surface-card rounded-card border border-line p-4">
+      <h3 className="text-lg font-semibold text-content-primary mb-3">
         Responses: {responseCount}/{totalCount} responded
       </h3>
 
       {/* Reminder error message */}
       {reminderError && (
-        <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
+        <div className="mb-3 p-2 bg-status-error/10 border border-status-error/30 rounded text-sm text-status-error">
           {reminderError}
         </div>
       )}
 
       {/* Blind voting notice */}
       {blindVotingEnabled && !pollClosed && !userHasResponded && !isAdmin && (
-        <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-700">
+        <div className="mb-3 p-2 bg-status-warning/10 border border-status-warning/30 rounded text-sm text-status-warning">
           Slot counts are hidden until you submit your response or the poll closes.
         </div>
       )}
 
       {/* Empty state */}
       {respondents.length === 0 ? (
-        <p className="text-gray-500 text-sm">No group members found.</p>
+        <p className="text-content-muted text-sm">No group members found.</p>
       ) : (
         /* Respondent list */
         <ul className="space-y-1">
           {respondents.map(r => (
             <li
               key={r.user_id}
-              className="flex items-center justify-between py-2 px-2 rounded hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+              className="flex items-center justify-between py-2 px-2 rounded hover:bg-surface-card-hover border-b border-line last:border-b-0"
             >
               <div className="flex items-center gap-2 min-w-0">
                 {r.has_responded ? (
-                  <CheckIcon className="w-5 h-5 text-green-500 flex-shrink-0" />
+                  <CheckIcon className="w-5 h-5 text-status-success flex-shrink-0" />
                 ) : (
-                  <ClockIcon className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                  <ClockIcon className="w-5 h-5 text-content-muted flex-shrink-0" />
                 )}
 
-                <span className="text-gray-900 truncate">
+                <span className="text-content-primary truncate">
                   {r.username}
                   {r.user_id === currentUserId && (
-                    <span className="text-gray-400 text-sm ml-1">(you)</span>
+                    <span className="text-content-muted text-sm ml-1">(you)</span>
                   )}
                 </span>
 
                 {r.has_responded && showSlotCounts && r.slot_count !== null && (
-                  <span className="text-sm text-gray-500 flex-shrink-0">
+                  <span className="text-sm text-content-muted flex-shrink-0">
                     - {r.slot_count} slot{r.slot_count !== 1 ? 's' : ''} available
                   </span>
                 )}
 
                 {r.has_responded && (!showSlotCounts || r.slot_count === null) && (
-                  <span className="text-sm text-gray-500 flex-shrink-0">
+                  <span className="text-sm text-content-muted flex-shrink-0">
                     - responded
                   </span>
                 )}
 
                 {!r.has_responded && (
-                  <span className="text-sm text-gray-400 flex-shrink-0">
+                  <span className="text-sm text-content-muted flex-shrink-0">
                     - pending
                   </span>
                 )}
@@ -206,7 +206,7 @@ export default function ResponseDashboard({
       {/* Refresh button */}
       <button
         onClick={fetchRespondents}
-        className="mt-4 text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
+        className="mt-4 text-sm text-content-muted hover:text-content-secondary flex items-center gap-1"
       >
         <RefreshIcon className="w-4 h-4" />
         Refresh
@@ -234,7 +234,7 @@ function RemindButton({ userId, lastRemindedAt, isReminding, onRemind }) {
       }
 
       return (
-        <span className="text-sm text-gray-400 flex-shrink-0">
+        <span className="text-sm text-content-muted flex-shrink-0">
           Reminded {timeAgo}
         </span>
       );
@@ -245,7 +245,7 @@ function RemindButton({ userId, lastRemindedAt, isReminding, onRemind }) {
     <button
       onClick={() => onRemind(userId)}
       disabled={isReminding}
-      className="px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded disabled:opacity-50 flex-shrink-0 transition-colors"
+      className="px-3 py-1 text-sm text-content-link hover:bg-accent/10 rounded disabled:opacity-50 flex-shrink-0 transition-colors"
     >
       {isReminding ? 'Sending...' : 'Remind'}
     </button>

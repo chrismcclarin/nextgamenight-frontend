@@ -5,14 +5,14 @@ export default function EventResultFields({ newEvent, handleChange }) {
     <>
       {/* Winner Selection */}
       <div>
-        <label htmlFor="winner_id" className="block text-sm font-medium mb-1 text-gray-900">
+        <label htmlFor="winner_id" className="block text-sm font-medium mb-1 text-content-primary">
           Winner
         </label>
         <select
           id="winner_id"
           value={newEvent.winner_id || ''}
           onChange={handleChange}
-          className="w-full p-2 border rounded text-gray-900 bg-white"
+          className="w-full p-2 border border-line rounded text-content-primary bg-surface-input"
         >
           <option value="">Select winner (optional)</option>
           {newEvent.participants
@@ -31,14 +31,14 @@ export default function EventResultFields({ newEvent, handleChange }) {
 
       {/* Picked By Selection */}
       <div>
-        <label htmlFor="picked_by_id" className="block text-sm font-medium mb-1 text-gray-900">
+        <label htmlFor="picked_by_id" className="block text-sm font-medium mb-1 text-content-primary">
           Picked By
         </label>
         <select
           id="picked_by_id"
           value={newEvent.picked_by_id || ''}
           onChange={handleChange}
-          className="w-full p-2 border rounded text-gray-900 bg-white"
+          className="w-full p-2 border border-line rounded text-content-primary bg-surface-input"
         >
           <option value="">Select who picked the game (optional)</option>
           {newEvent.participants
@@ -64,7 +64,7 @@ export default function EventResultFields({ newEvent, handleChange }) {
           onChange={handleChange}
           className="mr-2"
         />
-        <label htmlFor="is_group_win" className="text-sm font-medium text-gray-900">
+        <label htmlFor="is_group_win" className="text-sm font-medium text-content-primary">
           Group Win
         </label>
       </div>

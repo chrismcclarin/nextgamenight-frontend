@@ -22,10 +22,10 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
   return (
     <div className="flex items-center gap-4 p-2 border-b">
       <div className="flex-1">
-        <label className="text-xs text-gray-700 mb-1 block">Participant Name</label>
+        <label className="text-xs text-content-secondary mb-1 block">Participant Name</label>
         {participant.isFromGroup ? (
           // Read-only display for group members
-          <div className="p-2 border rounded bg-gray-50 text-gray-900 text-sm flex items-center gap-2">
+          <div className="p-2 border border-line rounded bg-surface-elevated text-content-primary text-sm flex items-center gap-2">
             {participant.username || `Participant ${index + 1}`}
             {participant.is_guest && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
@@ -64,7 +64,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
                 }
               }}
               placeholder="Type name (group member or custom)"
-              className="w-full p-2 border rounded text-gray-900 bg-white text-sm"
+              className="w-full p-2 border border-line rounded text-content-primary bg-surface-input text-sm"
             />
             {participant.is_guest && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 flex-shrink-0">
@@ -77,24 +77,24 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
 
       <div className="flex gap-2 items-center">
         <div>
-          <label className="text-xs text-gray-900">Score</label>
+          <label className="text-xs text-content-primary">Score</label>
           <input
             type="number"
             step="0.01"
             value={participant.score || ''}
             onChange={(e) => onParticipantChange(index, 'score', e.target.value)}
-            className="w-20 p-1 border rounded text-gray-900 bg-white"
+            className="w-20 p-1 border border-line rounded text-content-primary bg-surface-input"
             placeholder="0"
           />
         </div>
 
         <div>
-          <label className="text-xs text-gray-900">Faction</label>
+          <label className="text-xs text-content-primary">Faction</label>
           <input
             type="text"
             value={participant.faction || ''}
             onChange={(e) => onParticipantChange(index, 'faction', e.target.value)}
-            className="w-24 p-1 border rounded text-gray-900 bg-white"
+            className="w-24 p-1 border border-line rounded text-content-primary bg-surface-input"
             placeholder="Optional"
           />
         </div>
@@ -106,7 +106,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             onChange={(e) => onParticipantChange(index, 'is_new_player', e.target.checked)}
             className="mr-1"
           />
-          <label className="text-xs text-gray-900">New Player</label>
+          <label className="text-xs text-content-primary">New Player</label>
         </div>
 
         {/* Invite to group button - shown for guest participants when current user is admin/owner */}
@@ -117,10 +117,10 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             disabled={inviteStatus === 'sending' || inviteStatus === 'sent'}
             className={`text-xs px-2 py-1 border rounded transition-colors ${
               inviteStatus === 'sent'
-                ? 'text-emerald-600 border-emerald-300 bg-emerald-50'
+                ? 'text-status-success border-status-success/30 bg-status-success/10'
                 : inviteStatus === 'error'
-                  ? 'text-red-600 border-red-300 bg-red-50 hover:bg-red-100'
-                  : 'text-blue-600 border-blue-300 hover:bg-blue-50'
+                  ? 'text-status-error border-status-error/30 bg-status-error/10 hover:bg-status-error/20'
+                  : 'text-content-link border-accent/30 hover:bg-accent/10'
             }`}
             title={inviteStatus === 'sent' ? 'Invite sent!' : 'Invite this guest to join the group'}
           >
@@ -134,7 +134,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
         <button
           type="button"
           onClick={() => onToggleParticipant(index)}
-          className="text-red-500 hover:text-red-700 text-sm px-2 py-1 border border-red-300 rounded hover:bg-red-50"
+          className="text-status-error hover:text-status-error text-sm px-2 py-1 border border-status-error/30 rounded hover:bg-status-error/10"
           title="Remove participant"
         >
           Remove

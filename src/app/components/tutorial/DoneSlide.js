@@ -10,10 +10,10 @@ export default function DoneSlide({ onComplete }) {
   const currentPosition = TOTAL_SLIDES - 1;
 
   return (
-    <div className="fixed inset-0 z-[9998] bg-[#fef9ef] flex flex-col items-center justify-center px-6">
+    <div className="fixed inset-0 z-[9998] bg-surface-page flex flex-col items-center justify-center px-6">
       <div className="max-w-md w-full text-center">
         {/* Checkmark circle */}
-        <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
+        <div className="w-20 h-20 bg-status-success rounded-full flex items-center justify-center mx-auto mb-6">
           <svg
             className="w-10 h-10 text-white"
             fill="none"
@@ -25,15 +25,15 @@ export default function DoneSlide({ onComplete }) {
           </svg>
         </div>
 
-        <h1 className="text-3xl font-bold text-gray-900 mb-3">You're all set!</h1>
+        <h1 className="text-3xl font-bold text-content-primary mb-3">You're all set!</h1>
 
-        <p className="text-gray-600 text-base mb-8">
+        <p className="text-content-secondary text-base mb-8">
           You're ready to start scheduling game nights with your group.
         </p>
 
         <button
           onClick={onComplete}
-          className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 transition-colors text-base"
+          className="w-full btn btn-primary py-3 px-6 font-semibold transition-colors text-base"
         >
           Go to Home
         </button>
@@ -44,7 +44,7 @@ export default function DoneSlide({ onComplete }) {
         {Array.from({ length: TOTAL_SLIDES }).map((_, i) => (
           <span
             key={i}
-            className={`w-2 h-2 rounded-full ${i <= currentPosition ? 'bg-blue-600' : 'bg-gray-300'}`}
+            className={`w-2 h-2 rounded-full ${i <= currentPosition ? 'bg-accent' : 'bg-line'}`}
           />
         ))}
       </div>

@@ -8,7 +8,7 @@ import MergedHeatmapTooltip from './MergedHeatmapTooltip';
  * Green gradient: darker = more members available.
  */
 function getCellStyle(availableCount, totalMembers) {
-  if (totalMembers === 0 || availableCount === 0) return 'bg-gray-100 text-gray-400';
+  if (totalMembers === 0 || availableCount === 0) return 'bg-surface-elevated text-content-muted';
   const ratio = availableCount / totalMembers;
   if (ratio <= 0.2) return 'bg-green-100 text-green-800';
   if (ratio <= 0.4) return 'bg-green-200 text-green-800';
@@ -55,7 +55,7 @@ export default function MergedHeatmapCell({
   }, []);
 
   const colorClass = getCellStyle(availableCount, totalMembers);
-  const selectionRing = isSelected ? 'ring-2 ring-blue-500' : '';
+  const selectionRing = isSelected ? 'ring-2 ring-accent' : '';
 
   const handleClick = () => {
     onSelect({ date, hour, dayOfWeek, availableCount, availableMembers });
@@ -80,7 +80,7 @@ export default function MergedHeatmapCell({
 
       {/* Mobile: inline expand showing member names below the count */}
       {isTouchDevice && isExpanded && availableMembers.length > 0 && (
-        <div className="text-xs text-gray-700 px-1 py-0.5 leading-tight">
+        <div className="text-xs text-content-secondary px-1 py-0.5 leading-tight">
           {availableMembers.map((m) => m.username || m.user_id).join(', ')}
         </div>
       )}

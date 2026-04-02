@@ -4,14 +4,14 @@ import GameComboInput from './GameComboInput';
 
 export default function BallotOptionsEditor({ ballotOptions, setBallotOptions, ballotError, groupId, userId }) {
   return (
-    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+    <div className="bg-surface-elevated rounded-card p-4 border border-line">
       <div className="mb-3">
-        <h3 className="text-sm font-semibold text-gray-900">Game Ballot (optional)</h3>
-        <p className="text-xs text-gray-500">Add 2-10 games for your group to vote on</p>
+        <h3 className="text-sm font-semibold text-content-primary">Game Ballot (optional)</h3>
+        <p className="text-xs text-content-muted">Add 2-10 games for your group to vote on</p>
       </div>
 
       {ballotError && (
-        <p className="text-sm text-red-600 mb-2">{ballotError}</p>
+        <p className="text-sm text-status-error mb-2">{ballotError}</p>
       )}
 
       <div className="space-y-2">
@@ -35,7 +35,7 @@ export default function BallotOptionsEditor({ ballotOptions, setBallotOptions, b
               onClick={() => {
                 setBallotOptions(ballotOptions.filter((_, i) => i !== index));
               }}
-              className="text-red-500 hover:text-red-700 text-lg px-2 py-1 flex-shrink-0"
+              className="text-status-error hover:text-status-error text-lg px-2 py-1 flex-shrink-0"
               title="Remove option"
             >
               &times;
@@ -48,14 +48,14 @@ export default function BallotOptionsEditor({ ballotOptions, setBallotOptions, b
         <button
           type="button"
           onClick={() => setBallotOptions([...ballotOptions, { game_id: null, game_name: '' }])}
-          className="mt-2 px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm font-medium"
+          className="btn btn-primary mt-2 text-sm"
         >
           + Add game option
         </button>
       )}
 
       {ballotOptions.length > 0 && ballotOptions.length < 2 && (
-        <p className="text-xs text-amber-600 mt-2">Add at least 2 games to create a ballot</p>
+        <p className="text-xs text-status-warning mt-2">Add at least 2 games to create a ballot</p>
       )}
     </div>
   );

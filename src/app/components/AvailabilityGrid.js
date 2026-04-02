@@ -268,7 +268,7 @@ export default function AvailabilityGrid({
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         {/* Timezone display */}
-        <div className="text-sm text-gray-600">
+        <div className="text-sm text-content-secondary">
           Times shown in: <span className="font-medium">{getTimezoneDisplay(timezone)}</span>
         </div>
 
@@ -300,9 +300,9 @@ export default function AvailabilityGrid({
               onClick={handleClearAll}
               disabled={disabled}
               className={`
-                px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300
-                text-gray-700 bg-white
-                ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}
+                px-3 py-1.5 text-sm font-medium rounded-btn border border-line
+                text-content-secondary bg-surface-card
+                ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-surface-card-hover'}
               `}
             >
               Clear All
@@ -314,16 +314,16 @@ export default function AvailabilityGrid({
       {/* Legend */}
       <div className="flex items-center gap-4 mb-3 text-sm">
         <div className="flex items-center gap-1.5">
-          <div className="w-4 h-4 bg-green-300 border border-gray-300 rounded-sm" />
-          <span className="text-gray-600">Preferred</span>
+          <div className="w-4 h-4 bg-green-300 border border-line rounded-sm" />
+          <span className="text-content-secondary">Preferred</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-4 h-4 bg-yellow-300 border border-gray-300 rounded-sm" />
-          <span className="text-gray-600">If Need Be</span>
+          <div className="w-4 h-4 bg-yellow-300 border border-line rounded-sm" />
+          <span className="text-content-secondary">If Need Be</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-4 h-4 bg-gray-100 border border-gray-300 rounded-sm" />
-          <span className="text-gray-600">Not Available</span>
+          <div className="w-4 h-4 bg-surface-elevated border border-line rounded-sm" />
+          <span className="text-content-secondary">Not Available</span>
         </div>
       </div>
 
@@ -347,7 +347,7 @@ export default function AvailabilityGrid({
             {days.map((day, index) => (
               <div
                 key={day.toISOString()}
-                className="w-24 sm:w-28 flex-shrink-0 text-center py-2 text-sm font-medium text-gray-700 border-b border-gray-300"
+                className="w-24 sm:w-28 flex-shrink-0 text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
               >
                 {formatDayHeader(day)}
               </div>
@@ -366,7 +366,7 @@ export default function AvailabilityGrid({
                   disabled={disabled}
                   className="w-3.5 h-3.5 accent-blue-600 cursor-pointer disabled:cursor-not-allowed"
                 />
-                <span className="text-xs text-gray-500 font-medium">All</span>
+                <span className="text-xs text-content-muted font-medium">All</span>
               </label>
             </div>
 
@@ -391,7 +391,7 @@ export default function AvailabilityGrid({
           {timeSlots.map((timeSlot, rowIndex) => (
             <div key={`row-${rowIndex}`} className="flex">
               {/* Time label column — mirrors the header spacer width */}
-              <div className="w-16 sm:w-20 flex-shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-gray-600 font-medium">
+              <div className="w-16 sm:w-20 flex-shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium">
                 {formatTimeLabel(timeSlot)}
               </div>
 
@@ -418,7 +418,7 @@ export default function AvailabilityGrid({
       </div>
 
       {/* Selection summary */}
-      <div className="mt-3 text-sm text-gray-600">
+      <div className="mt-3 text-sm text-content-secondary">
         {value.length === 0 ? (
           <span>Click and drag to select your available times</span>
         ) : (

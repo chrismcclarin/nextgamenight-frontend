@@ -56,29 +56,29 @@ export default function MergedHeatmapGrid({ slots = [], totalMembers, selectedSl
   // If no slots, show placeholder
   if (dates.length === 0) {
     return (
-      <div className="text-center text-gray-500 py-8">
+      <div className="text-center text-content-muted py-8">
         No availability data for this week.
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-8 gap-px bg-gray-200 rounded-lg overflow-hidden">
+    <div className="grid grid-cols-8 gap-px bg-line rounded-lg overflow-hidden">
       {/* Header row: empty corner + 7 day headers */}
-      <div className="bg-white p-2" /> {/* Empty corner */}
+      <div className="bg-surface-card p-2" /> {/* Empty corner */}
       {dates.map((dateStr, idx) => {
         const dateObj = parseISO(dateStr);
         const isTodayDate = isToday(dateObj);
         return (
           <div
             key={dateStr}
-            className={`bg-white p-2 text-center ${isTodayDate ? 'bg-blue-50' : ''}`}
+            className={`bg-surface-card p-2 text-center ${isTodayDate ? 'bg-accent/10' : ''}`}
           >
-            <div className="text-xs font-semibold text-gray-600">
+            <div className="text-xs font-semibold text-content-secondary">
               {DAY_LABELS[idx]}
             </div>
             <div
-              className={`text-sm font-bold ${isTodayDate ? 'text-blue-600' : 'text-gray-900'}`}
+              className={`text-sm font-bold ${isTodayDate ? 'text-accent' : 'text-content-primary'}`}
             >
               {format(dateObj, 'd')}
             </div>
@@ -91,9 +91,9 @@ export default function MergedHeatmapGrid({ slots = [], totalMembers, selectedSl
         <React.Fragment key={`hour-${hour}`}>
           {/* Hour label */}
           <div
-            className="bg-white p-2 flex items-center justify-end"
+            className="bg-surface-card p-2 flex items-center justify-end"
           >
-            <span className="text-xs text-gray-500 font-medium whitespace-nowrap">
+            <span className="text-xs text-content-muted font-medium whitespace-nowrap">
               {formatHourLabel(hour)}
             </span>
           </div>
@@ -105,7 +105,7 @@ export default function MergedHeatmapGrid({ slots = [], totalMembers, selectedSl
               selectedSlot?.date === dateStr && selectedSlot?.hour === hour;
 
             return (
-              <div key={`${dateStr}-${hour}`} className="bg-white">
+              <div key={`${dateStr}-${hour}`} className="bg-surface-card">
                 <MergedHeatmapCell
                   hour={hour}
                   date={dateStr}

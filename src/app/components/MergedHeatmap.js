@@ -5,7 +5,7 @@ import { startOfWeek, addWeeks, subWeeks, addDays, differenceInWeeks, format } f
 import MergedHeatmapGrid from './MergedHeatmapGrid';
 
 const LEGEND_ITEMS = [
-  { label: '0', className: 'bg-gray-100' },
+  { label: '0', className: 'bg-surface-elevated' },
   { label: '', className: 'bg-green-100' },
   { label: '', className: 'bg-green-200' },
   { label: '', className: 'bg-green-300' },
@@ -94,18 +94,18 @@ export default function MergedHeatmap({
         <button
           onClick={handlePrevWeek}
           disabled={!canGoBack}
-          className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 font-medium"
+          className="px-3 py-2 rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
           aria-label="Previous week"
         >
           &lt;
         </button>
-        <span className="text-lg font-semibold text-gray-900">
+        <span className="text-lg font-semibold text-content-primary">
           {formatWeekLabel(selectedWeek)}
         </span>
         <button
           onClick={handleNextWeek}
           disabled={!canGoForward}
-          className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 font-medium"
+          className="px-3 py-2 rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
           aria-label="Next week"
         >
           &gt;
@@ -114,9 +114,9 @@ export default function MergedHeatmap({
 
       {/* Members without data notice */}
       {membersWithoutData.length > 0 && !loading && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800 mb-4 flex items-start gap-2">
+        <div className="bg-accent/10 border border-accent/30 rounded-card p-3 text-sm text-content-secondary mb-4 flex items-start gap-2">
           <svg
-            className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-500"
+            className="w-4 h-4 mt-0.5 flex-shrink-0 text-accent"
             fill="currentColor"
             viewBox="0 0 20 20"
           >
@@ -137,24 +137,24 @@ export default function MergedHeatmap({
 
       {/* Loading state */}
       {loading && (
-        <div className="grid grid-cols-8 gap-px bg-gray-200 rounded-lg overflow-hidden">
+        <div className="grid grid-cols-8 gap-px bg-line rounded-lg overflow-hidden">
           {/* Skeleton header row */}
-          <div className="bg-white p-2 h-12" />
+          <div className="bg-surface-card p-2 h-12" />
           {Array.from({ length: 7 }).map((_, i) => (
-            <div key={`skel-h-${i}`} className="bg-white p-2 h-12">
-              <div className="h-4 w-8 mx-auto bg-gray-200 rounded animate-pulse mb-1" />
-              <div className="h-4 w-6 mx-auto bg-gray-200 rounded animate-pulse" />
+            <div key={`skel-h-${i}`} className="bg-surface-card p-2 h-12">
+              <div className="h-4 w-8 mx-auto bg-surface-elevated rounded animate-pulse mb-1" />
+              <div className="h-4 w-6 mx-auto bg-surface-elevated rounded animate-pulse" />
             </div>
           ))}
           {/* Skeleton body rows */}
           {Array.from({ length: 11 }).map((_, row) => (
             <React.Fragment key={`skel-row-${row}`}>
-              <div className="bg-white p-2 h-12">
-                <div className="h-4 w-10 ml-auto bg-gray-200 rounded animate-pulse" />
+              <div className="bg-surface-card p-2 h-12">
+                <div className="h-4 w-10 ml-auto bg-surface-elevated rounded animate-pulse" />
               </div>
               {Array.from({ length: 7 }).map((_, col) => (
                 <div key={`skel-${row}-${col}`} className="bg-white p-1">
-                  <div className="h-[44px] w-full bg-gray-100 rounded animate-pulse" />
+                  <div className="h-[44px] w-full bg-surface-page rounded animate-pulse" />
                 </div>
               ))}
             </React.Fragment>
@@ -164,7 +164,7 @@ export default function MergedHeatmap({
 
       {/* Error state */}
       {!loading && error && (
-        <div className="text-center text-red-600 py-8 font-medium">{error}</div>
+        <div className="text-center text-status-error py-8 font-medium">{error}</div>
       )}
 
       {/* Grid */}
@@ -179,7 +179,7 @@ export default function MergedHeatmap({
 
       {/* Legend */}
       {!loading && !error && (
-        <div className="flex items-center justify-center gap-1 mt-4 text-xs text-gray-600">
+        <div className="flex items-center justify-center gap-1 mt-4 text-xs text-content-secondary">
           <span className="mr-1">Less available</span>
           {LEGEND_ITEMS.map((item, i) => (
             <div
@@ -194,11 +194,11 @@ export default function MergedHeatmap({
 
       {/* Selected slot CTA */}
       {selectedSlot && (
-        <div className="bg-blue-50 border border-blue-300 rounded-lg p-3 text-blue-800 font-medium mt-4 flex items-center justify-between">
+        <div className="bg-accent/10 border border-accent/30 rounded-card p-3 text-content-primary font-medium mt-4 flex items-center justify-between">
           <span>Plan Session at {formatSlotLabel(selectedSlot)}</span>
           <button
             onClick={() => onSlotSelect(selectedSlot)}
-            className="text-blue-500 hover:text-blue-700 ml-3 text-lg leading-none"
+            className="text-accent hover:text-accent ml-3 text-lg leading-none"
             aria-label="Deselect slot"
           >
             &times;

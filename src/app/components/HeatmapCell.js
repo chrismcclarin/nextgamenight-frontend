@@ -17,7 +17,7 @@ const getIntensityColor = (participantCount, preferredCount, totalMembers) => {
   const maxPossible = totalMembers * 1.5; // if all preferred
   const percentage = maxPossible > 0 ? (weightedScore / maxPossible) * 100 : 0;
 
-  if (participantCount === 0) return 'bg-gray-100 border-gray-300';
+  if (participantCount === 0) return 'bg-surface-elevated border-line';
   if (percentage <= 25) return 'bg-yellow-200 border-yellow-400';
   if (percentage <= 50) return 'bg-yellow-400 border-yellow-500';
   if (percentage <= 75) return 'bg-orange-400 border-orange-500';
@@ -57,11 +57,11 @@ const HeatmapCell = memo(function HeatmapCell({
     return (
       <div className="flex items-stretch">
         {showTimeLabel && (
-          <div className="w-16 sm:w-20 flex-shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-gray-600 font-medium">
+          <div className="w-16 sm:w-20 flex-shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium">
             {timeLabel}
           </div>
         )}
-        <div className="w-24 sm:w-28 h-12 sm:h-14 border border-gray-200 bg-gray-50 opacity-30" />
+        <div className="w-24 sm:w-28 h-12 sm:h-14 border border-line bg-surface-elevated opacity-30" />
       </div>
     );
   }
@@ -72,7 +72,7 @@ const HeatmapCell = memo(function HeatmapCell({
     <div className="flex items-stretch">
       {/* Time label on left edge */}
       {showTimeLabel && (
-        <div className="w-16 sm:w-20 flex-shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-gray-600 font-medium">
+        <div className="w-16 sm:w-20 flex-shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium">
           {timeLabel}
         </div>
       )}
@@ -87,7 +87,7 @@ const HeatmapCell = memo(function HeatmapCell({
           transition-colors duration-75
           flex items-center justify-center
           text-xs sm:text-sm font-medium
-          ${participantCount > 0 ? 'text-gray-800' : 'text-gray-400'}
+          ${participantCount > 0 ? 'text-content-primary' : 'text-content-muted'}
         `}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}

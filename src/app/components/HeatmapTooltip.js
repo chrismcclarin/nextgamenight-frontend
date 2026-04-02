@@ -48,7 +48,7 @@ export default function HeatmapTooltip({
     <div
       ref={refs.setFloating}
       style={floatingStyles}
-      className="bg-gray-900 text-white rounded-lg px-3 py-2 text-sm z-50 shadow-lg max-w-xs"
+      className="bg-surface-elevated text-content-primary rounded-card px-3 py-2 text-sm z-50 shadow-theme-lg max-w-xs"
       role="tooltip"
     >
       {grouped.preferred.length > 0 && (
@@ -64,7 +64,7 @@ export default function HeatmapTooltip({
         </div>
       )}
       {/* Arrow indicator */}
-      <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-2 h-2 bg-gray-900 rotate-45" />
+      <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-2 h-2 bg-surface-elevated rotate-45" />
     </div>
   );
 }

@@ -23,7 +23,7 @@ export default function SimulatedUserHome() {
               style={{
                 width: '100%',
                 padding: '0.75rem 1rem',
-                backgroundColor: '#007bff',
+                backgroundColor: 'var(--color-accent)',
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',
@@ -50,7 +50,7 @@ export default function SimulatedUserHome() {
                   <div className="group-header">
                     <div className="flex items-center gap-2">
                       {group.profilePic && (
-                        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden">
+                        <div className="w-10 h-10 rounded-full bg-surface-elevated flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden">
                           <span>{group.profilePic}</span>
                         </div>
                       )}
@@ -76,20 +76,13 @@ export default function SimulatedUserHome() {
 
                   <div className="flex gap-2 mt-3" style={{ position: 'relative', zIndex: 2 }}>
                     <button
-                      className="add-member-btn flex-1"
+                      className="add-member-btn flex-1 btn btn-primary"
                       onClick={() => {}}
-                      style={{
-                        backgroundColor: '#28a745',
-                        color: '#ffffff',
-                        fontWeight: '600',
-                        boxShadow: '0 2px 6px rgba(0, 0, 0, 0.3)',
-                        border: '2px solid rgba(255, 255, 255, 0.3)',
-                      }}
                     >
                       Invite Member
                     </button>
                     <button
-                      className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 text-sm flex-shrink-0"
+                      className="px-3 py-1 bg-surface-elevated text-content-primary rounded hover:bg-surface-card-hover text-sm flex-shrink-0"
                       onClick={() => {}}
                     >
                       ⚙️
@@ -103,16 +96,16 @@ export default function SimulatedUserHome() {
           {/* Invite friends area */}
           <div
             data-tutorial="invite-friends"
-            className="mx-4 mb-4 p-3 border border-dashed border-gray-300 rounded-lg bg-gray-50"
+            className="mx-4 mb-4 p-3 border border-dashed border-line rounded-lg bg-surface-elevated"
           >
-            <p className="text-sm font-medium text-gray-700 mb-2">Invite Friends</p>
+            <p className="text-sm font-medium text-content-secondary mb-2">Invite Friends</p>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-lg">👥</span>
-              <p className="text-xs text-gray-600">Add from your friends list</p>
+              <p className="text-xs text-content-secondary">Add from your friends list</p>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-lg">📱</span>
-              <p className="text-xs text-gray-600">Share a QR code to invite them</p>
+              <p className="text-xs text-content-secondary">Share a QR code to invite them</p>
             </div>
           </div>
         </div>
@@ -120,21 +113,21 @@ export default function SimulatedUserHome() {
 
       {/* Calendar placeholder */}
       <div className="hidden md:block flex-1 min-w-0">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-full">
-          <h3 className="text-lg font-semibold text-gray-900 mb-3">Upcoming Events</h3>
+        <div className="bg-surface-card rounded-card shadow-theme-md border border-line p-4 h-full">
+          <h3 className="text-lg font-semibold text-content-primary mb-3">Upcoming Events</h3>
           <div className="space-y-2">
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm font-medium text-blue-900">Game Night - Friday 7pm</p>
-              <p className="text-xs text-blue-700">Catan with Alex, Jordan, Sam</p>
+            <div className="p-3 bg-accent/10 border border-accent/30 rounded-lg">
+              <p className="text-sm font-medium text-content-primary">Game Night - Friday 7pm</p>
+              <p className="text-xs text-content-secondary">Catan with Alex, Jordan, Sam</p>
             </div>
-            <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-sm font-medium text-green-900">Weekend Boardgames</p>
-              <p className="text-xs text-green-700">Wingspan with Taylor, Alex</p>
+            <div className="p-3 bg-status-success/10 border border-status-success/30 rounded-lg">
+              <p className="text-sm font-medium text-content-primary">Weekend Boardgames</p>
+              <p className="text-xs text-content-secondary">Wingspan with Taylor, Alex</p>
             </div>
           </div>
           <div className="mt-4 grid grid-cols-7 gap-1">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-              <div key={day} className="text-center text-xs text-gray-400 py-1">
+              <div key={day} className="text-center text-xs text-content-muted py-1">
                 {day}
               </div>
             ))}
@@ -143,8 +136,8 @@ export default function SimulatedUserHome() {
                 key={i}
                 className={`text-center text-xs py-2 rounded ${
                   i === 11 || i === 13
-                    ? 'bg-blue-100 text-blue-800 font-medium'
-                    : 'text-gray-600'
+                    ? 'bg-accent/10 text-accent font-medium'
+                    : 'text-content-secondary'
                 }`}
               >
                 {i + 1}

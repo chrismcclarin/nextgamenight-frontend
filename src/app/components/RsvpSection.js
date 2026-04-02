@@ -6,10 +6,6 @@ import ClickableMemberName from './ClickableMemberName';
 /**
  * RsvpSection - RSVP interface for a single event
  * Shows status buttons, note field, count banner, and grouped respondent list
- *
- * @param {string} eventId - UUID of the event
- * @param {string} currentUserId - Auth0 user ID (user.sub)
- * @param {string|Date} eventDate - Event start date for past-event check
  */
 export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpChange }) {
   const [rsvps, setRsvps] = useState([]);
@@ -17,7 +13,7 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
   const [userRsvp, setUserRsvp] = useState(null);
   const [selectedStatus, setSelectedStatus] = useState(null);
   const [note, setNote] = useState('');
-  const [submitting, setSubmitting] = useState(null); // tracks which button is loading
+  const [submitting, setSubmitting] = useState(null);
   const [savingNote, setSavingNote] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -32,7 +28,6 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
       setRsvps(data.rsvps || []);
       setSummary(data.summary || { yes: 0, maybe: 0, no: 0 });
 
-      // Find current user's RSVP
       if (currentUserId) {
         const mine = (data.rsvps || []).find(r => r.user_id === currentUserId);
         if (mine) {
@@ -63,13 +58,10 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
     setError(null);
     try {
       const result = await rsvpAPI.submitRsvp(eventId, status, note || null);
-      // Update local state immediately
       setUserRsvp(result);
       setSelectedStatus(status);
       if (result.note !== undefined) setNote(result.note || '');
-      // Re-fetch to get updated summary and full list
       await fetchRsvps();
-      // Notify parent of RSVP change
       if (onRsvpChange) onRsvpChange(status);
     } catch (err) {
       console.error('Error submitting RSVP:', err);
@@ -94,7 +86,6 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
     }
   };
 
-  // Group rsvps by status
   const grouped = {
     yes: rsvps.filter(r => r.status === 'yes'),
     maybe: rsvps.filter(r => r.status === 'maybe'),
@@ -104,31 +95,28 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
   const statusConfig = {
     yes: {
       label: "You're going!",
-      textColor: 'text-green-700',
-      bgColor: 'bg-green-50',
-      activeBg: 'bg-green-100',
-      activeBorder: 'border-green-500',
-      hoverBg: 'hover:bg-green-50',
+      textColor: 'text-status-success',
+      activeBg: 'bg-status-success/10',
+      activeBorder: 'border-status-success',
+      hoverBg: 'hover:bg-status-success/10',
       buttonText: 'Yes',
       sectionTitle: 'Going',
     },
     maybe: {
       label: "You're a maybe",
-      textColor: 'text-amber-700',
-      bgColor: 'bg-amber-50',
-      activeBg: 'bg-amber-100',
-      activeBorder: 'border-amber-500',
-      hoverBg: 'hover:bg-amber-50',
+      textColor: 'text-status-warning',
+      activeBg: 'bg-status-warning/10',
+      activeBorder: 'border-status-warning',
+      hoverBg: 'hover:bg-status-warning/10',
       buttonText: 'Maybe',
       sectionTitle: 'Maybe',
     },
     no: {
       label: "You're not going",
-      textColor: 'text-gray-600',
-      bgColor: 'bg-gray-50',
-      activeBg: 'bg-gray-100',
-      activeBorder: 'border-gray-500',
-      hoverBg: 'hover:bg-red-50',
+      textColor: 'text-content-secondary',
+      activeBg: 'bg-surface-elevated',
+      activeBorder: 'border-line-strong',
+      hoverBg: 'hover:bg-status-error/10',
       buttonText: 'No',
       sectionTitle: "Can't Make It",
     },
@@ -136,8 +124,8 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
 
   if (loading) {
     return (
-      <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-        <p className="text-sm text-gray-500">Loading RSVPs...</p>
+      <div className="mt-4 p-4 bg-surface-elevated rounded-card">
+        <p className="text-sm text-content-muted">Loading RSVPs...</p>
       </div>
     );
   }
@@ -145,10 +133,10 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
   const totalResponses = summary.yes + summary.maybe + summary.no;
 
   return (
-    <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
+    <div className="mt-4 border border-line rounded-card overflow-hidden">
       {/* Header */}
-      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-        <h3 className="font-semibold text-gray-900 text-sm">RSVP</h3>
+      <div className="bg-surface-elevated px-4 py-3 border-b border-line">
+        <h3 className="font-semibold text-content-primary text-sm">RSVP</h3>
       </div>
 
       <div className="p-4 space-y-4">
@@ -160,14 +148,14 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
                 {statusConfig[selectedStatus].label}
               </p>
             ) : (
-              <p className="text-sm text-gray-500">RSVP to this event</p>
+              <p className="text-sm text-content-muted">RSVP to this event</p>
             )}
           </div>
         )}
 
-        {/* Button group - only for future events */}
+        {/* Button group */}
         {!isPastEvent && (
-          <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+          <div className="flex rounded-card border border-line overflow-hidden">
             {['yes', 'maybe', 'no'].map((status, idx) => {
               const isActive = selectedStatus === status;
               const isLoading = submitting === status;
@@ -178,16 +166,16 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
                   onClick={() => handleStatusClick(status)}
                   disabled={!!submitting}
                   className={`flex-1 px-3 py-2 text-sm font-medium transition-colors
-                    ${idx > 0 ? 'border-l border-gray-300' : ''}
+                    ${idx > 0 ? 'border-l border-line' : ''}
                     ${isActive
-                      ? `${config.activeBg} ${config.activeBorder} border-2 text-gray-900`
-                      : `bg-white ${config.hoverBg} text-gray-700`
+                      ? `${config.activeBg} ${config.activeBorder} border-2 text-content-primary`
+                      : `bg-surface-card ${config.hoverBg} text-content-secondary`
                     }
                     ${submitting && !isLoading ? 'opacity-50 cursor-not-allowed' : ''}
                   `}
                 >
                   {isLoading ? (
-                    <span className="inline-block animate-spin h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full" />
+                    <span className="inline-block animate-spin h-4 w-4 border-2 border-line-strong border-t-transparent rounded-full" />
                   ) : (
                     config.buttonText
                   )}
@@ -197,7 +185,7 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
           </div>
         )}
 
-        {/* Note field - only visible after selecting a status */}
+        {/* Note field */}
         {!isPastEvent && selectedStatus && (
           <div className="space-y-2">
             <textarea
@@ -209,14 +197,14 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
               }}
               placeholder="Add a note (optional)"
               rows={2}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full border border-line rounded-card px-3 py-2 text-sm bg-surface-input text-content-primary focus:outline-none focus:ring-2 ring-focus-ring resize-none"
             />
             <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-400">{note.length}/500</span>
+              <span className="text-xs text-content-muted">{note.length}/500</span>
               <button
                 onClick={handleSaveNote}
                 disabled={savingNote}
-                className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
+                className="btn btn-primary text-sm px-3 py-1"
               >
                 {savingNote ? 'Saving...' : 'Save note'}
               </button>
@@ -226,26 +214,26 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
 
         {/* Error message */}
         {error && (
-          <p className="text-sm text-red-600">{error}</p>
+          <p className="text-sm text-status-error">{error}</p>
         )}
 
         {/* Count banner */}
         {totalResponses > 0 && (
           <div className="flex items-center gap-3 text-sm">
             {summary.yes > 0 && (
-              <span className="text-green-700 font-medium">{summary.yes} Yes</span>
+              <span className="text-status-success font-medium">{summary.yes} Yes</span>
             )}
             {summary.yes > 0 && (summary.maybe > 0 || summary.no > 0) && (
-              <span className="text-gray-300">|</span>
+              <span className="text-line-strong">|</span>
             )}
             {summary.maybe > 0 && (
-              <span className="text-amber-700 font-medium">{summary.maybe} Maybe</span>
+              <span className="text-status-warning font-medium">{summary.maybe} Maybe</span>
             )}
             {summary.maybe > 0 && summary.no > 0 && (
-              <span className="text-gray-300">|</span>
+              <span className="text-line-strong">|</span>
             )}
             {summary.no > 0 && (
-              <span className="text-gray-500 font-medium">{summary.no} No</span>
+              <span className="text-content-muted font-medium">{summary.no} No</span>
             )}
           </div>
         )}
@@ -265,7 +253,7 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
                   <div className="space-y-1">
                     {group.map((rsvp) => (
                       <div key={rsvp.id} className="flex flex-col">
-                        <span className="text-sm text-gray-900">
+                        <span className="text-sm text-content-primary">
                           {rsvp.User?.user_id ? (
                             <ClickableMemberName userId={rsvp.User.user_id} username={rsvp.User.username || 'Unknown'} />
                           ) : (
@@ -273,7 +261,7 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
                           )}
                         </span>
                         {rsvp.note && (
-                          <span className="text-xs text-gray-500 ml-0 mt-0.5">{rsvp.note}</span>
+                          <span className="text-xs text-content-muted ml-0 mt-0.5">{rsvp.note}</span>
                         )}
                       </div>
                     ))}
@@ -283,7 +271,7 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
             })}
           </div>
         ) : (
-          <p className="text-sm text-gray-400">No responses yet</p>
+          <p className="text-sm text-content-muted">No responses yet</p>
         )}
       </div>
     </div>

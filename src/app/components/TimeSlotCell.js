@@ -22,10 +22,10 @@ const TimeSlotCell = memo(function TimeSlotCell({
 }) {
   // Determine background color based on preference
   const getBackgroundColor = () => {
-    if (disabled) return 'bg-gray-200';
+    if (disabled) return 'bg-surface-elevated';
     if (preference === 'preferred') return 'bg-green-300';
     if (preference === 'if-need-be') return 'bg-yellow-300';
-    return 'bg-gray-100 hover:bg-gray-200';
+    return 'bg-surface-elevated hover:bg-surface-card-hover';
   };
 
   // Handle pointer down event
@@ -44,7 +44,7 @@ const TimeSlotCell = memo(function TimeSlotCell({
   return (
     <div
       className={`
-        w-full h-12 sm:h-14 border border-gray-300
+        w-full h-12 sm:h-14 border border-line
         ${getBackgroundColor()}
         ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
         transition-colors duration-75

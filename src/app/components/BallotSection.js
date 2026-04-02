@@ -4,20 +4,12 @@ import { ballotAPI } from '../../lib/api';
 
 /**
  * BallotSection - Game voting ballot for an event
- * Shows ballot options for voting (open), winner display (closed),
- * tie-break prompt (organizer), and fallback pick (no votes).
- *
- * @param {string} eventId - UUID of the event
- * @param {string} currentUserId - Auth0 user ID (user.sub)
- * @param {string|Date} eventDate - Event start date
- * @param {string} userRole - 'owner' | 'admin' | 'member'
- * @param {string|null} userRsvpStatus - 'yes' | 'maybe' | 'no' | null
  */
 export default function BallotSection({ eventId, currentUserId, eventDate, userRole, userRsvpStatus }) {
   const [ballot, setBallot] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [votingOptionId, setVotingOptionId] = useState(null); // tracks which option is being toggled
+  const [votingOptionId, setVotingOptionId] = useState(null);
 
   const isOrganizer = userRole === 'owner' || userRole === 'admin';
   const canVote = userRsvpStatus === 'yes' || userRsvpStatus === 'maybe';
@@ -29,7 +21,6 @@ export default function BallotSection({ eventId, currentUserId, eventDate, userR
       const data = await ballotAPI.getBallot(eventId);
       setBallot(data);
     } catch (err) {
-      // 404 or other error means no ballot -- render nothing
       setBallot(null);
     } finally {
       setLoading(false);
@@ -45,7 +36,6 @@ export default function BallotSection({ eventId, currentUserId, eventDate, userR
     setVotingOptionId(optionId);
     setError(null);
 
-    // Optimistic update
     setBallot(prev => {
       if (!prev) return prev;
       return {
@@ -60,12 +50,10 @@ export default function BallotSection({ eventId, currentUserId, eventDate, userR
 
     try {
       await ballotAPI.toggleVote(eventId, optionId);
-      // Refetch to ensure consistency
       await fetchBallot();
     } catch (err) {
       console.error('Error toggling vote:', err);
       setError('Could not save your vote. Please try again.');
-      // Revert optimistic update
       await fetchBallot();
     } finally {
       setVotingOptionId(null);
@@ -84,7 +72,6 @@ export default function BallotSection({ eventId, currentUserId, eventDate, userR
     }
   };
 
-  // Relative time helper
   const getRelativeTime = (dateStr) => {
     if (!dateStr) return '';
     const target = new Date(dateStr);
@@ -101,13 +88,12 @@ export default function BallotSection({ eventId, currentUserId, eventDate, userR
 
   if (loading) {
     return (
-      <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-        <p className="text-sm text-gray-500">Loading ballot...</p>
+      <div className="mt-4 p-4 bg-surface-elevated rounded-card">
+        <p className="text-sm text-content-muted">Loading ballot...</p>
       </div>
     );
   }
 
-  // No ballot exists
   if (!ballot || ballot.ballot_status === null) {
     return null;
   }
@@ -116,28 +102,25 @@ export default function BallotSection({ eventId, currentUserId, eventDate, userR
 
   // --- CLOSED BALLOT STATES ---
   if (ballot_status === 'closed') {
-    // Winner determined
     if (winner) {
       return (
-        <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
-          <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-            <h3 className="font-semibold text-gray-900 text-sm">Game Vote</h3>
+        <div className="mt-4 border border-line rounded-card overflow-hidden">
+          <div className="bg-surface-elevated px-4 py-3 border-b border-line">
+            <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
           </div>
           <div className="p-4">
-            {/* Winner card */}
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-3">
+            <div className="bg-status-success/10 border border-status-success/30 rounded-card p-4 mb-3">
               <div className="flex items-center gap-2">
-                <span className="text-lg font-bold text-green-800">Winner</span>
+                <span className="text-lg font-bold text-status-success">Winner</span>
               </div>
-              <p className="text-lg font-semibold text-green-900 mt-1">{winner.game_name}</p>
+              <p className="text-lg font-semibold text-content-primary mt-1">{winner.game_name}</p>
             </div>
-            {/* Other options (muted, no counts) */}
             {options && options.filter(o => o.game_id !== winner.game_id || o.game_name !== winner.game_name).length > 0 && (
               <div className="space-y-1">
                 {options
                   .filter(o => o.game_id !== winner.game_id || o.game_name !== winner.game_name)
                   .map(opt => (
-                    <div key={opt.id} className="px-3 py-2 text-sm text-gray-400 bg-gray-50 rounded">
+                    <div key={opt.id} className="px-3 py-2 text-sm text-content-muted bg-surface-elevated rounded">
                       {opt.game_name}
                     </div>
                   ))}
@@ -148,25 +131,24 @@ export default function BallotSection({ eventId, currentUserId, eventDate, userR
       );
     }
 
-    // Tie -- organizer picks winner
     if (needs_tie_break && isOrganizer) {
       return (
-        <div className="mt-4 border border-amber-300 rounded-lg overflow-hidden">
-          <div className="bg-amber-50 px-4 py-3 border-b border-amber-200">
-            <h3 className="font-semibold text-gray-900 text-sm">Game Vote</h3>
+        <div className="mt-4 border border-status-warning rounded-card overflow-hidden">
+          <div className="bg-status-warning/10 px-4 py-3 border-b border-status-warning/30">
+            <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
           </div>
           <div className="p-4">
-            <p className="text-sm font-medium text-amber-800 mb-3">
+            <p className="text-sm font-medium text-status-warning mb-3">
               Voting ended in a tie! Pick the winning game:
             </p>
-            {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+            {error && <p className="text-sm text-status-error mb-2">{error}</p>}
             <div className="space-y-2">
               {(tied_options || []).map(opt => (
                 <button
                   key={opt.id}
                   type="button"
                   onClick={() => handleResolveTie(opt.id)}
-                  className="w-full text-left px-4 py-3 rounded-lg border-2 border-amber-200 bg-amber-50 hover:bg-amber-100 hover:border-amber-400 transition-colors text-sm font-medium text-gray-900 cursor-pointer"
+                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning/30 bg-status-warning/10 hover:bg-status-warning/20 transition-colors text-sm font-medium text-content-primary cursor-pointer"
                 >
                   {opt.game_name}
                 </button>
@@ -177,15 +159,14 @@ export default function BallotSection({ eventId, currentUserId, eventDate, userR
       );
     }
 
-    // Tie -- non-organizer view
     if (needs_tie_break && !isOrganizer) {
       return (
-        <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
-          <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-            <h3 className="font-semibold text-gray-900 text-sm">Game Vote</h3>
+        <div className="mt-4 border border-line rounded-card overflow-hidden">
+          <div className="bg-surface-elevated px-4 py-3 border-b border-line">
+            <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
           </div>
           <div className="p-4">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-content-secondary">
               Voting has closed. The organizer is choosing the winning game.
             </p>
           </div>
@@ -193,25 +174,24 @@ export default function BallotSection({ eventId, currentUserId, eventDate, userR
       );
     }
 
-    // No votes -- organizer fallback pick
     if (needs_fallback_pick && isOrganizer) {
       return (
-        <div className="mt-4 border border-amber-300 rounded-lg overflow-hidden">
-          <div className="bg-amber-50 px-4 py-3 border-b border-amber-200">
-            <h3 className="font-semibold text-gray-900 text-sm">Game Vote</h3>
+        <div className="mt-4 border border-status-warning rounded-card overflow-hidden">
+          <div className="bg-status-warning/10 px-4 py-3 border-b border-status-warning/30">
+            <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
           </div>
           <div className="p-4">
-            <p className="text-sm font-medium text-amber-800 mb-3">
+            <p className="text-sm font-medium text-status-warning mb-3">
               No votes were cast. Pick a game for this event:
             </p>
-            {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+            {error && <p className="text-sm text-status-error mb-2">{error}</p>}
             <div className="space-y-2">
               {(options || []).map(opt => (
                 <button
                   key={opt.id}
                   type="button"
                   onClick={() => handleResolveTie(opt.id)}
-                  className="w-full text-left px-4 py-3 rounded-lg border-2 border-amber-200 bg-amber-50 hover:bg-amber-100 hover:border-amber-400 transition-colors text-sm font-medium text-gray-900 cursor-pointer"
+                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning/30 bg-status-warning/10 hover:bg-status-warning/20 transition-colors text-sm font-medium text-content-primary cursor-pointer"
                 >
                   {opt.game_name}
                 </button>
@@ -222,15 +202,14 @@ export default function BallotSection({ eventId, currentUserId, eventDate, userR
       );
     }
 
-    // No votes -- non-organizer view
     if (needs_fallback_pick && !isOrganizer) {
       return (
-        <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
-          <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-            <h3 className="font-semibold text-gray-900 text-sm">Game Vote</h3>
+        <div className="mt-4 border border-line rounded-card overflow-hidden">
+          <div className="bg-surface-elevated px-4 py-3 border-b border-line">
+            <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
           </div>
           <div className="p-4">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-content-secondary">
               Voting has closed. The organizer is choosing the game.
             </p>
           </div>
@@ -238,22 +217,20 @@ export default function BallotSection({ eventId, currentUserId, eventDate, userR
       );
     }
 
-    // Fallback closed state (shouldn't normally reach here)
     return null;
   }
 
   // --- OPEN BALLOT ---
   return (
-    <div id="vote" className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
-      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-        <h3 className="font-semibold text-gray-900 text-sm">Game Vote</h3>
-        <p className="text-xs text-gray-500 mt-0.5">Tap games you'd enjoy playing</p>
+    <div id="vote" className="mt-4 border border-line rounded-card overflow-hidden">
+      <div className="bg-surface-elevated px-4 py-3 border-b border-line">
+        <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
+        <p className="text-xs text-content-muted mt-0.5">Tap games you'd enjoy playing</p>
       </div>
 
       <div className="p-4 space-y-3">
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-status-error">{error}</p>}
 
-        {/* Voting options */}
         {canVote ? (
           <div className="space-y-2">
             {(options || []).map(opt => {
@@ -265,10 +242,10 @@ export default function BallotSection({ eventId, currentUserId, eventDate, userR
                   type="button"
                   onClick={() => handleToggleVote(opt.id)}
                   disabled={!!votingOptionId}
-                  className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-colors text-sm font-medium cursor-pointer
+                  className={`w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm font-medium cursor-pointer
                     ${isVoted
-                      ? 'border-blue-500 bg-blue-50 text-blue-900'
-                      : 'border-gray-200 bg-white text-gray-900 hover:bg-gray-50 hover:border-gray-300'
+                      ? 'border-accent bg-accent/10 text-content-primary'
+                      : 'border-line bg-surface-card text-content-primary hover:bg-surface-card-hover hover:border-line-strong'
                     }
                     ${isToggling ? 'opacity-70' : ''}
                     ${votingOptionId && !isToggling ? 'opacity-50 cursor-not-allowed' : ''}
@@ -277,7 +254,7 @@ export default function BallotSection({ eventId, currentUserId, eventDate, userR
                   <div className="flex items-center justify-between">
                     <span>{opt.game_name}</span>
                     {isVoted && (
-                      <span className="text-blue-600 text-xs font-semibold">Voted</span>
+                      <span className="text-accent text-xs font-semibold">Voted</span>
                     )}
                   </div>
                 </button>
@@ -286,26 +263,24 @@ export default function BallotSection({ eventId, currentUserId, eventDate, userR
           </div>
         ) : (
           <div>
-            {/* Read-only option list for non-voters */}
             <div className="space-y-2 mb-3">
               {(options || []).map(opt => (
                 <div
                   key={opt.id}
-                  className="px-4 py-3 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700"
+                  className="px-4 py-3 rounded-card border border-line bg-surface-elevated text-sm text-content-secondary"
                 >
                   {opt.game_name}
                 </div>
               ))}
             </div>
-            <p className="text-sm text-gray-500 italic">
+            <p className="text-sm text-content-muted italic">
               RSVP Yes or Maybe to vote on the game
             </p>
           </div>
         )}
 
-        {/* Voting closes footer */}
         {rsvp_deadline && (
-          <p className="text-xs text-gray-400 mt-2">
+          <p className="text-xs text-content-muted mt-2">
             Voting closes {getRelativeTime(rsvp_deadline)}
           </p>
         )}

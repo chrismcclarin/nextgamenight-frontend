@@ -146,7 +146,7 @@ export default function HeatmapGrid({
       </div>
 
       {/* Timezone display */}
-      <div className="text-sm text-gray-600 mb-3">
+      <div className="text-sm text-content-secondary mb-3">
         Times shown in: <span className="font-medium">{getTimezoneDisplay(timezone)}</span>
       </div>
 
@@ -154,7 +154,7 @@ export default function HeatmapGrid({
       <div className="flex items-center gap-4 mb-4 text-sm">
         <span className="text-gray-600">Fewer available</span>
         <div className="flex gap-1">
-          <div className="w-6 h-4 bg-gray-100 border border-gray-300 rounded-sm" />
+          <div className="w-6 h-4 bg-surface-elevated border border-line rounded-sm" />
           <div className="w-6 h-4 bg-yellow-200 border border-yellow-400 rounded-sm" />
           <div className="w-6 h-4 bg-yellow-400 border border-yellow-500 rounded-sm" />
           <div className="w-6 h-4 bg-orange-400 border border-orange-500 rounded-sm" />
@@ -175,7 +175,7 @@ export default function HeatmapGrid({
             {days.map((day) => (
               <div
                 key={day.toISOString()}
-                className="w-24 sm:w-28 flex-shrink-0 text-center py-2 text-sm font-medium text-gray-700 border-b border-gray-300"
+                className="w-24 sm:w-28 flex-shrink-0 text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
                 role="columnheader"
               >
                 {formatDayHeader(day)}
@@ -219,7 +219,7 @@ export default function HeatmapGrid({
       </div>
 
       {/* Summary */}
-      <div className="mt-3 text-sm text-gray-600">
+      <div className="mt-3 text-sm text-content-secondary">
         {suggestions.length === 0 ? (
           <span>No availability data yet. Responses will appear here as members submit them.</span>
         ) : viableCount === 0 ? (
@@ -237,8 +237,8 @@ export default function HeatmapGrid({
 
       {/* Top Suggestions Cards - Show when there are viable slots */}
       {topSuggestions.length > 0 && groupId && (
-        <div className="mt-6 border-t border-gray-200 pt-4">
-          <h4 className="text-sm font-semibold text-gray-700 mb-3">
+        <div className="mt-6 border-t border-line pt-4">
+          <h4 className="text-sm font-semibold text-content-secondary mb-3">
             Top Available Time Slots
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

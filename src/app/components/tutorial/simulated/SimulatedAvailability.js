@@ -6,6 +6,7 @@ import { MOCK_AVAILABILITY, MOCK_PLAYERS } from '../mockData';
 /**
  * Color scale for heatmap cells based on overlap count (0-4 people).
  * Matches real HeatmapCell: gray -> yellow -> orange -> red (warm scale).
+ * These are FUNCTIONAL data visualization colors -- not migrated to semantic tokens.
  */
 const HEAT_COLORS = [
   'bg-gray-100',                        // 0 - nobody
@@ -42,29 +43,29 @@ export default function SimulatedAvailability() {
   return (
     <div className="p-3 md:p-6 min-h-[500px]">
       {/* Breadcrumbs */}
-      <nav className="mb-4 text-sm bg-gray-800 px-3 py-2 rounded-lg inline-block">
-        <span className="text-blue-400 font-medium">Home</span>
-        <span className="text-gray-400 mx-2">{'>'}</span>
-        <span className="text-blue-400 font-medium">Friday Night Games</span>
-        <span className="text-gray-400 mx-2">{'>'}</span>
-        <span className="text-white font-semibold">Availability</span>
+      <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
+        <span className="text-accent font-medium">Home</span>
+        <span className="text-content-muted mx-2">{'>'}</span>
+        <span className="text-accent font-medium">Friday Night Games</span>
+        <span className="text-content-muted mx-2">{'>'}</span>
+        <span className="text-content-primary font-semibold">Availability</span>
       </nav>
 
-      <h2 className="text-xl font-bold text-gray-900 mb-1">Group Availability</h2>
-      <p className="text-sm text-gray-600 mb-4">
+      <h2 className="text-xl font-bold text-content-primary mb-1">Group Availability</h2>
+      <p className="text-sm text-content-secondary mb-4">
         {MOCK_PLAYERS.length} members have shared their availability
       </p>
 
       {/* Heatmap grid */}
       <div
         data-tutorial="availability-heatmap"
-        className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 mb-6 overflow-x-auto"
+        className="bg-surface-card rounded-card border border-line shadow-theme-md p-4 mb-6 overflow-x-auto"
       >
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">When is everyone free?</h3>
+        <h3 className="text-sm font-semibold text-content-secondary mb-3">When is everyone free?</h3>
 
-        {/* Legend - matches real HeatmapGrid */}
+        {/* Legend - matches real HeatmapGrid (functional colors kept) */}
         <div className="flex items-center gap-3 mb-3 text-xs">
-          <span className="text-gray-500">Fewer available</span>
+          <span className="text-content-muted">Fewer available</span>
           <div className="flex gap-0.5">
             <div className="w-5 h-3 rounded-sm bg-gray-100 border border-gray-300" />
             <div className="w-5 h-3 rounded-sm bg-yellow-200 border border-yellow-400" />
@@ -72,7 +73,7 @@ export default function SimulatedAvailability() {
             <div className="w-5 h-3 rounded-sm bg-orange-400 border border-orange-500" />
             <div className="w-5 h-3 rounded-sm bg-red-500 border border-red-600" />
           </div>
-          <span className="text-gray-500">More available</span>
+          <span className="text-content-muted">More available</span>
         </div>
 
         <div className="min-w-max">
@@ -82,7 +83,7 @@ export default function SimulatedAvailability() {
             {MOCK_AVAILABILITY.days.map((day) => (
               <div
                 key={day}
-                className="w-14 flex-shrink-0 text-center text-xs font-medium text-gray-600 pb-1"
+                className="w-14 flex-shrink-0 text-center text-xs font-medium text-content-secondary pb-1"
               >
                 {day}
               </div>
@@ -92,7 +93,7 @@ export default function SimulatedAvailability() {
           {/* Heatmap rows */}
           {MOCK_AVAILABILITY.timeSlots.map((time, rowIdx) => (
             <div key={time} className="flex">
-              <div className="w-16 flex-shrink-0 text-xs text-gray-500 py-1.5 pr-2 text-right">
+              <div className="w-16 flex-shrink-0 text-xs text-content-muted py-1.5 pr-2 text-right">
                 {time}
               </div>
               {MOCK_AVAILABILITY.data[rowIdx].map((count, colIdx) => (
@@ -113,10 +114,10 @@ export default function SimulatedAvailability() {
       {/* Interactive "Your Availability" section */}
       <div
         data-tutorial="availability-slots"
-        className="bg-white rounded-lg border border-gray-200 shadow-sm p-4"
+        className="bg-surface-card rounded-card border border-line shadow-theme-md p-4"
       >
-        <h3 className="text-sm font-semibold text-gray-700 mb-1">Your Availability</h3>
-        <p className="text-xs text-gray-500 mb-3">Tap slots to mark when you are free</p>
+        <h3 className="text-sm font-semibold text-content-secondary mb-1">Your Availability</h3>
+        <p className="text-xs text-content-muted mb-3">Tap slots to mark when you are free</p>
 
         <div className="min-w-max">
           {/* Day headers */}
@@ -125,7 +126,7 @@ export default function SimulatedAvailability() {
             {interactiveDays.map((day) => (
               <div
                 key={day}
-                className="w-14 flex-shrink-0 text-center text-xs font-medium text-gray-600 pb-1"
+                className="w-14 flex-shrink-0 text-center text-xs font-medium text-content-secondary pb-1"
               >
                 {day}
               </div>
@@ -135,7 +136,7 @@ export default function SimulatedAvailability() {
           {/* Toggleable slots */}
           {interactiveSlots.map((time) => (
             <div key={time} className="flex">
-              <div className="w-16 flex-shrink-0 text-xs text-gray-500 py-1.5 pr-2 text-right">
+              <div className="w-16 flex-shrink-0 text-xs text-content-muted py-1.5 pr-2 text-right">
                 {time}
               </div>
               {interactiveDays.map((day) => {
@@ -147,8 +148,8 @@ export default function SimulatedAvailability() {
                     onClick={() => toggleSlot(key)}
                     className={`w-14 h-8 flex-shrink-0 rounded-sm m-0.5 text-xs font-medium transition-colors border ${
                       isSelected
-                        ? 'bg-blue-500 text-white border-blue-600'
-                        : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
+                        ? 'bg-accent text-white border-accent'
+                        : 'bg-surface-elevated text-content-muted border-line hover:bg-surface-card-hover'
                     }`}
                   >
                     {isSelected ? '\u2713' : ''}
@@ -160,7 +161,7 @@ export default function SimulatedAvailability() {
         </div>
 
         {selectedSlots.size > 0 && (
-          <p className="text-xs text-blue-600 mt-2">
+          <p className="text-xs text-accent mt-2">
             {selectedSlots.size} slot{selectedSlots.size !== 1 ? 's' : ''} selected
           </p>
         )}

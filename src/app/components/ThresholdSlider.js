@@ -27,7 +27,7 @@ export default function ThresholdSlider({
       <div className="flex items-center gap-4">
         <label
           htmlFor="threshold-slider"
-          className="text-sm font-medium text-gray-700 whitespace-nowrap"
+          className="text-sm font-medium text-content-secondary whitespace-nowrap"
         >
           Minimum participants:
         </label>
@@ -39,7 +39,7 @@ export default function ThresholdSlider({
           value={value}
           onChange={(e) => onChange(parseInt(e.target.value, 10))}
           disabled={disabled}
-          className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed accent-blue-600"
+          className="flex-1 h-2 bg-surface-elevated rounded-lg appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed accent-blue-600"
           aria-valuemin={min}
           aria-valuemax={safeMax}
           aria-valuenow={value}
@@ -52,7 +52,7 @@ export default function ThresholdSlider({
 
       {/* Live region for screen readers */}
       <div
-        className="text-sm text-gray-600"
+        className="text-sm text-content-secondary"
         role="status"
         aria-live="polite"
       >

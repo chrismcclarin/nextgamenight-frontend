@@ -28,12 +28,12 @@ export default function MergedHeatmapTooltip({ members = [], isOpen, referenceEl
     <div
       ref={refs.setFloating}
       style={floatingStyles}
-      className="bg-gray-800 text-white rounded-lg shadow-lg p-2 text-sm z-50 max-w-xs"
+      className="bg-surface-elevated text-content-primary rounded-card shadow-theme-lg p-2 text-sm z-50 max-w-xs"
       role="tooltip"
     >
       <div>{members.map((m) => m.username || m.user_id).join(', ')}</div>
       {/* Arrow indicator */}
-      <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-2 h-2 bg-gray-800 rotate-45" />
+      <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-2 h-2 bg-surface-elevated rotate-45" />
     </div>
   );
 }

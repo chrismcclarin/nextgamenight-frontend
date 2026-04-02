@@ -68,7 +68,7 @@ export default function ClickableMemberName({ userId, username, children }) {
     // Already sent (optimistic UI after clicking Add friend)
     if (sent) {
       return (
-        <div className="flex items-center gap-1.5 text-sm text-green-600 font-medium">
+        <div className="flex items-center gap-1.5 text-sm text-status-success font-medium">
           <span>&#10003;</span>
           <span>Request sent</span>
         </div>
@@ -77,7 +77,7 @@ export default function ClickableMemberName({ userId, username, children }) {
 
     if (sendError) {
       return (
-        <div className="text-sm text-red-600">
+        <div className="text-sm text-status-error">
           Failed to send request
         </div>
       );
@@ -88,7 +88,7 @@ export default function ClickableMemberName({ userId, username, children }) {
       return (
         <button
           disabled
-          className="text-sm text-gray-400 cursor-not-allowed px-2 py-1 rounded bg-gray-100 border border-gray-200"
+          className="text-sm text-content-muted cursor-not-allowed px-2 py-1 rounded bg-surface-elevated border border-line"
         >
           Request pending
         </button>
@@ -99,7 +99,7 @@ export default function ClickableMemberName({ userId, username, children }) {
     return (
       <button
         onClick={handleSendRequest}
-        className="text-sm text-white bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded transition-colors font-medium"
+        className="btn btn-primary text-sm px-3 py-1"
       >
         Add friend
       </button>
@@ -121,7 +121,7 @@ export default function ClickableMemberName({ userId, username, children }) {
             ref={refs.setFloating}
             style={floatingStyles}
             {...getFloatingProps()}
-            className="bg-white rounded-lg shadow-lg border border-gray-200 px-3 py-2 z-[60]"
+            className="bg-surface-card rounded-card shadow-theme-lg border border-line px-3 py-2 z-[60]"
           >
             {renderTooltipContent()}
           </div>

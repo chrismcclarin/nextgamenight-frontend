@@ -58,16 +58,16 @@ export const makeStepContent = (text, stepIndex, totalSteps, onSkip) => {
   // eslint-disable-next-line react/display-name
   return () => (
   <div className="p-1">
-    <p className="text-gray-700 text-sm mb-3">{text}</p>
+    <p className="text-content-secondary text-sm mb-3">{text}</p>
     <div className="flex justify-between items-center">
-      <button onClick={onSkip} className="text-xs text-gray-400 hover:text-gray-600 underline">
+      <button onClick={onSkip} className="text-xs text-content-muted hover:text-content-secondary underline">
         Skip tutorial
       </button>
       <div className="flex gap-1.5">
         {Array.from({ length: totalSteps }).map((_, i) => (
           <span
             key={i}
-            className={`w-2 h-2 rounded-full ${i <= stepIndex ? 'bg-blue-600' : 'bg-gray-300'}`}
+            className={`w-2 h-2 rounded-full ${i <= stepIndex ? 'bg-accent' : 'bg-line'}`}
           />
         ))}
       </div>
