@@ -148,10 +148,10 @@ export default function AvailabilityFormPage() {
   // Render loading state
   if (pageState === PAGE_STATES.LOADING) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-surface-page flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Validating your link...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent mx-auto"></div>
+          <p className="mt-4 text-content-secondary">Validating your link...</p>
         </div>
       </div>
     );
@@ -160,26 +160,26 @@ export default function AvailabilityFormPage() {
   // Render error state
   if (pageState === PAGE_STATES.ERROR) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
+          <div className="w-16 h-16 bg-status-error/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </div>
-          <h1 className="text-xl font-semibold text-gray-900 mb-2">
+          <h1 className="text-xl font-semibold text-content-primary mb-2">
             Link No Longer Valid
           </h1>
-          <p className="text-gray-600 mb-6">
+          <p className="text-content-secondary mb-6">
             {errorMessage}
           </p>
           <button
             onClick={handleRequestNewLink}
-            className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            className="btn btn-primary w-full"
           >
             Request New Link
           </button>
-          <p className="mt-4 text-sm text-gray-500">
+          <p className="mt-4 text-sm text-content-muted">
             Or contact your group organizer for assistance.
           </p>
         </div>
@@ -190,31 +190,31 @@ export default function AvailabilityFormPage() {
   // Render submitted/confirmation state
   if (pageState === PAGE_STATES.SUBMITTED) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
+          <div className="w-16 h-16 bg-status-success/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-status-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h1 className="text-xl font-semibold text-gray-900 mb-2">
+          <h1 className="text-xl font-semibold text-content-primary mb-2">
             Availability Submitted!
           </h1>
-          <p className="text-gray-600 mb-4">
+          <p className="text-content-secondary mb-4">
             {submissionResult?.isUnavailable ? (
               'You have been marked as unavailable for this week.'
             ) : (
               `You selected ${submissionResult?.slotCount || 0} time slot${submissionResult?.slotCount !== 1 ? 's' : ''}.`
             )}
           </p>
-          <p className="text-sm text-gray-500 mb-6">
+          <p className="text-sm text-content-muted mb-6">
             Your group organizer will be notified of your response.
           </p>
-          <div className="border-t border-gray-200 pt-4">
-            <p className="text-sm text-gray-600 mb-2">
+          <div className="border-t border-line pt-4">
+            <p className="text-sm text-content-secondary mb-2">
               You can safely close this tab.
             </p>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-content-muted">
               Made a mistake? You can reopen this link to update your response until the deadline.
             </p>
           </div>
@@ -225,21 +225,21 @@ export default function AvailabilityFormPage() {
 
   // Render ready state (form)
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
+    <div className="min-h-screen bg-surface-page py-8 px-4">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">
+        <div className="bg-surface-card rounded-card shadow-theme-lg p-6 mb-6">
+          <h1 className="text-2xl font-bold text-content-primary mb-2">
             Submit Your Availability
           </h1>
-          <p className="text-gray-600">
+          <p className="text-content-secondary">
             Select the times you&apos;re available for this week&apos;s {tokenData?.gameName || 'Game TBD'} session.
           </p>
 
           {/* Token expiry warning */}
           {isExpiryWarning() && (
-            <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-md p-3">
-              <p className="text-sm text-yellow-800">
+            <div className="mt-4 bg-status-warning/10 border border-status-warning/30 rounded-btn p-3">
+              <p className="text-sm text-status-warning">
                 <span className="font-medium">Heads up:</span> This link expires in {getTimeRemaining()}. Please submit your availability soon.
               </p>
             </div>
@@ -247,7 +247,7 @@ export default function AvailabilityFormPage() {
         </div>
 
         {/* Form Container */}
-        <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="bg-surface-card rounded-card shadow-theme-lg p-6">
           <AvailabilityForm
             magicToken={token}
             userName={tokenData?.userName}
@@ -259,7 +259,7 @@ export default function AvailabilityFormPage() {
         </div>
 
         {/* Footer */}
-        <div className="mt-6 text-center text-sm text-gray-500">
+        <div className="mt-6 text-center text-sm text-content-muted">
           <p>
             Times shown in your local timezone ({timezone})
           </p>

@@ -90,24 +90,24 @@ function InviteAcceptPage() {
   // Loading state while Auth0 resolves
   if (authLoading || status === 'loading') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full mx-4 text-center">
-          <div className="inline-block w-8 h-8 border-4 border-gray-200 border-t-emerald-600 rounded-full animate-spin mb-4" />
-          <p className="text-gray-600">Loading...</p>
+      <div className="min-h-screen bg-surface-page flex items-center justify-center">
+        <div className="bg-surface-card rounded-card shadow-theme-md p-8 max-w-md w-full mx-4 text-center">
+          <div className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4" />
+          <p className="text-content-secondary">Loading...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full mx-4">
+    <div className="min-h-screen bg-surface-page flex items-center justify-center">
+      <div className="bg-surface-card rounded-card shadow-theme-md p-8 max-w-md w-full mx-4">
 
         {/* Accepting state */}
         {status === 'accepting' && (
           <div className="text-center">
-            <div className="inline-block w-8 h-8 border-4 border-gray-200 border-t-emerald-600 rounded-full animate-spin mb-4" />
-            <p className="text-gray-700 font-medium">Accepting your invite...</p>
+            <div className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4" />
+            <p className="text-content-primary font-medium">Accepting your invite...</p>
           </div>
         )}
 
@@ -115,29 +115,29 @@ function InviteAcceptPage() {
         {status === 'accepted' && (
           <div className="text-center">
             {/* Green checkmark */}
-            <div className="mx-auto mb-4 w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <div className="mx-auto mb-4 w-16 h-16 bg-status-success/10 rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-status-success" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold text-gray-900 mb-2">
+            <h1 className="text-xl font-bold text-content-primary mb-2">
               You&apos;ve joined {groupName || 'the group'}!
             </h1>
-            <p className="text-gray-600 mb-6">
+            <p className="text-content-secondary mb-6">
               You can now see events, suggest games, and coordinate with your group.
             </p>
             <div className="flex flex-col gap-3">
               {groupId && (
                 <Link
                   href={`/groupHomePage?id=${groupId}`}
-                  className="block w-full px-4 py-2.5 text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg font-medium text-center transition-colors"
+                  className="btn btn-primary block w-full text-center"
                 >
                   Go to Group
                 </Link>
               )}
               <Link
                 href="/"
-                className="block w-full px-4 py-2.5 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium text-center transition-colors"
+                className="btn btn-secondary block w-full text-center"
               >
                 Go Home
               </Link>
@@ -149,18 +149,18 @@ function InviteAcceptPage() {
         {status === 'error' && (
           <div className="text-center">
             {/* Red X icon */}
-            <div className="mx-auto mb-4 w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <div className="mx-auto mb-4 w-16 h-16 bg-status-error/10 rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold text-gray-900 mb-2">
+            <h1 className="text-xl font-bold text-content-primary mb-2">
               Unable to accept invite
             </h1>
-            <p className="text-gray-600 mb-6">{error}</p>
+            <p className="text-content-secondary mb-6">{error}</p>
             <Link
               href="/"
-              className="block w-full px-4 py-2.5 text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg font-medium text-center transition-colors"
+              className="btn btn-primary block w-full text-center"
             >
               Go Home
             </Link>
@@ -171,40 +171,40 @@ function InviteAcceptPage() {
         {status === 'not-logged-in' && (
           <div className="text-center">
             {/* Invite icon */}
-            <div className="mx-auto mb-4 w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+            <div className="mx-auto mb-4 w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
               </svg>
             </div>
 
-            <h1 className="text-xl font-bold text-gray-900 mb-2">
+            <h1 className="text-xl font-bold text-content-primary mb-2">
               You&apos;re invited!
             </h1>
 
             {inviteInfo ? (
-              <p className="text-gray-600 mb-6">
-                <span className="font-medium text-gray-800">{inviteInfo.inviter_name || 'Someone'}</span> invited you to join{' '}
-                <span className="font-medium text-gray-800">{inviteInfo.group_name || 'a group'}</span> on Next Game Night.
+              <p className="text-content-secondary mb-6">
+                <span className="font-medium text-content-primary">{inviteInfo.inviter_name || 'Someone'}</span> invited you to join{' '}
+                <span className="font-medium text-content-primary">{inviteInfo.group_name || 'a group'}</span> on Next Game Night.
                 {inviteInfo.member_count && (
-                  <span className="block text-sm text-gray-500 mt-1">
+                  <span className="block text-sm text-content-muted mt-1">
                     The group has {inviteInfo.member_count} member{inviteInfo.member_count !== 1 ? 's' : ''}.
                   </span>
                 )}
               </p>
             ) : (
-              <p className="text-gray-600 mb-6">
+              <p className="text-content-secondary mb-6">
                 You&apos;ve been invited to a group on Next Game Night.
               </p>
             )}
 
             <a
               href={`/api/auth/login?returnTo=${encodeURIComponent(`/invite/accept?token=${token}`)}`}
-              className="block w-full px-4 py-2.5 text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg font-medium text-center transition-colors"
+              className="btn btn-primary block w-full text-center"
             >
               Sign in to accept
             </a>
 
-            <p className="text-xs text-gray-400 mt-4">
+            <p className="text-xs text-content-muted mt-4">
               Don&apos;t have an account? Signing in will create one automatically.
             </p>
           </div>
