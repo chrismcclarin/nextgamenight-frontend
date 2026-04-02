@@ -9,7 +9,7 @@ export default function DieLogo({ size = 36 }) {
       aria-label="Periodic Tabletop logo"
     >
       {/* Die face */}
-      <rect x="1" y="1" width="38" height="38" rx="8" fill="#064e3b" />
+      <rect x="1" y="1" width="38" height="38" rx="8" style={{ fill: 'var(--color-bg-nav)' }} />
       <rect x="1" y="1" width="38" height="38" rx="8" stroke="#d97706" strokeWidth="2" />
       {/* 4 pips at corners */}
       <circle cx="11.5" cy="11.5" r="3.5" fill="#d97706" />
