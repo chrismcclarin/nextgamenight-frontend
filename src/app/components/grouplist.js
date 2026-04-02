@@ -2,7 +2,6 @@
 'use client'
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import '../../../public/GroupList.css';
 import Link from 'next/link';
 import GroupSettings from './GroupSettings';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
@@ -69,33 +68,34 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
 
   if (loading) {
     return (
-      <div className="group-list-sidebar bg-surface-page rounded-card p-4">
-        <div className="loading">Loading groups...</div>
+      <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card p-4 flex flex-col overflow-hidden h-full">
+        <div className="text-center py-8 px-4 text-content-muted">Loading groups...</div>
       </div>
     );
   }
 
   return (
     <FriendshipStatusProvider>
-    <div className="group-list-sidebar bg-surface-page rounded-card p-4">
-      <div className="sidebar-header flex items-center justify-between mb-4 pb-3 border-b border-line">
+    <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card p-4 flex flex-col overflow-hidden h-full">
+      <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
         <h2 className="text-xl font-bold text-content-primary">Your Groups</h2>
         {onCreateGroup && (
           <button
-            className="create-group-btn btn btn-primary text-sm"
+            className="btn btn-primary text-sm whitespace-nowrap"
             onClick={onCreateGroup}
             aria-label="Create new group"
+            data-tutorial="create-group-btn"
           >
             + Create New Group
           </button>
         )}
       </div>
 
-      <div className="groups-container">
+      <div className="flex-1 overflow-y-auto p-4 pb-8 flex flex-col gap-4 max-md:max-h-[60vh] max-md:p-3">
         {groups.length === 0 ? (
-          <div className="no-groups">
-            <p>No groups yet!</p>
-            <p>Create your first group to get started.</p>
+          <div className="text-center py-8 px-4 text-content-muted">
+            <p className="my-2">No groups yet!</p>
+            <p className="my-2">Create your first group to get started.</p>
           </div>
         ) : (
           groups.map((group) => {
@@ -116,9 +116,9 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             const profilePic = group.profile_picture_url;
 
             return (
-              <div 
-                key={group.id} 
-                className="group-card"
+              <div
+                key={group.id}
+                className="bg-surface-card rounded-card p-4 pl-5 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover hover:bg-surface-card-hover focus:outline-none focus:border-focus-ring"
                 onClick={(e) => handleGroupClick(group, e)}
                 role="button"
                 tabIndex={0}
@@ -132,23 +132,13 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   backgroundImage: bgImage ? `url(${bgImage})` : 'none',
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
-                  position: 'relative',
-                  zIndex: 1,
                 }}
               >
                 {bgImage && (
-                  <div style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-                    zIndex: 0,
-                  }} />
+                  <div className="absolute inset-0 bg-white/85 z-0 rounded-card" />
                 )}
-                <div style={{ position: 'relative', zIndex: 1 }}>
-                  <div className="group-header">
+                <div className="relative z-[1]">
+                  <div className="flex justify-between items-center mb-3 max-[480px]:flex-col max-[480px]:items-start max-[480px]:gap-2">
                     <div className="flex items-center gap-2">
                       {profilePic && (
                         <div className="w-10 h-10 rounded-full bg-surface-card-hover flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden">
@@ -164,51 +154,51 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                           )}
                         </div>
                       )}
-                      <h3 
-                        className="group-name"
+                      <h3
+                        className="text-[1.1rem] font-semibold text-content-primary flex-1 overflow-hidden text-ellipsis whitespace-nowrap max-md:text-base"
                         style={getTextStyle(bgImage, bgColor)}
                       >
                         {group.name}
                       </h3>
                     </div>
-                    <span 
-                      className="player-count"
+                    <span
+                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-semibold ml-2 max-[480px]:self-end"
                       style={getTextStyle(bgImage, bgColor)}
                     >
                       {groupUsers.length} {groupUsers.length === 1 ? 'player' : 'players'}
                     </span>
                   </div>
 
-                <div className="group-players">
+                <div className="flex flex-wrap gap-2 mb-3">
                   {groupUsers
                     .filter((member) => member.user_id !== user?.sub)
                     .slice(0, 4)
                     .map((member, index) => (
-                      <span key={member.id || index} className="player-tag">
+                      <span key={member.id || index} className="bg-surface-card-hover text-content-secondary px-2 py-1 rounded-md text-[0.8rem] border border-line">
                         <ClickableMemberName userId={member.user_id} username={member.username || member.email} />
                       </span>
                     ))}
                   {groupUsers.filter((member) => member.user_id !== user?.sub).length > 4 && (
-                    <span className="player-tag more">
+                    <span className="bg-surface-card-hover text-content-muted px-2 py-1 rounded-md text-[0.8rem] border border-line font-medium">
                       +{groupUsers.length - 5} more
                     </span>
                   )}
                 </div>
 
-                <div className="last-game-info" style={getTextStyle(bgImage, bgColor)}>
-                  <div className="last-game">
-                    <strong>Last Game:</strong> {lastGame?.name || 'None'}
+                <div className="border-t border-line pt-3" style={getTextStyle(bgImage, bgColor)}>
+                  <div className="text-content-secondary text-sm mb-1">
+                    <strong className="text-content-primary">Last Game:</strong> {lastGame?.name || 'None'}
                   </div>
-                  <div className="last-game-date">
+                  <div className="text-content-muted text-xs">
                     {formatDate(lastEvent?.start_date || lastEvent?.createdAt, timezone)}
                   </div>
                 </div>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-2 mt-3" style={{ position: 'relative', zIndex: 2 }}>
+                  <div className="flex gap-2 mt-3 relative z-[2]">
                     {canEdit && (
                       <button
-                        className="add-member-btn flex-1"
+                        className="btn btn-primary text-sm flex-1 shadow-md hover:shadow-lg hover:-translate-y-px active:translate-y-0 transition-all"
                         onClick={(e) => {
                           e.stopPropagation();
                           if (onGroupSelect) {
@@ -216,13 +206,6 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                           }
                         }}
                         aria-label="Invite member to group"
-                        style={{
-                          backgroundColor: 'var(--color-btn-primary-bg)',
-                          color: 'var(--color-btn-primary-text)',
-                          fontWeight: '600',
-                          boxShadow: '0 2px 6px rgba(0, 0, 0, 0.3)',
-                          border: '2px solid rgba(255, 255, 255, 0.3)',
-                        }}
                       >
                         Invite Member
                       </button>

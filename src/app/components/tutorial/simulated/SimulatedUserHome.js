@@ -5,84 +5,69 @@ import { MOCK_GROUPS } from '../mockData';
 /**
  * Simulated UserHome page for the tutorial.
  * Visually mimics the real UserHomePage + GroupList layout with static mock data.
- * Uses the same CSS class names (.group-list-sidebar, .group-card, etc.) from GroupList.css
- * which is globally loaded. All buttons are inert -- no real functionality.
+ * Uses Tailwind classes matching the real GroupList component. All buttons are inert.
  */
 export default function SimulatedUserHome() {
   return (
     <div className="user-home-container flex flex-col md:flex-row gap-4 md:gap-6 p-4 md:p-6 min-h-[500px]">
       {/* Group list sidebar - matches real GroupList structure */}
       <div className="w-full md:w-auto md:flex-shrink-0 md:flex-[0_0_400px]">
-        <div className="group-list-sidebar" style={{ height: 'auto' }}>
-          <div className="sidebar-header">
-            <h2>Your Groups</h2>
+        <div className="w-full max-w-[400px] bg-surface-page rounded-card p-4 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
+            <h2 className="text-xl font-bold text-content-primary">Your Groups</h2>
             <button
               data-tutorial="create-group-btn"
-              className="create-group-btn"
+              className="btn btn-primary text-sm whitespace-nowrap"
               onClick={() => {}}
-              style={{
-                width: '100%',
-                padding: '0.75rem 1rem',
-                backgroundColor: 'var(--color-accent)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '1rem',
-                fontWeight: '500',
-                cursor: 'pointer',
-              }}
             >
               + Create New Group
             </button>
           </div>
 
-          <div className="groups-container">
+          <div className="flex-1 overflow-y-auto p-4 pb-8 flex flex-col gap-4">
             {MOCK_GROUPS.map((group) => (
               <div
                 key={group.id}
-                className="group-card"
-                style={{
-                  backgroundColor: group.color,
-                  cursor: 'default',
-                }}
+                className="bg-surface-card rounded-card p-4 pl-5 shadow-theme-sm cursor-default transition-all duration-200 border border-line border-l-4 border-l-accent relative"
+                style={{ backgroundColor: group.color }}
               >
-                <div style={{ position: 'relative', zIndex: 1 }}>
-                  <div className="group-header">
+                <div className="relative z-[1]">
+                  <div className="flex justify-between items-center mb-3">
                     <div className="flex items-center gap-2">
                       {group.profilePic && (
                         <div className="w-10 h-10 rounded-full bg-surface-elevated flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden">
                           <span>{group.profilePic}</span>
                         </div>
                       )}
-                      <h3 className="group-name" style={{ color: '#fff' }}>{group.name}</h3>
+                      <h3 className="text-[1.1rem] font-semibold flex-1 overflow-hidden text-ellipsis whitespace-nowrap" style={{ color: '#fff' }}>{group.name}</h3>
                     </div>
-                    <span className="player-count">{group.memberCount} players</span>
+                    <span className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-semibold ml-2">{group.memberCount} players</span>
                   </div>
 
-                  <div className="group-players">
+                  <div className="flex flex-wrap gap-2 mb-3">
                     {group.players.map((player, i) => (
-                      <span key={i} className="player-tag">{player}</span>
+                      <span key={i} className="bg-surface-card-hover text-content-secondary px-2 py-1 rounded-md text-[0.8rem] border border-line">{player}</span>
                     ))}
                   </div>
 
-                  <div className="last-game-info">
-                    <div className="last-game" style={{ color: '#fff' }}>
+                  <div className="border-t border-line pt-3">
+                    <div className="text-sm mb-1" style={{ color: '#fff' }}>
                       <strong style={{ color: '#fff' }}>Last Game:</strong> {group.lastGame}
                     </div>
-                    <div className="last-game-date" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                    <div className="text-xs" style={{ color: 'rgba(255,255,255,0.7)' }}>
                       {group.lastGameDate}
                     </div>
                   </div>
 
-                  <div className="flex gap-2 mt-3" style={{ position: 'relative', zIndex: 2 }}>
+                  <div className="flex gap-2 mt-3 relative z-[2]">
                     <button
-                      className="add-member-btn flex-1 btn btn-primary"
+                      className="btn btn-primary text-sm flex-1 shadow-md"
                       onClick={() => {}}
                     >
                       Invite Member
                     </button>
                     <button
-                      className="px-3 py-1 bg-surface-elevated text-content-primary rounded hover:bg-surface-card-hover text-sm flex-shrink-0"
+                      className="px-3 py-1 bg-surface-elevated text-content-primary rounded-btn hover:bg-surface-card-hover text-sm flex-shrink-0"
                       onClick={() => {}}
                     >
                       ⚙️

@@ -66,7 +66,8 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
 
     return (
         <div className="user-home-container flex flex-col md:flex-row gap-4 md:gap-6 p-4 md:p-6">
-            <div className="w-full md:w-auto md:flex-shrink-0 md:flex-[0_0_400px]">
+            <div className="w-full md:w-auto md:flex-shrink-0 md:flex-[0_0_400px] md:relative">
+                <div className="md:absolute md:inset-0">
                 <GroupList
                     onGroupSelect={handleGroupSelect}
                     onCreateGroup={handleCreateGroup}
@@ -74,6 +75,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     onGroupSettingsUpdated={handleGroupSettingsUpdated}
                     refreshTrigger={groupListRefreshKey}
                 />
+                </div>
             </div>
 
             {/* Hide calendar on mobile (smaller than md breakpoint) */}
