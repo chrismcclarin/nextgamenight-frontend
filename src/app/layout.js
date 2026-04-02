@@ -6,6 +6,7 @@ import FeedbackButton from './components/FeedbackButton'
 import { UserProvider } from '@auth0/nextjs-auth0/client';
 import TutorialProvider from './components/tutorial/TutorialProvider'
 import TimezoneProvider from './components/TimezoneProvider'
+import ThemeProvider from './components/ThemeProvider'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -16,19 +17,21 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <UserProvider>
         <body className={inter.className}>
-          <TimezoneProvider>
-            <TutorialProvider>
-              <Header />
-              <main className="min-h-screen">
-                {children}
-              </main>
-              <Footer />
-              <FeedbackButton />
-            </TutorialProvider>
-          </TimezoneProvider>
+          <ThemeProvider>
+            <TimezoneProvider>
+              <TutorialProvider>
+                <Header />
+                <main className="min-h-screen">
+                  {children}
+                </main>
+                <Footer />
+                <FeedbackButton />
+              </TutorialProvider>
+            </TimezoneProvider>
+          </ThemeProvider>
         </body>
       </UserProvider>
     </html>

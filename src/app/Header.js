@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useUser } from '@auth0/nextjs-auth0/client';
 import DieLogo from './components/DieLogo';
 import NotificationBell from './components/NotificationBell';
+import ThemeToggle from './components/ThemeToggle';
 
 function Header(){
     const { user, error, isLoading } = useUser();
@@ -61,6 +62,7 @@ function Header(){
                                 )}
                             </li>
                         ))}
+                        <li><ThemeToggle /></li>
                     </ul>
 
                     {/* Mobile menu button */}
@@ -114,6 +116,13 @@ function Header(){
                                 </div>
                             </div>
                         )}
+                        {/* Mobile theme toggle */}
+                        <div className="px-4 py-3 border-t border-emerald-800">
+                            <div className="flex items-center gap-3 text-white text-sm">
+                                <ThemeToggle />
+                                <span className="text-gray-300">Theme</span>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>
