@@ -122,7 +122,7 @@ export default function GroupPlanningPage() {
     };
 
     if (!user) {
-        return <div className="flex items-center justify-center min-h-screen">
+        return <div className="flex items-center justify-center min-h-screen text-content-secondary">
             {authLoading ? 'Loading...' : 'Redirecting to login...'}
         </div>;
     }
@@ -130,8 +130,8 @@ export default function GroupPlanningPage() {
     if (!groupId) {
         return (
             <div className="p-6 max-w-4xl mx-auto">
-                <p className="text-red-600">No group specified. Please navigate from a group page.</p>
-                <Link href="/" className="text-blue-600 hover:underline">Go to Home</Link>
+                <p className="text-status-error">No group specified. Please navigate from a group page.</p>
+                <Link href="/" className="text-content-link hover:underline">Go to Home</Link>
             </div>
         );
     }
@@ -145,28 +145,28 @@ export default function GroupPlanningPage() {
     return (
         <div className="p-3 md:p-6 max-w-7xl mx-auto">
             {/* Breadcrumbs */}
-            <nav className="mb-4 text-sm bg-gray-800 px-3 py-2 rounded-lg inline-block">
-                <Link href="/" className="text-blue-400 hover:text-blue-300 transition-colors font-medium">Home</Link>
-                <span className="text-gray-400 mx-2">{'>'}</span>
+            <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
+                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
+                <span className="text-content-muted mx-2">{'>'}</span>
                 {group && (
                     <>
-                        <Link href={`/groupHomePage?id=${groupId}`} className="text-blue-400 hover:text-blue-300 transition-colors font-medium max-w-[200px] truncate inline-block align-bottom">
+                        <Link href={`/groupHomePage?id=${groupId}`} className="text-content-link hover:text-content-link-hover transition-colors font-medium max-w-[200px] truncate inline-block align-bottom">
                             {group.name}
                         </Link>
-                        <span className="text-gray-400 mx-2">{'>'}</span>
+                        <span className="text-content-muted mx-2">{'>'}</span>
                     </>
                 )}
-                <span className="text-white font-semibold">Plan Game Session</span>
+                <span className="text-content-inverse font-semibold">Plan Game Session</span>
             </nav>
 
             {/* Header */}
-            <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
+            <div className="card p-4 md:p-6 mb-6">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div className="min-w-0">
-                        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 truncate">
+                        <h1 className="text-2xl md:text-3xl font-bold text-content-primary truncate">
                             {group ? `Plan Game Session - ${group.name}` : 'Plan Game Session'}
                         </h1>
-                        <p className="text-sm text-gray-600 mt-1">
+                        <p className="text-sm text-content-secondary mt-1">
                             Send availability polls and manage responses
                         </p>
                     </div>
@@ -174,9 +174,9 @@ export default function GroupPlanningPage() {
             </div>
 
             {/* Availability Polls + Response Dashboard in one card */}
-            <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
-                <h2 className="text-xl font-bold text-gray-900 mb-4">Availability Polls</h2>
-                <div className="bg-gray-50 rounded-lg p-4">
+            <div className="card p-4 md:p-6 mb-6">
+                <h2 className="text-xl font-bold text-content-primary mb-4">Availability Polls</h2>
+                <div className="bg-surface-page rounded-lg p-4">
                     <PromptScheduleSection
                         groupId={groupId}
                         group={group}
@@ -185,14 +185,14 @@ export default function GroupPlanningPage() {
                     />
 
                     {/* Response Dashboard */}
-                    <div className="mt-4 pt-4 border-t border-gray-200">
+                    <div className="mt-4 pt-4 border-t border-line">
                         {heatmapLoading ? (
-                            <p className="text-center text-gray-600 py-4">Loading poll data...</p>
+                            <p className="text-center text-content-secondary py-4">Loading poll data...</p>
                         ) : heatmapError ? (
-                            <p className="text-center text-red-600 py-4">{heatmapError}</p>
+                            <p className="text-center text-status-error py-4">{heatmapError}</p>
                         ) : heatmapPrompt ? (
                             <>
-                                <h3 className="text-lg font-semibold text-gray-900 mb-3">Poll Responses</h3>
+                                <h3 className="text-lg font-semibold text-content-primary mb-3">Poll Responses</h3>
                                 <ResponseDashboard
                                     promptId={heatmapPrompt.id}
                                     isAdmin={isAdmin}
@@ -202,7 +202,7 @@ export default function GroupPlanningPage() {
                                 />
                             </>
                         ) : (
-                            <p className="text-center text-gray-500 py-4">
+                            <p className="text-center text-content-muted py-4">
                                 No active availability poll found. Use the schedule manager above to send one.
                             </p>
                         )}

@@ -28,7 +28,7 @@ function GroupHomePage(){
     const [loading, setLoading] = useState(true);
     const [userRole, setUserRole] = useState(null);
     const [activeTab, setActiveTab] = useState('home');
-    
+
     // Calendar state
     const [groupEvents, setGroupEvents] = useState([]);
     const [calendarPrefillDate, setCalendarPrefillDate] = useState(null);
@@ -55,16 +55,16 @@ function GroupHomePage(){
         try {
             // Use groupsAPI.getGroupMembers which automatically includes Authorization header
             const data = await groupsAPI.getGroupMembers(Router);
-            
+
             // Ensure data is an array before processing
             if (!Array.isArray(data)) {
                 console.warn('Group members data is not an array:', data);
                 setUserList([]);
                 return;
             }
-            
+
             setUserList(data);
-            
+
             // Find current user's role
             const currentUserMember = data.find(m => m.user_id === user.sub);
             if (currentUserMember && currentUserMember.UserGroup) {
@@ -136,7 +136,7 @@ function GroupHomePage(){
     if (loading) {
         return (
             <div className="p-6 flex items-center justify-center min-h-screen">
-                <p className="text-gray-600">Loading games...</p>
+                <p className="text-content-secondary">Loading games...</p>
             </div>
         );
     }
@@ -145,14 +145,14 @@ function GroupHomePage(){
         <FriendshipStatusProvider>
         <div className="p-3 md:p-6">
             {/* Breadcrumbs */}
-            <nav className="mb-4 text-sm bg-gray-800 px-3 py-2 rounded-lg inline-block">
-                <Link href="/" className="text-blue-400 hover:text-blue-300 transition-colors font-medium">Home</Link>
-                <span className="text-gray-400 mx-2">{'>'}</span>
-                <span className="text-white font-semibold max-w-[200px] truncate inline-block align-bottom">{Group?.name || 'Group'}</span>
+            <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
+                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
+                <span className="text-content-muted mx-2">{'>'}</span>
+                <span className="text-content-inverse font-semibold max-w-[200px] truncate inline-block align-bottom">{Group?.name || 'Group'}</span>
             </nav>
 
             {/* Header */}
-            <div 
+            <div
                 className="mb-6 flex flex-col md:flex-row md:justify-between md:items-center gap-4 p-4 md:p-6 rounded-lg relative overflow-visible"
                 style={{
                     backgroundColor: Group?.background_color || '#1f2937',
@@ -175,7 +175,7 @@ function GroupHomePage(){
                 )}
                 <div className="flex items-center gap-3 md:gap-4 relative z-10 flex-1 min-w-0">
                     {Group?.profile_picture_url && (
-                        <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white flex items-center justify-center text-2xl md:text-4xl flex-shrink-0 overflow-hidden border-2 md:border-4 border-white shadow-lg">
+                        <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-card flex items-center justify-center text-2xl md:text-4xl flex-shrink-0 overflow-hidden border-2 md:border-4 border-surface-card shadow-theme-lg">
                             {Group.profile_picture_url.startsWith('http') || Group.profile_picture_url.startsWith('/') ? (
                                 <SafeImage
                                     src={Group.profile_picture_url}
@@ -210,7 +210,7 @@ function GroupHomePage(){
                     {(userRole === 'owner' || userRole === 'admin') && (
                         <button
                             onClick={() => setInviteModal(true)}
-                            className="bg-emerald-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-lg font-semibold hover:bg-emerald-700 transition-colors shadow-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white"
+                            className="btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-surface-card"
                             style={{
                                 boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.3)',
                             }}
@@ -221,7 +221,7 @@ function GroupHomePage(){
                     {userRole && userRole !== 'pending' && (
                         <button
                             onClick={() => setMemberModal(true)}
-                            className="bg-purple-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-lg font-semibold hover:bg-purple-700 transition-colors shadow-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white"
+                            className="bg-purple-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-btn font-semibold hover:bg-purple-700 transition-colors shadow-theme-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-surface-card"
                             style={{
                                 boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.3)',
                             }}
@@ -231,7 +231,7 @@ function GroupHomePage(){
                     )}
                     <Link
                         href={`/groupPlanning?group_id=${Router}`}
-                        className="bg-green-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors shadow-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white text-center"
+                        className="btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-surface-card text-center"
                         style={{
                             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.3)',
                         }}
@@ -241,7 +241,7 @@ function GroupHomePage(){
                     {userRole && userRole !== 'pending' && (
                         <button
                             onClick={toggleEventModal}
-                            className="bg-blue-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white"
+                            className="btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-surface-card"
                             style={{
                                 boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.3)',
                             }}
@@ -255,13 +255,13 @@ function GroupHomePage(){
             {userRole === 'pending' && <PendingMemberBanner groupId={Router} />}
 
             {/* Tab bar */}
-            <div className="flex border-b border-gray-200 mb-4">
+            <div className="flex border-b border-line mb-4">
                 <button
                     onClick={() => setActiveTab('home')}
                     className={`px-4 py-2 text-sm font-medium transition-colors ${
                         activeTab === 'home'
-                            ? 'text-blue-600 border-b-2 border-blue-600'
-                            : 'text-gray-500 hover:text-gray-700'
+                            ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
+                            : 'text-content-secondary hover:text-content-primary'
                     }`}
                 >
                     Home
@@ -270,8 +270,8 @@ function GroupHomePage(){
                     onClick={() => setActiveTab('library')}
                     className={`px-4 py-2 text-sm font-medium transition-colors ${
                         activeTab === 'library'
-                            ? 'text-blue-600 border-b-2 border-blue-600'
-                            : 'text-gray-500 hover:text-gray-700'
+                            ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
+                            : 'text-content-secondary hover:text-content-primary'
                     }`}
                 >
                     Library
@@ -323,7 +323,7 @@ function GroupHomePage(){
                 prefillTime={prefillTime}
                 userRole={userRole}
             />
-            
+
             <ManageMembers
                 group_id={Router}
                 user={user}

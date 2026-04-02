@@ -36,10 +36,10 @@ function GuestInviteButton({ groupId, email }) {
             disabled={status === 'sending' || status === 'sent'}
             className={`text-xs px-2 py-0.5 rounded border transition-colors ${
                 status === 'sent'
-                    ? 'text-emerald-600 border-emerald-300 bg-emerald-50'
+                    ? 'text-status-success border-status-success/30 bg-status-success/10'
                     : status === 'error'
-                        ? 'text-red-600 border-red-300 bg-red-50 hover:bg-red-100'
-                        : 'text-blue-600 border-blue-300 hover:bg-blue-50'
+                        ? 'text-status-error border-status-error/30 bg-status-error/10 hover:bg-status-error/20'
+                        : 'text-content-link border-content-link/30 hover:bg-content-link/10'
             }`}
             title={status === 'sent' ? 'Invite sent!' : 'Invite this guest to join the group'}
         >
@@ -460,8 +460,8 @@ export default function GameDetailPage() {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="text-center">
-                    <p className="text-gray-600 mb-4">No game selected</p>
-                    <Link href="/" className="text-blue-600 hover:underline">
+                    <p className="text-content-secondary mb-4">No game selected</p>
+                    <Link href="/" className="text-content-link hover:underline">
                         ← Back to Home
                     </Link>
                 </div>
@@ -473,25 +473,25 @@ export default function GameDetailPage() {
     if (!game_id && singleEvent) {
         return (
             <div className="p-6 max-w-6xl mx-auto">
-                <nav className="mb-4 text-sm bg-gray-800 px-3 py-2 rounded-lg inline-block">
-                    <Link href="/" className="text-blue-400 hover:text-blue-300 transition-colors font-medium">Home</Link>
+                <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
+                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
                     {group_id && (
                         <>
-                            <span className="text-gray-400 mx-2">{'>'}</span>
-                            <Link href={`/groupHomePage?id=${group_id}`} className="text-blue-400 hover:text-blue-300 transition-colors font-medium">Group</Link>
+                            <span className="text-content-muted mx-2">{'>'}</span>
+                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors font-medium">Group</Link>
                         </>
                     )}
-                    <span className="text-gray-400 mx-2">{'>'}</span>
-                    <span className="text-white font-semibold">{singleEvent.title || 'Game Night'}</span>
+                    <span className="text-content-muted mx-2">{'>'}</span>
+                    <span className="text-content-inverse font-semibold">{singleEvent.title || 'Game Night'}</span>
                 </nav>
 
-                <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <h1 className="text-3xl font-bold text-gray-900 mb-2">{singleEvent.title || 'Game Night'}</h1>
-                    <div className="text-gray-600 space-y-1">
+                <div className="card p-6 mb-6">
+                    <h1 className="text-3xl font-bold text-content-primary mb-2">{singleEvent.title || 'Game Night'}</h1>
+                    <div className="text-content-secondary space-y-1">
                         <p>{new Date(singleEvent.start_date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} at {new Date(singleEvent.start_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</p>
                         {singleEvent.duration_minutes && <p>Duration: {singleEvent.duration_minutes} minutes</p>}
                         {singleEvent.location && <p>Location: {singleEvent.location}</p>}
-                        {singleEvent.notes && <p className="mt-2 text-gray-500">{singleEvent.notes}</p>}
+                        {singleEvent.notes && <p className="mt-2 text-content-muted">{singleEvent.notes}</p>}
                     </div>
                 </div>
 
@@ -529,10 +529,10 @@ export default function GameDetailPage() {
 
                 {/* Recommended Games Section */}
                 {eventSuggestions.length > 0 && (
-                    <div className="bg-white rounded-lg shadow-md p-6 mt-6">
-                        <h2 className="text-lg font-semibold text-gray-900 mb-1">Recommended Games</h2>
+                    <div className="card p-6 mt-6">
+                        <h2 className="text-lg font-semibold text-content-primary mb-1">Recommended Games</h2>
                         {suggestionsPlayerCount && (
-                            <p className="text-sm text-gray-500 mb-4">
+                            <p className="text-sm text-content-muted mb-4">
                                 Games from your group that work for {suggestionsPlayerCount} players
                             </p>
                         )}
@@ -548,7 +548,7 @@ export default function GameDetailPage() {
                         <div className="mt-4 text-center">
                             <button
                                 onClick={() => router.push(`/gameSuggestions?eventId=${event_id}&groupId=${group_id}`)}
-                                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                className="text-content-link hover:text-content-link-hover text-sm font-medium"
                             >
                                 Browse all suggestions &rarr;
                             </button>
@@ -560,7 +560,7 @@ export default function GameDetailPage() {
                     <div className="mt-4 flex gap-2">
                         <button
                             onClick={() => { setEditingEvent(singleEvent); setEditEventModal(true); }}
-                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                            className="btn btn-primary px-4 py-2 text-sm"
                         >
                             Edit Event
                         </button>
@@ -584,7 +584,7 @@ export default function GameDetailPage() {
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
-                <p className="text-gray-600">Loading game details...</p>
+                <p className="text-content-secondary">Loading game details...</p>
             </div>
         );
     }
@@ -593,13 +593,13 @@ export default function GameDetailPage() {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="text-center">
-                    <p className="text-red-600 mb-4">Game not found</p>
+                    <p className="text-status-error mb-4">Game not found</p>
                     {group_id ? (
-                        <Link href={`/groupHomePage?id=${group_id}`} className="text-blue-600 hover:underline">
+                        <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:underline">
                             ← Back to Group
                         </Link>
                     ) : (
-                        <Link href="/" className="text-blue-600 hover:underline">
+                        <Link href="/" className="text-content-link hover:underline">
                             ← Back to Home
                         </Link>
                     )}
@@ -612,28 +612,28 @@ export default function GameDetailPage() {
         <FriendshipStatusProvider>
         <div className="p-6 max-w-6xl mx-auto">
             {/* Breadcrumbs */}
-            <nav className="mb-4 text-sm bg-gray-800 px-3 py-2 rounded-lg inline-block">
-                <Link href="/" className="text-blue-400 hover:text-blue-300 transition-colors font-medium">Home</Link>
+            <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
+                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
                 {group_id && (
                     <>
-                        <span className="text-gray-400 mx-2">{'>'}</span>
-                        <Link href={`/groupHomePage?id=${group_id}`} className="text-blue-400 hover:text-blue-300 transition-colors font-medium">Group</Link>
+                        <span className="text-content-muted mx-2">{'>'}</span>
+                        <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors font-medium">Group</Link>
                     </>
                 )}
-                <span className="text-gray-400 mx-2">{'>'}</span>
-                <span className="text-white font-semibold">{game.name}</span>
+                <span className="text-content-muted mx-2">{'>'}</span>
+                <span className="text-content-inverse font-semibold">{game.name}</span>
             </nav>
 
             {/* Game Details */}
-            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div className="card p-6 mb-6">
                 {game.is_custom ? (
                     /* Custom game: show available details */
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900 mb-2">{game.name}</h1>
+                        <h1 className="text-3xl font-bold text-content-primary mb-2">{game.name}</h1>
                         {game.theme && (
-                            <p className="text-gray-600 mb-2">Theme: {game.theme}</p>
+                            <p className="text-content-secondary mb-2">Theme: {game.theme}</p>
                         )}
-                        <p className="text-sm text-gray-500">Custom Game</p>
+                        <p className="text-sm text-content-muted">Custom Game</p>
                     </div>
                 ) : (
                     /* BGG game: show full detail view */
@@ -644,23 +644,23 @@ export default function GameDetailPage() {
                             className="w-48 h-48 object-cover rounded-lg"
                         />
                         <div className="flex-1">
-                            <h1 className="text-3xl font-bold text-gray-900 mb-2">{game.name}</h1>
+                            <h1 className="text-3xl font-bold text-content-primary mb-2">{game.name}</h1>
                             {game.year_published && (
-                                <p className="text-gray-600 mb-2">Published: {game.year_published}</p>
+                                <p className="text-content-secondary mb-2">Published: {game.year_published}</p>
                             )}
                             {game.theme && (
-                                <p className="text-gray-600 mb-2">Theme: {game.theme}</p>
+                                <p className="text-content-secondary mb-2">Theme: {game.theme}</p>
                             )}
                             {game.min_players && game.max_players && (
-                                <p className="text-gray-600 mb-2">
+                                <p className="text-content-secondary mb-2">
                                     Players: {game.min_players} - {game.max_players}
                                 </p>
                             )}
                             {game.playing_time && (
-                                <p className="text-gray-600 mb-2">Playing Time: {game.playing_time} minutes</p>
+                                <p className="text-content-secondary mb-2">Playing Time: {game.playing_time} minutes</p>
                             )}
                             {game.description && (
-                                <p className="text-gray-700 mt-4">{game.description}</p>
+                                <p className="text-content-secondary mt-4">{game.description}</p>
                             )}
                         </div>
                     </div>
@@ -668,14 +668,14 @@ export default function GameDetailPage() {
             </div>
 
             {/* Game Sessions */}
-            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div className="card p-6 mb-6">
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-2xl font-bold text-gray-900">
+                    <h2 className="text-2xl font-bold text-content-primary">
                         Game Sessions ({filteredEvents.length} of {events.length})
                     </h2>
                     <button
                         onClick={() => setShowFilters(!showFilters)}
-                        className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium flex items-center gap-2"
+                        className="btn btn-secondary px-4 py-2 text-sm font-medium flex items-center gap-2"
                     >
                         {showFilters ? (
                             <>
@@ -693,12 +693,12 @@ export default function GameDetailPage() {
                 
                 {/* Filters and Sorting */}
                 {showFilters && (
-                <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="mb-6 p-4 bg-surface-page rounded-lg border border-line">
                     <div className="flex justify-between items-center mb-3">
-                        <h3 className="font-semibold text-gray-900">Filter & Sort Sessions</h3>
+                        <h3 className="font-semibold text-content-primary">Filter & Sort Sessions</h3>
                         <button
                             onClick={clearFilters}
-                            className="text-sm text-blue-600 hover:text-blue-800"
+                            className="text-sm text-content-link hover:text-content-link-hover"
                         >
                             Clear All
                         </button>
@@ -707,110 +707,110 @@ export default function GameDetailPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {/* Date Range */}
                         <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">From Date</label>
+                            <label className="block text-xs font-medium text-content-secondary mb-1">From Date</label>
                             <input
                                 type="date"
                                 value={filters.dateFrom}
                                 onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
-                                className="w-full p-2 border rounded text-gray-900 bg-white text-sm"
+                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">To Date</label>
+                            <label className="block text-xs font-medium text-content-secondary mb-1">To Date</label>
                             <input
                                 type="date"
                                 value={filters.dateTo}
                                 onChange={(e) => handleFilterChange('dateTo', e.target.value)}
-                                className="w-full p-2 border rounded text-gray-900 bg-white text-sm"
+                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
                         
                         {/* Player Filters */}
                         <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Player Won</label>
+                            <label className="block text-xs font-medium text-content-secondary mb-1">Player Won</label>
                             <input
                                 type="text"
                                 value={filters.playerWon}
                                 onChange={(e) => handleFilterChange('playerWon', e.target.value)}
                                 placeholder="Player name..."
-                                className="w-full p-2 border rounded text-gray-900 bg-white text-sm"
+                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Player Picked</label>
+                            <label className="block text-xs font-medium text-content-secondary mb-1">Player Picked</label>
                             <input
                                 type="text"
                                 value={filters.playerPicked}
                                 onChange={(e) => handleFilterChange('playerPicked', e.target.value)}
                                 placeholder="Player name..."
-                                className="w-full p-2 border rounded text-gray-900 bg-white text-sm"
+                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Player Participated</label>
+                            <label className="block text-xs font-medium text-content-secondary mb-1">Player Participated</label>
                             <input
                                 type="text"
                                 value={filters.playerParticipated}
                                 onChange={(e) => handleFilterChange('playerParticipated', e.target.value)}
                                 placeholder="Player name..."
-                                className="w-full p-2 border rounded text-gray-900 bg-white text-sm"
+                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
                         
                         {/* Duration Filters */}
                         <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Min Duration (min)</label>
+                            <label className="block text-xs font-medium text-content-secondary mb-1">Min Duration (min)</label>
                             <input
                                 type="number"
                                 value={filters.minDuration}
                                 onChange={(e) => handleFilterChange('minDuration', e.target.value)}
                                 placeholder="0"
-                                className="w-full p-2 border rounded text-gray-900 bg-white text-sm"
+                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Max Duration (min)</label>
+                            <label className="block text-xs font-medium text-content-secondary mb-1">Max Duration (min)</label>
                             <input
                                 type="number"
                                 value={filters.maxDuration}
                                 onChange={(e) => handleFilterChange('maxDuration', e.target.value)}
                                 placeholder="∞"
-                                className="w-full p-2 border rounded text-gray-900 bg-white text-sm"
+                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
                         
                         {/* Player Count */}
                         <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Min Players</label>
+                            <label className="block text-xs font-medium text-content-secondary mb-1">Min Players</label>
                             <input
                                 type="number"
                                 value={filters.minPlayers}
                                 onChange={(e) => handleFilterChange('minPlayers', e.target.value)}
                                 placeholder="0"
-                                className="w-full p-2 border rounded text-gray-900 bg-white text-sm"
+                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
                         
                         {/* Max Score */}
                         <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Min Score</label>
+                            <label className="block text-xs font-medium text-content-secondary mb-1">Min Score</label>
                             <input
                                 type="number"
                                 step="0.01"
                                 value={filters.maxScore}
                                 onChange={(e) => handleFilterChange('maxScore', e.target.value)}
                                 placeholder="0"
-                                className="w-full p-2 border rounded text-gray-900 bg-white text-sm"
+                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
                         
                         {/* Sort By */}
                         <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Sort By</label>
+                            <label className="block text-xs font-medium text-content-secondary mb-1">Sort By</label>
                             <select
                                 value={filters.sortBy}
                                 onChange={(e) => handleFilterChange('sortBy', e.target.value)}
-                                className="w-full p-2 border rounded text-gray-900 bg-white text-sm"
+                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             >
                                 <option value="date_desc">Date (Newest First)</option>
                                 <option value="date_asc">Date (Oldest First)</option>
@@ -827,30 +827,30 @@ export default function GameDetailPage() {
                 {displayedEvents.length > 0 ? (
                     <div className="space-y-0">
                         {displayedEvents.map((event, index) => (
-                            <div key={event.id} className={`pl-4 py-2 ${index > 0 ? 'border-t-2 border-gray-600 pt-4 mt-4' : ''}`} style={{ borderLeft: '4px solid #3b82f6' }}>
+                            <div key={event.id} className={`pl-4 py-2 ${index > 0 ? 'border-t-2 border-line-strong pt-4 mt-4' : ''}`} style={{ borderLeft: '4px solid var(--color-btn-primary-bg)' }}>
                                 <div className="flex justify-between items-start gap-4">
                                     <div className="flex-1">
                                         <div className="flex items-start justify-between gap-4 mb-2">
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-3 mb-2">
-                                                    <p className="font-semibold text-gray-900">
+                                                    <p className="font-semibold text-content-primary">
                                                         {formatDate(event.start_date, timezone)}
                                                     </p>
                                                     {event.duration_minutes && (
-                                                        <span className="text-sm text-gray-600">
+                                                        <span className="text-sm text-content-secondary">
                                                             • {formatDuration(event.duration_minutes)}
                                                         </span>
                                                     )}
                                                 </div>
                                                 {event.is_group_win ? (
-                                                    <p className="text-sm text-green-600 font-semibold mb-1">
+                                                    <p className="text-sm text-status-success font-semibold mb-1">
                                                         ✓ Group Win
                                                     </p>
                                                 ) : event.Winner && (
-                                                    <p className="text-sm text-gray-600 mb-1">
-                                                        Winner: <span className="font-semibold text-blue-600">
+                                                    <p className="text-sm text-content-secondary mb-1">
+                                                        Winner: <span className="font-semibold text-content-link">
                                                             {event.Winner.is_custom ? (
-                                                                <>{event.Winner.username || event.Winner.name || 'Unknown'}<span className="text-xs text-gray-500 ml-1">(Guest)</span></>
+                                                                <>{event.Winner.username || event.Winner.name || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
                                                             ) : (
                                                                 <ClickableMemberName userId={event.Winner.user_id} username={event.Winner.username || 'Unknown'} />
                                                             )}
@@ -858,21 +858,21 @@ export default function GameDetailPage() {
                                                     </p>
                                                 )}
                                                 {event.comments && (
-                                                    <p className="text-gray-600 mt-1 text-sm italic">{event.comments}</p>
+                                                    <p className="text-content-secondary mt-1 text-sm italic">{event.comments}</p>
                                                 )}
                                             </div>
                                             {(userRole === 'owner' || userRole === 'admin') && (
                                                 <div className="flex gap-2 flex-shrink-0">
                                                     <button
                                                         onClick={() => handleEditEvent(event)}
-                                                        className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors"
+                                                        className="btn btn-primary px-3 py-1 text-sm"
                                                         title="Edit this session"
                                                     >
                                                         Edit
                                                     </button>
                                                     <button
                                                         onClick={() => handleDeleteEvent(event.id)}
-                                                        className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition-colors"
+                                                        className="btn btn-danger px-3 py-1 text-sm"
                                                         title="Delete this session"
                                                     >
                                                         Delete
@@ -881,15 +881,15 @@ export default function GameDetailPage() {
                                             )}
                                         </div>
                                         {event.EventParticipations && event.EventParticipations.length > 0 && (
-                                            <div className="text-sm mt-3 pt-2 border-t border-gray-200">
-                                                <p className="font-semibold mb-2 text-gray-900">Participants:</p>
+                                            <div className="text-sm mt-3 pt-2 border-t border-line">
+                                                <p className="font-semibold mb-2 text-content-primary">Participants:</p>
                                                 <div className="space-y-2">
                                                     {event.EventParticipations.map((participation, idx) => (
                                                         <div key={idx} className="flex items-center gap-2 flex-wrap">
-                                                            <span className="bg-gray-200 text-gray-800 px-3 py-1 rounded border border-gray-300 inline-flex items-center gap-2">
+                                                            <span className="bg-surface-card-hover text-content-primary px-3 py-1 rounded border border-line inline-flex items-center gap-2">
                                                                 <span className="font-medium">
                                                                     {participation.is_custom ? (
-                                                                        <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-gray-500 ml-1">(Guest)</span></>
+                                                                        <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
                                                                     ) : (
                                                                         <ClickableMemberName userId={participation.User?.user_id || participation.user_id} username={participation.User?.username || participation.username || 'Unknown'} />
                                                                     )}
@@ -900,7 +900,7 @@ export default function GameDetailPage() {
                                                                     </span>
                                                                 )}
                                                                 {participation.is_new_player && (
-                                                                    <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold">
+                                                                    <span className="text-xs bg-surface-card-hover text-content-link px-1.5 py-0.5 rounded font-semibold">
                                                                         New Player
                                                                     </span>
                                                                 )}
@@ -910,12 +910,12 @@ export default function GameDetailPage() {
                                                                     </span>
                                                                 )}
                                                                 {participation.score !== null && (
-                                                                    <span className="text-xs font-semibold text-gray-700">
+                                                                    <span className="text-xs font-semibold text-content-secondary">
                                                                         Score: {participation.score}
                                                                     </span>
                                                                 )}
                                                                 {participation.placement && (
-                                                                    <span className="text-xs text-gray-500">
+                                                                    <span className="text-xs text-content-muted">
                                                                         #{participation.placement}
                                                                     </span>
                                                                 )}
@@ -965,7 +965,7 @@ export default function GameDetailPage() {
                         ))}
                     </div>
                 ) : (
-                    <p className="text-gray-600">
+                    <p className="text-content-muted">
                         {events.length === 0 ? 'No game sessions recorded yet.' : 'No sessions match your filters.'}
                     </p>
                 )}
@@ -975,7 +975,7 @@ export default function GameDetailPage() {
                     <div className="mt-4 text-center">
                         <button
                             onClick={showMoreSessions}
-                            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                            className="btn btn-primary px-6 py-2"
                         >
                             Show {Math.min(3, filteredEvents.length - visibleSessions)} More Sessions
                         </button>
@@ -984,13 +984,13 @@ export default function GameDetailPage() {
             </div>
 
             {/* Reviews Section */}
-            <div className="bg-white rounded-lg shadow-md p-6">
+            <div className="card p-6">
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-2xl font-bold text-gray-900">Reviews ({reviews.length})</h2>
+                    <h2 className="text-2xl font-bold text-content-primary">Reviews ({reviews.length})</h2>
                     {user && !userReview && userRole && userRole !== 'pending' && (
                         <button
                             onClick={() => setShowReviewForm(true)}
-                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                            className="btn btn-primary px-4 py-2"
                         >
                             Add Review
                         </button>
@@ -999,17 +999,17 @@ export default function GameDetailPage() {
 
                 {/* User's Review (if exists) */}
                 {userReview && (
-                    <div className="border-l-4 border-blue-500 pl-4 py-2 mb-4 relative">
+                    <div className="border-l-4 border-btn-primary pl-4 py-2 mb-4 relative">
                         <div className="flex justify-between items-start mb-2">
                             <div>
-                                <p className="font-semibold text-gray-900">
+                                <p className="font-semibold text-content-primary">
                                     {userReview.User?.user_id ? (
                                         <ClickableMemberName userId={userReview.User.user_id} username={userReview.User.username || 'You'} />
                                     ) : (
                                         userReview.User?.username || 'You'
-                                    )} <span className="text-xs text-blue-600 ml-1">(You)</span>
+                                    )} <span className="text-xs text-content-link ml-1">(You)</span>
                                 </p>
-                                <p className="text-sm text-gray-600">
+                                <p className="text-sm text-content-secondary">
                                     {formatDate(userReview.createdAt, timezone)}
                                 </p>
                             </div>
@@ -1018,18 +1018,18 @@ export default function GameDetailPage() {
                                     {renderStars(userReview.rating)}
                                 </p>
                                 {userReview.is_recommended && (
-                                    <p className="text-sm text-green-600 font-semibold">✓ Recommended</p>
+                                    <p className="text-sm text-status-success font-semibold">✓ Recommended</p>
                                 )}
                                 <button
                                     onClick={() => setShowReviewForm(true)}
-                                    className="text-blue-500 hover:text-blue-700 text-sm mt-1"
+                                    className="text-content-link hover:text-content-link-hover text-sm mt-1"
                                 >
                                     Edit
                                 </button>
                             </div>
                         </div>
                         {userReview.review_text && (
-                            <p className="text-gray-700 mt-2">{userReview.review_text}</p>
+                            <p className="text-content-secondary mt-2">{userReview.review_text}</p>
                         )}
                     </div>
                 )}
@@ -1042,11 +1042,11 @@ export default function GameDetailPage() {
                             .map((review) => {
                                 const isUserReview = review.User?.id === user?.sub;
                                 return (
-                                    <div key={review.id} className="border-l-4 border-gray-300 pl-4 py-2">
+                                    <div key={review.id} className="border-l-4 border-line pl-4 py-2">
                                         <div className="flex justify-between items-start mb-2">
                                             <div>
                                                 <div className="flex items-center gap-2">
-                                                    <p className="font-semibold text-gray-900">
+                                                    <p className="font-semibold text-content-primary">
                                                         {review.User?.user_id ? (
                                                             <ClickableMemberName userId={review.User.user_id} username={review.User.username || 'Unknown'} />
                                                         ) : (
@@ -1054,12 +1054,12 @@ export default function GameDetailPage() {
                                                         )}
                                                     </p>
                                                     {isUserReview && (
-                                                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                                        <span className="text-xs bg-surface-card-hover text-content-link px-2 py-1 rounded">
                                                             You
                                                         </span>
                                                     )}
                                                 </div>
-                                                <p className="text-sm text-gray-600">
+                                                <p className="text-sm text-content-secondary">
                                                     {formatDate(review.createdAt, timezone)}
                                                 </p>
                                             </div>
@@ -1068,40 +1068,40 @@ export default function GameDetailPage() {
                                                     {renderStars(review.rating)}
                                                 </p>
                                                 {review.is_recommended && (
-                                                    <p className="text-sm text-green-600 font-semibold">✓ Recommended</p>
+                                                    <p className="text-sm text-status-success font-semibold">✓ Recommended</p>
                                                 )}
                                             </div>
                                         </div>
                                         {review.review_text && (
-                                            <p className="text-gray-700 mt-2">{review.review_text}</p>
+                                            <p className="text-content-secondary mt-2">{review.review_text}</p>
                                         )}
                                     </div>
                                 );
                             })}
                     </div>
                 ) : (
-                    <p className="text-gray-600">No reviews yet. Be the first to review this game!</p>
+                    <p className="text-content-muted">No reviews yet. Be the first to review this game!</p>
                 )}
             </div>
 
             {/* Review Modal */}
             {showReviewForm && (
-                <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50"
+                <div className="modal-overlay"
                      onClick={() => setShowReviewForm(false)}>
-                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md relative"
+                    <div className="modal-content w-full max-w-md relative"
                          onClick={(e) => e.stopPropagation()}>
                         <button
                             onClick={() => setShowReviewForm(false)}
-                            className="absolute top-3 right-3 text-gray-500 hover:text-gray-800 text-2xl"
+                            className="absolute top-3 right-3 text-content-muted hover:text-content-primary text-2xl"
                         >
                             &times;
                         </button>
-                        <h3 className="text-xl font-semibold mb-4 text-gray-900">
+                        <h3 className="text-xl font-semibold mb-4 text-content-primary">
                             {userReview ? 'Edit Your Review' : 'Write a Review'}
                         </h3>
                         <form onSubmit={handleReviewSubmit} className="space-y-4">
                             <div>
-                                <label htmlFor="rating" className="block text-sm font-medium text-gray-900 mb-1">
+                                <label htmlFor="rating" className="block text-sm font-medium text-content-primary mb-1">
                                     Rating (0-5, increments of 0.5)
                                 </label>
                                 <input
@@ -1112,12 +1112,12 @@ export default function GameDetailPage() {
                                     step="0.5"
                                     value={reviewForm.rating}
                                     onChange={(e) => setReviewForm({...reviewForm, rating: parseFloat(e.target.value)})}
-                                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                     required
                                 />
                             </div>
                             <div>
-                                <label htmlFor="review_text" className="block text-sm font-medium text-gray-900 mb-1">
+                                <label htmlFor="review_text" className="block text-sm font-medium text-content-primary mb-1">
                                     Review
                                 </label>
                                 <textarea
@@ -1125,7 +1125,7 @@ export default function GameDetailPage() {
                                     value={reviewForm.review_text}
                                     onChange={(e) => setReviewForm({...reviewForm, review_text: e.target.value})}
                                     rows="4"
-                                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                     placeholder="Share your thoughts about this game..."
                                 />
                             </div>
@@ -1137,13 +1137,13 @@ export default function GameDetailPage() {
                                     onChange={(e) => setReviewForm({...reviewForm, is_recommended: e.target.checked})}
                                     className="mr-2"
                                 />
-                                <label htmlFor="recommended" className="text-sm text-gray-700 cursor-pointer">
+                                <label htmlFor="recommended" className="text-sm text-content-secondary cursor-pointer">
                                     ✓ Mark as recommended (shows a "Recommended" badge on your review)
                                 </label>
                             </div>
                             <button
                                 type="submit"
-                                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                                className="btn btn-primary px-6 py-2"
                             >
                                 {userReview ? 'Update Review' : 'Submit Review'}
                             </button>

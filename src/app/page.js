@@ -56,7 +56,7 @@ function App(){
   if (error) {
     return (
       <div className="App flex items-center justify-center min-h-screen">
-        <div className="text-red-500">Error: {error.message}</div>
+        <div className="text-status-error">Error: {error.message}</div>
       </div>
     );
   }
