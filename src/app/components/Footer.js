@@ -8,7 +8,7 @@ export default function Footer() {
 
   return (
     <>
-      <footer className="bg-white border-t border-gray-200 py-4 mt-8">
+      <footer className="bg-surface-card border-t border-line py-4 mt-8">
         <div className="container mx-auto px-4">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             {/* BGG Logo */}
@@ -17,12 +17,12 @@ export default function Footer() {
             </div>
             
             {/* Links */}
-            <div className="flex items-center gap-4 text-sm text-gray-600">
-              <a href="/privacy" className="hover:text-gray-900 underline transition-colors">Privacy Policy</a>
-              <a href="/terms" className="hover:text-gray-900 underline transition-colors">Terms of Service</a>
+            <div className="flex items-center gap-4 text-sm text-content-secondary">
+              <a href="/privacy" className="hover:text-content-primary underline transition-colors">Privacy Policy</a>
+              <a href="/terms" className="hover:text-content-primary underline transition-colors">Terms of Service</a>
               <button
                 onClick={() => setShowFeedbackForm(true)}
-                className="hover:text-gray-900 underline transition-colors"
+                className="hover:text-content-primary underline transition-colors"
                 aria-label="Report bug or suggest feature"
               >
                 Report Bug
@@ -30,7 +30,7 @@ export default function Footer() {
             </div>
 
             {/* Copyright */}
-            <p className="text-sm text-gray-500 text-center md:text-right">
+            <p className="text-sm text-content-muted text-center md:text-right">
               © {new Date().getFullYear()} Next Game Night
             </p>
           </div>
