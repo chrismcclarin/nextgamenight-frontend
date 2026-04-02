@@ -10,6 +10,7 @@ import { formatDate } from '../../lib/dateUtils';
 import SafeImage from '../components/SafeImage';
 import { useTutorial } from '../components/tutorial/TutorialProvider';
 import { useTimezone } from '../components/TimezoneProvider';
+import { useTheme } from 'next-themes';
 
 const NOTIFICATION_TYPES = [
     { key: 'event_created', label: 'New Event', description: 'When a game session is scheduled' },
@@ -88,6 +89,8 @@ function Profile(){
 
     const { replayTutorial } = useTutorial();
     const { timezone, setTimezone } = useTimezone();
+    const { setTheme, resolvedTheme } = useTheme();
+    const [themeMounted, setThemeMounted] = useState(false);
 
     // Timezone picker state
     const [tzPickerOpen, setTzPickerOpen] = useState(false);
@@ -401,6 +404,9 @@ function Profile(){
             setCheckingCalendarStatus(false);
         }
     }, [user]);
+
+    // Theme mount state for hydration-safe rendering
+    useEffect(() => setThemeMounted(true), []);
 
     // Check for Google Calendar connection status from URL params (after OAuth redirect)
     // This must come AFTER checkGoogleCalendarStatus is defined
@@ -880,6 +886,44 @@ function Profile(){
                             )}
                         </div>
                     </div>
+                </div>
+
+                {/* Theme Setting */}
+                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
+                    <h2 className="text-lg font-bold text-gray-900 mb-1">Theme</h2>
+                    <p className="text-sm text-gray-500 mb-3">Choose your preferred appearance</p>
+                    {themeMounted ? (
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setTheme('light')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                                    resolvedTheme === 'light'
+                                        ? 'border-amber-500 bg-amber-50 font-semibold text-gray-900'
+                                        : 'border-gray-300 bg-white hover:bg-gray-50 text-gray-700'
+                                }`}
+                            >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                                </svg>
+                                Light
+                            </button>
+                            <button
+                                onClick={() => setTheme('dark')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                                    resolvedTheme === 'dark'
+                                        ? 'border-amber-500 bg-purple-900 font-semibold text-white'
+                                        : 'border-gray-300 bg-white hover:bg-gray-50 text-gray-700'
+                                }`}
+                            >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                                </svg>
+                                Dark
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="h-10 w-48 bg-gray-100 rounded-lg animate-pulse" />
+                    )}
                 </div>
 
                 {/* Timezone Setting */}
