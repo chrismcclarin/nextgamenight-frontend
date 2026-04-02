@@ -43,8 +43,8 @@ const generateEvents = (schedules) => {
         end: moment(date).add(1, 'hour').toDate(), // 1-hour duration for display
         resource: schedule, // Store full schedule for click handler
         style: {
-          backgroundColor: schedule.is_active ? '#3b82f6' : '#9ca3af',
-          borderColor: schedule.is_active ? '#2563eb' : '#6b7280',
+          backgroundColor: schedule.is_active ? 'var(--color-btn-primary-bg)' : 'var(--color-content-muted)',
+          borderColor: schedule.is_active ? 'var(--color-btn-primary-bg)' : 'var(--color-content-muted)',
         },
       });
     }
@@ -88,8 +88,8 @@ export default function ScheduleCalendar({ schedules = [], onSelectEvent }) {
   const eventStyleGetter = useCallback((event) => {
     return {
       style: {
-        backgroundColor: event.style?.backgroundColor || '#3b82f6',
-        borderColor: event.style?.borderColor || '#2563eb',
+        backgroundColor: event.style?.backgroundColor || 'var(--color-btn-primary-bg)',
+        borderColor: event.style?.borderColor || 'var(--color-btn-primary-bg)',
         borderRadius: '4px',
         opacity: 0.9,
         color: 'white',
@@ -100,16 +100,16 @@ export default function ScheduleCalendar({ schedules = [], onSelectEvent }) {
   }, []);
 
   return (
-    <div className="border border-gray-200 rounded-lg p-4 bg-white">
+    <div className="border border-line rounded-card p-4 bg-surface-card">
       {/* Legend */}
       <div className="flex items-center gap-4 mb-4 text-sm">
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded" style={{ backgroundColor: '#3b82f6' }}></div>
-          <span className="text-gray-700">Active</span>
+          <div className="w-4 h-4 rounded" style={{ backgroundColor: 'var(--color-btn-primary-bg)' }}></div>
+          <span className="text-content-secondary">Active</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded" style={{ backgroundColor: '#9ca3af' }}></div>
-          <span className="text-gray-700">Paused</span>
+          <div className="w-4 h-4 rounded" style={{ backgroundColor: 'var(--color-content-muted)' }}></div>
+          <span className="text-content-secondary">Paused</span>
         </div>
       </div>
 
@@ -142,7 +142,7 @@ export default function ScheduleCalendar({ schedules = [], onSelectEvent }) {
       {/* Empty state */}
       {events.length === 0 && (
         <div className="text-center py-8">
-          <p className="text-gray-500">No schedules to display</p>
+          <p className="text-content-muted">No schedules to display</p>
         </div>
       )}
     </div>

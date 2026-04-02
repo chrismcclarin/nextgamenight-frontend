@@ -114,19 +114,19 @@ export default function ScheduleForm({
   const selectedMemberIds = watch('selected_member_ids') || [];
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center" style={{ zIndex: 100 }}
+    <div className="modal-overlay" style={{ zIndex: 100 }}
          onClick={onCancel}>
-      <div className="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
+      <div className="modal-content p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
            onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">
+        <div className="modal-header mb-6">
+          <h2 className="text-2xl font-bold text-content-primary">
             {isEditMode ? 'Edit Schedule' : 'Create Schedule'}
           </h2>
           {onCancel && (
             <button
               onClick={onCancel}
-              className="text-gray-500 hover:text-gray-700 text-2xl"
+              className="text-content-muted hover:text-content-primary text-2xl"
               type="button"
             >
               &times;
@@ -137,12 +137,12 @@ export default function ScheduleForm({
         <form onSubmit={handleSubmit(onSubmit)}>
           {/* Day of Week */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-content-secondary mb-1">
               Day of Week
             </label>
             <select
               {...register('schedule_day_of_week', { valueAsNumber: true })}
-              className="w-full p-2 border border-gray-300 rounded-lg text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
             >
               {DAYS_OF_WEEK.map((day) => (
                 <option key={day.value} value={day.value}>
@@ -151,47 +151,47 @@ export default function ScheduleForm({
               ))}
             </select>
             {errors.schedule_day_of_week && (
-              <p className="text-red-500 text-sm mt-1">{errors.schedule_day_of_week.message}</p>
+              <p className="text-status-error text-sm mt-1">{errors.schedule_day_of_week.message}</p>
             )}
           </div>
 
           {/* Time */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-content-secondary mb-1">
               Time
             </label>
             <input
               type="time"
               {...register('schedule_time')}
-              className="w-full p-2 border border-gray-300 rounded-lg text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
             />
             {errors.schedule_time && (
-              <p className="text-red-500 text-sm mt-1">{errors.schedule_time.message}</p>
+              <p className="text-status-error text-sm mt-1">{errors.schedule_time.message}</p>
             )}
           </div>
 
           {/* Timezone */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-content-secondary mb-1">
               Timezone
             </label>
             <input
               type="text"
               {...register('schedule_timezone')}
               placeholder="America/New_York"
-              className="w-full p-2 border border-gray-300 rounded-lg text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-content-muted mt-1">
               IANA timezone format (detected: {userTimezone})
             </p>
             {errors.schedule_timezone && (
-              <p className="text-red-500 text-sm mt-1">{errors.schedule_timezone.message}</p>
+              <p className="text-status-error text-sm mt-1">{errors.schedule_timezone.message}</p>
             )}
           </div>
 
           {/* Response Deadline */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-content-secondary mb-1">
               Response Deadline (hours)
             </label>
             <input
@@ -199,24 +199,24 @@ export default function ScheduleForm({
               {...register('default_deadline_hours', { valueAsNumber: true })}
               min={1}
               max={336}
-              className="w-full p-2 border border-gray-300 rounded-lg text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-content-muted mt-1">
               How long members have to respond after prompt is sent (1-336 hours)
             </p>
             {errors.default_deadline_hours && (
-              <p className="text-red-500 text-sm mt-1">{errors.default_deadline_hours.message}</p>
+              <p className="text-status-error text-sm mt-1">{errors.default_deadline_hours.message}</p>
             )}
           </div>
 
           {/* Token Expiry */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-content-secondary mb-1">
               Magic Link Expiry
             </label>
             <select
               {...register('default_token_expiry_hours', { valueAsNumber: true })}
-              className="w-full p-2 border border-gray-300 rounded-lg text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
             >
               {TOKEN_EXPIRY_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -224,23 +224,23 @@ export default function ScheduleForm({
                 </option>
               ))}
             </select>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-content-muted mt-1">
               How long the one-click response link remains valid
             </p>
             {errors.default_token_expiry_hours && (
-              <p className="text-red-500 text-sm mt-1">{errors.default_token_expiry_hours.message}</p>
+              <p className="text-status-error text-sm mt-1">{errors.default_token_expiry_hours.message}</p>
             )}
           </div>
 
           {/* Game Selection */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-content-secondary mb-1">
               Game
             </label>
             <div className="flex items-center gap-2">
               <select
                 {...register('game_id')}
-                className="flex-1 p-2 border border-gray-300 rounded-lg text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
               >
                 <option value="">Game TBD</option>
                 {games.map((game) => (
@@ -253,7 +253,7 @@ export default function ScheduleForm({
                 <button
                   type="button"
                   onClick={() => setValue('game_id', '', { shouldValidate: true })}
-                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-2 text-content-muted hover:text-content-secondary hover:bg-surface-card-hover rounded-btn transition-colors"
                   title="Clear game selection"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -263,13 +263,13 @@ export default function ScheduleForm({
               )}
             </div>
             {errors.game_id && (
-              <p className="text-red-500 text-sm mt-1">{errors.game_id.message}</p>
+              <p className="text-status-error text-sm mt-1">{errors.game_id.message}</p>
             )}
           </div>
 
           {/* Min Participants */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-content-secondary mb-1">
               Minimum Participants (optional)
             </label>
             <input
@@ -280,38 +280,38 @@ export default function ScheduleForm({
               })}
               min={1}
               placeholder="Leave blank to use game minimum"
-              className="w-full p-2 border border-gray-300 rounded-lg text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-content-muted mt-1">
               Override the game&apos;s minimum player count for scheduling
             </p>
             {errors.min_participants && (
-              <p className="text-red-500 text-sm mt-1">{errors.min_participants.message}</p>
+              <p className="text-status-error text-sm mt-1">{errors.min_participants.message}</p>
             )}
           </div>
 
           {/* Template Name */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-content-secondary mb-1">
               Template Name
             </label>
             <input
               type="text"
               {...register('template_name')}
               placeholder="Auto-generated from settings"
-              className="w-full p-2 border border-gray-300 rounded-lg text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-content-muted mt-1">
               Name for this schedule template (auto-generated if left blank)
             </p>
             {errors.template_name && (
-              <p className="text-red-500 text-sm mt-1">{errors.template_name.message}</p>
+              <p className="text-status-error text-sm mt-1">{errors.template_name.message}</p>
             )}
           </div>
 
           {/* Member Selection */}
           {members.length > 0 && (
-            <div className="border-t border-gray-200 pt-4 mt-4" />
+            <div className="border-t border-line pt-4 mt-4" />
           )}
           {members.length > 0 && (
             <MemberSelector
@@ -331,25 +331,25 @@ export default function ScheduleForm({
 
           {/* Server Error */}
           {serverError && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-red-700 text-sm">{serverError}</p>
+            <div className="mb-4 p-3 bg-status-error/10 border border-status-error/30 rounded-btn">
+              <p className="text-status-error text-sm">{serverError}</p>
             </div>
           )}
 
           {/* Root Error (from setError) */}
           {errors.root && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-red-700 text-sm">{errors.root.message}</p>
+            <div className="mb-4 p-3 bg-status-error/10 border border-status-error/30 rounded-btn">
+              <p className="text-status-error text-sm">{errors.root.message}</p>
             </div>
           )}
 
           {/* Action Buttons */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+          <div className="flex justify-end gap-3 pt-4 border-t border-line">
             {onCancel && (
               <button
                 type="button"
                 onClick={onCancel}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                className="btn btn-secondary"
               >
                 Cancel
               </button>
@@ -357,7 +357,7 @@ export default function ScheduleForm({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting
                 ? 'Saving...'

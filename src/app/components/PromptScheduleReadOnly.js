@@ -39,29 +39,29 @@ export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
 
   return (
     <div>
-      <h3 className="text-lg font-semibold text-gray-900 mb-3">
+      <h3 className="text-lg font-semibold text-content-primary mb-3">
         Prompt Schedule ({activeCount})
       </h3>
 
       {loading && (
-        <p className="text-sm text-gray-500">Loading schedules...</p>
+        <p className="text-sm text-content-muted">Loading schedules...</p>
       )}
 
       {error && (
-        <p className="text-sm text-red-600">{error}</p>
+        <p className="text-sm text-status-error">{error}</p>
       )}
 
       {!loading && !error && schedules.length === 0 && (
-        <p className="text-sm text-gray-500">No schedules configured.</p>
+        <p className="text-sm text-content-muted">No schedules configured.</p>
       )}
 
       {!loading && !error && schedules.length > 0 && (
         <ul className="space-y-2 mb-4">
           {schedules.map(s => (
-            <li key={s.id} className="flex items-center gap-2 text-sm text-gray-700">
-              <span className={`w-2 h-2 rounded-full ${s.is_active ? 'bg-green-500' : 'bg-gray-300'}`} />
+            <li key={s.id} className="flex items-center gap-2 text-sm text-content-secondary">
+              <span className={`w-2 h-2 rounded-full ${s.is_active ? 'bg-status-success' : 'bg-surface-card-hover'}`} />
               <span>{s.name || 'Unnamed schedule'}</span>
-              {!s.is_active && <span className="text-gray-400 text-xs">(paused)</span>}
+              {!s.is_active && <span className="text-content-muted text-xs">(paused)</span>}
             </li>
           ))}
         </ul>
@@ -69,7 +69,7 @@ export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
 
       <a
         href={groupPageUrl}
-        className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+        className="text-content-link hover:text-content-link-hover text-sm font-medium"
       >
         Manage on group page &rarr;
       </a>

@@ -67,24 +67,24 @@ export default function PromptScheduleSection({ groupId, group, userRole, defaul
   // Determine the status badge
   const renderBadge = () => {
     if (loading) {
-      return <span className="text-xs text-gray-400">Loading...</span>;
+      return <span className="text-xs text-content-muted">Loading...</span>;
     }
     if (schedules.length === 0) {
       return (
-        <span className="bg-gray-100 text-gray-600 rounded-full px-2 py-0.5 text-xs font-medium">
+        <span className="bg-surface-card-hover text-content-secondary rounded-full px-2 py-0.5 text-xs font-medium">
           No schedules
         </span>
       );
     }
     if (activeCount === 0) {
       return (
-        <span className="bg-yellow-100 text-yellow-800 rounded-full px-2 py-0.5 text-xs font-medium">
+        <span className="bg-status-warning/10 text-status-warning rounded-full px-2 py-0.5 text-xs font-medium">
           All paused
         </span>
       );
     }
     return (
-      <span className="bg-green-100 text-green-800 rounded-full px-2 py-0.5 text-xs font-medium">
+      <span className="bg-status-success/10 text-status-success rounded-full px-2 py-0.5 text-xs font-medium">
         {activeCount} active
       </span>
     );
@@ -94,24 +94,24 @@ export default function PromptScheduleSection({ groupId, group, userRole, defaul
     <div>
       <div
         onClick={() => setIsExpanded(!isExpanded)}
-        className="p-3 cursor-pointer hover:bg-gray-50 rounded-lg transition-colors"
+        className="p-3 cursor-pointer hover:bg-surface-card-hover rounded-card transition-colors"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <svg
-              className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+              className={`w-4 h-4 text-content-muted transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-            <span className="font-medium text-gray-900">Prompt Schedule</span>
+            <span className="font-medium text-content-primary">Prompt Schedule</span>
           </div>
           {renderBadge()}
         </div>
         {!isExpanded && !loading && nextPromptDay && (
-          <p className="text-sm text-gray-500 mt-1 ml-6">
+          <p className="text-sm text-content-muted mt-1 ml-6">
             Next prompt: {nextPromptDay}
           </p>
         )}

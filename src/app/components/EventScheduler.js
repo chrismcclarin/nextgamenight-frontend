@@ -6,86 +6,7 @@ import { format, parse, startOfWeek, getDay, differenceInMinutes, parseISO, setH
 import { enUS } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
-// Custom styles to match app theme
-const calendarStyles = `
-  .rbc-calendar {
-    font-family: inherit;
-  }
-  .rbc-header {
-    border-bottom: 2px solid #e5e7eb;
-    padding: 8px;
-    font-weight: 600;
-    color: #1f2937;
-  }
-  .rbc-time-header {
-    border-bottom: 1px solid #e5e7eb;
-  }
-  .rbc-time-content {
-    border-top: 1px solid #e5e7eb;
-  }
-  .rbc-time-slot {
-    border-top: 1px solid #f3f4f6;
-  }
-  .rbc-day-slot .rbc-time-slot {
-    border-top: 1px solid #f3f4f6;
-  }
-  .rbc-today {
-    background-color: #eff6ff;
-  }
-  .rbc-off-range-bg {
-    background-color: #f9fafb;
-  }
-  .rbc-selected {
-    background-color: #dbeafe !important;
-  }
-  .rbc-slot-selection {
-    background-color: #bfdbfe;
-    opacity: 0.5;
-  }
-  .rbc-event {
-    border-radius: 4px;
-    padding: 2px 4px;
-  }
-  .rbc-event-content {
-    font-size: 0.875rem;
-    font-weight: 500;
-  }
-  .rbc-toolbar {
-    margin-bottom: 1rem;
-  }
-  .rbc-toolbar button {
-    color: #374151;
-    border: 1px solid #d1d5db;
-    background-color: white;
-    padding: 0.5rem 1rem;
-    border-radius: 0.375rem;
-  }
-  .rbc-toolbar button:hover {
-    background-color: #f3f4f6;
-  }
-  .rbc-toolbar button.rbc-active {
-    background-color: #3b82f6;
-    color: white;
-    border-color: #2563eb;
-  }
-  .rbc-time-view {
-    border: 1px solid #e5e7eb;
-  }
-  .rbc-time-header-gutter {
-    border-right: 1px solid #e5e7eb;
-  }
-  .rbc-day-bg {
-    border-right: 1px solid #e5e7eb;
-  }
-`;
-
-// Inject styles
-if (typeof document !== 'undefined') {
-  const styleSheet = document.createElement('style');
-  styleSheet.type = 'text/css';
-  styleSheet.innerText = calendarStyles;
-  document.head.appendChild(styleSheet);
-}
+// Calendar styling is handled by globals.css .rbc-* overrides (from design system Plan 01)
 
 const locales = {
   'en-US': enUS,
@@ -213,10 +134,11 @@ export default function EventScheduler({
     let bgColor = undefined;
     if (totalMembers > 0 && count > 0) {
       const ratio = count / totalMembers;
-      if (ratio <= 0.25) bgColor = '#dcfce7';       // green-100
-      else if (ratio <= 0.5) bgColor = '#bbf7d0';   // green-200
-      else if (ratio <= 0.75) bgColor = '#86efac';   // green-300
-      else bgColor = '#4ade80';                       // green-400
+      // Green availability gradient -- status indicator, intentionally green
+      if (ratio <= 0.25) bgColor = 'rgba(34, 197, 94, 0.15)';
+      else if (ratio <= 0.5) bgColor = 'rgba(34, 197, 94, 0.25)';
+      else if (ratio <= 0.75) bgColor = 'rgba(34, 197, 94, 0.4)';
+      else bgColor = 'rgba(34, 197, 94, 0.55)';
     }
 
     return {
@@ -249,7 +171,7 @@ export default function EventScheduler({
             top: '2px',
             right: '4px',
             fontSize: '10px',
-            color: '#15803d',
+            color: 'var(--color-status-success)',
             fontWeight: 600,
             pointerEvents: 'none',
             zIndex: 1,
@@ -263,7 +185,7 @@ export default function EventScheduler({
 
   return (
     <div className="space-y-4">
-      <div className="h-[600px] bg-white rounded-lg border border-gray-300 overflow-hidden">
+      <div className="h-[600px] bg-surface-card rounded-card border border-line overflow-hidden">
         <Calendar
           key={heatmapData ? 'heatmap-loaded' : 'heatmap-empty'}
           localizer={localizer}
@@ -282,12 +204,12 @@ export default function EventScheduler({
           className="h-full"
           style={{ height: '100%' }}
           eventPropGetter={(event) => {
-            // Style busy events differently (gray/red) vs selected time (blue)
+            // Style busy events differently (red) vs selected time (primary)
             const isBusy = event.resource?.isBusy;
             return {
               style: {
-                backgroundColor: isBusy ? '#ef4444' : '#3b82f6',
-                borderColor: isBusy ? '#dc2626' : '#2563eb',
+                backgroundColor: isBusy ? 'var(--color-status-error)' : 'var(--color-btn-primary-bg)',
+                borderColor: isBusy ? 'var(--color-status-error)' : 'var(--color-btn-primary-bg)',
                 color: 'white',
                 borderRadius: '4px',
                 padding: '4px 8px',
@@ -301,35 +223,35 @@ export default function EventScheduler({
       </div>
 
       {totalMembers > 0 && (
-        <div className="flex items-center gap-2 text-xs text-gray-500">
+        <div className="flex items-center gap-2 text-xs text-content-muted">
           <span>Availability:</span>
           <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#dcfce7' }} />
-            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#bbf7d0' }} />
-            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#86efac' }} />
-            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#4ade80' }} />
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'rgba(34, 197, 94, 0.15)' }} />
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'rgba(34, 197, 94, 0.25)' }} />
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'rgba(34, 197, 94, 0.4)' }} />
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'rgba(34, 197, 94, 0.55)' }} />
           </div>
           <span>More available</span>
-          <span className="text-gray-400 ml-1">(hover for names)</span>
+          <span className="text-content-muted ml-1">(hover for names)</span>
         </div>
       )}
 
       {selectedSlot && (
-        <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-          <p className="text-sm font-medium text-blue-900 mb-1">Selected Time:</p>
-          <p className="text-lg text-blue-700 font-semibold">
-            {format(selectedSlot.start, 'EEEE, MMMM d, h:mm a')} 
+        <div className="p-4 bg-surface-card-hover rounded-card border border-line-accent">
+          <p className="text-sm font-medium text-content-primary mb-1">Selected Time:</p>
+          <p className="text-lg text-accent font-semibold">
+            {format(selectedSlot.start, 'EEEE, MMMM d, h:mm a')}
             {' - '}
             {format(selectedSlot.end, 'h:mm a')}
             {' '}
-            <span className="text-blue-600">({formatDuration(selectedSlot.start, selectedSlot.end)})</span>
+            <span className="text-accent">({formatDuration(selectedSlot.start, selectedSlot.end)})</span>
           </p>
         </div>
       )}
 
       {!selectedSlot && (
-        <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-          <p className="text-sm text-gray-600">
+        <div className="p-4 bg-surface-page rounded-card border border-line">
+          <p className="text-sm text-content-secondary">
             Click and drag on the calendar to select a time slot for your event.
           </p>
         </div>

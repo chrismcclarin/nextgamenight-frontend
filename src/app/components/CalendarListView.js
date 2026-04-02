@@ -20,31 +20,31 @@ export default function CalendarListView({
       <div className="flex gap-2 mb-4">
         <button
           onClick={() => onNavigateMonth(-1)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="btn btn-primary"
         >
-          ← Previous Month
+          &larr; Previous Month
         </button>
         <div className="flex-1 text-center">
-          <h3 className="text-xl font-semibold text-gray-900">
+          <h3 className="text-xl font-semibold text-content-primary">
             {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
           </h3>
         </div>
         <button
           onClick={() => onNavigateMonth(1)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="btn btn-primary"
         >
-          Next Month →
+          Next Month &rarr;
         </button>
         <button
           onClick={onGoToday}
-          className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+          className="btn btn-secondary"
         >
           Today
         </button>
       </div>
 
       {sortedEvents.length === 0 ? (
-        <p className="text-gray-600 text-center py-8">No game sessions found.</p>
+        <p className="text-content-secondary text-center py-8">No game sessions found.</p>
       ) : (
         <div className="space-y-3">
           {sortedEvents.map(event => {
@@ -82,7 +82,7 @@ export default function CalendarListView({
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       {groupProfilePic && (
-                        <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl flex-shrink-0 overflow-hidden border-2 border-gray-300 shadow-sm">
+                        <div className="w-10 h-10 rounded-full bg-surface-card flex items-center justify-center text-xl flex-shrink-0 overflow-hidden border-2 border-line shadow-theme-sm">
                           {groupProfilePic.startsWith('http') || groupProfilePic.startsWith('/') ? (
                             <SafeImage
                               src={groupProfilePic}
@@ -138,12 +138,12 @@ export default function CalendarListView({
                         </p>
                       </div>
                       {!isPastEvent && (
-                        <span className="px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded ml-auto">
+                        <span className="px-2 py-0.5 bg-status-success/10 text-status-success text-xs rounded ml-auto">
                           Upcoming
                         </span>
                       )}
                     </div>
-                    <div className="flex gap-4 mt-2 text-sm text-gray-500">
+                    <div className="flex gap-4 mt-2 text-sm text-content-muted">
                       <span>{formatDate(event.start_date, timezone)}</span>
                       <span>{formatTime(event.start_date, timezone)}</span>
                       {event.duration_minutes && (

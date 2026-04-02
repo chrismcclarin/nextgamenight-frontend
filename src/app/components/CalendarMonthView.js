@@ -42,33 +42,33 @@ export default function CalendarMonthView({
       <div className="flex justify-between items-center mb-4">
         <button
           onClick={() => onNavigateMonth(-1)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="btn btn-primary"
         >
-          ← Previous
+          &larr; Previous
         </button>
         <div className="text-center">
-          <h3 className="text-xl font-semibold text-gray-900">
+          <h3 className="text-xl font-semibold text-content-primary">
             {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
           </h3>
           <button
             onClick={onGoToday}
-            className="text-sm text-blue-600 hover:text-blue-700 mt-1"
+            className="text-sm text-content-link hover:text-content-link-hover mt-1"
           >
             Go to Today
           </button>
         </div>
         <button
           onClick={() => onNavigateMonth(1)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="btn btn-primary"
         >
-          Next →
+          Next &rarr;
         </button>
       </div>
 
       {/* Calendar Grid */}
       <div className="grid grid-cols-7 gap-1 mb-4">
         {dayNames.map(day => (
-          <div key={day} className="text-center font-semibold text-gray-700 py-2 text-sm">
+          <div key={day} className="text-center font-semibold text-content-secondary py-2 text-sm">
             {day}
           </div>
         ))}
@@ -91,20 +91,20 @@ export default function CalendarMonthView({
                   onEmptyDayClick(dateStr);
                 }
               }}
-              className={`${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} border border-gray-200 rounded p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
-                !date ? 'bg-gray-50' :
-                isCurrentDay ? 'bg-blue-50 border-blue-300' :
-                variant === 'full' && isPastDate ? 'bg-gray-50' :
-                isEmpty && onEmptyDayClick ? 'bg-white hover:bg-blue-50 hover:border-blue-200 cursor-pointer transition-colors group' :
-                'bg-white'
+              className={`${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} border border-line rounded p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
+                !date ? 'bg-surface-page' :
+                isCurrentDay ? 'bg-surface-card-hover border-line-accent' :
+                variant === 'full' && isPastDate ? 'bg-surface-page' :
+                isEmpty && onEmptyDayClick ? 'bg-surface-card hover:bg-surface-card-hover hover:border-line-accent cursor-pointer transition-colors group' :
+                'bg-surface-card'
               }`}
             >
               {date && (
                 <>
                   <div className={`${variant === 'compact' ? 'text-xs' : 'text-sm'} font-medium mb-1 ${
-                    isCurrentDay ? 'text-blue-700' :
-                    variant === 'full' && isPastDate ? 'text-gray-400' :
-                    'text-gray-900'
+                    isCurrentDay ? 'text-accent' :
+                    variant === 'full' && isPastDate ? 'text-content-muted' :
+                    'text-content-primary'
                   }`}>
                     {date.getDate()}
                   </div>
@@ -118,7 +118,7 @@ export default function CalendarMonthView({
                           return (
                             <div
                               key={event.id}
-                              className="text-xs p-0.5 bg-blue-100 text-blue-800 rounded font-medium cursor-pointer hover:bg-blue-200 transition-colors"
+                              className="text-xs p-0.5 bg-surface-card-hover text-accent rounded font-medium cursor-pointer hover:bg-surface-elevated transition-colors"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onEventClick(event);
@@ -173,7 +173,7 @@ export default function CalendarMonthView({
                                       src={groupProfilePic}
                                       alt={event.Group?.name || ''}
                                       fallbackIcon="👥"
-                                      className="w-4 h-4 rounded-full object-cover border border-gray-300"
+                                      className="w-4 h-4 rounded-full object-cover border border-line"
                                     />
                                   ) : (
                                     <span className="text-sm">{groupProfilePic}</span>
@@ -212,7 +212,7 @@ export default function CalendarMonthView({
                             e.stopPropagation();
                             onShowDayModal({ date, events: dayEvents });
                           }}
-                          className="text-xs text-blue-600 hover:text-blue-700 hover:underline cursor-pointer font-medium"
+                          className="text-xs text-content-link hover:text-content-link-hover hover:underline cursor-pointer font-medium"
                           title={`Click to see all ${dayEvents.length} games on this day`}
                         >
                           +{dayEvents.length - 2} more
@@ -221,7 +221,7 @@ export default function CalendarMonthView({
                     </div>
                   ) : onEmptyDayClick ? (
                     <div className="flex items-center justify-center flex-1 opacity-0 group-hover:opacity-40 transition-opacity">
-                      <span className="text-2xl text-gray-400 select-none">+</span>
+                      <span className="text-2xl text-content-muted select-none">+</span>
                     </div>
                   ) : null}
                 </>

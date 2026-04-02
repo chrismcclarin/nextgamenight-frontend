@@ -127,13 +127,13 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
   };
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
-      <h3 className="font-medium text-gray-900">Upcoming Events</h3>
+    <div className="card p-4 mb-4">
+      <h3 className="font-medium text-content-primary">Upcoming Events</h3>
 
       {loading ? (
-        <p className="text-sm text-gray-400 mt-2">Loading...</p>
+        <p className="text-sm text-content-muted mt-2">Loading...</p>
       ) : upcomingEvents.length === 0 ? (
-        <p className="text-sm text-gray-500 mt-2">No upcoming events</p>
+        <p className="text-sm text-content-muted mt-2">No upcoming events</p>
       ) : (
         <div className="mt-2">
           {displayEvents.map(event => {
@@ -145,15 +145,15 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
               <div
                 key={event.id}
                 onClick={() => handleEventClick(event)}
-                className="hover:bg-gray-50 rounded py-1.5 px-2 cursor-pointer"
+                className="hover:bg-surface-card-hover rounded py-1.5 px-2 cursor-pointer"
               >
-                <span className="text-sm text-gray-700">{gameName}</span>
-                <span className="text-sm text-gray-400"> · </span>
-                <span className="text-sm text-gray-700">{dateTime}</span>
+                <span className="text-sm text-content-secondary">{gameName}</span>
+                <span className="text-sm text-content-muted"> · </span>
+                <span className="text-sm text-content-secondary">{dateTime}</span>
                 {showGroupName && groupName && (
                   <>
-                    <span className="text-sm text-gray-400"> · </span>
-                    <span className="text-sm text-gray-700">{groupName}</span>
+                    <span className="text-sm text-content-muted"> · </span>
+                    <span className="text-sm text-content-secondary">{groupName}</span>
                   </>
                 )}
               </div>
@@ -166,7 +166,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                 e.stopPropagation();
                 setExpanded(true);
               }}
-              className="text-sm text-blue-600 cursor-pointer mt-1 ml-2"
+              className="text-sm text-content-link cursor-pointer mt-1 ml-2"
             >
               + {overflowCount} more
             </button>
@@ -178,7 +178,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                 e.stopPropagation();
                 setExpanded(false);
               }}
-              className="text-sm text-blue-600 cursor-pointer mt-1 ml-2"
+              className="text-sm text-content-link cursor-pointer mt-1 ml-2"
             >
               Show less
             </button>

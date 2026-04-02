@@ -37,7 +37,7 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
   // Empty state
   if (!schedules || schedules.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-500">
+      <div className="text-center py-12 text-content-muted">
         <p className="text-lg">No schedules yet. Create one to start sending automated prompts.</p>
       </div>
     );
@@ -56,26 +56,26 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
         return (
           <div
             key={schedule.id}
-            className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow bg-white"
+            className="border border-line rounded-card p-4 hover:shadow-theme-md transition-shadow bg-surface-card"
           >
             <div className="flex items-start justify-between">
               {/* Left: Schedule info */}
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
-                  <h3 className="text-lg font-semibold text-gray-900">{scheduleName}</h3>
+                  <h3 className="text-lg font-semibold text-content-primary">{scheduleName}</h3>
                   {/* Status badge */}
                   {isActive ? (
-                    <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                    <span className="px-2 py-1 text-xs font-medium bg-status-success/10 text-status-success rounded-full">
                       Active
                     </span>
                   ) : (
-                    <span className="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
+                    <span className="px-2 py-1 text-xs font-medium bg-status-warning/10 text-status-warning rounded-full">
                       Paused
                     </span>
                   )}
                 </div>
 
-                <div className="space-y-1 text-sm text-gray-600">
+                <div className="space-y-1 text-sm text-content-secondary">
                   <p>
                     <span className="font-medium">When:</span> {dayName} at {timeFormatted}
                   </p>
@@ -100,7 +100,7 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
                 {/* Edit button */}
                 <button
                   onClick={() => onEdit?.(schedule)}
-                  className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                  className="btn btn-primary px-3 py-1.5 text-sm"
                   title="Edit schedule"
                 >
                   Edit
@@ -109,10 +109,10 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
                 {/* Pause/Resume toggle */}
                 <button
                   onClick={() => onToggle?.(schedule.id)}
-                  className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                  className={`px-3 py-1.5 text-sm rounded-btn transition-colors ${
                     isActive
-                      ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
-                      : 'bg-green-100 text-green-800 hover:bg-green-200'
+                      ? 'bg-status-warning/10 text-status-warning hover:bg-status-warning/20'
+                      : 'bg-status-success/10 text-status-success hover:bg-status-success/20'
                   }`}
                   title={isActive ? 'Pause schedule' : 'Resume schedule'}
                 >
@@ -122,7 +122,7 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
                 {/* Delete button */}
                 <button
                   onClick={() => handleDeleteClick(schedule)}
-                  className="px-3 py-1.5 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                  className="btn btn-danger px-3 py-1.5 text-sm"
                   title="Delete schedule"
                 >
                   Delete
@@ -132,20 +132,20 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
 
             {/* Delete Confirmation Dialog */}
             {deleteConfirm === schedule.id && (
-              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-red-900 font-medium mb-3">
+              <div className="mt-4 p-4 bg-status-error/10 border border-status-error/30 rounded-card">
+                <p className="text-status-error font-medium mb-3">
                   Delete {scheduleName}? This will stop sending prompts.
                 </p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleConfirmDelete(schedule.id)}
-                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                    className="btn btn-danger text-sm"
                   >
                     Confirm Delete
                   </button>
                   <button
                     onClick={handleCancelDelete}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm"
+                    className="btn btn-secondary text-sm"
                   >
                     Cancel
                   </button>

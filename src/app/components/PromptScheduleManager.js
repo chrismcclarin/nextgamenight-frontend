@@ -106,8 +106,8 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
     <>
       {/* Error message */}
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-red-700 text-sm">{error}</p>
+        <div className="mb-4 p-3 bg-status-error/10 border border-status-error/30 rounded-btn">
+          <p className="text-status-error text-sm">{error}</p>
         </div>
       )}
 
@@ -115,7 +115,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
       {canManageSchedules && !showForm && !loading && (
         <button
           onClick={handleCreate}
-          className="mb-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+          className="mb-4 btn btn-primary"
         >
           + New Schedule
         </button>
@@ -135,7 +135,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
       ) : loading ? (
         // Loading state
         <div className="text-center py-12">
-          <p className="text-gray-500">Loading schedules...</p>
+          <p className="text-content-muted">Loading schedules...</p>
         </div>
       ) : view === 'list' ? (
         // List view
@@ -156,8 +156,8 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
 
       {/* Permission notice for members */}
       {!canManageSchedules && !loading && (
-        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-blue-700 text-sm">
+        <div className="mt-4 p-3 bg-surface-card-hover border border-line-accent rounded-btn">
+          <p className="text-accent text-sm">
             You are viewing schedules as a member. Only group owners and admins can create or edit schedules.
           </p>
         </div>
@@ -172,20 +172,20 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
         <>
           <button
             onClick={() => setView('list')}
-            className={`px-4 py-2 rounded transition-colors ${
+            className={`px-4 py-2 rounded-btn transition-colors ${
               view === 'list'
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                ? 'bg-btn-primary text-btn-primary-text'
+                : 'bg-surface-card-hover text-content-secondary hover:text-content-primary'
             }`}
           >
             List
           </button>
           <button
             onClick={() => setView('calendar')}
-            className={`px-4 py-2 rounded transition-colors ${
+            className={`px-4 py-2 rounded-btn transition-colors ${
               view === 'calendar'
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                ? 'bg-btn-primary text-btn-primary-text'
+                : 'bg-surface-card-hover text-content-secondary hover:text-content-primary'
             }`}
           >
             Calendar
@@ -198,10 +198,10 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
   // Inline variant: no modal backdrop, rendered directly in page flow
   if (variant === 'inline') {
     return (
-      <div className="bg-white rounded-lg border border-gray-200">
+      <div className="bg-surface-card rounded-card border border-line">
         {/* Header without close button */}
-        <div className="flex justify-between items-center p-4 pb-3 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Prompt Schedules</h3>
+        <div className="flex justify-between items-center p-4 pb-3 border-b border-line">
+          <h3 className="text-lg font-semibold text-content-primary">Prompt Schedules</h3>
           <div className="flex items-center gap-2">
             {renderViewToggle()}
           </div>
@@ -216,11 +216,11 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
 
   // Modal variant (default): full-screen backdrop with centered card
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* Header - pinned above scrollable content */}
-        <div className="flex justify-between items-center p-6 pb-4 border-b border-gray-200 flex-shrink-0">
-          <h2 className="text-2xl font-bold text-gray-900">Prompt Schedules</h2>
+        <div className="modal-header p-6 pb-4 border-b border-line flex-shrink-0">
+          <h2 className="text-2xl font-bold text-content-primary">Prompt Schedules</h2>
 
           <div className="flex items-center gap-2">
             {renderViewToggle()}
@@ -229,7 +229,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
             {onClose && (
               <button
                 onClick={onClose}
-                className="text-gray-500 hover:text-gray-700 text-2xl ml-2"
+                className="text-content-muted hover:text-content-primary text-2xl ml-2"
                 type="button"
               >
                 &times;

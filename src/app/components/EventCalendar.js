@@ -83,21 +83,21 @@ export default function EventCalendar({
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <p className="text-gray-600">Loading calendar...</p>
+      <div className="card p-6">
+        <p className="text-content-secondary">Loading calendar...</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
+    <div className="card p-6">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">{title}</h2>
+        <h2 className="text-2xl font-bold text-content-primary">{title}</h2>
         {showListView && (
           <div className="flex gap-2">
             <button
               onClick={() => setViewMode(viewMode === 'month' ? 'list' : 'month')}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm"
+              className="btn btn-secondary text-sm"
             >
               {viewMode === 'month' ? 'List View' : 'Month View'}
             </button>
