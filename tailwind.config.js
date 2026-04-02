@@ -35,6 +35,8 @@ module.exports = {
           input: 'var(--color-bg-input)',
           nav: 'var(--color-bg-nav)',
           'nav-hover': 'var(--color-bg-nav-hover)',
+          header: 'var(--color-bg-header)',
+          'header-hover': 'var(--color-bg-header-hover)',
         },
         content: {
           primary: 'var(--color-text-primary)',
@@ -53,6 +55,7 @@ module.exports = {
           DEFAULT: 'var(--color-border)',
           strong: 'var(--color-border-strong)',
           accent: 'var(--color-border-accent)',
+          header: 'var(--color-border-header)',
         },
         btn: {
           'primary': 'var(--color-btn-primary-bg)',
@@ -67,7 +70,14 @@ module.exports = {
           error: 'var(--color-error)',
           warning: 'var(--color-warning)',
         },
+        focus: {
+          ring: 'var(--color-focus-ring)',
+        },
         cream: '#fef9ef',
+      },
+      borderRadius: {
+        'card': '12px',
+        'btn': '8px',
       },
       boxShadow: {
         'theme-sm': 'var(--shadow-sm)',
