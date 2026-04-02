@@ -504,7 +504,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 )}
                 {/* Start Date */}
                 <div>
-                  <label htmlFor="start_date" className="block text-sm font-medium mb-1 text-gray-900">
+                  <label htmlFor="start_date" className="block text-sm font-medium mb-1 text-content-primary">
                     Start Date & Time <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -519,7 +519,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
                 {/* Duration */}
                 <div>
-                  <label htmlFor="duration_minutes" className="block text-sm font-medium mb-1 text-gray-900">
+                  <label htmlFor="duration_minutes" className="block text-sm font-medium mb-1 text-content-primary">
                     Duration (minutes) <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -541,7 +541,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           {/* RSVP Deadline */}
           {newEvent.start_date && new Date(newEvent.start_date) > new Date() && (
             <div>
-              <label htmlFor="rsvp_deadline" className="block text-sm font-medium mb-1 text-gray-900">
+              <label htmlFor="rsvp_deadline" className="block text-sm font-medium mb-1 text-content-primary">
                 RSVP Deadline
               </label>
               <p className="text-xs text-content-muted mb-1">Required for game voting ballot</p>
@@ -569,7 +569,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
           {/* Participants Section */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-900">
+            <label className="block text-sm font-medium mb-2 text-content-primary">
               Participants <span className="text-red-500">*</span>
             </label>
             <div className="space-y-2 max-h-60 overflow-y-auto border border-line p-2 rounded bg-surface-input">
@@ -600,7 +600,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
           {/* Comments */}
           <div>
-            <label htmlFor="comments" className="block text-sm font-medium mb-1 text-gray-900">
+            <label htmlFor="comments" className="block text-sm font-medium mb-1 text-content-primary">
               Comments
             </label>
             <textarea

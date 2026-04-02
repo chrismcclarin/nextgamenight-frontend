@@ -153,7 +153,7 @@ export default function MergedHeatmap({
                 <div className="h-4 w-10 ml-auto bg-surface-elevated rounded animate-pulse" />
               </div>
               {Array.from({ length: 7 }).map((_, col) => (
-                <div key={`skel-${row}-${col}`} className="bg-white p-1">
+                <div key={`skel-${row}-${col}`} className="bg-surface-card p-1">
                   <div className="h-[44px] w-full bg-surface-page rounded animate-pulse" />
                 </div>
               ))}
