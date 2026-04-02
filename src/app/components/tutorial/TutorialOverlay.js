@@ -4,20 +4,20 @@ import { useState, useCallback, useEffect } from 'react';
 import { TourProvider, useTour } from '@reactour/tour';
 import WelcomeSlide from './WelcomeSlide';
 import DoneSlide from './DoneSlide';
-import { getTutorialSteps } from './steps';
+import { getTutorialSteps, STEP_TEXTS } from './steps';
 import SimulatedUserHome from './simulated/SimulatedUserHome';
 import SimulatedGroupHome from './simulated/SimulatedGroupHome';
 import SimulatedAvailability from './simulated/SimulatedAvailability';
 
 /**
  * Mapping from tour step index to the simulated page component to display.
- * Steps 0-1: SimulatedUserHome (create group + QR mention)
- * Steps 2-4: SimulatedGroupHome (event creation + plan session + prompt schedule)
- * Steps 5-6: SimulatedAvailability (heatmap view + interactive slots)
+ * Steps 0-1: SimulatedUserHome (create group + invite friends)
+ * Steps 2-6: SimulatedGroupHome (overview tab + library tab)
+ * Steps 7-9: SimulatedAvailability (heatmap + slots + prompt schedule)
  */
 function getPageForStep(stepIndex) {
   if (stepIndex <= 1) return SimulatedUserHome;
-  if (stepIndex <= 4) return SimulatedGroupHome;
+  if (stepIndex <= 6) return SimulatedGroupHome;
   return SimulatedAvailability;
 }
 
@@ -91,7 +91,10 @@ export default function TutorialOverlay({ onComplete }) {
         defaultOpen={false}
         showNavigation={true}
         showDots={false}
-        showBadge={false}
+        showBadge={true}
+        badgeContent={({ totalSteps, currentStep }) =>
+          `Step ${currentStep + 1} of ${totalSteps}`
+        }
         showCloseButton={false}
         disableInteraction={false}
         scrollSmooth={true}
@@ -111,6 +114,11 @@ export default function TutorialOverlay({ onComplete }) {
             display: 'block',
             rx: 8,
           }),
+          badge: (base) => ({
+            ...base,
+            fontSize: '11px',
+            fontWeight: 500,
+          }),
         }}
         onClickHighlighted={(e, clickProps) => {
           // Allow clicks on highlighted elements for interactive steps
@@ -118,6 +126,9 @@ export default function TutorialOverlay({ onComplete }) {
         }}
         nextButton={({ currentStep, stepsLength, setCurrentStep, setIsOpen }) => {
           const isLast = currentStep === stepsLength - 1;
+          const stepDef = STEP_TEXTS[currentStep];
+          const isActionStep = stepDef?.actionTriggered;
+
           return (
             <button
               onClick={() => {
@@ -128,9 +139,13 @@ export default function TutorialOverlay({ onComplete }) {
                   setCurrentStep((s) => Math.min(s + 1, stepsLength - 1));
                 }
               }}
-              className="text-sm font-medium text-accent hover:text-accent px-3 py-1"
+              className={`text-sm font-medium px-3 py-1 ${
+                isActionStep
+                  ? 'text-content-muted'
+                  : 'text-accent hover:text-accent'
+              }`}
             >
-              {isLast ? 'Done' : 'Next \u203A'}
+              {isLast ? 'Done' : isActionStep ? 'or tap Next \u203A' : 'Next \u203A'}
             </button>
           );
         }}

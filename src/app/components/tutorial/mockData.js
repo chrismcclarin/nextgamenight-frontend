@@ -45,6 +45,13 @@ export const MOCK_EVENTS = [
   { id: 2, title: 'Weekend Boardgames', game: 'Wingspan', date: 'Saturday 2pm', participants: ['Taylor', 'Alex'] },
 ];
 
+export const MOCK_LIBRARY_GAMES = [
+  { id: 1, name: 'Catan', owner: 'Alex', playerCount: '3-4', playTime: '90 min', imageEmoji: '\uD83C\uDFDD\uFE0F' },
+  { id: 2, name: 'Wingspan', owner: 'Jordan', playerCount: '1-5', playTime: '60 min', imageEmoji: '\uD83D\uDC26' },
+  { id: 3, name: 'Ticket to Ride', owner: 'Sam', playerCount: '2-5', playTime: '45 min', imageEmoji: '\uD83D\uDE82' },
+  { id: 4, name: 'Azul', owner: 'Taylor', playerCount: '2-4', playTime: '30 min', imageEmoji: '\uD83C\uDFA8' },
+];
+
 // Pre-filled heatmap data: 7 days x 6 time slots (4pm-10pm)
 export const MOCK_AVAILABILITY = {
   timeSlots: ['4:00 PM', '5:00 PM', '6:00 PM', '7:00 PM', '8:00 PM', '9:00 PM'],
