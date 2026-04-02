@@ -90,7 +90,7 @@ export default function GameSuggestionsPage() {
   if (authLoading || !user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-600">Loading...</p>
+        <p className="text-content-secondary">Loading...</p>
       </div>
     );
   }
@@ -100,30 +100,30 @@ export default function GameSuggestionsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-surface-page p-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-6">
           <button
             onClick={() => router.back()}
-            className="text-blue-600 hover:text-blue-800 text-sm mb-2 inline-block"
+            className="text-content-link hover:text-content-link-hover text-sm mb-2 inline-block"
           >
             &larr; Back
           </button>
-          <h1 className="text-2xl font-bold text-gray-900">Game Suggestions</h1>
+          <h1 className="text-2xl font-bold text-content-primary">Game Suggestions</h1>
           {playerCount && (
-            <p className="text-gray-500 mt-1">
+            <p className="text-content-muted mt-1">
               Games from your group&apos;s collections that work for {playerCount} players
             </p>
           )}
         </div>
 
         {/* Filter bar */}
-        <div className="bg-white rounded-lg p-4 shadow-sm mb-6">
+        <div className="card p-4 mb-6">
           <div className="flex flex-wrap items-center gap-4">
             {/* Play time filter */}
             <div className="flex items-center gap-2">
-              <label htmlFor="maxPlayTime" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+              <label htmlFor="maxPlayTime" className="text-sm font-medium text-content-secondary whitespace-nowrap">
                 Max play time (min)
               </label>
               <input
@@ -133,22 +133,22 @@ export default function GameSuggestionsPage() {
                 value={maxPlayTime}
                 onChange={(e) => setMaxPlayTime(e.target.value)}
                 placeholder="Any"
-                className="w-24 p-2 border rounded text-gray-900 bg-white text-sm"
+                className="w-24 p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
               />
             </div>
 
             {/* Complexity presets */}
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-700">Complexity:</span>
+              <span className="text-sm font-medium text-content-secondary">Complexity:</span>
               <div className="flex gap-1">
                 {COMPLEXITY_PRESETS.map((preset, idx) => (
                   <button
                     key={preset.label}
                     onClick={() => setComplexityIdx(idx)}
-                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                    className={`px-3 py-1 rounded-btn text-sm font-medium transition-colors ${
                       complexityIdx === idx
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        ? 'bg-btn-primary text-btn-primary-text'
+                        : 'btn btn-secondary'
                     }`}
                   >
                     {preset.label}
@@ -159,12 +159,12 @@ export default function GameSuggestionsPage() {
 
             {/* Sort dropdown */}
             <div className="flex items-center gap-2 ml-auto">
-              <label htmlFor="sort" className="text-sm font-medium text-gray-700">Sort:</label>
+              <label htmlFor="sort" className="text-sm font-medium text-content-secondary">Sort:</label>
               <select
                 id="sort"
                 value={sort}
                 onChange={(e) => setSort(e.target.value)}
-                className="p-2 border rounded text-gray-900 bg-white text-sm"
+                className="p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
               >
                 <option value="rating">Group Rating</option>
                 <option value="play_time">Play Time</option>
@@ -177,7 +177,7 @@ export default function GameSuggestionsPage() {
 
         {/* Results */}
         {loading ? (
-          <p className="text-gray-500 text-center py-12">Loading suggestions...</p>
+          <p className="text-content-muted text-center py-12">Loading suggestions...</p>
         ) : suggestions.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {suggestions.map((game) => (

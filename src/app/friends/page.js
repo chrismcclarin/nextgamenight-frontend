@@ -313,21 +313,21 @@ function FriendsPage() {
     // Loading / not logged in
     if (authLoading) {
         return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
+            <div className="min-h-screen bg-surface-page flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-btn-primary" />
             </div>
         );
     }
 
     if (!user) {
         return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+            <div className="min-h-screen bg-surface-page flex items-center justify-center">
                 <div className="text-center">
-                    <h1 className="text-2xl font-bold text-gray-900 mb-4">Friends</h1>
-                    <p className="text-gray-600 mb-6">Please log in to view your friends.</p>
+                    <h1 className="text-2xl font-bold text-content-primary mb-4">Friends</h1>
+                    <p className="text-content-secondary mb-6">Please log in to view your friends.</p>
                     <a
                         href="/api/auth/login"
-                        className="inline-block bg-emerald-600 text-white px-6 py-2 rounded-lg hover:bg-emerald-700 transition-colors"
+                        className="btn btn-primary px-6 py-2 inline-block"
                     >
                         Log In
                     </a>
@@ -343,26 +343,26 @@ function FriendsPage() {
     ];
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-surface-page">
             <div className="max-w-3xl mx-auto px-4 py-8">
-                <h1 className="text-3xl font-bold text-gray-900 mb-6">Friends</h1>
+                <h1 className="text-3xl font-bold text-content-primary mb-6">Friends</h1>
 
                 {/* Search Section */}
-                <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-                    <h2 className="text-lg font-semibold text-gray-900 mb-3">Add Friend</h2>
+                <div className="card p-6 mb-6">
+                    <h2 className="text-lg font-semibold text-content-primary mb-3">Add Friend</h2>
                     <form onSubmit={handleSearch} className="flex gap-3">
                         <input
                             type="email"
                             value={searchEmail}
                             onChange={(e) => setSearchEmail(e.target.value)}
                             placeholder="Enter friend's email address"
-                            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900"
+                            className="flex-1 px-4 py-2 border border-line rounded-btn focus:outline-none focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
                             required
                         />
                         <button
                             type="submit"
                             disabled={searching || !searchEmail.trim()}
-                            className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="btn btn-primary px-6 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {searching ? 'Searching...' : 'Search'}
                         </button>
@@ -370,26 +370,26 @@ function FriendsPage() {
 
                     {/* Search Result */}
                     {searching && (
-                        <div className="mt-4 flex items-center gap-2 text-gray-600">
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-600" />
+                        <div className="mt-4 flex items-center gap-2 text-content-secondary">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-btn-primary" />
                             <span>Searching...</span>
                         </div>
                     )}
 
                     {searchError && (
-                        <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                            <p className="text-gray-600">{searchError}</p>
+                        <div className="mt-4 p-3 bg-surface-page border border-line rounded-lg">
+                            <p className="text-content-secondary">{searchError}</p>
                         </div>
                     )}
 
                     {searchResult && !searching && (
-                        <div className="mt-4 p-4 border border-gray-200 rounded-lg flex items-center justify-between">
+                        <div className="mt-4 p-4 border border-line rounded-lg flex items-center justify-between">
                             <div>
-                                <p className="font-semibold text-gray-900">
+                                <p className="font-semibold text-content-primary">
                                     {searchResult.username || searchResult.email}
                                 </p>
                                 {searchResult.username && searchResult.email && (
-                                    <p className="text-sm text-gray-500">{searchResult.email}</p>
+                                    <p className="text-sm text-content-muted">{searchResult.email}</p>
                                 )}
                             </div>
                             <div>
@@ -400,25 +400,25 @@ function FriendsPage() {
                                     switch (action.type) {
                                         case 'self':
                                             return (
-                                                <span className="text-sm text-gray-500 italic">
+                                                <span className="text-sm text-content-muted italic">
                                                     {action.label}
                                                 </span>
                                             );
                                         case 'already-friends':
                                             return (
-                                                <span className="text-sm text-gray-500">
+                                                <span className="text-sm text-content-muted">
                                                     {action.label}
                                                 </span>
                                             );
                                         case 'pending':
                                             return (
-                                                <span className="text-sm text-gray-500">
+                                                <span className="text-sm text-content-muted">
                                                     {action.label}
                                                 </span>
                                             );
                                         case 'sent':
                                             return (
-                                                <span className="flex items-center gap-1 text-sm text-emerald-600 font-medium">
+                                                <span className="flex items-center gap-1 text-sm text-status-success font-medium">
                                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                                     </svg>
@@ -430,7 +430,7 @@ function FriendsPage() {
                                                 <button
                                                     onClick={() => handleSendRequest(searchResult.user_id)}
                                                     disabled={sendingRequest}
-                                                    className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                                                    className="btn btn-primary px-4 py-2 text-sm disabled:opacity-50"
                                                 >
                                                     {sendingRequest ? 'Sending...' : 'Send Request'}
                                                 </button>
@@ -445,7 +445,7 @@ function FriendsPage() {
                 </div>
 
                 {/* Tabs */}
-                <div className="border-b border-gray-200 mb-6">
+                <div className="border-b border-line mb-6">
                     <div className="flex gap-8">
                         {tabs.map(({ key, label, count }) => (
                             <button
@@ -453,16 +453,16 @@ function FriendsPage() {
                                 onClick={() => setActiveTab(key)}
                                 className={`pb-3 text-sm font-medium transition-colors relative ${
                                     activeTab === key
-                                        ? 'border-b-2 border-blue-600 text-blue-600'
-                                        : 'text-gray-600 hover:text-gray-900'
+                                        ? 'border-b-2 border-btn-primary text-btn-primary'
+                                        : 'text-content-secondary hover:text-content-primary'
                                 }`}
                             >
                                 {label}
                                 {count > 0 && (
                                     <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
                                         activeTab === key
-                                            ? 'bg-blue-100 text-blue-700'
-                                            : 'bg-gray-100 text-gray-600'
+                                            ? 'bg-surface-card-hover text-content-link'
+                                            : 'bg-surface-card-hover text-content-secondary'
                                     }`}>
                                         {count}
                                     </span>
@@ -476,31 +476,31 @@ function FriendsPage() {
                 {activeTab === 'friends' && (
                     <div>
                         {friendsError && (
-                            <p className="text-red-600 text-sm mb-4">{friendsError}</p>
+                            <p className="text-status-error text-sm mb-4">{friendsError}</p>
                         )}
                         {loadingFriends ? (
-                            <div className="flex items-center gap-2 text-gray-600 py-8 justify-center">
-                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600" />
+                            <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
+                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading friends...</span>
                             </div>
                         ) : friends.length === 0 ? (
                             <div className="text-center py-12">
-                                <p className="text-gray-500">No friends yet. Search for friends by email above!</p>
+                                <p className="text-content-muted">No friends yet. Search for friends by email above!</p>
                             </div>
                         ) : (
                             <div>
                                 {/* Group Invite Bulk Action Bar */}
                                 {userGroups.length > 0 && (
-                                    <div className="mb-4 p-4 bg-white border border-gray-200 rounded-lg">
+                                    <div className="mb-4 p-4 card">
                                         <div className="flex flex-wrap items-center gap-3">
-                                            <label htmlFor="group-invite-select" className="text-sm font-medium text-gray-700">
+                                            <label htmlFor="group-invite-select" className="text-sm font-medium text-content-secondary">
                                                 Invite to Group:
                                             </label>
                                             <select
                                                 id="group-invite-select"
                                                 value={selectedGroupId}
                                                 onChange={(e) => setSelectedGroupId(e.target.value)}
-                                                className="flex-1 min-w-[180px] max-w-xs px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                className="flex-1 min-w-[180px] max-w-xs px-3 py-2 border border-line rounded-btn text-sm text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
                                             >
                                                 <option value="" disabled>Select a group...</option>
                                                 {userGroups.map(group => (
@@ -512,7 +512,7 @@ function FriendsPage() {
                                             <button
                                                 onClick={handleBulkInvite}
                                                 disabled={!selectedGroupId || selectedFriends.size === 0 || bulkInviteLoading}
-                                                className="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                                className="btn btn-primary px-4 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                                             >
                                                 {bulkInviteLoading && (
                                                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
@@ -520,14 +520,14 @@ function FriendsPage() {
                                                 Invite to Group
                                             </button>
                                             {selectedFriends.size > 0 && (
-                                                <span className="text-sm text-gray-500">
+                                                <span className="text-sm text-content-muted">
                                                     {selectedFriends.size} selected
                                                 </span>
                                             )}
                                         </div>
                                         {groupMembersLoading && (
-                                            <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
-                                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-400" />
+                                            <div className="mt-2 flex items-center gap-2 text-xs text-content-muted">
+                                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-content-muted" />
                                                 <span>Loading group members...</span>
                                             </div>
                                         )}
@@ -535,10 +535,10 @@ function FriendsPage() {
                                         {bulkInviteResult && (
                                             <div className={`mt-3 p-3 rounded-lg text-sm font-medium ${
                                                 bulkInviteResult.failCount === 0
-                                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                    ? 'bg-status-success/10 text-status-success border border-status-success/20'
                                                     : bulkInviteResult.successCount > 0
-                                                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                        : 'bg-red-50 text-red-700 border border-red-200'
+                                                        ? 'bg-status-warning/10 text-status-warning border border-status-warning/20'
+                                                        : 'bg-status-error/10 text-status-error border border-status-error/20'
                                             }`}>
                                                 {bulkInviteResult.failCount === 0
                                                     ? `Invited ${bulkInviteResult.successCount} friend(s) to ${getSelectedGroupName()}!`
@@ -564,7 +564,7 @@ function FriendsPage() {
                                         return (
                                             <div
                                                 key={friendship.id}
-                                                className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
+                                                className="flex items-center justify-between p-4 border border-line rounded-card hover:bg-surface-card-hover"
                                             >
                                                 <div className="flex items-center gap-3 flex-1">
                                                     <input
@@ -572,28 +572,28 @@ function FriendsPage() {
                                                         checked={isInGroup || selectedFriends.has(friendUserId)}
                                                         disabled={checkboxDisabled}
                                                         onChange={() => toggleFriendSelection(friendUserId)}
-                                                        className={`h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 ${
+                                                        className={`h-4 w-4 rounded border-line text-btn-primary focus:ring-focus-ring ${
                                                             checkboxDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                                                         }`}
                                                     />
                                                     <div className="flex-1">
                                                         <div className="flex items-center gap-2">
-                                                            <p className="font-semibold text-gray-900">
+                                                            <p className="font-semibold text-content-primary">
                                                                 {friend.username || friend.email}
                                                             </p>
                                                             {isInGroup && (
-                                                                <span className="text-xs text-gray-400 italic">(already in group)</span>
+                                                                <span className="text-xs text-content-muted italic">(already in group)</span>
                                                             )}
                                                         </div>
                                                         {friend.email && friend.email !== friend.username && (
-                                                            <p className="text-sm text-gray-500 mt-0.5">{friend.email}</p>
+                                                            <p className="text-sm text-content-muted mt-0.5">{friend.email}</p>
                                                         )}
                                                     </div>
                                                 </div>
                                                 <button
                                                     onClick={() => handleRemove(friendship.id)}
                                                     disabled={actionLoading[friendship.id] === 'remove'}
-                                                    className="text-red-600 hover:text-red-700 text-sm font-medium transition-colors disabled:opacity-50"
+                                                    className="text-status-error hover:text-status-error/80 text-sm font-medium transition-colors disabled:opacity-50"
                                                 >
                                                     {actionLoading[friendship.id] === 'remove' ? 'Removing...' : 'Remove'}
                                                 </button>
@@ -610,16 +610,16 @@ function FriendsPage() {
                 {activeTab === 'requests' && (
                     <div>
                         {receivedError && (
-                            <p className="text-red-600 text-sm mb-4">{receivedError}</p>
+                            <p className="text-status-error text-sm mb-4">{receivedError}</p>
                         )}
                         {loadingReceived ? (
-                            <div className="flex items-center gap-2 text-gray-600 py-8 justify-center">
-                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600" />
+                            <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
+                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading requests...</span>
                             </div>
                         ) : receivedRequests.length === 0 ? (
                             <div className="text-center py-12">
-                                <p className="text-gray-500">No pending friend requests.</p>
+                                <p className="text-content-muted">No pending friend requests.</p>
                             </div>
                         ) : (
                             <div className="space-y-3">
@@ -630,28 +630,28 @@ function FriendsPage() {
                                     return (
                                         <div
                                             key={request.id}
-                                            className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
+                                            className="flex items-center justify-between p-4 border border-line rounded-card hover:bg-surface-card-hover"
                                         >
                                             <div className="flex-1">
-                                                <p className="font-semibold text-gray-900">
+                                                <p className="font-semibold text-content-primary">
                                                     {requester.username || requester.email}
                                                 </p>
                                                 {requester.email && requester.email !== requester.username && (
-                                                    <p className="text-sm text-gray-500 mt-0.5">{requester.email}</p>
+                                                    <p className="text-sm text-content-muted mt-0.5">{requester.email}</p>
                                                 )}
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <button
                                                     onClick={() => handleAccept(request.id)}
                                                     disabled={!!actionLoading[request.id]}
-                                                    className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                                                    className="btn btn-primary px-4 py-2 text-sm disabled:opacity-50"
                                                 >
                                                     {actionLoading[request.id] === 'accept' ? 'Accepting...' : 'Accept'}
                                                 </button>
                                                 <button
                                                     onClick={() => handleDecline(request.id)}
                                                     disabled={!!actionLoading[request.id]}
-                                                    className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50"
+                                                    className="btn btn-secondary px-4 py-2 text-sm disabled:opacity-50"
                                                 >
                                                     {actionLoading[request.id] === 'decline' ? 'Declining...' : 'Decline'}
                                                 </button>
@@ -668,16 +668,16 @@ function FriendsPage() {
                 {activeTab === 'sent' && (
                     <div>
                         {sentError && (
-                            <p className="text-red-600 text-sm mb-4">{sentError}</p>
+                            <p className="text-status-error text-sm mb-4">{sentError}</p>
                         )}
                         {loadingSent ? (
-                            <div className="flex items-center gap-2 text-gray-600 py-8 justify-center">
-                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600" />
+                            <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
+                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading sent requests...</span>
                             </div>
                         ) : sentRequests.length === 0 ? (
                             <div className="text-center py-12">
-                                <p className="text-gray-500">No sent friend requests.</p>
+                                <p className="text-content-muted">No sent friend requests.</p>
                             </div>
                         ) : (
                             <div className="space-y-3">
@@ -688,17 +688,17 @@ function FriendsPage() {
                                     return (
                                         <div
                                             key={request.id}
-                                            className="flex items-center justify-between p-4 border border-gray-200 rounded-lg"
+                                            className="flex items-center justify-between p-4 border border-line rounded-card"
                                         >
                                             <div className="flex-1">
-                                                <p className="font-semibold text-gray-900">
+                                                <p className="font-semibold text-content-primary">
                                                     {addressee.username || addressee.email}
                                                 </p>
                                                 {addressee.email && addressee.email !== addressee.username && (
-                                                    <p className="text-sm text-gray-500 mt-0.5">{addressee.email}</p>
+                                                    <p className="text-sm text-content-muted mt-0.5">{addressee.email}</p>
                                                 )}
                                             </div>
-                                            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                                            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-status-warning/10 text-status-warning border border-status-warning/30">
                                                 Pending
                                             </span>
                                         </div>

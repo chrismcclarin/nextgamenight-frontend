@@ -660,20 +660,20 @@ function Profile(){
     };
 
     if (isLoading) return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
-    if (error) return <div className="flex items-center justify-center min-h-screen text-red-500">{error.message}</div>;
+    if (error) return <div className="flex items-center justify-center min-h-screen text-status-error">{error.message}</div>;
 
     return (
         user && (
             <div className="p-3 md:p-6 max-w-4xl mx-auto">
                 {/* Breadcrumbs */}
-                <nav className="mb-4 text-sm bg-gray-800 px-3 py-2 rounded-lg inline-block">
-                    <Link href="/" className="text-blue-400 hover:text-blue-300 transition-colors font-medium">Home</Link>
-                    <span className="text-gray-400 mx-2">{'>'}</span>
-                    <span className="text-white font-semibold">Profile</span>
+                <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
+                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
+                    <span className="text-content-muted mx-2">{'>'}</span>
+                    <span className="text-content-inverse font-semibold">Profile</span>
                 </nav>
 
                 {/* Profile Header */}
-                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
+                <div className="card p-4 md:p-6 mb-6">
                     <div className="flex items-center gap-3 md:gap-4">
                         {user.picture && (
                             <img src={user.picture} alt={userData?.username || user.name} className="w-16 h-16 md:w-20 md:h-20 rounded-full flex-shrink-0" />
@@ -686,7 +686,7 @@ function Profile(){
                                         value={username}
                                         onChange={(e) => setUsername(e.target.value)}
                                         maxLength={50}
-                                        className="flex-1 px-3 py-2 border rounded text-gray-900 bg-white text-lg md:text-xl font-bold"
+                                        className="flex-1 px-3 py-2 border border-line rounded-btn text-content-primary bg-surface-input text-lg md:text-xl font-bold"
                                         placeholder="Enter username"
                                         autoFocus
                                     />
@@ -694,7 +694,7 @@ function Profile(){
                                         <button
                                             onClick={handleSaveUsername}
                                             disabled={savingUsername || !username.trim()}
-                                            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 text-sm whitespace-nowrap"
+                                            className="btn btn-primary px-4 py-2 text-sm whitespace-nowrap disabled:opacity-50"
                                         >
                                             {savingUsername ? 'Saving...' : 'Save'}
                                         </button>
@@ -704,30 +704,30 @@ function Profile(){
                                                 setUsername(userData?.username || user.name || user.email?.split('@')[0] || '');
                                             }}
                                             disabled={savingUsername}
-                                            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:bg-gray-400 text-sm whitespace-nowrap"
+                                            className="btn btn-secondary px-4 py-2 text-sm whitespace-nowrap disabled:opacity-50"
                                         >
                                             Cancel
                                         </button>
                                     </div>
-                                    <p className="text-xs text-gray-500">{username.length}/50</p>
+                                    <p className="text-xs text-content-muted">{username.length}/50</p>
                                 </div>
                             ) : (
                                 <div className="flex items-center gap-2">
-                                    <h1 className="text-xl md:text-2xl font-bold text-gray-900 truncate">
+                                    <h1 className="text-xl md:text-2xl font-bold text-content-primary truncate">
                                         {userData?.username || user.name}
                                     </h1>
                                     <button
                                         onClick={() => setEditingUsername(true)}
-                                        className="text-blue-600 hover:text-blue-700 text-sm md:text-base"
+                                        className="text-content-link hover:text-content-link-hover text-sm md:text-base"
                                         title="Edit username"
                                     >
                                         ✏️
                                     </button>
                                 </div>
                             )}
-                            <p className="text-sm md:text-base text-gray-600 truncate">{user.email}</p>
+                            <p className="text-sm md:text-base text-content-secondary truncate">{user.email}</p>
                             {userData?.username && userData.username !== user.name && (
-                                <p className="text-xs text-gray-500 mt-1">
+                                <p className="text-xs text-content-muted mt-1">
                                     Display name: {userData.username} (from Google: {user.name})
                                 </p>
                             )}
@@ -743,21 +743,21 @@ function Profile(){
                                                     value={phoneInput}
                                                     onChange={(e) => handlePhoneChange(e.target.value)}
                                                     placeholder="+1 555-123-4567"
-                                                    className={`w-full px-3 py-2 border rounded-lg text-sm ${
-                                                        phoneValidation.valid ? 'border-green-500' :
-                                                        phoneValidation.error ? 'border-red-500' :
-                                                        'border-gray-300'
+                                                    className={`w-full px-3 py-2 border rounded-btn text-sm bg-surface-input text-content-primary ${
+                                                        phoneValidation.valid ? 'border-status-success' :
+                                                        phoneValidation.error ? 'border-status-error' :
+                                                        'border-line'
                                                     }`}
                                                 />
                                                 {phoneValidation.valid && (
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-600">
+                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-status-success">
                                                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                                         </svg>
                                                     </span>
                                                 )}
                                                 {phoneValidation.error && (
-                                                    <p className="text-red-500 text-xs mt-1">{phoneValidation.error}</p>
+                                                    <p className="text-status-error text-xs mt-1">{phoneValidation.error}</p>
                                                 )}
                                             </div>
                                             <button
@@ -776,7 +776,7 @@ function Profile(){
                                                 type="tel"
                                                 value={phoneInput}
                                                 disabled
-                                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50"
+                                                className="flex-1 px-3 py-2 border border-line rounded-btn text-sm bg-surface-card-hover text-content-primary"
                                             />
                                             <button
                                                 disabled
@@ -789,7 +789,7 @@ function Profile(){
 
                                     {phoneState === 'verifying' && (
                                         <div>
-                                            <p className="text-sm text-gray-700 mb-2">
+                                            <p className="text-sm text-content-secondary mb-2">
                                                 Code sent to <span className="font-medium">{phoneValidation.formatted || phoneInput}</span>
                                             </p>
                                             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -799,7 +799,7 @@ function Profile(){
                                                     onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                                                     placeholder="Enter 6-digit code"
                                                     maxLength={6}
-                                                    className="w-32 px-3 py-2 border rounded-lg text-sm text-center tracking-widest"
+                                                    className="w-32 px-3 py-2 border border-line rounded-btn text-sm text-center tracking-widest bg-surface-input text-content-primary"
                                                 />
                                                 <button
                                                     onClick={handleVerifyCode}
@@ -811,14 +811,14 @@ function Profile(){
                                                 <button
                                                     onClick={handleResendCode}
                                                     disabled={resendCooldown > 0}
-                                                    className="text-sm text-indigo-600 hover:text-indigo-700 disabled:text-gray-400 whitespace-nowrap"
+                                                    className="text-sm text-indigo-600 hover:text-indigo-700 disabled:text-content-muted whitespace-nowrap"
                                                 >
                                                     {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
                                                 </button>
                                             </div>
                                             <button
                                                 onClick={handleChangeNumber}
-                                                className="text-sm text-gray-500 hover:text-gray-700 mt-1"
+                                                className="text-sm text-content-muted hover:text-content-secondary mt-1"
                                             >
                                                 Change number
                                             </button>
@@ -827,15 +827,15 @@ function Profile(){
 
                                     {phoneState === 'verified' && (
                                         <div className="flex items-center gap-2">
-                                            <span className="text-green-600">
+                                            <span className="text-status-success">
                                                 <svg className="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                                 </svg>
                                             </span>
-                                            <span className="text-sm text-green-700 font-medium">Phone verified</span>
+                                            <span className="text-sm text-status-success font-medium">Phone verified</span>
                                             <button
                                                 onClick={handleChangeNumber}
-                                                className="text-sm text-gray-500 hover:text-gray-700 underline ml-2"
+                                                className="text-sm text-content-muted hover:text-content-secondary underline ml-2"
                                             >
                                                 Change number
                                             </button>
@@ -843,7 +843,7 @@ function Profile(){
                                     )}
 
                                     {phoneError && (
-                                        <p className="text-red-500 text-xs mt-1">{phoneError}</p>
+                                        <p className="text-status-error text-xs mt-1">{phoneError}</p>
                                     )}
                                 </div>
                             )}
@@ -851,29 +851,29 @@ function Profile(){
                     </div>
 
                     {/* Google Calendar Connection */}
-                    <div className="mt-4 pt-4 border-t border-gray-200">
+                    <div className="mt-4 pt-4 border-t border-line">
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                             <div>
-                                <h3 className="text-sm font-semibold text-gray-900 mb-1">Google Calendar Integration</h3>
-                                <p className="text-xs text-gray-600">
+                                <h3 className="text-sm font-semibold text-content-primary mb-1">Google Calendar Integration</h3>
+                                <p className="text-xs text-content-secondary">
                                     {googleCalendarConnected 
                                         ? 'Connected - Future game events will be automatically added to your calendar'
                                         : 'Connect your Google Calendar to automatically add future game events'}
                                 </p>
                             </div>
                             {checkingCalendarStatus ? (
-                                <div className="text-sm text-gray-500">Checking...</div>
+                                <div className="text-sm text-content-muted">Checking...</div>
                             ) : googleCalendarConnected ? (
                                 <button
                                     onClick={handleDisconnectGoogleCalendar}
-                                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm whitespace-nowrap"
+                                    className="btn btn-danger px-4 py-2 text-sm whitespace-nowrap"
                                 >
                                     Disconnect Calendar
                                 </button>
                             ) : (
                                 <button
                                     onClick={handleConnectGoogleCalendar}
-                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm whitespace-nowrap flex items-center gap-2"
+                                    className="btn btn-primary px-4 py-2 text-sm whitespace-nowrap flex items-center gap-2"
                                 >
                                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                                         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -889,17 +889,17 @@ function Profile(){
                 </div>
 
                 {/* Theme Setting */}
-                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
-                    <h2 className="text-lg font-bold text-gray-900 mb-1">Theme</h2>
-                    <p className="text-sm text-gray-500 mb-3">Choose your preferred appearance</p>
+                <div className="card p-4 md:p-6 mb-6">
+                    <h2 className="text-lg font-bold text-content-primary mb-1">Theme</h2>
+                    <p className="text-sm text-content-muted mb-3">Choose your preferred appearance</p>
                     {themeMounted ? (
                         <div className="flex gap-3">
                             <button
                                 onClick={() => setTheme('light')}
                                 className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
                                     resolvedTheme === 'light'
-                                        ? 'border-amber-500 bg-amber-50 font-semibold text-gray-900'
-                                        : 'border-gray-300 bg-white hover:bg-gray-50 text-gray-700'
+                                        ? 'border-amber-500 bg-amber-50 font-semibold text-content-primary'
+                                        : 'border-line bg-surface-card hover:bg-surface-card-hover text-content-secondary'
                                 }`}
                             >
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -912,7 +912,7 @@ function Profile(){
                                 className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
                                     resolvedTheme === 'dark'
                                         ? 'border-amber-500 bg-purple-900 font-semibold text-white'
-                                        : 'border-gray-300 bg-white hover:bg-gray-50 text-gray-700'
+                                        : 'border-line bg-surface-card hover:bg-surface-card-hover text-content-secondary'
                                 }`}
                             >
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -922,62 +922,62 @@ function Profile(){
                             </button>
                         </div>
                     ) : (
-                        <div className="h-10 w-48 bg-gray-100 rounded-lg animate-pulse" />
+                        <div className="h-10 w-48 bg-surface-card-hover rounded-lg animate-pulse" />
                     )}
                 </div>
 
                 {/* Timezone Setting */}
-                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
-                    <h2 className="text-lg font-bold text-gray-900 mb-1">Timezone</h2>
-                    <p className="text-sm text-gray-600 mb-3">All event times and schedules use this timezone</p>
+                <div className="card p-4 md:p-6 mb-6">
+                    <h2 className="text-lg font-bold text-content-primary mb-1">Timezone</h2>
+                    <p className="text-sm text-content-secondary mb-3">All event times and schedules use this timezone</p>
                     <div className="relative">
                         <button
                             onClick={() => setTzPickerOpen(!tzPickerOpen)}
-                            className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white hover:border-blue-400 transition-colors"
+                            className="w-full flex items-center justify-between px-3 py-2 border border-line rounded-btn text-sm text-content-primary bg-surface-input hover:border-line-accent transition-colors"
                         >
                             <span>
                                 {timezone ? timezone.replace(/_/g, ' ') : 'Select timezone'}
-                                {currentTzAbbr() && <span className="text-gray-500 ml-2">({currentTzAbbr()})</span>}
+                                {currentTzAbbr() && <span className="text-content-muted ml-2">({currentTzAbbr()})</span>}
                             </span>
-                            <svg className={`w-4 h-4 text-gray-500 transition-transform ${tzPickerOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className={`w-4 h-4 text-content-muted transition-transform ${tzPickerOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                             </svg>
                         </button>
 
                         {tzPickerOpen && (
-                            <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg">
-                                <div className="p-2 border-b border-gray-200">
+                            <div className="absolute z-50 mt-1 w-full bg-surface-card border border-line rounded-card shadow-theme-lg">
+                                <div className="p-2 border-b border-line">
                                     <input
                                         type="text"
                                         value={tzSearch}
                                         onChange={(e) => setTzSearch(e.target.value)}
                                         placeholder="Search timezones..."
-                                        className="w-full px-3 py-2 border border-gray-300 rounded text-sm text-gray-900 bg-white focus:outline-none focus:border-blue-500"
+                                        className="w-full px-3 py-2 border border-line rounded-btn text-sm text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
                                         autoFocus
                                     />
                                 </div>
                                 <div className="max-h-64 overflow-y-auto">
                                     {Object.entries(groupedTimezones()).map(([region, zones]) => (
                                         <div key={region}>
-                                            <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 bg-gray-50 sticky top-0">
+                                            <div className="px-3 py-1.5 text-xs font-semibold text-content-muted bg-surface-page sticky top-0">
                                                 {region}
                                             </div>
                                             {zones.map(tz => (
                                                 <button
                                                     key={tz.value}
                                                     onClick={() => handleTimezoneSelect(tz.value)}
-                                                    className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition-colors ${
-                                                        tz.value === timezone ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-900'
+                                                    className={`w-full text-left px-3 py-2 text-sm hover:bg-surface-card-hover transition-colors ${
+                                                        tz.value === timezone ? 'bg-surface-card-hover text-content-link font-medium' : 'text-content-primary'
                                                     }`}
                                                 >
                                                     <span>{tz.value.replace(/_/g, ' ')}</span>
-                                                    {tz.abbr && <span className="text-gray-500 ml-1">({tz.abbr}, {tz.offset})</span>}
+                                                    {tz.abbr && <span className="text-content-muted ml-1">({tz.abbr}, {tz.offset})</span>}
                                                 </button>
                                             ))}
                                         </div>
                                     ))}
                                     {filteredTimezones().length === 0 && (
-                                        <div className="px-3 py-4 text-sm text-gray-500 text-center">No timezones match your search</div>
+                                        <div className="px-3 py-4 text-sm text-content-muted text-center">No timezones match your search</div>
                                     )}
                                 </div>
                             </div>
@@ -987,28 +987,28 @@ function Profile(){
 
                 {/* Notification Preferences Section */}
                 {preferences && (
-                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
-                    <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-1">Notification Preferences</h2>
-                    <p className="text-sm text-gray-600 mb-4">Choose how you receive notifications</p>
+                <div className="card p-4 md:p-6 mb-6">
+                    <h2 className="text-xl md:text-2xl font-bold text-content-primary mb-1">Notification Preferences</h2>
+                    <p className="text-sm text-content-secondary mb-4">Choose how you receive notifications</p>
 
                     {/* Preferences Matrix */}
                     <div className="space-y-0">
                         {/* Header row */}
-                        <div className="flex items-center py-2 border-b border-gray-200">
-                            <div className="flex-1 text-sm font-medium text-gray-500">Notification Type</div>
-                            <div className="w-16 text-center text-sm font-medium text-gray-500">Email</div>
+                        <div className="flex items-center py-2 border-b border-line">
+                            <div className="flex-1 text-sm font-medium text-content-muted">Notification Type</div>
+                            <div className="w-16 text-center text-sm font-medium text-content-muted">Email</div>
                             {userData?.sms_enabled && (
-                                <div className="w-16 text-center text-sm font-medium text-gray-500">SMS</div>
+                                <div className="w-16 text-center text-sm font-medium text-content-muted">SMS</div>
                             )}
                             <div className="w-20"></div>
                         </div>
 
                         {NOTIFICATION_TYPES.map(type => (
-                            <div key={type.key} className="py-3 border-b border-gray-100 last:border-b-0">
+                            <div key={type.key} className="py-3 border-b border-line last:border-b-0">
                                 <div className="flex items-center">
                                     <div className="flex-1">
-                                        <p className="text-sm font-medium text-gray-900">{type.label}</p>
-                                        <p className="text-xs text-gray-500">{type.description}</p>
+                                        <p className="text-sm font-medium text-content-primary">{type.label}</p>
+                                        <p className="text-xs text-content-muted">{type.description}</p>
                                     </div>
 
                                     {/* Email Toggle */}
@@ -1016,7 +1016,7 @@ function Profile(){
                                         <button
                                             onClick={() => handleToggle(type.key, 'email', !preferences[type.key]?.email)}
                                             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                                preferences[type.key]?.email ? 'bg-indigo-600' : 'bg-gray-200'
+                                                preferences[type.key]?.email ? 'bg-indigo-600' : 'bg-surface-card-hover'
                                             }`}
                                             aria-label={`${type.label} email notifications`}
                                         >
@@ -1032,7 +1032,7 @@ function Profile(){
                                             <button
                                                 onClick={() => handleToggle(type.key, 'sms', !preferences[type.key]?.sms)}
                                                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                                    preferences[type.key]?.sms ? 'bg-indigo-600' : 'bg-gray-200'
+                                                    preferences[type.key]?.sms ? 'bg-indigo-600' : 'bg-surface-card-hover'
                                                 }`}
                                                 aria-label={`${type.label} SMS notifications`}
                                             >
@@ -1046,16 +1046,16 @@ function Profile(){
                                     {/* Status indicator */}
                                     <div className="w-20 text-right">
                                         {saveStatus?.type === type.key && saveStatus.status === 'saving' && (
-                                            <span className="text-xs text-gray-400">Saving...</span>
+                                            <span className="text-xs text-content-muted">Saving...</span>
                                         )}
                                         {saveStatus?.type === type.key && saveStatus.status === 'saved' && (
-                                            <span className="text-xs text-green-600">Saved</span>
+                                            <span className="text-xs text-status-success">Saved</span>
                                         )}
                                         {saveStatus?.type === type.key && saveStatus.status === 'error' && (
-                                            <span className="text-xs text-red-500">Error</span>
+                                            <span className="text-xs text-status-error">Error</span>
                                         )}
                                         {saveStatus?.type === type.key && saveStatus.status === 'guard' && (
-                                            <span className="text-xs text-red-500">At least one notification must stay enabled</span>
+                                            <span className="text-xs text-status-error">At least one notification must stay enabled</span>
                                         )}
                                     </div>
                                 </div>
@@ -1063,18 +1063,18 @@ function Profile(){
                                 {/* Reminder timing dropdown */}
                                 {type.key === 'reminder' && (
                                     <div className="mt-2 ml-0 sm:ml-4 flex items-center gap-2">
-                                        <span className="text-xs text-gray-500">Remind me:</span>
+                                        <span className="text-xs text-content-muted">Remind me:</span>
                                         <select
                                             value={preferences.reminder?.window_hours ?? 1}
                                             onChange={(e) => handleReminderWindowChange(parseFloat(e.target.value))}
-                                            className="text-sm border border-gray-300 rounded px-2 py-1 text-gray-700 bg-white"
+                                            className="text-sm border border-line rounded-btn px-2 py-1 text-content-secondary bg-surface-input"
                                         >
                                             {REMINDER_WINDOWS.map(w => (
                                                 <option key={w.value} value={w.value}>{w.label}</option>
                                             ))}
                                         </select>
                                         {saveStatus?.type === 'reminder' && saveStatus.channel === 'window' && saveStatus.status === 'saved' && (
-                                            <span className="text-xs text-green-600">Saved</span>
+                                            <span className="text-xs text-status-success">Saved</span>
                                         )}
                                     </div>
                                 )}
@@ -1085,9 +1085,9 @@ function Profile(){
                     {/* Reset status */}
                     {saveStatus?.type === 'all' && saveStatus.channel === 'reset' && (
                         <div className="mt-2 text-center">
-                            {saveStatus.status === 'saving' && <span className="text-xs text-gray-400">Resetting...</span>}
-                            {saveStatus.status === 'saved' && <span className="text-xs text-green-600">Reset to defaults</span>}
-                            {saveStatus.status === 'error' && <span className="text-xs text-red-500">Failed to reset</span>}
+                            {saveStatus.status === 'saving' && <span className="text-xs text-content-muted">Resetting...</span>}
+                            {saveStatus.status === 'saved' && <span className="text-xs text-status-success">Reset to defaults</span>}
+                            {saveStatus.status === 'error' && <span className="text-xs text-status-error">Failed to reset</span>}
                         </div>
                     )}
 
@@ -1095,7 +1095,7 @@ function Profile(){
                     <div className="mt-4 text-right">
                         <button
                             onClick={handleResetPreferences}
-                            className="text-sm text-gray-500 hover:text-gray-700 underline"
+                            className="text-sm text-content-muted hover:text-content-secondary underline"
                         >
                             Reset to defaults
                         </button>
@@ -1104,9 +1104,9 @@ function Profile(){
                 )}
 
                 {/* Availability Settings Section */}
-                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
-                    <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-4">Availability Settings</h2>
-                    <p className="text-sm text-gray-600 mb-4">
+                <div className="card p-4 md:p-6 mb-6">
+                    <h2 className="text-xl md:text-2xl font-bold text-content-primary mb-4">Availability Settings</h2>
+                    <p className="text-sm text-content-secondary mb-4">
                         Set the times when you are <strong>available</strong> (free) to help groups find the best time to schedule game sessions. 
                         {googleCalendarConnected && ' Your Google Calendar busy times will be automatically excluded from your availability.'}
                     </p>
@@ -1117,8 +1117,8 @@ function Profile(){
                             onClick={() => setAvailabilityTab('recurring')}
                             className={`px-4 py-2 font-medium text-sm ${
                                 availabilityTab === 'recurring'
-                                    ? 'border-b-2 border-blue-600 text-blue-600'
-                                    : 'text-gray-600 hover:text-gray-900'
+                                    ? 'border-b-2 border-btn-primary text-btn-primary'
+                                    : 'text-content-secondary hover:text-content-primary'
                             }`}
                         >
                             Schedules
@@ -1127,8 +1127,8 @@ function Profile(){
                             onClick={() => setAvailabilityTab('specific')}
                             className={`px-4 py-2 font-medium text-sm ${
                                 availabilityTab === 'specific'
-                                    ? 'border-b-2 border-blue-600 text-blue-600'
-                                    : 'text-gray-600 hover:text-gray-900'
+                                    ? 'border-b-2 border-btn-primary text-btn-primary'
+                                    : 'text-content-secondary hover:text-content-primary'
                             }`}
                         >
                             Specific Dates
@@ -1140,23 +1140,23 @@ function Profile(){
                         <div>
                             <div className="flex justify-between items-center mb-4">
                                 <div>
-                                    <h3 className="font-semibold text-gray-900">Availability Schedules</h3>
-                                    <p className="text-xs text-gray-600 mt-1">Set your recurring availability schedule</p>
+                                    <h3 className="font-semibold text-content-primary">Availability Schedules</h3>
+                                    <p className="text-xs text-content-secondary mt-1">Set your recurring availability schedule</p>
                                 </div>
                                 <button
                                     onClick={() => setShowRecurringForm(!showRecurringForm)}
-                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                                    className="btn btn-primary px-4 py-2 text-sm"
                                 >
                                     {showRecurringForm ? 'Cancel' : '+ Add Schedule'}
                                 </button>
                             </div>
 
                             {showRecurringForm && (
-                                <div className="mb-6 p-4 border rounded-lg bg-gray-50">
-                                    <h4 className="font-semibold mb-3 text-gray-900">New Schedule</h4>
+                                <div className="mb-6 p-4 border rounded-lg bg-surface-page">
+                                    <h4 className="font-semibold mb-3 text-content-primary">New Schedule</h4>
                                     <div className="space-y-3">
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">Days of Week</label>
+                                            <label className="block text-sm font-medium text-content-secondary mb-1">Days of Week</label>
                                             <div className="flex flex-wrap gap-2 mt-1">
                                                 {[0, 1, 2, 3, 4, 5, 6].map(day => (
                                                     <button
@@ -1173,8 +1173,8 @@ function Profile(){
                                                         }}
                                                         className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
                                                             recurringForm.daysOfWeek.includes(day)
-                                                                ? 'bg-blue-600 text-white border-blue-600'
-                                                                : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                                                                ? 'bg-btn-primary text-btn-primary-text border-btn-primary'
+                                                                : 'bg-surface-card text-content-secondary border-line hover:border-line-accent'
                                                         }`}
                                                     >
                                                         {getDayName(day).slice(0, 3)}
@@ -1188,7 +1188,7 @@ function Profile(){
                                                             daysOfWeek: recurringForm.daysOfWeek.length === 7 ? [] : [0, 1, 2, 3, 4, 5, 6]
                                                         });
                                                     }}
-                                                    className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-600 hover:border-blue-400 transition-colors"
+                                                    className="px-3 py-1.5 rounded-btn text-sm font-medium border border-line text-content-secondary hover:border-line-accent transition-colors"
                                                 >
                                                     {recurringForm.daysOfWeek.length === 7 ? 'Clear' : 'All'}
                                                 </button>
@@ -1196,50 +1196,50 @@ function Profile(){
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">Available From (Start Time)</label>
+                                                <label className="block text-sm font-medium text-content-secondary mb-1">Available From (Start Time)</label>
                                                 <input
                                                     type="time"
                                                     value={recurringForm.startTime}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, startTime: e.target.value })}
-                                                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
-                                                <p className="text-xs text-gray-500 mt-1">When you become available</p>
+                                                <p className="text-xs text-content-muted mt-1">When you become available</p>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">Available Until (End Time)</label>
+                                                <label className="block text-sm font-medium text-content-secondary mb-1">Available Until (End Time)</label>
                                                 <input
                                                     type="time"
                                                     value={recurringForm.endTime}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, endTime: e.target.value })}
-                                                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
-                                                <p className="text-xs text-gray-500 mt-1">When you become unavailable</p>
+                                                <p className="text-xs text-content-muted mt-1">When you become unavailable</p>
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                                                <label className="block text-sm font-medium text-content-secondary mb-1">Start Date</label>
                                                 <input
                                                     type="date"
                                                     value={recurringForm.start_date}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, start_date: e.target.value })}
-                                                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">End Date (Optional)</label>
+                                                <label className="block text-sm font-medium text-content-secondary mb-1">End Date (Optional)</label>
                                                 <input
                                                     type="date"
                                                     value={recurringForm.end_date}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, end_date: e.target.value })}
-                                                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
                                             </div>
                                         </div>
                                         <button
                                             onClick={handleCreateRecurringPattern}
                                             disabled={savingPattern}
-                                            className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400"
+                                            className="btn btn-primary w-full px-4 py-2 disabled:opacity-50"
                                         >
                                             {savingPattern ? 'Saving...' : 'Save Schedule'}
                                         </button>
@@ -1248,7 +1248,7 @@ function Profile(){
                             )}
 
                             {loadingPatterns ? (
-                                <p className="text-gray-600">Loading schedules...</p>
+                                <p className="text-content-secondary">Loading schedules...</p>
                             ) : (
                                 <div className="space-y-2">
                                     {availabilityPatterns
@@ -1256,23 +1256,23 @@ function Profile(){
                                         .map(pattern => (
                                             <div key={pattern.id} className="p-3 border rounded-lg flex justify-between items-center">
                                                 <div>
-                                                    <p className="font-medium text-gray-900">
+                                                    <p className="font-medium text-content-primary">
                                                         {getDayName(pattern.pattern_data.dayOfWeek)}: {pattern.pattern_data.startTime} - {pattern.pattern_data.endTime}
                                                     </p>
-                                                    <p className="text-sm text-gray-600">
+                                                    <p className="text-sm text-content-secondary">
                                                         {formatDate(pattern.start_date)} - {formatDate(pattern.end_date)}
                                                     </p>
                                                 </div>
                                                 <button
                                                     onClick={() => handleDeletePattern(pattern.id)}
-                                                    className="text-red-600 hover:text-red-700 text-sm"
+                                                    className="text-status-error hover:text-status-error/80 text-sm"
                                                 >
                                                     Delete
                                                 </button>
                                             </div>
                                         ))}
                                     {availabilityPatterns.filter(p => p.type === 'recurring_pattern').length === 0 && (
-                                        <p className="text-gray-600 text-sm">No schedules set. Add one to get started!</p>
+                                        <p className="text-content-secondary text-sm">No schedules set. Add one to get started!</p>
                                     )}
                                 </div>
                             )}
@@ -1284,50 +1284,50 @@ function Profile(){
                         <div>
                             <div className="flex justify-between items-center mb-4">
                                 <div>
-                                    <h3 className="font-semibold text-gray-900">Specific Date Overrides</h3>
-                                    <p className="text-xs text-gray-600 mt-1">Override your schedules for specific dates</p>
+                                    <h3 className="font-semibold text-content-primary">Specific Date Overrides</h3>
+                                    <p className="text-xs text-content-secondary mt-1">Override your schedules for specific dates</p>
                                 </div>
                                 <button
                                     onClick={() => setShowSpecificForm(!showSpecificForm)}
-                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                                    className="btn btn-primary px-4 py-2 text-sm"
                                 >
                                     {showSpecificForm ? 'Cancel' : '+ Add Override'}
                                 </button>
                             </div>
 
                             {showSpecificForm && (
-                                <div className="mb-6 p-4 border rounded-lg bg-gray-50">
-                                    <h4 className="font-semibold mb-3 text-gray-900">New Specific Override</h4>
+                                <div className="mb-6 p-4 border rounded-lg bg-surface-page">
+                                    <h4 className="font-semibold mb-3 text-content-primary">New Specific Override</h4>
                                     <div className="space-y-3">
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                                            <label className="block text-sm font-medium text-content-secondary mb-1">Date</label>
                                             <input
                                                 type="date"
                                                 value={specificForm.date}
                                                 onChange={(e) => setSpecificForm({ ...specificForm, date: e.target.value })}
-                                                className="w-full p-2 border rounded text-gray-900 bg-white"
+                                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                             />
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">Available From (Start Time)</label>
+                                                <label className="block text-sm font-medium text-content-secondary mb-1">Available From (Start Time)</label>
                                                 <input
                                                     type="time"
                                                     value={specificForm.startTime}
                                                     onChange={(e) => setSpecificForm({ ...specificForm, startTime: e.target.value })}
-                                                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
-                                                <p className="text-xs text-gray-500 mt-1">When you become available</p>
+                                                <p className="text-xs text-content-muted mt-1">When you become available</p>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">Available Until (End Time)</label>
+                                                <label className="block text-sm font-medium text-content-secondary mb-1">Available Until (End Time)</label>
                                                 <input
                                                     type="time"
                                                     value={specificForm.endTime}
                                                     onChange={(e) => setSpecificForm({ ...specificForm, endTime: e.target.value })}
-                                                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
-                                                <p className="text-xs text-gray-500 mt-1">When you become unavailable</p>
+                                                <p className="text-xs text-content-muted mt-1">When you become unavailable</p>
                                             </div>
                                         </div>
                                         <div>
@@ -1338,13 +1338,13 @@ function Profile(){
                                                     onChange={(e) => setSpecificForm({ ...specificForm, isAvailable: e.target.checked })}
                                                     className="rounded"
                                                 />
-                                                <span className="text-sm text-gray-700">Mark as available (uncheck to mark as busy)</span>
+                                                <span className="text-sm text-content-secondary">Mark as available (uncheck to mark as busy)</span>
                                             </label>
                                         </div>
                                         <button
                                             onClick={handleCreateSpecificOverride}
                                             disabled={savingPattern}
-                                            className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400"
+                                            className="btn btn-primary w-full px-4 py-2 disabled:opacity-50"
                                         >
                                             {savingPattern ? 'Saving...' : 'Save Override'}
                                         </button>
@@ -1353,7 +1353,7 @@ function Profile(){
                             )}
 
                             {loadingPatterns ? (
-                                <p className="text-gray-600">Loading overrides...</p>
+                                <p className="text-content-secondary">Loading overrides...</p>
                             ) : (
                                 <div className="space-y-2">
                                     {availabilityPatterns
@@ -1361,23 +1361,23 @@ function Profile(){
                                         .map(pattern => (
                                             <div key={pattern.id} className="p-3 border rounded-lg flex justify-between items-center">
                                                 <div>
-                                                    <p className="font-medium text-gray-900">
+                                                    <p className="font-medium text-content-primary">
                                                         {formatDate(pattern.pattern_data.date)}: {pattern.pattern_data.startTime} - {pattern.pattern_data.endTime}
                                                     </p>
-                                                    <p className="text-sm text-gray-600">
+                                                    <p className="text-sm text-content-secondary">
                                                         {pattern.is_available ? 'Available' : 'Busy'}
                                                     </p>
                                                 </div>
                                                 <button
                                                     onClick={() => handleDeletePattern(pattern.id)}
-                                                    className="text-red-600 hover:text-red-700 text-sm"
+                                                    className="text-status-error hover:text-status-error/80 text-sm"
                                                 >
                                                     Delete
                                                 </button>
                                             </div>
                                         ))}
                                     {availabilityPatterns.filter(p => p.type === 'specific_override').length === 0 && (
-                                        <p className="text-gray-600 text-sm">No specific overrides set. Add one to override your default availability!</p>
+                                        <p className="text-content-secondary text-sm">No specific overrides set. Add one to override your default availability!</p>
                                     )}
                                 </div>
                             )}
@@ -1386,28 +1386,28 @@ function Profile(){
                 </div>
 
                 {/* Tutorial Section */}
-                <div className="bg-white rounded-lg shadow-md p-4 md:p-6 mb-6">
-                    <h2 className="text-lg font-bold text-gray-900 mb-2">Tutorial</h2>
-                    <p className="text-sm text-gray-600 mb-4">
+                <div className="card p-4 md:p-6 mb-6">
+                    <h2 className="text-lg font-bold text-content-primary mb-2">Tutorial</h2>
+                    <p className="text-sm text-content-secondary mb-4">
                         Need a refresher on how to use Next Game Night? Replay the onboarding tutorial to walk through the key features.
                     </p>
                     <button
                         onClick={handleReplayTutorial}
                         disabled={replayingTutorial}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:bg-gray-400"
+                        className="btn btn-primary px-4 py-2 text-sm disabled:opacity-50"
                     >
                         {replayingTutorial ? 'Starting...' : 'Replay Tutorial'}
                     </button>
                 </div>
 
                 {/* Owned Games Section */}
-                <div className="bg-white rounded-lg shadow-md p-4 md:p-6">
+                <div className="card p-4 md:p-6">
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-                        <h2 className="text-xl md:text-2xl font-bold text-gray-900">My Game Collection ({ownedGames.length})</h2>
+                        <h2 className="text-xl md:text-2xl font-bold text-content-primary">My Game Collection ({ownedGames.length})</h2>
                         <div className="flex gap-2">
                             <button
                                 onClick={() => setShowBggSearch(!showBggSearch)}
-                                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm whitespace-nowrap"
+                                className="btn btn-primary px-4 py-2 text-sm whitespace-nowrap"
                             >
                                 {showBggSearch ? 'Hide Search' : '+ Add from BGG'}
                             </button>
@@ -1415,9 +1415,9 @@ function Profile(){
                     </div>
 
                     {/* BGG Collection Import */}
-                    <div className="mb-6 p-3 md:p-4 border rounded-lg bg-gray-50">
-                        <h3 className="font-semibold mb-2 text-gray-900 text-sm md:text-base">Import Your Entire BGG Collection</h3>
-                        <p className="text-xs md:text-sm text-gray-600 mb-3">
+                    <div className="mb-6 p-3 md:p-4 border rounded-lg bg-surface-page">
+                        <h3 className="font-semibold mb-2 text-content-primary text-sm md:text-base">Import Your Entire BGG Collection</h3>
+                        <p className="text-xs md:text-sm text-content-secondary mb-3">
                             Enter your BoardGameGeek username to import all games from your BGG collection at once.
                         </p>
                         <div className="flex flex-col sm:flex-row gap-2">
@@ -1426,22 +1426,22 @@ function Profile(){
                                 value={bggUsername}
                                 onChange={(e) => setBggUsername(e.target.value)}
                                 placeholder="Your BGG username"
-                                className="flex-1 p-2 border rounded text-gray-900 bg-white text-sm md:text-base"
+                                className="flex-1 p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm md:text-base"
                                 disabled={importingCollection}
                             />
                             <button
                                 onClick={importBGGCollection}
                                 disabled={importingCollection || !bggUsername.trim()}
-                                className="bg-green-600 text-white px-4 md:px-6 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-sm md:text-base whitespace-nowrap"
+                                className="btn btn-primary px-4 md:px-6 py-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base whitespace-nowrap"
                             >
                                 {importingCollection ? 'Importing...' : 'Import Collection'}
                             </button>
                         </div>
                         {importProgress && (
-                            <div className={`mt-3 p-3 rounded ${
-                                importProgress.status === 'error' ? 'bg-red-50 text-red-800' :
-                                importProgress.status === 'complete' ? 'bg-green-50 text-green-800' :
-                                'bg-blue-50 text-blue-800'
+                            <div className={`mt-3 p-3 rounded-btn ${
+                                importProgress.status === 'error' ? 'bg-status-error/10 text-status-error' :
+                                importProgress.status === 'complete' ? 'bg-status-success/10 text-status-success' :
+                                'bg-surface-card-hover text-content-link'
                             }`}>
                                 <p className="font-medium">{importProgress.message}</p>
                                 {importProgress.details && (
@@ -1457,7 +1457,7 @@ function Profile(){
 
                     {/* BGG Search */}
                     {showBggSearch && (
-                        <div className="mb-6 p-3 md:p-4 border rounded bg-gray-50">
+                        <div className="mb-6 p-3 md:p-4 border rounded bg-surface-page">
                             <div className="flex flex-col sm:flex-row gap-2 mb-3">
                                 <input
                                     type="text"
@@ -1465,12 +1465,12 @@ function Profile(){
                                     onChange={(e) => setBggSearchQuery(e.target.value)}
                                     onKeyPress={(e) => e.key === 'Enter' && searchBGG()}
                                     placeholder="Search BoardGameGeek..."
-                                    className="flex-1 p-2 border rounded text-gray-900 bg-white text-sm md:text-base"
+                                    className="flex-1 p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm md:text-base"
                                 />
                                 <button
                                     onClick={searchBGG}
                                     disabled={bggSearching || !bggSearchQuery.trim()}
-                                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 text-sm md:text-base whitespace-nowrap"
+                                    className="btn btn-primary px-4 py-2 disabled:opacity-50 text-sm md:text-base whitespace-nowrap"
                                 >
                                     {bggSearching ? 'Searching...' : 'Search'}
                                 </button>
@@ -1481,15 +1481,15 @@ function Profile(){
                                     {bggSearchResults.map((result) => {
                                         const isAlreadyOwned = ownedGames.some(g => g.bgg_id === result.bgg_id);
                                         return (
-                                            <div key={result.bgg_id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-white border rounded">
-                                                <span className="text-sm text-gray-900 break-words flex-1 min-w-0">
+                                            <div key={result.bgg_id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-surface-card border border-line rounded-btn">
+                                                <span className="text-sm text-content-primary break-words flex-1 min-w-0">
                                                     {result.name} {result.year_published ? `(${result.year_published})` : ''}
                                                 </span>
                                                 <button
                                                     type="button"
                                                     onClick={() => addGameToCollection(result.bgg_id)}
                                                     disabled={isAlreadyOwned}
-                                                    className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 whitespace-nowrap flex-shrink-0"
+                                                    className="btn btn-primary text-xs px-3 py-1 disabled:opacity-50 whitespace-nowrap flex-shrink-0"
                                                 >
                                                     {isAlreadyOwned ? 'Already Owned' : 'Add to Collection'}
                                                 </button>
@@ -1503,21 +1503,21 @@ function Profile(){
 
                     {/* Owned Games List */}
                     {loadingGames ? (
-                        <p className="text-gray-600">Loading your collection...</p>
+                        <p className="text-content-secondary">Loading your collection...</p>
                     ) : ownedGames.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {ownedGames.map((game) => (
                                 <div key={game.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="flex-1">
-                                            <h3 className="font-semibold text-gray-900">{game.name}</h3>
+                                            <h3 className="font-semibold text-content-primary">{game.name}</h3>
                                             {game.year_published && (
-                                                <p className="text-sm text-gray-600">({game.year_published})</p>
+                                                <p className="text-sm text-content-secondary">({game.year_published})</p>
                                             )}
                                         </div>
                                         <button
                                             onClick={() => removeGameFromCollection(game.id)}
-                                            className="text-red-500 hover:text-red-700 text-sm"
+                                            className="text-status-error hover:text-red-700 text-sm"
                                             title="Remove from collection"
                                         >
                                             ×
@@ -1532,7 +1532,7 @@ function Profile(){
                             ))}
                         </div>
                     ) : (
-                        <p className="text-gray-600">You don't have any games in your collection yet. Search BoardGameGeek to add games!</p>
+                        <p className="text-content-secondary">You don't have any games in your collection yet. Search BoardGameGeek to add games!</p>
                     )}
                 </div>
             </div>
