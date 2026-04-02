@@ -152,7 +152,7 @@ export default function HeatmapGrid({
 
       {/* Legend */}
       <div className="flex items-center gap-4 mb-4 text-sm">
-        <span className="text-gray-600">Fewer available</span>
+        <span className="text-content-secondary">Fewer available</span>
         <div className="flex gap-1">
           <div className="w-6 h-4 bg-surface-elevated border border-line rounded-sm" />
           <div className="w-6 h-4 bg-yellow-200 border border-yellow-400 rounded-sm" />
@@ -160,7 +160,7 @@ export default function HeatmapGrid({
           <div className="w-6 h-4 bg-orange-400 border border-orange-500 rounded-sm" />
           <div className="w-6 h-4 bg-red-500 border border-red-600 rounded-sm" />
         </div>
-        <span className="text-gray-600">More available</span>
+        <span className="text-content-secondary">More available</span>
       </div>
 
       {/* Grid container with horizontal scroll for mobile */}

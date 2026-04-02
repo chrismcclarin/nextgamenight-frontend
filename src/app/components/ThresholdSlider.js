@@ -45,7 +45,7 @@ export default function ThresholdSlider({
           aria-valuenow={value}
           aria-label={`Minimum participants: ${value} of ${safeMax}`}
         />
-        <span className="text-sm font-medium min-w-[60px] text-gray-700 text-right">
+        <span className="text-sm font-medium min-w-[60px] text-content-secondary text-right">
           {value} / {safeMax}
         </span>
       </div>
