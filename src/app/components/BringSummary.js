@@ -80,13 +80,13 @@ export default function BringSummary({ eventId, groupId, currentUserId, refreshK
   const currentUserHasBrings = currentUserId && bringsByUser[currentUserId];
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
+    <div className="card p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold text-gray-900">Bringing</h3>
+        <h3 className="font-semibold text-content-primary">Bringing</h3>
         {currentUserHasBrings && onEditClick && (
           <button
             onClick={onEditClick}
-            className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
+            className="text-sm text-content-link hover:text-content-link-hover transition-colors"
           >
             Edit
           </button>
@@ -96,16 +96,16 @@ export default function BringSummary({ eventId, groupId, currentUserId, refreshK
       <div className="space-y-2">
         {sortedUsers.map(([userId, { username, games }]) => (
           <div key={userId}>
-            <span className="text-sm font-medium text-gray-700">{username}: </span>
+            <span className="text-sm font-medium text-content-secondary">{username}: </span>
             {games.map((game, idx) => (
               <span key={game.id}>
                 <Link
                   href={`/gameDetail?game_id=${game.id}&group_id=${groupId}`}
-                  className="text-sm text-blue-600 hover:underline"
+                  className="text-sm text-content-link hover:underline"
                 >
                   {game.name}
                 </Link>
-                {idx < games.length - 1 && <span className="text-gray-400">, </span>}
+                {idx < games.length - 1 && <span className="text-content-muted">, </span>}
               </span>
             ))}
           </div>

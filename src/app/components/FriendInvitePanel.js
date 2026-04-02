@@ -215,18 +215,18 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
             />
 
             {/* Sliding panel */}
-            <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white shadow-xl z-50 flex flex-col animate-slide-in-right">
+            <div className="fixed inset-y-0 right-0 w-full max-w-md bg-surface-card shadow-xl z-50 flex flex-col animate-slide-in-right">
                 {/* Header */}
-                <div className="flex items-center justify-between p-5 border-b border-gray-200">
+                <div className="flex items-center justify-between p-5 border-b border-line">
                     <div>
-                        <h2 className="text-xl font-bold text-gray-900">Invite Members</h2>
+                        <h2 className="text-xl font-bold text-content-primary">Invite Members</h2>
                         {group?.name && (
-                            <p className="text-sm text-gray-500 mt-0.5">to {group.name}</p>
+                            <p className="text-sm text-content-muted mt-0.5">to {group.name}</p>
                         )}
                     </div>
                     <button
                         onClick={onClose}
-                        className="text-gray-400 hover:text-gray-600 text-2xl leading-none p-1"
+                        className="text-content-muted hover:text-content-secondary text-2xl leading-none p-1"
                     >
                         &times;
                     </button>
@@ -236,19 +236,19 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
                 <div className="flex-1 overflow-y-auto">
                     {/* Friends section */}
                     <div className="p-5">
-                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                        <h3 className="text-sm font-semibold text-content-muted uppercase tracking-wide mb-3">
                             Your Friends
                         </h3>
 
                         {loadingFriends || loadingMembers ? (
-                            <div className="flex items-center gap-2 text-gray-500 py-6 justify-center">
-                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600" />
+                            <div className="flex items-center gap-2 text-content-muted py-6 justify-center">
+                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent" />
                                 <span>Loading...</span>
                             </div>
                         ) : availableFriends.length === 0 ? (
                             <div className="text-center py-6">
-                                <p className="text-gray-500 text-sm">No friends yet.</p>
-                                <a href="/friends" className="text-emerald-600 text-sm hover:underline mt-1 inline-block">
+                                <p className="text-content-muted text-sm">No friends yet.</p>
+                                <a href="/friends" className="text-content-link text-sm hover:underline mt-1 inline-block">
                                     Add friends
                                 </a>
                             </div>
@@ -263,10 +263,10 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
                                             key={friendship.id}
                                             className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
                                                 isInGroup
-                                                    ? 'border-gray-100 bg-gray-50 cursor-default'
+                                                    ? 'border-line bg-surface-page cursor-default'
                                                     : selectedFriends.has(friend.user_id)
-                                                        ? 'border-emerald-300 bg-emerald-50 cursor-pointer'
-                                                        : 'border-gray-200 hover:bg-gray-50 cursor-pointer'
+                                                        ? 'border-accent bg-surface-card-hover cursor-pointer'
+                                                        : 'border-line hover:bg-surface-card-hover cursor-pointer'
                                             }`}
                                         >
                                             <input
@@ -274,20 +274,20 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
                                                 checked={isInGroup || selectedFriends.has(friend.user_id)}
                                                 disabled={isInGroup}
                                                 onChange={() => toggleFriend(friend.user_id)}
-                                                className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 disabled:opacity-40"
+                                                className="h-4 w-4 rounded border-line text-accent focus:ring-focus-ring disabled:opacity-40"
                                             />
                                             <div className="flex-1 min-w-0">
-                                                <p className={`font-medium truncate ${isInGroup ? 'text-gray-400' : 'text-gray-900'}`}>
+                                                <p className={`font-medium truncate ${isInGroup ? 'text-content-muted' : 'text-content-primary'}`}>
                                                     {friend.username || friend.email}
                                                 </p>
                                                 {friend.email && friend.email !== friend.username && (
-                                                    <p className={`text-xs truncate ${isInGroup ? 'text-gray-300' : 'text-gray-500'}`}>
+                                                    <p className={`text-xs truncate ${isInGroup ? 'text-content-muted' : 'text-content-muted'}`}>
                                                         {friend.email}
                                                     </p>
                                                 )}
                                             </div>
                                             {isInGroup && (
-                                                <span className="text-xs text-gray-400 italic flex-shrink-0">
+                                                <span className="text-xs text-content-muted italic flex-shrink-0">
                                                     In group
                                                 </span>
                                             )}
@@ -303,7 +303,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
                                 <button
                                     onClick={handleBulkInvite}
                                     disabled={selectedFriends.size === 0 || inviting}
-                                    className="w-full px-4 py-2.5 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    className="w-full btn btn-primary py-2.5 flex items-center justify-center gap-2"
                                 >
                                     {inviting && (
                                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
@@ -318,7 +318,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
                                 {inviteResult && (
                                     <div className={`mt-2 p-3 rounded-lg text-sm font-medium ${
                                         inviteResult.failCount === 0
-                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                            ? 'bg-status-success/10 text-status-success border border-line'
                                             : inviteResult.successCount > 0
                                                 ? 'bg-amber-50 text-amber-700 border border-amber-200'
                                                 : 'bg-red-50 text-red-700 border border-red-200'
@@ -337,15 +337,15 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
                     {/* Divider */}
                     <div className="px-5">
                         <div className="flex items-center gap-3">
-                            <div className="flex-1 border-t border-gray-200" />
-                            <span className="text-xs text-gray-400 uppercase tracking-wide">or</span>
-                            <div className="flex-1 border-t border-gray-200" />
+                            <div className="flex-1 border-t border-line" />
+                            <span className="text-xs text-content-muted uppercase tracking-wide">or</span>
+                            <div className="flex-1 border-t border-line" />
                         </div>
                     </div>
 
                     {/* Email invite section */}
                     <div className="p-5">
-                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                        <h3 className="text-sm font-semibold text-content-muted uppercase tracking-wide mb-3">
                             Invite by Email
                         </h3>
                         <form onSubmit={handleEmailInvite} className="flex gap-2">
@@ -360,12 +360,12 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
                                 placeholder="user@example.com"
                                 required
                                 disabled={emailLoading}
-                                className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 disabled:opacity-50"
+                                className="flex-1 px-3 py-2.5 border border-line rounded-lg text-sm text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring focus:border-accent disabled:opacity-50"
                             />
                             <button
                                 type="submit"
                                 disabled={emailLoading || !email.trim()}
-                                className="px-4 py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                                className="btn btn-primary text-sm py-2.5 flex-shrink-0"
                             >
                                 {emailLoading ? 'Sending...' : 'Send'}
                             </button>
@@ -374,24 +374,24 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
                             <p className="text-red-500 text-sm mt-2">{emailError}</p>
                         )}
                         {emailSuccess && (
-                            <p className="text-emerald-600 text-sm mt-2">{emailSuccess}</p>
+                            <p className="text-status-success text-sm mt-2">{emailSuccess}</p>
                         )}
                         {friendPrompt && !friendRequestSent && (
-                            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between gap-3">
-                                <p className="text-sm text-blue-800">
+                            <div className="mt-3 p-3 bg-surface-card-hover border border-line rounded-lg flex items-center justify-between gap-3">
+                                <p className="text-sm text-content-primary">
                                     Add <span className="font-medium">{friendPrompt.username || friendPrompt.email}</span> as a friend?
                                 </p>
                                 <button
                                     onClick={handleAddFriend}
                                     disabled={addingFriend}
-                                    className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex-shrink-0"
+                                    className="btn btn-primary text-xs px-3 py-1.5 flex-shrink-0"
                                 >
                                     {addingFriend ? 'Sending...' : 'Add Friend'}
                                 </button>
                             </div>
                         )}
                         {friendRequestSent && (
-                            <p className="text-blue-600 text-sm mt-2">Friend request sent!</p>
+                            <p className="text-status-success text-sm mt-2">Friend request sent!</p>
                         )}
                     </div>
 
@@ -401,37 +401,37 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
                             {/* Divider */}
                             <div className="px-5">
                                 <div className="flex items-center gap-3">
-                                    <div className="flex-1 border-t border-gray-200" />
-                                    <span className="text-xs text-gray-400 uppercase tracking-wide">or</span>
-                                    <div className="flex-1 border-t border-gray-200" />
+                                    <div className="flex-1 border-t border-line" />
+                                    <span className="text-xs text-content-muted uppercase tracking-wide">or</span>
+                                    <div className="flex-1 border-t border-line" />
                                 </div>
                             </div>
 
                             {/* QR Code section */}
                             <div className="p-5">
-                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                                <h3 className="text-sm font-semibold text-content-muted uppercase tracking-wide mb-3">
                                     Share QR Code
                                 </h3>
                                 {tokenLoading ? (
-                                    <div className="flex items-center gap-2 text-gray-500 py-6 justify-center">
-                                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600" />
+                                    <div className="flex items-center gap-2 text-content-muted py-6 justify-center">
+                                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent" />
                                         <span>Loading...</span>
                                     </div>
                                 ) : inviteUrl ? (
                                     <div className="flex flex-col items-center">
                                         <QRCodeSVG value={inviteUrl} size={160} level="M" marginSize={2} />
-                                        <p className="text-xs text-gray-500 mt-2 text-center">
+                                        <p className="text-xs text-content-muted mt-2 text-center">
                                             Scan to join group
                                         </p>
                                         <button
                                             onClick={handleCopyLink}
-                                            className="mt-3 w-full px-4 py-2.5 text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg font-medium text-center transition-colors text-sm"
+                                            className="mt-3 w-full btn btn-primary py-2.5 text-center text-sm"
                                         >
                                             {copied ? 'Copied!' : 'Copy Invite Link'}
                                         </button>
                                     </div>
                                 ) : (
-                                    <p className="text-gray-500 text-sm text-center py-4">
+                                    <p className="text-content-muted text-sm text-center py-4">
                                         Unable to generate QR code
                                     </p>
                                 )}
@@ -441,10 +441,10 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 border-t border-gray-200">
+                <div className="p-4 border-t border-line">
                     <button
                         onClick={onClose}
-                        className="w-full px-4 py-2.5 text-gray-700 font-medium rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors"
+                        className="w-full btn btn-secondary py-2.5"
                     >
                         Done
                     </button>

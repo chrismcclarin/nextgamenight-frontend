@@ -168,8 +168,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     const getRoleBadge = (role) => {
         const roleStyles = {
             owner: 'bg-purple-100 text-purple-800 border-purple-300',
-            admin: 'bg-blue-100 text-blue-800 border-blue-300',
-            member: 'bg-gray-100 text-gray-800 border-gray-300',
+            admin: 'bg-surface-card-hover text-accent border-accent',
+            member: 'bg-surface-card-hover text-content-secondary border-line',
             pending: 'bg-amber-100 text-amber-800 border-amber-300'
         };
         
@@ -186,17 +186,17 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     const canManageMembers = userRole === 'owner' || userRole === 'admin';
 
     return (
-        <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50" onClick={modaltoggle}>
-            <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto relative" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={modaltoggle}>
+            <div className="modal-content max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto relative" onClick={(e) => e.stopPropagation()}>
                 <button
                     onClick={modaltoggle}
-                    className="absolute top-3 right-3 text-gray-500 hover:text-gray-800 text-2xl"
+                    className="absolute top-3 right-3 text-content-muted hover:text-content-primary text-2xl"
                     aria-label="Close"
                 >
                     &times;
                 </button>
 
-                <h2 className="text-2xl font-bold text-gray-900 mb-4">Manage Group Members</h2>
+                <h2 className="text-2xl font-bold text-content-primary mb-4">Manage Group Members</h2>
 
                 {!canManageMembers && (
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
@@ -212,7 +212,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                         <button
                             onClick={handleShowQR}
                             disabled={tokenLoading}
-                            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-medium disabled:opacity-50"
+                            className="btn btn-primary text-sm"
                         >
                             {tokenLoading ? 'Loading...' : 'Share Invite QR'}
                         </button>
@@ -220,30 +220,30 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 )}
 
                 {loading ? (
-                    <p className="text-gray-600">Loading members...</p>
+                    <p className="text-content-secondary">Loading members...</p>
                 ) : error ? (
                     <p className="text-red-600">{error}</p>
                 ) : members.length === 0 ? (
-                    <p className="text-gray-600">No members found.</p>
+                    <p className="text-content-secondary">No members found.</p>
                 ) : (
                     <>
                         {/* Pending Members Section (admin/owner only) */}
                         {canManageMembers && members.filter(m => m.UserGroup?.role === 'pending').length > 0 && (
                             <div className="mb-6">
                                 <div className="flex items-center gap-2 mb-2">
-                                    <h3 className="text-lg font-semibold text-gray-900">Pending Members</h3>
+                                    <h3 className="text-lg font-semibold text-content-primary">Pending Members</h3>
                                     <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
                                         {members.filter(m => m.UserGroup?.role === 'pending').length}
                                     </span>
                                 </div>
-                                <p className="text-sm text-gray-500 mb-3">Auto-approved after 24h</p>
+                                <p className="text-sm text-content-muted mb-3">Auto-approved after 24h</p>
                                 <div className="space-y-3">
                                     {members.filter(m => m.UserGroup?.role === 'pending').map((member) => (
                                         <div key={member.id} className="flex items-center justify-between p-4 border border-amber-200 rounded-lg bg-amber-50">
                                             <div className="flex items-center gap-3 flex-1">
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-2">
-                                                        <p className="font-semibold text-gray-900"><ClickableMemberName userId={member.user_id} username={member.username || member.email} /></p>
+                                                        <p className="font-semibold text-content-primary"><ClickableMemberName userId={member.user_id} username={member.username || member.email} /></p>
                                                         {getRoleBadge('pending')}
                                                     </div>
                                                 </div>
@@ -251,13 +251,13 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                             <div className="flex items-center gap-2">
                                                 <button
                                                     onClick={() => handleApproveMember(member.user_id)}
-                                                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors text-sm"
+                                                    className="btn btn-primary text-sm px-4 py-2"
                                                 >
                                                     Approve
                                                 </button>
                                                 <button
                                                     onClick={() => handleRejectMember(member.user_id)}
-                                                    className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors text-sm"
+                                                    className="btn btn-danger text-sm px-4 py-2"
                                                 >
                                                     Reject
                                                 </button>
@@ -278,21 +278,21 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                 return (
                                     <div
                                         key={member.id}
-                                        className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
+                                        className="flex items-center justify-between p-4 border border-line rounded-lg hover:bg-surface-card-hover"
                                     >
                                         <div className="flex items-center gap-3 flex-1">
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-2">
-                                                    <p className="font-semibold text-gray-900">
+                                                    <p className="font-semibold text-content-primary">
                                                         <ClickableMemberName userId={member.user_id} username={member.username || member.email} />
                                                     </p>
                                                     {isCurrentUser && (
-                                                        <span className="text-xs text-blue-600 font-medium">(You)</span>
+                                                        <span className="text-xs text-accent font-medium">(You)</span>
                                                     )}
                                                     {getRoleBadge(memberRole)}
                                                 </div>
                                                 {member.email && member.email !== member.username && (
-                                                    <p className="text-sm text-gray-600 mt-1">{member.email}</p>
+                                                    <p className="text-sm text-content-secondary mt-1">{member.email}</p>
                                                 )}
                                             </div>
                                         </div>
@@ -303,7 +303,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                 <select
                                                     value={memberRole}
                                                     onChange={(e) => handleRoleChange(member.user_id, e.target.value)}
-                                                    className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
+                                                    className="px-3 py-2 border border-line rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
                                                     disabled={isOwner}
                                                 >
                                                     <option value="member">Member</option>
@@ -314,7 +314,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                 {/* Remove Button */}
                                                 <button
                                                     onClick={() => handleRemoveMember(member.user_id)}
-                                                    className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors text-sm"
+                                                    className="btn btn-danger text-sm px-4 py-2"
                                                     disabled={isOwner}
                                                     title={isOwner ? 'Cannot remove group owner' : 'Remove from group'}
                                                 >
@@ -326,13 +326,13 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                         {isCurrentUser && !isOwner && (
                                             <button
                                                 onClick={handleLeaveGroup}
-                                                className="bg-red-100 text-red-700 px-4 py-2 rounded-lg hover:bg-red-200 transition-colors text-sm border border-red-300"
+                                                className="btn btn-secondary text-sm px-4 py-2 text-status-error"
                                             >
                                                 Leave Group
                                             </button>
                                         )}
                                         {isCurrentUser && isOwner && (
-                                            <p className="text-sm text-gray-500 italic">Your role</p>
+                                            <p className="text-sm text-content-muted italic">Your role</p>
                                         )}
                                     </div>
                                 );
@@ -345,7 +345,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 {pendingInvites.length > 0 && (
                     <div className="mt-6">
                         <div className="flex items-center gap-2 mb-3">
-                            <h3 className="text-lg font-semibold text-gray-900">Pending Invites</h3>
+                            <h3 className="text-lg font-semibold text-content-primary">Pending Invites</h3>
                             <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
                                 {pendingInvites.length}
                             </span>
@@ -354,19 +354,19 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                             {pendingInvites.map((invite) => (
                                 <div
                                     key={invite.id}
-                                    className="flex items-center justify-between p-4 border border-gray-200 rounded-lg bg-amber-50"
+                                    className="flex items-center justify-between p-4 border border-line rounded-lg bg-amber-50"
                                 >
                                     <div className="flex items-center gap-3 flex-1">
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2">
-                                                <p className="font-semibold text-gray-900">
+                                                <p className="font-semibold text-content-primary">
                                                     {invite.invited_email}
                                                 </p>
                                                 <span className="px-2 py-1 rounded text-xs font-semibold border bg-amber-100 text-amber-800 border-amber-300">
                                                     Pending
                                                 </span>
                                             </div>
-                                            <div className="text-sm text-gray-600 mt-1">
+                                            <div className="text-sm text-content-secondary mt-1">
                                                 {invite.invited_by_name && (
                                                     <span>Invited by {invite.invited_by_name}</span>
                                                 )}
@@ -391,7 +391,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 <div className="mt-6 flex justify-end">
                     <button
                         onClick={modaltoggle}
-                        className="bg-gray-200 text-gray-800 px-6 py-2 rounded-lg hover:bg-gray-300 transition-colors"
+                        className="btn btn-secondary px-6"
                     >
                         Close
                     </button>

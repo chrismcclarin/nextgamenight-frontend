@@ -151,7 +151,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   <div className="group-header">
                     <div className="flex items-center gap-2">
                       {profilePic && (
-                        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden">
+                        <div className="w-10 h-10 rounded-full bg-surface-card-hover flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden">
                           {profilePic.startsWith('http') || profilePic.startsWith('/') ? (
                             <SafeImage
                               src={profilePic}
@@ -217,8 +217,8 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         }}
                         aria-label="Invite member to group"
                         style={{
-                          backgroundColor: '#28a745',
-                          color: '#ffffff',
+                          backgroundColor: 'var(--color-btn-primary-bg)',
+                          color: 'var(--color-btn-primary-text)',
                           fontWeight: '600',
                           boxShadow: '0 2px 6px rgba(0, 0, 0, 0.3)',
                           border: '2px solid rgba(255, 255, 255, 0.3)',
@@ -229,7 +229,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                     )}
                     {canEdit && (
                       <button
-                        className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 text-sm flex-shrink-0"
+                        className="px-3 py-1 bg-surface-elevated text-content-primary rounded-btn hover:bg-surface-card-hover text-sm flex-shrink-0"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSettingsGroup(group);

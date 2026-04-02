@@ -121,13 +121,13 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center" style={{ zIndex: 100 }} onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" style={{ zIndex: 100 }} onClick={onClose}>
+      <div className="modal-content max-w-2xl w-full mx-4 p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold text-gray-900">Customize Group</h2>
+          <h2 className="text-2xl font-bold text-content-primary">Customize Group</h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-2xl"
+            className="text-content-muted hover:text-content-primary text-2xl"
           >
             ×
           </button>
@@ -135,12 +135,12 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
 
         {/* Profile Picture Section */}
         <div className="mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-3">Profile Picture</h3>
+          <h3 className="text-lg font-semibold text-content-primary mb-3">Profile Picture</h3>
           
           {/* Current Selection Preview */}
-          <div className="mb-4 p-4 border rounded-lg bg-gray-50">
+          <div className="mb-4 p-4 border border-line rounded-lg bg-surface-page">
             <div className="text-center">
-              <div className="inline-block w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center text-4xl mb-2">
+              <div className="inline-block w-20 h-20 rounded-full bg-surface-card-hover flex items-center justify-center text-4xl mb-2">
                 {profilePictureUrl ? (
                   profilePictureUrl.startsWith('http') || profilePictureUrl.startsWith('/') ? (
                     <SafeImage
@@ -153,23 +153,23 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                     <span>{profilePictureUrl}</span>
                   )
                 ) : (
-                  <span className="text-gray-400">No picture</span>
+                  <span className="text-content-muted">No picture</span>
                 )}
               </div>
-              <p className="text-sm text-gray-600">Current selection</p>
+              <p className="text-sm text-content-secondary">Current selection</p>
             </div>
           </div>
 
           {/* Default Options */}
           <div className="mb-4">
-            <p className="text-sm text-gray-700 mb-2">Choose a default icon:</p>
+            <p className="text-sm text-content-secondary mb-2">Choose a default icon:</p>
             <div className="grid grid-cols-4 gap-2">
               {DEFAULT_PROFILE_PICTURES.map((pic, index) => (
                 <button
                   key={index}
                   onClick={() => handleSelectDefaultPicture(pic.url)}
-                  className={`p-4 border-2 rounded-lg text-3xl hover:bg-gray-100 transition-colors ${
-                    profilePictureUrl === pic.url ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                  className={`p-4 border-2 rounded-lg text-3xl hover:bg-surface-card-hover transition-colors ${
+                    profilePictureUrl === pic.url ? 'border-accent bg-surface-card-hover' : 'border-line'
                   }`}
                   title={pic.name}
                 >
@@ -181,18 +181,18 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
 
           {/* Custom URL */}
           <div>
-            <p className="text-sm text-gray-700 mb-2">Or enter a custom image URL:</p>
+            <p className="text-sm text-content-secondary mb-2">Or enter a custom image URL:</p>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={customPictureUrl}
                 onChange={(e) => setCustomPictureUrl(e.target.value)}
                 placeholder="https://example.com/image.jpg"
-                className="flex-1 p-2 border rounded text-gray-900 bg-white"
+                className="flex-1 p-2 border border-line rounded text-content-primary bg-surface-input"
               />
               <button
                 onClick={handleUseCustomPicture}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                className="btn btn-primary"
               >
                 Use
               </button>
@@ -202,7 +202,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
 
         {/* Background Section */}
         <div className="mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-3">Background</h3>
+          <h3 className="text-lg font-semibold text-content-primary mb-3">Background</h3>
           
           {/* Current Selection Preview */}
           <div className="mb-4 p-4 border rounded-lg" style={{ 
@@ -212,19 +212,19 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
             backgroundPosition: 'center',
             minHeight: '100px'
           }}>
-            <p className="text-sm text-gray-600 text-center">Preview</p>
+            <p className="text-sm text-content-secondary text-center">Preview</p>
           </div>
 
           {/* Default Colors */}
           <div className="mb-4">
-            <p className="text-sm text-gray-700 mb-2">Choose a default color:</p>
+            <p className="text-sm text-content-secondary mb-2">Choose a default color:</p>
             <div className="grid grid-cols-4 gap-2">
               {DEFAULT_BACKGROUND_COLORS.map((color, index) => (
                 <button
                   key={index}
                   onClick={() => handleSelectDefaultColor(color.value)}
                   className={`p-4 border-2 rounded-lg hover:opacity-80 transition-opacity ${
-                    backgroundColor === color.value && !backgroundImageUrl ? 'border-blue-500 ring-2 ring-blue-300' : 'border-gray-200'
+                    backgroundColor === color.value && !backgroundImageUrl ? 'border-accent ring-2 ring-focus-ring' : 'border-line'
                   }`}
                   style={{ backgroundColor: color.value }}
                   title={color.name}
@@ -235,18 +235,18 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
 
           {/* Custom Background URL */}
           <div>
-            <p className="text-sm text-gray-700 mb-2">Or enter a custom background image URL:</p>
+            <p className="text-sm text-content-secondary mb-2">Or enter a custom background image URL:</p>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={customBackgroundUrl}
                 onChange={(e) => setCustomBackgroundUrl(e.target.value)}
                 placeholder="https://example.com/background.jpg"
-                className="flex-1 p-2 border rounded text-gray-900 bg-white"
+                className="flex-1 p-2 border border-line rounded text-content-primary bg-surface-input"
               />
               <button
                 onClick={handleUseCustomBackground}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                className="btn btn-primary"
               >
                 Use
               </button>
@@ -255,7 +255,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
         </div>
 
         {/* Prompt Schedules Section (read-only) */}
-        <div className="mb-6 pt-6 border-t border-gray-200">
+        <div className="mb-6 pt-6 border-t border-line">
           <PromptScheduleReadOnly
             groupId={group.id}
             groupPageUrl={`/groupHomePage?id=${group.id}`}
@@ -266,27 +266,27 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
         {userRole === 'owner' && (
           <div className="mb-6 pt-6 border-t border-red-200">
             <h3 className="text-lg font-semibold text-red-600 mb-3">Danger Zone</h3>
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-content-secondary mb-4">
               Deleting a group will permanently remove all events, members, and reviews associated with it. This action cannot be undone.
             </p>
             {!showDeleteConfirm ? (
               <button
                 onClick={() => setShowDeleteConfirm(true)}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                className="btn btn-danger"
               >
                 Delete Group
               </button>
             ) : (
               <div className="space-y-3">
-                <p className="text-sm font-medium text-gray-700">
-                  To confirm deletion, please type the group name: <span className="font-bold text-gray-900">{group.name}</span>
+                <p className="text-sm font-medium text-content-secondary">
+                  To confirm deletion, please type the group name: <span className="font-bold text-content-primary">{group.name}</span>
                 </p>
                 <input
                   type="text"
                   value={deleteConfirmText}
                   onChange={(e) => setDeleteConfirmText(e.target.value)}
                   placeholder="Type group name to confirm"
-                  className="w-full p-2 border border-red-300 rounded text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className="w-full p-2 border border-red-300 rounded text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-red-500"
                 />
                 <div className="flex gap-3">
                   <button
@@ -294,14 +294,14 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                       setShowDeleteConfirm(false);
                       setDeleteConfirmText('');
                     }}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                    className="btn btn-secondary"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleDeleteGroup}
                     disabled={deleting || deleteConfirmText !== group.name}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    className="btn btn-danger"
                   >
                     {deleting ? 'Deleting...' : 'Delete Group'}
                   </button>
@@ -315,14 +315,14 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
         <div className="flex justify-end gap-3">
           <button
             onClick={onClose}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+            className="btn btn-secondary"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
+            className="btn btn-primary"
           >
             {saving ? 'Saving...' : 'Save Changes'}
           </button>

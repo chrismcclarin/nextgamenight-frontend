@@ -410,21 +410,21 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white p-6 rounded">Loading group members...</div>
+      <div className="modal-overlay">
+        <div className="modal-content p-6">Loading group members...</div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={modaltoggle}>
-      <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={modaltoggle}>
+      <div className="modal-content max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="p-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">{editingEvent ? 'Edit Event' : 'Create Event'}</h2>
+          <h2 className="text-2xl font-bold text-content-primary">{editingEvent ? 'Edit Event' : 'Create Event'}</h2>
           <button
             onClick={modaltoggle}
-            className="text-gray-500 hover:text-gray-700 text-2xl"
+            className="text-content-muted hover:text-content-primary text-2xl"
           >
             ×
           </button>
@@ -433,7 +433,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         <form onSubmit={onSubmit} className="space-y-4">
           {/* Game Selection */}
           <div>
-            <label className="block text-sm font-medium text-gray-900 mb-1">
+            <label className="block text-sm font-medium text-content-primary mb-1">
               Game
             </label>
             <GameComboInput
@@ -458,14 +458,14 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           {/* Time Selection */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-gray-900">
+              <label className="block text-sm font-medium text-content-primary">
                 Date & Time <span className="text-red-500">*</span>
               </label>
               {!hideVisualCalendar && (
                 <button
                   type="button"
                   onClick={() => setUseVisualCalendar(!useVisualCalendar)}
-                  className="text-xs text-blue-600 hover:text-blue-700 underline"
+                  className="text-xs text-content-link hover:text-content-link-hover underline"
                 >
                   {useVisualCalendar ? 'Switch to Manual Entry' : 'Switch to Visual Calendar'}
                 </button>
@@ -497,8 +497,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
               <div className="space-y-4">
                 {/* Heatmap reference for manual entry mode */}
                 {(heatmapData || heatmapLoading) && (
-                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                    <p className="text-xs font-medium text-gray-500 mb-2">Group Availability This Week</p>
+                  <div className="bg-surface-page rounded-lg p-3 border border-line">
+                    <p className="text-xs font-medium text-content-muted mb-2">Group Availability This Week</p>
                     <EventHeatmapBackground heatmapData={heatmapData} loading={heatmapLoading} />
                   </div>
                 )}
@@ -513,7 +513,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                     value={newEvent.start_date}
                     onChange={handleChange}
                     required
-                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                    className="w-full p-2 border rounded text-content-primary bg-surface-input"
                   />
                 </div>
 
@@ -527,7 +527,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                     id="duration_minutes"
                     value={newEvent.duration_minutes || ''}
                     onChange={handleChange}
-                    className="w-full p-2 border rounded text-gray-900 bg-white"
+                    className="w-full p-2 border rounded text-content-primary bg-surface-input"
                     placeholder="Enter duration in minutes"
                     required
                     min="1"
@@ -544,13 +544,13 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
               <label htmlFor="rsvp_deadline" className="block text-sm font-medium mb-1 text-gray-900">
                 RSVP Deadline
               </label>
-              <p className="text-xs text-gray-500 mb-1">Required for game voting ballot</p>
+              <p className="text-xs text-content-muted mb-1">Required for game voting ballot</p>
               <input
                 type="datetime-local"
                 id="rsvp_deadline"
                 value={newEvent.rsvp_deadline || ''}
                 onChange={handleChange}
-                className="w-full p-2 border rounded text-gray-900 bg-white"
+                className="w-full p-2 border rounded text-content-primary bg-surface-input"
                 max={newEvent.start_date}
               />
             </div>
@@ -572,7 +572,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             <label className="block text-sm font-medium mb-2 text-gray-900">
               Participants <span className="text-red-500">*</span>
             </label>
-            <div className="space-y-2 max-h-60 overflow-y-auto border p-2 rounded bg-white">
+            <div className="space-y-2 max-h-60 overflow-y-auto border border-line p-2 rounded bg-surface-input">
               {newEvent.participants.map((participant, index) => (
                 <ParticipantRow
                   key={index}
@@ -587,7 +587,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             <button
               type="button"
               onClick={addParticipant}
-              className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm font-medium"
+              className="mt-2 btn btn-primary text-sm"
             >
               + Add Participant
             </button>
@@ -608,7 +608,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
               value={newEvent.comments}
               onChange={handleChange}
               rows="3"
-              className="w-full p-2 border rounded text-gray-900 bg-white"
+              className="w-full p-2 border rounded text-content-primary bg-surface-input"
               placeholder="Optional notes about this game session"
             />
           </div>
@@ -618,13 +618,13 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             <button
               type="button"
               onClick={modaltoggle}
-              className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-100 text-gray-900 bg-white"
+              className="btn btn-secondary"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              className="btn btn-primary"
             >
               {editingEvent ? 'Update Event' : 'Create Event'}
             </button>

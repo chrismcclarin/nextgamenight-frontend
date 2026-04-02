@@ -38,16 +38,16 @@ export default function EventDayModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+      className="modal-overlay"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col"
+        className="modal-content max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className="bg-blue-600 text-white px-6 py-4 flex justify-between items-center">
-          <h3 className="text-xl font-bold">
+        <div className="modal-header">
+          <h3 className="text-xl font-bold text-content-primary">
             {selectedDay.date.toLocaleDateString('en-US', {
               weekday: 'long',
               month: 'long',
@@ -57,7 +57,7 @@ export default function EventDayModal({
           </h3>
           <button
             onClick={onClose}
-            className="text-white hover:text-gray-200 text-2xl font-bold"
+            className="text-content-muted hover:text-content-primary text-2xl font-bold"
             title="Close"
           >
             ×
@@ -65,9 +65,9 @@ export default function EventDayModal({
         </div>
 
         {/* Modal Content */}
-        <div className="p-6 overflow-y-auto flex-1">
+        <div className="modal-body">
           {selectedDay.events.length === 0 ? (
-            <p className="text-gray-600 text-center py-8">No events on this day.</p>
+            <p className="text-content-secondary text-center py-8">No events on this day.</p>
           ) : (
             <div className="space-y-3">
               {selectedDay.events.map(event => {
@@ -105,7 +105,7 @@ export default function EventDayModal({
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           {groupProfilePic && (
-                            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl flex-shrink-0 overflow-hidden border-2 border-gray-300 shadow-sm">
+                            <div className="w-10 h-10 rounded-full bg-surface-card flex items-center justify-center text-xl flex-shrink-0 overflow-hidden border-2 border-line shadow-sm">
                               {groupProfilePic.startsWith('http') || groupProfilePic.startsWith('/') ? (
                                 <SafeImage
                                   src={groupProfilePic}
@@ -166,7 +166,7 @@ export default function EventDayModal({
                             </span>
                           )}
                         </div>
-                        <div className="flex gap-4 mt-2 text-sm text-gray-500">
+                        <div className="flex gap-4 mt-2 text-sm text-content-muted">
                           {event.duration_minutes && (
                             <span>Duration: {event.duration_minutes} min</span>
                           )}
@@ -176,7 +176,7 @@ export default function EventDayModal({
                           <button
                             onClick={(e) => handleShowGameQR(e, event)}
                             disabled={gameQRLoading && qrEventId === event.id}
-                            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md transition-colors disabled:opacity-50"
+                            className="mt-2 btn btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
                             title="Share Game QR"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>

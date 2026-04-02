@@ -110,11 +110,11 @@ export default function GroupLibrary({ groupId }) {
     return (
       <div className="mt-4 space-y-3">
         {[...Array(5)].map((_, i) => (
-          <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg animate-pulse">
-            <div className="w-10 h-10 bg-gray-200 rounded" />
+          <div key={i} className="flex items-center gap-3 p-3 bg-surface-page rounded-card animate-pulse">
+            <div className="w-10 h-10 bg-surface-card-hover rounded" />
             <div className="flex-1 space-y-2">
-              <div className="h-4 bg-gray-200 rounded w-1/3" />
-              <div className="h-3 bg-gray-200 rounded w-1/2" />
+              <div className="h-4 bg-surface-card-hover rounded w-1/3" />
+              <div className="h-3 bg-surface-card-hover rounded w-1/2" />
             </div>
           </div>
         ))}
@@ -125,9 +125,9 @@ export default function GroupLibrary({ groupId }) {
   // Empty library (no games at all)
   if (games.length === 0) {
     return (
-      <div className="mt-4 text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-        <p className="text-gray-600 text-lg mb-2">No games in this group's library yet.</p>
-        <p className="text-gray-500">Members can add games to their collection from the game detail page.</p>
+      <div className="mt-4 text-center py-12 bg-surface-page rounded-card border-2 border-dashed border-line">
+        <p className="text-content-secondary text-lg mb-2">No games in this group&apos;s library yet.</p>
+        <p className="text-content-muted">Members can add games to their collection from the game detail page.</p>
       </div>
     );
   }
@@ -141,18 +141,18 @@ export default function GroupLibrary({ groupId }) {
           placeholder="Search games..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full px-4 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-none focus:ring-2 focus:ring-focus-ring focus:border-transparent"
         />
       </div>
 
       {/* Sort dropdown + game count */}
       <div className="mb-3 flex items-center justify-between">
         <label className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-700">Sort:</span>
+          <span className="text-sm font-medium text-content-secondary">Sort:</span>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-1.5 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-none focus:ring-2 focus:ring-focus-ring"
           >
             <option value="name">Name (A-Z)</option>
             <option value="players">Player Count</option>
@@ -160,7 +160,7 @@ export default function GroupLibrary({ groupId }) {
             <option value="complexity">Complexity</option>
           </select>
         </label>
-        <span className="text-sm text-gray-500">
+        <span className="text-sm text-content-muted">
           {filteredGames.length} {filteredGames.length === 1 ? 'game' : 'games'}
         </span>
       </div>
@@ -171,8 +171,8 @@ export default function GroupLibrary({ groupId }) {
           onClick={() => setSelectedOwner(null)}
           className={`flex-shrink-0 px-3 py-1 rounded-full text-sm font-medium transition-colors ${
             selectedOwner === null
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              ? 'bg-btn-primary text-btn-primary-text'
+              : 'bg-surface-card-hover text-content-secondary hover:text-content-primary'
           }`}
         >
           All
@@ -183,8 +183,8 @@ export default function GroupLibrary({ groupId }) {
             onClick={() => setSelectedOwner(member.user_id === selectedOwner ? null : member.user_id)}
             className={`flex-shrink-0 px-3 py-1 rounded-full text-sm font-medium transition-colors ${
               selectedOwner === member.user_id
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                ? 'bg-btn-primary text-btn-primary-text'
+                : 'bg-surface-card-hover text-content-secondary hover:text-content-primary'
             }`}
           >
             {member.username}
@@ -194,11 +194,11 @@ export default function GroupLibrary({ groupId }) {
 
       {/* Filter/search returns 0 results */}
       {filteredGames.length === 0 && hasActiveFilters && (
-        <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
-          <p className="text-gray-600 mb-3">No games found</p>
+        <div className="text-center py-8 bg-surface-page rounded-card border border-line">
+          <p className="text-content-secondary mb-3">No games found</p>
           <button
             onClick={clearFilters}
-            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+            className="text-content-link hover:text-content-link-hover text-sm font-medium"
           >
             Clear filters
           </button>
@@ -230,11 +230,11 @@ export default function GroupLibrary({ groupId }) {
           }
 
           return (
-            <div key={game.id} className="border border-gray-100 rounded-lg overflow-hidden">
+            <div key={game.id} className="border border-line rounded-card overflow-hidden">
               {/* Collapsed row */}
               <button
                 onClick={() => setExpandedId(isExpanded ? null : game.id)}
-                className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors text-left"
+                className="w-full flex items-center gap-3 p-3 hover:bg-surface-card-hover transition-colors text-left"
                 style={{ minHeight: '56px' }}
               >
                 <SafeImage
@@ -243,12 +243,12 @@ export default function GroupLibrary({ groupId }) {
                   className="w-10 h-10 rounded object-cover flex-shrink-0"
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-900 truncate text-sm">{game.name}</p>
+                  <p className="font-medium text-content-primary truncate text-sm">{game.name}</p>
                   {metaParts.length > 0 && (
-                    <p className="text-xs text-gray-500 truncate">{metaParts.join(' \u00B7 ')}</p>
+                    <p className="text-xs text-content-muted truncate">{metaParts.join(' \u00B7 ')}</p>
                   )}
                 </div>
-                <span className="text-xs text-gray-400 flex-shrink-0 whitespace-nowrap">
+                <span className="text-xs text-content-muted flex-shrink-0 whitespace-nowrap">
                   {ownerCount} {ownerCount === 1 ? 'owner' : 'owners'}
                 </span>
               </button>
@@ -259,7 +259,7 @@ export default function GroupLibrary({ groupId }) {
                   isExpanded ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'
                 }`}
               >
-                <div className="px-3 pb-3 pt-2 border-t border-gray-100 bg-gray-50">
+                <div className="px-3 pb-3 pt-2 border-t border-line bg-surface-page">
                   <OwnerList
                     owners={game.owners || []}
                     showAll={showAllOwners && expandedId === game.id}
@@ -271,7 +271,7 @@ export default function GroupLibrary({ groupId }) {
                       e.stopPropagation();
                       router.push(`/gameDetail?game_id=${encodeURIComponent(game.id)}&group_id=${encodeURIComponent(groupId)}`);
                     }}
-                    className="mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
+                    className="mt-2 text-sm text-content-link hover:text-content-link-hover font-medium"
                   >
                     View game
                   </button>
@@ -294,8 +294,8 @@ function OwnerList({ owners, showAll, onToggleShowAll, onSelectOwner }) {
   const remaining = owners.length - VISIBLE_LIMIT;
 
   return (
-    <p className="text-sm text-gray-600">
-      <span className="text-gray-500">Owned by </span>
+    <p className="text-sm text-content-secondary">
+      <span className="text-content-muted">Owned by </span>
       {visibleOwners.map((owner, i) => (
         <span key={owner.user_id}>
           {i > 0 && ', '}
@@ -304,7 +304,7 @@ function OwnerList({ owners, showAll, onToggleShowAll, onSelectOwner }) {
               e.stopPropagation();
               onSelectOwner(owner.user_id);
             }}
-            className="text-blue-600 hover:text-blue-800 hover:underline"
+            className="text-content-link hover:text-content-link-hover hover:underline"
           >
             {owner.username}
           </button>
@@ -316,7 +316,7 @@ function OwnerList({ owners, showAll, onToggleShowAll, onSelectOwner }) {
             e.stopPropagation();
             onToggleShowAll();
           }}
-          className="text-blue-600 hover:text-blue-800 hover:underline ml-1"
+          className="text-content-link hover:text-content-link-hover hover:underline ml-1"
         >
           and {remaining} more
         </button>

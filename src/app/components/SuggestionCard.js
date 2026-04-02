@@ -64,48 +64,48 @@ export default function SuggestionCard({
 
   // Color based on score/participant count
   const getScoreColor = () => {
-    if (!suggestion.meets_minimum) return 'bg-gray-100 border-gray-300';
+    if (!suggestion.meets_minimum) return 'bg-surface-card-hover border-line';
     if (suggestion.preferred_count === suggestion.participant_count) {
-      return 'bg-green-50 border-green-300'; // All preferred
+      return 'bg-status-success/10 border-status-success/30'; // All preferred
     }
-    return 'bg-yellow-50 border-yellow-300'; // Mix of preferred and if-need-be
+    return 'bg-status-warning/10 border-status-warning/30'; // Mix of preferred and if-need-be
   };
 
   return (
-    <div className={`rounded-lg border-2 p-4 ${getScoreColor()}`}>
+    <div className={`rounded-card border-2 p-4 ${getScoreColor()}`}>
       {/* Time slot header */}
       <div className="flex justify-between items-start mb-3">
         <div>
-          <div className="font-semibold text-gray-900">
+          <div className="font-semibold text-content-primary">
             {startDate}
           </div>
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-content-secondary">
             {startTime} - {endTime}
           </div>
         </div>
 
         {/* Score badge */}
         <div className="text-right">
-          <div className="text-2xl font-bold text-gray-900">
+          <div className="text-2xl font-bold text-content-primary">
             {suggestion.participant_count}
           </div>
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-content-muted">
             {suggestion.participant_count === 1 ? 'player' : 'players'}
           </div>
         </div>
       </div>
 
       {/* Participant breakdown */}
-      <div className="text-sm text-gray-600 mb-3">
+      <div className="text-sm text-content-secondary mb-3">
         {suggestion.preferred_count > 0 && (
           <span className="inline-flex items-center mr-3">
-            <span className="w-2 h-2 rounded-full bg-green-500 mr-1"></span>
+            <span className="w-2 h-2 rounded-full bg-status-success mr-1"></span>
             {suggestion.preferred_count} preferred
           </span>
         )}
         {suggestion.participant_count - suggestion.preferred_count > 0 && (
           <span className="inline-flex items-center">
-            <span className="w-2 h-2 rounded-full bg-yellow-500 mr-1"></span>
+            <span className="w-2 h-2 rounded-full bg-status-warning mr-1"></span>
             {suggestion.participant_count - suggestion.preferred_count} if-need-be
           </span>
         )}
@@ -113,20 +113,20 @@ export default function SuggestionCard({
 
       {/* Status indicators */}
       {!suggestion.meets_minimum && (
-        <div className="text-sm text-gray-500 italic mb-3">
+        <div className="text-sm text-content-muted italic mb-3">
           Below minimum threshold
         </div>
       )}
 
       {isAlreadyConverted && (
-        <div className="text-sm text-blue-600 mb-3">
+        <div className="text-sm text-content-link mb-3">
           Already converted to event
         </div>
       )}
 
       {/* Error message */}
       {error && (
-        <div className="text-sm text-red-600 mb-3">
+        <div className="text-sm text-status-error mb-3">
           {error}
         </div>
       )}
@@ -136,10 +136,10 @@ export default function SuggestionCard({
         <button
           onClick={handleCreateEvent}
           disabled={isConverting}
-          className={`w-full py-2 px-4 rounded-md font-medium transition-colors
+          className={`w-full py-2 px-4 rounded-btn font-medium transition-colors
             ${isConverting
-              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              : 'bg-indigo-600 text-white hover:bg-indigo-700'
+              ? 'bg-surface-card-hover text-content-muted cursor-not-allowed'
+              : 'bg-btn-primary text-btn-primary-text hover:bg-btn-primary-hover'
             }`}
         >
           {isConverting ? 'Creating...' : 'Create Event'}
@@ -150,7 +150,7 @@ export default function SuggestionCard({
       {isAlreadyConverted && (
         <button
           onClick={() => router.push(`/groups/${groupId}/events/${suggestion.converted_to_event_id}`)}
-          className="w-full py-2 px-4 rounded-md font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+          className="w-full py-2 px-4 rounded-btn font-medium bg-surface-card-hover text-content-secondary hover:bg-surface-elevated transition-colors"
         >
           View Event
         </button>

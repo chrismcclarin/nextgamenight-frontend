@@ -153,16 +153,16 @@ function NotificationBell({ user }) {
 
       {/* Dropdown panel */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
+        <div className="absolute right-0 mt-2 w-80 bg-surface-card rounded-lg shadow-theme-lg border border-line z-50">
           {/* Header */}
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h3 className="text-sm font-bold text-gray-900">Notifications</h3>
+          <div className="px-4 py-3 border-b border-line">
+            <h3 className="text-sm font-bold text-content-primary">Notifications</h3>
           </div>
 
           {/* Confirmation banner */}
           {confirmation && (
-            <div className="px-4 py-2 bg-emerald-50 border-b border-emerald-100">
-              <p className="text-sm text-emerald-700 font-medium">{confirmation}</p>
+            <div className="px-4 py-2 bg-status-success/10 border-b border-line">
+              <p className="text-sm text-status-success font-medium">{confirmation}</p>
             </div>
           )}
 
@@ -170,18 +170,18 @@ function NotificationBell({ user }) {
           <div className="max-h-80 overflow-y-auto">
             {loading ? (
               <div className="px-4 py-8 text-center">
-                <div className="inline-block w-5 h-5 border-2 border-gray-300 border-t-emerald-600 rounded-full animate-spin" />
+                <div className="inline-block w-5 h-5 border-2 border-line border-t-accent rounded-full animate-spin" />
               </div>
             ) : totalCount === 0 ? (
               <div className="px-4 py-8 text-center">
-                <p className="text-sm text-gray-500">No pending notifications</p>
+                <p className="text-sm text-content-muted">No pending notifications</p>
               </div>
             ) : (
               <>
                 {/* Group Invites section */}
                 {invites.length > 0 && (
                   <>
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 pt-3 pb-1">
+                    <p className="text-xs font-semibold text-content-muted uppercase tracking-wider px-4 pt-3 pb-1">
                       Group Invites
                     </p>
                     <ul>
@@ -194,14 +194,14 @@ function NotificationBell({ user }) {
                         return (
                           <li
                             key={invite.id}
-                            className="px-4 py-3 border-b border-gray-50 last:border-b-0"
+                            className="px-4 py-3 border-b border-line last:border-b-0"
                           >
-                            <p className="text-sm font-semibold text-gray-900">{groupName}</p>
-                            <p className="text-xs text-gray-500 mt-0.5">
+                            <p className="text-sm font-semibold text-content-primary">{groupName}</p>
+                            <p className="text-xs text-content-muted mt-0.5">
                               {inviterName} invited you
                             </p>
                             {memberCount && (
-                              <p className="text-xs text-gray-400 mt-0.5">
+                              <p className="text-xs text-content-muted mt-0.5">
                                 {memberCount} member{memberCount !== 1 ? 's' : ''}
                               </p>
                             )}
@@ -210,7 +210,7 @@ function NotificationBell({ user }) {
                               <button
                                 onClick={() => handleAccept(invite)}
                                 disabled={isLoading}
-                                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex-1 btn btn-primary text-xs px-3 py-1.5"
                               >
                                 {isLoading ? (
                                   <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -221,7 +221,7 @@ function NotificationBell({ user }) {
                               <button
                                 onClick={() => handleDecline(invite)}
                                 disabled={isLoading}
-                                className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex-1 btn btn-secondary text-xs px-3 py-1.5"
                               >
                                 Decline
                               </button>
@@ -236,7 +236,7 @@ function NotificationBell({ user }) {
                 {/* Friend Requests section */}
                 {friendRequests.length > 0 && (
                   <>
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 pt-3 pb-1">
+                    <p className="text-xs font-semibold text-content-muted uppercase tracking-wider px-4 pt-3 pb-1">
                       Friend Requests
                     </p>
                     <ul>
@@ -247,10 +247,10 @@ function NotificationBell({ user }) {
                         return (
                           <li
                             key={request.id}
-                            className="px-4 py-3 border-b border-gray-50 last:border-b-0"
+                            className="px-4 py-3 border-b border-line last:border-b-0"
                           >
-                            <p className="text-sm font-semibold text-gray-900">{requesterName}</p>
-                            <p className="text-xs text-gray-500 mt-0.5">
+                            <p className="text-sm font-semibold text-content-primary">{requesterName}</p>
+                            <p className="text-xs text-content-muted mt-0.5">
                               wants to be your friend
                             </p>
 
@@ -258,7 +258,7 @@ function NotificationBell({ user }) {
                               <button
                                 onClick={() => handleAcceptFriend(request)}
                                 disabled={isLoading}
-                                className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex-1 btn btn-primary text-xs px-3 py-1.5"
                               >
                                 {isLoading ? (
                                   <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -269,7 +269,7 @@ function NotificationBell({ user }) {
                               <button
                                 onClick={() => handleDeclineFriend(request)}
                                 disabled={isLoading}
-                                className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex-1 btn btn-secondary text-xs px-3 py-1.5"
                               >
                                 Decline
                               </button>

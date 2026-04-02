@@ -4,19 +4,20 @@ import { useState } from 'react';
 
 /**
  * Muted color palette for fallback backgrounds.
- * Board-game-friendly colors: blues, greens, teals, purples.
+ * Board-game-friendly colors with reduced saturation for theme compatibility.
+ * These use HSL values that work well in both light and dark modes.
  */
 const FALLBACK_COLORS = [
-  '#4a6fa5', // steel blue
-  '#5b8c5a', // sage green
-  '#6b7a8d', // slate
-  '#7c6992', // muted purple
-  '#4e9a8d', // teal
-  '#8b6f47', // warm brown
-  '#5e81ac', // nordic blue
-  '#7d8f69', // olive green
-  '#9b7653', // copper
-  '#6a7b99', // dusty blue
+  'hsl(215, 35%, 48%)',  // steel blue
+  'hsl(118, 22%, 46%)',  // sage green
+  'hsl(210, 12%, 49%)',  // slate
+  'hsl(275, 18%, 49%)',  // muted purple
+  'hsl(168, 33%, 45%)',  // teal
+  'hsl(30, 31%, 41%)',   // warm brown
+  'hsl(213, 32%, 52%)',  // nordic blue
+  'hsl(90, 16%, 48%)',   // olive green
+  'hsl(25, 30%, 47%)',   // copper
+  'hsl(218, 19%, 50%)',  // dusty blue
 ];
 
 /**
@@ -24,10 +25,10 @@ const FALLBACK_COLORS = [
  * Uses a simple character code hash to pick from the palette.
  *
  * @param {string} text - Text to derive color from (typically alt text / name)
- * @returns {string} Hex color from the palette
+ * @returns {string} HSL color from the palette
  */
 function getColorFromText(text) {
-  if (!text) return '#9ca3af'; // default gray for empty alt
+  if (!text) return 'var(--color-surface-card-hover)';
 
   let hash = 0;
   for (let i = 0; i < text.length; i++) {

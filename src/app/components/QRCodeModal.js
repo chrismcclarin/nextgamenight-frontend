@@ -18,17 +18,17 @@ function QRCodeModal({ isOpen, onClose, url, title, onReset, showReset = false }
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm mx-4 relative" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content max-w-sm w-full mx-4 p-6 relative" onClick={(e) => e.stopPropagation()}>
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 text-gray-500 hover:text-gray-800 text-2xl"
+          className="absolute top-3 right-3 text-content-muted hover:text-content-primary text-2xl"
           aria-label="Close"
         >
           &times;
         </button>
 
-        <h2 className="text-xl font-bold text-gray-900 mb-4 text-center">{title}</h2>
+        <h2 className="text-xl font-bold text-content-primary mb-4 text-center">{title}</h2>
 
         {/* QR Code */}
         <div className="flex justify-center mb-4">
@@ -38,7 +38,7 @@ function QRCodeModal({ isOpen, onClose, url, title, onReset, showReset = false }
         {/* Copy Invite Link Button */}
         <button
           onClick={handleCopyLink}
-          className="w-full px-4 py-2.5 text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg font-medium text-center transition-colors mb-3"
+          className="w-full btn btn-primary py-2.5 text-center mb-3"
         >
           {copied ? 'Copied!' : 'Copy Invite Link'}
         </button>
@@ -56,7 +56,7 @@ function QRCodeModal({ isOpen, onClose, url, title, onReset, showReset = false }
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="w-full px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+          className="w-full btn btn-secondary"
         >
           Close
         </button>

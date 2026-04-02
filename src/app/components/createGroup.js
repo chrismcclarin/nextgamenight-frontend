@@ -77,20 +77,20 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
         <>
             {modal && (
                 <div
-                    className="justify-center items-center flex overflow-x-hidden overflow-y-auto fixed inset-0 z-50 outline-none focus:outline-none bg-black bg-opacity-50"
+                    className="modal-overlay"
                     onClick={modaltoggle}
                 >
                     <div className="relative w-auto my-6 mx-auto max-w-sm"
                          onClick={(e) => e.stopPropagation()}>
                         {/*content*/}
-                        <div className="border-0 rounded-lg shadow-lg relative flex flex-col w-full bg-white outline-none focus:outline-none">
+                        <div className="modal-content">
                             {/*header*/}
-                            <div className="flex items-start justify-between p-5 border-b border-solid border-blueGray-200 rounded-t">
-                                <h3 className="text-3xl text-black font-semibold">
+                            <div className="modal-header">
+                                <h3 className="text-3xl text-content-primary font-semibold">
                                     Create a new Group
                                 </h3>
                             </div>
-                            <form onSubmit={onSubmit} autoComplete="off" className="relative p-6 flex-auto">
+                            <form onSubmit={onSubmit} autoComplete="off" className="modal-body">
                                 <div className="mb-3 pt-0">
                                     <div className="relative">
                                         <input
@@ -103,9 +103,9 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                             required
                                             maxLength={40}
                                             autoComplete="off"
-                                            className="px-3 py-3 placeholder-blueGray-300 text-black relative bg-white rounded text-sm border-0 shadow outline-none focus:outline-none focus:ring w-full pr-16"
+                                            className="px-3 py-3 placeholder-content-muted text-content-primary relative bg-surface-input rounded text-sm border border-line shadow outline-none focus:outline-none focus:ring focus:ring-focus-ring w-full pr-16"
                                         />
-                                        <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
+                                        <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-content-muted pointer-events-none">
                                             {newGroup.name.length}/40
                                         </span>
                                     </div>
@@ -113,9 +113,9 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                         <p className="mt-2 text-sm text-red-600">{errorMessage}</p>
                                     )}
                                 </div>
-                                <div className="flex items-center justify-end p-6 border-t border-solid border-blueGray-200 rounded-b">
+                                <div className="modal-footer">
                                     <button
-                                        className="bg-emerald-500 text-white active:bg-emerald-600 font-bold uppercase text-sm px-6 py-3 rounded shadow hover:shadow-lg outline-none focus:outline-none mr-1 mb-1 ease-linear transition-all duration-150"
+                                        className="btn btn-primary font-bold uppercase text-sm px-6 py-3 shadow hover:shadow-lg mr-1 mb-1"
                                         type="submit"
                                     >
                                         Create Group
@@ -123,7 +123,7 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                 </div>
                             </form>
                                 <button
-                                    className="text-red-500 background-transparent font-bold uppercase px-6 py-2 text-sm outline-none focus:outline-none mr-1 mb-1 ease-linear transition-all duration-150"
+                                    className="text-status-error background-transparent font-bold uppercase px-6 py-2 text-sm outline-none focus:outline-none mr-1 mb-1 ease-linear transition-all duration-150"
                                     type="button"
                                     onClick={modaltoggle}
                                 >

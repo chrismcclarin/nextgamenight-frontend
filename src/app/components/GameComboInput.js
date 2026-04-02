@@ -160,14 +160,14 @@ export default function GameComboInput({ value, onChange, groupId, userId, place
           }}
           onKeyDown={handleKeyDown}
           placeholder={placeholder || 'Search for a game or type a name'}
-          className="w-full p-2 border rounded text-gray-900 bg-white pr-8"
+          className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input pr-8 focus:outline-none focus:ring-2 focus:ring-focus-ring"
           maxLength={255}
         />
         {inputValue && (
           <button
             type="button"
             onClick={handleClear}
-            className="absolute right-2 text-gray-400 hover:text-gray-600 text-lg leading-none focus:outline-none"
+            className="absolute right-2 text-content-muted hover:text-content-secondary text-lg leading-none focus:outline-none"
             title="Clear game selection"
           >
             &times;
@@ -176,16 +176,16 @@ export default function GameComboInput({ value, onChange, groupId, userId, place
       </div>
 
       {showDropdown && (
-        <div className="absolute z-50 w-full mt-1 bg-white border rounded shadow-lg max-h-60 overflow-y-auto">
+        <div className="absolute z-50 w-full mt-1 bg-surface-card border border-line rounded-btn shadow-theme-md max-h-60 overflow-y-auto">
           {isSearching && localResults.length === 0 && bggResults.length === 0 && (
-            <div className="px-3 py-2 text-sm text-gray-500">
+            <div className="px-3 py-2 text-sm text-content-muted">
               Searching...
             </div>
           )}
 
           {localResults.length > 0 && (
             <div>
-              <div className="px-3 py-1 text-xs font-semibold text-gray-500 bg-gray-50 border-b">
+              <div className="px-3 py-1 text-xs font-semibold text-content-muted bg-surface-page border-b border-line">
                 Your games
               </div>
               {localResults.map((game) => (
@@ -193,7 +193,7 @@ export default function GameComboInput({ value, onChange, groupId, userId, place
                   key={game.id}
                   type="button"
                   onClick={() => handleSelectLocal(game)}
-                  className="w-full text-left px-3 py-2 text-sm text-gray-900 hover:bg-blue-50 cursor-pointer"
+                  className="w-full text-left px-3 py-2 text-sm text-content-primary hover:bg-surface-card-hover cursor-pointer"
                 >
                   {game.name}
                   {game.year_published ? ` (${game.year_published})` : ''}
@@ -204,7 +204,7 @@ export default function GameComboInput({ value, onChange, groupId, userId, place
 
           {bggResults.length > 0 && (
             <div>
-              <div className="px-3 py-1 text-xs font-semibold text-gray-500 bg-gray-50 border-b">
+              <div className="px-3 py-1 text-xs font-semibold text-content-muted bg-surface-page border-b border-line">
                 BGG results
               </div>
               {bggResults.map((game) => (
@@ -213,12 +213,12 @@ export default function GameComboInput({ value, onChange, groupId, userId, place
                   type="button"
                   onClick={() => handleSelectBgg(game)}
                   disabled={importingBggId === game.bgg_id}
-                  className="w-full text-left px-3 py-2 text-sm text-gray-900 hover:bg-blue-50 cursor-pointer disabled:opacity-50"
+                  className="w-full text-left px-3 py-2 text-sm text-content-primary hover:bg-surface-card-hover cursor-pointer disabled:opacity-50"
                 >
                   {game.name}
                   {game.year_published ? ` (${game.year_published})` : ''}
                   {importingBggId === game.bgg_id && (
-                    <span className="ml-2 text-xs text-gray-400">Importing...</span>
+                    <span className="ml-2 text-xs text-content-muted">Importing...</span>
                   )}
                 </button>
               ))}
@@ -226,7 +226,7 @@ export default function GameComboInput({ value, onChange, groupId, userId, place
           )}
 
           {!isSearching && !hasResults && (
-            <div className="px-3 py-2 text-sm text-gray-500">
+            <div className="px-3 py-2 text-sm text-content-muted">
               No results found
             </div>
           )}

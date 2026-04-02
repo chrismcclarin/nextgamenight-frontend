@@ -17,7 +17,7 @@ export default function GameSuggestionCard({ game, onClick }) {
   return (
     <div
       onClick={onClick ? () => onClick(game) : undefined}
-      className={`bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow p-4 flex gap-4 ${
+      className={`card p-4 flex gap-4 hover:shadow-theme-md transition-shadow ${
         onClick ? 'cursor-pointer' : ''
       }`}
     >
@@ -30,10 +30,10 @@ export default function GameSuggestionCard({ game, onClick }) {
 
       {/* Details */}
       <div className="flex-1 min-w-0 flex flex-col gap-1">
-        <p className="font-semibold text-gray-900 truncate">{game.name}</p>
+        <p className="font-semibold text-content-primary truncate">{game.name}</p>
 
         {/* Metadata row */}
-        <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-gray-500">
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-content-muted">
           {game.min_players != null && game.max_players != null && (
             <span>{playerRange}</span>
           )}
@@ -47,7 +47,7 @@ export default function GameSuggestionCard({ game, onClick }) {
 
         {/* Owners */}
         {game.owners && game.owners.length > 0 && (
-          <p className="text-xs text-gray-400 truncate">
+          <p className="text-xs text-content-muted truncate">
             Owned by {game.owners.join(', ')}
           </p>
         )}
@@ -58,7 +58,7 @@ export default function GameSuggestionCard({ game, onClick }) {
             <span className="text-yellow-500">&#9733;</span>
             {Number(game.avg_group_rating).toFixed(1)}
             {game.review_count != null && (
-              <span className="text-gray-400">({game.review_count})</span>
+              <span className="text-content-muted">({game.review_count})</span>
             )}
           </span>
         )}

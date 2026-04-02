@@ -9,7 +9,7 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
     return (
         <Link
             href={`/gameDetail?game_id=${encodeURIComponent(game.id)}&group_id=${encodeURIComponent(groupId)}`}
-            className="block bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg transition-shadow hover:border-blue-300"
+            className="block card p-4 hover:shadow-theme-lg transition-shadow hover:border-line-accent"
         >
             <div className="flex items-start gap-4">
                 <SafeImage
@@ -18,10 +18,10 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
                     className="w-16 h-16 object-cover rounded"
                 />
                 <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1 truncate">
+                    <h3 className="text-lg font-semibold text-content-primary mb-1 truncate">
                         {game.name}
                     </h3>
-                    <div className="text-sm text-gray-600 space-y-1">
+                    <div className="text-sm text-content-secondary space-y-1">
                         <p>
                             Played <span className="font-semibold">{game.play_count}</span> {game.play_count === 1 ? 'time' : 'times'}
                         </p>
@@ -32,17 +32,17 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
                             <p>
                                 Rating: <span className="font-semibold text-yellow-600">{formatRating(game.avg_rating)}</span>
                                 {game.review_count > 0 && (
-                                    <span className="text-gray-500"> ({game.review_count} {game.review_count === 1 ? 'review' : 'reviews'})</span>
+                                    <span className="text-content-muted"> ({game.review_count} {game.review_count === 1 ? 'review' : 'reviews'})</span>
                                 )}
                             </p>
                         )}
                         {game.theme && (
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-content-muted">
                                 Theme: {game.theme}
                             </p>
                         )}
                         {(game.min_players || game.max_players || sortBy === 'player_count') && (
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-content-muted">
                                 {formatPlayerCount(game)}
                             </p>
                         )}
@@ -238,13 +238,13 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
 
     if (!games || games.length === 0) {
         return (
-            <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                <p className="text-gray-600 text-lg mb-2">No games played yet</p>
-                <p className="text-gray-500 mb-4">Start tracking your game sessions!</p>
+            <div className="text-center py-12 bg-surface-page rounded-card border-2 border-dashed border-line">
+                <p className="text-content-secondary text-lg mb-2">No games played yet</p>
+                <p className="text-content-muted mb-4">Start tracking your game sessions!</p>
                 {userRole && userRole !== 'pending' && (
                     <button
                         onClick={onAddEvent}
-                        className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                        className="btn btn-primary px-6 py-2 font-semibold"
                     >
                         Add Your First Game Event
                     </button>
@@ -255,17 +255,17 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
 
     return (
         <div>
-            <h2 className="text-2xl font-bold text-gray-900 mt-8 mb-4">Group Games</h2>
+            <h2 className="text-2xl font-bold text-content-primary mt-8 mb-4">Group Games</h2>
 
             {/* Sorting Controls */}
-            <div className="mb-6 flex items-center justify-between bg-gray-50 p-3 md:p-4 rounded-lg">
+            <div className="mb-6 flex items-center justify-between bg-surface-page p-3 md:p-4 rounded-card">
                 <div className="flex items-center gap-2">
                     <label className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-700 whitespace-nowrap">Sort by:</span>
+                        <span className="text-sm font-medium text-content-secondary whitespace-nowrap">Sort by:</span>
                         <select
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value)}
-                            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="px-3 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-none focus:ring-2 focus:ring-focus-ring"
                         >
                             <option value="name">Name</option>
                             <option value="theme">Theme</option>
@@ -274,7 +274,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                     </label>
                     <button
                         onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                        className="px-3 py-2 border border-gray-300 rounded-md text-sm hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                        className="px-3 py-2 border border-line rounded-btn text-sm text-content-primary hover:bg-surface-card-hover focus:outline-none focus:ring-2 focus:ring-focus-ring transition-colors"
                         title={sortOrder === 'asc' ? 'Ascending (click to reverse)' : 'Descending (click to reverse)'}
                     >
                         {sortOrder === 'asc' ? '\u2191' : '\u2193'}
@@ -282,10 +282,10 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                 </div>
                 <button
                     onClick={() => setFilterOpen(prev => !prev)}
-                    className={`px-3 py-2 border rounded-md text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    className={`px-3 py-2 border rounded-btn text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-focus-ring ${
                         (filterWinner || filterPicker)
-                            ? 'border-blue-500 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                            : 'border-gray-300 text-gray-700 hover:bg-gray-100'
+                            ? 'border-line-accent bg-surface-card-hover text-accent hover:bg-surface-elevated'
+                            : 'border-line text-content-secondary hover:bg-surface-card-hover'
                     }`}
                 >
                     Filter{(filterWinner || filterPicker) ? ` (${(filterWinner ? 1 : 0) + (filterPicker ? 1 : 0)})` : ''}
@@ -293,14 +293,14 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
             </div>
 
             {filterOpen && (
-                <div className="mb-6 bg-gray-50 p-3 md:p-4 rounded-lg border border-gray-200 -mt-3 rounded-t-none">
+                <div className="mb-6 bg-surface-page p-3 md:p-4 rounded-card border border-line -mt-3 rounded-t-none">
                     <div className="flex flex-col sm:flex-row gap-3">
                         <label className="flex-1">
-                            <span className="text-sm font-medium text-gray-700 block mb-1">Winner</span>
+                            <span className="text-sm font-medium text-content-secondary block mb-1">Winner</span>
                             <select
                                 value={filterWinner}
                                 onChange={(e) => setFilterWinner(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full px-3 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-none focus:ring-2 focus:ring-focus-ring"
                             >
                                 <option value="">All</option>
                                 {winnerOptions.map(opt => (
@@ -311,11 +311,11 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                             </select>
                         </label>
                         <label className="flex-1">
-                            <span className="text-sm font-medium text-gray-700 block mb-1">Picker</span>
+                            <span className="text-sm font-medium text-content-secondary block mb-1">Picker</span>
                             <select
                                 value={filterPicker}
                                 onChange={(e) => setFilterPicker(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full px-3 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-none focus:ring-2 focus:ring-focus-ring"
                             >
                                 <option value="">All</option>
                                 {pickerOptions.map(opt => (
@@ -331,18 +331,18 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
 
             {/* Filtered count */}
             {(filterWinner || filterPicker) && filteredGames.length > 0 && (
-                <p className="text-sm text-gray-500 mb-4">
+                <p className="text-sm text-content-muted mb-4">
                     Showing {filteredGames.length} of {games.length} {games.length === 1 ? 'game' : 'games'}
                 </p>
             )}
 
             {/* Empty filter state */}
             {(filterWinner || filterPicker) && filteredGames.length === 0 && (
-                <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
-                    <p className="text-gray-600 mb-3">No games match these filters</p>
+                <div className="text-center py-8 bg-surface-page rounded-card border border-line">
+                    <p className="text-content-secondary mb-3">No games match these filters</p>
                     <button
                         onClick={() => { setFilterWinner(''); setFilterPicker(''); }}
-                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                        className="text-content-link hover:text-content-link-hover text-sm font-medium"
                     >
                         Clear filters
                     </button>
@@ -356,7 +356,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                     <div>
                         {groupedByTheme.map((group, groupIndex) => (
                             <div key={group.theme}>
-                                <div className={`text-sm font-semibold text-gray-600 uppercase tracking-wide border-b border-gray-200 pb-1 mb-3${groupIndex > 0 ? ' mt-6' : ''}`}>
+                                <div className={`text-sm font-semibold text-content-secondary uppercase tracking-wide border-b border-line pb-1 mb-3${groupIndex > 0 ? ' mt-6' : ''}`}>
                                     {group.theme}
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
