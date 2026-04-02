@@ -1,13 +1,18 @@
 'use client';
 
-import { MOCK_EVENTS, MOCK_GAMES } from '../mockData';
+import { useTour } from '@reactour/tour';
+import { MOCK_EVENTS, MOCK_GAMES, MOCK_LIBRARY_GAMES } from '../mockData';
 
 /**
  * Simulated GroupHome page for the tutorial.
- * Visually mimics the real GroupHomePage with header, calendar, and games list.
- * All elements are visual only -- no real functionality.
+ * Visually mimics the real GroupHomePage with header, tab bar, and content.
+ * Tab display is driven by currentStep for automatic back-navigation support.
+ * Steps 2-4 show Overview tab, steps 5-6 show Library tab.
  */
 export default function SimulatedGroupHome() {
+  const { currentStep, setCurrentStep } = useTour();
+  const activeTab = currentStep >= 5 && currentStep <= 6 ? 'library' : 'overview';
+
   return (
     <div className="p-3 md:p-6 min-h-[500px]">
       {/* Breadcrumbs - matches real GroupHomePage */}
@@ -55,73 +60,125 @@ export default function SimulatedGroupHome() {
         </div>
       </div>
 
-      {/* Prompt Schedule section - matches real PromptScheduleSection collapsed state */}
-      <div data-tutorial="prompt-schedule" className="mb-4">
+      {/* Tab bar - matches real GroupHomePage tab styling */}
+      <div className="flex border-b border-line mb-4">
         <button
-          className="flex items-center gap-2 text-sm font-medium text-content-secondary"
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'overview'
+              ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
+              : 'text-content-secondary hover:text-content-primary'
+          }`}
           onClick={() => {}}
         >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-          Prompt Schedule
+          Overview
+        </button>
+        <button
+          data-tutorial="library-tab"
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'library'
+              ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
+              : 'text-content-secondary hover:text-content-primary'
+          }`}
+          onClick={() => {
+            // Action-triggered step: clicking Library tab advances the tour
+            if (currentStep === 4) {
+              setCurrentStep(5);
+            }
+          }}
+        >
+          Library
         </button>
       </div>
 
-      {/* Calendar section - compact like real GroupHomePage */}
-      <div className="mb-6 bg-surface-card rounded-card shadow-theme-md border border-line p-4">
-        <h3 className="text-lg font-semibold text-content-primary mb-3">Calendar</h3>
-        <div className="space-y-2">
-          {MOCK_EVENTS.map((event) => (
-            <div
-              key={event.id}
-              className="flex justify-between items-start p-3 bg-surface-elevated rounded-lg border border-line"
-            >
-              <div>
-                <h4 className="font-medium text-content-primary text-sm">{event.title}</h4>
-                <p className="text-xs text-content-secondary mt-1">
-                  🎮 {event.game} &mdash; {event.participants.join(', ')}
-                </p>
-              </div>
-              <span className="text-xs bg-accent/10 text-accent px-2 py-1 rounded-full whitespace-nowrap">
-                {event.participants.length} going
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Group Games section - matches real GroupGamesList */}
-      <div>
-        <h2 className="text-2xl font-bold text-content-primary mb-4">Group Games</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {MOCK_GAMES.map((game) => (
-            <div
-              key={game.id}
-              className="block bg-surface-card border border-line rounded-card p-4 hover:shadow-theme-lg transition-shadow cursor-default"
-            >
-              <div className="flex items-start gap-4">
-                <div className="w-16 h-16 bg-surface-elevated rounded flex items-center justify-center text-2xl flex-shrink-0">
-                  🎲
+      {/* Overview tab content (steps 2-4) */}
+      {activeTab === 'overview' && (
+        <>
+          {/* Calendar section - compact like real GroupHomePage */}
+          <div className="mb-6 bg-surface-card rounded-card shadow-theme-md border border-line p-4">
+            <h3 className="text-lg font-semibold text-content-primary mb-3">Calendar</h3>
+            <div className="space-y-2">
+              {MOCK_EVENTS.map((event) => (
+                <div
+                  key={event.id}
+                  className="flex justify-between items-start p-3 bg-surface-elevated rounded-lg border border-line"
+                >
+                  <div>
+                    <h4 className="font-medium text-content-primary text-sm">{event.title}</h4>
+                    <p className="text-xs text-content-secondary mt-1">
+                      🎮 {event.game} &mdash; {event.participants.join(', ')}
+                    </p>
+                  </div>
+                  <span className="text-xs bg-accent/10 text-accent px-2 py-1 rounded-full whitespace-nowrap">
+                    {event.participants.length} going
+                  </span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-lg font-semibold text-content-primary mb-1 truncate">{game.name}</h3>
-                  <div className="text-sm text-content-secondary space-y-1">
-                    <p>Played <span className="font-semibold">{game.playCount}</span> {game.playCount === 1 ? 'time' : 'times'}</p>
-                    <p>Last played: {game.lastPlayed}</p>
-                    <p>Rating: <span className="font-semibold text-status-warning">{game.rating}/5</span></p>
+              ))}
+            </div>
+          </div>
+
+          {/* Group Games section - matches real GroupGamesList */}
+          <div>
+            <h2 className="text-2xl font-bold text-content-primary mb-4">Group Games</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {MOCK_GAMES.map((game) => (
+                <div
+                  key={game.id}
+                  className="block bg-surface-card border border-line rounded-card p-4 hover:shadow-theme-lg transition-shadow cursor-default"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="w-16 h-16 bg-surface-elevated rounded flex items-center justify-center text-2xl flex-shrink-0">
+                      🎲
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-lg font-semibold text-content-primary mb-1 truncate">{game.name}</h3>
+                      <div className="text-sm text-content-secondary space-y-1">
+                        <p>Played <span className="font-semibold">{game.playCount}</span> {game.playCount === 1 ? 'time' : 'times'}</p>
+                        <p>Last played: {game.lastPlayed}</p>
+                        <p>Rating: <span className="font-semibold text-status-warning">{game.rating}/5</span></p>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ))}
             </div>
-          ))}
+          </div>
+        </>
+      )}
+
+      {/* Library tab content (steps 5-6) */}
+      {activeTab === 'library' && (
+        <div data-tutorial="library-games">
+          <div className="space-y-1">
+            {MOCK_LIBRARY_GAMES.map((game) => (
+              <div key={game.id} className="border border-line rounded-card overflow-hidden">
+                <div className="w-full flex items-center gap-3 p-3 text-left" style={{ minHeight: '56px' }}>
+                  <div className="w-10 h-10 bg-surface-elevated rounded flex items-center justify-center text-xl flex-shrink-0">
+                    {game.imageEmoji}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-content-primary truncate text-sm">{game.name}</p>
+                    <p className="text-xs text-content-muted truncate">
+                      {game.playerCount} players &middot; {game.playTime}
+                    </p>
+                  </div>
+                  <span className="text-xs text-content-muted flex-shrink-0 whitespace-nowrap">
+                    {game.owner}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Add Game button */}
+          <button
+            data-tutorial="library-add-game"
+            className="mt-4 w-full py-3 border-2 border-dashed border-line rounded-card text-sm font-medium text-content-secondary hover:text-content-primary hover:border-accent transition-colors"
+            onClick={() => {}}
+          >
+            + Add Game to Library
+          </button>
         </div>
-      </div>
+      )}
     </div>
   );
 }

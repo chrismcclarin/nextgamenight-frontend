@@ -166,6 +166,24 @@ export default function SimulatedAvailability() {
           </p>
         )}
       </div>
+
+      {/* Prompt Schedule section - moved from SimulatedGroupHome */}
+      <div data-tutorial="prompt-schedule" className="mt-6">
+        <button
+          className="flex items-center gap-2 text-sm font-medium text-content-secondary"
+          onClick={() => {}}
+        >
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          Prompt Schedule
+        </button>
+      </div>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { usePathname } from 'next/navigation';
 import { usersAPI } from '../../../lib/api';
 import TutorialOverlay from './TutorialOverlay';
+import { CURRENT_TUTORIAL_VERSION } from './steps';
 
 /**
  * TutorialContext provides tutorial lifecycle state and actions to the app.
@@ -40,8 +41,6 @@ export function useTutorial() {
  *   - Uses backend API only (no localStorage per user decision)
  *   - Optimistic dismissal: overlay hides immediately, persist async
  */
-// Bump this when the tutorial content changes to re-show to existing users
-const CURRENT_TUTORIAL_VERSION = 2;
 
 export default function TutorialProvider({ children }) {
   const { user, isLoading } = Auth();

@@ -1,14 +1,10 @@
 'use client';
 
-import { TOTAL_SLIDES } from './steps';
-
 /**
  * Completion slide shown after all tour steps are finished.
  * Displays a checkmark and offers navigation to home.
  */
 export default function DoneSlide({ onComplete }) {
-  const currentPosition = TOTAL_SLIDES - 1;
-
   return (
     <div className="fixed inset-0 z-[9998] bg-surface-page flex flex-col items-center justify-center px-6">
       <div className="max-w-md w-full text-center">
@@ -28,7 +24,7 @@ export default function DoneSlide({ onComplete }) {
         <h1 className="text-3xl font-bold text-content-primary mb-3">You're all set!</h1>
 
         <p className="text-content-secondary text-base mb-8">
-          You're ready to start scheduling game nights with your group.
+          You're all set to schedule game nights, explore your library, and keep your group connected.
         </p>
 
         <button
@@ -37,16 +33,6 @@ export default function DoneSlide({ onComplete }) {
         >
           Go to Home
         </button>
-      </div>
-
-      {/* Step dots at bottom */}
-      <div className="absolute bottom-8 flex gap-1.5">
-        {Array.from({ length: TOTAL_SLIDES }).map((_, i) => (
-          <span
-            key={i}
-            className={`w-2 h-2 rounded-full ${i <= currentPosition ? 'bg-accent' : 'bg-line'}`}
-          />
-        ))}
       </div>
     </div>
   );
