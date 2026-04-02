@@ -19,14 +19,14 @@ const DEFAULT_PROFILE_PICTURES = [
 
 // Default background color options
 const DEFAULT_BACKGROUND_COLORS = [
-  { name: 'White', value: '#ffffff' },
-  { name: 'Light Blue', value: '#e3f2fd' },
-  { name: 'Light Green', value: '#e8f5e9' },
-  { name: 'Light Purple', value: '#f3e5f5' },
-  { name: 'Light Orange', value: '#fff3e0' },
-  { name: 'Light Pink', value: '#fce4ec' },
-  { name: 'Light Gray', value: '#f5f5f5' },
-  { name: 'Light Yellow', value: '#fffde7' },
+  { name: 'Charcoal', value: '#1e1e2e' },
+  { name: 'Slate', value: '#1e293b' },
+  { name: 'Navy', value: '#172554' },
+  { name: 'Indigo', value: '#1e1b4b' },
+  { name: 'Forest', value: '#14332a' },
+  { name: 'Wine', value: '#3b1030' },
+  { name: 'Espresso', value: '#2c1f14' },
+  { name: 'Storm', value: '#27272a' },
 ];
 
 export default function GroupSettings({ group, user, onClose, onUpdate, userRole, onGroupDeleted }) {

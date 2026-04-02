@@ -156,7 +156,7 @@ export default function GroupPlanningPage() {
                         <span className="text-content-muted mx-2">{'>'}</span>
                     </>
                 )}
-                <span className="text-content-inverse font-semibold">Plan Game Session</span>
+                <span className="text-content-primary font-semibold">Plan Game Session</span>
             </nav>
 
             {/* Header */}

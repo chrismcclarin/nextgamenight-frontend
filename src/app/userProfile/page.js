@@ -669,7 +669,7 @@ function Profile(){
                 <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
                     <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
                     <span className="text-content-muted mx-2">{'>'}</span>
-                    <span className="text-content-inverse font-semibold">Profile</span>
+                    <span className="text-content-primary font-semibold">Profile</span>
                 </nav>
 
                 {/* Profile Header */}
@@ -1016,7 +1016,7 @@ function Profile(){
                                         <button
                                             onClick={() => handleToggle(type.key, 'email', !preferences[type.key]?.email)}
                                             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                                preferences[type.key]?.email ? 'bg-indigo-600' : 'bg-surface-card-hover'
+                                                preferences[type.key]?.email ? 'bg-status-success' : 'bg-line-strong'
                                             }`}
                                             aria-label={`${type.label} email notifications`}
                                         >
@@ -1032,7 +1032,7 @@ function Profile(){
                                             <button
                                                 onClick={() => handleToggle(type.key, 'sms', !preferences[type.key]?.sms)}
                                                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                                    preferences[type.key]?.sms ? 'bg-indigo-600' : 'bg-surface-card-hover'
+                                                    preferences[type.key]?.sms ? 'bg-status-success' : 'bg-line-strong'
                                                 }`}
                                                 aria-label={`${type.label} SMS notifications`}
                                             >

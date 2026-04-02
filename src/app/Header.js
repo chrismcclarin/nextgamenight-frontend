@@ -30,15 +30,15 @@ function Header(){
             <div className="w-full max-w-7xl mx-auto px-4 h-full">
                 <div className="flex justify-between items-center h-full">
                     {/* Brand */}
-                    <Link href="/" className="flex items-center gap-2.5 text-content-inverse hover:opacity-90 transition-opacity">
+                    <Link href="/" className="flex items-center gap-2.5 text-white hover:opacity-90 transition-opacity">
                         <DieLogo size={34} />
-                        <span className="text-lg md:text-xl font-bold tracking-tight text-content-inverse">
+                        <span className="text-lg md:text-xl font-bold tracking-tight text-white">
                             Next Game Night
                         </span>
                     </Link>
 
                     {/* Desktop nav */}
-                    <ul className="hidden md:flex gap-x-6 items-center text-content-inverse text-sm font-medium">
+                    <ul className="hidden md:flex gap-x-6 items-center text-white text-sm font-medium">
                         {navLinks.map(({ href, label, isLink }, index) => (
                             <li key={label} className="flex items-center gap-x-6">
                                 {isLink ? (
@@ -67,7 +67,7 @@ function Header(){
 
                     {/* Mobile menu button */}
                     <button
-                        className="md:hidden text-content-inverse p-2 hover:text-accent transition-colors"
+                        className="md:hidden text-white p-2 hover:text-accent transition-colors"
                         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                         aria-label="Toggle menu"
                     >
@@ -90,7 +90,7 @@ function Header(){
                                     {isLink ? (
                                         <Link
                                             href={href}
-                                            className="block px-4 py-3 text-content-inverse hover:text-accent hover:bg-surface-header-hover transition-colors"
+                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover transition-colors"
                                             onClick={() => setMobileMenuOpen(false)}
                                         >
                                             {label}
@@ -98,7 +98,7 @@ function Header(){
                                     ) : (
                                         <a
                                             href={href}
-                                            className="block px-4 py-3 text-content-inverse hover:text-accent hover:bg-surface-header-hover transition-colors"
+                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover transition-colors"
                                             onClick={() => setMobileMenuOpen(false)}
                                         >
                                             {label}
@@ -110,7 +110,7 @@ function Header(){
                         {/* Mobile notification bell */}
                         {user && (
                             <div className="px-4 py-3 border-t border-line-header">
-                                <div className="flex items-center gap-3 text-content-inverse text-sm">
+                                <div className="flex items-center gap-3 text-white text-sm">
                                     <NotificationBell user={user} />
                                     <span className="text-content-muted">Invites</span>
                                 </div>
@@ -118,7 +118,7 @@ function Header(){
                         )}
                         {/* Mobile theme toggle */}
                         <div className="px-4 py-3 border-t border-line-header">
-                            <div className="flex items-center gap-3 text-content-inverse text-sm">
+                            <div className="flex items-center gap-3 text-white text-sm">
                                 <ThemeToggle />
                                 <span className="text-content-muted">Theme</span>
                             </div>

@@ -5,18 +5,18 @@
 
 /* ===== DESIGN SYSTEM: Palette Primitives ===== */
 :root {
-  /* Purple scale */
-  --purple-50: #faf5ff;
-  --purple-100: #f0e6ff;
-  --purple-200: #dcc8ff;
-  --purple-300: #c4a1f5;
-  --purple-400: #a87bea;
-  --purple-500: #8b5cf6;
-  --purple-600: #7c3aed;
-  --purple-700: #6025c0;
-  --purple-800: #3b1578;
-  --purple-900: #2d1065;
-  --purple-950: #1a0a3e;
+  /* Indigo/slate-blue scale */
+  --purple-50: #f5f7fa;
+  --purple-100: #e8ecf4;
+  --purple-200: #d1d9e8;
+  --purple-300: #b0bdd3;
+  --purple-400: #8a9bba;
+  --purple-500: #6b7fa3;
+  --purple-600: #536889;
+  --purple-700: #42536e;
+  --purple-800: #2f3b50;
+  --purple-900: #232d3e;
+  --purple-950: #161d29;
 
   /* Orange/Amber scale */
   --amber-50: #fffbeb;
@@ -261,10 +261,9 @@ body {
   background-color: var(--color-bg-card);
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
-  max-width: 32rem;
   width: 100%;
-  max-height: 85vh;
-  overflow: hidden;
+  max-height: 90vh;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
 }

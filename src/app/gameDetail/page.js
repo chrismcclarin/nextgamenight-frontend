@@ -482,7 +482,7 @@ export default function GameDetailPage() {
                         </>
                     )}
                     <span className="text-content-muted mx-2">{'>'}</span>
-                    <span className="text-content-inverse font-semibold">{singleEvent.title || 'Game Night'}</span>
+                    <span className="text-content-primary font-semibold">{singleEvent.title || 'Game Night'}</span>
                 </nav>
 
                 <div className="card p-6 mb-6">
@@ -621,7 +621,7 @@ export default function GameDetailPage() {
                     </>
                 )}
                 <span className="text-content-muted mx-2">{'>'}</span>
-                <span className="text-content-inverse font-semibold">{game.name}</span>
+                <span className="text-content-primary font-semibold">{game.name}</span>
             </nav>
 
             {/* Game Details */}

@@ -69,7 +69,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
 
   if (loading) {
     return (
-      <div className="group-list-sidebar">
+      <div className="group-list-sidebar bg-surface-page rounded-card p-4">
         <div className="loading">Loading groups...</div>
       </div>
     );
@@ -77,12 +77,12 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
 
   return (
     <FriendshipStatusProvider>
-    <div className="group-list-sidebar">
-      <div className="sidebar-header">
-        <h2>Your Groups</h2>
+    <div className="group-list-sidebar bg-surface-page rounded-card p-4">
+      <div className="sidebar-header flex items-center justify-between mb-4 pb-3 border-b border-line">
+        <h2 className="text-xl font-bold text-content-primary">Your Groups</h2>
         {onCreateGroup && (
-          <button 
-            className="create-group-btn"
+          <button
+            className="create-group-btn btn btn-primary text-sm"
             onClick={onCreateGroup}
             aria-label="Create new group"
           >

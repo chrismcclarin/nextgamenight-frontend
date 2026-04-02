@@ -148,31 +148,30 @@ function GroupHomePage(){
             <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
                 <span className="text-content-muted mx-2">{'>'}</span>
-                <span className="text-content-inverse font-semibold max-w-[200px] truncate inline-block align-bottom">{Group?.name || 'Group'}</span>
+                <span className="text-content-primary font-semibold max-w-[200px] truncate inline-block align-bottom">{Group?.name || 'Group'}</span>
             </nav>
 
             {/* Header */}
             <div
                 className="mb-6 flex flex-col md:flex-row md:justify-between md:items-center gap-4 p-4 md:p-6 rounded-lg relative overflow-visible"
                 style={{
-                    backgroundColor: Group?.background_color || '#1f2937',
+                    backgroundColor: Group?.background_color || '#111418',
                     backgroundImage: Group?.background_image_url ? `url(${Group.background_image_url})` : 'none',
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
                     minHeight: '120px',
                 }}
             >
-                {Group?.background_image_url && (
-                    <div style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        backgroundColor: 'rgba(0, 0, 0, 0.4)',
-                        zIndex: 0,
-                    }} />
-                )}
+                <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: Group?.background_image_url ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.15)',
+                    zIndex: 0,
+                    borderRadius: 'inherit',
+                }} />
                 <div className="flex items-center gap-3 md:gap-4 relative z-10 flex-1 min-w-0">
                     {Group?.profile_picture_url && (
                         <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-card flex items-center justify-center text-2xl md:text-4xl flex-shrink-0 overflow-hidden border-2 md:border-4 border-surface-card shadow-theme-lg">
@@ -210,9 +209,10 @@ function GroupHomePage(){
                     {(userRole === 'owner' || userRole === 'admin') && (
                         <button
                             onClick={() => setInviteModal(true)}
-                            className="btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-surface-card"
+                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap text-white border-2 border-white/30 rounded-btn backdrop-blur-sm hover:bg-white/20 transition-all"
                             style={{
-                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.3)',
+                                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
                             }}
                         >
                             Invite Member
@@ -221,9 +221,10 @@ function GroupHomePage(){
                     {userRole && userRole !== 'pending' && (
                         <button
                             onClick={() => setMemberModal(true)}
-                            className="bg-purple-600 text-white px-4 py-2 md:px-6 md:py-3 rounded-btn font-semibold hover:bg-purple-700 transition-colors shadow-theme-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-surface-card"
+                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap text-white border-2 border-white/30 rounded-btn backdrop-blur-sm hover:bg-white/20 transition-all"
                             style={{
-                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.3)',
+                                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
                             }}
                         >
                             Manage Members
@@ -231,9 +232,9 @@ function GroupHomePage(){
                     )}
                     <Link
                         href={`/groupPlanning?group_id=${Router}`}
-                        className="btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-surface-card text-center"
+                        className="btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white/20 text-center"
                         style={{
-                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.3)',
+                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.15)',
                         }}
                     >
                         Plan Game Session
@@ -241,9 +242,11 @@ function GroupHomePage(){
                     {userRole && userRole !== 'pending' && (
                         <button
                             onClick={toggleEventModal}
-                            className="btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-surface-card"
+                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap rounded-btn transition-all border-2 border-amber-400/40 hover:border-amber-400/60"
                             style={{
-                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.3)',
+                                backgroundColor: 'var(--amber-600)',
+                                color: 'white',
+                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.15)',
                             }}
                         >
                             Add New Game Event
@@ -264,7 +267,7 @@ function GroupHomePage(){
                             : 'text-content-secondary hover:text-content-primary'
                     }`}
                 >
-                    Home
+                    Overview
                 </button>
                 <button
                     onClick={() => setActiveTab('library')}
