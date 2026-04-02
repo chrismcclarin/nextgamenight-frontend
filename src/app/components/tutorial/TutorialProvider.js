@@ -28,8 +28,8 @@ export function useTutorial() {
  *
  * Auto-trigger logic:
  *   - Only fires when user is on / (home page pathname gate)
- *   - Checks backend tutorial_completed flag via usersAPI.getUser
- *   - If tutorial_completed is false, shows tutorial overlay
+ *   - Checks backend tutorial_version via usersAPI.getUser
+ *   - If tutorial_version < CURRENT_TUTORIAL_VERSION, shows tutorial overlay
  *   - Fail-open: if API check fails, do not block the app
  *
  * Replay logic:
@@ -40,6 +40,9 @@ export function useTutorial() {
  *   - Uses backend API only (no localStorage per user decision)
  *   - Optimistic dismissal: overlay hides immediately, persist async
  */
+// Bump this when the tutorial content changes to re-show to existing users
+const CURRENT_TUTORIAL_VERSION = 2;
+
 export default function TutorialProvider({ children }) {
   const { user, isLoading } = Auth();
   const pathname = usePathname();
@@ -58,7 +61,7 @@ export default function TutorialProvider({ children }) {
         const userData = await usersAPI.getUser(user.sub);
         if (!cancelled) {
           setTutorialChecked(true);
-          if (userData && userData.tutorial_completed === false) {
+          if (userData && (userData.tutorial_version ?? 0) < CURRENT_TUTORIAL_VERSION) {
             setShowTutorial(true);
           }
         }
@@ -84,7 +87,7 @@ export default function TutorialProvider({ children }) {
     setTutorialChecked(true);
 
     if (user?.sub) {
-      usersAPI.completeTutorial(user.sub).catch((err) => {
+      usersAPI.completeTutorial(user.sub, CURRENT_TUTORIAL_VERSION).catch((err) => {
         // Log silently -- optimistic dismissal already happened
         console.error('Failed to persist tutorial completion:', err);
       });

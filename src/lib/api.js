@@ -331,10 +331,11 @@ export const usersAPI = {
       body: JSON.stringify(userData),
     }),
 
-  // Mark tutorial as completed
-  completeTutorial: (user_id) =>
+  // Mark tutorial as completed (with version tracking)
+  completeTutorial: (user_id, version = 2) =>
     apiFetch(`/users/${encodeURIComponent(user_id)}/tutorial`, {
       method: 'PUT',
+      body: JSON.stringify({ version }),
     }),
 
   // Reset tutorial for replay
