@@ -3,23 +3,171 @@
 @tailwind utilities;
 @import 'react-big-calendar/lib/css/react-big-calendar.css';
 
+/* ===== DESIGN SYSTEM: Palette Primitives ===== */
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  /* Purple scale */
+  --purple-50: #faf5ff;
+  --purple-100: #f0e6ff;
+  --purple-200: #dcc8ff;
+  --purple-300: #c4a1f5;
+  --purple-400: #a87bea;
+  --purple-500: #8b5cf6;
+  --purple-600: #7c3aed;
+  --purple-700: #6025c0;
+  --purple-800: #3b1578;
+  --purple-900: #2d1065;
+  --purple-950: #1a0a3e;
+
+  /* Orange/Amber scale */
+  --amber-50: #fffbeb;
+  --amber-100: #fef3c7;
+  --amber-200: #fde68a;
+  --amber-300: #fcd34d;
+  --amber-400: #fbbf24;
+  --amber-500: #f59e0b;
+  --amber-600: #d97706;
+  --amber-700: #b45309;
+
+  /* Neutral warm scale */
+  --warm-50: #faf8f5;
+  --warm-100: #f5f0ea;
+  --warm-200: #e8e0d8;
+  --warm-300: #d6cbc0;
+  --warm-400: #b8a898;
+  --warm-500: #8c7a6a;
+  --warm-600: #6b5a4c;
+  --warm-700: #4a3d32;
+  --warm-800: #2d2520;
+  --warm-900: #1a1614;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+/* ===== DESIGN SYSTEM: Semantic Tokens (Light = default) ===== */
+:root {
+  /* Surfaces */
+  --color-bg-page: var(--warm-50);
+  --color-bg-card: #ffffff;
+  --color-bg-card-hover: var(--warm-100);
+  --color-bg-elevated: #ffffff;
+  --color-bg-overlay: rgba(0, 0, 0, 0.5);
+  --color-bg-input: #ffffff;
+
+  /* Brand / Navigation */
+  --color-bg-nav: var(--purple-900);
+  --color-bg-nav-hover: var(--purple-800);
+
+  /* Text */
+  --color-text-primary: var(--warm-900);
+  --color-text-secondary: var(--warm-600);
+  --color-text-muted: var(--warm-500);
+  --color-text-inverse: #ffffff;
+  --color-text-link: var(--purple-600);
+  --color-text-link-hover: var(--purple-700);
+
+  /* Accent (interactive elements) */
+  --color-accent: var(--amber-500);
+  --color-accent-hover: var(--amber-400);
+  --color-accent-text: var(--purple-950);
+
+  /* Borders */
+  --color-border: var(--warm-200);
+  --color-border-strong: var(--warm-300);
+  --color-border-accent: var(--amber-600);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+
+  /* Status / Role Badges */
+  --color-badge-owner-bg: var(--purple-100);
+  --color-badge-owner-text: var(--purple-800);
+  --color-badge-owner-border: var(--purple-300);
+  --color-badge-admin-bg: var(--amber-100);
+  --color-badge-admin-text: var(--amber-700);
+  --color-badge-admin-border: var(--amber-300);
+  --color-badge-member-bg: var(--warm-100);
+  --color-badge-member-text: var(--warm-700);
+  --color-badge-member-border: var(--warm-300);
+
+  /* Interactive states */
+  --color-btn-primary-bg: var(--purple-600);
+  --color-btn-primary-hover: var(--purple-700);
+  --color-btn-primary-text: #ffffff;
+  --color-btn-secondary-bg: var(--warm-100);
+  --color-btn-secondary-hover: var(--warm-200);
+  --color-btn-secondary-text: var(--warm-800);
+
+  /* Success / Error / Warning (functional -- not palette-themed) */
+  --color-success: #16a34a;
+  --color-error: #dc2626;
+  --color-warning: #d97706;
+
+  /* Transitions */
+  --theme-transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+/* ===== DESIGN SYSTEM: Dark Mode Overrides ===== */
+.dark {
+  --color-bg-page: var(--purple-950);
+  --color-bg-card: var(--purple-900);
+  --color-bg-card-hover: var(--purple-800);
+  --color-bg-elevated: var(--purple-800);
+  --color-bg-overlay: rgba(0, 0, 0, 0.7);
+  --color-bg-input: var(--purple-800);
+
+  --color-bg-nav: var(--purple-950);
+  --color-bg-nav-hover: var(--purple-900);
+
+  --color-text-primary: var(--warm-50);
+  --color-text-secondary: var(--warm-300);
+  --color-text-muted: var(--warm-400);
+  --color-text-inverse: var(--purple-950);
+  --color-text-link: var(--amber-400);
+  --color-text-link-hover: var(--amber-300);
+
+  --color-accent: var(--amber-500);
+  --color-accent-hover: var(--amber-400);
+  --color-accent-text: var(--purple-950);
+
+  --color-border: var(--purple-700);
+  --color-border-strong: var(--purple-600);
+  --color-border-accent: var(--amber-500);
+
+  /* Dark mode: minimal shadows, replaced by borders/glow */
+  --shadow-sm: none;
+  --shadow-md: 0 0 0 1px var(--purple-700);
+  --shadow-lg: 0 0 0 1px var(--purple-600), 0 0 20px rgba(168, 85, 247, 0.05);
+
+  --color-badge-owner-bg: rgba(124, 58, 237, 0.2);
+  --color-badge-owner-text: var(--purple-300);
+  --color-badge-owner-border: var(--purple-600);
+  --color-badge-admin-bg: rgba(245, 158, 11, 0.15);
+  --color-badge-admin-text: var(--amber-300);
+  --color-badge-admin-border: var(--amber-700);
+  --color-badge-member-bg: rgba(139, 122, 106, 0.15);
+  --color-badge-member-text: var(--warm-300);
+  --color-badge-member-border: var(--warm-600);
+
+  --color-btn-primary-bg: var(--purple-600);
+  --color-btn-primary-hover: var(--purple-500);
+  --color-btn-primary-text: #ffffff;
+  --color-btn-secondary-bg: var(--purple-800);
+  --color-btn-secondary-hover: var(--purple-700);
+  --color-btn-secondary-text: var(--warm-200);
+
+  --color-success: #22c55e;
+  --color-error: #ef4444;
+  --color-warning: #f59e0b;
+}
+
+/* ===== DESIGN SYSTEM: Theme Transition ===== */
+html {
+  transition: background-color 0.25s ease;
 }
 
 body {
-  color: #1f2937;
-  background-color: #fef9ef;
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-page);
 }
 
 .form {
