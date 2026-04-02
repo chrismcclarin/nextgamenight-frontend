@@ -94,27 +94,28 @@ export default function GameComboInput({ value, onChange, groupId, userId, place
   };
 
   const handleSelectBgg = async (game) => {
-    if (game.db_id) {
-      // Already in database, use db_id directly
+    // Always go through import endpoint to ensure full BGG data (images, player count, etc.)
+    // The backend will backfill missing data for CSV-imported games
+    setImportingBggId(game.bgg_id);
+    try {
+      const imported = await gamesAPI.importFromBGG(game.bgg_id);
       isInternalChange.current = true;
-      setInputValue(game.name);
-      onChange({ game_id: game.db_id, game_name: game.name });
+      setInputValue(imported.name || game.name);
+      onChange({ game_id: imported.id, game_name: imported.name || game.name });
       setIsOpen(false);
-    } else {
-      // Need to import from BGG first
-      setImportingBggId(game.bgg_id);
-      try {
-        const imported = await gamesAPI.importFromBGG(game.bgg_id);
+    } catch (error) {
+      console.error('Error importing BGG game:', error);
+      // Fallback: if import fails but we have a db_id, use it directly
+      if (game.db_id) {
         isInternalChange.current = true;
-        setInputValue(imported.name || game.name);
-        onChange({ game_id: imported.id, game_name: imported.name || game.name });
+        setInputValue(game.name);
+        onChange({ game_id: game.db_id, game_name: game.name });
         setIsOpen(false);
-      } catch (error) {
-        console.error('Error importing BGG game:', error);
+      } else {
         alert(`Failed to import game from BGG: ${error.message || 'Please try again.'}`);
-      } finally {
-        setImportingBggId(null);
       }
+    } finally {
+      setImportingBggId(null);
     }
   };
 
