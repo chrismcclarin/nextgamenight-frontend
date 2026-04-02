@@ -505,14 +505,14 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 {/* Start Date */}
                 <div>
                   <label htmlFor="start_date" className="block text-sm font-medium mb-1 text-content-primary">
-                    Start Date & Time <span className="text-red-500">*</span>
+                    Start Date & Time {!editingEvent && <span className="text-red-500">*</span>}
                   </label>
                   <input
                     type="datetime-local"
                     id="start_date"
                     value={newEvent.start_date}
                     onChange={handleChange}
-                    required
+                    required={!editingEvent}
                     className="w-full p-2 border rounded text-content-primary bg-surface-input"
                   />
                 </div>
@@ -520,7 +520,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 {/* Duration */}
                 <div>
                   <label htmlFor="duration_minutes" className="block text-sm font-medium mb-1 text-content-primary">
-                    Duration (minutes) <span className="text-red-500">*</span>
+                    Duration (minutes) {!editingEvent && <span className="text-red-500">*</span>}
                   </label>
                   <input
                     type="number"
@@ -529,7 +529,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                     onChange={handleChange}
                     className="w-full p-2 border rounded text-content-primary bg-surface-input"
                     placeholder="Enter duration in minutes"
-                    required
+                    required={!editingEvent}
                     min="1"
                     max="1440"
                   />
