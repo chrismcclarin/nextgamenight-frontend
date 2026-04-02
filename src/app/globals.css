@@ -102,6 +102,14 @@
   --color-error: #dc2626;
   --color-warning: #d97706;
 
+  /* Header (warm neutral, NOT purple) */
+  --color-bg-header: var(--warm-800);
+  --color-bg-header-hover: var(--warm-700);
+  --color-border-header: var(--warm-600);
+
+  /* Focus ring */
+  --color-focus-ring: var(--purple-400);
+
   /* Transitions */
   --theme-transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
@@ -158,6 +166,14 @@
   --color-success: #22c55e;
   --color-error: #ef4444;
   --color-warning: #f59e0b;
+
+  /* Header (warm neutral) */
+  --color-bg-header: var(--warm-900);
+  --color-bg-header-hover: var(--warm-800);
+  --color-border-header: var(--warm-700);
+
+  /* Focus ring */
+  --color-focus-ring: var(--amber-400);
 }
 
 /* ===== DESIGN SYSTEM: Theme Transition ===== */
@@ -170,68 +186,240 @@ body {
   background-color: var(--color-bg-page);
 }
 
-.form {
-  color: black
+/* ===== DESIGN SYSTEM: Component Classes ===== */
+
+.card {
+  background-color: var(--color-bg-card);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+  padding: 1.5rem;
+  transition: var(--theme-transition);
 }
 
-/* React Big Calendar Styling - Ensure text is visible */
+.card:hover {
+  background-color: var(--color-bg-card-hover);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
+  transition: var(--theme-transition);
+  cursor: pointer;
+  border: none;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background-color: var(--color-btn-primary-bg);
+  color: var(--color-btn-primary-text);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--color-btn-primary-hover);
+}
+
+.btn-secondary {
+  background-color: var(--color-btn-secondary-bg);
+  color: var(--color-btn-secondary-text);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--color-btn-secondary-hover);
+}
+
+.btn-danger {
+  background-color: var(--color-error);
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-bg-overlay);
+  padding: 1rem;
+}
+
+.modal-content {
+  background-color: var(--color-bg-card);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  max-width: 32rem;
+  width: 100%;
+  max-height: 85vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h2,
+.modal-header h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+/* ===== DESIGN SYSTEM: React Big Calendar Restyle ===== */
+
 .rbc-calendar {
-  color: #1f2937 !important;
+  color: var(--color-text-primary);
+  font-family: inherit;
 }
 
 .rbc-header {
-  color: #1f2937 !important;
-  background-color: white !important;
-}
-
-.rbc-time-header-content {
-  color: #1f2937 !important;
-}
-
-.rbc-time-gutter {
-  color: #374151 !important;
-  font-weight: 500;
-}
-
-.rbc-day-header {
-  color: #1f2937 !important;
-}
-
-.rbc-label {
-  color: #374151 !important;
-}
-
-.rbc-toolbar {
-  color: #1f2937 !important;
-}
-
-.rbc-toolbar button {
-  color: #374151 !important;
-}
-
-.rbc-toolbar button.rbc-active {
-  color: white !important;
-}
-
-.rbc-toolbar-label {
-  color: #1f2937 !important;
+  color: var(--color-text-secondary);
+  background-color: var(--color-bg-card);
+  border-bottom: 2px solid var(--color-border);
+  padding: 8px;
   font-weight: 600;
 }
 
-.rbc-slot-selection {
-  background-color: #3b82f6 !important;
-  opacity: 0.3;
-  border: 2px solid #2563eb !important;
+.rbc-today {
+  background-color: var(--purple-100);
+}
+
+.dark .rbc-today {
+  background-color: var(--purple-800);
+}
+
+.rbc-toolbar {
+  color: var(--color-text-primary);
+}
+
+.rbc-toolbar button {
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-bg-card);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+}
+
+.rbc-toolbar button:hover {
+  background-color: var(--color-bg-card-hover);
+}
+
+.rbc-toolbar button.rbc-active {
+  background-color: var(--color-btn-primary-bg);
+  color: var(--color-btn-primary-text);
+  border-color: var(--color-btn-primary-bg);
+}
+
+.rbc-toolbar-label {
+  color: var(--color-text-primary);
+  font-weight: 600;
 }
 
 .rbc-event {
-  color: white !important;
+  background-color: var(--color-btn-primary-bg) !important;
+  border: none;
+  border-radius: 6px;
+  color: white;
 }
 
 .rbc-event-content {
-  color: white !important;
+  color: white;
 }
 
 .rbc-event-label {
-  color: white !important;
+  color: white;
+}
+
+.rbc-off-range-bg {
+  background-color: var(--color-bg-card-hover);
+}
+
+.rbc-slot-selection {
+  background-color: var(--color-accent) !important;
+  opacity: 0.3;
+}
+
+.rbc-time-gutter {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.rbc-label {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.rbc-time-header-content {
+  color: var(--color-text-primary);
+}
+
+.rbc-day-header {
+  color: var(--color-text-secondary);
+}
+
+.rbc-day-slot .rbc-time-slot {
+  border-top: 1px solid var(--color-border);
+}
+
+.rbc-month-view,
+.rbc-time-view,
+.rbc-agenda-view {
+  border-color: var(--color-border);
+}
+
+.rbc-month-row + .rbc-month-row {
+  border-top-color: var(--color-border);
+}
+
+.rbc-day-bg + .rbc-day-bg {
+  border-left-color: var(--color-border);
+}
+
+.rbc-header + .rbc-header {
+  border-left-color: var(--color-border);
+}
+
+.rbc-time-content {
+  border-top-color: var(--color-border);
+}
+
+.rbc-time-content > * + * > * {
+  border-left-color: var(--color-border);
+}
+
+.rbc-timeslot-group {
+  border-bottom-color: var(--color-border);
 }
