@@ -1,4 +1,4 @@
-import { Inter } from 'next/font/google'
+import { Plus_Jakarta_Sans } from 'next/font/google'
 import './globals.css'
 import Header from './Header.js'
 import Footer from './components/Footer'
@@ -8,7 +8,7 @@ import TutorialProvider from './components/tutorial/TutorialProvider'
 import TimezoneProvider from './components/TimezoneProvider'
 import ThemeProvider from './components/ThemeProvider'
 
-const inter = Inter({ subsets: ['latin'] })
+const plusJakartaSans = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
 export const metadata = {
   title: 'Next Game Night',
@@ -19,7 +19,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <UserProvider>
-        <body className={inter.className}>
+        <body className={plusJakartaSans.className}>
           <ThemeProvider>
             <TimezoneProvider>
               <TutorialProvider>
