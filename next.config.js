@@ -4,7 +4,12 @@ const { withSentryConfig } = require("@sentry/nextjs");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Your existing Next.js config can go here
+  async rewrites() {
+    return [
+      // Serve the lowercase /privacy route under the capitalized /Privacy URL
+      { source: '/Privacy', destination: '/privacy' },
+    ];
+  },
 };
 
 module.exports = withSentryConfig(

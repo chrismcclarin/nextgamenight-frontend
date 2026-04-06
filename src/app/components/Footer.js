@@ -18,7 +18,7 @@ export default function Footer() {
             
             {/* Links */}
             <div className="flex items-center gap-4 text-sm text-content-secondary">
-              <a href="/privacy" className="hover:text-content-primary underline transition-colors">Privacy Policy</a>
+              <a href="/Privacy" className="hover:text-content-primary underline transition-colors">Privacy Policy</a>
               <a href="/terms" className="hover:text-content-primary underline transition-colors">Terms of Service</a>
               <button
                 onClick={() => setShowFeedbackForm(true)}
