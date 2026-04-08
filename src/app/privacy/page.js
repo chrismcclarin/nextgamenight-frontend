@@ -17,6 +17,11 @@ export default function PrivacyPolicy() {
             from your Google account. We store this to identify you within the app.
           </p>
           <p className="mt-3">
+            If you choose to enable SMS notifications, we also collect and store your mobile phone
+            number along with a record of your opt-in (the date you consented and which notification
+            types you enabled).
+          </p>
+          <p className="mt-3">
             Everything else we store is data you create yourself: groups you form, events you
             schedule, games you log, reviews you write, and availability you submit.
           </p>
@@ -84,6 +89,41 @@ export default function PrivacyPolicy() {
             We may send you emails when your group requests your availability for an upcoming
             game night. You will not receive marketing emails. If you no longer want to receive
             availability reminders, contact us and we will remove you.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-bold text-content-primary mb-3">SMS notifications</h2>
+          <p>
+            SMS notifications are entirely optional. To enable them, you provide your mobile phone
+            number, verify it with a one-time code (sent via Twilio Verify), and explicitly toggle
+            on the notification types you want to receive in your profile settings. We only send
+            SMS messages you have explicitly opted in to.
+          </p>
+          <p className="mt-3">
+            The SMS messages you may receive cover account-related event activity in groups you
+            belong to: when an event is created, when an event is updated, when an event is
+            cancelled, and as a reminder before an event begins. Message frequency varies based
+            on your group&apos;s activity. Message and data rates may apply.
+          </p>
+          <p className="mt-3">
+            You can opt out of SMS at any time by toggling the SMS notification preferences off
+            in your profile settings, or by replying <strong>STOP</strong> to any text message
+            you receive from us. Reply <strong>HELP</strong> to any message for assistance.
+            Opting out of SMS does not affect your ability to use the app or receive notifications
+            through other channels.
+          </p>
+          <p className="mt-3">
+            <strong>
+              We do not share, sell, rent, or transfer mobile phone numbers or SMS opt-in consent
+              information to any third party or affiliate for any purpose. Phone numbers and SMS
+              consent data are used solely to deliver the notifications you have requested.
+            </strong>
+          </p>
+          <p className="mt-3">
+            We use Twilio as our SMS delivery provider. Twilio receives the phone number and
+            message content only as needed to deliver the message, and is bound by their own
+            privacy and data handling commitments.
           </p>
         </section>
 

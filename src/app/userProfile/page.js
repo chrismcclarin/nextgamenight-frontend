@@ -991,6 +991,19 @@ function Profile(){
                     <h2 className="text-xl md:text-2xl font-bold text-content-primary mb-1">Notification Preferences</h2>
                     <p className="text-sm text-content-secondary mb-4">Choose how you receive notifications</p>
 
+                    {/* SMS Consent Disclosure (TCPA / carrier compliance) */}
+                    {userData?.sms_enabled && (
+                        <div className="mb-4 p-3 rounded-card border border-line bg-surface-card-hover">
+                            <p className="text-xs font-semibold text-content-primary mb-1">SMS Notifications Disclosure</p>
+                            <p className="text-xs text-content-secondary leading-relaxed">
+                                By enabling any SMS toggle below, you agree to receive recurring text messages from <span className="font-semibold">NextGameNight</span> about your game group activity, including event creation, updates, cancellations, and reminders. Message frequency varies based on group activity. Message and data rates may apply. Reply <span className="font-mono font-semibold">STOP</span> to unsubscribe at any time, or <span className="font-mono font-semibold">HELP</span> for help. Consent is not a condition of using the service. See our{' '}
+                                <a href="/privacy" className="text-content-link hover:underline">Privacy Policy</a>
+                                {' '}and{' '}
+                                <a href="/terms" className="text-content-link hover:underline">Terms of Service</a>.
+                            </p>
+                        </div>
+                    )}
+
                     {/* Preferences Matrix */}
                     <div className="space-y-0">
                         {/* Header row */}

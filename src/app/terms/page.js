@@ -61,6 +61,34 @@ export default function TermsOfService() {
         </section>
 
         <section>
+          <h2 className="text-xl font-bold text-content-primary mb-3">SMS notifications</h2>
+          <p>
+            SMS notifications are an optional feature. To use them, you must provide your mobile
+            phone number, verify it with a one-time code, and explicitly enable SMS in your
+            notification preferences. By doing so, you consent to receive recurring text messages
+            from Next Game Night about your game group activity.
+          </p>
+          <p className="mt-3">
+            You may receive SMS messages for the following events: when a new game night is
+            scheduled, when an event time or details change, when an event is cancelled, and as
+            a reminder shortly before an event begins. Message frequency varies based on your
+            group&apos;s activity.
+          </p>
+          <p className="mt-3">
+            <strong>Message and data rates may apply.</strong> You are responsible for any
+            charges from your mobile carrier. Consent to receive SMS messages is not a condition
+            of using Next Game Night — all features remain available if you choose not to
+            enable SMS.
+          </p>
+          <p className="mt-3">
+            You can opt out at any time by replying <strong>STOP</strong> to any text message
+            you receive from us, or by toggling SMS notifications off in your profile settings.
+            For help, reply <strong>HELP</strong> to any message. We use Twilio as our SMS
+            delivery provider.
+          </p>
+        </section>
+
+        <section>
           <h2 className="text-xl font-bold text-content-primary mb-3">Availability</h2>
           <p>
             We do our best to keep the app running but cannot guarantee uninterrupted
