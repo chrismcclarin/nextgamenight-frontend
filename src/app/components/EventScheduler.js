@@ -50,6 +50,23 @@ export default function EventScheduler({
   }, [heatmapData]);
 
   const totalMembers = heatmapData?.totalMembers || 0;
+  const membersWithoutDataCount = heatmapData?.membersWithoutDataCount || 0;
+  const totalGroupMembers = heatmapData?.totalGroupMembers || 0;
+
+  // Build conflict lookup: "localDate_localHour" -> array of { user_id, username }
+  const conflictLookup = useMemo(() => {
+    if (!heatmapData?.gcalConflicts) return new Map();
+    const map = new Map();
+    for (const c of heatmapData.gcalConflicts) {
+      const utcDate = new Date(`${c.date}T${String(c.hour).padStart(2, '0')}:00:00Z`);
+      const localDateStr = format(utcDate, 'yyyy-MM-dd');
+      const localHour = utcDate.getHours();
+      const key = `${localDateStr}_${localHour}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push({ user_id: c.user_id, username: c.username });
+    }
+    return map;
+  }, [heatmapData]);
 
   // Set default min/max times (10 AM to midnight)
   const defaultMinTime = minTime || setHours(setMinutes(new Date(0, 0, 0), 0), 10); // 10:00 AM
@@ -149,39 +166,51 @@ export default function EventScheduler({
     };
   }, [heatmapLookup, totalMembers]);
 
-  // Custom time slot wrapper: adds availability count + hover tooltip
+  // Custom time slot wrapper: adds availability count + hover tooltip with conflict info
   const calendarComponents = useMemo(() => ({
     timeSlotWrapper: ({ children, value }) => {
       if (!value || !(value instanceof Date)) return children;
 
       const dateStr = format(value, 'yyyy-MM-dd');
       const hour = value.getHours();
-      const slot = heatmapLookup.get(`${dateStr}_${hour}`);
+      const key = `${dateStr}_${hour}`;
+      const slot = heatmapLookup.get(key);
+      const conflicts = conflictLookup.get(key);
 
-      if (!slot || slot.availableCount === 0) return children;
+      if ((!slot || slot.availableCount === 0) && !conflicts) return children;
 
-      const names = (slot.availableMembers || []).map(m => m.username).join(', ');
-      const tip = `${slot.availableCount}/${totalMembers} available: ${names}`;
+      const names = (slot?.availableMembers || []).map(m => m.username).join(', ');
+      let tip = slot?.availableCount > 0
+        ? `${slot.availableCount}/${totalMembers} available: ${names}`
+        : '';
+
+      if (conflicts && conflicts.length > 0) {
+        for (const c of conflicts) {
+          tip += `${tip ? '\n' : ''}⚠ ${c.username} said yes, but calendar shows busy`;
+        }
+      }
 
       return (
         <div title={tip} style={{ position: 'relative', height: '100%' }}>
           {children}
-          <span style={{
-            position: 'absolute',
-            top: '2px',
-            right: '4px',
-            fontSize: '10px',
-            color: 'var(--color-status-success)',
-            fontWeight: 600,
-            pointerEvents: 'none',
-            zIndex: 1,
-          }}>
-            {slot.availableCount}
-          </span>
+          {slot?.availableCount > 0 && (
+            <span style={{
+              position: 'absolute',
+              top: '2px',
+              right: '4px',
+              fontSize: '10px',
+              color: 'var(--color-status-success)',
+              fontWeight: 600,
+              pointerEvents: 'none',
+              zIndex: 1,
+            }}>
+              {slot.availableCount}
+            </span>
+          )}
         </div>
       );
     },
-  }), [heatmapLookup, totalMembers]);
+  }), [heatmapLookup, conflictLookup, totalMembers]);
 
   return (
     <div className="space-y-4">
@@ -234,6 +263,18 @@ export default function EventScheduler({
           <span>More available</span>
           <span className="text-content-muted ml-1">(hover for names)</span>
         </div>
+      )}
+
+      {membersWithoutDataCount > 0 && (
+        <p className="text-xs text-content-muted mt-1">
+          {membersWithoutDataCount} of {totalGroupMembers} members haven't shared availability yet
+        </p>
+      )}
+
+      {totalMembers === 0 && totalGroupMembers > 0 && (
+        <p className="text-sm text-content-muted text-center py-2">
+          No one has shared availability yet
+        </p>
       )}
 
       {selectedSlot && (
