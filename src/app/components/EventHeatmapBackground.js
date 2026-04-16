@@ -27,7 +27,7 @@ export default function EventHeatmapBackground({ heatmapData, loading }) {
             <div key={`hdr-${i}`} className="h-6 bg-surface-elevated rounded animate-pulse" />
           ))}
           {/* Grid skeleton rows */}
-          {Array.from({ length: 13 }).map((_, row) => (
+          {Array.from({ length: 14 }).map((_, row) => (
             <div key={`row-${row}`} className="contents">
               <div className="h-5 w-8 bg-surface-elevated rounded animate-pulse" />
               {Array.from({ length: 7 }).map((_, col) => (
@@ -40,7 +40,7 @@ export default function EventHeatmapBackground({ heatmapData, loading }) {
     );
   }
 
-  const { slots, totalMembers, gcalConflicts = [] } = heatmapData;
+  const { slots, totalMembers, gcalConflicts = [], membersWithoutDataCount = 0, totalGroupMembers = 0 } = heatmapData;
 
   // Helper: format Date to "YYYY-MM-DD" in the viewer's timezone
   function toTzDateStr(d) {
@@ -91,7 +91,7 @@ export default function EventHeatmapBackground({ heatmapData, loading }) {
 
   // Hours 10-22 in viewer's timezone (matching display range)
   const hours = [];
-  for (let h = 10; h <= 22; h++) hours.push(h);
+  for (let h = 10; h <= 23; h++) hours.push(h);
 
   // Format hour label compactly
   function formatHour(h) {
@@ -111,11 +111,31 @@ export default function EventHeatmapBackground({ heatmapData, loading }) {
     return 'bg-green-500';
   }
 
-  // Build hover tooltip text
-  function getTooltip(slot) {
-    if (!slot || slot.availableCount === 0) return '';
-    const names = (slot.availableMembers || []).map(m => m.username).join(', ');
-    return `${slot.availableCount}/${totalMembers} available: ${names}`;
+  // Build conflict lookup keyed by "tzDateStr_tzHour"
+  const conflictMap = new Map();
+  for (const c of gcalConflicts) {
+    const utcDate = new Date(`${c.date}T${String(c.hour).padStart(2, '0')}:00:00Z`);
+    const tzDateStr = toTzDateStr(utcDate);
+    const tzHour = toTzHour(utcDate);
+    const key = `${tzDateStr}_${tzHour}`;
+    if (!conflictMap.has(key)) conflictMap.set(key, []);
+    conflictMap.get(key).push({ user_id: c.user_id, username: c.username });
+  }
+
+  // Build hover tooltip text with per-slot conflict info
+  function getTooltip(slot, dateKey) {
+    let tip = '';
+    if (slot && slot.availableCount > 0) {
+      const names = (slot.availableMembers || []).map(m => m.username).join(', ');
+      tip = `${slot.availableCount}/${totalMembers} available: ${names}`;
+    }
+    const conflicts = conflictMap.get(dateKey);
+    if (conflicts && conflicts.length > 0) {
+      for (const c of conflicts) {
+        tip += `${tip ? '\n' : ''}⚠ ${c.username} said yes, but calendar shows busy`;
+      }
+    }
+    return tip;
   }
 
   // Group gcal conflicts by username for the warning
@@ -151,10 +171,11 @@ export default function EventHeatmapBackground({ heatmapData, loading }) {
             </div>
             {/* Day cells */}
             {dates.map(date => {
-              const slot = slotMap.get(`${date}_${hour}`);
+              const dateKey = `${date}_${hour}`;
+              const slot = slotMap.get(dateKey);
               const count = slot?.availableCount || 0;
               const bg = getCellBg(count, totalMembers);
-              const tip = getTooltip(slot);
+              const tip = getTooltip(slot, dateKey);
               return (
                 <div
                   key={`${date}_${hour}`}
@@ -184,6 +205,18 @@ export default function EventHeatmapBackground({ heatmapData, loading }) {
         <span className="text-[9px] text-content-muted">More available</span>
         <span className="text-[9px] text-content-muted ml-1">(hover for names)</span>
       </div>
+
+      {membersWithoutDataCount > 0 && (
+        <p className="text-[10px] text-content-muted text-center mt-1">
+          {membersWithoutDataCount} of {totalGroupMembers} members haven't shared availability yet
+        </p>
+      )}
+
+      {totalMembers === 0 && totalGroupMembers > 0 && (
+        <p className="text-xs text-content-muted text-center mt-2">
+          No one has shared availability yet
+        </p>
+      )}
 
       {/* gcal conflict warning */}
       {conflictNames.length > 0 && (
