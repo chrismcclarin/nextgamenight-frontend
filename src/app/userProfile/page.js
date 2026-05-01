@@ -1091,6 +1091,11 @@ function Profile(){
                                         )}
                                     </div>
                                 )}
+                                {type.key === 'reminder' && (
+                                    <p className="mt-2 ml-0 sm:ml-4 text-xs text-content-muted">
+                                        Controls availability reminders (50% / 90% of poll deadline). Event creation, updates, and cancellations are always sent.
+                                    </p>
+                                )}
                             </div>
                         ))}
                     </div>
