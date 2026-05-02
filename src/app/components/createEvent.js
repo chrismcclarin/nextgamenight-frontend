@@ -12,9 +12,12 @@ import { createParticipant, createEventForm, prepareEventData } from '../../lib/
 import ParticipantRow from './ParticipantRow';
 import BallotOptionsEditor from './BallotOptionsEditor';
 import EventResultFields from './EventResultFields';
+import { useTimezone } from './TimezoneProvider';
+import { utcToWallClock, wallClockToUtc } from '../../lib/tzUtils';
 
 function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, hideVisualCalendar = false, userRole }) {
   const authUser = user || Auth().user;
+  const { timezone } = useTimezone();
   const [groupMembers, setGroupMembers] = useState([]);
   const [newEvent, setNewEvent] = useState(createEventForm(group_id, []));
   const [loading, setLoading] = useState(true);
@@ -57,13 +60,16 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   // Populate form when editingEvent changes
   useEffect(() => {
     if (editingEvent && groupMembers.length > 0) {
-      // Format start_date for datetime-local input (YYYY-MM-DDTHH:mm) in LOCAL time
-      // datetime-local inputs expect local time, not UTC
+      // Format start_date for datetime-local input (YYYY-MM-DDTHH:mm) using
+      // the viewer's PROFILE timezone (not browser TZ). This is the headline
+      // TZ-01 fix — see Phase 62-02. utcToWallClock returns wall-clock parts
+      // in `timezone`, never in browser-local.
       const startDate = editingEvent.start_date
         ? (() => {
-            const d = new Date(editingEvent.start_date);
+            const wc = utcToWallClock(editingEvent.start_date, timezone);
+            if (!wc) return '';
             const pad = (n) => String(n).padStart(2, '0');
-            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            return `${wc.year}-${pad(wc.month)}-${pad(wc.day)}T${pad(wc.hours)}:${pad(wc.minutes)}`;
           })()
         : '';
       
@@ -141,12 +147,14 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         }
       }
 
-      // Format rsvp_deadline for datetime-local input in LOCAL time
+      // Format rsvp_deadline for datetime-local input using the viewer's
+      // PROFILE timezone — same TZ-01 fix as start_date above.
       const rsvpDeadline = editingEvent.rsvp_deadline
         ? (() => {
-            const d = new Date(editingEvent.rsvp_deadline);
+            const wc = utcToWallClock(editingEvent.rsvp_deadline, timezone);
+            if (!wc) return '';
             const pad = (n) => String(n).padStart(2, '0');
-            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            return `${wc.year}-${pad(wc.month)}-${pad(wc.day)}T${pad(wc.hours)}:${pad(wc.minutes)}`;
           })()
         : '';
 
@@ -189,7 +197,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       }
       setNewEvent(form);
     }
-  }, [editingEvent, groupMembers, group_id, prefillDate, prefillTime, prefillDuration]);
+  }, [editingEvent, groupMembers, group_id, prefillDate, prefillTime, prefillDuration, timezone]);
 
   // Fetch heatmap data when modal opens
   useEffect(() => {
@@ -305,29 +313,25 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       // Remove game_name from submission data (backend doesn't expect it on events)
       delete eventDataToSubmit.game_name;
       
-      // Get user's timezone and ensure start_date is properly formatted with timezone
-      const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-      
-      // Convert datetime-local string to ISO string with timezone awareness
-      // datetime-local gives us "YYYY-MM-DDTHH:mm" which is in user's local time
-      // We need to treat this as local time and convert to UTC for storage
+      // Use the viewer's PROFILE timezone (with browser-TZ fallback handled
+      // inside TimezoneProvider) for converting wall-clock back to UTC.
+      // This is the headline TZ-01 save-side fix — see Phase 62-02. We never
+      // call Intl.DateTimeFormat().resolvedOptions().timeZone here, because
+      // that would leak browser TZ when the user's profile TZ is different
+      // (e.g., traveling).
+      const userTimezone = timezone;
+
       if (eventDataToSubmit.start_date) {
-        // The datetime-local value is in user's local timezone
-        // Create a Date object treating it as local time
-        const localDate = new Date(eventDataToSubmit.start_date);
-        
-        // Check if the string doesn't have timezone info (datetime-local format)
-        if (eventDataToSubmit.start_date && !eventDataToSubmit.start_date.includes('Z') && !eventDataToSubmit.start_date.includes('+') && !eventDataToSubmit.start_date.includes('-', 10)) {
-          // It's a datetime-local string (YYYY-MM-DDTHH:mm), treat as local time
-          // The Date constructor will interpret it as local time
-          // Convert to ISO string (UTC) for storage
-          eventDataToSubmit.start_date = localDate.toISOString();
-        } else {
-          // Already has timezone info, use as-is
-          eventDataToSubmit.start_date = localDate.toISOString();
+        // datetime-local input value is "YYYY-MM-DDTHH:mm" — interpret it as
+        // a wall-clock in the viewer's profile TZ and convert to UTC.
+        const utc = wallClockToUtc(eventDataToSubmit.start_date, userTimezone);
+        if (!utc) {
+          alert('Invalid start date/time. Please re-enter and try again.');
+          return;
         }
+        eventDataToSubmit.start_date = utc.toISOString();
       }
-      
+
       // Add timezone to event data for Google Calendar creation
       eventDataToSubmit.timezone = userTimezone;
       
@@ -338,10 +342,15 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         return;
       }
 
-      // Include rsvp_deadline in the submission data (convert to ISO or null)
+      // Include rsvp_deadline in the submission data — same TZ-01 wall-clock
+      // → profile-TZ → UTC conversion as start_date above.
       if (newEvent.rsvp_deadline) {
-        const rsvpDate = new Date(newEvent.rsvp_deadline);
-        eventDataToSubmit.rsvp_deadline = rsvpDate.toISOString();
+        const utc = wallClockToUtc(newEvent.rsvp_deadline, userTimezone);
+        if (!utc) {
+          alert('Invalid RSVP deadline. Please re-enter and try again.');
+          return;
+        }
+        eventDataToSubmit.rsvp_deadline = utc.toISOString();
       } else {
         eventDataToSubmit.rsvp_deadline = null;
       }
