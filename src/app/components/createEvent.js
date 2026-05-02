@@ -501,10 +501,19 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   });
                 }}
                 initialDate={calendarInitialDate}
-                initialStart={prefillTime || (editingEvent?.start_date ? format(new Date(editingEvent.start_date), 'HH:mm') : null)}
-                initialEnd={editingEvent?.start_date && editingEvent?.duration_minutes
-                  ? format(new Date(new Date(editingEvent.start_date).getTime() + editingEvent.duration_minutes * 60000), 'HH:mm')
-                  : null}
+                initialStart={prefillTime || (() => {
+                  if (!editingEvent?.start_date) return null;
+                  const wc = utcToWallClock(editingEvent.start_date, timezone);
+                  if (!wc) return null;
+                  return `${String(wc.hours).padStart(2, '0')}:${String(wc.minutes).padStart(2, '0')}`;
+                })()}
+                initialEnd={(() => {
+                  if (!editingEvent?.start_date || !editingEvent?.duration_minutes) return null;
+                  const endUtc = new Date(new Date(editingEvent.start_date).getTime() + editingEvent.duration_minutes * 60000);
+                  const wc = utcToWallClock(endUtc, timezone);
+                  if (!wc) return null;
+                  return `${String(wc.hours).padStart(2, '0')}:${String(wc.minutes).padStart(2, '0')}`;
+                })()}
                 heatmapData={heatmapData}
               />
             ) : (
