@@ -35,6 +35,7 @@ export default function CalendarMonthView({
   onGoToday,
   onShowDayModal,
   monthNames,
+  tzLegend,
 }) {
   return (
     <>
@@ -50,6 +51,11 @@ export default function CalendarMonthView({
           <h3 className="text-xl font-semibold text-content-primary">
             {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
           </h3>
+          {tzLegend && (
+            <p className="text-xs text-content-muted mt-0.5">
+              Times shown in {tzLegend}
+            </p>
+          )}
           <button
             onClick={onGoToday}
             className="text-sm text-content-link hover:text-content-link-hover mt-1"

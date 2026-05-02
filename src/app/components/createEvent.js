@@ -14,6 +14,7 @@ import BallotOptionsEditor from './BallotOptionsEditor';
 import EventResultFields from './EventResultFields';
 import { useTimezone } from './TimezoneProvider';
 import { utcToWallClock, wallClockToUtc } from '../../lib/tzUtils';
+import TimezoneNudgeBanner from './TimezoneNudgeBanner';
 
 function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, hideVisualCalendar = false, userRole }) {
   const authUser = user || Auth().user;
@@ -438,6 +439,10 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             ×
           </button>
         </div>
+
+        {/* Phase 62-02: nudge user to set profile TZ before editing/creating
+            so saved start_date is stamped against a stable canonical TZ. */}
+        <TimezoneNudgeBanner />
 
         <form onSubmit={onSubmit} className="space-y-4">
           {/* Game Selection */}

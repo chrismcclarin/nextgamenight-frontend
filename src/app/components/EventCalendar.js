@@ -7,6 +7,8 @@ import { getDaysInMonth } from '../../lib/calendarUtils';
 import CalendarMonthView from './CalendarMonthView';
 import CalendarListView from './CalendarListView';
 import EventDayModal from './EventDayModal';
+import { useTimezone } from './TimezoneProvider';
+import { formatWithTzAbbr } from '../../lib/tzUtils';
 
 export default function EventCalendar({
   refreshKey = 0,
@@ -18,6 +20,7 @@ export default function EventCalendar({
   showListView = true,             // Whether to show list view toggle
 }) {
   const { user } = Auth();
+  const { timezone } = useTimezone();
   const router = useRouter();
   const [internalEvents, setInternalEvents] = useState([]);
   const [loading, setLoading] = useState(externalEvents === null);
@@ -73,6 +76,15 @@ export default function EventCalendar({
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
 
+  // Phase 62-02: TZ legend for the calendar header. Per CONTEXT.md,
+  // monthly cells are too tight for per-cell abbreviations — instead
+  // render a single "Times shown in {abbr}" line on the header. We
+  // use `formatWithTzAbbr` against `currentDate` (or now if missing)
+  // so DST changes flip MST<->MDT correctly when navigating months.
+  const tzLegend = timezone
+    ? formatWithTzAbbr(currentDate || new Date(), timezone, 'zzz')
+    : null;
+
   const days = getDaysInMonth(currentDate);
   const sortedEvents = [...activeEvents]
     .filter(event => {
@@ -117,6 +129,7 @@ export default function EventCalendar({
           onGoToday={goToToday}
           onShowDayModal={(day) => setSelectedDay(day)}
           monthNames={monthNames}
+          tzLegend={tzLegend}
         />
       ) : (
         <CalendarListView

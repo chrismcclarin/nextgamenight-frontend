@@ -5,6 +5,7 @@ import { formatTime } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
 import QRCodeModal from './QRCodeModal';
+import TimezoneNudgeBanner from './TimezoneNudgeBanner';
 import { eventsAPI } from '../../lib/api';
 
 export default function EventDayModal({
@@ -66,6 +67,9 @@ export default function EventDayModal({
 
         {/* Modal Content */}
         <div className="modal-body">
+          {/* Phase 62-02: nudge user to set profile TZ if not yet set so the
+              displayed times below have a stable canonical reference. */}
+          <TimezoneNudgeBanner />
           {selectedDay.events.length === 0 ? (
             <p className="text-content-secondary text-center py-8">No events on this day.</p>
           ) : (

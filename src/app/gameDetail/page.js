@@ -11,8 +11,9 @@ import BallotSection from '../components/BallotSection';
 import BringGamePicker from '../components/BringGamePicker';
 import BringSummary from '../components/BringSummary';
 import GameSuggestionCard from '../components/GameSuggestionCard';
-import { formatDate, formatDateTime, formatDuration } from '../../lib/dateUtils';
+import { formatDate, formatDateTime, formatDuration, formatTime } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
+import TimezoneNudgeBanner from '../components/TimezoneNudgeBanner';
 import SafeImage from '../components/SafeImage';
 import FriendshipStatusProvider from '../components/FriendshipStatusProvider';
 import ClickableMemberName from '../components/ClickableMemberName';
@@ -485,10 +486,27 @@ export default function GameDetailPage() {
                     <span className="text-content-primary font-semibold">{singleEvent.title || 'Game Night'}</span>
                 </nav>
 
+                {/* Phase 62-02: nudge banner so users without a profile TZ
+                    notice before they read or edit the event time. */}
+                <TimezoneNudgeBanner />
+
                 <div className="card p-6 mb-6">
                     <h1 className="text-3xl font-bold text-content-primary mb-2">{singleEvent.title || 'Game Night'}</h1>
                     <div className="text-content-secondary space-y-1">
-                        <p>{new Date(singleEvent.start_date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} at {new Date(singleEvent.start_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</p>
+                        {/* Phase 62-02: render event start in viewer's profile TZ
+                            with TZ abbreviation. Was: toLocaleDateString/Time
+                            without timezone, which silently used browser TZ. */}
+                        <p>
+                            {new Date(singleEvent.start_date).toLocaleDateString('en-US', {
+                                weekday: 'long',
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric',
+                                ...(timezone ? { timeZone: timezone } : {}),
+                            })}
+                            {' at '}
+                            {formatTime(singleEvent.start_date, timezone)}
+                        </p>
                         {singleEvent.duration_minutes && <p>Duration: {singleEvent.duration_minutes} minutes</p>}
                         {singleEvent.location && <p>Location: {singleEvent.location}</p>}
                         {singleEvent.notes && <p className="mt-2 text-content-muted">{singleEvent.notes}</p>}
