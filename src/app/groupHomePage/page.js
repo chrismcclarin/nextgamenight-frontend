@@ -32,6 +32,10 @@ function GroupHomePage(){
     // Calendar state
     const [groupEvents, setGroupEvents] = useState([]);
     const [calendarPrefillDate, setCalendarPrefillDate] = useState(null);
+    // Defensive cache-bust key — bumped after a fresh fetch so EventCalendar
+    // re-renders even if React batches/dedupes the state update by accident.
+    // Mirrors the pattern already used in UserHomePage.
+    const [eventsRefreshKey, setEventsRefreshKey] = useState(0);
 
     const searchParams = useSearchParams();
     const Router = searchParams.get('id');
@@ -119,10 +123,14 @@ function GroupHomePage(){
         }
     }, [Router, user?.sub, getGamesForGroup]);
 
-    const handleEventCreated = (newEvent) => {
+    const handleEventCreated = async (newEvent) => {
         // Refresh games list and calendar events after creating new event
         getGamesForGroup();
-        fetchGroupEvents();
+        await fetchGroupEvents();
+        // Bump the defensive refresh key AFTER the fetch resolves so the
+        // calendar grid + Upcoming Events card both re-render with the new
+        // data, even if groupEvents reference equality is preserved.
+        setEventsRefreshKey(prev => prev + 1);
     };
 
     const toggleEventModal = () => {
@@ -288,6 +296,7 @@ function GroupHomePage(){
 
                 {/* Group Calendar */}
                 <EventCalendar
+                    refreshKey={eventsRefreshKey}
                     events={groupEvents}
                     variant="compact"
                     title="Calendar"
