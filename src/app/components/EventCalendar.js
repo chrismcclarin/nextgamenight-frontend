@@ -131,10 +131,19 @@ export default function EventCalendar({
 
   // CAL-01: getDaysInMonth now returns {date, isCurrentMonth}[] — 42 cells.
   const days = getDaysInMonth(currentDate);
-  const sortedEvents = [...activeEvents]
+
+  // CAL-06: list view is today-onward (NOT month-scoped). Build a separate
+  // forward-only list directly from activeEvents. Past events are dropped —
+  // they live in event detail / game-history surfaces.
+  const startOfToday = (() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  })();
+  const sortedEventsTodayOnward = [...activeEvents]
     .filter(event => {
-      const d = new Date(event.start_date);
-      return d.getMonth() === currentDate.getMonth() && d.getFullYear() === currentDate.getFullYear();
+      if (!event?.start_date) return false;
+      return new Date(event.start_date) >= startOfToday;
     })
     .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
 
@@ -178,12 +187,10 @@ export default function EventCalendar({
         />
       ) : (
         <CalendarListView
-          sortedEvents={sortedEvents}
-          currentDate={currentDate}
+          events={sortedEventsTodayOnward}
           onEventClick={handleEventClick}
-          onNavigateMonth={navigateMonth}
-          onGoToday={goToToday}
-          monthNames={monthNames}
+          timezone={timezone}
+          loading={loading}
         />
       )}
 
