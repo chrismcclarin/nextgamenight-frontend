@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { startOfWeek, addWeeks, subWeeks, addDays, differenceInWeeks, format } from 'date-fns';
 import MergedHeatmapGrid from './MergedHeatmapGrid';
 
@@ -86,6 +86,22 @@ export default function MergedHeatmap({
   };
 
   const membersWithoutData = heatmapData?.membersWithoutData || [];
+  const totalMembers = heatmapData?.totalMembers ?? 0;
+  const totalGroupMembers = heatmapData?.totalGroupMembers ?? 0;
+
+  // Skeleton flash guard: only show the skeleton if `loading` stays true for
+  // at least 200ms. Sub-200ms loads (typical at 5-member scale) skip the
+  // skeleton entirely. Refetch with stale data on screen: existing grid
+  // stays visible during the 200ms delay window -- never flashes blank.
+  const [showSkeleton, setShowSkeleton] = useState(false);
+  useEffect(() => {
+    if (!loading) {
+      setShowSkeleton(false);
+      return;
+    }
+    const id = setTimeout(() => setShowSkeleton(true), 200);
+    return () => clearTimeout(id);
+  }, [loading]);
 
   return (
     <div>
@@ -113,7 +129,7 @@ export default function MergedHeatmap({
       </div>
 
       {/* Members without data notice */}
-      {membersWithoutData.length > 0 && !loading && (
+      {membersWithoutData.length > 0 && !showSkeleton && (
         <div className="bg-accent/10 border border-accent/30 rounded-card p-3 text-sm text-content-secondary mb-4 flex items-start gap-2">
           <svg
             className="w-4 h-4 mt-0.5 flex-shrink-0 text-accent"
@@ -135,8 +151,8 @@ export default function MergedHeatmap({
         </div>
       )}
 
-      {/* Loading state */}
-      {loading && (
+      {/* Loading skeleton (only shown after a 200ms loading-state hold to avoid flash) */}
+      {showSkeleton && (
         <div className="grid grid-cols-8 gap-px bg-line rounded-lg overflow-hidden">
           {/* Skeleton header row */}
           <div className="bg-surface-card p-2 h-12" />
@@ -163,12 +179,13 @@ export default function MergedHeatmap({
       )}
 
       {/* Error state */}
-      {!loading && error && (
+      {!showSkeleton && error && (
         <div className="text-center text-status-error py-8 font-medium">{error}</div>
       )}
 
-      {/* Grid */}
-      {!loading && !error && heatmapData && (
+      {/* Grid -- renders even during the 200ms pre-skeleton window so a
+          refetch with stale data on screen does not flash blank. */}
+      {!showSkeleton && !error && heatmapData && (
         <MergedHeatmapGrid
           slots={heatmapData.slots || []}
           totalMembers={heatmapData.totalMembers || 0}
@@ -177,8 +194,22 @@ export default function MergedHeatmap({
         />
       )}
 
+      {/* All-data-less CTA (D-02): every group member is data-less, so the grid
+          renders with empty cells -- prompt the user instead of leaving it silently
+          empty. The empty grid above stays visible; this CTA appears beneath it. */}
+      {!showSkeleton && !error && heatmapData && totalMembers === 0 && totalGroupMembers > 0 && (
+        <div className="text-center mt-3 px-2">
+          <p className="text-sm font-medium text-content-secondary mb-1">
+            No availability shared yet
+          </p>
+          <p className="text-xs text-content-muted">
+            Invite members or set a schedule to see availability here.
+          </p>
+        </div>
+      )}
+
       {/* Legend */}
-      {!loading && !error && (
+      {!showSkeleton && !error && (
         <div className="flex items-center justify-center gap-1 mt-4 text-xs text-content-secondary">
           <span className="mr-1">Less available</span>
           {LEGEND_ITEMS.map((item, i) => (
