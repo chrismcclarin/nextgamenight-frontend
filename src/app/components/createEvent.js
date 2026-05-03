@@ -530,7 +530,11 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 {/* Heatmap reference for manual entry mode */}
                 {(heatmapData || heatmapLoading) && (
                   <div className="bg-surface-page rounded-lg p-3 border border-line">
-                    <p className="text-xs font-medium text-content-muted mb-2">Group Availability This Week</p>
+                    <p className="text-xs font-medium text-content-muted mb-2">
+                      {heatmapWeekStart && !heatmapLoading
+                        ? `Week of ${format(heatmapWeekStart, 'EEE MMM d')}`
+                        : 'Group Availability This Week'}
+                    </p>
                     <EventHeatmapBackground heatmapData={heatmapData} loading={heatmapLoading} />
                   </div>
                 )}
