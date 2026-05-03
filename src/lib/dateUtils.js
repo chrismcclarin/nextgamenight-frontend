@@ -148,6 +148,27 @@ export function formatDateTime(date, timezone) {
 }
 
 /**
+ * Format a Date as a local-calendar "YYYY-MM-DD" string.
+ *
+ * Use this to populate `<input type="date">` defaults and any payload field
+ * meant to encode the user's local calendar day. Do NOT use
+ * `new Date().toISOString().split('T')[0]` for this -- that converts local
+ * time to UTC first, so a user in PDT clicking the form at local 22:00
+ * sees TOMORROW's date prefilled (UTC has already rolled over). The save-side
+ * pipeline then persists the wrong day and the heatmap silently drops the
+ * override (HEAT-02 expansion 4).
+ *
+ * @param {Date} [date=new Date()] - Date to format (defaults to "now")
+ * @returns {string} YYYY-MM-DD in local calendar terms
+ */
+export function toLocalDateString(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/**
  * Format a duration in minutes to human-readable form.
  * Examples: "45 min", "1.5 hrs", "2 hrs", "1 hour".
  * Returns empty string for 0/null/undefined input.

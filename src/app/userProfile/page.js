@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, availabilityAPI } from '../../lib/api';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import Link from 'next/link';
-import { formatDate } from '../../lib/dateUtils';
+import { formatDate, toLocalDateString } from '../../lib/dateUtils';
 import SafeImage from '../components/SafeImage';
 import { useTutorial } from '../components/tutorial/TutorialProvider';
 import { useTimezone } from '../components/TimezoneProvider';
@@ -62,12 +62,16 @@ function Profile(){
         daysOfWeek: [],
         startTime: '09:00',
         endTime: '17:00',
-        start_date: new Date().toISOString().split('T')[0],
+        // Use local-calendar date, NOT toISOString() (which is UTC and shifts
+        // late-evening users to tomorrow). HEAT-02 expansion 4.
+        start_date: toLocalDateString(),
         end_date: '',
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     });
     const [specificForm, setSpecificForm] = useState({
-        date: new Date().toISOString().split('T')[0],
+        // Use local-calendar date, NOT toISOString() (which is UTC and shifts
+        // late-evening users to tomorrow). HEAT-02 expansion 4.
+        date: toLocalDateString(),
         startTime: '09:00',
         endTime: '17:00',
         isAvailable: true,
@@ -564,7 +568,7 @@ function Profile(){
                 daysOfWeek: [],
                 startTime: '09:00',
                 endTime: '17:00',
-                start_date: new Date().toISOString().split('T')[0],
+                start_date: toLocalDateString(),
                 end_date: '',
                 timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
             });
@@ -586,7 +590,7 @@ function Profile(){
             await fetchAvailabilityPatterns();
             setShowSpecificForm(false);
             setSpecificForm({
-                date: new Date().toISOString().split('T')[0],
+                date: toLocalDateString(),
                 startTime: '09:00',
                 endTime: '17:00',
                 isAvailable: true,
