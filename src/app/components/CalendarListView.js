@@ -8,7 +8,7 @@ import SafeImage from './SafeImage';
 import RsvpCount from './RsvpCount';
 
 /**
- * CalendarListView — Phase 64 Plan 03 (CAL-06), revised post-pivot.
+ * CalendarListView — Phase 64 Plan 03 (CAL-06), Today-delineator revision.
  *
  * Past + future feed grouped by date headers, rendered inside a fixed-height
  * scroll container. The OUTER card height stays constant whether the user is
@@ -20,12 +20,18 @@ import RsvpCount from './RsvpCount';
  *   - Section header ("Upcoming events") + tz legend (when timezone resolved)
  *   - Fixed-height scroll container (height keyed off `variant` to match
  *     CalendarMonthView's 6-row grid: compact ≈ 540px, full ≈ 660px)
- *   - Inside: top sentinel for past-event lazy load, then date-grouped rows
+ *   - Inside, in order:
+ *       1. Top sentinel for past-event lazy load
+ *       2. Past date-groups (events strictly before today's TZ-keyed date)
+ *       3. Always-on "Today" delineator row (horizontal rule + centered chip)
+ *       4. Today + future date-groups (events on/after today's TZ-keyed date)
+ *     The Today delineator is rendered REGARDLESS of whether any event falls
+ *     on today's date — it's a stable cross-cutting marker, not a date-group.
  *
  * Filter: NONE — all events with valid start_date are sorted chronologically.
  *
  * Initial windowing (memory + render budget):
- *   - All future events (start >= today) are rendered up front
+ *   - All today + future events rendered up front
  *   - Last 30 past events rendered initially
  *   - When the top sentinel intersects the SCROLL CONTAINER's viewport
  *     (user scrolls up), reveal 30 more past events. The IntersectionObserver
@@ -33,12 +39,13 @@ import RsvpCount from './RsvpCount';
  *     page-relative.
  *
  * Scroll anchoring:
- *   - On first render with grouped data, the FIRST upcoming event row is
- *     centered in the scroll container (block: 'center'). Past events sit
- *     above the visible window and future events below — the user sees
- *     "what's next" with context on either side.
- *   - We anchor only ONCE per mount so subsequent re-renders (RSVP refresh,
- *     more past events loaded) don't yank the user back.
+ *   - On first render with grouped data, the TODAY DELINEATOR is centered in
+ *     the scroll container. Past events sit above the visible window and
+ *     today+future context sits below. We anchor on the divider rather than
+ *     the first upcoming event because the divider always exists — even when
+ *     the group has only past events, only future events, or no events at all.
+ *   - Anchor once per mount so subsequent re-renders (RSVP refresh, more past
+ *     events loaded) don't yank the user back.
  *
  * Responsive row stripping (unchanged from prior impl):
  *   - all sizes: title + start time
@@ -109,23 +116,23 @@ export default function CalendarListView({
     });
   };
 
-  // Sort events chronologically and split into past vs upcoming buckets.
-  // Past = strictly before today's date key. Upcoming = today onward.
-  const { pastEvents, upcomingEvents } = useMemo(() => {
+  // Sort events chronologically and split into past vs today/future buckets.
+  // Past = strictly before today's date key. todayAndFuture = today onward.
+  const { pastEvents, todayAndFutureEvents } = useMemo(() => {
     const safe = Array.isArray(events) ? events : [];
     const sorted = safe
       .filter((ev) => !!ev?.start_date)
       .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
 
     const past = [];
-    const upcoming = [];
+    const todayAndFuture = [];
     for (const ev of sorted) {
       const k = dateKey(ev.start_date);
       if (!k) continue;
-      if (k >= todayKey) upcoming.push(ev);
+      if (k >= todayKey) todayAndFuture.push(ev);
       else past.push(ev);
     }
-    return { pastEvents: past, upcomingEvents: upcoming };
+    return { pastEvents: past, todayAndFutureEvents: todayAndFuture };
   }, [events, todayKey, timezone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // How many past events are revealed. Starts at PAST_PAGE_SIZE, grows as the
@@ -150,48 +157,54 @@ export default function CalendarListView({
 
   const allMorePastLoaded = visiblePast.length >= pastEvents.length;
 
-  // Group the visible window into date buckets.
-  const grouped = useMemo(() => {
-    const combined = [...visiblePast, ...upcomingEvents];
-    if (combined.length === 0) return [];
+  // Group past + today/future into separate date-bucket arrays. We render
+  // them as two distinct sections sandwiching the always-on Today delineator.
+  const groupByDate = (list) => {
+    if (!list || list.length === 0) return [];
     const map = new Map();
-    for (const ev of combined) {
+    for (const ev of list) {
       const k = dateKey(ev.start_date);
       if (!map.has(k)) map.set(k, { key: k, sample: ev.start_date, items: [] });
       map.get(k).items.push(ev);
     }
     return Array.from(map.values());
-  }, [visiblePast, upcomingEvents, timezone]); // eslint-disable-line react-hooks/exhaustive-deps
+  };
 
-  // Anchor on the first upcoming event after first render. We only do this
-  // once per mount — subsequent updates (RSVP refresh, more past loaded)
+  const pastGroups = useMemo(
+    () => groupByDate(visiblePast),
+    [visiblePast, timezone] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const futureGroups = useMemo(
+    () => groupByDate(todayAndFutureEvents),
+    [todayAndFutureEvents, timezone] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const hasAnyEvents = pastGroups.length > 0 || futureGroups.length > 0;
+
+  // Anchor on the always-on TODAY DELINEATOR after first render. We only do
+  // this once per mount — subsequent updates (RSVP refresh, more past loaded)
   // shouldn't yank the user back. We scroll the SCROLL CONTAINER (not the
-  // page) and center the row vertically so past context sits above and
-  // future context sits below.
+  // page) and center the divider vertically so past context sits above and
+  // today/future context sits below. The divider always exists, so this
+  // anchor works for every shape of data: all-past, all-future, mixed,
+  // and even no-events.
   const containerRef = useRef(null);
-  const anchorRef = useRef(null);
+  const todayDividerRef = useRef(null);
   const hasAnchoredRef = useRef(false);
   useEffect(() => {
     if (hasAnchoredRef.current) return;
     const container = containerRef.current;
-    const anchor = anchorRef.current;
-    if (!container) return;
-    if (upcomingEvents.length === 0) {
-      // No upcoming events — nothing to anchor to. Mark anchored so we don't
-      // keep re-checking on every render.
-      hasAnchoredRef.current = true;
-      return;
-    }
-    if (!anchor) return;
-    // Compute target so the anchor row sits at the vertical center of the
-    // scroll container. offsetTop is relative to the offsetParent — since the
+    const divider = todayDividerRef.current;
+    if (!container || !divider) return;
+    // Compute target so the divider sits at the vertical center of the scroll
+    // container. offsetTop is relative to the offsetParent — since the
     // container is `position: relative` it serves as the offset parent for
     // descendants, which is exactly what we want.
     const target =
-      anchor.offsetTop - container.clientHeight / 2 + anchor.clientHeight / 2;
+      divider.offsetTop - container.clientHeight / 2 + divider.clientHeight / 2;
     container.scrollTop = Math.max(0, target);
     hasAnchoredRef.current = true;
-  }, [grouped, upcomingEvents.length]);
+  }, [pastGroups, futureGroups]);
 
   // Top-sentinel IntersectionObserver: when the sentinel enters the SCROLL
   // CONTAINER's viewport AND there are more past events to load, reveal
@@ -227,12 +240,21 @@ export default function CalendarListView({
     return () => observer.disconnect();
   }, [allMorePastLoaded, pastEvents.length]);
 
-  // First-upcoming index in the rendered window — used to drop the
-  // anchor ref on the right row. It's the row whose date key is the
-  // smallest k >= todayKey within the rendered groups.
-  const firstUpcomingKey = upcomingEvents.length > 0
-    ? dateKey(upcomingEvents[0].start_date)
-    : null;
+  // Today delineator label — TZ-aware, short. e.g. "Today, May 4".
+  const todayLabel = useMemo(() => {
+    const now = new Date();
+    if (timezone) {
+      try {
+        return `Today, ${formatWithTzAbbr(now, timezone, 'MMM d')}`;
+      } catch {
+        // fall through
+      }
+    }
+    return `Today, ${now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+    // todayKey included so the label re-renders if the calendar day rolls
+    // over while the component is mounted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timezone, todayKey]);
 
   // Fixed scroll-container height matched to month-view's natural height for
   // this variant. Inline style (vs Tailwind arbitrary class) so the value
@@ -294,49 +316,100 @@ export default function CalendarListView({
         className="relative overflow-y-auto pr-1"
         style={{ height: containerHeight }}
       >
-        {grouped.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-content-secondary text-base">No events</p>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {/* Top sentinel — fires the rolling past-event load when scrolled
-                into view of the scroll container. Hidden when all past
-                events are already loaded. */}
-            {!allMorePastLoaded && (
-              <div ref={sentinelRef} className="h-1" aria-hidden="true" />
-            )}
+        <div className="space-y-6">
+          {/* Top sentinel — fires the rolling past-event load when scrolled
+              into view of the scroll container. Hidden when all past events
+              are already loaded (or there are no past events at all). */}
+          {!allMorePastLoaded && pastEvents.length > 0 && (
+            <div ref={sentinelRef} className="h-1" aria-hidden="true" />
+          )}
 
-            {grouped.map((group) => {
-              const isFirstUpcomingGroup = group.key === firstUpcomingKey;
-              return (
-                <section key={group.key} className="space-y-2">
-                  <h4 className="text-sm font-semibold text-content-secondary uppercase tracking-wide pb-1 border-b border-line">
-                    {formatDayHeader(group.sample)}
-                  </h4>
-                  <div className="space-y-2">
-                    {group.items.map((event, idx) => {
-                      // Drop the scroll anchor on the FIRST event of the
-                      // FIRST upcoming group. That's the "next upcoming" row.
-                      const isAnchor = isFirstUpcomingGroup && idx === 0;
-                      return (
-                        <EventRow
-                          key={event.id}
-                          ref={isAnchor ? anchorRef : null}
-                          event={event}
-                          timezone={timezone}
-                          onClick={() => onEventClick && onEventClick(event)}
-                        />
-                      );
-                    })}
-                  </div>
-                </section>
-              );
-            })}
-          </div>
-        )}
+          {/* Past date-groups (events strictly before today's TZ-keyed date) */}
+          {pastGroups.map((group) => (
+            <DateGroup
+              key={group.key}
+              group={group}
+              formatDayHeader={formatDayHeader}
+              timezone={timezone}
+              onEventClick={onEventClick}
+            />
+          ))}
+
+          {/* Always-on TODAY delineator. Centered chip over a horizontal rule.
+              This is the scroll anchor regardless of where today falls in the
+              data (or whether it falls anywhere at all). */}
+          <TodayDivider ref={todayDividerRef} label={todayLabel} />
+
+          {/* Today + future date-groups. The first group below the divider
+              IS today's date-group when today has events; otherwise it's the
+              next future date-group; otherwise nothing. */}
+          {futureGroups.map((group) => (
+            <DateGroup
+              key={group.key}
+              group={group}
+              formatDayHeader={formatDayHeader}
+              timezone={timezone}
+              onEventClick={onEventClick}
+            />
+          ))}
+
+          {/* Empty-state hint: only when there are NO events at all. The
+              divider still renders above; this just labels the empty card. */}
+          {!hasAnyEvents && (
+            <div className="flex items-center justify-center pt-4">
+              <p className="text-content-secondary text-sm">No events</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Today delineator — full-width horizontal rule with a centered "Today, MMM d"
+ * chip. Always rendered. Visually distinct from date-group headers (which are
+ * left-aligned uppercase text underlined by a thin border).
+ *
+ * Forwards a ref so CalendarListView can center-scroll to it on first paint.
+ */
+const TodayDivider = forwardRef(function TodayDivider({ label }, ref) {
+  return (
+    <div
+      ref={ref}
+      role="separator"
+      aria-label={label}
+      className="relative flex items-center justify-center py-2"
+    >
+      <div className="absolute inset-x-0 top-1/2 border-t-2 border-content-link/40" aria-hidden="true" />
+      <span className="relative z-10 inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-content-link text-white shadow-theme-sm">
+        {label}
+      </span>
+    </div>
+  );
+});
+
+/**
+ * One date-group section (date header + its event rows). Extracted so the
+ * past and future renders share identical chrome.
+ */
+function DateGroup({ group, formatDayHeader, timezone, onEventClick }) {
+  return (
+    <section key={group.key} className="space-y-2">
+      <h4 className="text-sm font-semibold text-content-secondary uppercase tracking-wide pb-1 border-b border-line">
+        {formatDayHeader(group.sample)}
+      </h4>
+      <div className="space-y-2">
+        {group.items.map((event) => (
+          <EventRow
+            key={event.id}
+            event={event}
+            timezone={timezone}
+            onClick={() => onEventClick && onEventClick(event)}
+          />
+        ))}
+      </div>
+    </section>
   );
 }
 
