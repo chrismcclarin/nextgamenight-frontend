@@ -192,6 +192,7 @@ export default function EventCalendar({
           onEventClick={handleEventClick}
           timezone={timezone}
           loading={loading}
+          variant={variant}
         />
       )}
 

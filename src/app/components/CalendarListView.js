@@ -10,29 +10,35 @@ import RsvpCount from './RsvpCount';
 /**
  * CalendarListView — Phase 64 Plan 03 (CAL-06), revised post-pivot.
  *
- * Past + future feed grouped by date headers. Lands on the next upcoming
- * event on first paint and lets users scroll up into history. Past events
- * are NOT visually muted — same styling as future events (the user wanted
- * a unified, scrollable timeline rather than a "future-only" surface).
+ * Past + future feed grouped by date headers, rendered inside a fixed-height
+ * scroll container. The OUTER card height stays constant whether the user is
+ * on month or list view — switching view should not reflow the surface.
+ * Inside the container, past events sit above and future events below. The
+ * container scrolls; the page does not grow.
  *
  * Layout:
  *   - Section header ("Upcoming events") + tz legend (when timezone resolved)
- *   - Top sentinel for IntersectionObserver-driven past-event lazy load
- *   - Events grouped under date headers ("Saturday, May 10")
+ *   - Fixed-height scroll container (height keyed off `variant` to match
+ *     CalendarMonthView's 6-row grid: compact ≈ 540px, full ≈ 660px)
+ *   - Inside: top sentinel for past-event lazy load, then date-grouped rows
  *
  * Filter: NONE — all events with valid start_date are sorted chronologically.
  *
  * Initial windowing (memory + render budget):
  *   - All future events (start >= today) are rendered up front
  *   - Last 30 past events rendered initially
- *   - When the top sentinel enters viewport (user scrolls up), reveal 30 more
- *     past events. Repeat until all past events are loaded.
+ *   - When the top sentinel intersects the SCROLL CONTAINER's viewport
+ *     (user scrolls up), reveal 30 more past events. The IntersectionObserver
+ *     uses `root: containerRef.current` so it's container-relative, not
+ *     page-relative.
  *
  * Scroll anchoring:
- *   - On first render with grouped data, the FIRST upcoming event row
- *     scrollIntoView({ block: 'start' }). Past events sit above and are
- *     reached by scrolling up. We anchor only ONCE per mount so subsequent
- *     re-renders (e.g. RSVP refresh) don't yank the user back.
+ *   - On first render with grouped data, the FIRST upcoming event row is
+ *     centered in the scroll container (block: 'center'). Past events sit
+ *     above the visible window and future events below — the user sees
+ *     "what's next" with context on either side.
+ *   - We anchor only ONCE per mount so subsequent re-renders (RSVP refresh,
+ *     more past events loaded) don't yank the user back.
  *
  * Responsive row stripping (unchanged from prior impl):
  *   - all sizes: title + start time
@@ -44,11 +50,22 @@ import RsvpCount from './RsvpCount';
  */
 const PAST_PAGE_SIZE = 30;
 
+// Fixed scroll-container heights chosen to match CalendarMonthView's natural
+// rendered height for the same `variant`:
+//   compact: 6 rows × min-h-[80px] + gaps + day-name header + month nav ≈ 540
+//   full:    6 rows × min-h-[100px] + gaps + day-name header + month nav ≈ 660
+// We subtract a little to account for the list view's section header/tz line
+// rendered above the scroll container so the OUTER card height matches the
+// month-view card height.
+const CONTAINER_HEIGHT_COMPACT = 480;
+const CONTAINER_HEIGHT_FULL = 600;
+
 export default function CalendarListView({
   events,
   onEventClick,
   timezone: timezoneProp,
   loading = false,
+  variant = 'full',
 }) {
   const { timezone: ctxTimezone } = useTimezone();
   const timezone = timezoneProp || ctxTimezone || null;
@@ -148,28 +165,43 @@ export default function CalendarListView({
 
   // Anchor on the first upcoming event after first render. We only do this
   // once per mount — subsequent updates (RSVP refresh, more past loaded)
-  // shouldn't yank the user back.
+  // shouldn't yank the user back. We scroll the SCROLL CONTAINER (not the
+  // page) and center the row vertically so past context sits above and
+  // future context sits below.
+  const containerRef = useRef(null);
   const anchorRef = useRef(null);
   const hasAnchoredRef = useRef(false);
   useEffect(() => {
     if (hasAnchoredRef.current) return;
-    if (!anchorRef.current) return;
+    const container = containerRef.current;
+    const anchor = anchorRef.current;
+    if (!container) return;
     if (upcomingEvents.length === 0) {
       // No upcoming events — nothing to anchor to. Mark anchored so we don't
       // keep re-checking on every render.
       hasAnchoredRef.current = true;
       return;
     }
-    anchorRef.current.scrollIntoView({ block: 'start' });
+    if (!anchor) return;
+    // Compute target so the anchor row sits at the vertical center of the
+    // scroll container. offsetTop is relative to the offsetParent — since the
+    // container is `position: relative` it serves as the offset parent for
+    // descendants, which is exactly what we want.
+    const target =
+      anchor.offsetTop - container.clientHeight / 2 + anchor.clientHeight / 2;
+    container.scrollTop = Math.max(0, target);
     hasAnchoredRef.current = true;
   }, [grouped, upcomingEvents.length]);
 
-  // Top-sentinel IntersectionObserver: when the sentinel enters view AND
-  // there are more past events to load, reveal another page of them.
+  // Top-sentinel IntersectionObserver: when the sentinel enters the SCROLL
+  // CONTAINER's viewport AND there are more past events to load, reveal
+  // another page of them. We use the scroll container as the IO root so the
+  // sentinel triggers when scrolled to the top of the card, not the page.
   const sentinelRef = useRef(null);
   useEffect(() => {
     const node = sentinelRef.current;
-    if (!node) return;
+    const root = containerRef.current;
+    if (!node || !root) return;
     if (allMorePastLoaded) return; // No more to load — observer is a no-op.
 
     const observer = new IntersectionObserver(
@@ -183,6 +215,7 @@ export default function CalendarListView({
         }
       },
       {
+        root,
         // Trigger slightly before the sentinel is fully visible so the new
         // batch is ready by the time the user reaches it.
         rootMargin: '200px 0px 0px 0px',
@@ -201,25 +234,11 @@ export default function CalendarListView({
     ? dateKey(upcomingEvents[0].start_date)
     : null;
 
-  // Loading skeleton — only when no data has arrived yet AND parent signals
-  // loading. Empty state is the right answer once data has resolved.
-  if (loading && (!Array.isArray(events) || events.length === 0)) {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-baseline justify-between">
-          <h3 className="text-lg font-semibold text-content-primary">Upcoming events</h3>
-        </div>
-        <div className="space-y-3">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="border rounded-lg p-4 animate-pulse">
-              <div className="h-4 w-1/3 bg-surface-elevated rounded mb-2" />
-              <div className="h-3 w-1/4 bg-surface-elevated rounded" />
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  // Fixed scroll-container height matched to month-view's natural height for
+  // this variant. Inline style (vs Tailwind arbitrary class) so the value
+  // can be a const shared with the loading skeleton.
+  const containerHeight =
+    variant === 'compact' ? CONTAINER_HEIGHT_COMPACT : CONTAINER_HEIGHT_FULL;
 
   // tz legend — mirror EventCalendar's "Times shown in {abbr}" pattern.
   const tzAbbr = timezone
@@ -232,6 +251,33 @@ export default function CalendarListView({
       })()
     : null;
 
+  // Loading skeleton — only when no data has arrived yet AND parent signals
+  // loading. Empty state is the right answer once data has resolved. The
+  // skeleton renders inside the same fixed-height shell so the card doesn't
+  // reflow between loading and loaded states.
+  if (loading && (!Array.isArray(events) || events.length === 0)) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-baseline justify-between">
+          <h3 className="text-lg font-semibold text-content-primary">Upcoming events</h3>
+        </div>
+        <div
+          className="relative overflow-y-auto pr-1"
+          style={{ height: containerHeight }}
+        >
+          <div className="space-y-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="border rounded-lg p-4 animate-pulse">
+                <div className="h-4 w-1/3 bg-surface-elevated rounded mb-2" />
+                <div className="h-3 w-1/4 bg-surface-elevated rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-baseline justify-between gap-3 flex-wrap">
@@ -243,46 +289,53 @@ export default function CalendarListView({
         )}
       </div>
 
-      {grouped.length === 0 ? (
-        <div className="text-center py-10">
-          <p className="text-content-secondary text-base">No events</p>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {/* Top sentinel — fires the rolling past-event load when scrolled
-              into view. Hidden when all past events are already loaded. */}
-          {!allMorePastLoaded && (
-            <div ref={sentinelRef} className="h-1" aria-hidden="true" />
-          )}
+      <div
+        ref={containerRef}
+        className="relative overflow-y-auto pr-1"
+        style={{ height: containerHeight }}
+      >
+        {grouped.length === 0 ? (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-content-secondary text-base">No events</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Top sentinel — fires the rolling past-event load when scrolled
+                into view of the scroll container. Hidden when all past
+                events are already loaded. */}
+            {!allMorePastLoaded && (
+              <div ref={sentinelRef} className="h-1" aria-hidden="true" />
+            )}
 
-          {grouped.map((group) => {
-            const isFirstUpcomingGroup = group.key === firstUpcomingKey;
-            return (
-              <section key={group.key} className="space-y-2">
-                <h4 className="text-sm font-semibold text-content-secondary uppercase tracking-wide pb-1 border-b border-line">
-                  {formatDayHeader(group.sample)}
-                </h4>
-                <div className="space-y-2">
-                  {group.items.map((event, idx) => {
-                    // Drop the scroll anchor on the FIRST event of the FIRST
-                    // upcoming group. That's the "next upcoming" row.
-                    const isAnchor = isFirstUpcomingGroup && idx === 0;
-                    return (
-                      <EventRow
-                        key={event.id}
-                        ref={isAnchor ? anchorRef : null}
-                        event={event}
-                        timezone={timezone}
-                        onClick={() => onEventClick && onEventClick(event)}
-                      />
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      )}
+            {grouped.map((group) => {
+              const isFirstUpcomingGroup = group.key === firstUpcomingKey;
+              return (
+                <section key={group.key} className="space-y-2">
+                  <h4 className="text-sm font-semibold text-content-secondary uppercase tracking-wide pb-1 border-b border-line">
+                    {formatDayHeader(group.sample)}
+                  </h4>
+                  <div className="space-y-2">
+                    {group.items.map((event, idx) => {
+                      // Drop the scroll anchor on the FIRST event of the
+                      // FIRST upcoming group. That's the "next upcoming" row.
+                      const isAnchor = isFirstUpcomingGroup && idx === 0;
+                      return (
+                        <EventRow
+                          key={event.id}
+                          ref={isAnchor ? anchorRef : null}
+                          event={event}
+                          timezone={timezone}
+                          onClick={() => onEventClick && onEventClick(event)}
+                        />
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
