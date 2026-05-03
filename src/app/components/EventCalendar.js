@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { eventsAPI } from '../../lib/api';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { getDaysInMonth } from '../../lib/calendarUtils';
+import { loadCalendarPrefs, saveCalendarPrefs } from '../../lib/calendarViewPrefs';
 import CalendarMonthView from './CalendarMonthView';
 import CalendarListView from './CalendarListView';
 import EventDayModal from './EventDayModal';
@@ -18,14 +19,24 @@ export default function EventCalendar({
   onEventClick: externalOnEventClick = null, // Override default event click navigation
   title = 'Game Sessions Calendar', // Configurable header title
   showListView = true,             // Whether to show list view toggle
+  scope = 'home',                  // CAL-03: persistence scope key (e.g. 'home', 'group:<id>')
 }) {
   const { user } = Auth();
   const { timezone } = useTimezone();
   const router = useRouter();
   const [internalEvents, setInternalEvents] = useState([]);
   const [loading, setLoading] = useState(externalEvents === null);
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState('month'); // 'month' or 'list'
+  // CAL-03/CAL-07: initial state is hydrated synchronously from localStorage
+  // so the very first render reflects the persisted view (no flicker between
+  // default 'month' and the user's saved 'list' choice).
+  const [viewMode, setViewMode] = useState(() => {
+    const prefs = loadCalendarPrefs(scope);
+    return prefs?.viewMode || 'month';
+  });
+  const [currentDate, setCurrentDate] = useState(() => {
+    const prefs = loadCalendarPrefs(scope);
+    return prefs?.currentDate || new Date();
+  });
   const [selectedDay, setSelectedDay] = useState(null); // For modal: { date, events }
 
   const activeEvents = externalEvents !== null ? externalEvents : internalEvents;
@@ -35,6 +46,14 @@ export default function EventCalendar({
       fetchEvents();
     }
   }, [user, refreshKey]); // Refetch when refreshKey changes
+
+  // CAL-03/CAL-07: persist viewMode + currentDate whenever either changes.
+  // Save fires after user interactions (toggle list, navigate month) so
+  // subsequent reloads / modal cycles restore the same view. The 1-hour
+  // TTL on month restoration is enforced inside loadCalendarPrefs.
+  useEffect(() => {
+    saveCalendarPrefs(scope, { viewMode, currentDate });
+  }, [scope, viewMode, currentDate]);
 
   const fetchEvents = async () => {
     if (!user?.sub) return;
@@ -73,6 +92,31 @@ export default function EventCalendar({
 
   const handleEventClick = externalOnEventClick || defaultEventClick;
 
+  // CAL-04 / CAL-05: single dispatcher for whole-day-cell taps.
+  // - 0 events: invoke onEmptyDayClick (group calendar) or no-op (home).
+  // - 1 event: jump straight to event detail (skip the modal — fewer clicks).
+  // - 2+ events: open EventDayModal listing the day's events.
+  //
+  // Adjacent-month act-in-place invariant (CAL-01): we DO NOT call
+  // setCurrentDate here. Tapping a prev/next-month cell opens the
+  // modal/handler in place, leaving the visible month grid unchanged
+  // so that closing the modal returns the user to the same view.
+  const handleDayClick = (date, dayEvents) => {
+    if (!date) return;
+    if (dayEvents.length === 0) {
+      if (onEmptyDayClick) {
+        const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        onEmptyDayClick(dateStr);
+      }
+      return;
+    }
+    if (dayEvents.length === 1) {
+      handleEventClick(dayEvents[0]);
+      return;
+    }
+    setSelectedDay({ date, events: dayEvents });
+  };
+
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -85,6 +129,7 @@ export default function EventCalendar({
     ? formatWithTzAbbr(currentDate || new Date(), timezone, 'zzz')
     : null;
 
+  // CAL-01: getDaysInMonth now returns {date, isCurrentMonth}[] — 42 cells.
   const days = getDaysInMonth(currentDate);
   const sortedEvents = [...activeEvents]
     .filter(event => {
@@ -123,11 +168,11 @@ export default function EventCalendar({
           activeEvents={activeEvents}
           currentDate={currentDate}
           variant={variant}
-          onEmptyDayClick={onEmptyDayClick}
+          onDayClick={handleDayClick}
           onEventClick={handleEventClick}
           onNavigateMonth={navigateMonth}
           onGoToday={goToToday}
-          onShowDayModal={(day) => setSelectedDay(day)}
+          showEmptyDayHint={!!onEmptyDayClick}
           monthNames={monthNames}
           tzLegend={tzLegend}
         />
@@ -150,6 +195,14 @@ export default function EventCalendar({
             handleEventClick(event);
             setSelectedDay(null);
           }}
+          onCreateEventOnDay={onEmptyDayClick ? (date) => {
+            // CAL-04: "+ New event on this day" uses the same empty-day-click
+            // path as a tap on a blank cell — yields the visual day-mode
+            // entry on group calendars, hidden entirely on home.
+            const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+            setSelectedDay(null);
+            onEmptyDayClick(dateStr);
+          } : null}
         />
       )}
     </div>

@@ -24,16 +24,29 @@ const isFuture = (date) => {
 
 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+/**
+ * Monthly grid renderer.
+ *
+ * Phase 64-02 (CAL-01 / CAL-04 / CAL-05):
+ *   - `days` is now {date: Date, isCurrentMonth: boolean}[] (42 cells).
+ *   - Adjacent-month cells render with subtle muting (`opacity-60`)
+ *     but their events use the same tile styling as current-month cells.
+ *   - Whole-cell click invokes `onDayClick(date, dayEvents)` — the parent
+ *     dispatcher (EventCalendar) decides between empty-day handler,
+ *     event-detail navigation, or EventDayModal. Inner event-tile
+ *     clicks still call `onEventClick(event)` and stopPropagation.
+ *   - `+N more` is a non-button label; the cell click handles the modal.
+ */
 export default function CalendarMonthView({
   days,
   activeEvents,
   currentDate,
   variant,
-  onEmptyDayClick,
+  onDayClick,
   onEventClick,
   onNavigateMonth,
   onGoToday,
-  onShowDayModal,
+  showEmptyDayHint = false,
   monthNames,
   tzLegend,
 }) {
@@ -81,27 +94,32 @@ export default function CalendarMonthView({
       </div>
 
       <div className="grid grid-cols-7 gap-1">
-        {days.map((date, index) => {
+        {days.map((cell, index) => {
+          // CAL-01: cells are {date, isCurrentMonth} — adjacent-month cells
+          // have isCurrentMonth=false, never null.
+          const date = cell?.date || null;
+          const isCurrentMonth = !!cell?.isCurrentMonth;
           const dayEvents = getEventsForDate(date, activeEvents);
           const isCurrentDay = isToday(date);
           const isPastDate = isPast(date);
-          const isFutureDate = isFuture(date);
           const isEmpty = date && dayEvents.length === 0;
+          const isAdjacent = !isCurrentMonth;
+
+          const cellClickable = !!date && (dayEvents.length > 0 || (isEmpty && showEmptyDayHint));
 
           return (
             <div
               key={index}
               onClick={() => {
-                if (isEmpty && onEmptyDayClick) {
-                  const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-                  onEmptyDayClick(dateStr);
-                }
+                if (date) onDayClick(date, dayEvents);
               }}
               className={`${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} border border-line rounded p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
+                isAdjacent ? 'opacity-60 ' : ''
+              }${
                 !date ? 'bg-surface-page' :
                 isCurrentDay ? 'bg-surface-card-hover border-line-accent' :
                 variant === 'full' && isPastDate ? 'bg-surface-page' :
-                isEmpty && onEmptyDayClick ? 'bg-surface-card hover:bg-surface-card-hover hover:border-line-accent cursor-pointer transition-colors group' :
+                cellClickable ? 'bg-surface-card hover:bg-surface-card-hover hover:border-line-accent cursor-pointer transition-colors group' :
                 'bg-surface-card'
               }`}
             >
@@ -109,6 +127,7 @@ export default function CalendarMonthView({
                 <>
                   <div className={`${variant === 'compact' ? 'text-xs' : 'text-sm'} font-medium mb-1 ${
                     isCurrentDay ? 'text-accent' :
+                    isAdjacent ? 'text-content-muted' :
                     variant === 'full' && isPastDate ? 'text-content-muted' :
                     'text-content-primary'
                   }`}>
@@ -145,7 +164,10 @@ export default function CalendarMonthView({
                         return (
                           <div
                             key={event.id}
-                            onClick={() => onEventClick(event)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEventClick(event);
+                            }}
                             className={`text-xs p-1 rounded truncate hover:opacity-90 transition-opacity flex items-center gap-1 font-medium cursor-pointer`}
                             style={{
                               backgroundColor: groupBgColor,
@@ -213,19 +235,15 @@ export default function CalendarMonthView({
                         );
                       })}
                       {dayEvents.length > 2 && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onShowDayModal({ date, events: dayEvents });
-                          }}
-                          className="text-xs text-content-link hover:text-content-link-hover hover:underline cursor-pointer font-medium"
-                          title={`Click to see all ${dayEvents.length} games on this day`}
+                        <div
+                          className="text-xs text-content-link font-medium pointer-events-none select-none"
+                          title={`Tap the day to see all ${dayEvents.length} games`}
                         >
                           +{dayEvents.length - 2} more
-                        </button>
+                        </div>
                       )}
                     </div>
-                  ) : onEmptyDayClick ? (
+                  ) : (isEmpty && showEmptyDayHint) ? (
                     <div className="flex items-center justify-center flex-1 opacity-0 group-hover:opacity-40 transition-opacity">
                       <span className="text-2xl text-content-muted select-none">+</span>
                     </div>

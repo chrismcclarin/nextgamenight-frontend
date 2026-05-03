@@ -12,6 +12,7 @@ export default function EventDayModal({
   selectedDay,
   onClose,
   onEventClick,
+  onCreateEventOnDay = null, // CAL-04: optional "+ New event on this day" callback
 }) {
   const { timezone } = useTimezone();
   const [showGameQR, setShowGameQR] = useState(false);
@@ -70,6 +71,21 @@ export default function EventDayModal({
           {/* Phase 62-02: nudge user to set profile TZ if not yet set so the
               displayed times below have a stable canonical reference. */}
           <TimezoneNudgeBanner />
+          {/* CAL-04: "+ New event on this day" — only rendered when the
+              parent surface supplies a creation callback (group calendar).
+              On the home calendar onCreateEventOnDay is null and the
+              affordance stays hidden. */}
+          {onCreateEventOnDay && (
+            <div className="mb-4">
+              <button
+                type="button"
+                onClick={() => onCreateEventOnDay(selectedDay.date)}
+                className="btn btn-primary w-full sm:w-auto"
+              >
+                + New event on this day
+              </button>
+            </div>
+          )}
           {selectedDay.events.length === 0 ? (
             <p className="text-content-secondary text-center py-8">No events on this day.</p>
           ) : (
