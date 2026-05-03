@@ -13,7 +13,6 @@ import SafeImage from '../components/SafeImage';
 import EventCalendar from '../components/EventCalendar';
 import PendingMemberBanner from '../components/PendingMemberBanner';
 import FriendshipStatusProvider from '../components/FriendshipStatusProvider';
-import UpcomingEventsCard from '../components/UpcomingEventsCard';
 import GroupLibrary from '../components/GroupLibrary';
 
 // A groups home page
@@ -298,9 +297,6 @@ function GroupHomePage(){
 
             {activeTab === 'home' && (
               <>
-                {/* Upcoming Events */}
-                <UpcomingEventsCard events={groupEvents} />
-
                 {/* Group Calendar */}
                 <EventCalendar
                     refreshKey={eventsRefreshKey}

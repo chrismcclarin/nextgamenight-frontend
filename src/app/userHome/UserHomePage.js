@@ -4,8 +4,6 @@ import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import GroupList from '../components/grouplist';
 import EventCalendar from '../components/EventCalendar';
 import FriendInvitePanel from '../components/FriendInvitePanel';
-import UpcomingEventsCard from '../components/UpcomingEventsCard';
-import { eventsAPI } from '../../lib/api';
 
 // List of all the groups for the logged in User
 function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, groupListRefreshKey, onMemberAdded: onMemberAddedProp }) {
@@ -13,25 +11,6 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     const [selectedGroup, setSelectedGroup] = useState(null);
     const [invitePanelOpen, setInvitePanelOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
-    const [userEvents, setUserEvents] = useState([]);
-    const [eventsLoading, setEventsLoading] = useState(true);
-
-    useEffect(() => {
-        const fetchUpcomingEvents = async () => {
-            if (!user?.sub) return;
-            try {
-                setEventsLoading(true);
-                const data = await eventsAPI.getUserEvents(user.sub);
-                setUserEvents(data || []);
-            } catch (error) {
-                console.error('Error fetching user events:', error);
-                setUserEvents([]);
-            } finally {
-                setEventsLoading(false);
-            }
-        };
-        fetchUpcomingEvents();
-    }, [user?.sub]);
 
     const handleGroupSelect = (group) => {
         setSelectedGroup(group);
@@ -80,7 +59,6 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
 
             {/* Hide calendar on mobile (smaller than md breakpoint) */}
             <div className="hidden md:block flex-1 min-w-0">
-                <UpcomingEventsCard events={userEvents} showGroupName={true} loading={eventsLoading} />
                 <EventCalendar refreshKey={refreshKey} />
             </div>
 
