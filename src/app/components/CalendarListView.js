@@ -1,5 +1,5 @@
 'use client';
-import { useMemo } from 'react';
+import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import { getContrastColor } from '../../lib/colorUtils';
 import { formatTime } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
@@ -8,25 +8,33 @@ import SafeImage from './SafeImage';
 import RsvpCount from './RsvpCount';
 
 /**
- * CalendarListView — Phase 64 Plan 03 (CAL-06)
+ * CalendarListView — Phase 64 Plan 03 (CAL-06), revised post-pivot.
  *
- * Date-grouped, today-onward feed of upcoming events for the calendar surface.
- * Replaces the previous month-scoped flat list (we no longer "navigate" the
- * list — list view answers "what's coming up", month view handles browsing).
+ * Past + future feed grouped by date headers. Lands on the next upcoming
+ * event on first paint and lets users scroll up into history. Past events
+ * are NOT visually muted — same styling as future events (the user wanted
+ * a unified, scrollable timeline rather than a "future-only" surface).
  *
  * Layout:
- *   - Section header ("Upcoming events") + tz legend (when timezone resolved).
- *   - Events grouped under date headers ("Saturday, May 10").
- *   - Single-event days still render their own header (consistent rhythm).
+ *   - Section header ("Upcoming events") + tz legend (when timezone resolved)
+ *   - Top sentinel for IntersectionObserver-driven past-event lazy load
+ *   - Events grouped under date headers ("Saturday, May 10")
  *
- * Filter:
- *   - today-onward only (start_date >= start of today in user's effective TZ).
- *   - past events DROPPED (they live in event detail / game-history surfaces).
+ * Filter: NONE — all events with valid start_date are sorted chronologically.
  *
- * Sort: chronological ascending.
+ * Initial windowing (memory + render budget):
+ *   - All future events (start >= today) are rendered up front
+ *   - Last 30 past events rendered initially
+ *   - When the top sentinel enters viewport (user scrolls up), reveal 30 more
+ *     past events. Repeat until all past events are loaded.
  *
- * Responsive row stripping (mirrors UpcomingEventsCard's "drop info as the
- * screen shrinks" philosophy):
+ * Scroll anchoring:
+ *   - On first render with grouped data, the FIRST upcoming event row
+ *     scrollIntoView({ block: 'start' }). Past events sit above and are
+ *     reached by scrolling up. We anchor only ONCE per mount so subsequent
+ *     re-renders (e.g. RSVP refresh) don't yank the user back.
+ *
+ * Responsive row stripping (unchanged from prior impl):
  *   - all sizes: title + start time
  *   - >=640px (sm): + game name
  *   - >=768px (md): + RSVP / participant count
@@ -34,21 +42,18 @@ import RsvpCount from './RsvpCount';
  * TZ correctness: all date keying + display routes through tzUtils +
  * dateUtils helpers (Phase 62 single authority — no new TZ paths).
  */
+const PAST_PAGE_SIZE = 30;
+
 export default function CalendarListView({
   events,
   onEventClick,
   timezone: timezoneProp,
   loading = false,
 }) {
-  // useTimezone provides the user's effective TZ. We accept an explicit
-  // `timezone` prop too so EventCalendar can pass through the same value
-  // it already pulled from the provider — but fall back to the hook so
-  // standalone usage still works.
   const { timezone: ctxTimezone } = useTimezone();
   const timezone = timezoneProp || ctxTimezone || null;
 
-  // tz-aware "YYYY-MM-DD" key for grouping. Uses the same date-fns-tz
-  // pipeline as tzUtils — no parallel TZ math.
+  // tz-aware "YYYY-MM-DD" key for grouping. Same date-fns-tz pipeline as tzUtils.
   const dateKey = (utc) => {
     if (!utc) return '';
     if (timezone) {
@@ -87,27 +92,117 @@ export default function CalendarListView({
     });
   };
 
-  // Filter today-onward + sort ascending + group by date key.
-  const grouped = useMemo(() => {
+  // Sort events chronologically and split into past vs upcoming buckets.
+  // Past = strictly before today's date key. Upcoming = today onward.
+  const { pastEvents, upcomingEvents } = useMemo(() => {
     const safe = Array.isArray(events) ? events : [];
-    const future = safe
-      .filter((ev) => {
-        const k = dateKey(ev.start_date);
-        return k && k >= todayKey;
-      })
+    const sorted = safe
+      .filter((ev) => !!ev?.start_date)
       .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
 
+    const past = [];
+    const upcoming = [];
+    for (const ev of sorted) {
+      const k = dateKey(ev.start_date);
+      if (!k) continue;
+      if (k >= todayKey) upcoming.push(ev);
+      else past.push(ev);
+    }
+    return { pastEvents: past, upcomingEvents: upcoming };
+  }, [events, todayKey, timezone]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // How many past events are revealed. Starts at PAST_PAGE_SIZE, grows as the
+  // user scrolls up into history. Capped at pastEvents.length.
+  const [pastVisibleCount, setPastVisibleCount] = useState(PAST_PAGE_SIZE);
+
+  // Reset the past window when the underlying events array changes identity
+  // (new fetch / refresh). Prevents the window from growing unbounded across
+  // event refetches and keeps the initial scroll anchor logic predictable.
+  useEffect(() => {
+    setPastVisibleCount(PAST_PAGE_SIZE);
+    // We want this to fire only when `events` reference changes (new fetch).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events]);
+
+  // Build the rendered window: last N past events + all upcoming events.
+  const visiblePast = useMemo(() => {
+    if (pastEvents.length === 0) return [];
+    const start = Math.max(0, pastEvents.length - pastVisibleCount);
+    return pastEvents.slice(start);
+  }, [pastEvents, pastVisibleCount]);
+
+  const allMorePastLoaded = visiblePast.length >= pastEvents.length;
+
+  // Group the visible window into date buckets.
+  const grouped = useMemo(() => {
+    const combined = [...visiblePast, ...upcomingEvents];
+    if (combined.length === 0) return [];
     const map = new Map();
-    for (const ev of future) {
+    for (const ev of combined) {
       const k = dateKey(ev.start_date);
       if (!map.has(k)) map.set(k, { key: k, sample: ev.start_date, items: [] });
       map.get(k).items.push(ev);
     }
     return Array.from(map.values());
-  }, [events, todayKey, timezone]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [visiblePast, upcomingEvents, timezone]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Loading skeleton — only when we genuinely have no data yet AND parent
-  // signals loading. Otherwise the empty state is the right answer.
+  // Anchor on the first upcoming event after first render. We only do this
+  // once per mount — subsequent updates (RSVP refresh, more past loaded)
+  // shouldn't yank the user back.
+  const anchorRef = useRef(null);
+  const hasAnchoredRef = useRef(false);
+  useEffect(() => {
+    if (hasAnchoredRef.current) return;
+    if (!anchorRef.current) return;
+    if (upcomingEvents.length === 0) {
+      // No upcoming events — nothing to anchor to. Mark anchored so we don't
+      // keep re-checking on every render.
+      hasAnchoredRef.current = true;
+      return;
+    }
+    anchorRef.current.scrollIntoView({ block: 'start' });
+    hasAnchoredRef.current = true;
+  }, [grouped, upcomingEvents.length]);
+
+  // Top-sentinel IntersectionObserver: when the sentinel enters view AND
+  // there are more past events to load, reveal another page of them.
+  const sentinelRef = useRef(null);
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node) return;
+    if (allMorePastLoaded) return; // No more to load — observer is a no-op.
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setPastVisibleCount((prev) =>
+              Math.min(prev + PAST_PAGE_SIZE, pastEvents.length)
+            );
+          }
+        }
+      },
+      {
+        // Trigger slightly before the sentinel is fully visible so the new
+        // batch is ready by the time the user reaches it.
+        rootMargin: '200px 0px 0px 0px',
+        threshold: 0.01,
+      }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [allMorePastLoaded, pastEvents.length]);
+
+  // First-upcoming index in the rendered window — used to drop the
+  // anchor ref on the right row. It's the row whose date key is the
+  // smallest k >= todayKey within the rendered groups.
+  const firstUpcomingKey = upcomingEvents.length > 0
+    ? dateKey(upcomingEvents[0].start_date)
+    : null;
+
+  // Loading skeleton — only when no data has arrived yet AND parent signals
+  // loading. Empty state is the right answer once data has resolved.
   if (loading && (!Array.isArray(events) || events.length === 0)) {
     return (
       <div className="space-y-4">
@@ -150,27 +245,42 @@ export default function CalendarListView({
 
       {grouped.length === 0 ? (
         <div className="text-center py-10">
-          <p className="text-content-secondary text-base">No upcoming events</p>
+          <p className="text-content-secondary text-base">No events</p>
         </div>
       ) : (
         <div className="space-y-6">
-          {grouped.map((group) => (
-            <section key={group.key} className="space-y-2">
-              <h4 className="text-sm font-semibold text-content-secondary uppercase tracking-wide pb-1 border-b border-line">
-                {formatDayHeader(group.sample)}
-              </h4>
-              <div className="space-y-2">
-                {group.items.map((event) => (
-                  <EventRow
-                    key={event.id}
-                    event={event}
-                    timezone={timezone}
-                    onClick={() => onEventClick && onEventClick(event)}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
+          {/* Top sentinel — fires the rolling past-event load when scrolled
+              into view. Hidden when all past events are already loaded. */}
+          {!allMorePastLoaded && (
+            <div ref={sentinelRef} className="h-1" aria-hidden="true" />
+          )}
+
+          {grouped.map((group) => {
+            const isFirstUpcomingGroup = group.key === firstUpcomingKey;
+            return (
+              <section key={group.key} className="space-y-2">
+                <h4 className="text-sm font-semibold text-content-secondary uppercase tracking-wide pb-1 border-b border-line">
+                  {formatDayHeader(group.sample)}
+                </h4>
+                <div className="space-y-2">
+                  {group.items.map((event, idx) => {
+                    // Drop the scroll anchor on the FIRST event of the FIRST
+                    // upcoming group. That's the "next upcoming" row.
+                    const isAnchor = isFirstUpcomingGroup && idx === 0;
+                    return (
+                      <EventRow
+                        key={event.id}
+                        ref={isAnchor ? anchorRef : null}
+                        event={event}
+                        timezone={timezone}
+                        onClick={() => onEventClick && onEventClick(event)}
+                      />
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
         </div>
       )}
     </div>
@@ -180,15 +290,17 @@ export default function CalendarListView({
 /**
  * Single event row.
  *
- * Visual chrome matches the prior list view's per-event styling (group bg
- * color/image, profile pic, contrast-aware text) — only the layout changes
- * to support responsive stripping.
+ * Visual chrome unchanged from prior impl — past and future events share
+ * styling (no muting). Only the layout supports responsive stripping.
  *
  * Always: title + start time
  * sm:    + game name
  * md:    + RSVP / participant count
+ *
+ * Forwards a ref so CalendarListView can scroll the next-upcoming row into
+ * view on first paint.
  */
-function EventRow({ event, timezone, onClick }) {
+const EventRow = forwardRef(function EventRow({ event, timezone, onClick }, ref) {
   const groupBgColor = event.Group?.background_color || '#ffffff';
   const groupBgImage = event.Group?.background_image_url;
   const groupProfilePic = event.Group?.profile_picture_url;
@@ -229,6 +341,7 @@ function EventRow({ event, timezone, onClick }) {
 
   return (
     <div
+      ref={ref}
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -318,4 +431,4 @@ function EventRow({ event, timezone, onClick }) {
       </div>
     </div>
   );
-}
+});
