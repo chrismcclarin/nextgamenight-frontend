@@ -32,6 +32,12 @@ function GroupHomePage(){
     // Calendar state
     const [groupEvents, setGroupEvents] = useState([]);
     const [calendarPrefillDate, setCalendarPrefillDate] = useState(null);
+    // CAL-05: track the visual entry mode for the create-event modal.
+    // 'day' is set when the user taps an empty day cell or the modal's
+    // "+ New event on this day" button — the EventScheduler then opens
+    // in react-big-calendar's day view focused on the tapped date.
+    // The "Add New Game Event" header button leaves this at 'week'.
+    const [calendarEntryMode, setCalendarEntryMode] = useState('week');
     // Defensive cache-bust key — bumped after a fresh fetch so EventCalendar
     // re-renders even if React batches/dedupes the state update by accident.
     // Mirrors the pattern already used in UserHomePage.
@@ -136,6 +142,7 @@ function GroupHomePage(){
     const toggleEventModal = () => {
         if (eventModal) {
             setCalendarPrefillDate(null); // Clear when closing
+            setCalendarEntryMode('week'); // CAL-05: reset to default for next open
         }
         setEventModal(!eventModal);
     };
@@ -301,8 +308,13 @@ function GroupHomePage(){
                     variant="compact"
                     title="Calendar"
                     showListView={false}
+                    scope={Router ? `group:${Router}` : 'group'}
                     onEmptyDayClick={userRole && userRole !== 'pending' ? (dateStr) => {
+                        // CAL-05: empty-day tap (or EventDayModal's
+                        // "+ New event on this day") opens create-event in
+                        // visual day-mode focused on the tapped day.
                         setCalendarPrefillDate(dateStr);
+                        setCalendarEntryMode('day');
                         setEventModal(true);
                     } : undefined}
                 />
@@ -328,12 +340,14 @@ function GroupHomePage(){
                 modaltoggle={() => {
                     setEventModal(false);
                     setCalendarPrefillDate(null); // Clear calendar prefill on close
+                    setCalendarEntryMode('week'); // CAL-05: reset to default
                 }}
                 onEventCreated={handleEventCreated}
                 user={user}
                 prefillDate={calendarPrefillDate || prefillDate}
                 prefillTime={prefillTime}
                 userRole={userRole}
+                initialVisualView={calendarEntryMode}
             />
 
             <ManageMembers

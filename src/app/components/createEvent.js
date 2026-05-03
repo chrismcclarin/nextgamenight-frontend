@@ -16,7 +16,7 @@ import { useTimezone } from './TimezoneProvider';
 import { utcToWallClock, wallClockToUtc } from '../../lib/tzUtils';
 import TimezoneNudgeBanner from './TimezoneNudgeBanner';
 
-function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, hideVisualCalendar = false, userRole }) {
+function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, hideVisualCalendar = false, userRole, initialVisualView = 'week' }) {
   const authUser = user || Auth().user;
   const { timezone, browserTimezone } = useTimezone();
   const effectiveTz = timezone || browserTimezone || 'UTC';
@@ -524,6 +524,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   return `${String(wc.hours).padStart(2, '0')}:${String(wc.minutes).padStart(2, '0')}`;
                 })()}
                 heatmapData={heatmapData}
+                defaultView={initialVisualView}
               />
             ) : (
               <div className="space-y-4">

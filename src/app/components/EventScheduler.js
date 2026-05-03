@@ -29,11 +29,19 @@ export default function EventScheduler({
   maxTime,
   step = 30,
   events = [],
-  heatmapData = null
+  heatmapData = null,
+  // CAL-05: initial visual view ('week' | 'day'). Day-tap entry passes
+  // 'day' so the picker opens focused on the tapped day. Default 'week'
+  // keeps the header-button entry path unchanged. The user can still
+  // toggle between week/day after mount via react-big-calendar's view
+  // picker — defaultView only seeds the initial mode.
+  defaultView = 'week',
 }) {
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [currentDate, setCurrentDate] = useState(initialDate || new Date());
-  const [currentView, setCurrentView] = useState('week');
+  const [currentView, setCurrentView] = useState(
+    defaultView === 'day' ? 'day' : 'week'
+  );
 
   // Build heatmap lookup: "localDate_localHour" -> slot
   // Backend returns UTC dates/hours -- convert to local so keys match the calendar
