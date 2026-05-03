@@ -213,9 +213,14 @@ export default function EventHeatmapBackground({ heatmapData, loading }) {
       )}
 
       {totalMembers === 0 && totalGroupMembers > 0 && (
-        <p className="text-xs text-content-muted text-center mt-2">
-          No one has shared availability yet
-        </p>
+        <div className="text-center mt-3 px-2">
+          <p className="text-xs font-medium text-content-secondary mb-1">
+            No availability shared yet
+          </p>
+          <p className="text-[11px] text-content-muted">
+            Invite members or set a schedule to see availability here.
+          </p>
+        </div>
       )}
 
       {/* gcal conflict warning */}
