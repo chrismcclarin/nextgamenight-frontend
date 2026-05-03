@@ -132,6 +132,12 @@ export default function EventCalendar({
   // CAL-01: getDaysInMonth now returns {date, isCurrentMonth}[] — 42 cells.
   const days = getDaysInMonth(currentDate);
 
+  // CAL-06 (revised): if the surface has list view disabled (e.g. group home,
+  // where Upcoming Events card already covers that role), force month view
+  // even if persisted state says 'list'. Prevents stranding users without a
+  // toggle when they previously enabled list view on a now-month-only surface.
+  const effectiveViewMode = !showListView && viewMode === 'list' ? 'month' : viewMode;
+
   // CAL-06: list view is today-onward (NOT month-scoped). Build a separate
   // forward-only list directly from activeEvents. Past events are dropped —
   // they live in event detail / game-history surfaces.
@@ -171,7 +177,7 @@ export default function EventCalendar({
         )}
       </div>
 
-      {viewMode === 'month' ? (
+      {effectiveViewMode === 'month' ? (
         <CalendarMonthView
           days={days}
           activeEvents={activeEvents}

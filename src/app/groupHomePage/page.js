@@ -307,7 +307,7 @@ function GroupHomePage(){
                     events={groupEvents}
                     variant="compact"
                     title="Calendar"
-                    showListView={true}
+                    showListView={false}
                     scope={Router ? `group:${Router}` : 'group'}
                     onEmptyDayClick={userRole && userRole !== 'pending' ? (dateStr) => {
                         // CAL-05: empty-day tap (or EventDayModal's
