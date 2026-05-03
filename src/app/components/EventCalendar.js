@@ -132,25 +132,20 @@ export default function EventCalendar({
   // CAL-01: getDaysInMonth now returns {date, isCurrentMonth}[] — 42 cells.
   const days = getDaysInMonth(currentDate);
 
-  // CAL-06 (revised): if the surface has list view disabled (e.g. group home,
-  // where Upcoming Events card already covers that role), force month view
-  // even if persisted state says 'list'. Prevents stranding users without a
-  // toggle when they previously enabled list view on a now-month-only surface.
+  // CAL-06 (revised): if the surface has list view disabled, force month view
+  // even if persisted state says 'list'. Defensive guard — if a parent passes
+  // showListView={false}, persisted 'list' choice would otherwise strand users
+  // without a toggle. Group + home both pass true today; this is belt-and-
+  // suspenders for any future surface that might disable list view.
   const effectiveViewMode = !showListView && viewMode === 'list' ? 'month' : viewMode;
 
-  // CAL-06: list view is today-onward (NOT month-scoped). Build a separate
-  // forward-only list directly from activeEvents. Past events are dropped —
-  // they live in event detail / game-history surfaces.
-  const startOfToday = (() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
-  })();
-  const sortedEventsTodayOnward = [...activeEvents]
-    .filter(event => {
-      if (!event?.start_date) return false;
-      return new Date(event.start_date) >= startOfToday;
-    })
+  // CAL-06 (post-pivot): list view shows past + future events with same styling,
+  // anchored at the next upcoming event. We pass the FULL chronologically-sorted
+  // events array — the list view component handles past-event windowing
+  // internally (initial 30 past + all future, expand on scroll). Past events are
+  // no longer dropped at this layer.
+  const chronologicalEvents = [...activeEvents]
+    .filter(event => !!event?.start_date)
     .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
 
   if (loading) {
@@ -193,7 +188,7 @@ export default function EventCalendar({
         />
       ) : (
         <CalendarListView
-          events={sortedEventsTodayOnward}
+          events={chronologicalEvents}
           onEventClick={handleEventClick}
           timezone={timezone}
           loading={loading}
