@@ -134,9 +134,22 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
 
   return (
     <div className="mt-4 border border-line rounded-card overflow-hidden">
-      {/* Header */}
+      {/* Header — Phase 65-03 EVT-06: relabel for past events so the
+          read-only summary clearly reads as historical rather than
+          looking like a broken/empty RSVP card. Card itself remains
+          visible (count banner + grouped list below render
+          unconditionally). */}
       <div className="bg-surface-elevated px-4 py-3 border-b border-line">
-        <h3 className="font-semibold text-content-primary text-sm">RSVP</h3>
+        <h3 className="font-semibold text-content-primary text-sm">
+          {isPastEvent ? (
+            <>
+              Who came
+              <span className="ml-2 text-xs font-normal text-content-muted">(closed)</span>
+            </>
+          ) : (
+            'RSVP'
+          )}
+        </h3>
       </div>
 
       <div className="p-4 space-y-4">
@@ -271,7 +284,9 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
             })}
           </div>
         ) : (
-          <p className="text-sm text-content-muted">No responses yet</p>
+          <p className="text-sm text-content-muted">
+            {isPastEvent ? "No one RSVP'd to this session." : 'No responses yet'}
+          </p>
         )}
       </div>
     </div>
