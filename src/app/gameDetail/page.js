@@ -1687,6 +1687,12 @@ export default function GameDetailPage() {
                     prefillGameId={game?.id}
                     prefillGameName={game?.name}
                     userRole={userRole}
+                    /* Phase 65-03 EVT-05 fix: when ?date= is in the URL,
+                       open the visual picker in day-mode focused on that
+                       date so the prefill is immediately obvious. Without
+                       a date, omit the prop and let CreateEvent default
+                       to week-mode (the original behavior). */
+                    initialVisualView={dateParam ? 'day' : undefined}
                 />
             )}
 
