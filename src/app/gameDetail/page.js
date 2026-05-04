@@ -215,6 +215,28 @@ export default function GameDetailPage() {
         }
     }, []);
 
+    // Phase 65-02 EVT-02 followup: refetch the bringers set so the 🎲
+    // indicator on the participant strip + See-all modal stays in sync when
+    // RSVP changes (backend hard-deletes EventBring rows when RSVP flips to
+    // 'no' or 'maybe' — see routes/rsvp.js). Used both on initial mount and
+    // from the RsvpSection onRsvpChange callback below.
+    const refreshBringersSet = async (eventId) => {
+        try {
+            const brings = await eventBringsAPI.getEventBrings(eventId);
+            if (Array.isArray(brings)) {
+                const bSet = new Set();
+                for (const b of brings) {
+                    if (b?.User?.id) bSet.add(b.User.id);
+                }
+                setBringersSet(bSet);
+            } else {
+                setBringersSet(new Set());
+            }
+        } catch {
+            setBringersSet(new Set());
+        }
+    };
+
     const fetchEventOnly = async () => {
         setLoading(true);
         try {
@@ -265,18 +287,7 @@ export default function GameDetailPage() {
 
                 // Fetch event brings to flag participants who are bringing a
                 // game (small bringersSet of User.id UUIDs).
-                try {
-                    const brings = await eventBringsAPI.getEventBrings(event_id);
-                    if (Array.isArray(brings)) {
-                        const bSet = new Set();
-                        for (const b of brings) {
-                            if (b?.User?.id) bSet.add(b.User.id);
-                        }
-                        setBringersSet(bSet);
-                    }
-                } catch {
-                    setBringersSet(new Set());
-                }
+                await refreshBringersSet(event_id);
             }
         } catch (error) {
             console.error('Error fetching event:', error);
@@ -822,6 +833,11 @@ export default function GameDetailPage() {
                                 setShowBringPicker(true);
                             }
                             setBringRefreshKey(k => k + 1);
+                            // Phase 65-02 EVT-02 followup: keep the 🎲
+                            // indicator on the strip + See-all modal in sync.
+                            // Backend deletes EventBring rows when RSVP flips
+                            // to 'no'/'maybe', so the local set must refresh.
+                            refreshBringersSet(singleEvent.id);
                         }}
                     />
                     <BallotSection
@@ -903,21 +919,21 @@ export default function GameDetailPage() {
                         onClick={() => setShowAllParticipants(false)}
                     >
                         <div
-                            className="modal-content w-full max-w-lg relative"
+                            className="modal-content w-full max-w-lg relative p-6"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <button
                                 type="button"
                                 onClick={() => setShowAllParticipants(false)}
-                                className="absolute top-3 right-3 text-content-muted hover:text-content-primary text-2xl"
+                                className="absolute top-4 right-4 text-content-muted hover:text-content-primary text-2xl leading-none"
                                 aria-label="Close"
                             >
                                 &times;
                             </button>
-                            <h3 className="text-xl font-semibold mb-4 text-content-primary">
+                            <h3 className="text-xl font-semibold mb-4 pr-8 text-content-primary">
                                 Participants ({participants.length})
                             </h3>
-                            <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-1">
+                            <div className="max-h-[60vh] overflow-y-auto space-y-2 -mx-1 px-1">
                                 {participants.map((p) => {
                                     const member = p.user_id ? groupMembersByUserId[p.user_id] : null;
                                     const auth0Id = member?.user_id;
@@ -998,7 +1014,12 @@ export default function GameDetailPage() {
                     onClose={() => { setShowBringPicker(false); setBringPickerEventId(null); }}
                     eventId={bringPickerEventId}
                     currentUserId={user?.sub}
-                    onSave={() => setBringRefreshKey(k => k + 1)}
+                    onSave={() => {
+                        setBringRefreshKey(k => k + 1);
+                        // Phase 65-02 EVT-02 followup: show 🎲 immediately
+                        // after picking a game without waiting for a remount.
+                        if (bringPickerEventId) refreshBringersSet(bringPickerEventId);
+                    }}
                 />
             </div>
         );
