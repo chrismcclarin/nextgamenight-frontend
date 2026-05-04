@@ -244,6 +244,15 @@ export const eventsAPI = {
       body: JSON.stringify({ requesting_user_id }),
     }),
 
+  // Remove a single participant from an event (owner/admin only).
+  // EVT-08: hard-destroys the EventParticipation row + writes an audit
+  // log entry so a subsequent QR re-join is silent (no welcome email).
+  // participation_user_id is the User.id (UUID), not the Auth0 string.
+  removeParticipation: (event_id, participation_user_id) =>
+    apiFetch(`/events/${event_id}/participations/${participation_user_id}`, {
+      method: 'DELETE',
+    }),
+
   // Get (or lazy-generate) event invite token
   getEventInviteToken: (event_id) =>
     apiFetch(`/events/${event_id}/invite-token`),
