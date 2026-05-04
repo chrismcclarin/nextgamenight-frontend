@@ -113,6 +113,10 @@ export default function GameDetailPage() {
     const game_id = searchParams.get('game_id');
     const group_id = searchParams.get('group_id');
     const event_id = searchParams.get('event_id');
+    // Phase 65-03 EVT-05: optional date prefill for the "Plan a game night
+    // with this" CTA (e.g. /gameDetail?game_id=X&group_id=Y&date=2026-05-15
+    // — used when the user lands here from a planning surface).
+    const dateParam = searchParams.get('date');
 
     const [game, setGame] = useState(null);
     const [events, setEvents] = useState([]);
@@ -123,6 +127,10 @@ export default function GameDetailPage() {
     const [userRole, setUserRole] = useState(null);
     const [editEventModal, setEditEventModal] = useState(false);
     const [editingEvent, setEditingEvent] = useState(null);
+    // Phase 65-03 EVT-05: separate state for the "Plan a game night with
+    // this" CTA modal — distinct from editEventModal which is for editing
+    // existing past sessions inline.
+    const [showCreateEvent, setShowCreateEvent] = useState(false);
     const [eventRsvpStatuses, setEventRsvpStatuses] = useState({});
     const [singleEvent, setSingleEvent] = useState(null);
     const [ballotRefreshKey, setBallotRefreshKey] = useState(0);
@@ -1068,12 +1076,43 @@ export default function GameDetailPage() {
                 <span className="text-content-primary font-semibold">{game.name}</span>
             </nav>
 
+            {/* Phase 65-03 EVT-05: "Plan a game night with this" CTA. Visible to
+                non-pending group members when group_id is in the URL. Opens the
+                CreateEvent modal pre-filled with the current game (and date if
+                ?date= is in the URL). */}
+            {group_id && userRole && userRole !== 'pending' && (
+                <div className="mb-4 flex justify-end">
+                    <button
+                        type="button"
+                        onClick={() => setShowCreateEvent(true)}
+                        className="btn btn-primary px-6 py-2 text-base font-semibold"
+                    >
+                        Plan a game night with this
+                    </button>
+                </div>
+            )}
+
             {/* Game Details */}
             <div className="card p-6 mb-6">
                 {game.is_custom ? (
                     /* Custom game: show available details */
                     <div>
-                        <h1 className="text-3xl font-bold text-content-primary mb-2">{game.name}</h1>
+                        {/* Phase 65-03 EVT-04: BGG link on game name. Custom games
+                            almost always have null bgg_id — fallback renders plain text. */}
+                        <h1 className="text-3xl font-bold text-content-primary mb-2">
+                            {game.bgg_id ? (
+                                <a
+                                    href={`https://boardgamegeek.com/boardgame/${game.bgg_id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-content-primary hover:text-content-link hover:underline"
+                                >
+                                    {game.name}
+                                </a>
+                            ) : (
+                                game.name
+                            )}
+                        </h1>
                         {game.theme && (
                             <p className="text-content-secondary mb-2">Theme: {game.theme}</p>
                         )}
@@ -1088,7 +1127,24 @@ export default function GameDetailPage() {
                             className="w-48 h-48 object-cover rounded-lg"
                         />
                         <div className="flex-1">
-                            <h1 className="text-3xl font-bold text-content-primary mb-2">{game.name}</h1>
+                            {/* Phase 65-03 EVT-04: BGG link on game name. Subtle —
+                                link color + underline only on hover; no separate button,
+                                no chip, no external-link icon. Fallback to plain text
+                                when bgg_id is null (rare on this branch). */}
+                            <h1 className="text-3xl font-bold text-content-primary mb-2">
+                                {game.bgg_id ? (
+                                    <a
+                                        href={`https://boardgamegeek.com/boardgame/${game.bgg_id}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-content-primary hover:text-content-link hover:underline"
+                                    >
+                                        {game.name}
+                                    </a>
+                                ) : (
+                                    game.name
+                                )}
+                            </h1>
                             {game.year_published && (
                                 <p className="text-content-secondary mb-2">Published: {game.year_published}</p>
                             )}
@@ -1608,6 +1664,29 @@ export default function GameDetailPage() {
                     onEventCreated={handleEventUpdated}
                     editingEvent={editingEvent}
                     user={user}
+                />
+            )}
+
+            {/* Phase 65-03 EVT-05: "Plan a game night with this" Create Event Modal.
+                Distinct from editEventModal above (which targets editingEvent). This
+                instance always launches in create mode with the current game and
+                (optionally) the ?date= URL param pre-filled. */}
+            {showCreateEvent && (
+                <CreateEvent
+                    group_id={group_id}
+                    modal={showCreateEvent}
+                    modaltoggle={() => setShowCreateEvent(false)}
+                    onEventCreated={() => {
+                        setShowCreateEvent(false);
+                        // Refresh sessions list so the brand-new event shows up.
+                        fetchGameData();
+                    }}
+                    editingEvent={null}
+                    user={user}
+                    prefillDate={dateParam}
+                    prefillGameId={game?.id}
+                    prefillGameName={game?.name}
+                    userRole={userRole}
                 />
             )}
 

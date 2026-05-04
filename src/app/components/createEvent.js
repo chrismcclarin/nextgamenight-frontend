@@ -16,7 +16,7 @@ import { useTimezone } from './TimezoneProvider';
 import { utcToWallClock, wallClockToUtc } from '../../lib/tzUtils';
 import TimezoneNudgeBanner from './TimezoneNudgeBanner';
 
-function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, hideVisualCalendar = false, userRole, initialVisualView = 'week' }) {
+function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week' }) {
   const authUser = user || Auth().user;
   const { timezone, browserTimezone } = useTimezone();
   const effectiveTz = timezone || browserTimezone || 'UTC';
@@ -194,13 +194,26 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       if (prefillDate && prefillTime) {
         // Combine date and time into datetime-local format (YYYY-MM-DDTHH:mm)
         form.start_date = `${prefillDate}T${prefillTime}`;
+      } else if (prefillDate) {
+        // Phase 65-03 EVT-05: date-only prefill from game-detail "Plan a
+        // game night with this" CTA (?date=YYYY-MM-DD). Default the time
+        // to 19:00 (a reasonable game-night start) so the datetime-local
+        // input has a complete value.
+        form.start_date = `${prefillDate}T19:00`;
       }
       if (prefillDuration) {
         form.duration_minutes = prefillDuration;
       }
+      // Phase 65-03 EVT-05: pre-select the game when launched from the
+      // game-detail page. prefillGameName fills the GameComboInput's
+      // visible label so users immediately see the game is selected.
+      if (prefillGameId) {
+        form.game_id = prefillGameId;
+        if (prefillGameName) form.game_name = prefillGameName;
+      }
       setNewEvent(form);
     }
-  }, [editingEvent, groupMembers, group_id, prefillDate, prefillTime, prefillDuration, timezone]);
+  }, [editingEvent, groupMembers, group_id, prefillDate, prefillTime, prefillDuration, prefillGameId, prefillGameName, timezone]);
 
   // Fetch heatmap data when modal opens or effective timezone changes.
   // HEAT-01: week-start MUST be Monday-of-week as observed in the user's
@@ -244,9 +257,18 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         if (prefillDate && prefillTime) {
           // Combine date and time into datetime-local format (YYYY-MM-DDTHH:mm)
           form.start_date = `${prefillDate}T${prefillTime}`;
+        } else if (prefillDate) {
+          // Phase 65-03 EVT-05: date-only prefill (e.g. ?date=YYYY-MM-DD
+          // from game-detail page) — default time to 19:00.
+          form.start_date = `${prefillDate}T19:00`;
         }
         if (prefillDuration) {
           form.duration_minutes = prefillDuration;
+        }
+        // Phase 65-03 EVT-05: pre-select game from game-detail page CTA.
+        if (prefillGameId) {
+          form.game_id = prefillGameId;
+          if (prefillGameName) form.game_name = prefillGameName;
         }
         setNewEvent(form);
       }
