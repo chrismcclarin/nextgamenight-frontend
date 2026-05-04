@@ -1,22 +1,75 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
-import { eventsAPI, gameReviewsAPI, usersAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI, invitesAPI, API_BASE_URL } from '../../lib/api';
+import { eventsAPI, gameReviewsAPI, usersAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI, invitesAPI, eventBringsAPI, API_BASE_URL } from '../../lib/api';
 import CreateEvent from '../components/createEvent';
 import RsvpSection from '../components/RsvpSection';
 import BallotSection from '../components/BallotSection';
 import BringGamePicker from '../components/BringGamePicker';
 import BringSummary from '../components/BringSummary';
 import GameSuggestionCard from '../components/GameSuggestionCard';
+import QRCodeModal from '../components/QRCodeModal';
 import { formatDate, formatDateTime, formatDuration, formatTime } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
 import TimezoneNudgeBanner from '../components/TimezoneNudgeBanner';
 import SafeImage from '../components/SafeImage';
 import FriendshipStatusProvider from '../components/FriendshipStatusProvider';
 import ClickableMemberName from '../components/ClickableMemberName';
+
+// Phase 65-02: small helper that renders a colored RSVP-status indicator.
+// status is one of 'yes' | 'maybe' | 'no' | null/undefined (no response).
+function RsvpStatusPill({ status }) {
+    const map = {
+        yes: { label: 'Going', cls: 'bg-status-success/15 text-status-success' },
+        maybe: { label: 'Maybe', cls: 'bg-amber-100 text-amber-700' },
+        no: { label: 'No', cls: 'bg-surface-card-hover text-content-muted' },
+    };
+    if (!status) {
+        return (
+            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-surface-card-hover text-content-muted">
+                No reply
+            </span>
+        );
+    }
+    const m = map[status] || map.no;
+    return (
+        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${m.cls}`}>
+            {m.label}
+        </span>
+    );
+}
+
+// Phase 65-02: compact strip chip for the upcoming-event view. Shows the
+// participant name (clickable for non-custom users), RSVP indicator, role
+// badge, and a 🎲 if they're bringing a game. The full per-row Remove
+// control lives in the See-all modal — chips never expose Remove.
+function ParticipantChip({ participant, rsvpStatus, role, isBringing }) {
+    const isCustom = !!participant.is_custom;
+    return (
+        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded border border-line bg-surface-card text-xs max-w-full">
+            <span className="font-medium text-content-primary truncate">
+                {isCustom ? (
+                    <>{participant.username || 'Guest'}<span className="text-content-muted ml-1">(Guest)</span></>
+                ) : (
+                    participant.username || 'Unknown'
+                )}
+            </span>
+            <RsvpStatusPill status={rsvpStatus} />
+            {role === 'owner' && (
+                <span className="text-[10px] uppercase tracking-wide bg-purple-100 text-purple-700 px-1 rounded font-semibold">Owner</span>
+            )}
+            {role === 'admin' && (
+                <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 px-1 rounded font-semibold">Admin</span>
+            )}
+            {isBringing && (
+                <span title="Bringing a game" aria-label="Bringing a game">🎲</span>
+            )}
+        </span>
+    );
+}
 
 function GuestInviteButton({ groupId, email }) {
     const [status, setStatus] = useState(null); // null | 'sending' | 'sent' | 'error'
@@ -78,6 +131,22 @@ export default function GameDetailPage() {
     const [bringRefreshKey, setBringRefreshKey] = useState(0);
     const [eventSuggestions, setEventSuggestions] = useState([]);
     const [suggestionsPlayerCount, setSuggestionsPlayerCount] = useState(null);
+
+    // Phase 65-02 single-event view state: kebab actions menu, participant
+    // strip + See-all modal, Share-Game-QR modal, and Remove-with-confirm.
+    const [showActionsMenu, setShowActionsMenu] = useState(false);
+    const [cancellingEvent, setCancellingEvent] = useState(false);
+    const actionsMenuRef = useRef(null);
+    const [participants, setParticipants] = useState([]);
+    const [groupMembersByUserId, setGroupMembersByUserId] = useState({}); // keyed by User.id (UUID)
+    const [bringersSet, setBringersSet] = useState(new Set()); // set of User.id (UUID) bringing games
+    const [rsvpByAuth0Id, setRsvpByAuth0Id] = useState({}); // { auth0_user_id: 'yes'|'no'|'maybe'|null }
+    const [showAllParticipants, setShowAllParticipants] = useState(false);
+    const [showGameQR, setShowGameQR] = useState(false);
+    const [gameInviteUrl, setGameInviteUrl] = useState('');
+    const [qrLoading, setQrLoading] = useState(false);
+    const [removeConfirmingId, setRemoveConfirmingId] = useState(null); // participant.user_id of confirming row
+    const removeConfirmTimerRef = useRef(null);
 
     // Session filtering and pagination state
     const [visibleSessions, setVisibleSessions] = useState(3);
@@ -152,28 +221,158 @@ export default function GameDetailPage() {
             const eventData = await eventsAPI.getEvent(event_id);
             setSingleEvent(eventData);
 
+            // Backend GET /events/:event_id flattens EventParticipations via
+            // formatEventWithCustomParticipants — each row is { user_id (UUID),
+            // username, email, score, faction, is_new_player, placement,
+            // is_guest, is_custom }. Custom participants have user_id === null.
+            setParticipants(Array.isArray(eventData.EventParticipations) ? eventData.EventParticipations : []);
+
             if (group_id && user?.sub) {
-                // Fetch user role
+                // Fetch group members — used for current-user role + per-row
+                // role badge in the See-all modal. Members come back as User
+                // objects with id (UUID), user_id (Auth0 string), and
+                // UserGroup.role attached via the through-table.
                 const groupMembers = await groupsAPI.getGroupMembers(group_id);
                 if (Array.isArray(groupMembers)) {
                     const currentUserMember = groupMembers.find(m => m.user_id === user.sub);
                     if (currentUserMember && currentUserMember.UserGroup) {
                         setUserRole(currentUserMember.UserGroup.role);
                     }
+                    // Build map keyed by User.id (UUID) since EventParticipation
+                    // rows expose user_id-as-UUID after the flatten step.
+                    const byId = {};
+                    for (const m of groupMembers) {
+                        if (m.id) byId[m.id] = m;
+                    }
+                    setGroupMembersByUserId(byId);
                 }
-                // Fetch RSVP status
+                // Fetch RSVP status — both for the current viewer (already
+                // wired into RsvpSection) and as a per-participant map keyed
+                // by Auth0 user_id string for the strip + See-all chips.
                 try {
                     const rsvpData = await rsvpAPI.getEventRsvps(event_id);
                     const myRsvp = (rsvpData.rsvps || []).find(r => r.user_id === user.sub);
                     setEventRsvpStatuses({ [event_id]: myRsvp?.status || null });
+                    const byAuth0 = {};
+                    for (const r of (rsvpData.rsvps || [])) {
+                        if (r.user_id) byAuth0[r.user_id] = r.status;
+                    }
+                    setRsvpByAuth0Id(byAuth0);
                 } catch {
                     setEventRsvpStatuses({ [event_id]: null });
+                    setRsvpByAuth0Id({});
+                }
+
+                // Fetch event brings to flag participants who are bringing a
+                // game (small bringersSet of User.id UUIDs).
+                try {
+                    const brings = await eventBringsAPI.getEventBrings(event_id);
+                    if (Array.isArray(brings)) {
+                        const bSet = new Set();
+                        for (const b of brings) {
+                            if (b?.User?.id) bSet.add(b.User.id);
+                        }
+                        setBringersSet(bSet);
+                    }
+                } catch {
+                    setBringersSet(new Set());
                 }
             }
         } catch (error) {
             console.error('Error fetching event:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    // Phase 65-02: outside-click handler to close the kebab actions menu.
+    useEffect(() => {
+        if (!showActionsMenu) return;
+        const handleClickOutside = (e) => {
+            if (actionsMenuRef.current && !actionsMenuRef.current.contains(e.target)) {
+                setShowActionsMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [showActionsMenu]);
+
+    // Phase 65-02: clean up the second-click confirm timer on unmount.
+    useEffect(() => {
+        return () => {
+            if (removeConfirmTimerRef.current) clearTimeout(removeConfirmTimerRef.current);
+        };
+    }, []);
+
+    // Phase 65-02: cancel-event handler invoked from the kebab menu.
+    // Single click cancels and redirects — no modal, no second confirm. The
+    // kebab placement IS the friction. Phase 61 MAIL-05 handles the
+    // cancellation email gate inside the backend DELETE handler.
+    const handleCancelEvent = async () => {
+        if (!user?.sub || !singleEvent?.id) return;
+        setCancellingEvent(true);
+        try {
+            await eventsAPI.deleteEvent(singleEvent.id, user.sub);
+            router.push(`/groupHomePage?id=${group_id}`);
+        } catch (err) {
+            console.error('Error cancelling event:', err);
+            alert(err.message || 'Failed to cancel event.');
+            setCancellingEvent(false);
+            setShowActionsMenu(false);
+        }
+    };
+
+    // Phase 65-02: open the Share-Game-QR modal. Mirrors the EventDayModal
+    // handleShowGameQR pattern (loading state + error swallow).
+    const handleShowGameQR = async () => {
+        if (!singleEvent?.id) return;
+        setQrLoading(true);
+        try {
+            const data = await eventsAPI.getEventInviteToken(singleEvent.id);
+            setGameInviteUrl(data.invite_url);
+            setShowGameQR(true);
+        } catch (err) {
+            console.error('Failed to get game invite token:', err);
+            alert(err.message || 'Failed to load Share QR.');
+        } finally {
+            setQrLoading(false);
+        }
+    };
+
+    // Phase 65-02 EVT-08 frontend: second-click-confirm Remove handler.
+    // First click arms a 3s revert timer. Second click within the window
+    // calls eventsAPI.removeParticipation (Plan 65-01 backend) which
+    // hard-destroys the EventParticipation row and writes an audit-log row;
+    // a subsequent QR re-join is silent (no welcome email) per EVT-08.
+    const handleRemoveClick = async (participant) => {
+        // participant.user_id is User.id (UUID) post-flatten — the value the
+        // DELETE endpoint expects. Custom participants have user_id === null
+        // and the Remove button is hidden for them at render time.
+        const targetUserDbId = participant.user_id;
+        if (!targetUserDbId) return;
+
+        // First click: arm confirm + 3s revert timer.
+        if (removeConfirmingId !== targetUserDbId) {
+            if (removeConfirmTimerRef.current) clearTimeout(removeConfirmTimerRef.current);
+            setRemoveConfirmingId(targetUserDbId);
+            removeConfirmTimerRef.current = setTimeout(() => {
+                setRemoveConfirmingId(null);
+                removeConfirmTimerRef.current = null;
+            }, 3000);
+            return;
+        }
+
+        // Second click within 3s — actually remove.
+        clearTimeout(removeConfirmTimerRef.current);
+        removeConfirmTimerRef.current = null;
+        setRemoveConfirmingId(null);
+        try {
+            await eventsAPI.removeParticipation(singleEvent.id, targetUserDbId);
+            // Optimistically drop the row. No toast (per CONTEXT decision).
+            setParticipants(prev => prev.filter(p => p.user_id !== targetUserDbId));
+        } catch (err) {
+            console.error('Failed to remove participant:', err);
+            alert(err.message || 'Failed to remove participant.');
         }
     };
 
@@ -491,7 +690,48 @@ export default function GameDetailPage() {
                 <TimezoneNudgeBanner />
 
                 <div className="card p-6 mb-6">
-                    <h1 className="text-3xl font-bold text-content-primary mb-2">{singleEvent.title || 'Game Night'}</h1>
+                    {/* Phase 65-02 EVT-01: header row with title + kebab actions
+                        menu (owner/admin only). Single-click "Cancel event"
+                        inside the dropdown destroys the event and redirects;
+                        the kebab placement IS the friction (no second modal,
+                        no typed confirm — see CONTEXT decisions). */}
+                    <div className="flex justify-between items-start gap-3 mb-2">
+                        <h1 className="text-3xl font-bold text-content-primary">{singleEvent.title || 'Game Night'}</h1>
+                        {(userRole === 'owner' || userRole === 'admin') && (
+                            <div className="relative flex-shrink-0" ref={actionsMenuRef}>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowActionsMenu(prev => !prev)}
+                                    className="text-2xl text-content-muted hover:text-content-primary px-2 py-1 leading-none rounded hover:bg-surface-card-hover transition-colors"
+                                    aria-haspopup="menu"
+                                    aria-expanded={showActionsMenu}
+                                    aria-label="Event actions"
+                                    title="Event actions"
+                                >
+                                    {/* Use the unicode vertical-ellipsis glyph
+                                        (⋮) — readable at text-2xl, no extra
+                                        SVG import needed. */}
+                                    ⋮
+                                </button>
+                                {showActionsMenu && (
+                                    <div
+                                        role="menu"
+                                        className="absolute right-0 top-full mt-1 z-20 min-w-[160px] bg-surface-card border border-line rounded-md shadow-lg py-1"
+                                    >
+                                        <button
+                                            type="button"
+                                            role="menuitem"
+                                            onClick={handleCancelEvent}
+                                            disabled={cancellingEvent}
+                                            className="w-full text-left px-3 py-2 text-sm text-status-error hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {cancellingEvent ? 'Cancelling…' : 'Cancel event'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                     <div className="text-content-secondary space-y-1">
                         {/* Phase 62-02: render event start in viewer's profile TZ
                             with TZ abbreviation. Was: toLocaleDateString/Time
@@ -512,6 +752,62 @@ export default function GameDetailPage() {
                         {singleEvent.notes && <p className="mt-2 text-content-muted">{singleEvent.notes}</p>}
                     </div>
                 </div>
+
+                {/* Phase 65-02 EVT-02 + EVT-03: participant compact strip +
+                    Share Game QR button. Visible to ALL group members
+                    (userRole truthy and not 'pending'). The compact strip
+                    shows the first 5 participants; "See all (N)" opens a
+                    modal with the full list and the Remove control (admins
+                    only). */}
+                {userRole && userRole !== 'pending' && participants.length > 0 && (
+                    <div className="card p-6 mb-6">
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                            <h2 className="text-lg font-semibold text-content-primary">
+                                Participants ({participants.length})
+                            </h2>
+                            <button
+                                type="button"
+                                onClick={handleShowGameQR}
+                                disabled={qrLoading}
+                                className="btn btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5 flex-shrink-0"
+                                title="Share Game QR"
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
+                                </svg>
+                                {qrLoading ? 'Loading...' : 'Share Game QR'}
+                            </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {participants.slice(0, 5).map((p) => {
+                                const member = p.user_id ? groupMembersByUserId[p.user_id] : null;
+                                const auth0Id = member?.user_id;
+                                const role = member?.UserGroup?.role;
+                                const status = auth0Id ? rsvpByAuth0Id[auth0Id] : null;
+                                const isBringing = p.user_id && bringersSet.has(p.user_id);
+                                return (
+                                    <ParticipantChip
+                                        key={p.user_id || `custom-${p.username}`}
+                                        participant={p}
+                                        rsvpStatus={status}
+                                        role={role}
+                                        isBringing={isBringing}
+                                    />
+                                );
+                            })}
+                        </div>
+                        {participants.length > 5 && (
+                            <button
+                                type="button"
+                                onClick={() => setShowAllParticipants(true)}
+                                className="mt-3 text-sm text-content-link hover:text-content-link-hover font-medium"
+                            >
+                                See all ({participants.length}) →
+                            </button>
+                        )}
+                    </div>
+                )}
 
                 <div className="space-y-4">
                     <RsvpSection
@@ -595,6 +891,115 @@ export default function GameDetailPage() {
                         user={user}
                     />
                 )}
+
+                {/* Phase 65-02 EVT-02: See-all participants modal. Renders the
+                    full participant list with role badge, RSVP status, and
+                    bringing-game indicator. Owner/admin sees a Remove button
+                    on each row (other than themselves) wired to the EVT-08
+                    second-click confirm flow. */}
+                {showAllParticipants && (
+                    <div
+                        className="modal-overlay"
+                        onClick={() => setShowAllParticipants(false)}
+                    >
+                        <div
+                            className="modal-content w-full max-w-lg relative"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <button
+                                type="button"
+                                onClick={() => setShowAllParticipants(false)}
+                                className="absolute top-3 right-3 text-content-muted hover:text-content-primary text-2xl"
+                                aria-label="Close"
+                            >
+                                &times;
+                            </button>
+                            <h3 className="text-xl font-semibold mb-4 text-content-primary">
+                                Participants ({participants.length})
+                            </h3>
+                            <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-1">
+                                {participants.map((p) => {
+                                    const member = p.user_id ? groupMembersByUserId[p.user_id] : null;
+                                    const auth0Id = member?.user_id;
+                                    const role = member?.UserGroup?.role;
+                                    const status = auth0Id ? rsvpByAuth0Id[auth0Id] : null;
+                                    const isBringing = p.user_id && bringersSet.has(p.user_id);
+                                    const isCurrentUser = auth0Id && auth0Id === user?.sub;
+                                    const canRemove = (userRole === 'owner' || userRole === 'admin')
+                                        && !!p.user_id // hide for custom guests (no DB user)
+                                        && !isCurrentUser;
+                                    const isConfirming = removeConfirmingId === p.user_id;
+                                    return (
+                                        <div
+                                            key={p.user_id || `custom-${p.username}`}
+                                            className="flex items-center justify-between gap-3 px-3 py-2 rounded border border-line bg-surface-card"
+                                        >
+                                            <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                                <span className="font-medium text-content-primary truncate">
+                                                    {p.is_custom ? (
+                                                        <>{p.username || 'Guest'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
+                                                    ) : (
+                                                        auth0Id ? (
+                                                            <ClickableMemberName userId={auth0Id} username={p.username || 'Unknown'} />
+                                                        ) : (
+                                                            p.username || 'Unknown'
+                                                        )
+                                                    )}
+                                                </span>
+                                                <RsvpStatusPill status={status} />
+                                                {role === 'owner' && (
+                                                    <span className="text-[10px] uppercase tracking-wide bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-semibold">Owner</span>
+                                                )}
+                                                {role === 'admin' && (
+                                                    <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold">Admin</span>
+                                                )}
+                                                {isBringing && (
+                                                    <span title="Bringing a game" className="text-sm" aria-label="Bringing a game">🎲</span>
+                                                )}
+                                            </div>
+                                            {canRemove && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveClick(p)}
+                                                    className={`text-xs px-2 py-1 border rounded transition-colors flex-shrink-0 ${
+                                                        isConfirming
+                                                            ? 'bg-status-error/10 border-status-error text-status-error font-semibold'
+                                                            : 'border-line text-content-muted hover:bg-surface-card-hover'
+                                                    }`}
+                                                >
+                                                    {isConfirming ? 'Click again to remove' : 'Remove'}
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Phase 65-02 EVT-03: Share Game QR modal — same component +
+                    contract used by EventDayModal. Open to all members. */}
+                <QRCodeModal
+                    isOpen={showGameQR}
+                    onClose={() => setShowGameQR(false)}
+                    url={gameInviteUrl}
+                    title="Game Night Invite QR"
+                    showReset={false}
+                />
+
+                {/* Phase 65-02 EVT-07: BringGamePicker mount fix. Previously
+                    only mounted in the BGG-game branch — clicking RSVP=Yes in
+                    the single-event view set state but no modal existed in
+                    the DOM, so it never opened. Now mounted alongside the
+                    edit-event modal and the Share-QR modal. */}
+                <BringGamePicker
+                    isOpen={showBringPicker}
+                    onClose={() => { setShowBringPicker(false); setBringPickerEventId(null); }}
+                    eventId={bringPickerEventId}
+                    currentUserId={user?.sub}
+                    onSave={() => setBringRefreshKey(k => k + 1)}
+                />
             </div>
         );
     }
