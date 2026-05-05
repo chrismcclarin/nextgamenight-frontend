@@ -2,9 +2,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { groupsAPI, invitesAPI, API_BASE_URL } from '../../lib/api';
-import QRCodeModal from './QRCodeModal';
 import ClickableMemberName from './ClickableMemberName';
 import KebabMenu from './KebabMenu';
+import FriendInvitePanel from './FriendInvitePanel';
 
 function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, group_name }) {
     const router = useRouter();
@@ -14,9 +14,10 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     const [error, setError] = useState(null);
     const [pendingInvites, setPendingInvites] = useState([]);
     const [pendingLoading, setPendingLoading] = useState(false);
-    const [showQR, setShowQR] = useState(false);
-    const [inviteUrl, setInviteUrl] = useState(null);
-    const [tokenLoading, setTokenLoading] = useState(false);
+    // Phase 69-02 GROUP-06: per-row Transfer Ownership confirm modal target.
+    // Owner-only kebab on each non-owner active row sets this; null = closed.
+    const [transferTarget, setTransferTarget] = useState(null); // { user_id, name } or null
+    const [transferring, setTransferring] = useState(false);
 
     useEffect(() => {
         if (modal && group_id && user?.sub) {
@@ -153,28 +154,6 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         }
     };
 
-    const handleShowQR = async () => {
-        setTokenLoading(true);
-        try {
-            const data = await groupsAPI.getInviteToken(group_id);
-            setInviteUrl(data.invite_url);
-            setShowQR(true);
-        } catch (err) {
-            console.error('Failed to get invite token:', err);
-        } finally {
-            setTokenLoading(false);
-        }
-    };
-
-    const handleResetToken = async () => {
-        try {
-            const data = await groupsAPI.resetInviteToken(group_id);
-            setInviteUrl(data.invite_url);
-        } catch (err) {
-            console.error('Failed to reset invite token:', err);
-        }
-    };
-
     const getRoleBadge = (role) => {
         const roleStyles = {
             owner: 'bg-purple-100 text-purple-800 border-purple-300',
@@ -196,6 +175,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     const canManageMembers = userRole === 'owner' || userRole === 'admin';
 
     return (
+        <>
         <div className="modal-overlay" onClick={modaltoggle}>
             <div className="modal-content max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto relative" onClick={(e) => e.stopPropagation()}>
                 <button
@@ -206,26 +186,33 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                     &times;
                 </button>
 
-                <h2 className="text-2xl font-bold text-content-primary mb-4">Manage Group Members</h2>
+                <h2 className="text-2xl font-bold text-content-primary mb-4">
+                    {canManageMembers ? 'Manage Group Members' : 'Members'}
+                </h2>
 
-                {!canManageMembers && (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                        <p className="text-yellow-800 text-sm">
-                            Only the group owner or admins can manage member roles and remove members.
-                        </p>
+                {/* Canonical invite surface — embedded inline per Phase 69 GROUP-01 consolidation.
+                    Replaces the standalone "Share Invite QR" button + QRCodeModal that used to
+                    live here, and centralizes friend-invite, email-invite, QR, and (admin-only)
+                    reset-link affordances. Standalone FriendInvitePanel mounts elsewhere will be
+                    cleaned up by Plans 69-03 / 69-04. */}
+                {userRole && userRole !== 'pending' && (
+                    <div className="mb-6 pb-4 border-b border-line">
+                        <FriendInvitePanel
+                            group={{ id: group_id, name: group_name }}
+                            open={modal}
+                            onClose={() => {}}
+                            onMemberAdded={onMembersUpdated}
+                            isAdmin={canManageMembers}
+                            embedded={true}
+                        />
                     </div>
                 )}
 
-                {/* Share Invite QR Button (visible to all non-pending members) */}
-                {userRole && userRole !== 'pending' && (
-                    <div className="mb-4">
-                        <button
-                            onClick={handleShowQR}
-                            disabled={tokenLoading}
-                            className="btn btn-primary text-sm"
-                        >
-                            {tokenLoading ? 'Loading...' : 'Share Invite QR'}
-                        </button>
+                {!canManageMembers && (
+                    <div className="bg-surface-card-hover border border-line rounded-lg p-4 mb-4">
+                        <p className="text-content-secondary text-sm">
+                            You're viewing the member list. Only owners and admins can change roles or remove members.
+                        </p>
                     </div>
                 )}
 
@@ -299,6 +286,17 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                     {isCurrentUser && (
                                                         <span className="text-xs text-accent font-medium">(You)</span>
                                                     )}
+                                                    {/* Phase 69-02 GROUP-03: explicit Owner badge inline next to the
+                                                        owner's name. Visible to ALL viewers (member/admin/owner) so
+                                                        the role is always discoverable. Uses design-system tokens
+                                                        for theme parity. The existing getRoleBadge() lookup also
+                                                        renders the role pill on the right; this inline badge is
+                                                        the canonical "this is the owner" indicator per CONTEXT. */}
+                                                    {isOwner && (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-accent/10 text-accent border border-accent/20">
+                                                            Owner
+                                                        </span>
+                                                    )}
                                                     {getRoleBadge(memberRole)}
                                                 </div>
                                                 {member.email && member.email !== member.username && (
@@ -309,62 +307,92 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
 
                                         {canManageMembers && !isCurrentUser && (
                                             <>
-                                                {/* Desktop (≥768px) — UNCHANGED: role-select + Remove + window.confirm() */}
-                                                <div className="hidden md:flex items-center gap-2">
-                                                    {/* Role Dropdown */}
-                                                    <select
-                                                        value={memberRole}
-                                                        onChange={(e) => handleRoleChange(member.user_id, e.target.value)}
-                                                        className="px-3 py-2 border border-line rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
-                                                        disabled={isOwner}
-                                                    >
-                                                        <option value="member">Member</option>
-                                                        <option value="admin">Admin</option>
-                                                        {isOwner && <option value="owner">Owner</option>}
-                                                    </select>
-
-                                                    {/* Remove Button — desktop entry point uses window.confirm() inside handleRemoveMember */}
-                                                    <button
-                                                        onClick={() => handleRemoveMember(member.user_id)}
-                                                        className="btn btn-danger text-sm px-4 py-2"
-                                                        disabled={isOwner}
-                                                        title={isOwner ? 'Cannot remove group owner' : 'Remove from group'}
-                                                    >
-                                                        Remove
-                                                    </button>
-                                                </div>
-
-                                                {/* Mobile (<768px) — kebab collapses role swap + Remove into one ⋮.
-                                                    Make admin/member is single-tap (reversible).
-                                                    Remove uses twoTap=true (Phase 65-02 destructive-confirm pattern)
-                                                    and routes to handleRemoveMemberConfirmed (NO browser confirm —
-                                                    the kebab two-tap IS the confirmation per CONTEXT D-03).
-                                                    Hidden entirely on owner rows — owner cannot be removed and
-                                                    role cannot be reassigned, so a kebab with only disabled items
-                                                    would be misleading (desktop disabled-but-visible controls
-                                                    communicate "exists but locked"; mobile kebab cannot). */}
+                                                {/* Phase 69-02 GROUP-03: owner row hides Remove + role-change controls
+                                                    entirely (per CONTEXT, no disabled-with-tooltip — controls just
+                                                    aren't rendered). Combined with the inline "Owner" badge above. */}
                                                 {!isOwner && (
-                                                    <div className="md:hidden">
-                                                        <KebabMenu
-                                                            ariaLabel="Member actions"
-                                                            items={[
-                                                                {
-                                                                    label: memberRole === 'admin' ? 'Make member' : 'Make admin',
-                                                                    onClick: () => handleRoleChange(
-                                                                        member.user_id,
-                                                                        memberRole === 'admin' ? 'member' : 'admin'
-                                                                    ),
-                                                                },
-                                                                {
-                                                                    label: 'Remove',
-                                                                    danger: true,
-                                                                    twoTap: true,
-                                                                    confirmLabel: 'Tap again to remove',
-                                                                    onClick: () => handleRemoveMemberConfirmed(member.user_id),
-                                                                },
-                                                            ]}
-                                                        />
-                                                    </div>
+                                                    <>
+                                                        {/* Desktop (≥768px) — role-select + Remove + window.confirm() */}
+                                                        <div className="hidden md:flex items-center gap-2">
+                                                            {/* Role Dropdown */}
+                                                            <select
+                                                                value={memberRole}
+                                                                onChange={(e) => handleRoleChange(member.user_id, e.target.value)}
+                                                                className="px-3 py-2 border border-line rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
+                                                            >
+                                                                <option value="member">Member</option>
+                                                                <option value="admin">Admin</option>
+                                                            </select>
+
+                                                            {/* Remove Button — desktop entry point uses window.confirm() inside handleRemoveMember */}
+                                                            <button
+                                                                onClick={() => handleRemoveMember(member.user_id)}
+                                                                className="btn btn-danger text-sm px-4 py-2"
+                                                                title="Remove from group"
+                                                            >
+                                                                Remove
+                                                            </button>
+
+                                                            {/* Phase 69-02 GROUP-06: owner-only Transfer Ownership kebab on
+                                                                desktop. Shown alongside admin controls so the owner has
+                                                                surface parity with mobile. Admins do NOT see this kebab —
+                                                                only the current owner can transfer (strict userRole check,
+                                                                NOT canManageMembers which would include admins). */}
+                                                            {userRole === 'owner' && (
+                                                                <KebabMenu
+                                                                    ariaLabel={`More actions for ${member.username || member.email}`}
+                                                                    items={[
+                                                                        {
+                                                                            label: 'Transfer ownership to this member',
+                                                                            danger: true,
+                                                                            onClick: () => setTransferTarget({
+                                                                                user_id: member.user_id,
+                                                                                name: member.username || member.email || 'this member',
+                                                                            }),
+                                                                        },
+                                                                    ]}
+                                                                />
+                                                            )}
+                                                        </div>
+
+                                                        {/* Mobile (<768px) — kebab collapses role swap + Remove (and
+                                                            Transfer Ownership when viewer is owner) into one ⋮.
+                                                            Make admin/member is single-tap (reversible).
+                                                            Remove uses twoTap=true (Phase 65-02 destructive-confirm
+                                                            pattern) and routes to handleRemoveMemberConfirmed.
+                                                            Transfer Ownership opens the confirm modal (no twoTap —
+                                                            the modal IS the confirmation). */}
+                                                        <div className="md:hidden">
+                                                            <KebabMenu
+                                                                ariaLabel="Member actions"
+                                                                items={[
+                                                                    {
+                                                                        label: memberRole === 'admin' ? 'Make member' : 'Make admin',
+                                                                        onClick: () => handleRoleChange(
+                                                                            member.user_id,
+                                                                            memberRole === 'admin' ? 'member' : 'admin'
+                                                                        ),
+                                                                    },
+                                                                    {
+                                                                        label: 'Remove',
+                                                                        danger: true,
+                                                                        twoTap: true,
+                                                                        confirmLabel: 'Tap again to remove',
+                                                                        onClick: () => handleRemoveMemberConfirmed(member.user_id),
+                                                                    },
+                                                                    // Phase 69-02 GROUP-06: owner-only — admins don't see this item.
+                                                                    ...(userRole === 'owner' ? [{
+                                                                        label: 'Transfer ownership to this member',
+                                                                        danger: true,
+                                                                        onClick: () => setTransferTarget({
+                                                                            user_id: member.user_id,
+                                                                            name: member.username || member.email || 'this member',
+                                                                        }),
+                                                                    }] : []),
+                                                                ]}
+                                                            />
+                                                        </div>
+                                                    </>
                                                 )}
                                             </>
                                         )}
@@ -442,18 +470,64 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                         Close
                     </button>
                 </div>
-
-                {/* QR Code Modal */}
-                <QRCodeModal
-                    isOpen={showQR}
-                    onClose={() => setShowQR(false)}
-                    url={inviteUrl}
-                    title={`Invite to ${group_name || 'Group'}`}
-                    showReset={userRole === 'owner' || userRole === 'admin'}
-                    onReset={handleResetToken}
-                />
             </div>
         </div>
+
+        {/* Transfer Ownership confirmation — Phase 69 GROUP-06 frontend.
+            Sibling overlay to ManageMembers (NOT nested inside it) so the
+            parent's backdrop onClick={modaltoggle} cannot fire when the
+            user clicks anywhere on the transfer confirm. zIndex: 110 stacks
+            above the parent modal (default ~100). Copy verbatim from CONTEXT
+            D-XFER-02. Backdrop click cancels (only when not in-flight). */}
+        {transferTarget && (
+            <div
+                className="modal-overlay"
+                style={{ zIndex: 110 }}
+                onClick={() => !transferring && setTransferTarget(null)}
+            >
+                <div
+                    className="modal-content max-w-md w-full mx-4 p-6"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <h3 className="text-lg font-bold text-content-primary mb-3">
+                        Transfer ownership to {transferTarget.name}?
+                    </h3>
+                    <p className="text-content-secondary mb-6">
+                        You will become an admin. This cannot be undone.
+                    </p>
+                    <div className="flex justify-end gap-3">
+                        <button
+                            className="btn btn-secondary"
+                            disabled={transferring}
+                            onClick={() => setTransferTarget(null)}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            className="btn btn-primary"
+                            disabled={transferring}
+                            onClick={async () => {
+                                setTransferring(true);
+                                try {
+                                    await groupsAPI.transferOwnership(group_id, transferTarget.user_id);
+                                    setTransferTarget(null);
+                                    if (onMembersUpdated) onMembersUpdated();
+                                    if (modaltoggle) modaltoggle(); // close ManageMembers — caller refetches role
+                                } catch (err) {
+                                    console.error('Transfer ownership failed:', err);
+                                    alert(err.message || 'Failed to transfer ownership. Please try again.');
+                                } finally {
+                                    setTransferring(false);
+                                }
+                            }}
+                        >
+                            {transferring ? 'Transferring…' : 'Transfer ownership'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+        </>
     );
 }
 
