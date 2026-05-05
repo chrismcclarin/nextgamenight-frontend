@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { groupsAPI, invitesAPI, API_BASE_URL } from '../../lib/api';
 import QRCodeModal from './QRCodeModal';
 import ClickableMemberName from './ClickableMemberName';
+import KebabMenu from './KebabMenu';
 
 function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, group_name }) {
     const router = useRouter();
@@ -82,13 +83,12 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         }
     };
 
-    const handleRemoveMember = async (target_user_id) => {
+    // Phase 68-02: post-confirm body factored out so mobile kebab two-tap can
+    // skip the desktop window.confirm() (the kebab's two-tap IS the confirmation).
+    // Desktop entry point (handleRemoveMember below) still gates on confirm()
+    // and then calls this — desktop UX is byte-for-byte unchanged.
+    const handleRemoveMemberConfirmed = async (target_user_id) => {
         if (!group_id || !user?.sub) return;
-        
-        if (!confirm('Are you sure you want to remove this user from the group?')) {
-            return;
-        }
-        
         try {
             await groupsAPI.removeUserFromGroup(group_id, target_user_id, user.sub);
             await fetchMembers(); // Refresh the list
@@ -99,6 +99,16 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             console.error('Error removing member:', error);
             alert(error.message || 'Failed to remove user. Please try again.');
         }
+    };
+
+    // Desktop Remove button — unchanged. Browser confirm dialog gates the
+    // destructive action exactly as it did before Phase 68-02.
+    const handleRemoveMember = async (target_user_id) => {
+        if (!group_id || !user?.sub) return;
+        if (!window.confirm('Are you sure you want to remove this user from the group?')) {
+            return;
+        }
+        await handleRemoveMemberConfirmed(target_user_id);
     };
 
     const handleApproveMember = async (target_user_id) => {
@@ -298,29 +308,63 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                         </div>
 
                                         {canManageMembers && !isCurrentUser && (
-                                            <div className="flex items-center gap-2">
-                                                {/* Role Dropdown */}
-                                                <select
-                                                    value={memberRole}
-                                                    onChange={(e) => handleRoleChange(member.user_id, e.target.value)}
-                                                    className="px-3 py-2 border border-line rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
-                                                    disabled={isOwner}
-                                                >
-                                                    <option value="member">Member</option>
-                                                    <option value="admin">Admin</option>
-                                                    {isOwner && <option value="owner">Owner</option>}
-                                                </select>
+                                            <>
+                                                {/* Desktop (≥768px) — UNCHANGED: role-select + Remove + window.confirm() */}
+                                                <div className="hidden md:flex items-center gap-2">
+                                                    {/* Role Dropdown */}
+                                                    <select
+                                                        value={memberRole}
+                                                        onChange={(e) => handleRoleChange(member.user_id, e.target.value)}
+                                                        className="px-3 py-2 border border-line rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
+                                                        disabled={isOwner}
+                                                    >
+                                                        <option value="member">Member</option>
+                                                        <option value="admin">Admin</option>
+                                                        {isOwner && <option value="owner">Owner</option>}
+                                                    </select>
 
-                                                {/* Remove Button */}
-                                                <button
-                                                    onClick={() => handleRemoveMember(member.user_id)}
-                                                    className="btn btn-danger text-sm px-4 py-2"
-                                                    disabled={isOwner}
-                                                    title={isOwner ? 'Cannot remove group owner' : 'Remove from group'}
-                                                >
-                                                    Remove
-                                                </button>
-                                            </div>
+                                                    {/* Remove Button — desktop entry point uses window.confirm() inside handleRemoveMember */}
+                                                    <button
+                                                        onClick={() => handleRemoveMember(member.user_id)}
+                                                        className="btn btn-danger text-sm px-4 py-2"
+                                                        disabled={isOwner}
+                                                        title={isOwner ? 'Cannot remove group owner' : 'Remove from group'}
+                                                    >
+                                                        Remove
+                                                    </button>
+                                                </div>
+
+                                                {/* Mobile (<768px) — kebab collapses role swap + Remove into one ⋮.
+                                                    Make admin/member is single-tap (reversible).
+                                                    Remove uses twoTap=true (Phase 65-02 destructive-confirm pattern)
+                                                    and routes to handleRemoveMemberConfirmed (NO browser confirm —
+                                                    the kebab two-tap IS the confirmation per CONTEXT D-03). */}
+                                                <div className="md:hidden">
+                                                    <KebabMenu
+                                                        ariaLabel="Member actions"
+                                                        items={[
+                                                            // Drop the role-toggle item entirely when this is the
+                                                            // owner row — the desktop select is also disabled in
+                                                            // that case, and a no-op item makes the menu confusing.
+                                                            ...(isOwner ? [] : [{
+                                                                label: memberRole === 'admin' ? 'Make member' : 'Make admin',
+                                                                onClick: () => handleRoleChange(
+                                                                    member.user_id,
+                                                                    memberRole === 'admin' ? 'member' : 'admin'
+                                                                ),
+                                                            }]),
+                                                            {
+                                                                label: 'Remove',
+                                                                danger: true,
+                                                                twoTap: true,
+                                                                confirmLabel: 'Tap again to remove',
+                                                                disabled: isOwner,
+                                                                onClick: () => handleRemoveMemberConfirmed(member.user_id),
+                                                            },
+                                                        ]}
+                                                    />
+                                                </div>
+                                            </>
                                         )}
 
                                         {isCurrentUser && !isOwner && (
