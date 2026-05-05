@@ -49,6 +49,56 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     }
   }, [newEvent.start_date, newEvent.duration_minutes]);
 
+  // Phase 66-03 CREVT-06: scroll the visual scheduler to the peak-availability
+  // slot whenever heatmapData is loaded. Scope to prefillDate's day if set
+  // (day-tap path), otherwise the full week. Tie-break: earliest of top tier.
+  // Returns a Date whose time-of-day is what scrollToTime reads (date portion
+  // ignored by react-big-calendar). No auto-scroll when totalMembers is 0
+  // or no slots have any availability — calendar uses its default scroll.
+  const peakScrollTime = useMemo(() => {
+    if (!heatmapData?.slots || heatmapData.slots.length === 0) return null;
+    if (!heatmapData.totalMembers || heatmapData.totalMembers === 0) return null;
+
+    // Build candidate set: filter to prefillDate's day if present, else all slots.
+    // slot.date is "YYYY-MM-DD" in UTC; slot.hour is 0-23 UTC. Convert to the
+    // user's effective TZ (matches what EventScheduler displays — same idiom
+    // as EventScheduler.heatmapLookup so peak hour aligns visually with tints).
+    const candidates = heatmapData.slots
+      .map(s => {
+        const utcDate = new Date(`${s.date}T${String(s.hour).padStart(2, '0')}:00:00Z`);
+        const localDateStr = format(utcDate, 'yyyy-MM-dd');
+        const localHour = utcDate.getHours();
+        return {
+          localDateStr,
+          localHour,
+          availableCount: s.availableCount || 0,
+        };
+      })
+      .filter(c => {
+        if (!prefillDate) return true;
+        return c.localDateStr === prefillDate;
+      });
+
+    if (candidates.length === 0) return null;
+
+    // Find max availableCount; tie-break by earliest (date asc, then hour asc)
+    const maxCount = Math.max(...candidates.map(c => c.availableCount));
+    if (maxCount === 0) return null; // no data → no scroll
+
+    const winner = candidates
+      .filter(c => c.availableCount === maxCount)
+      .sort((a, b) => {
+        if (a.localDateStr !== b.localDateStr) return a.localDateStr < b.localDateStr ? -1 : 1;
+        return a.localHour - b.localHour;
+      })[0];
+
+    // Return a Date whose hour-of-day is the peak hour. react-big-calendar's
+    // scrollToTime only uses time-of-day; date portion is irrelevant.
+    const t = new Date();
+    t.setHours(winner.localHour, 0, 0, 0);
+    return t;
+  }, [heatmapData, prefillDate]);
+
   // Fetch group members and games when component mounts or group_id changes
   useEffect(() => {
     if (group_id && modal) {
@@ -549,6 +599,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 selectedSlot={derivedSelectedSlot}
                 heatmapData={heatmapData}
                 defaultView={initialVisualView}
+                scrollToTime={peakScrollTime}
               />
             ) : (
               <div className="space-y-4">

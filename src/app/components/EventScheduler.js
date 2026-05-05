@@ -39,6 +39,11 @@ export default function EventScheduler({
   // and derives this prop with a useMemo. Round-trips visual ↔ manual
   // mode are preserved because both modes read/write the same parent state.
   selectedSlot = null,
+  // Phase 66-03 CREVT-06: parent-derived peak-availability time. When
+  // present, react-big-calendar scrolls so this time-of-day is at the top
+  // of the visible viewport. Date portion is ignored by scrollToTime.
+  // null = no auto-scroll (use the calendar's default scroll position).
+  scrollToTime = null,
 }) {
   const [currentDate, setCurrentDate] = useState(initialDate || new Date());
   const [currentView, setCurrentView] = useState(
@@ -242,6 +247,7 @@ export default function EventScheduler({
           }}
           slotPropGetter={getSlotProps}
           components={calendarComponents}
+          {...(scrollToTime ? { scrollToTime } : {})}
         />
       </div>
 
