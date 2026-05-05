@@ -183,6 +183,13 @@ export const groupsAPI = {
       method: 'POST',
     }),
 
+  // Transfer group ownership to another active member (owner only)
+  transferOwnership: (group_id, new_owner_user_id) =>
+    apiFetch(`/groups/${group_id}/transfer-ownership`, {
+      method: 'POST',
+      body: JSON.stringify({ new_owner_user_id }),
+    }),
+
   // Get (or lazy-generate) group invite token
   getInviteToken: (group_id) =>
     apiFetch(`/groups/${group_id}/invite-token`),
