@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
-import { format, parse, startOfWeek, getDay, differenceInMinutes, parseISO, setHours, setMinutes } from 'date-fns';
+import { format, parse, startOfWeek, getDay, differenceInMinutes, setHours, setMinutes } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
@@ -23,8 +23,6 @@ const localizer = dateFnsLocalizer({
 export default function EventScheduler({
   onTimeSelected,
   initialDate,
-  initialStart,
-  initialEnd,
   minTime,
   maxTime,
   step = 30,
@@ -36,8 +34,12 @@ export default function EventScheduler({
   // toggle between week/day after mount via react-big-calendar's view
   // picker — defaultView only seeds the initial mode.
   defaultView = 'week',
+  // Phase 66-01: controlled selected slot. Parent (createEvent.js) owns
+  // the canonical date/time state via newEvent.start_date + duration_minutes
+  // and derives this prop with a useMemo. Round-trips visual ↔ manual
+  // mode are preserved because both modes read/write the same parent state.
+  selectedSlot = null,
 }) {
-  const [selectedSlot, setSelectedSlot] = useState(null);
   const [currentDate, setCurrentDate] = useState(initialDate || new Date());
   const [currentView, setCurrentView] = useState(
     defaultView === 'day' ? 'day' : 'week'
@@ -80,29 +82,14 @@ export default function EventScheduler({
   const defaultMinTime = minTime || setHours(setMinutes(new Date(0, 0, 0), 0), 10); // 10:00 AM
   const defaultMaxTime = maxTime || setHours(setMinutes(new Date(0, 0, 0), 59), 23); // 11:59 PM
 
-  // Initialize from props if provided
+  // Phase 66-01: navigation-only effect. Slot highlighting now flows from
+  // the controlled `selectedSlot` prop (parent-owned), so this hook only
+  // syncs the calendar's visible week/day to `initialDate`.
   useEffect(() => {
     if (initialDate) {
       setCurrentDate(initialDate);
     }
-    
-    if (initialDate && initialStart && initialEnd) {
-      try {
-        const dateStr = format(initialDate, 'yyyy-MM-dd');
-        const startDateTime = parseISO(`${dateStr}T${initialStart}`);
-        const endDateTime = parseISO(`${dateStr}T${initialEnd}`);
-        
-        if (!isNaN(startDateTime.getTime()) && !isNaN(endDateTime.getTime())) {
-          setSelectedSlot({ start: startDateTime, end: endDateTime });
-        }
-      } catch (error) {
-        console.error('Error parsing initial time:', error);
-      }
-    } else {
-      // Clear selected slot if initial values are cleared
-      setSelectedSlot(null);
-    }
-  }, [initialDate, initialStart, initialEnd]);
+  }, [initialDate]);
 
   const handleSelectSlot = ({ start, end }) => {
     // Ensure we have valid dates
@@ -115,9 +102,8 @@ export default function EventScheduler({
       return;
     }
 
-    const slot = { start, end };
-    setSelectedSlot(slot);
-    
+    // Phase 66-01: notify parent only — parent updates newEvent.start_date +
+    // duration_minutes, which round-trips back via the `selectedSlot` prop.
     if (onTimeSelected) {
       onTimeSelected(start, end);
     }

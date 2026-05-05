@@ -23,13 +23,31 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   const [groupMembers, setGroupMembers] = useState([]);
   const [newEvent, setNewEvent] = useState(createEventForm(group_id, []));
   const [loading, setLoading] = useState(true);
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState(null);
   const [useVisualCalendar, setUseVisualCalendar] = useState(true);
   const [ballotOptions, setBallotOptions] = useState([]);
   const [ballotError, setBallotError] = useState(null);
   const [heatmapData, setHeatmapData] = useState(null);
   const [heatmapLoading, setHeatmapLoading] = useState(false);
   const [heatmapWeekStart, setHeatmapWeekStart] = useState(null);
+
+  // Phase 66-01: derive the visual scheduler's `selectedSlot` from the
+  // canonical date/time fields. This is the single source of truth — both
+  // manual mode (datetime-local input + duration input) and visual mode
+  // (drag-to-select) read/write through `newEvent.start_date` and
+  // `newEvent.duration_minutes`. The slot highlight is a pure projection.
+  // Round-trips (visual → manual → visual) preserve the highlight because
+  // the parent state never resets across mode toggles.
+  const derivedSelectedSlot = useMemo(() => {
+    if (!newEvent.start_date || !newEvent.duration_minutes) return null;
+    try {
+      const start = parseISO(newEvent.start_date);
+      if (isNaN(start.getTime())) return null;
+      const end = new Date(start.getTime() + newEvent.duration_minutes * 60000);
+      return { start, end };
+    } catch {
+      return null;
+    }
+  }, [newEvent.start_date, newEvent.duration_minutes]);
 
   // Fetch group members and games when component mounts or group_id changes
   useEffect(() => {
@@ -175,18 +193,10 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         participants: finalParticipants
       });
 
-      // Set selected time slot for visual calendar
-      if (editingEvent.start_date) {
-        const eventStartDate = new Date(editingEvent.start_date);
-        const eventEndDate = editingEvent.duration_minutes 
-          ? new Date(eventStartDate.getTime() + editingEvent.duration_minutes * 60000)
-          : new Date(eventStartDate.getTime() + 180 * 60000); // Default 3 hours
-        
-        setSelectedTimeSlot({
-          start: eventStartDate,
-          end: eventEndDate
-        });
-      }
+      // Phase 66-01: visual-calendar slot highlight is now derived from
+      // newEvent.start_date + duration_minutes via `derivedSelectedSlot`
+      // (useMemo above). No separate setSelectedTimeSlot call needed —
+      // setting start_date + duration_minutes above is sufficient.
     } else if (!editingEvent && groupMembers.length > 0) {
       // Reset to empty form when not editing
       const form = createEventForm(group_id, groupMembers);
@@ -426,11 +436,12 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       }
 
       modaltoggle();
-      // Reset form
+      // Reset form. Phase 66-01: derivedSelectedSlot resets automatically
+      // when newEvent.start_date is cleared by createEventForm — no separate
+      // selectedTimeSlot reset needed.
       setNewEvent(createEventForm(group_id, groupMembers));
       setBallotOptions([]);
       setBallotError(null);
-      setSelectedTimeSlot(null);
       setUseVisualCalendar(true);
     } catch (error) {
       console.error(`Error ${editingEvent ? 'updating' : 'creating'} event:`, error);
@@ -520,7 +531,10 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             {useVisualCalendar && !hideVisualCalendar ? (
               <EventScheduler
                 onTimeSelected={(start, end) => {
-                  setSelectedTimeSlot({ start, end });
+                  // Phase 66-01: write canonical fields only. The visual
+                  // highlight will round-trip back via derivedSelectedSlot
+                  // → selectedSlot prop, so no separate selectedTimeSlot
+                  // local state is needed.
                   const dateStr = format(start, 'yyyy-MM-dd');
                   const timeStr = format(start, 'HH:mm');
                   const duration = differenceInMinutes(end, start);
@@ -532,19 +546,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   });
                 }}
                 initialDate={calendarInitialDate}
-                initialStart={prefillTime || (() => {
-                  if (!editingEvent?.start_date) return null;
-                  const wc = utcToWallClock(editingEvent.start_date, timezone);
-                  if (!wc) return null;
-                  return `${String(wc.hours).padStart(2, '0')}:${String(wc.minutes).padStart(2, '0')}`;
-                })()}
-                initialEnd={(() => {
-                  if (!editingEvent?.start_date || !editingEvent?.duration_minutes) return null;
-                  const endUtc = new Date(new Date(editingEvent.start_date).getTime() + editingEvent.duration_minutes * 60000);
-                  const wc = utcToWallClock(endUtc, timezone);
-                  if (!wc) return null;
-                  return `${String(wc.hours).padStart(2, '0')}:${String(wc.minutes).padStart(2, '0')}`;
-                })()}
+                selectedSlot={derivedSelectedSlot}
                 heatmapData={heatmapData}
                 defaultView={initialVisualView}
               />
