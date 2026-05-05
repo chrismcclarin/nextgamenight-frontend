@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { groupsAPI } from '../../lib/api';
 import SafeImage from './SafeImage';
 
@@ -127,7 +128,11 @@ export default function GroupLibrary({ groupId }) {
     return (
       <div className="mt-4 text-center py-12 bg-surface-page rounded-card border-2 border-dashed border-line">
         <p className="text-content-secondary text-lg mb-2">No games in this group&apos;s library yet.</p>
-        <p className="text-content-muted">Members can add games to their collection from the game detail page.</p>
+        <p className="text-content-muted">
+          Add games to your collection on{' '}
+          <Link href="/userProfile" className="text-accent hover:underline font-medium">your profile</Link>{' '}
+          and they&apos;ll appear here.
+        </p>
       </div>
     );
   }

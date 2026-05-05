@@ -51,11 +51,22 @@ function GroupInvitePage() {
       try {
         const result = await groupsAPI.joinByToken(token);
         if (result.already_member) {
+          // GROUP-08: signal /userHome to refresh its groups list on next visit
+          // even when the user was already a member (e.g., re-clicking an old link
+          // after logging out/in elsewhere — list should still resync).
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('nggroups:refresh', '1');
+          }
           setStatus('already-member');
           setTimeout(() => {
             router.push(`/groupHomePage?id=${result.group_id || groupInfo.group_id}`);
           }, 2000);
         } else if (result.success) {
+          // GROUP-08: signal /userHome to refresh its groups list on next visit
+          // so the freshly-joined group appears without a manual reload.
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('nggroups:refresh', '1');
+          }
           setStatus('joined');
           setTimeout(() => {
             router.push(`/groupHomePage?id=${result.group_id || groupInfo.group_id}`);
