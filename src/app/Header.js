@@ -163,13 +163,14 @@ function Header(){
                                 </li>
                             ))}
                         </ul>
-                        {/* Mobile notification bell */}
+                        {/* Mobile notification bell — full-row tap surface (MOB-02 + MOB-03).
+                            variant="row" makes the entire button the hit target with
+                            press-state via bg-surface-card-hover. Outer div is just a
+                            non-interactive border container; the inner <button> is the
+                            actual tap surface. */}
                         {user && (
-                            <div className="px-4 py-3 border-t border-line-header">
-                                <div className="flex items-center gap-3 text-white text-sm">
-                                    <NotificationBell user={user} />
-                                    <span className="text-content-muted">Invites</span>
-                                </div>
+                            <div className="border-t border-line-header">
+                                <NotificationBell user={user} variant="row" label="Invites" />
                             </div>
                         )}
                         {/* Mobile theme toggle */}

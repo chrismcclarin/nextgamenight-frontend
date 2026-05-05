@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { invitesAPI, friendshipsAPI } from '../../lib/api';
 
-function NotificationBell({ user }) {
+function NotificationBell({ user, variant = 'icon', label }) {
   const [invites, setInvites] = useState([]);
   const [friendRequests, setFriendRequests] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -121,35 +121,65 @@ function NotificationBell({ user }) {
 
   if (!user) return null;
 
+  // Bell SVG — shared between icon and row variants. Decorative inside row variant
+  // (the surrounding button is the actual hit target per CONTEXT D-02 "bell + row
+  // are one combined target; bell becomes purely decorative").
+  const bellIcon = (
+    <svg
+      className="w-6 h-6"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
+      />
+    </svg>
+  );
+
+  const countBadge = totalCount > 0 ? (
+    <span className="bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-[1.25rem] px-1 flex items-center justify-center">
+      {totalCount > 9 ? '9+' : totalCount}
+    </span>
+  ) : null;
+
   return (
     <div className="relative" ref={dropdownRef}>
-      {/* Bell icon button */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="relative text-white hover:text-amber-400 transition-colors p-1"
-        aria-label="Notifications"
-      >
-        <svg
-          className="w-6 h-6"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-          strokeWidth={1.5}
+      {variant === 'row' ? (
+        // Full-width row hit area — entire surface is one tap target.
+        // hover:bg-surface-card-hover + active:bg-surface-card-hover for
+        // desktop hover + mobile tap-down feedback (subtle press-state per
+        // CONTEXT D-02). text-left so the label aligns with surrounding rows.
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:bg-surface-card-hover transition-colors"
+          aria-label={label ? `${label} notifications` : 'Notifications'}
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
-          />
-        </svg>
+          {bellIcon}
+          <span className="text-content-muted flex-1">{label || 'Notifications'}</span>
+          {countBadge}
+        </button>
+      ) : (
+        // Icon-only trigger — desktop nav. Visual unchanged from pre-Plan-68-01.
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="relative text-white hover:text-amber-400 transition-colors p-1"
+          aria-label="Notifications"
+        >
+          {bellIcon}
 
-        {/* Red badge with count */}
-        {totalCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-            {totalCount > 9 ? '9+' : totalCount}
-          </span>
-        )}
-      </button>
+          {/* Red badge with count — absolute-positioned over the bell */}
+          {totalCount > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+              {totalCount > 9 ? '9+' : totalCount}
+            </span>
+          )}
+        </button>
+      )}
 
       {/* Dropdown panel */}
       {isOpen && (
