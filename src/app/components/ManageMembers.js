@@ -338,32 +338,34 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                     Make admin/member is single-tap (reversible).
                                                     Remove uses twoTap=true (Phase 65-02 destructive-confirm pattern)
                                                     and routes to handleRemoveMemberConfirmed (NO browser confirm —
-                                                    the kebab two-tap IS the confirmation per CONTEXT D-03). */}
-                                                <div className="md:hidden">
-                                                    <KebabMenu
-                                                        ariaLabel="Member actions"
-                                                        items={[
-                                                            // Drop the role-toggle item entirely when this is the
-                                                            // owner row — the desktop select is also disabled in
-                                                            // that case, and a no-op item makes the menu confusing.
-                                                            ...(isOwner ? [] : [{
-                                                                label: memberRole === 'admin' ? 'Make member' : 'Make admin',
-                                                                onClick: () => handleRoleChange(
-                                                                    member.user_id,
-                                                                    memberRole === 'admin' ? 'member' : 'admin'
-                                                                ),
-                                                            }]),
-                                                            {
-                                                                label: 'Remove',
-                                                                danger: true,
-                                                                twoTap: true,
-                                                                confirmLabel: 'Tap again to remove',
-                                                                disabled: isOwner,
-                                                                onClick: () => handleRemoveMemberConfirmed(member.user_id),
-                                                            },
-                                                        ]}
-                                                    />
-                                                </div>
+                                                    the kebab two-tap IS the confirmation per CONTEXT D-03).
+                                                    Hidden entirely on owner rows — owner cannot be removed and
+                                                    role cannot be reassigned, so a kebab with only disabled items
+                                                    would be misleading (desktop disabled-but-visible controls
+                                                    communicate "exists but locked"; mobile kebab cannot). */}
+                                                {!isOwner && (
+                                                    <div className="md:hidden">
+                                                        <KebabMenu
+                                                            ariaLabel="Member actions"
+                                                            items={[
+                                                                {
+                                                                    label: memberRole === 'admin' ? 'Make member' : 'Make admin',
+                                                                    onClick: () => handleRoleChange(
+                                                                        member.user_id,
+                                                                        memberRole === 'admin' ? 'member' : 'admin'
+                                                                    ),
+                                                                },
+                                                                {
+                                                                    label: 'Remove',
+                                                                    danger: true,
+                                                                    twoTap: true,
+                                                                    confirmLabel: 'Tap again to remove',
+                                                                    onClick: () => handleRemoveMemberConfirmed(member.user_id),
+                                                                },
+                                                            ]}
+                                                        />
+                                                    </div>
+                                                )}
                                             </>
                                         )}
 
