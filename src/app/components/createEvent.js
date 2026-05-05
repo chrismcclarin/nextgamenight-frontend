@@ -575,6 +575,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                     onChange={handleChange}
                     required={!editingEvent}
                     className="w-full p-2 border rounded text-content-primary bg-surface-input"
+                    max="9999-12-31T23:59"
                   />
                 </div>
 
@@ -592,7 +593,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                     placeholder="Enter duration in minutes"
                     required={!editingEvent}
                     min="1"
-                    max="1440"
+                    max="720"
                   />
                 </div>
               </div>
@@ -612,7 +613,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 value={newEvent.rsvp_deadline || ''}
                 onChange={handleChange}
                 className="w-full p-2 border rounded text-content-primary bg-surface-input"
-                max={newEvent.start_date}
+                max={newEvent.start_date && newEvent.start_date < '9999-12-31T23:59' ? newEvent.start_date : '9999-12-31T23:59'}
               />
             </div>
           )}
