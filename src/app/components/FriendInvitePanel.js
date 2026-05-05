@@ -4,7 +4,7 @@ import { useUser } from '@auth0/nextjs-auth0/client';
 import { friendshipsAPI, invitesAPI, groupsAPI } from '../../lib/api';
 import { QRCodeSVG } from 'qrcode.react';
 
-function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
+function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = false, embedded = false }) {
     const { user } = useUser();
 
     const [friends, setFriends] = useState([]);
@@ -31,6 +31,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
     const [inviteUrl, setInviteUrl] = useState(null);
     const [tokenLoading, setTokenLoading] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [resetting, setResetting] = useState(false);
 
     // Fetch friends on open
     useEffect(() => {
@@ -201,39 +202,32 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
         }
     };
 
+    const handleResetInviteLink = async () => {
+        if (!group?.id || resetting) return;
+        if (!window.confirm('Reset invite link? The current QR code and link will stop working.')) return;
+        setResetting(true);
+        try {
+            const data = await groupsAPI.resetInviteToken(group.id);
+            setInviteUrl(data.invite_url);
+        } catch (err) {
+            console.error('Failed to reset invite token:', err);
+            alert(err.message || 'Failed to reset invite link. Please try again.');
+        } finally {
+            setResetting(false);
+        }
+    };
+
     if (!open) return null;
 
     const availableFriends = friends.filter(f => f.friend);
     const selectableCount = availableFriends.filter(f => !groupMemberIds.includes(f.friend.user_id)).length;
 
-    return (
+    // Body sections — shared between standalone modal mode and embedded mode.
+    // Embedded mode (used by ManageMembers per Phase 69-02 GROUP-01 consolidation)
+    // skips the backdrop / sliding-panel / header / footer chrome and renders
+    // these sections inline at the top of the parent modal's body.
+    const body = (
         <>
-            {/* Backdrop */}
-            <div
-                className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"
-                onClick={onClose}
-            />
-
-            {/* Sliding panel */}
-            <div className="fixed inset-y-0 right-0 w-full max-w-md bg-surface-card shadow-xl z-50 flex flex-col animate-slide-in-right">
-                {/* Header */}
-                <div className="flex items-center justify-between p-5 border-b border-line">
-                    <div>
-                        <h2 className="text-xl font-bold text-content-primary">Invite Members</h2>
-                        {group?.name && (
-                            <p className="text-sm text-content-muted mt-0.5">to {group.name}</p>
-                        )}
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="text-content-muted hover:text-content-secondary text-2xl leading-none p-1"
-                    >
-                        &times;
-                    </button>
-                </div>
-
-                {/* Friends list */}
-                <div className="flex-1 overflow-y-auto">
                     {/* Friends section */}
                     <div className="p-5">
                         <h3 className="text-sm font-semibold text-content-muted uppercase tracking-wide mb-3">
@@ -429,6 +423,19 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
                                         >
                                             {copied ? 'Copied!' : 'Copy Invite Link'}
                                         </button>
+                                        {/* Reset invite link — admin-only per Phase 69 CONTEXT D-INV-02.
+                                            Rendered (not just disabled) only for owner/admin so non-admins
+                                            don't see the button at all. */}
+                                        {isAdmin && (
+                                            <button
+                                                onClick={handleResetInviteLink}
+                                                disabled={resetting}
+                                                className="mt-2 w-full btn btn-secondary py-2 text-xs text-status-error"
+                                                title="Invalidate the current invite link and generate a new one"
+                                            >
+                                                {resetting ? 'Resetting…' : 'Reset invite link'}
+                                            </button>
+                                        )}
                                     </div>
                                 ) : (
                                     <p className="text-content-muted text-sm text-center py-4">
@@ -438,6 +445,46 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded }) {
                             </div>
                         </>
                     )}
+        </>
+    );
+
+    // Embedded mode: render the body inline (no backdrop, no sliding panel,
+    // no header, no footer — parent modal owns the chrome).
+    if (embedded) {
+        return <div className="space-y-0">{body}</div>;
+    }
+
+    // Standalone modal mode: existing backdrop + sliding-panel chrome preserved
+    // for UserHomePage / createGroup / groupHomePage call sites unchanged.
+    return (
+        <>
+            {/* Backdrop */}
+            <div
+                className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"
+                onClick={onClose}
+            />
+
+            {/* Sliding panel */}
+            <div className="fixed inset-y-0 right-0 w-full max-w-md bg-surface-card shadow-xl z-50 flex flex-col animate-slide-in-right">
+                {/* Header */}
+                <div className="flex items-center justify-between p-5 border-b border-line">
+                    <div>
+                        <h2 className="text-xl font-bold text-content-primary">Invite Members</h2>
+                        {group?.name && (
+                            <p className="text-sm text-content-muted mt-0.5">to {group.name}</p>
+                        )}
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="text-content-muted hover:text-content-secondary text-2xl leading-none p-1"
+                    >
+                        &times;
+                    </button>
+                </div>
+
+                {/* Body */}
+                <div className="flex-1 overflow-y-auto">
+                    {body}
                 </div>
 
                 {/* Footer */}
