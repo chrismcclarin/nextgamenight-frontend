@@ -26,8 +26,9 @@ export default function EventHeatmapBackground({ heatmapData, loading }) {
           {Array.from({ length: 7 }).map((_, i) => (
             <div key={`hdr-${i}`} className="h-6 bg-surface-elevated rounded animate-pulse" />
           ))}
-          {/* Grid skeleton rows */}
-          {Array.from({ length: 14 }).map((_, row) => (
+          {/* Grid skeleton rows — Phase 66-01: 28 rows (14 hours × 2 half-hour slots)
+              to match EventScheduler's step={30} density. */}
+          {Array.from({ length: 28 }).map((_, row) => (
             <div key={`row-${row}`} className="contents">
               <div className="h-5 w-8 bg-surface-elevated rounded animate-pulse" />
               {Array.from({ length: 7 }).map((_, col) => (
@@ -89,9 +90,15 @@ export default function EventHeatmapBackground({ heatmapData, loading }) {
   }
   const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-  // Hours 10-22 in viewer's timezone (matching display range)
-  const hours = [];
-  for (let h = 10; h <= 23; h++) hours.push(h);
+  // Phase 66-01: subdivide to 30-min rows so density matches EventScheduler's
+  // step={30}. Each entry is { hour, minute, showLabel }. Backend data is
+  // hourly, so both half-hour cells in a given hour share the same hourly
+  // slot lookup (and therefore the same green tint).
+  const slots30 = [];
+  for (let h = 10; h <= 23; h++) {
+    slots30.push({ hour: h, minute: 0, showLabel: true });
+    slots30.push({ hour: h, minute: 30, showLabel: false });
+  }
 
   // Format hour label compactly
   function formatHour(h) {
@@ -162,28 +169,39 @@ export default function EventHeatmapBackground({ heatmapData, loading }) {
           );
         })}
 
-        {/* Hour rows */}
-        {hours.map(hour => (
-          <div key={hour} className="contents">
-            {/* Hour label */}
-            <div className="flex items-center justify-end pr-1">
-              <span className="text-[10px] text-content-muted font-mono">{formatHour(hour)}</span>
-            </div>
-            {/* Day cells */}
+        {/* Hour rows — Phase 66-01: 28 rows at 30-min density. Hour labels
+            render only on the :00 row; the :30 row leaves the label column
+            empty so the grid stays aligned without visual clutter. Both
+            half-hour cells of a given hour share the same hourly slot data
+            (backend tracks availability hourly, so both halves render with
+            the same green tint and count badge). */}
+        {slots30.map(s => (
+          <div key={`${s.hour}-${s.minute}`} className="contents">
+            {/* Hour label (only on the :00 row) */}
+            {s.showLabel ? (
+              <div className="flex items-center justify-end pr-1">
+                <span className="text-[10px] text-content-muted font-mono">{formatHour(s.hour)}</span>
+              </div>
+            ) : (
+              <div />
+            )}
+            {/* Day cells — keyed off the hourly slot, since backend data is hourly */}
             {dates.map(date => {
-              const dateKey = `${date}_${hour}`;
+              const dateKey = `${date}_${s.hour}`;
               const slot = slotMap.get(dateKey);
               const count = slot?.availableCount || 0;
               const bg = getCellBg(count, totalMembers);
               const tip = getTooltip(slot, dateKey);
               return (
                 <div
-                  key={`${date}_${hour}`}
+                  key={`${date}_${s.hour}_${s.minute}`}
                   title={tip}
                   className={`${bg} rounded-sm flex items-center justify-center cursor-default`}
                   style={{ minHeight: '18px' }}
                 >
-                  {count > 0 && (
+                  {/* Show count badge once per hour (on the :00 row) so the
+                      number doesn't visually duplicate. */}
+                  {count > 0 && s.minute === 0 && (
                     <span className="text-[9px] text-content-secondary font-medium">{count}</span>
                   )}
                 </div>
