@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { suggestionsAPI } from '../../lib/api';
+import BrowseMoreModal from './BrowseMoreModal';
 
 export default function QuickSuggestions({ groupId, playerCount, duration, onSelectGame, eventId, userRole }) {
   const [suggestions, setSuggestions] = useState([]);
   const [loaded, setLoaded] = useState(false);
+  const [browseModalOpen, setBrowseModalOpen] = useState(false);
   const debounceRef = useRef(null);
 
   useEffect(() => {
@@ -67,8 +69,6 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
     return null;
   }
 
-  const browseMoreUrl = `/gameSuggestions?groupId=${groupId}&playerCount=${playerCount}${eventId ? '&eventId=' + eventId : ''}${duration ? '&duration=' + duration : ''}`;
-
   return (
     <div className="mt-1 mb-1">
       <div className="text-xs text-content-muted uppercase tracking-wide mb-1">Suggestions</div>
@@ -104,15 +104,25 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
             </button>
           ))}
         </div>
-        <a
-          href={browseMoreUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
+          onClick={() => setBrowseModalOpen(true)}
           className="text-xs text-content-link hover:underline whitespace-nowrap flex-shrink-0 px-1"
         >
           Browse more
-        </a>
+        </button>
       </div>
+      <BrowseMoreModal
+        open={browseModalOpen}
+        onClose={() => setBrowseModalOpen(false)}
+        groupId={groupId}
+        eventId={eventId}
+        defaultPlayerCount={playerCount}
+        onSelectGame={(game) => {
+          onSelectGame(game);
+          setBrowseModalOpen(false);
+        }}
+      />
     </div>
   );
 }
