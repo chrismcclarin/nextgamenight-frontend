@@ -4,25 +4,42 @@ import { useSearchParams } from 'next/navigation';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import GroupList from '../components/grouplist';
 import EventCalendar from '../components/EventCalendar';
+import FriendInvitePanel from '../components/FriendInvitePanel';
 
 // List of all the groups for the logged in User
 function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, groupListRefreshKey, onMemberAdded: onMemberAddedProp }) {
     const { user } = Auth();
     const searchParams = useSearchParams();
+    const [selectedGroup, setSelectedGroup] = useState(null);
+    const [invitePanelOpen, setInvitePanelOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
 
     // GROUP-05 (display half): show soft acknowledgment banner when arriving from
-    // a 403 redirect set by Plan 69-04 (router.push('/userHome?removedFrom=...')).
+    // a 403 redirect set by Plan 69-04 (router.push('/?removedFrom=...')).
     const removedFromName = searchParams?.get('removedFrom') || null;
     const [removedBannerVisible, setRemovedBannerVisible] = useState(false);
     useEffect(() => {
         if (removedFromName) setRemovedBannerVisible(true);
     }, [removedFromName]);
 
+    const handleGroupSelect = (group) => {
+        setSelectedGroup(group);
+        setInvitePanelOpen(true);
+    };
+
     const handleCreateGroup = () => {
         // This is handled by the parent component (page.js)
         if (onCreateGroup) {
             onCreateGroup();
+        }
+    };
+
+    const handleMemberAdded = () => {
+        if (getGroupList) {
+            getGroupList();
+        }
+        if (onMemberAddedProp) {
+            onMemberAddedProp();
         }
     };
 
@@ -57,6 +74,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 <div className="w-full md:w-auto md:flex-shrink-0 md:flex-[0_0_400px] md:relative">
                     <div className="md:absolute md:inset-0">
                     <GroupList
+                        onGroupSelect={handleGroupSelect}
                         onCreateGroup={handleCreateGroup}
                         user={user}
                         onGroupSettingsUpdated={handleGroupSettingsUpdated}
@@ -70,6 +88,13 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     <EventCalendar refreshKey={refreshKey} />
                 </div>
             </div>
+
+            <FriendInvitePanel
+                group={selectedGroup}
+                open={invitePanelOpen}
+                onClose={() => setInvitePanelOpen(false)}
+                onMemberAdded={handleMemberAdded}
+            />
         </div>
     );
 }

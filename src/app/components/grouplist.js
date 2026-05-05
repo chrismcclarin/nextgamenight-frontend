@@ -13,7 +13,7 @@ import SafeImage from './SafeImage';
 import FriendshipStatusProvider from './FriendshipStatusProvider';
 import ClickableMemberName from './ClickableMemberName';
 
-const GroupList = ({ onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
+const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
   const router = useRouter();
   const { user: authUser } = Auth();
   const { timezone } = useTimezone();
@@ -139,7 +139,7 @@ const GroupList = ({ onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger
                 )}
                 <div className="relative z-[1]">
                   <div className="flex justify-between items-center mb-3 max-[480px]:flex-col max-[480px]:items-start max-[480px]:gap-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       {profilePic && (
                         <div className="w-10 h-10 rounded-full bg-surface-card-hover flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden">
                           {profilePic.startsWith('http') || profilePic.startsWith('/') ? (
@@ -162,7 +162,7 @@ const GroupList = ({ onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger
                       </h3>
                     </div>
                     <span
-                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-semibold ml-2 max-[480px]:self-end"
+                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-semibold ml-2 flex-shrink-0 max-[480px]:self-end max-[480px]:ml-0"
                       style={getTextStyle(bgImage, bgColor)}
                     >
                       {groupUsers.length} {groupUsers.length === 1 ? 'player' : 'players'}
@@ -196,6 +196,20 @@ const GroupList = ({ onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger
 
                   {/* Action Buttons */}
                   <div className="flex gap-2 mt-3 relative z-[2]">
+                    {canEdit && (
+                      <button
+                        className="btn btn-primary text-sm flex-1 shadow-md hover:shadow-lg hover:-translate-y-px active:translate-y-0 transition-all"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onGroupSelect) {
+                            onGroupSelect(group);
+                          }
+                        }}
+                        aria-label="Invite member to group"
+                      >
+                        Invite Member
+                      </button>
+                    )}
                     {canEdit && (
                       <button
                         className="px-3 py-1 bg-surface-elevated text-content-primary rounded-btn hover:bg-surface-card-hover text-sm flex-shrink-0"

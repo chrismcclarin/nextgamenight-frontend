@@ -75,6 +75,13 @@ function NotificationBell({ user, variant = 'icon', label }) {
       setInvites((prev) => prev.filter((i) => i.id !== invite.id));
       const groupName = invite.Group?.name || invite.group_name || 'the group';
       setConfirmation(`Joined ${groupName}!`);
+      // GROUP-08: signal the home page to refresh its groups list. sessionStorage
+      // covers a later navigation; window event covers the in-place case where the
+      // user is already on / when they click Accept in the bell.
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('nggroups:refresh', '1');
+        window.dispatchEvent(new CustomEvent('nggroups:refresh'));
+      }
     } catch (err) {
       console.error('Failed to accept invite:', err.message);
     } finally {

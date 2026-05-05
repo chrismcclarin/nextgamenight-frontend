@@ -41,18 +41,25 @@ function App(){
     }
   }, [user]);
 
-  // GROUP-08: post-invite-accept refresh handoff. The /invite/group/[token]
-  // success branch sets sessionStorage 'nggroups:refresh'='1' before navigating
-  // to the new group page. When the user later returns to /userHome, this
-  // mount-only effect consumes the flag and bumps groupListRefreshKey so the
-  // groups list re-fetches and reflects the freshly-joined group without a
-  // manual reload. Pattern mirrors Phase 64-01's eventsRefreshKey defensive bump.
+  // GROUP-08: post-invite-accept refresh handoff. Two trigger paths land here.
+  // (a) sessionStorage flag — set by /invite/group/[token] and /invite/accept
+  //     after a successful join, then consumed on next mount (covers cross-tab
+  //     navigation back to home).
+  // (b) window 'nggroups:refresh' event — dispatched by NotificationBell when
+  //     the user accepts an invite from the bell while already on this page
+  //     (no remount, so the sessionStorage check above doesn't fire).
   useEffect(() => {
     if (typeof window === 'undefined') return; // SSR guard
     if (sessionStorage.getItem('nggroups:refresh') === '1') {
       sessionStorage.removeItem('nggroups:refresh');
       setGroupListRefreshKey(prev => prev + 1);
     }
+    const onRefresh = () => {
+      sessionStorage.removeItem('nggroups:refresh');
+      setGroupListRefreshKey(prev => prev + 1);
+    };
+    window.addEventListener('nggroups:refresh', onRefresh);
+    return () => window.removeEventListener('nggroups:refresh', onRefresh);
   }, []);
 
   const modaltoggle = () => {
