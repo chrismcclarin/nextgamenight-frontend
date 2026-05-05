@@ -41,6 +41,20 @@ function App(){
     }
   }, [user]);
 
+  // GROUP-08: post-invite-accept refresh handoff. The /invite/group/[token]
+  // success branch sets sessionStorage 'nggroups:refresh'='1' before navigating
+  // to the new group page. When the user later returns to /userHome, this
+  // mount-only effect consumes the flag and bumps groupListRefreshKey so the
+  // groups list re-fetches and reflects the freshly-joined group without a
+  // manual reload. Pattern mirrors Phase 64-01's eventsRefreshKey defensive bump.
+  useEffect(() => {
+    if (typeof window === 'undefined') return; // SSR guard
+    if (sessionStorage.getItem('nggroups:refresh') === '1') {
+      sessionStorage.removeItem('nggroups:refresh');
+      setGroupListRefreshKey(prev => prev + 1);
+    }
+  }, []);
+
   const modaltoggle = () => {
     setGroupModal(!groupModal);
   }

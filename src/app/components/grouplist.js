@@ -13,7 +13,7 @@ import SafeImage from './SafeImage';
 import FriendshipStatusProvider from './FriendshipStatusProvider';
 import ClickableMemberName from './ClickableMemberName';
 
-const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
+const GroupList = ({ onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
   const router = useRouter();
   const { user: authUser } = Auth();
   const { timezone } = useTimezone();
@@ -155,7 +155,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         </div>
                       )}
                       <h3
-                        className="text-[1.1rem] font-semibold text-content-primary flex-1 overflow-hidden text-ellipsis whitespace-nowrap max-md:text-base"
+                        className="text-[1.1rem] font-semibold text-content-primary flex-1 min-w-0 break-words max-md:text-base"
                         style={getTextStyle(bgImage, bgColor)}
                       >
                         {group.name}
@@ -196,20 +196,6 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
 
                   {/* Action Buttons */}
                   <div className="flex gap-2 mt-3 relative z-[2]">
-                    {canEdit && (
-                      <button
-                        className="btn btn-primary text-sm flex-1 shadow-md hover:shadow-lg hover:-translate-y-px active:translate-y-0 transition-all"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onGroupSelect) {
-                            onGroupSelect(group);
-                          }
-                        }}
-                        aria-label="Invite member to group"
-                      >
-                        Invite Member
-                      </button>
-                    )}
                     {canEdit && (
                       <button
                         className="px-3 py-1 bg-surface-elevated text-content-primary rounded-btn hover:bg-surface-card-hover text-sm flex-shrink-0"
