@@ -635,17 +635,31 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   <label htmlFor="duration_minutes" className="block text-sm font-medium mb-1 text-content-primary">
                     Duration (minutes) {!editingEvent && <span className="text-red-500">*</span>}
                   </label>
-                  <input
-                    type="number"
-                    id="duration_minutes"
-                    value={newEvent.duration_minutes || ''}
-                    onChange={handleChange}
-                    className="w-full p-2 border rounded text-content-primary bg-surface-input"
-                    placeholder="Enter duration in minutes"
-                    required={!editingEvent}
-                    min="1"
-                    max="720"
-                  />
+                  {(() => {
+                    // Phase 66-03 CREVT-02 polish: inline error + red border when
+                    // user types a value over the 720-minute (12h) cap. Native
+                    // browser validation still blocks submit via max="720"; this
+                    // is added user feedback, not a replacement.
+                    const durationOverMax = newEvent.duration_minutes && Number(newEvent.duration_minutes) > 720;
+                    return (
+                      <>
+                        <input
+                          type="number"
+                          id="duration_minutes"
+                          value={newEvent.duration_minutes || ''}
+                          onChange={handleChange}
+                          className={`w-full p-2 border rounded text-content-primary bg-surface-input ${durationOverMax ? 'border-status-error' : ''}`}
+                          placeholder="Enter duration in minutes"
+                          required={!editingEvent}
+                          min="1"
+                          max="720"
+                        />
+                        {durationOverMax && (
+                          <p className="text-status-error text-xs mt-1">Maximum 12 hours (720 minutes)</p>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
