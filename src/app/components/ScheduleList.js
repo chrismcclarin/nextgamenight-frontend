@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { formatTime } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
+import KebabMenu from './KebabMenu';
 
 // Day of week helper
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -95,8 +96,8 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
                 </div>
               </div>
 
-              {/* Right: Actions */}
-              <div className="flex items-start gap-2 ml-4">
+              {/* Right: Actions — desktop inline buttons (≥768px) */}
+              <div className="hidden md:flex items-start gap-2 ml-4">
                 {/* Edit button */}
                 <button
                   onClick={() => onEdit?.(schedule)}
@@ -127,6 +128,32 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
                 >
                   Delete
                 </button>
+              </div>
+
+              {/* Mobile (<768px): collapse Edit/Pause/Delete into a single
+                  ⋮ kebab so the row never overflows on narrow viewports.
+                  Delete here opens the same in-row confirm dialog the
+                  desktop button uses (handleDeleteClick) — no two-tap on
+                  Schedule Delete per CONTEXT (only member Remove gets two-tap). */}
+              <div className="md:hidden ml-4">
+                <KebabMenu
+                  ariaLabel="Schedule actions"
+                  items={[
+                    {
+                      label: 'Edit',
+                      onClick: () => onEdit?.(schedule),
+                    },
+                    {
+                      label: isActive ? 'Pause' : 'Resume',
+                      onClick: () => onToggle?.(schedule.id),
+                    },
+                    {
+                      label: 'Delete',
+                      onClick: () => handleDeleteClick(schedule),
+                      danger: true,
+                    },
+                  ]}
+                />
               </div>
             </div>
 
