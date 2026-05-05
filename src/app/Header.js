@@ -62,7 +62,7 @@ function Header(){
                 class-toggle so the fade animation plays on both directions.
                 pointer-events-none on closed state ensures it never eats clicks. */}
             <div
-                className={`md:hidden fixed inset-0 bg-black/40 z-40 transition-opacity duration-200 ease-out ${
+                className={`md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity duration-200 ease-out ${
                     mobileMenuOpen
                         ? 'opacity-100'
                         : 'opacity-0 pointer-events-none'
@@ -134,7 +134,7 @@ function Header(){
                         pointer-events-none on closed state prevents the off-screen menu
                         from eating clicks on the page below. */}
                     <div
-                        className={`md:hidden absolute top-16 left-0 right-0 bg-surface-header border-t border-line-header border-b border-line-accent shadow-lg transition-transform transition-opacity duration-200 ease-out ${
+                        className={`md:hidden absolute top-16 left-0 right-0 bg-surface-header border-t border-line-header border-b border-line-accent shadow-lg transition-all duration-200 ease-out ${
                             mobileMenuOpen
                                 ? 'translate-y-0 opacity-100'
                                 : '-translate-y-full opacity-0 pointer-events-none'
@@ -173,12 +173,9 @@ function Header(){
                                 <NotificationBell user={user} variant="row" label="Invites" />
                             </div>
                         )}
-                        {/* Mobile theme toggle */}
-                        <div className="px-4 py-3 border-t border-line-header">
-                            <div className="flex items-center gap-3 text-white text-sm">
-                                <ThemeToggle />
-                                <span className="text-content-muted">Theme</span>
-                            </div>
+                        {/* Mobile theme toggle — full-row tap target for parity with Invites row */}
+                        <div className="border-t border-line-header">
+                            <ThemeToggle variant="row" label="Theme" />
                         </div>
                     </div>
                 </div>
