@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
-import { format, parse, startOfWeek, getDay, differenceInMinutes, setHours, setMinutes } from 'date-fns';
+import { format, parse, startOfWeek, getDay, differenceInMinutes, setHours, setMinutes, addMinutes, addDays, getHours, getMinutes } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
@@ -86,6 +86,196 @@ export default function EventScheduler({
   // Set default min/max times (10 AM to midnight)
   const defaultMinTime = minTime || setHours(setMinutes(new Date(0, 0, 0), 0), 10); // 10:00 AM
   const defaultMaxTime = maxTime || setHours(setMinutes(new Date(0, 0, 0), 59), 23); // 11:59 PM
+
+  // Phase 68-03 MOB-07: touch long-press → drag detection layered on top of
+  // react-big-calendar (which only supports mouse drag for slot selection).
+  // The handlers compute time-coordinates from touch points, derive a
+  // {start, end} range, and call the same `onTimeSelected` callback the
+  // desktop mouse path uses. Desktop click-and-drag is unchanged.
+  const wrapperRef = useRef(null);
+  const pressTimerRef = useRef(null);
+  const dragStartRef = useRef(null); // { time, dayIndex, clientX, clientY }
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragHighlight, setDragHighlight] = useState(null); // { top, left, width, height }
+
+  // coordsToSlot: turn page coordinates into a {time, dayIndex} pair.
+  // Bounds derive from defaultMinTime / defaultMaxTime — passing custom
+  // minTime/maxTime props now Just Works. snappedMinute is clamped to
+  // (totalMinutes - step) so the last addressable slot never rolls into
+  // the next day. addMinutes() handles minute → hour overflow without
+  // manual arithmetic.
+  const coordsToSlot = useCallback((clientX, clientY) => {
+    const wrapper = wrapperRef.current?.querySelector('.rbc-time-content');
+    if (!wrapper) return null;
+    const rect = wrapper.getBoundingClientRect();
+    const numCols = currentView === 'day' ? 1 : 7;
+    const dayIndex = Math.max(
+      0,
+      Math.min(numCols - 1, Math.floor((clientX - rect.left) / (rect.width / numCols)))
+    );
+    const yPct = Math.max(
+      0,
+      Math.min(1, (clientY - rect.top + wrapper.scrollTop) / wrapper.scrollHeight)
+    );
+
+    const totalMinutes = differenceInMinutes(defaultMaxTime, defaultMinTime);
+    const rawMinute = yPct * totalMinutes;
+    const snappedMinute = Math.min(
+      Math.round(rawMinute / step) * step,
+      totalMinutes - step
+    );
+
+    const baseDate = currentView === 'day'
+      ? currentDate
+      : addDays(startOfWeek(currentDate, { weekStartsOn: 1 }), dayIndex);
+    const dayAtMin = setMinutes(setHours(baseDate, getHours(defaultMinTime)), getMinutes(defaultMinTime));
+    const time = addMinutes(dayAtMin, snappedMinute);
+
+    return { time, dayIndex };
+  }, [currentView, currentDate, step, defaultMinTime, defaultMaxTime]);
+
+  // Compute the absolute-position highlight rect for the current drag range,
+  // anchored to the wrapper's coordinate space (not the document).
+  const computeHighlightRect = useCallback((startTime, endTime, dayIndex) => {
+    const wrapper = wrapperRef.current?.querySelector('.rbc-time-content');
+    if (!wrapper) return null;
+    const wrapperRect = wrapperRef.current.getBoundingClientRect();
+    const innerRect = wrapper.getBoundingClientRect();
+    const numCols = currentView === 'day' ? 1 : 7;
+    const colWidth = innerRect.width / numCols;
+
+    const totalMinutes = differenceInMinutes(defaultMaxTime, defaultMinTime);
+    const startBase = setMinutes(setHours(startTime, getHours(defaultMinTime)), getMinutes(defaultMinTime));
+    // Use minutes-since-day-min computed from the touched times' time-of-day only.
+    const startMinFromMin = (getHours(startTime) - getHours(defaultMinTime)) * 60 + (getMinutes(startTime) - getMinutes(defaultMinTime));
+    const endMinFromMin = (getHours(endTime) - getHours(defaultMinTime)) * 60 + (getMinutes(endTime) - getMinutes(defaultMinTime));
+    const lo = Math.min(startMinFromMin, endMinFromMin);
+    const hi = Math.max(startMinFromMin, endMinFromMin) + step; // include the trailing slot
+
+    const topPx = (lo / totalMinutes) * wrapper.scrollHeight - wrapper.scrollTop;
+    const heightPx = ((hi - lo) / totalMinutes) * wrapper.scrollHeight;
+    const leftPx = innerRect.left - wrapperRect.left + dayIndex * colWidth;
+
+    // Reference startBase so the linter doesn't complain about an unused var
+    // (it documents the anchor we'd use for cross-day clamping in future work).
+    void startBase;
+
+    return {
+      top: Math.max(0, topPx + (innerRect.top - wrapperRect.top)),
+      left: leftPx,
+      width: colWidth,
+      height: Math.max(step, heightPx),
+    };
+  }, [currentView, step, defaultMinTime, defaultMaxTime]);
+
+  const cancelLongPress = useCallback(() => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+  }, []);
+
+  const handleTouchStart = useCallback((e) => {
+    if (e.touches.length !== 1) {
+      cancelLongPress();
+      return;
+    }
+    const touch = e.touches[0];
+    const slot = coordsToSlot(touch.clientX, touch.clientY);
+    if (!slot) return;
+    dragStartRef.current = {
+      ...slot,
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+    };
+    cancelLongPress();
+    pressTimerRef.current = setTimeout(() => {
+      // 250ms grace elapsed without the user lifting / scrolling — enter drag mode.
+      setIsDragging(true);
+      const rect = computeHighlightRect(slot.time, slot.time, slot.dayIndex);
+      if (rect) setDragHighlight(rect);
+    }, 250);
+  }, [coordsToSlot, computeHighlightRect, cancelLongPress]);
+
+  const handleTouchEnd = useCallback((e) => {
+    cancelLongPress();
+    if (!isDragging || !dragStartRef.current) {
+      // Single short tap or scroll — nothing committed.
+      setIsDragging(false);
+      setDragHighlight(null);
+      dragStartRef.current = null;
+      return;
+    }
+    const touch = e.changedTouches[0];
+    const endSlot = touch ? coordsToSlot(touch.clientX, touch.clientY) : null;
+    const startTime = dragStartRef.current.time;
+    const endTime = endSlot ? endSlot.time : startTime;
+
+    let start = startTime <= endTime ? startTime : endTime;
+    let end = startTime <= endTime ? endTime : startTime;
+    // Guarantee at least one slot of duration (covers tap-without-move once
+    // drag mode has been entered).
+    if (differenceInMinutes(end, start) < step) {
+      end = addMinutes(start, step);
+    } else {
+      // The touchEnd cell currently represents the START of that slot — extend
+      // by `step` so the user-visible range covers the slot they released on.
+      end = addMinutes(end, step);
+    }
+    if (onTimeSelected) {
+      onTimeSelected(start, end);
+    }
+    setIsDragging(false);
+    setDragHighlight(null);
+    dragStartRef.current = null;
+  }, [isDragging, coordsToSlot, onTimeSelected, step, cancelLongPress]);
+
+  const handleTouchCancel = useCallback(() => {
+    cancelLongPress();
+    setIsDragging(false);
+    setDragHighlight(null);
+    dragStartRef.current = null;
+  }, [cancelLongPress]);
+
+  // Imperatively attach touchmove with { passive: false } so we can call
+  // preventDefault() to block scroll while in drag mode. React's onTouchMove
+  // is passive in newer versions (preventDefault is a no-op there).
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return undefined;
+
+    const handleTouchMove = (e) => {
+      if (!dragStartRef.current) return;
+      if (!isDragging) {
+        // User is scrolling — abort the long-press timer if it hasn't fired.
+        cancelLongPress();
+        return;
+      }
+      // In drag mode: block scroll, update highlight to current touch point.
+      e.preventDefault();
+      const touch = e.touches[0];
+      if (!touch) return;
+      const slot = coordsToSlot(touch.clientX, touch.clientY);
+      if (!slot) return;
+      const rect = computeHighlightRect(dragStartRef.current.time, slot.time, dragStartRef.current.dayIndex);
+      if (rect) setDragHighlight(rect);
+    };
+
+    wrapper.addEventListener('touchmove', handleTouchMove, { passive: false });
+    return () => {
+      wrapper.removeEventListener('touchmove', handleTouchMove);
+    };
+  }, [isDragging, coordsToSlot, computeHighlightRect, cancelLongPress]);
+
+  // Cleanup any lingering timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+        pressTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Phase 66-01: navigation-only effect. Slot highlighting now flows from
   // the controlled `selectedSlot` prop (parent-owned), so this hook only
@@ -213,7 +403,24 @@ export default function EventScheduler({
 
   return (
     <div className="space-y-4">
-      <div className="h-[600px] bg-surface-card rounded-card border border-line overflow-hidden">
+      <div
+        ref={wrapperRef}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchCancel}
+        className="relative h-[600px] bg-surface-card rounded-card border border-line overflow-hidden"
+      >
+        {dragHighlight && (
+          <div
+            className="absolute pointer-events-none bg-btn-primary/20 border-2 border-btn-primary rounded z-10"
+            style={{
+              top: dragHighlight.top,
+              left: dragHighlight.left,
+              width: dragHighlight.width,
+              height: dragHighlight.height,
+            }}
+          />
+        )}
         <Calendar
           key={heatmapData ? 'heatmap-loaded' : 'heatmap-empty'}
           localizer={localizer}

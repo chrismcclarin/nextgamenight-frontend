@@ -381,6 +381,49 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     setNewEvent(prev => ({ ...prev, game_id: game.id, game_name: game.name }));
   };
 
+  // Phase 68-03 MOB-07: mobile primary entry. Seeds a sensible default
+  // start_date and KEEPS the visual calendar visible — this is an
+  // additional entry point, not a mode-switch. Deliberately does NOT call
+  // setUseVisualCalendar(false). The user can fine-tune via the Selected
+  // Time caption below the calendar or by long-press-dragging on the
+  // calendar surface.
+  const handleQuickCreateMobile = () => {
+    // Anchor to prefillDate's day if present (from day-tap entry path),
+    // otherwise to today.
+    const anchor = prefillDate ? parseISO(prefillDate) : new Date();
+    const now = new Date();
+    let defaultStart;
+    if (prefillDate) {
+      // Day-tap entry: respect the prefilled day. Default to 19:00 (game-night
+      // friendly) — matches the existing prefillDate-only branch in the form
+      // initializer above.
+      defaultStart = new Date(anchor);
+      defaultStart.setHours(19, 0, 0, 0);
+    } else if (now.getHours() < 12) {
+      // Before noon: default to noon today.
+      defaultStart = new Date(now);
+      defaultStart.setHours(12, 0, 0, 0);
+    } else {
+      // After noon: round up to the next half-hour slot.
+      defaultStart = new Date(now);
+      const minutes = defaultStart.getMinutes();
+      const roundedMinutes = minutes < 30 ? 30 : 0;
+      if (roundedMinutes === 0) defaultStart.setHours(defaultStart.getHours() + 1);
+      defaultStart.setMinutes(roundedMinutes, 0, 0);
+    }
+    // Match the existing datetime-local serialization shape used by start_date
+    // throughout this component ("YYYY-MM-DDTHH:mm", local wall-clock).
+    const pad = (n) => String(n).padStart(2, '0');
+    const startStr = `${defaultStart.getFullYear()}-${pad(defaultStart.getMonth() + 1)}-${pad(defaultStart.getDate())}T${pad(defaultStart.getHours())}:${pad(defaultStart.getMinutes())}`;
+    setNewEvent((prev) => ({
+      ...prev,
+      start_date: startStr,
+      // Leave duration_minutes at its current value (form default applies).
+    }));
+    // Note: visual calendar stays visible. The Selected Time caption updates
+    // immediately because derivedSelectedSlot is a useMemo over start_date.
+  };
+
   const onSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -579,7 +622,22 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             </div>
 
             {useVisualCalendar && !hideVisualCalendar ? (
-              <EventScheduler
+              <>
+                {/* Phase 68-03 MOB-07: mobile primary entry. Always-visible
+                    "+ Create event" button (md:hidden on desktop) seeds a
+                    default start time and KEEPS the visual calendar visible.
+                    This is an additional entry point, not a mode-switch —
+                    the existing "Switch to Manual Entry" link above remains
+                    the explicit escape hatch for users who want the
+                    keyboard-only datetime-local form. */}
+                <button
+                  type="button"
+                  onClick={handleQuickCreateMobile}
+                  className="md:hidden btn btn-primary w-full mb-3"
+                >
+                  + Create event
+                </button>
+                <EventScheduler
                 onTimeSelected={(start, end) => {
                   // Phase 66-01: write canonical fields only. The visual
                   // highlight will round-trip back via derivedSelectedSlot
@@ -601,6 +659,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 defaultView={initialVisualView}
                 scrollToTime={peakScrollTime}
               />
+              </>
             ) : (
               <div className="space-y-4">
                 {/* Heatmap reference for manual entry mode */}
