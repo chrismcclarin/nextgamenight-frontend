@@ -883,14 +883,6 @@ export default function GameDetailPage() {
                                 />
                             ))}
                         </div>
-                        <div className="mt-4 text-center">
-                            <button
-                                onClick={() => router.push(`/gameSuggestions?eventId=${event_id}&groupId=${group_id}`)}
-                                className="text-content-link hover:text-content-link-hover text-sm font-medium"
-                            >
-                                Browse all suggestions &rarr;
-                            </button>
-                        </div>
                     </div>
                 )}
 

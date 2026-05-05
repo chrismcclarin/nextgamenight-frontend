@@ -5,8 +5,8 @@ import { suggestionsAPI } from '../../lib/api';
 import GameSuggestionCard from './GameSuggestionCard';
 
 /**
- * BrowseMoreModal — In-app modal that replaces the legacy /gameSuggestions
- * standalone page (which opened in a new tab and had a broken back button).
+ * BrowseMoreModal — In-app modal that replaces the legacy standalone
+ * suggestions page (which opened in a new tab and had a broken back button).
  *
  * Mounted from inside QuickSuggestions, which is mounted from createEvent.
  * This is the ONLY entry point to the suggestions surface in Phase 67.
