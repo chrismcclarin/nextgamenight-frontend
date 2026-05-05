@@ -72,36 +72,38 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
   return (
     <div className="mt-1 mb-1">
       <div className="text-xs text-content-muted uppercase tracking-wide mb-1">Suggestions</div>
-      <div className="flex items-center gap-2 overflow-x-auto flex-nowrap pb-1">
-        {suggestions.map((game) => (
-          <button
-            key={game.id}
-            type="button"
-            onClick={() => onSelectGame({ id: game.id, name: game.name })}
-            className="flex items-center gap-1.5 px-2 py-1 border border-line rounded-full bg-surface-card hover:bg-surface-card-hover transition-colors cursor-pointer flex-shrink-0"
-            title={game.name}
-          >
-            {game.thumbnail_url ? (
-              <img
-                src={game.thumbnail_url}
-                alt=""
-                className="w-6 h-6 rounded object-cover flex-shrink-0"
-              />
-            ) : (
-              <div className="w-6 h-6 rounded bg-surface-card-hover flex-shrink-0" />
-            )}
-            <span className="text-sm text-content-primary truncate max-w-[120px]">
-              {game.name}
-            </span>
-            {(game.min_players || game.max_players) && (
-              <span className="text-xs text-content-muted flex-shrink-0">
-                {game.min_players === game.max_players
-                  ? `${game.min_players}p`
-                  : `${game.min_players || '?'}-${game.max_players || '?'}p`}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 overflow-x-auto flex-nowrap pb-1 flex-1 min-w-0">
+          {suggestions.map((game) => (
+            <button
+              key={game.id}
+              type="button"
+              onClick={() => onSelectGame({ id: game.id, name: game.name })}
+              className="flex items-center gap-1.5 px-2 py-1 border border-line rounded-full bg-surface-card hover:bg-surface-card-hover transition-colors cursor-pointer flex-shrink-0"
+              title={game.name}
+            >
+              {game.thumbnail_url ? (
+                <img
+                  src={game.thumbnail_url}
+                  alt=""
+                  className="w-6 h-6 rounded object-cover flex-shrink-0"
+                />
+              ) : (
+                <div className="w-6 h-6 rounded bg-surface-card-hover flex-shrink-0" />
+              )}
+              <span className="text-sm text-content-primary truncate max-w-[120px]">
+                {game.name}
               </span>
-            )}
-          </button>
-        ))}
+              {(game.min_players || game.max_players) && (
+                <span className="text-xs text-content-muted flex-shrink-0">
+                  {game.min_players === game.max_players
+                    ? `${game.min_players}p`
+                    : `${game.min_players || '?'}-${game.max_players || '?'}p`}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
         <a
           href={browseMoreUrl}
           target="_blank"
