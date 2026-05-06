@@ -95,8 +95,14 @@ function formatRelativeDateTime(dateStr, timezone) {
  * @param {Array} props.events - Array of event objects from eventsAPI
  * @param {boolean} [props.showGroupName=false] - Show group name per row (for UserHome multi-group view)
  * @param {boolean} [props.loading=false] - Show loading placeholder
+ * @param {string} [props.viewerDbUserId=null] - Phase 71.1 GAMP-09: User.id UUID
+ *   (NOT Auth0 string). When provided, events where the viewer's
+ *   EventParticipation row has is_guest=true are visually distinguished
+ *   (game-only / two-QR-model events) with a dashed amber border + Guest pill.
+ *   Resolved at the parent via usersAPI.getUser(user.sub). When null/missing,
+ *   no event is marked as guest (graceful default).
  */
-export default function UpcomingEventsCard({ events, showGroupName = false, loading = false }) {
+export default function UpcomingEventsCard({ events, showGroupName = false, loading = false, viewerDbUserId = null }) {
   const router = useRouter();
   const { timezone } = useTimezone();
   const [expanded, setExpanded] = useState(false);
@@ -141,11 +147,21 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
             const dateTime = formatRelativeDateTime(event.start_date, timezone);
             const groupName = event.Group?.name;
 
+            // Phase 71.1 GAMP-09: visually distinguish events where the viewer
+            // joined as a guest (EventParticipation.is_guest=true). Match on
+            // User.id UUID — not Auth0 string, not email. The previous fragile
+            // email heuristic is gone.
+            const isGuestEvent = (() => {
+              if (!viewerDbUserId) return false;
+              const eps = Array.isArray(event.EventParticipations) ? event.EventParticipations : [];
+              return eps.some(p => p.user_id === viewerDbUserId && p.is_guest === true);
+            })();
+
             return (
               <div
                 key={event.id}
                 onClick={() => handleEventClick(event)}
-                className="hover:bg-surface-card-hover rounded py-1.5 px-2 cursor-pointer"
+                className={`hover:bg-surface-card-hover rounded py-1.5 px-2 cursor-pointer ${isGuestEvent ? 'border-l-2 border-dashed border-amber-400 dark:border-amber-500/70 pl-3' : ''}`}
               >
                 <span className="text-sm text-content-secondary">{gameName}</span>
                 <span className="text-sm text-content-muted"> · </span>
@@ -155,6 +171,14 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                     <span className="text-sm text-content-muted"> · </span>
                     <span className="text-sm text-content-secondary">{groupName}</span>
                   </>
+                )}
+                {isGuestEvent && (
+                  <span
+                    className="inline-flex items-center px-1.5 py-0.5 ml-2 text-[10px] uppercase tracking-wide rounded bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
+                    title="You joined this event as a guest (not a group member)"
+                  >
+                    Guest
+                  </span>
                 )}
               </div>
             );
