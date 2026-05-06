@@ -18,6 +18,10 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     // Owner-only kebab on each non-owner active row sets this; null = closed.
     const [transferTarget, setTransferTarget] = useState(null); // { user_id, name } or null
     const [transferring, setTransferring] = useState(false);
+    // Invite modal + reset-link state — buttons live in the Manage Members header,
+    // the actual invite UI is the existing FriendInvitePanel modal.
+    const [inviteModalOpen, setInviteModalOpen] = useState(false);
+    const [resettingInvite, setResettingInvite] = useState(false);
 
     useEffect(() => {
         if (modal && group_id && user?.sub) {
@@ -45,20 +49,23 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
 
             // Find current user's role
             const currentUserMember = data.find(m => m.user_id === user.sub);
-            if (currentUserMember && currentUserMember.UserGroup) {
-                setUserRole(currentUserMember.UserGroup.role);
-            }
+            const role = currentUserMember?.UserGroup?.role || null;
+            if (role) setUserRole(role);
 
-            // Fetch pending invites (only succeeds for owner/admin)
-            try {
-                setPendingLoading(true);
-                const invites = await invitesAPI.getGroupPendingInvites(group_id);
-                setPendingInvites(Array.isArray(invites) ? invites : []);
-            } catch (inviteErr) {
-                // 403 means user is not owner/admin -- that's expected
+            // Pending invites endpoint is owner/admin-only — gate the call so non-admins
+            // don't trigger a 403 + console error every time they open the modal.
+            if (role === 'owner' || role === 'admin') {
+                try {
+                    setPendingLoading(true);
+                    const invites = await invitesAPI.getGroupPendingInvites(group_id);
+                    setPendingInvites(Array.isArray(invites) ? invites : []);
+                } catch (inviteErr) {
+                    setPendingInvites([]);
+                } finally {
+                    setPendingLoading(false);
+                }
+            } else {
                 setPendingInvites([]);
-            } finally {
-                setPendingLoading(false);
             }
         } catch (error) {
             console.error('Error fetching members:', error);
@@ -190,21 +197,38 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                     {canManageMembers ? 'Manage Group Members' : 'Members'}
                 </h2>
 
-                {/* Canonical invite surface — embedded inline per Phase 69 GROUP-01 consolidation.
-                    Replaces the standalone "Share Invite QR" button + QRCodeModal that used to
-                    live here, and centralizes friend-invite, email-invite, QR, and (admin-only)
-                    reset-link affordances. Standalone FriendInvitePanel mounts elsewhere will be
-                    cleaned up by Plans 69-03 / 69-04. */}
                 {userRole && userRole !== 'pending' && (
-                    <div className="mb-6 pb-4 border-b border-line">
-                        <FriendInvitePanel
-                            group={{ id: group_id, name: group_name }}
-                            open={modal}
-                            onClose={() => {}}
-                            onMemberAdded={onMembersUpdated}
-                            isAdmin={canManageMembers}
-                            embedded={true}
-                        />
+                    <div className="mb-4 pb-4 border-b border-line flex flex-wrap gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setInviteModalOpen(true)}
+                            className="btn btn-primary text-sm"
+                        >
+                            Invite members
+                        </button>
+                        {canManageMembers && (
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    if (resettingInvite) return;
+                                    if (!window.confirm('Reset invite link? The current QR code and link will stop working.')) return;
+                                    setResettingInvite(true);
+                                    try {
+                                        await groupsAPI.resetInviteToken(group_id);
+                                    } catch (err) {
+                                        console.error('Failed to reset invite token:', err);
+                                        alert(err.message || 'Failed to reset invite link. Please try again.');
+                                    } finally {
+                                        setResettingInvite(false);
+                                    }
+                                }}
+                                disabled={resettingInvite}
+                                className="btn btn-secondary text-sm text-status-error"
+                                title="Invalidate the current invite link and generate a new one"
+                            >
+                                {resettingInvite ? 'Resetting…' : 'Reset QR link'}
+                            </button>
+                        )}
                     </div>
                 )}
 
@@ -527,6 +551,18 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 </div>
             </div>
         )}
+
+        {/* Invite members modal — sibling overlay so it stacks above ManageMembers
+            and clicking inside it doesn't trigger the parent's backdrop close. */}
+        <FriendInvitePanel
+            group={{ id: group_id, name: group_name }}
+            open={inviteModalOpen}
+            onClose={() => setInviteModalOpen(false)}
+            onMemberAdded={() => {
+                if (onMembersUpdated) onMembersUpdated();
+                fetchMembers();
+            }}
+        />
         </>
     );
 }

@@ -4,7 +4,7 @@ import { useUser } from '@auth0/nextjs-auth0/client';
 import { friendshipsAPI, invitesAPI, groupsAPI } from '../../lib/api';
 import { QRCodeSVG } from 'qrcode.react';
 
-function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = false, embedded = false }) {
+function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = false }) {
     const { user } = useUser();
 
     const [friends, setFriends] = useState([]);
@@ -222,10 +222,6 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
     const availableFriends = friends.filter(f => f.friend);
     const selectableCount = availableFriends.filter(f => !groupMemberIds.includes(f.friend.user_id)).length;
 
-    // Body sections — shared between standalone modal mode and embedded mode.
-    // Embedded mode (used by ManageMembers per Phase 69-02 GROUP-01 consolidation)
-    // skips the backdrop / sliding-panel / header / footer chrome and renders
-    // these sections inline at the top of the parent modal's body.
     const body = (
         <>
                     {/* Friends section */}
@@ -448,14 +444,6 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
         </>
     );
 
-    // Embedded mode: render the body inline (no backdrop, no sliding panel,
-    // no header, no footer — parent modal owns the chrome).
-    if (embedded) {
-        return <div className="space-y-0">{body}</div>;
-    }
-
-    // Standalone modal mode: existing backdrop + sliding-panel chrome preserved
-    // for UserHomePage / createGroup / groupHomePage call sites unchanged.
     return (
         <>
             {/* Backdrop */}
