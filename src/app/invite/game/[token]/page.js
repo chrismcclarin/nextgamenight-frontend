@@ -16,6 +16,36 @@ function GameInvitePage() {
   const [status, setStatus] = useState('loading');
   const [eventInfo, setEventInfo] = useState(null);
   const [error, setError] = useState(null);
+  // Bumped by handleRetry to re-fire both preview AND join effects when the
+  // backend was unreachable on first attempt.
+  const [retryKey, setRetryKey] = useState(0);
+
+  // Classify a thrown error as transient (retryable) or permanent. Used by
+  // both the preview fetch catch and the join POST catch so backend-down /
+  // network failures consistently land on the retry CTA, not the dead-end
+  // "invite no longer valid" copy.
+  const classifyError = (err) => {
+    const msg = err?.message || '';
+    const httpStatus = err?.status;
+    const lowerMsg = msg.toLowerCase();
+    const isTransient =
+      httpStatus === 0 ||
+      (httpStatus >= 500 && httpStatus < 600) ||
+      err?.name === 'TypeError' ||
+      lowerMsg.includes('network') ||
+      lowerMsg.includes('failed to fetch') ||
+      lowerMsg.includes('fetch');
+    const isPermanent =
+      httpStatus === 404 ||
+      httpStatus === 410 ||
+      msg.includes('expired') ||
+      msg.includes('passed') ||
+      msg.includes('full') ||
+      msg.includes('deleted') ||
+      msg.includes('Invalid invite');
+    // Ambiguous → treat as transient. findOrCreate makes retry idempotent.
+    return isPermanent && !isTransient ? 'permanent' : 'transient';
+  };
 
   // POLL-05 race fix (D-INVITE-LANDING-04): single-shot in-flight guard.
   // The previous implementation listed `status` in the autoJoin effect's
@@ -45,11 +75,20 @@ function GameInvitePage() {
         setEventInfo(data);
       } catch (err) {
         if (cancelled) return;
-        // 410 expired event
+        // 410 expired event — distinct UI state with its own copy
         if (err.message && (err.message.includes('expired') || err.message.includes('passed'))) {
           setStatus('expired');
+          return;
+        }
+        // Network failures (backend down, offline, fetch error) classify as
+        // transient so the user sees Retry, not a dead-end "invite no longer
+        // valid" message. Permanent classification (404 token, etc.) keeps
+        // its existing copy.
+        const kind = classifyError(err);
+        if (kind === 'transient') {
+          setStatus('error-transient');
+          setError(err.message || 'Could not reach the server.');
         } else {
-          // Preview failed permanently (404 invalid token, etc.)
           setStatus('error-permanent');
           setError('This invite link is no longer valid.');
         }
@@ -60,7 +99,7 @@ function GameInvitePage() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, retryKey]);
 
   // Handle auth state after preview is loaded
   useEffect(() => {
@@ -98,46 +137,26 @@ function GameInvitePage() {
         }
       })
       .catch((err) => {
-        // D-INVITE-LANDING-03: branch transient vs permanent.
-        // Permanent: 404 invalid token, 410 expired, "expired"/"passed" copy,
-        // "full"/"deleted" copy. These won't be fixed by retrying.
-        // Transient: network failures, 5xx, fetch TypeErrors. Retry-able.
-        const msg = err?.message || '';
-        const status = err?.status;
-        const isPermanent =
-          status === 404 ||
-          status === 410 ||
-          msg.includes('expired') ||
-          msg.includes('passed') ||
-          msg.includes('full') ||
-          msg.includes('deleted') ||
-          msg.includes('Invalid invite');
-        const isTransient =
-          status === 0 ||
-          (status >= 500 && status < 600) ||
-          err?.name === 'TypeError' ||
-          msg.toLowerCase().includes('network') ||
-          msg.toLowerCase().includes('fetch') ||
-          msg.toLowerCase().includes('failed to fetch');
-
-        setError(msg || 'Failed to join game night.');
-        // If we can't classify confidently, treat as transient — retry is
-        // safer than a dead-end CTA, and findOrCreate makes retry idempotent.
-        setStatus(isPermanent && !isTransient ? 'error-permanent' : 'error-transient');
+        // D-INVITE-LANDING-03: branch transient vs permanent via shared
+        // classifier (also used by preview fetch). findOrCreate on the
+        // backend makes retry idempotent.
+        setError(err?.message || 'Failed to join game night.');
+        setStatus(classifyError(err) === 'permanent' ? 'error-permanent' : 'error-transient');
       });
     // NOTE: `status` deliberately omitted from deps — its inclusion was the
     // root cause of the parallel-POST flicker bug.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user, eventInfo, token]);
 
-  // Retry handler for transient errors. Resets the ref so the autoJoin
-  // effect can fire one more POST.
+  // Retry handler for transient errors. Resets the ref AND bumps retryKey
+  // so BOTH the preview effect and the join effect re-fire — necessary when
+  // the preview itself failed (e.g. backend was down on first attempt).
   const handleRetry = () => {
     joiningRef.current = false;
     setError(null);
     setStatus('loading');
-    // Bump the effect: status flips to loading, eventInfo + user still
-    // truthy, ref cleared → next render runs the join path again.
+    setEventInfo(null);
+    setRetryKey((k) => k + 1);
   };
 
   // Format event date nicely
