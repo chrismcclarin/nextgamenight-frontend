@@ -48,6 +48,10 @@ function Profile(){
     const [googleCalendarConnected, setGoogleCalendarConnected] = useState(false);
     const [checkingCalendarStatus, setCheckingCalendarStatus] = useState(true);
     const [userData, setUserData] = useState(null);
+    // Paint gate per D-PAINT-01 (Phase 69-04 membershipChecked shape) — gates ONLY the
+    // username/avatar zone so we never flash user.name (Auth0/Google) before
+    // userData.username arrives. Set true at the end of fetchUserData success AND catch.
+    const [profileLoaded, setProfileLoaded] = useState(false);
     const [editingUsername, setEditingUsername] = useState(false);
     const [username, setUsername] = useState('');
     const [savingUsername, setSavingUsername] = useState(false);
@@ -367,11 +371,16 @@ function Profile(){
             }
             // Initialize notification preferences
             setPreferences(userInfo.notification_preferences || DEFAULT_PREFERENCES);
+            // Paint gate (D-PAINT-01): unblock username/avatar zone after backend resolves.
+            setProfileLoaded(true);
         } catch (error) {
             console.error('Error fetching user data:', error);
             // Fallback to Auth0 user data
             setUsername(user.name || user.email?.split('@')[0] || 'User');
             setPreferences(DEFAULT_PREFERENCES);
+            // Paint gate: unblock even on failure so user doesn't stare at skeleton forever.
+            // Auth0 fallback name will appear; this is the documented degradation path.
+            setProfileLoaded(true);
         }
     }, [user]);
     
@@ -683,67 +692,85 @@ function Profile(){
 
                 {/* Profile Header */}
                 <div className="card p-4 md:p-6 mb-6">
-                    <div className="flex items-center gap-3 md:gap-4">
-                        {user.picture && (
-                            <img src={user.picture} alt={userData?.username || user.name} className="w-16 h-16 md:w-20 md:h-20 rounded-full flex-shrink-0" />
-                        )}
-                        <div className="min-w-0 flex-1">
-                            {editingUsername ? (
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                                    <input
-                                        type="text"
-                                        value={username}
-                                        onChange={(e) => setUsername(e.target.value)}
-                                        maxLength={50}
-                                        className="flex-1 px-3 py-2 border border-line rounded-btn text-content-primary bg-surface-input text-lg md:text-xl font-bold"
-                                        placeholder="Enter username"
-                                        autoFocus
-                                    />
-                                    <div className="flex gap-2">
+                    {/* Avatar + Username zone — paint-gated (D-PAINT-01) so user.name (Auth0/Google)
+                        never flashes before userData.username arrives. Skeleton on first paint;
+                        real content (or Auth0 fallback on fetch failure) once profileLoaded flips. */}
+                    {profileLoaded ? (
+                        <div className="flex items-center gap-3 md:gap-4">
+                            {user.picture && (
+                                <img src={user.picture} alt={userData?.username || user.name} className="w-16 h-16 md:w-20 md:h-20 rounded-full flex-shrink-0" />
+                            )}
+                            <div className="min-w-0 flex-1">
+                                {editingUsername ? (
+                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                        <input
+                                            type="text"
+                                            value={username}
+                                            onChange={(e) => setUsername(e.target.value)}
+                                            maxLength={50}
+                                            className="flex-1 px-3 py-2 border border-line rounded-btn text-content-primary bg-surface-input text-lg md:text-xl font-bold"
+                                            placeholder="Enter username"
+                                            autoFocus
+                                        />
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={handleSaveUsername}
+                                                disabled={savingUsername || !username.trim()}
+                                                className="btn btn-primary px-4 py-2 text-sm whitespace-nowrap disabled:opacity-50"
+                                            >
+                                                {savingUsername ? 'Saving...' : 'Save'}
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setEditingUsername(false);
+                                                    setUsername(userData?.username || user.name || user.email?.split('@')[0] || '');
+                                                }}
+                                                disabled={savingUsername}
+                                                className="btn btn-secondary px-4 py-2 text-sm whitespace-nowrap disabled:opacity-50"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                        <p className="text-xs text-content-muted">{username.length}/50</p>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <h1 className="text-xl md:text-2xl font-bold text-content-primary truncate">
+                                            {userData?.username || user.name}
+                                        </h1>
                                         <button
-                                            onClick={handleSaveUsername}
-                                            disabled={savingUsername || !username.trim()}
-                                            className="btn btn-primary px-4 py-2 text-sm whitespace-nowrap disabled:opacity-50"
+                                            onClick={() => setEditingUsername(true)}
+                                            className="text-content-link hover:text-content-link-hover text-sm md:text-base"
+                                            title="Edit username"
                                         >
-                                            {savingUsername ? 'Saving...' : 'Save'}
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setEditingUsername(false);
-                                                setUsername(userData?.username || user.name || user.email?.split('@')[0] || '');
-                                            }}
-                                            disabled={savingUsername}
-                                            className="btn btn-secondary px-4 py-2 text-sm whitespace-nowrap disabled:opacity-50"
-                                        >
-                                            Cancel
+                                            ✏️
                                         </button>
                                     </div>
-                                    <p className="text-xs text-content-muted">{username.length}/50</p>
-                                </div>
-                            ) : (
-                                <div className="flex items-center gap-2">
-                                    <h1 className="text-xl md:text-2xl font-bold text-content-primary truncate">
-                                        {userData?.username || user.name}
-                                    </h1>
-                                    <button
-                                        onClick={() => setEditingUsername(true)}
-                                        className="text-content-link hover:text-content-link-hover text-sm md:text-base"
-                                        title="Edit username"
-                                    >
-                                        ✏️
-                                    </button>
-                                </div>
-                            )}
-                            <p className="text-sm md:text-base text-content-secondary truncate">{user.email}</p>
-                            {userData?.username && userData.username !== user.name && (
-                                <p className="text-xs text-content-muted mt-1">
-                                    Display name: {userData.username} (from Google: {user.name})
-                                </p>
-                            )}
+                                )}
+                                <p className="text-sm md:text-base text-content-secondary truncate">{user.email}</p>
+                                {userData?.username && userData.username !== user.name && (
+                                    <p className="text-xs text-content-muted mt-1">
+                                        Display name: {userData.username} (from Google: {user.name})
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        // Skeleton placeholder — shimmer bars sized to typical username + email.
+                        // Uses bg-surface-card-hover token so it auto-themes.
+                        <div className="flex items-center gap-3 md:gap-4 w-full">
+                            <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-card-hover animate-pulse flex-shrink-0" />
+                            <div className="flex-1 space-y-2">
+                                <div className="h-7 w-40 bg-surface-card-hover rounded animate-pulse" />
+                                <div className="h-4 w-56 bg-surface-card-hover rounded animate-pulse" />
+                            </div>
+                        </div>
+                    )}
 
-                            {/* Phone Input - only when sms_enabled */}
-                            {userData?.sms_enabled && (
-                                <div className="mt-2">
+                    {/* Phone Input — sibling block (always rendered shape; sms_enabled wrapper
+                        retained here for now; Task 3 removes it). */}
+                    {userData?.sms_enabled && (
+                        <div className="mt-2">
                                     {(phoneState === 'idle' || phoneState === 'editing') && (
                                         <div className="flex flex-col sm:flex-row sm:items-start gap-2">
                                             <div className="flex-1 relative">
@@ -856,8 +883,6 @@ function Profile(){
                                     )}
                                 </div>
                             )}
-                        </div>
-                    </div>
 
                     {/* Google Calendar Connection */}
                     <div className="mt-4 pt-4 border-t border-line">
