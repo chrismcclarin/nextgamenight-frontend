@@ -3,21 +3,31 @@
 import { useState, useEffect } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { friendshipsAPI, groupsAPI, invitesAPI } from '../../lib/api';
+import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 
 function FriendsPage() {
     const { user, isLoading: authLoading } = useUser();
 
+    // POLL-02: receivedRequests + accept/decline mutators come from the
+    // shared FriendshipStatusProvider (mounted at root). NotificationBell
+    // and this page now read the same array — accepting in one surface
+    // immediately removes the row from the other.
+    const {
+        receivedRequests,
+        acceptRequest: ctxAcceptRequest,
+        declineRequest: ctxDeclineRequest,
+        loading: friendshipCtxLoading,
+    } = useFriendshipStatus();
+
     // Tab state
     const [activeTab, setActiveTab] = useState('friends');
 
-    // Data state
+    // Data state — local copies kept for friends + sent (still owned here)
     const [friends, setFriends] = useState([]);
-    const [receivedRequests, setReceivedRequests] = useState([]);
     const [sentRequests, setSentRequests] = useState([]);
 
     // Loading state per tab
     const [loadingFriends, setLoadingFriends] = useState(true);
-    const [loadingReceived, setLoadingReceived] = useState(true);
     const [loadingSent, setLoadingSent] = useState(true);
 
     // Search state
@@ -30,7 +40,6 @@ function FriendsPage() {
 
     // Error state
     const [friendsError, setFriendsError] = useState(null);
-    const [receivedError, setReceivedError] = useState(null);
     const [sentError, setSentError] = useState(null);
 
     // Action loading state
@@ -53,9 +62,10 @@ function FriendsPage() {
     }, [user]);
 
     const fetchAllData = async () => {
-        const [friendsResult, receivedResult, sentResult] = await Promise.allSettled([
+        // receivedRequests now lives in FriendshipStatusProvider — no local
+        // fetch here.
+        await Promise.allSettled([
             fetchFriends(),
-            fetchReceivedRequests(),
             fetchSentRequests(),
             fetchUserGroups(),
         ]);
@@ -87,20 +97,6 @@ function FriendsPage() {
             setFriendsError('Failed to load friends.');
         } finally {
             setLoadingFriends(false);
-        }
-    };
-
-    const fetchReceivedRequests = async () => {
-        setLoadingReceived(true);
-        setReceivedError(null);
-        try {
-            const data = await friendshipsAPI.getReceivedRequests();
-            setReceivedRequests(Array.isArray(data) ? data : []);
-        } catch (err) {
-            console.error('Error fetching received requests:', err);
-            setReceivedError('Failed to load friend requests.');
-        } finally {
-            setLoadingReceived(false);
         }
     };
 
@@ -159,32 +155,30 @@ function FriendsPage() {
         }
     };
 
-    // Accept friend request
+    // Accept friend request — provider handles optimistic removal,
+    // 404-stale silencing, and friends-list refresh. Local fetchFriends()
+    // still kept since the friends-tab list is owned here (not in the
+    // provider's getStatus-only consumer surface).
     const handleAccept = async (friendshipId) => {
         setActionLoading(prev => ({ ...prev, [friendshipId]: 'accept' }));
         try {
-            await friendshipsAPI.acceptRequest(friendshipId);
-            // Optimistically update: remove from received, refresh friends
-            setReceivedRequests(prev => prev.filter(r => r.id !== friendshipId));
+            await ctxAcceptRequest(friendshipId);
             fetchFriends();
         } catch (err) {
             console.error('Error accepting request:', err);
-            setReceivedError(err.message || 'Failed to accept request.');
         } finally {
             setActionLoading(prev => ({ ...prev, [friendshipId]: null }));
         }
     };
 
-    // Decline friend request
+    // Decline friend request — provider handles optimistic removal +
+    // 404-stale silencing. No friends-list refresh needed.
     const handleDecline = async (friendshipId) => {
         setActionLoading(prev => ({ ...prev, [friendshipId]: 'decline' }));
         try {
-            await friendshipsAPI.declineRequest(friendshipId);
-            // Optimistically update: remove from received
-            setReceivedRequests(prev => prev.filter(r => r.id !== friendshipId));
+            await ctxDeclineRequest(friendshipId);
         } catch (err) {
             console.error('Error declining request:', err);
-            setReceivedError(err.message || 'Failed to decline request.');
         } finally {
             setActionLoading(prev => ({ ...prev, [friendshipId]: null }));
         }
@@ -606,13 +600,18 @@ function FriendsPage() {
                     </div>
                 )}
 
-                {/* Requests Tab */}
+                {/* Requests Tab — receivedRequests + loading flag come
+                    from FriendshipStatusProvider context (POLL-02). The
+                    provider's `error` flag is intentionally not surfaced
+                    here since the global provider handles transient
+                    failures (loadError stays internal — getStatus returns
+                    'unknown' to consumers). If the provider fails to load
+                    receivedRequests will be [] and the empty-state copy
+                    renders, which is the correct UX for a transient
+                    network blip on this surface. */}
                 {activeTab === 'requests' && (
                     <div>
-                        {receivedError && (
-                            <p className="text-status-error text-sm mb-4">{receivedError}</p>
-                        )}
-                        {loadingReceived ? (
+                        {friendshipCtxLoading ? (
                             <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
                                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading requests...</span>

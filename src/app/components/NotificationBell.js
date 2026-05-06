@@ -1,52 +1,47 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { invitesAPI, friendshipsAPI } from '../../lib/api';
+import { invitesAPI } from '../../lib/api';
+import { useFriendshipStatus } from './FriendshipStatusProvider';
 
 function NotificationBell({ user, variant = 'icon', label }) {
   const [invites, setInvites] = useState([]);
-  const [friendRequests, setFriendRequests] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   const [confirmation, setConfirmation] = useState(null);
   const dropdownRef = useRef(null);
 
+  // POLL-02: friend-request state pulled from the shared context so the
+  // bell and the friends page reflect the same receivedRequests array.
+  // The provider is mounted at root (src/app/layout.js).
+  const {
+    receivedRequests: friendRequests,
+    acceptRequest: ctxAcceptFriend,
+    declineRequest: ctxDeclineFriend,
+  } = useFriendshipStatus();
+
   const totalCount = invites.length + friendRequests.length;
 
-  // Fetch pending invites and friend requests on mount
+  // Fetch pending GROUP invites only — friend requests now come from
+  // FriendshipStatusProvider context.
   useEffect(() => {
     if (!user?.sub) return;
 
-    async function fetchNotifications() {
+    async function fetchInvites() {
       try {
-        const results = await Promise.allSettled([
-          invitesAPI.getPendingInvites(),
-          friendshipsAPI.getReceivedRequests(),
-        ]);
-
-        const inviteResult = results[0];
-        const friendResult = results[1];
-
+        const data = await invitesAPI.getPendingInvites();
         setInvites(
-          inviteResult.status === 'fulfilled'
-            ? (Array.isArray(inviteResult.value) ? inviteResult.value : inviteResult.value?.invites || [])
-            : []
-        );
-        setFriendRequests(
-          friendResult.status === 'fulfilled'
-            ? (Array.isArray(friendResult.value) ? friendResult.value : [])
-            : []
+          Array.isArray(data) ? data : data?.invites || []
         );
       } catch (err) {
-        console.error('Failed to fetch notifications:', err.message);
+        console.error('Failed to fetch invites:', err.message);
         setInvites([]);
-        setFriendRequests([]);
       } finally {
         setLoading(false);
       }
     }
 
-    fetchNotifications();
+    fetchInvites();
   }, [user?.sub]);
 
   // Click-outside detection to close dropdown
@@ -104,8 +99,11 @@ function NotificationBell({ user, variant = 'icon', label }) {
   async function handleAcceptFriend(request) {
     setActionLoading(request.id);
     try {
-      await friendshipsAPI.acceptRequest(request.id);
-      setFriendRequests((prev) => prev.filter((r) => r.id !== request.id));
+      // Provider handles optimistic removal + 404-stale silencing.
+      // alreadyAccepted means the row was already resolved on another
+      // surface (friends page) — we still show the success confirmation
+      // since from the user's POV the action they wanted is done.
+      await ctxAcceptFriend(request.id);
       setConfirmation('Accepted friend request!');
     } catch (err) {
       console.error('Failed to accept friend request:', err.message);
@@ -117,8 +115,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
   async function handleDeclineFriend(request) {
     setActionLoading(request.id);
     try {
-      await friendshipsAPI.declineRequest(request.id);
-      setFriendRequests((prev) => prev.filter((r) => r.id !== request.id));
+      await ctxDeclineFriend(request.id);
     } catch (err) {
       console.error('Failed to decline friend request:', err.message);
     } finally {

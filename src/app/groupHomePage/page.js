@@ -11,7 +11,6 @@ import { getTextStyle, getSubtitleStyle } from '../../lib/colorUtils';
 import SafeImage from '../components/SafeImage';
 import EventCalendar from '../components/EventCalendar';
 import PendingMemberBanner from '../components/PendingMemberBanner';
-import FriendshipStatusProvider from '../components/FriendshipStatusProvider';
 import GroupLibrary from '../components/GroupLibrary';
 import KebabMenu from '../components/KebabMenu';
 import GroupSettings from '../components/GroupSettings';
@@ -233,7 +232,9 @@ function GroupHomePage(){
     }
 
     return (
-        <FriendshipStatusProvider>
+        // POLL-02: FriendshipStatusProvider lifted to root layout — see
+        // src/app/layout.js. Nested mount removed so NotificationBell +
+        // friends/page consume the same receivedRequests state.
         <div className="p-3 md:p-6">
             {/* Breadcrumbs */}
             <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
@@ -460,7 +461,6 @@ function GroupHomePage(){
                 />
             )}
         </div>
-        </FriendshipStatusProvider>
     );
 }
 

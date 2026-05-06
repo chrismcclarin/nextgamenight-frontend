@@ -7,6 +7,7 @@ import { UserProvider } from '@auth0/nextjs-auth0/client';
 import TutorialProvider from './components/tutorial/TutorialProvider'
 import TimezoneProvider from './components/TimezoneProvider'
 import ThemeProvider from './components/ThemeProvider'
+import FriendshipStatusProvider from './components/FriendshipStatusProvider'
 
 const plusJakartaSans = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -23,12 +24,20 @@ export default function RootLayout({ children }) {
           <ThemeProvider>
             <TimezoneProvider>
               <TutorialProvider>
-                <Header />
-                <main className="min-h-screen">
-                  {children}
-                </main>
-                <Footer />
-                <FeedbackButton />
+                {/* POLL-02: FriendshipStatusProvider lifted to root so the
+                    NotificationBell (in Header) and friends/page consume the
+                    same receivedRequests array. Inner page-level mounts on
+                    gameDetail / groupHomePage / grouplist were removed in
+                    the same commit so their nested instances no longer
+                    shadow the root state. */}
+                <FriendshipStatusProvider>
+                  <Header />
+                  <main className="min-h-screen">
+                    {children}
+                  </main>
+                  <Footer />
+                  <FeedbackButton />
+                </FriendshipStatusProvider>
               </TutorialProvider>
             </TimezoneProvider>
           </ThemeProvider>

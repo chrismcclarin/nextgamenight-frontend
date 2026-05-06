@@ -16,7 +16,6 @@ import { formatDate, formatDateTime, formatDuration, formatTime } from '../../li
 import { useTimezone } from '../components/TimezoneProvider';
 import TimezoneNudgeBanner from '../components/TimezoneNudgeBanner';
 import SafeImage from '../components/SafeImage';
-import FriendshipStatusProvider from '../components/FriendshipStatusProvider';
 import ClickableMemberName from '../components/ClickableMemberName';
 import StarRatingPicker from '../components/StarRatingPicker';
 
@@ -1073,7 +1072,10 @@ export default function GameDetailPage() {
     }
 
     return (
-        <FriendshipStatusProvider>
+        // POLL-02: FriendshipStatusProvider lifted to root layout — no longer
+        // mounted here. The shared receivedRequests / accept/decline mutators
+        // come from the root provider so NotificationBell + friends/page +
+        // ClickableMemberName all read from one source of truth.
         <div className="p-6 max-w-6xl mx-auto">
             {/* Breadcrumbs */}
             <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
@@ -1711,6 +1713,5 @@ export default function GameDetailPage() {
                 onSave={() => setBringRefreshKey(k => k + 1)}
             />
         </div>
-        </FriendshipStatusProvider>
     );
 }

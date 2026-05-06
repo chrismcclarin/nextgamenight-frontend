@@ -10,7 +10,6 @@ import { getTextStyle } from '../../lib/colorUtils';
 import { formatDate } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
-import FriendshipStatusProvider from './FriendshipStatusProvider';
 import ClickableMemberName from './ClickableMemberName';
 
 const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
@@ -75,7 +74,9 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   }
 
   return (
-    <FriendshipStatusProvider>
+    // POLL-02: FriendshipStatusProvider lifted to root layout — no longer
+    // mounted here, since the nested instance was shadowing root state and
+    // breaking friend-state sync between NotificationBell and friends page.
     <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card p-4 flex flex-col overflow-hidden h-full">
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
         <h2 className="text-xl font-bold text-content-primary">Your Groups</h2>
@@ -261,7 +262,6 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
         />
       )}
     </div>
-    </FriendshipStatusProvider>
   );
 };
 
