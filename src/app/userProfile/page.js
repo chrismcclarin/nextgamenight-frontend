@@ -767,10 +767,10 @@ function Profile(){
                         </div>
                     )}
 
-                    {/* Phone Input — sibling block (always rendered shape; sms_enabled wrapper
-                        retained here for now; Task 3 removes it). */}
-                    {userData?.sms_enabled && (
-                        <div className="mt-2">
+                    {/* Phone Input — always rendered (D-SMS-01: disabled-not-hidden).
+                        Used as scroll/focus target for the Verify CTA and as the place
+                        to add a phone after removal. Visibility decoupled from sms_enabled. */}
+                    <div className="mt-2">
                                     {(phoneState === 'idle' || phoneState === 'editing') && (
                                         <div className="flex flex-col sm:flex-row sm:items-start gap-2">
                                             <div className="flex-1 relative">
@@ -882,7 +882,6 @@ function Profile(){
                                         <p className="text-status-error text-xs mt-1">{phoneError}</p>
                                     )}
                                 </div>
-                            )}
 
                     {/* Google Calendar Connection */}
                     <div className="mt-4 pt-4 border-t border-line">
@@ -1044,9 +1043,9 @@ function Profile(){
                         <div className="flex items-center py-2 border-b border-line">
                             <div className="flex-1 text-sm font-medium text-content-muted">Notification Type</div>
                             <div className="w-16 text-center text-sm font-medium text-content-muted">Email</div>
-                            {userData?.sms_enabled && (
-                                <div className="w-16 text-center text-sm font-medium text-content-muted">SMS</div>
-                            )}
+                            {/* SMS column header — always rendered (D-SMS-01). Toggles below
+                                grey out when phone unverified; visibility decoupled from sms_enabled. */}
+                            <div className="w-16 text-center text-sm font-medium text-content-muted">SMS</div>
                             <div className="w-20"></div>
                         </div>
 
@@ -1073,22 +1072,21 @@ function Profile(){
                                         </button>
                                     </div>
 
-                                    {/* SMS Toggle (only when sms_enabled) */}
-                                    {userData?.sms_enabled && (
-                                        <div className="w-16 flex justify-center">
-                                            <button
-                                                onClick={() => handleToggle(type.key, 'sms', !preferences[type.key]?.sms)}
-                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                                    preferences[type.key]?.sms ? 'bg-status-success' : 'bg-line-strong'
-                                                }`}
-                                                aria-label={`${type.label} SMS notifications`}
-                                            >
-                                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                                    preferences[type.key]?.sms ? 'translate-x-6' : 'translate-x-1'
-                                                }`} />
-                                            </button>
-                                        </div>
-                                    )}
+                                    {/* SMS Toggle — always rendered (D-SMS-01).
+                                        disabled state added in Task 4 (driven by phone_verified). */}
+                                    <div className="w-16 flex justify-center">
+                                        <button
+                                            onClick={() => handleToggle(type.key, 'sms', !preferences[type.key]?.sms)}
+                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                                preferences[type.key]?.sms ? 'bg-status-success' : 'bg-line-strong'
+                                            }`}
+                                            aria-label={`${type.label} SMS notifications`}
+                                        >
+                                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                                preferences[type.key]?.sms ? 'translate-x-6' : 'translate-x-1'
+                                            }`} />
+                                        </button>
+                                    </div>
 
                                     {/* Status indicator */}
                                     <div className="w-20 text-right">
