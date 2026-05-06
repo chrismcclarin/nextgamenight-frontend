@@ -767,7 +767,20 @@ export default function GameDetailPage() {
                     {group_id && (
                         <>
                             <span className="text-content-muted mx-2">{'>'}</span>
-                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors font-medium">Group</Link>
+                            {(userScope === 'group-member' || userScope === 'pending') ? (
+                                <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors font-medium">
+                                    {singleEvent?.Group?.name || 'Group'}
+                                </Link>
+                            ) : (
+                                /* Phase 71.1 GAMP-11: game-only / none — render group
+                                   name as static text (no link). Per CONTEXT: "Group
+                                   name is shown as context but is not a link — they
+                                   can't navigate to a group page they don't belong
+                                   to." */
+                                <span className="text-content-secondary font-medium">
+                                    Game night with {singleEvent?.Group?.name || 'group'}
+                                </span>
+                            )}
                         </>
                     )}
                     <span className="text-content-muted mx-2">{'>'}</span>
@@ -1059,6 +1072,20 @@ export default function GameDetailPage() {
                                                 {role === 'admin' && (
                                                     <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold">Admin</span>
                                                 )}
+                                                {/* Phase 71.1 GAMP-12: render Guest badge for is_guest=true rows
+                                                    when viewer is a full group member. Skips render for game-only
+                                                    viewers (they are guests themselves; redundant on their own row,
+                                                    and on co-attendee rows the badge isn't load-bearing for their
+                                                    flow). Tells admins/owners who joined via game-invite QR so they
+                                                    can decide who to onboard via admin-initiated invite. */}
+                                                {p.is_guest && userScope === 'group-member' && (
+                                                    <span
+                                                        className="inline-flex items-center px-1.5 py-0.5 text-[10px] uppercase tracking-wide rounded bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
+                                                        title="Joined via game-invite QR (not a group member)"
+                                                    >
+                                                        Guest
+                                                    </span>
+                                                )}
                                                 {isBringing && (
                                                     <span title="Bringing a game" className="text-sm" aria-label="Bringing a game">🎲</span>
                                                 )}
@@ -1147,10 +1174,20 @@ export default function GameDetailPage() {
             <div className="flex items-center justify-center min-h-screen">
                 <div className="text-center">
                     <p className="text-status-error mb-4">Game not found</p>
+                    {/* Phase 71.1 GAMP-11: scope-aware fallback — game-only/none
+                        callers fall through to "← Back to Home" since the group
+                        page would 403. Group-member/pending see the group link
+                        as before. */}
                     {group_id ? (
-                        <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:underline">
-                            ← Back to Group
-                        </Link>
+                        (userScope === 'group-member' || userScope === 'pending') ? (
+                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:underline">
+                                ← Back to Group
+                            </Link>
+                        ) : (
+                            <Link href="/" className="text-content-link hover:underline">
+                                ← Back to Home
+                            </Link>
+                        )
                     ) : (
                         <Link href="/" className="text-content-link hover:underline">
                             ← Back to Home
@@ -1173,7 +1210,17 @@ export default function GameDetailPage() {
                 {group_id && (
                     <>
                         <span className="text-content-muted mx-2">{'>'}</span>
-                        <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors font-medium">Group</Link>
+                        {(userScope === 'group-member' || userScope === 'pending') ? (
+                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors font-medium">
+                                {singleEvent?.Group?.name || 'Group'}
+                            </Link>
+                        ) : (
+                            /* Phase 71.1 GAMP-11: game-only / none — render group
+                               name as static text (no link). */
+                            <span className="text-content-secondary font-medium">
+                                Game night with {singleEvent?.Group?.name || 'group'}
+                            </span>
+                        )}
                     </>
                 )}
                 <span className="text-content-muted mx-2">{'>'}</span>
