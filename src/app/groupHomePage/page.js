@@ -29,6 +29,11 @@ function GroupHomePage(){
     const [loading, setLoading] = useState(true);
     const [userRole, setUserRole] = useState(null);
     const [activeTab, setActiveTab] = useState('home');
+    // Phase 69-04 paint gate: blocks page render until the membership check
+    // resolves. Without this, getGroup()/games/events fetches race the
+    // membership lookup and the page paints with partial data before the
+    // redirect fires for removed users.
+    const [membershipChecked, setMembershipChecked] = useState(false);
 
     // Calendar state
     const [groupEvents, setGroupEvents] = useState([]);
@@ -103,22 +108,22 @@ function GroupHomePage(){
                 return;
             }
 
-            setUserList(data);
-
-            // Find current user's role
+            // GROUP-05: backend's `/groups/:id/users` returns 200 even for
+            // non-members (just omits them from the list), so in-list
+            // absence is the real removal signal. Redirect BEFORE any
+            // setState that would paint the group view, so removed users
+            // never see a flash of group content.
             const currentUserMember = data.find(m => m.user_id === user.sub);
-            if (currentUserMember && currentUserMember.UserGroup) {
-                setUserRole(currentUserMember.UserGroup.role);
+            if (!currentUserMember || !currentUserMember.UserGroup) {
+                redirectToHomeAsRemoved();
                 return;
             }
 
-            // GROUP-05: members list returned 200 but the current user is not
-            // in it — the backend's `/groups/:id/users` route doesn't 403
-            // non-members today, so the in-list absence is the real removal
-            // signal. Redirect to /?removedFrom=… so Plan 69-03's banner picks
-            // it up. This must come AFTER setUserList(data) so React doesn't
-            // batch the state and re-paint the group view in the same tick.
-            redirectToHomeAsRemoved();
+            // Confirmed member — safe to commit member list + role + open
+            // the paint gate so the rest of the page renders.
+            setUserList(data);
+            setUserRole(currentUserMember.UserGroup.role);
+            setMembershipChecked(true);
         } catch (error) {
             if (isRemovedFromGroupError(error)) {
                 redirectToHomeAsRemoved();
@@ -147,11 +152,19 @@ function GroupHomePage(){
             const games = await listsAPI.getGroupGames(Router, user.sub);
             setGamesList(games || []);
         } catch (error) {
+            // /api/lists/games/:groupId/:userId 403s non-members — treat
+            // it as a removal signal and redirect, same as the member-list
+            // absence path in getGroupMembers.
+            if (isRemovedFromGroupError(error)) {
+                redirectToHomeAsRemoved();
+                return;
+            }
             console.error('Error fetching games:', error);
             setGamesList([]);
         } finally {
             setLoading(false);
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [Router, user?.sub]);
 
     useEffect(() => {
@@ -166,11 +179,17 @@ function GroupHomePage(){
         }
     }, [Router, user?.sub, shouldCreateEvent, prefillDate, prefillTime]);
 
+    // Defer the games fetch until the membership check has confirmed the
+    // user belongs to the group. The games endpoint 403s non-members
+    // (correctly), but firing it before redirect produces noisy console
+    // errors. The redirect-on-403 fallback in getGamesForGroup is still
+    // there as a safety net — this gate just prevents the noise on the
+    // happy path of "removed user opens a stale URL".
     useEffect(() => {
-        if (Router && user?.sub) {
+        if (Router && user?.sub && membershipChecked) {
             getGamesForGroup();
         }
-    }, [Router, user?.sub, getGamesForGroup]);
+    }, [Router, user?.sub, membershipChecked, getGamesForGroup]);
 
     const handleEventCreated = async (newEvent) => {
         // Refresh games list and calendar events after creating new event
@@ -191,6 +210,20 @@ function GroupHomePage(){
     };
 
 
+    // Phase 69-04 paint gate: don't render the group page until the
+    // membership check has confirmed the current user belongs here. This
+    // covers two cases — (a) `getGroup` resolves before `getGroupMembers`
+    // and `setGroup(data)` would otherwise flash group content for a
+    // removed user, (b) the games endpoint 403s in the brief window
+    // between mount and redirect.
+    if (!membershipChecked) {
+        return (
+            <div className="p-6 flex items-center justify-center min-h-screen">
+                <p className="text-content-secondary">Loading group…</p>
+            </div>
+        );
+    }
+
     if (loading) {
         return (
             <div className="p-6 flex items-center justify-center min-h-screen">
@@ -209,9 +242,12 @@ function GroupHomePage(){
                 <span className="text-content-primary font-semibold break-words">{Group?.name || 'Group'}</span>
             </nav>
 
-            {/* Header */}
+            {/* Header — Phase 69-04 layout: ALWAYS stack title row above
+                button row (no md:flex-row). Kebab moves into the title row
+                so it sits beside the group name at every breakpoint instead
+                of wrapping awkwardly under the buttons at narrow widths. */}
             <div
-                className="mb-6 flex flex-col md:flex-row md:justify-between md:items-center gap-4 p-4 md:p-6 rounded-lg relative overflow-visible"
+                className="mb-6 flex flex-col gap-4 p-4 md:p-6 rounded-lg relative overflow-visible"
                 style={{
                     backgroundColor: Group?.background_color || '#111418',
                     backgroundImage: Group?.background_image_url ? `url(${Group.background_image_url})` : 'none',
@@ -262,8 +298,21 @@ function GroupHomePage(){
                             )}
                         </p>
                     </div>
+                    {/* Kebab lives in the title row at every breakpoint so it
+                        sits beside the group name (CONTEXT D-LEAVE-01 entry to
+                        GroupSettings). Active members only. */}
+                    {userRole && userRole !== 'pending' && (
+                        <div className="flex-shrink-0 relative z-20">
+                            <KebabMenu
+                                ariaLabel="Group actions"
+                                items={[
+                                    { label: 'Group settings', onClick: () => setShowGroupSettings(true) },
+                                ]}
+                            />
+                        </div>
+                    )}
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 relative z-20 w-full md:w-auto flex-shrink-0 items-stretch sm:items-center">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 relative z-20 w-full flex-shrink-0 items-stretch sm:items-center">
                     {userRole && userRole !== 'pending' && (
                         <button
                             onClick={() => setMemberModal(true)}
@@ -297,17 +346,6 @@ function GroupHomePage(){
                         >
                             Add New Game Event
                         </button>
-                    )}
-                    {/* CONTEXT D-LEAVE-01: header kebab is the canonical entry point
-                        to GroupSettings (which now hosts Leave Group + Delete Group).
-                        Active members only — pending users can't act on the group. */}
-                    {userRole && userRole !== 'pending' && (
-                        <KebabMenu
-                            ariaLabel="Group actions"
-                            items={[
-                                { label: 'Group settings', onClick: () => setShowGroupSettings(true) },
-                            ]}
-                        />
                     )}
                 </div>
             </div>

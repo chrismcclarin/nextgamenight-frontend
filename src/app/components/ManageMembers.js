@@ -22,6 +22,12 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     // the actual invite UI is the existing FriendInvitePanel modal.
     const [inviteModalOpen, setInviteModalOpen] = useState(false);
     const [resettingInvite, setResettingInvite] = useState(false);
+    // Phase 69-04 mirror: same confirm-modal Leave flow as GroupSettings,
+    // so the in-row "Leave Group" button (non-owner self-row) gets the
+    // canonical copy + inline error UX rather than window.confirm.
+    const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+    const [leaving, setLeaving] = useState(false);
+    const [leaveError, setLeaveError] = useState('');
 
     useEffect(() => {
         if (modal && group_id && user?.sub) {
@@ -146,18 +152,28 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         }
     };
 
-    const handleLeaveGroup = async () => {
+    // Phase 69-04 mirror: in-row Leave Group button opens a sibling confirm
+    // modal (same shape + copy as GroupSettings) instead of window.confirm.
+    const handleLeaveGroup = () => {
         if (!group_id) return;
-        if (!confirm(`Are you sure you want to leave ${group_name}?`)) {
-            return;
-        }
+        setLeaveError('');
+        setShowLeaveConfirm(true);
+    };
+
+    const handleLeaveGroupConfirmed = async () => {
+        if (!group_id) return;
+        setLeaving(true);
+        setLeaveError('');
         try {
             await groupsAPI.leaveGroup(group_id);
+            setShowLeaveConfirm(false);
             modaltoggle(); // Close the modal
             router.push('/');
         } catch (error) {
             console.error('Error leaving group:', error);
-            alert(error.message || 'Failed to leave group. Please try again.');
+            setLeaveError(error.message || 'Failed to leave group. Please try again.');
+        } finally {
+            setLeaving(false);
         }
     };
 
@@ -425,7 +441,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                         {isCurrentUser && !isOwner && (
                                             <button
                                                 onClick={handleLeaveGroup}
-                                                className="btn btn-secondary text-sm px-4 py-2 text-status-error"
+                                                className="btn btn-danger text-sm px-4 py-2"
                                             >
                                                 Leave Group
                                             </button>
@@ -547,6 +563,50 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                             }}
                         >
                             {transferring ? 'Transferring…' : 'Transfer ownership'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Leave Group confirmation — Phase 69-04 mirror.
+            Sibling overlay (NOT nested inside ManageMembers' modal-content) so
+            the parent's backdrop onClick={modaltoggle} cannot fire when the
+            user clicks anywhere on this confirm. zIndex 110 stacks above the
+            parent modal. Copy verbatim from CONTEXT D-LEAVE-04 / Plan 69-04. */}
+        {showLeaveConfirm && (
+            <div
+                className="modal-overlay"
+                style={{ zIndex: 110 }}
+                onClick={() => !leaving && setShowLeaveConfirm(false)}
+            >
+                <div
+                    className="modal-content max-w-md w-full mx-4 p-6"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <h3 className="text-lg font-bold text-content-primary mb-3">
+                        Leave <span className="text-accent">{group_name}</span>?
+                    </h3>
+                    <p className="text-content-secondary mb-4">
+                        You will lose access to events, library, and member-only content.
+                    </p>
+                    {leaveError && (
+                        <p className="text-status-error text-sm mb-4">{leaveError}</p>
+                    )}
+                    <div className="flex justify-end gap-3">
+                        <button
+                            className="btn btn-secondary"
+                            disabled={leaving}
+                            onClick={() => { setShowLeaveConfirm(false); setLeaveError(''); }}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            className="btn btn-danger"
+                            disabled={leaving}
+                            onClick={handleLeaveGroupConfirmed}
+                        >
+                            {leaving ? 'Leaving…' : 'Confirm Leave'}
                         </button>
                     </div>
                 </div>

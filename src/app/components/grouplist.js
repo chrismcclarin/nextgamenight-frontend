@@ -139,7 +139,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                 )}
                 <div className="relative z-[1]">
                   <div className="flex justify-between items-center mb-3 max-[480px]:flex-col max-[480px]:items-start max-[480px]:gap-2">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className="flex items-center gap-2 min-w-0 flex-1 max-[480px]:w-full">
                       {profilePic && (
                         <div className="w-10 h-10 rounded-full bg-surface-card-hover flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden">
                           {profilePic.startsWith('http') || profilePic.startsWith('/') ? (
@@ -196,7 +196,12 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
 
                   {/* Action Buttons */}
                   <div className="flex gap-2 mt-3 relative z-[2]">
-                    {canEdit && (
+                    {/* Phase 69 CONTEXT D-INV-03: any active member can invite
+                        (FriendInvitePanel exposes QR + link to all roles); only
+                        the Reset invite link button inside FriendInvitePanel is
+                        admin-only (D-INV-02). The settings cog below stays
+                        admin-gated via `canEdit`. */}
+                    {userRole && userRole !== 'pending' && (
                       <button
                         className="btn btn-primary text-sm flex-1 shadow-md hover:shadow-lg hover:-translate-y-px active:translate-y-0 transition-all"
                         onClick={(e) => {
