@@ -125,6 +125,17 @@ export default function GameDetailPage() {
     const [loading, setLoading] = useState(true);
     const [showReviewForm, setShowReviewForm] = useState(false);
     const [userRole, setUserRole] = useState(null);
+    // Phase 71.1 GAMP-09: scope detection for two-QR model.
+    // Resolved in fetchEvent based on whether caller is in groupMembers
+    // (presence + UserGroup non-null = group-member; presence + UserGroup
+    // null = game-only; absence = none — defensive only since the backend
+    // returns 403 for unauthorized callers anyway).
+    const [userScope, setUserScope] = useState('none'); // 'group-member' | 'pending' | 'game-only' | 'none'
+    const [leavingEvent, setLeavingEvent] = useState(false);
+    // Phase 71.1: cached group members roster — needed by handleLeaveEvent
+    // to resolve the caller's User.id UUID via Plan 71.1-01's caller-self-row
+    // contract (`groupMembers.find(m => m.user_id === user.sub)`).
+    const [groupMembers, setGroupMembers] = useState([]);
     const [editEventModal, setEditEventModal] = useState(false);
     const [editingEvent, setEditingEvent] = useState(null);
     // Phase 65-03 EVT-05: separate state for the "Plan a game night with
@@ -179,6 +190,24 @@ export default function GameDetailPage() {
         review_text: '',
         is_recommended: true
     });
+
+    // Phase 71.1 GAMP-09: unified scope resolver. Plan 01's backend caller-self-row
+    // contract guarantees that for a game-only caller, `groupMembers` includes
+    // their own row with UserGroup === null. For group members, the row's
+    // UserGroup contains { role, joined_at }. For 'none', the caller never
+    // reaches the success path — backend returns 403 — but we keep the branch
+    // defensively.
+    const resolveUserScope = (rosterArray, callerSub) => {
+        if (!Array.isArray(rosterArray) || !callerSub) return { role: null, scope: 'none' };
+        const caller = rosterArray.find(m => m.user_id === callerSub);
+        if (!caller) return { role: null, scope: 'none' };
+        if (caller.UserGroup && caller.UserGroup.role) {
+            const r = caller.UserGroup.role;
+            return { role: r, scope: r === 'pending' ? 'pending' : 'group-member' };
+        }
+        // caller present but UserGroup is null → game-only
+        return { role: null, scope: 'game-only' };
+    };
 
     useEffect(() => {
         if (game_id) {
@@ -262,16 +291,22 @@ export default function GameDetailPage() {
                 // role badge in the See-all modal. Members come back as User
                 // objects with id (UUID), user_id (Auth0 string), and
                 // UserGroup.role attached via the through-table.
-                const groupMembers = await groupsAPI.getGroupMembers(group_id);
-                if (Array.isArray(groupMembers)) {
-                    const currentUserMember = groupMembers.find(m => m.user_id === user.sub);
-                    if (currentUserMember && currentUserMember.UserGroup) {
-                        setUserRole(currentUserMember.UserGroup.role);
-                    }
+                const fetchedGroupMembers = await groupsAPI.getGroupMembers(group_id);
+                if (Array.isArray(fetchedGroupMembers)) {
+                    // Phase 71.1 GAMP-09: derive both userRole + userScope via
+                    // unified resolver. Plan 71.1-01's caller-self-row contract
+                    // guarantees the caller's row is present (with UserGroup=null
+                    // for game-only callers).
+                    const { role, scope } = resolveUserScope(fetchedGroupMembers, user?.sub);
+                    setUserRole(role);
+                    setUserScope(scope);
+                    // Cache the roster so handleLeaveEvent can resolve the
+                    // caller's User.id UUID without a second fetch.
+                    setGroupMembers(fetchedGroupMembers);
                     // Build map keyed by User.id (UUID) since EventParticipation
                     // rows expose user_id-as-UUID after the flatten step.
                     const byId = {};
-                    for (const m of groupMembers) {
+                    for (const m of fetchedGroupMembers) {
                         if (m.id) byId[m.id] = m;
                     }
                     setGroupMembersByUserId(byId);
@@ -337,6 +372,39 @@ export default function GameDetailPage() {
             console.error('Error cancelling event:', err);
             alert(err.message || 'Failed to cancel event.');
             setCancellingEvent(false);
+            setShowActionsMenu(false);
+        }
+    };
+
+    // Phase 71.1 GAMP-04: game-only-participant self-leave handler.
+    // Single click commits (kebab placement IS the friction, matching the
+    // cancel-event pattern). Resolves caller's User.id UUID from groupMembers
+    // — Plan 71.1-01's caller-self-row contract guarantees the row is in the
+    // response with UserGroup=null for game-only callers. Backend authz
+    // (Plan 01 widening) accepts self-leave when caller's User.id matches
+    // participationUserId.
+    const handleLeaveEvent = async () => {
+        if (!user?.sub || !singleEvent?.id) return;
+
+        const myDbUser = (groupMembers || []).find(m => m.user_id === user.sub);
+        if (!myDbUser?.id) {
+            console.error('[handleLeaveEvent] Caller row missing from groupMembers — backend contract violation. Plan 71.1-01 should always inject caller-self row for game-only scope.', {
+                callerSub: user.sub,
+                groupMembersLength: (groupMembers || []).length,
+            });
+            alert("Couldn't leave event. Please refresh and try again.");
+            return;
+        }
+
+        setLeavingEvent(true);
+        try {
+            await eventsAPI.leaveEvent(singleEvent.id, myDbUser.id);
+            // Redirect to home — the event is gone from their UpcomingEvents anyway.
+            router.push('/');
+        } catch (err) {
+            console.error('[handleLeaveEvent] DELETE failed:', err);
+            alert(err?.message || "Couldn't leave event. Please try again.");
+            setLeavingEvent(false);
             setShowActionsMenu(false);
         }
     };
@@ -461,12 +529,14 @@ export default function GameDetailPage() {
 
                     // Get user's role in the group
                     // Use groupsAPI.getGroupMembers which automatically includes Authorization header
-                    const groupMembers = await groupsAPI.getGroupMembers(group_id);
-                    if (Array.isArray(groupMembers)) {
-                        const currentUserMember = groupMembers.find(m => m.user_id === user.sub);
-                        if (currentUserMember && currentUserMember.UserGroup) {
-                            setUserRole(currentUserMember.UserGroup.role);
-                        }
+                    const fetchedGroupMembers = await groupsAPI.getGroupMembers(group_id);
+                    if (Array.isArray(fetchedGroupMembers)) {
+                        // Phase 71.1 GAMP-09: derive both userRole + userScope
+                        // via unified resolver. See fetchEventOnly for contract.
+                        const { role, scope } = resolveUserScope(fetchedGroupMembers, user?.sub);
+                        setUserRole(role);
+                        setUserScope(scope);
+                        setGroupMembers(fetchedGroupMembers);
                     }
                 }
             }
@@ -709,14 +779,16 @@ export default function GameDetailPage() {
                 <TimezoneNudgeBanner />
 
                 <div className="card p-6 mb-6">
-                    {/* Phase 65-02 EVT-01: header row with title + kebab actions
-                        menu (owner/admin only). Single-click "Cancel event"
-                        inside the dropdown destroys the event and redirects;
-                        the kebab placement IS the friction (no second modal,
-                        no typed confirm — see CONTEXT decisions). */}
+                    {/* Phase 65-02 EVT-01 + Phase 71.1 GAMP-10: header row with
+                        title + scope-aware kebab actions menu. Single-click
+                        commits inside the dropdown — kebab placement IS the
+                        friction (no second modal, no typed confirm).
+                        - owner/admin (group-member scope): Cancel event
+                        - game-only scope: Leave event
+                        - pending or none: no kebab at all (matches prior pending behavior) */}
                     <div className="flex justify-between items-start gap-3 mb-2">
                         <h1 className="text-3xl font-bold text-content-primary">{singleEvent.title || 'Game Night'}</h1>
-                        {(userRole === 'owner' || userRole === 'admin') && (
+                        {((userScope === 'group-member' && (userRole === 'owner' || userRole === 'admin')) || userScope === 'game-only') && (
                             <div className="relative flex-shrink-0" ref={actionsMenuRef}>
                                 <button
                                     type="button"
@@ -737,15 +809,28 @@ export default function GameDetailPage() {
                                         role="menu"
                                         className="absolute right-0 top-full mt-1 z-20 min-w-[160px] bg-surface-card border border-line rounded-md shadow-lg py-1"
                                     >
-                                        <button
-                                            type="button"
-                                            role="menuitem"
-                                            onClick={handleCancelEvent}
-                                            disabled={cancellingEvent}
-                                            className="w-full text-left px-3 py-2 text-sm text-status-error hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            {cancellingEvent ? 'Cancelling…' : 'Cancel event'}
-                                        </button>
+                                        {userScope === 'group-member' && (userRole === 'owner' || userRole === 'admin') && (
+                                            <button
+                                                type="button"
+                                                role="menuitem"
+                                                onClick={handleCancelEvent}
+                                                disabled={cancellingEvent}
+                                                className="w-full text-left px-3 py-2 text-sm text-status-error hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {cancellingEvent ? 'Cancelling…' : 'Cancel event'}
+                                            </button>
+                                        )}
+                                        {userScope === 'game-only' && (
+                                            <button
+                                                type="button"
+                                                role="menuitem"
+                                                onClick={handleLeaveEvent}
+                                                disabled={leavingEvent}
+                                                className="w-full text-left px-3 py-2 text-sm text-status-error hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {leavingEvent ? 'Leaving…' : 'Leave event'}
+                                            </button>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -772,31 +857,36 @@ export default function GameDetailPage() {
                     </div>
                 </div>
 
-                {/* Phase 65-02 EVT-02 + EVT-03: participant compact strip +
-                    Share Game QR button. Visible to ALL group members
-                    (userRole truthy and not 'pending'). The compact strip
+                {/* Phase 65-02 EVT-02 + EVT-03 + Phase 71.1 GAMP-02/10:
+                    participant compact strip + Share Game QR button. Visible
+                    to all group members AND game-only participants (the
+                    co-attendee read is part of GAMP-02). The compact strip
                     shows the first 5 participants; "See all (N)" opens a
                     modal with the full list and the Remove control (admins
-                    only). */}
-                {userRole && userRole !== 'pending' && participants.length > 0 && (
+                    only). The Share Game QR button stays group-member-only
+                    per CONTEXT (admin/owner-initiated invites only — not
+                    surfaced to game-only callers). */}
+                {(userScope === 'group-member' || userScope === 'game-only') && userRole !== 'pending' && participants.length > 0 && (
                     <div className="card p-6 mb-6">
                         <div className="flex items-center justify-between gap-3 mb-3">
                             <h2 className="text-lg font-semibold text-content-primary">
                                 Participants ({participants.length})
                             </h2>
-                            <button
-                                type="button"
-                                onClick={handleShowGameQR}
-                                disabled={qrLoading}
-                                className="btn btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5 flex-shrink-0"
-                                title="Share Game QR"
-                            >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
-                                </svg>
-                                {qrLoading ? 'Loading...' : 'Share Game QR'}
-                            </button>
+                            {userScope === 'group-member' && (
+                                <button
+                                    type="button"
+                                    onClick={handleShowGameQR}
+                                    disabled={qrLoading}
+                                    className="btn btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5 flex-shrink-0"
+                                    title="Share Game QR"
+                                >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
+                                    </svg>
+                                    {qrLoading ? 'Loading...' : 'Share Game QR'}
+                                </button>
+                            )}
                         </div>
                         <div className="flex flex-wrap gap-2">
                             {participants.slice(0, 5).map((p) => {

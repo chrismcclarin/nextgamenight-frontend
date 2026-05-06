@@ -260,6 +260,20 @@ export const eventsAPI = {
       method: 'DELETE',
     }),
 
+  // Phase 71.1 GAMP-04 — game-only participant self-leave.
+  // Backend DELETE /events/:event_id/participations/:user_id was extended in
+  // Plan 71.1-01 to allow self-leave (caller's User.id === participationUserId).
+  // user_db_id is the User.id UUID (NOT Auth0 string). Resolved frontend-side
+  // from the groupMembers roster (Plan 01 guarantees caller's own row is in
+  // the response with UserGroup=null for game-only callers). Distinct helper
+  // name from removeParticipation even though the underlying endpoint is
+  // shared — semantically leaveEvent is self-action, removeParticipation is
+  // admin-action; backend authz decides whether the caller is allowed.
+  leaveEvent: (event_id, user_db_id) =>
+    apiFetch(`/events/${event_id}/participations/${user_db_id}`, {
+      method: 'DELETE',
+    }),
+
   // Get (or lazy-generate) event invite token
   getEventInviteToken: (event_id) =>
     apiFetch(`/events/${event_id}/invite-token`),
