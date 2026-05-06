@@ -1581,15 +1581,15 @@ export default function GameDetailPage() {
             {showReviewForm && (
                 <div className="modal-overlay"
                      onClick={() => setShowReviewForm(false)}>
-                    <div className="modal-content w-full max-w-md relative"
+                    <div className="modal-content w-full max-w-md relative p-6"
                          onClick={(e) => e.stopPropagation()}>
                         <button
                             onClick={() => setShowReviewForm(false)}
-                            className="absolute top-3 right-3 text-content-muted hover:text-content-primary text-2xl"
+                            className="absolute top-4 right-4 text-content-muted hover:text-content-primary text-2xl leading-none"
                         >
                             &times;
                         </button>
-                        <h3 className="text-xl font-semibold mb-4 text-content-primary">
+                        <h3 className="text-xl font-semibold mb-4 pr-8 text-content-primary">
                             {userReview ? 'Edit Your Review' : 'Write a Review'}
                         </h3>
                         <form onSubmit={handleReviewSubmit} className="space-y-4">
