@@ -202,9 +202,14 @@ function Profile(){
         }
     };
 
+    // Type-time guard per D-PHONE-03: digits + plus/minus/parens/spaces.
+    // onChange-level filter (NOT keydown) so paste/autofill/IME composition still work.
+    const sanitizePhoneInput = (raw) => raw.replace(/[^\d+\-() ]/g, '');
+
     const handlePhoneChange = (value) => {
-        setPhoneInput(value);
-        setPhoneValidation(validatePhoneInput(value));
+        const filtered = sanitizePhoneInput(value);
+        setPhoneInput(filtered);
+        setPhoneValidation(validatePhoneInput(filtered));
         setPhoneError(null);
         if (phoneState === 'idle' || phoneState === 'verified') {
             setPhoneState('editing');
