@@ -18,6 +18,7 @@ import TimezoneNudgeBanner from '../components/TimezoneNudgeBanner';
 import SafeImage from '../components/SafeImage';
 import FriendshipStatusProvider from '../components/FriendshipStatusProvider';
 import ClickableMemberName from '../components/ClickableMemberName';
+import StarRatingPicker from '../components/StarRatingPicker';
 
 // Phase 65-02: small helper that renders a colored RSVP-status indicator.
 // status is one of 'yes' | 'maybe' | 'no' | null/undefined (no response).
@@ -1593,19 +1594,13 @@ export default function GameDetailPage() {
                         </h3>
                         <form onSubmit={handleReviewSubmit} className="space-y-4">
                             <div>
-                                <label htmlFor="rating" className="block text-sm font-medium text-content-primary mb-1">
-                                    Rating (0-5, increments of 0.5)
+                                <label className="block text-sm font-medium text-content-primary mb-1">
+                                    Rating
                                 </label>
-                                <input
-                                    type="number"
-                                    id="rating"
-                                    min="0"
-                                    max="5"
-                                    step="0.5"
-                                    value={reviewForm.rating}
-                                    onChange={(e) => setReviewForm({...reviewForm, rating: parseFloat(e.target.value)})}
-                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
-                                    required
+                                <StarRatingPicker
+                                    value={reviewForm.rating || 0}
+                                    onChange={(newRating) => setReviewForm({...reviewForm, rating: newRating})}
+                                    ariaLabel="Game rating"
                                 />
                             </div>
                             <div>
