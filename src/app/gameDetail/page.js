@@ -46,7 +46,13 @@ function RsvpStatusPill({ status }) {
 // participant name (clickable for non-custom users), RSVP indicator, role
 // badge, and a 🎲 if they're bringing a game. The full per-row Remove
 // control lives in the See-all modal — chips never expose Remove.
-function ParticipantChip({ participant, rsvpStatus, role, isBringing }) {
+// Phase 71.1-02 Blocker 3 fix: also render Guest pill on chips when the
+// participant is_guest=true AND the viewer is a group member (so organizers
+// can see at-a-glance who joined via game-invite QR vs full membership).
+// Mirror the See-all modal's Guest pill gating (suppressed for game-only
+// viewers — redundant on their own row, not load-bearing for co-attendee
+// rows in their flow).
+function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScope }) {
     const isCustom = !!participant.is_custom;
     return (
         <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded border border-line bg-surface-card text-xs max-w-full">
@@ -63,6 +69,14 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing }) {
             )}
             {role === 'admin' && (
                 <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 px-1 rounded font-semibold">Admin</span>
+            )}
+            {participant.is_guest && viewerScope === 'group-member' && (
+                <span
+                    className="text-[10px] uppercase tracking-wide rounded bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50 px-1 py-0.5"
+                    title="Joined via game-invite QR (not a group member)"
+                >
+                    Guest
+                </span>
             )}
             {isBringing && (
                 <span title="Bringing a game" aria-label="Bringing a game">🎲</span>
@@ -132,6 +146,13 @@ export default function GameDetailPage() {
     // returns 403 for unauthorized callers anyway).
     const [userScope, setUserScope] = useState('none'); // 'group-member' | 'pending' | 'game-only' | 'none'
     const [leavingEvent, setLeavingEvent] = useState(false);
+    // Phase 71.1-02 Blocker 1 fix (defense in depth): some entry paths land
+    // on /gameDetail?event_id=X without group_id (e.g. older QR-join "Go to
+    // event" links). We derive group_id from the event response and store it
+    // here so all downstream renders/hooks have a non-null value to key off.
+    // The URL group_id (from searchParams) takes precedence; falls back to
+    // the event response only when the URL omits it.
+    const [effectiveGroupId, setEffectiveGroupId] = useState(group_id || null);
     // Phase 71.1: cached group members roster — needed by handleLeaveEvent
     // to resolve the caller's User.id UUID via Plan 71.1-01's caller-self-row
     // contract (`groupMembers.find(m => m.user_id === user.sub)`).
@@ -217,9 +238,12 @@ export default function GameDetailPage() {
         }
     }, [game_id, group_id, event_id, user?.sub]);
 
-    // Fetch game suggestions for event-only view
+    // Fetch game suggestions for event-only view.
+    // Phase 71.1-02 Blocker 1 fix: gate on effectiveGroupId (URL-or-derived)
+    // so game-only callers loading /gameDetail?event_id=X without a URL
+    // group_id still get suggestions once the event response loads.
     useEffect(() => {
-        if (!event_id || !group_id) return;
+        if (!event_id || !effectiveGroupId) return;
         const fetchSuggestions = async () => {
             try {
                 const data = await suggestionsAPI.getEventSuggestions(event_id);
@@ -236,7 +260,7 @@ export default function GameDetailPage() {
             }
         };
         fetchSuggestions();
-    }, [event_id, group_id]);
+    }, [event_id, effectiveGroupId]);
 
     // Scroll to ballot section when #vote hash is in URL (from notification links)
     useEffect(() => {
@@ -286,12 +310,25 @@ export default function GameDetailPage() {
             // is_guest, is_custom }. Custom participants have user_id === null.
             setParticipants(Array.isArray(eventData.EventParticipations) ? eventData.EventParticipations : []);
 
-            if (group_id && user?.sub) {
+            // Phase 71.1-02 Blocker 1 fix (defense in depth): if the URL didn't
+            // include group_id (e.g. a stale QR-join "Go to event" link from
+            // before the landing-page fix shipped), derive it from the event
+            // response. The URL group_id is a hint, not the source of truth.
+            // Without this, game-only callers loading a bare /gameDetail?event_id=X
+            // URL would skip the groupMembers fetch entirely and render with
+            // userScope='none' (no participants strip, no Leave kebab).
+            const derivedGroupId = group_id || eventData?.group_id || eventData?.Group?.id;
+            if (derivedGroupId && !group_id) {
+                console.log('[gameDetail] derived group_id from event response:', derivedGroupId);
+            }
+            setEffectiveGroupId(derivedGroupId || null);
+
+            if (derivedGroupId && user?.sub) {
                 // Fetch group members — used for current-user role + per-row
                 // role badge in the See-all modal. Members come back as User
                 // objects with id (UUID), user_id (Auth0 string), and
                 // UserGroup.role attached via the through-table.
-                const fetchedGroupMembers = await groupsAPI.getGroupMembers(group_id);
+                const fetchedGroupMembers = await groupsAPI.getGroupMembers(derivedGroupId);
                 if (Array.isArray(fetchedGroupMembers)) {
                     // Phase 71.1 GAMP-09: derive both userRole + userScope via
                     // unified resolver. Plan 71.1-01's caller-self-row contract
@@ -764,12 +801,21 @@ export default function GameDetailPage() {
             <div className="p-6 max-w-6xl mx-auto">
                 <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
                     <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
-                    {group_id && (
+                    {effectiveGroupId && singleEvent?.Group?.name && (
+                        /* Phase 71.1-02 Blocker 2 fix: only render the group
+                           segment when we actually have a group name. The
+                           previous fallback to the literal word "group"
+                           rendered as "Game night with group" — confusing UI.
+                           Backend GET /:event_id now includes Group eagerly
+                           (Plan 71.1-02 Blocker 2 backend fix), so this should
+                           always populate; the truthy check here is defense-
+                           in-depth so old data paths can never display the
+                           literal-word fallback. */
                         <>
                             <span className="text-content-muted mx-2">{'>'}</span>
                             {(userScope === 'group-member' || userScope === 'pending') ? (
-                                <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors font-medium">
-                                    {singleEvent?.Group?.name || 'Group'}
+                                <Link href={`/groupHomePage?id=${effectiveGroupId}`} className="text-content-link hover:text-content-link-hover transition-colors font-medium">
+                                    {singleEvent.Group.name}
                                 </Link>
                             ) : (
                                 /* Phase 71.1 GAMP-11: game-only / none — render group
@@ -778,7 +824,7 @@ export default function GameDetailPage() {
                                    can't navigate to a group page they don't belong
                                    to." */
                                 <span className="text-content-secondary font-medium">
-                                    Game night with {singleEvent?.Group?.name || 'group'}
+                                    Game night with {singleEvent.Group.name}
                                 </span>
                             )}
                         </>
@@ -915,6 +961,7 @@ export default function GameDetailPage() {
                                         rsvpStatus={status}
                                         role={role}
                                         isBringing={isBringing}
+                                        viewerScope={userScope}
                                     />
                                 );
                             })}
@@ -961,7 +1008,7 @@ export default function GameDetailPage() {
                     />
                     <BringSummary
                         eventId={singleEvent.id}
-                        groupId={group_id}
+                        groupId={effectiveGroupId}
                         currentUserId={user?.sub}
                         refreshKey={bringRefreshKey}
                         onEditClick={() => { setBringPickerEventId(singleEvent.id); setShowBringPicker(true); }}
@@ -1211,16 +1258,22 @@ export default function GameDetailPage() {
                     <>
                         <span className="text-content-muted mx-2">{'>'}</span>
                         {(userScope === 'group-member' || userScope === 'pending') ? (
+                            /* Group-context (game_id present) view: group-members
+                               see the link with the group name (or generic "Group"
+                               while loading — graceful, not load-bearing for the
+                               game-only flow). */
                             <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors font-medium">
                                 {singleEvent?.Group?.name || 'Group'}
                             </Link>
-                        ) : (
-                            /* Phase 71.1 GAMP-11: game-only / none — render group
-                               name as static text (no link). */
+                        ) : singleEvent?.Group?.name ? (
+                            /* Phase 71.1 GAMP-11 + Blocker 2 fix: render the
+                               static-text breadcrumb only when we have an actual
+                               group name. Suppress the literal "group" word
+                               fallback to avoid "Game night with group" UI. */
                             <span className="text-content-secondary font-medium">
-                                Game night with {singleEvent?.Group?.name || 'group'}
+                                Game night with {singleEvent.Group.name}
                             </span>
-                        )}
+                        ) : null}
                     </>
                 )}
                 <span className="text-content-muted mx-2">{'>'}</span>

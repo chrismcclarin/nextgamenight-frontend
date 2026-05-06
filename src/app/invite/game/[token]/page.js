@@ -173,8 +173,15 @@ function GameInvitePage() {
 
   // Build the canonical event detail URL. Phase 64-01 confirmed gameDetail
   // accepts ?event_id= for the canonical single-event surface.
+  // Phase 71.1-02 Blocker 1 fix: include group_id when available. Without
+  // group_id, gameDetail's `if (group_id && user?.sub)` branch never runs —
+  // groupMembers is never fetched, userScope stays 'none', and the
+  // participants strip + Leave kebab don't render. The /invite-preview
+  // endpoint now returns group_id (Plan 71.1-02 Blocker 1 backend fix).
   const goToEventHref = eventInfo?.event_id
-    ? `/gameDetail?event_id=${eventInfo.event_id}`
+    ? (eventInfo.group_id
+        ? `/gameDetail?event_id=${eventInfo.event_id}&group_id=${eventInfo.group_id}`
+        : `/gameDetail?event_id=${eventInfo.event_id}`)
     : '/';
 
   // Loading / joining state — brief spinner only. D-INVITE-LANDING-04
