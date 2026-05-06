@@ -26,6 +26,10 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
   const [view, setView] = useState('list'); // 'list' | 'calendar'
   const [showForm, setShowForm] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState(null);
+  // POLL-03: bump on every Create open so React fully remounts ScheduleForm
+  // and react-hook-form's defaultValues block re-evaluates from scratch
+  // (template_name='' rather than the prior dirty value).
+  const [createOpenCounter, setCreateOpenCounter] = useState(0);
 
   // Load data on mount
   useEffect(() => {
@@ -54,6 +58,10 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
   // Handler: Create new schedule
   const handleCreate = () => {
     setEditingSchedule(null);
+    // POLL-03: bump the remount key so ScheduleForm's useForm hook
+    // re-initializes defaultValues (template_name='', etc.) on every
+    // fresh Create open — even if the prior open was cancelled mid-edit.
+    setCreateOpenCounter((c) => c + 1);
     setShowForm(true);
   };
 
@@ -123,8 +131,13 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
 
       {/* Content */}
       {showForm ? (
-        // Show form for create/edit
+        // Show form for create/edit. The `key` includes editingSchedule.id
+        // (stable across edit) and createOpenCounter (bumps on each Create
+        // open) so React fully remounts ScheduleForm whenever the user
+        // starts a fresh Create — defaultValues re-evaluate, template_name
+        // resets to '', and the autogen useEffect runs from scratch.
         <ScheduleForm
+          key={editingSchedule ? `edit-${editingSchedule.id}` : `create-${createOpenCounter}`}
           groupId={groupId}
           existingSchedule={editingSchedule}
           games={games}
