@@ -262,7 +262,11 @@ export default function BallotSection({ eventId, currentUserId, eventDate, userR
             })}
           </div>
         ) : (
-          <div>
+          // POLL-06 (D-BALLOT-07): defense-in-depth gated state.
+          // The backend gate at routes/ballot.js:325-348 also rejects
+          // votes from non-yes/maybe-RSVPed users; this UI prevents the
+          // user from bouncing off a 403 by hiding vote buttons entirely.
+          <div role="region" aria-label="Vote gated until RSVP">
             <div className="space-y-2 mb-3">
               {(options || []).map(opt => (
                 <div
