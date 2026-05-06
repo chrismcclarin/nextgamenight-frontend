@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
 import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, availabilityAPI } from '../../lib/api';
@@ -90,6 +90,25 @@ function Profile(){
     const [verificationCode, setVerificationCode] = useState('');
     const [phoneError, setPhoneError] = useState(null);
     const [resendCooldown, setResendCooldown] = useState(0);
+
+    // Two-tap remove confirmation state (D-PHONE-01, mirrors KebabMenu twoTap pattern):
+    // first tap arms a 3s revert timer; second tap commits via usersAPI.removePhone.
+    const [removeArmed, setRemoveArmed] = useState(false);
+    const removeArmedTimerRef = useRef(null);
+
+    // Phone-removal banner state (REVISION):
+    // - phoneJustRemoved: session-scoped flag set by handleRemovePhone success path so
+    //   the amber banner only fires after a removal in this session — NOT for users
+    //   who never had a phone (the unrevised `!userData.phone` gate fired equally for
+    //   both, with tone-mismatched copy).
+    // - smsDisabledBannerDismissed: in-memory dismiss flag; banner hides for the rest
+    //   of the session if user closes it.
+    const [phoneJustRemoved, setPhoneJustRemoved] = useState(false);
+    const [smsDisabledBannerDismissed, setSmsDisabledBannerDismissed] = useState(false);
+
+    // Phone input ref — Verify-CTA scrolls + focuses this. Always valid because Task 3
+    // removed the sms_enabled wrapper around the phone input, so it always renders.
+    const phoneInputRef = useRef(null);
 
     // Notification preferences state
     const [preferences, setPreferences] = useState(null);
@@ -274,6 +293,70 @@ function Profile(){
             console.error('Error resending code:', error);
             setPhoneError(error.message || 'Failed to resend code');
         }
+    };
+
+    // Cleanup the two-tap revert timer on unmount (mirrors KebabMenu lines 64-71).
+    useEffect(() => {
+        return () => {
+            if (removeArmedTimerRef.current) {
+                clearTimeout(removeArmedTimerRef.current);
+                removeArmedTimerRef.current = null;
+            }
+        };
+    }, []);
+
+    // Two-tap remove handler (D-PHONE-01): first tap arms a 3s revert timer + flips
+    // label to "Tap again to remove" (red). Second tap within 3s commits the removal
+    // via the cascade endpoint (Plan 70-01). Optimistically clears local state from
+    // the cascaded response and sets phoneJustRemoved so the amber banner fires.
+    const handleRemovePhone = async () => {
+        if (!user?.sub) return;
+        if (!removeArmed) {
+            // First tap — arm.
+            if (removeArmedTimerRef.current) clearTimeout(removeArmedTimerRef.current);
+            setRemoveArmed(true);
+            removeArmedTimerRef.current = setTimeout(() => {
+                setRemoveArmed(false);
+                removeArmedTimerRef.current = null;
+            }, 3000);
+            return;
+        }
+        // Second tap — clear timer and commit.
+        clearTimeout(removeArmedTimerRef.current);
+        removeArmedTimerRef.current = null;
+        setRemoveArmed(false);
+        try {
+            const updatedUser = await usersAPI.removePhone(user.sub);
+            setUserData(updatedUser);
+            setPhoneInput('');
+            setPhoneValidation({ valid: false, error: null });
+            setPhoneState('idle');
+            setPreferences(updatedUser.notification_preferences || DEFAULT_PREFERENCES);
+            setPhoneError(null);
+            setPhoneJustRemoved(true); // Session flag — gates the amber banner.
+            setSmsDisabledBannerDismissed(false); // Reset dismissal so banner shows fresh.
+        } catch (error) {
+            console.error('Error removing phone:', error);
+            setPhoneError(error.message || 'Failed to remove phone number');
+            // NOTE: do NOT set phoneJustRemoved on failure — banner only fires on success.
+        }
+    };
+
+    // Verify-CTA handler: smooth-scroll to + focus the phone input. Does NOT
+    // auto-trigger verification (D-SMS-02) — user finishes the existing 3-step
+    // Save & Verify flow in place.
+    const handleVerifyPhoneCta = () => {
+        if (!phoneInputRef.current) return;
+        phoneInputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Small delay so smooth-scroll has time to land before focus pulls keyboard up.
+        setTimeout(() => {
+            const target = phoneInputRef.current;
+            if (!target) return;
+            const input = target.tagName === 'INPUT'
+                ? target
+                : target.querySelector('input[type="tel"]');
+            if (input) input.focus();
+        }, 400);
     };
 
     // Notification preference toggle handler (auto-save with optimistic update)
@@ -683,6 +766,26 @@ function Profile(){
     return (
         user && (
             <div className="p-3 md:p-6 max-w-4xl mx-auto">
+                {/* SMS-disabled banner (REVISION) — gated on phoneJustRemoved (session flag
+                    set by handleRemovePhone success) NOT just !userData.phone, so it does
+                    NOT fire for users who never had a phone. Banner clears automatically when
+                    user re-adds a phone. Tokens mirror Phase 62-02 TimezoneNudgeBanner. */}
+                {phoneJustRemoved && !userData?.phone && !smsDisabledBannerDismissed && (
+                    <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 flex items-start gap-3">
+                        <p className="flex-1 text-sm text-amber-900 dark:text-amber-100">
+                            SMS disabled — add a phone number to re-enable.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => setSmsDisabledBannerDismissed(true)}
+                            className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 text-lg leading-none flex-shrink-0"
+                            aria-label="Dismiss"
+                        >
+                            ×
+                        </button>
+                    </div>
+                )}
+
                 {/* Breadcrumbs */}
                 <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
                     <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
@@ -769,8 +872,10 @@ function Profile(){
 
                     {/* Phone Input — always rendered (D-SMS-01: disabled-not-hidden).
                         Used as scroll/focus target for the Verify CTA and as the place
-                        to add a phone after removal. Visibility decoupled from sms_enabled. */}
-                    <div className="mt-2">
+                        to add a phone after removal. Visibility decoupled from sms_enabled.
+                        Wrapper div carries phoneInputRef so the CTA can scrollIntoView +
+                        focus the inner <input type="tel"> regardless of phone state. */}
+                    <div className="mt-2" ref={phoneInputRef}>
                                     {(phoneState === 'idle' || phoneState === 'editing') && (
                                         <div className="flex flex-col sm:flex-row sm:items-start gap-2">
                                             <div className="flex-1 relative">
@@ -862,7 +967,7 @@ function Profile(){
                                     )}
 
                                     {phoneState === 'verified' && (
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex flex-wrap items-center gap-2">
                                             <span className="text-status-success">
                                                 <svg className="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -874,6 +979,18 @@ function Profile(){
                                                 className="text-sm text-content-muted hover:text-content-secondary underline ml-2"
                                             >
                                                 Change number
+                                            </button>
+                                            {/* Two-tap remove link (D-PHONE-01): first tap arms 3s revert timer
+                                                + flips label red; second tap commits via usersAPI.removePhone. */}
+                                            <button
+                                                onClick={handleRemovePhone}
+                                                className={`text-sm underline ml-3 ${
+                                                    removeArmed
+                                                        ? 'text-status-error font-semibold'
+                                                        : 'text-status-error hover:text-red-700'
+                                                }`}
+                                            >
+                                                {removeArmed ? 'Tap again to remove' : 'Remove'}
                                             </button>
                                         </div>
                                     )}
@@ -1039,6 +1156,22 @@ function Profile(){
 
                     {/* Preferences Matrix */}
                     <div className="space-y-0">
+                        {/* Verify-phone CTA — single shared line above the SMS column
+                            (D-SMS-01, D-SMS-02). Gate is `!phone_verified` (NOT
+                            `sms_enabled && !phone_verified`) per the Task 3 decoupling.
+                            Click smooth-scrolls to + focuses the always-rendered phone input. */}
+                        {!userData?.phone_verified && (
+                            <div className="flex items-center justify-end gap-2 pb-2 text-sm">
+                                <span className="text-content-secondary">Verify your phone to enable SMS</span>
+                                <button
+                                    type="button"
+                                    onClick={handleVerifyPhoneCta}
+                                    className="text-content-link hover:text-content-link-hover font-medium underline"
+                                >
+                                    Verify
+                                </button>
+                            </div>
+                        )}
                         {/* Header row */}
                         <div className="flex items-center py-2 border-b border-line">
                             <div className="flex-1 text-sm font-medium text-content-muted">Notification Type</div>
@@ -1073,13 +1206,16 @@ function Profile(){
                                     </div>
 
                                     {/* SMS Toggle — always rendered (D-SMS-01).
-                                        disabled state added in Task 4 (driven by phone_verified). */}
+                                        Disabled (greyed) when phone is unverified — three
+                                        layers of defense: onClick guard, native disabled prop,
+                                        opacity-50 cursor-not-allowed styling. */}
                                     <div className="w-16 flex justify-center">
                                         <button
-                                            onClick={() => handleToggle(type.key, 'sms', !preferences[type.key]?.sms)}
+                                            onClick={() => userData?.phone_verified && handleToggle(type.key, 'sms', !preferences[type.key]?.sms)}
+                                            disabled={!userData?.phone_verified}
                                             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                                                 preferences[type.key]?.sms ? 'bg-status-success' : 'bg-line-strong'
-                                            }`}
+                                            } ${!userData?.phone_verified ? 'opacity-50 cursor-not-allowed' : ''}`}
                                             aria-label={`${type.label} SMS notifications`}
                                         >
                                             <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
