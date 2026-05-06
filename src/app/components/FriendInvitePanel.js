@@ -446,14 +446,17 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
 
     return (
         <>
-            {/* Backdrop */}
+            {/* Backdrop — z-[60] so it stacks above .modal-overlay (z-50) when
+                opened from inside another modal (e.g. ManageMembers). Clicking
+                the backdrop closes only this panel; the parent modal's overlay
+                no longer receives the click. */}
             <div
-                className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"
+                className="fixed inset-0 bg-black bg-opacity-50 z-[60] transition-opacity"
                 onClick={onClose}
             />
 
-            {/* Sliding panel */}
-            <div className="fixed inset-y-0 right-0 w-full max-w-md bg-surface-card shadow-xl z-50 flex flex-col animate-slide-in-right">
+            {/* Sliding panel — z-[70] above its own backdrop. */}
+            <div className="fixed inset-y-0 right-0 w-full max-w-md bg-surface-card shadow-xl z-[70] flex flex-col animate-slide-in-right">
                 {/* Header */}
                 <div className="flex items-center justify-between p-5 border-b border-line">
                     <div>
