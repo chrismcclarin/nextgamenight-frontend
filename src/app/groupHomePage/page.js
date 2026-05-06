@@ -1,11 +1,10 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import CreateEvent from '../components/createEvent';
 import ManageMembers from '../components/ManageMembers';
-import FriendInvitePanel from '../components/FriendInvitePanel';
 import { listsAPI, groupsAPI, eventsAPI, API_BASE_URL } from '../../lib/api';
 import GroupGamesList from '../components/GroupGamesList';
 import { getTextStyle, getSubtitleStyle } from '../../lib/colorUtils';
@@ -14,16 +13,19 @@ import EventCalendar from '../components/EventCalendar';
 import PendingMemberBanner from '../components/PendingMemberBanner';
 import FriendshipStatusProvider from '../components/FriendshipStatusProvider';
 import GroupLibrary from '../components/GroupLibrary';
+import KebabMenu from '../components/KebabMenu';
+import GroupSettings from '../components/GroupSettings';
 
 // A groups home page
 function GroupHomePage(){
     const { user } = Auth();
+    const router = useRouter();
     const [Group, setGroup] = useState(null);
     const [UserList, setUserList] = useState(null);
     const [gamesList, setGamesList] = useState([]);
     const [eventModal, setEventModal] = useState(false);
     const [memberModal, setMemberModal] = useState(false);
-    const [inviteModal, setInviteModal] = useState(false);
+    const [showGroupSettings, setShowGroupSettings] = useState(false);
     const [loading, setLoading] = useState(true);
     const [userRole, setUserRole] = useState(null);
     const [activeTab, setActiveTab] = useState('home');
@@ -48,6 +50,31 @@ function GroupHomePage(){
     const prefillTime = searchParams.get('time');
     const shouldCreateEvent = searchParams.get('create_event') === 'true';
 
+    // GROUP-05 (Plan 69-04): detect "user is no longer a member" signals and
+    // redirect to the home banner consumer at `/?removedFrom=<name>`.
+    //
+    // apiFetch (src/lib/api.js) throws Error(message) only — there's no
+    // exposed `.status`, so we match on common 403/404/membership phrases.
+    // Defensive: also accepts a `.status` field if a future helper exposes it.
+    const isRemovedFromGroupError = (error) => {
+        const status = error?.status || error?.response?.status;
+        if (status === 403 || status === 404) return true;
+        const msg = (error?.message || '').toLowerCase();
+        return (
+            msg.includes('not a member') ||
+            msg.includes('forbidden') ||
+            msg.includes('access denied') ||
+            msg.includes('403') ||
+            msg.includes('404') ||
+            msg.includes('group not found')
+        );
+    };
+
+    const redirectToHomeAsRemoved = (groupName) => {
+        const name = groupName || Group?.name || 'this group';
+        router.push(`/?removedFrom=${encodeURIComponent(name)}`);
+    };
+
     const getGroup = async () => {
         if (!Router) return;
         try {
@@ -55,6 +82,10 @@ function GroupHomePage(){
             const data = await groupsAPI.getGroup(Router);
             setGroup(data);
         } catch (error) {
+            if (isRemovedFromGroupError(error)) {
+                redirectToHomeAsRemoved();
+                return;
+            }
             console.error('Error fetching group:', error);
         }
     };
@@ -78,8 +109,21 @@ function GroupHomePage(){
             const currentUserMember = data.find(m => m.user_id === user.sub);
             if (currentUserMember && currentUserMember.UserGroup) {
                 setUserRole(currentUserMember.UserGroup.role);
+                return;
             }
+
+            // GROUP-05: members list returned 200 but the current user is not
+            // in it — the backend's `/groups/:id/users` route doesn't 403
+            // non-members today, so the in-list absence is the real removal
+            // signal. Redirect to /?removedFrom=… so Plan 69-03's banner picks
+            // it up. This must come AFTER setUserList(data) so React doesn't
+            // batch the state and re-paint the group view in the same tick.
+            redirectToHomeAsRemoved();
         } catch (error) {
+            if (isRemovedFromGroupError(error)) {
+                redirectToHomeAsRemoved();
+                return;
+            }
             console.error('Error fetching group members:', error);
             setUserList([]);
         }
@@ -162,7 +206,7 @@ function GroupHomePage(){
             <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
                 <span className="text-content-muted mx-2">{'>'}</span>
-                <span className="text-content-primary font-semibold max-w-[200px] truncate inline-block align-bottom">{Group?.name || 'Group'}</span>
+                <span className="text-content-primary font-semibold break-words">{Group?.name || 'Group'}</span>
             </nav>
 
             {/* Header */}
@@ -203,7 +247,7 @@ function GroupHomePage(){
                     )}
                     <div className="flex-1 min-w-0">
                         <h1
-                            className="text-2xl md:text-3xl font-bold truncate"
+                            className="text-2xl md:text-3xl font-bold break-words"
                             style={getTextStyle(!!Group?.background_image_url, Group?.background_color || '#1f2937')}
                         >
                             {Group?.name || 'Group'}
@@ -219,19 +263,7 @@ function GroupHomePage(){
                         </p>
                     </div>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 relative z-20 w-full md:w-auto flex-shrink-0">
-                    {(userRole === 'owner' || userRole === 'admin') && (
-                        <button
-                            onClick={() => setInviteModal(true)}
-                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap text-white border-2 border-white/30 rounded-btn backdrop-blur-sm hover:bg-white/20 transition-all"
-                            style={{
-                                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-                            }}
-                        >
-                            Invite Member
-                        </button>
-                    )}
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 relative z-20 w-full md:w-auto flex-shrink-0 items-stretch sm:items-center">
                     {userRole && userRole !== 'pending' && (
                         <button
                             onClick={() => setMemberModal(true)}
@@ -265,6 +297,17 @@ function GroupHomePage(){
                         >
                             Add New Game Event
                         </button>
+                    )}
+                    {/* CONTEXT D-LEAVE-01: header kebab is the canonical entry point
+                        to GroupSettings (which now hosts Leave Group + Delete Group).
+                        Active members only — pending users can't act on the group. */}
+                    {userRole && userRole !== 'pending' && (
+                        <KebabMenu
+                            ariaLabel="Group actions"
+                            items={[
+                                { label: 'Group settings', onClick: () => setShowGroupSettings(true) },
+                            ]}
+                        />
                     )}
                 </div>
             </div>
@@ -355,12 +398,29 @@ function GroupHomePage(){
                 group_name={Group?.name || 'this group'}
             />
 
-            <FriendInvitePanel
-                group={Group}
-                open={inviteModal}
-                onClose={() => setInviteModal(false)}
-                onMemberAdded={getGroupMembers}
-            />
+            {showGroupSettings && Group && (
+                <GroupSettings
+                    group={Group}
+                    user={user}
+                    userRole={userRole}
+                    onClose={() => setShowGroupSettings(false)}
+                    onUpdate={() => {
+                        // Re-fetch group settings + members so Settings edits
+                        // (profile picture, background, etc.) reflect immediately.
+                        getGroup();
+                        getGroupMembers();
+                        setShowGroupSettings(false);
+                    }}
+                    onGroupDeleted={() => {
+                        setShowGroupSettings(false);
+                        router.push('/');
+                    }}
+                    onOpenManageMembers={() => {
+                        setShowGroupSettings(false);
+                        setMemberModal(true);
+                    }}
+                />
+            )}
         </div>
         </FriendshipStatusProvider>
     );
