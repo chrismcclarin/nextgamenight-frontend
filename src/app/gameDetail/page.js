@@ -1034,6 +1034,25 @@ export default function GameDetailPage() {
         );
     }
 
+    // POLL-04 (D-SMS-LINK-04): friendly "Event not found" state for SMS
+    // links whose event_id was cancelled/deleted between text-send and
+    // tap. Distinct from the "Game not found" branch below — the user
+    // arrived via /gameDetail?event_id=X expecting an event, so we tell
+    // them the event is gone (not the game) and link back to userHome.
+    if (event_id && !singleEvent) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="text-center max-w-md mx-auto px-6">
+                    <p className="text-content-primary text-lg font-semibold mb-2">Event not found</p>
+                    <p className="text-content-secondary mb-6">This event no longer exists or has been cancelled.</p>
+                    <Link href="/" className="text-content-link hover:underline">
+                        ← Back to Home
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
     if (!game) {
         return (
             <div className="flex items-center justify-center min-h-screen">
