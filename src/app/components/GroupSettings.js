@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { groupsAPI, API_BASE_URL } from '../../lib/api';
 import PromptScheduleReadOnly from './PromptScheduleReadOnly';
@@ -29,7 +29,7 @@ const DEFAULT_BACKGROUND_COLORS = [
   { name: 'Storm', value: '#27272a' },
 ];
 
-export default function GroupSettings({ group, user, onClose, onUpdate, userRole, onGroupDeleted }) {
+export default function GroupSettings({ group, user, onClose, onUpdate, userRole, onGroupDeleted, onOpenManageMembers }) {
   const router = useRouter();
   const [profilePictureUrl, setProfilePictureUrl] = useState(group.profile_picture_url || '');
   const [backgroundColor, setBackgroundColor] = useState(group.background_color || '#ffffff');
@@ -40,6 +40,39 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
+
+  // Plan 69-04 Leave Group state
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [leaveError, setLeaveError] = useState('');
+
+  // Plan 69-04: derive isOnlyMember from a one-time members fetch.
+  // The Group object passed to GroupSettings doesn't reliably include
+  // member_count (only /invite-preview returns it), and Users[] varies
+  // by callsite. Fetching once on mount keeps the gate accurate without
+  // requiring callers to plumb member counts down.
+  const [memberCount, setMemberCount] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!group?.id) return;
+    (async () => {
+      try {
+        const members = await groupsAPI.getGroupMembers(group.id);
+        if (!cancelled && Array.isArray(members)) {
+          setMemberCount(members.length);
+        }
+      } catch (e) {
+        // If the fetch fails, fall back to "unknown" — leave button stays
+        // visible for non-owners (the backend's /leave endpoint is the
+        // ultimate source of truth and will reject last-member-leaves with
+        // its own error if that case ever materializes).
+        if (!cancelled) setMemberCount(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [group?.id]);
+
+  const isOnlyMember = memberCount !== null && memberCount <= 1;
 
   const handleSave = async () => {
     if (!user?.sub) return;
@@ -84,6 +117,24 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
     if (customBackgroundUrl.trim()) {
       setBackgroundImageUrl(customBackgroundUrl.trim());
       setBackgroundColor('#ffffff'); // Reset color when using image
+    }
+  };
+
+  const handleLeaveGroup = async () => {
+    if (!user?.sub || !group?.id) return;
+    try {
+      setLeaving(true);
+      setLeaveError('');
+      await groupsAPI.leaveGroup(group.id);
+      if (onClose) onClose();
+      // Plan 69-04: redirect to `/` (the canonical home route hosting Plan
+      // 69-03's removedFrom banner) — NOT `/userHome` (no such route exists,
+      // see app/page.js → UserHomePage).
+      router.push('/');
+    } catch (err) {
+      setLeaveError(err.message || 'Failed to leave group. Please try again.');
+    } finally {
+      setLeaving(false);
     }
   };
 
@@ -261,6 +312,79 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
             groupPageUrl={`/groupHomePage?id=${group.id}`}
           />
         </div>
+
+        {/* Leave Group Section (Plan 69-04, GROUP-04) — role-aware gating.
+            Active members only; pending users can't leave (they accept/decline). */}
+        {userRole && userRole !== 'pending' && (
+          <div className="mb-6 pt-6 border-t border-line">
+            <h3 className="text-lg font-semibold text-content-primary mb-3">Leave Group</h3>
+            {userRole === 'owner' && !isOnlyMember && (
+              <div className="space-y-3">
+                <p className="text-sm text-content-secondary">
+                  You are the owner. Transfer ownership to another member before you can leave.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => onOpenManageMembers?.()}
+                  disabled={!onOpenManageMembers}
+                >
+                  Open Manage Members to transfer
+                </button>
+              </div>
+            )}
+            {userRole === 'owner' && isOnlyMember && (
+              <p className="text-sm text-content-secondary">
+                You&apos;re the only member — use Delete Group below to remove the group entirely.
+              </p>
+            )}
+            {userRole !== 'owner' && isOnlyMember && (
+              <p className="text-sm text-content-secondary">
+                You&apos;re the only member — use Delete Group below to remove the group entirely.
+              </p>
+            )}
+            {userRole !== 'owner' && !isOnlyMember && (
+              <>
+                {!showLeaveConfirm ? (
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={() => setShowLeaveConfirm(true)}
+                  >
+                    Leave Group
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-content-primary">
+                      Leave <strong>{group?.name}</strong>? You will lose access to events, library, and member-only content.
+                    </p>
+                    {leaveError && (
+                      <p className="text-sm text-status-error">{leaveError}</p>
+                    )}
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={leaving}
+                        onClick={() => { setShowLeaveConfirm(false); setLeaveError(''); }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-danger"
+                        disabled={leaving}
+                        onClick={handleLeaveGroup}
+                      >
+                        {leaving ? 'Leaving…' : 'Confirm Leave'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         {/* Delete Group Section - Owner Only */}
         {userRole === 'owner' && (
