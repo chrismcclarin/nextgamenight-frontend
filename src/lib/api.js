@@ -387,6 +387,14 @@ export const usersAPI = {
       method: 'POST',
       body: JSON.stringify({ code }),
     }),
+
+  // Remove phone number — backend cascades sms_enabled and all 4
+  // notification_preferences[type].sms toggles to false in one transaction
+  // per CONTEXT D-PHONE-02. Returns the updated user record.
+  removePhone: (user_id) =>
+    apiFetch(`/users/${encodeURIComponent(user_id)}/phone`, {
+      method: 'DELETE',
+    }),
 };
 
 /**
