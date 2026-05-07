@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { format, parseISO, isToday } from 'date-fns';
 import MergedHeatmapCell from './MergedHeatmapCell';
 import { useTimezone } from '../components/TimezoneProvider';
@@ -53,6 +53,57 @@ export default function MergedHeatmapGrid({ slots = [], totalMembers, selectedSl
       .map(([date]) => date);
   }, [slots]);
 
+  // ARIA grid roving tabindex pattern (Plan 72-02 a11y goal: WCAG 2.1 AA).
+  // Cell focus uses HeatmapTooltip's triggerRef prop (Plan 72-01 API) to expose
+  // the cloned trigger DOM element. Linear index = rowIndex * COLS + colIndex.
+  const COLS = 7; // 7 days, Mon-Sun
+  const totalRows = HOURS.length;
+  const cellRefs = useRef([]);
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const setCellRef = useCallback((idx) => (el) => {
+    if (el) cellRefs.current[idx] = el;
+  }, []);
+
+  const handleKeyDown = useCallback((event) => {
+    const idx = focusedIndex;
+    const row = Math.floor(idx / COLS);
+    const col = idx % COLS;
+    let target = idx;
+    switch (event.key) {
+      case 'ArrowLeft':
+        target = row * COLS + Math.max(0, col - 1);
+        break;
+      case 'ArrowRight':
+        target = row * COLS + Math.min(COLS - 1, col + 1);
+        break;
+      case 'ArrowUp':
+        target = Math.max(0, row - 1) * COLS + col;
+        break;
+      case 'ArrowDown':
+        target = Math.min(totalRows - 1, row + 1) * COLS + col;
+        break;
+      case 'Home':
+        target = row * COLS;
+        break;
+      case 'End':
+        target = row * COLS + (COLS - 1);
+        break;
+      case 'PageUp':
+        target = col;
+        break;
+      case 'PageDown':
+        target = (totalRows - 1) * COLS + col;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    if (target !== idx) {
+      setFocusedIndex(target);
+      cellRefs.current[target]?.focus();
+    }
+  }, [focusedIndex, totalRows]);
+
   // If no slots, show placeholder
   if (dates.length === 0) {
     return (
@@ -63,7 +114,12 @@ export default function MergedHeatmapGrid({ slots = [], totalMembers, selectedSl
   }
 
   return (
-    <div className="grid grid-cols-8 gap-px bg-line rounded-lg overflow-hidden">
+    <div
+      className="grid grid-cols-8 gap-px bg-line rounded-lg overflow-hidden"
+      role="grid"
+      aria-label="Group availability heatmap"
+      onKeyDown={handleKeyDown}
+    >
       {/* Header row: empty corner + 7 day headers */}
       <div className="bg-surface-card p-2" /> {/* Empty corner */}
       {dates.map((dateStr, idx) => {
@@ -87,7 +143,7 @@ export default function MergedHeatmapGrid({ slots = [], totalMembers, selectedSl
       })}
 
       {/* Body rows: hour label + 7 cells per row */}
-      {HOURS.map((hour) => (
+      {HOURS.map((hour, rowIndex) => (
         <React.Fragment key={`hour-${hour}`}>
           {/* Hour label */}
           <div
@@ -99,13 +155,18 @@ export default function MergedHeatmapGrid({ slots = [], totalMembers, selectedSl
           </div>
 
           {/* 7 cells for this hour */}
-          {dates.map((dateStr) => {
+          {dates.map((dateStr, colIndex) => {
             const slot = slotsMap[dateStr]?.[hour];
             const isSelected =
               selectedSlot?.date === dateStr && selectedSlot?.hour === hour;
+            const linearIndex = rowIndex * COLS + colIndex;
 
             return (
-              <div key={`${dateStr}-${hour}`} className="bg-surface-card">
+              <div
+                key={`${dateStr}-${hour}`}
+                className="bg-surface-card"
+                onFocus={() => setFocusedIndex(linearIndex)}
+              >
                 <MergedHeatmapCell
                   hour={hour}
                   date={dateStr}
@@ -115,6 +176,8 @@ export default function MergedHeatmapGrid({ slots = [], totalMembers, selectedSl
                   availableMembers={slot?.availableMembers ?? []}
                   isSelected={isSelected}
                   onSelect={onSlotSelect}
+                  triggerRef={setCellRef(linearIndex)}
+                  tabIndex={focusedIndex === linearIndex ? 0 : -1}
                 />
               </div>
             );
