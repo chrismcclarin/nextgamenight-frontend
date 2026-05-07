@@ -1,0 +1,213 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { promptAPI } from '../../lib/api';
+import KebabMenu from './KebabMenu';
+import StartPollModal from './StartPollModal';
+
+/**
+ * OpenPollsList — Phase 71.2 (POLL-01 / D-UI-01..04)
+ *
+ * Unified list of open availability prompts (manual + auto) for a group.
+ * Renders the "Start a poll" entry point for any non-pending active member,
+ * the source label per prompt (`Started by [creator]` for manual, `From
+ * [schedule name]` for auto — Plan 01 ships GroupPromptSettings.template_name
+ * inline in the GET /prompts/open response), and a per-card KebabMenu close
+ * action gated on the server-derived `can_close` flag.
+ *
+ * @param {Object} props
+ * @param {string} props.groupId - Group UUID
+ * @param {Object} props.group - Full group object
+ * @param {string} props.userRole - 'owner' | 'admin' | 'member' | 'pending'
+ * @param {string} [props.currentUserDbId] - Caller's User.id UUID (currently
+ *   informational; the can_close gate is server-derived in the response).
+ */
+export default function OpenPollsList({ groupId, group, userRole, currentUserDbId }) {
+  const [prompts, setPrompts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [showStartPoll, setShowStartPoll] = useState(false);
+
+  const loadPrompts = useCallback(async () => {
+    if (!groupId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await promptAPI.getOpenPrompts(groupId);
+      setPrompts(Array.isArray(data?.prompts) ? data.prompts : []);
+    } catch (err) {
+      setError(err?.message || 'Failed to load polls.');
+      setPrompts([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [groupId]);
+
+  useEffect(() => {
+    loadPrompts();
+  }, [loadPrompts]);
+
+  // Gate alignment: parent PromptScheduleSection uses `!userRole || userRole
+  // === 'pending' → return null`. We mirror the same negative check so any
+  // future role addition (e.g. 'guest') evolves both gates together. No
+  // positive role allowlist.
+  const canCreate = userRole && userRole !== 'pending';
+
+  const handleClose = async (promptId) => {
+    try {
+      await promptAPI.closePrompt(promptId);
+      // Optimistic refresh — backend has already flipped status to 'closed'
+      // so the GET /prompts/open response will exclude it on next fetch.
+      await loadPrompts();
+    } catch (err) {
+      const msg = err?.message || 'Unknown error';
+      // Match the existing PromptScheduleManager pattern (alert on close-action
+      // failure). KebabMenu has already closed by this point.
+      // eslint-disable-next-line no-alert
+      alert(`Failed to close poll: ${msg}`);
+    }
+  };
+
+  return (
+    <div>
+      {canCreate && (
+        <button
+          type="button"
+          onClick={() => setShowStartPoll(true)}
+          className="btn btn-primary mb-4"
+        >
+          + Start a poll
+        </button>
+      )}
+
+      {error && (
+        <div className="mb-3 p-3 bg-status-error/10 border border-status-error/30 rounded-btn">
+          <p className="text-status-error text-sm">{error}</p>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-content-muted text-sm py-4 text-center">Loading polls...</p>
+      ) : prompts.length === 0 ? (
+        // D-UI-03: unified empty-state copy for ALL roles (admin/member alike).
+        <p className="text-content-muted text-sm py-8 text-center">
+          No active polls. Start one to find a time that works for everyone.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {prompts.map((p) => (
+            <OpenPollCard
+              key={p.id}
+              prompt={p}
+              group={group}
+              onClose={handleClose}
+            />
+          ))}
+        </ul>
+      )}
+
+      <StartPollModal
+        groupId={groupId}
+        group={group}
+        isOpen={showStartPoll}
+        onClose={() => setShowStartPoll(false)}
+        onSuccess={() => {
+          setShowStartPoll(false);
+          loadPrompts();
+        }}
+      />
+    </div>
+  );
+}
+
+/**
+ * OpenPollCard — single prompt row in the unified list.
+ *
+ * Source label rules (D-UI-02):
+ *   - Auto-prompt (created_by_settings_id != null):
+ *       "From {GroupPromptSettings.template_name}"
+ *       Falls back to "From recurring schedule" if the parent settings row
+ *       has been deleted (rare; ON DELETE SET NULL on created_by_settings_id
+ *       leaves the include null).
+ *   - Manual poll: "Started by {Creator.username}"
+ *       Falls back to "a group member" if the Creator association is null.
+ *
+ * KebabMenu visibility is gated on the server-derived `can_close` flag.
+ * Backend re-validates on PATCH (defense in depth) so a forged client-side
+ * flag still fails with 403 — see threat T-71.2-11 in plan.
+ */
+function OpenPollCard({ prompt, group, onClose }) {
+  const isAuto = !!prompt.created_by_settings_id;
+
+  // Note: Plan 01 named the include attribute `template_name` (the actual
+  // model column). The route returns it under the alias `GroupPromptSetting`
+  // (Sequelize default), but to be defensive across alias variations we
+  // accept either shape.
+  const settingsRow = prompt.GroupPromptSetting || prompt.GroupPromptSettings;
+  const sourceLabel = isAuto
+    ? `From ${settingsRow?.template_name || 'recurring schedule'}`
+    : `Started by ${prompt.Creator?.username || 'a group member'}`;
+
+  // Resolve game name from group.games when available — falls back to the
+  // generic title when the prompt has no associated game.
+  const gameName = (() => {
+    if (!prompt.game_id) return null;
+    if (Array.isArray(group?.games)) {
+      const g = group.games.find((x) => x.id === prompt.game_id);
+      return g?.name || g?.title || null;
+    }
+    return null;
+  })();
+  const title = gameName || 'Availability poll';
+
+  // Format deadline in viewer's local timezone using Intl.
+  const deadlineDisplay = (() => {
+    if (!prompt.deadline) return '';
+    try {
+      const d = new Date(prompt.deadline);
+      return new Intl.DateTimeFormat(undefined, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      }).format(d);
+    } catch {
+      return prompt.deadline;
+    }
+  })();
+
+  return (
+    <li className="bg-surface-card border border-line rounded-card p-3 flex items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold text-content-primary truncate">{title}</p>
+        <p className="text-xs text-content-muted mt-0.5">{sourceLabel}</p>
+        {deadlineDisplay && (
+          <p className="text-xs text-content-secondary mt-1">
+            Deadline: {deadlineDisplay}
+          </p>
+        )}
+        {prompt.custom_message && (
+          <p className="text-sm text-content-secondary mt-2 italic">
+            &ldquo;{prompt.custom_message}&rdquo;
+          </p>
+        )}
+      </div>
+
+      {prompt.can_close === true && (
+        <KebabMenu
+          ariaLabel="Poll actions"
+          items={[
+            {
+              label: 'End poll',
+              danger: true,
+              twoTap: true,
+              confirmLabel: 'Tap again to end',
+              onClick: () => onClose(prompt.id),
+            },
+          ]}
+        />
+      )}
+    </li>
+  );
+}

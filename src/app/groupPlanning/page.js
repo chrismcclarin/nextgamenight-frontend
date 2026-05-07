@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
-import { groupsAPI, eventsAPI, promptAPI } from '../../lib/api';
+import { groupsAPI, eventsAPI, promptAPI, usersAPI } from '../../lib/api';
 import Link from 'next/link';
 import CreateEvent from '../components/createEvent';
 import ResponseDashboard from '../components/ResponseDashboard';
@@ -15,10 +15,21 @@ export default function GroupPlanningPage() {
     const groupId = searchParams.get('group_id');
     const promptId = searchParams.get('prompt_id');
 
+    // Phase 71.2 — "Schedule it?" email CTA pre-fills the createEvent modal
+    // via these query params. createEvent.js already accepts the props
+    // (prefillDate/prefillTime/prefillDuration/prefillGameId); this page just
+    // needs to forward them. Plan 02 ships the email links shaped this way.
+    const prefillDate = searchParams.get('prefillDate');
+    const prefillTime = searchParams.get('prefillTime');
+    const prefillDuration = searchParams.get('prefillDuration');
+    const prefillGameId = searchParams.get('prefillGameId');
+
     const [group, setGroup] = useState(null);
     const [groupEvents, setGroupEvents] = useState([]);
 
-    // Modal state for CreateEvent
+    // Modal state for CreateEvent. When the URL carries prefill params we
+    // open the modal automatically so the user lands directly on the event
+    // form (matches the email-CTA expected behavior).
     const [eventModal, setEventModal] = useState(false);
 
     // Heatmap/prompt state (needed for ResponseDashboard)
@@ -26,6 +37,12 @@ export default function GroupPlanningPage() {
     const [heatmapLoading, setHeatmapLoading] = useState(true);
     const [heatmapError, setHeatmapError] = useState(null);
     const [userRole, setUserRole] = useState(null);
+
+    // Phase 71.2 D-UI-01 — caller's User.id UUID (sourced from /api/users/me
+    // via existing usersAPI.getUser by Auth0 sub). Plumbed to
+    // PromptScheduleSection -> OpenPollsList for parity with other components
+    // that render UUID-keyed UI; the can_close gate itself is server-derived.
+    const [currentUserDbId, setCurrentUserDbId] = useState(null);
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -40,8 +57,21 @@ export default function GroupPlanningPage() {
             fetchGroupEvents();
             fetchHeatmapData();
             fetchUserRole();
+            fetchCurrentUserDbId();
         }
     }, [user, groupId]);
+
+    // Auto-open the createEvent modal when the URL carries prefill params.
+    // The "Schedule it?" email CTA (Plan 02) lands users here with the slot
+    // already pre-filled — opening the modal automatically saves an extra tap.
+    useEffect(() => {
+        if (prefillDate && prefillTime) {
+            setEventModal(true);
+        }
+        // Only run on initial mount when params are present; subsequent toggles
+        // are user-driven via the existing buttons.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const fetchGroup = async () => {
         if (!groupId) return;
@@ -106,8 +136,25 @@ export default function GroupPlanningPage() {
             if (me?.UserGroup?.role) {
                 setUserRole(me.UserGroup.role);
             }
+            // Plan 71.2 — opportunistic UUID resolution from the same fetch.
+            // Most members ship User.id on the row; if it's missing we fall
+            // back to the dedicated /users/:user_id call below.
+            if (me?.id) {
+                setCurrentUserDbId(me.id);
+            }
         } catch (err) {
             console.error('Error fetching user role:', err);
+        }
+    };
+
+    const fetchCurrentUserDbId = async () => {
+        if (!user?.sub) return;
+        try {
+            const data = await usersAPI.getUser(user.sub);
+            if (data?.id) setCurrentUserDbId(data.id);
+        } catch (err) {
+            // Non-fatal — currentUserDbId is informational. Auth gate is server-derived.
+            console.error('Error fetching current user db id:', err);
         }
     };
 
@@ -181,6 +228,7 @@ export default function GroupPlanningPage() {
                         groupId={groupId}
                         group={group}
                         userRole={userRole}
+                        currentUserDbId={currentUserDbId}
                         defaultExpanded={true}
                     />
 
@@ -210,7 +258,12 @@ export default function GroupPlanningPage() {
                 </div>
             </div>
 
-            {/* Create Event Modal */}
+            {/* Create Event Modal — Phase 71.2 wires the email-CTA prefill
+                query params (group_id, prompt_id, prefillDate, prefillTime,
+                prefillDuration, prefillGameId) through to createEvent.js.
+                createEvent already accepts these props; we just need to
+                forward them. The modal auto-opens when prefillDate+Time are
+                present (see useEffect above). */}
             <CreateEvent
                 group_id={groupId}
                 modal={eventModal}
@@ -221,6 +274,10 @@ export default function GroupPlanningPage() {
                 }}
                 user={user}
                 hideVisualCalendar={true}
+                prefillDate={prefillDate}
+                prefillTime={prefillTime}
+                prefillDuration={prefillDuration ? Number(prefillDuration) : null}
+                prefillGameId={prefillGameId}
             />
         </div>
     );
