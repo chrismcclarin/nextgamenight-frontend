@@ -1,11 +1,28 @@
 'use client';
 
 import { useTimezone } from '../components/TimezoneProvider';
+import { useUser as Auth } from '@auth0/nextjs-auth0/client';
+import HeatmapTooltip from './HeatmapTooltip';
 
 /**
  * EventHeatmapBackground - Visual heatmap grid for group availability.
  * Shows merged availability as a color-coded grid (green = more available).
- * Hover over cells to see who is available.
+ *
+ * Phase 72-02 (HUX-01): Replaced hover-only `title=` attributes with the shared
+ * `HeatmapTooltip` primitive (touch-reachable + keyboard-accessible). Each cell
+ * exposes availability count + responder names, and — when the *current viewer*
+ * has a Google Calendar conflict for that slot — an additional "You have a
+ * Google Calendar conflict at this time" line.
+ *
+ * Keyboard scope: Tab+focus+Esc only on this surface. Arrow-key roving-tabindex
+ * is intentionally NOT provided here — see Plan 72-02 truths block. This is a
+ * passive availability summary, not a primary input grid; arrow-key cell
+ * navigation is provided on HeatmapGrid + MergedHeatmapGrid (the input grids).
+ *
+ * Drag-select coexistence: EventHeatmapBackground has no internal drag-select
+ * gesture; the long-press-drag-to-select gesture from Phase 68 MOB-07 lives in
+ * EventScheduler.js (a sibling in createEvent.js's visual-calendar mode). Tap-
+ * to-reveal-tooltip here does not interfere.
  *
  * @param {Object} props
  * @param {Object|null} props.heatmapData - Full API response from getGroupHeatmap
@@ -18,6 +35,8 @@ import { useTimezone } from '../components/TimezoneProvider';
  */
 export default function EventHeatmapBackground({ heatmapData, loading, anchorDate = null }) {
   const { timezone } = useTimezone();
+  const { user } = Auth();
+  const currentUserSub = user?.sub || null;
   // No-data state: render nothing
   if (!heatmapData && !loading) return null;
 
@@ -140,20 +159,46 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
     conflictMap.get(key).push({ user_id: c.user_id, username: c.username });
   }
 
-  // Build hover tooltip text with per-slot conflict info
-  function getTooltip(slot, dateKey) {
-    let tip = '';
-    if (slot && slot.availableCount > 0) {
-      const names = (slot.availableMembers || []).map(m => m.username).join(', ');
-      tip = `${slot.availableCount}/${totalMembers} available: ${names}`;
+  // Build per-cell tooltip JSX (Phase 72-02 HUX-01).
+  // Backend gcalConflicts shape: { user_id, username, date, hour } — no event
+  // title; the current-user conflict line is intentionally generic.
+  // Returns null when nothing relevant to show, so HeatmapTooltip's
+  // disabled-on-falsy-content path skips the wrapper for empty cells.
+  function renderTooltipContent(slot, dateKey) {
+    const hasAvailability = slot && slot.availableCount > 0;
+    const conflicts = conflictMap.get(dateKey) || [];
+    const userHasConflict = currentUserSub
+      ? conflicts.some(c => c.user_id === currentUserSub)
+      : false;
+    const otherConflicts = conflicts.filter(c => c.user_id !== currentUserSub);
+
+    if (!hasAvailability && !userHasConflict && otherConflicts.length === 0) {
+      return null;
     }
-    const conflicts = conflictMap.get(dateKey);
-    if (conflicts && conflicts.length > 0) {
-      for (const c of conflicts) {
-        tip += `${tip ? '\n' : ''}⚠ ${c.username} said yes, but calendar shows busy`;
-      }
-    }
-    return tip;
+
+    const names = hasAvailability
+      ? (slot.availableMembers || []).map(m => m.username).join(', ')
+      : '';
+
+    return (
+      <div>
+        {hasAvailability && (
+          <div>
+            {slot.availableCount} of {totalMembers} available{names ? ` — ${names}` : ''}
+          </div>
+        )}
+        {userHasConflict && (
+          <div className="text-amber-700 mt-1">
+            You have a Google Calendar conflict at this time
+          </div>
+        )}
+        {otherConflicts.map(c => (
+          <div key={c.user_id} className="text-amber-700 text-xs mt-1">
+            {c.username}: said yes, calendar shows busy
+          </div>
+        ))}
+      </div>
+    );
   }
 
   // Group gcal conflicts by username for the warning
@@ -196,26 +241,36 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
             ) : (
               <div />
             )}
-            {/* Day cells — keyed off the hourly slot, since backend data is hourly */}
+            {/* Day cells — keyed off the hourly slot, since backend data is
+                hourly. Both half-hour cells (:00 and :30) wrap with the same
+                tooltip content because the backend tracks availability hourly.
+                The hover-only `title` attribute was removed in Plan 72-02 in
+                favor of the shared HeatmapTooltip primitive. */}
             {dates.map(date => {
               const dateKey = `${date}_${s.hour}`;
               const slot = slotMap.get(dateKey);
               const count = slot?.availableCount || 0;
               const bg = getCellBg(count, totalMembers);
-              const tip = getTooltip(slot, dateKey);
+              const tooltipContent = renderTooltipContent(slot, dateKey);
               return (
-                <div
+                <HeatmapTooltip
                   key={`${date}_${s.hour}_${s.minute}`}
-                  title={tip}
-                  className={`${bg} rounded-sm flex items-center justify-center cursor-default`}
-                  style={{ minHeight: '18px' }}
+                  content={tooltipContent}
+                  placement="top"
+                  ariaLabel={`Availability for ${date} hour ${s.hour}`}
                 >
-                  {/* Show count badge once per hour (on the :00 row) so the
-                      number doesn't visually duplicate. */}
-                  {count > 0 && s.minute === 0 && (
-                    <span className="text-[9px] text-content-secondary font-medium">{count}</span>
-                  )}
-                </div>
+                  <div
+                    className={`${bg} rounded-sm flex items-center justify-center cursor-default`}
+                    style={{ minHeight: '18px' }}
+                    role="gridcell"
+                  >
+                    {/* Show count badge once per hour (on the :00 row) so the
+                        number doesn't visually duplicate. */}
+                    {count > 0 && s.minute === 0 && (
+                      <span className="text-[9px] text-content-secondary font-medium">{count}</span>
+                    )}
+                  </div>
+                </HeatmapTooltip>
               );
             })}
           </div>
@@ -232,7 +287,10 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
         <div className="w-3 h-3 bg-green-400 rounded-sm" />
         <div className="w-3 h-3 bg-green-500 rounded-sm" />
         <span className="text-[9px] text-content-muted">More available</span>
-        <span className="text-[9px] text-content-muted ml-1">(hover for names)</span>
+        {/* Plan 72-02: dropped the "(hover for names)" hint — interaction is no
+            longer hover-only (touch + keyboard now reach the tooltip via the
+            shared HeatmapTooltip primitive). Keeping the legend clean instead
+            of hint-y. */}
       </div>
 
       {membersWithoutDataCount > 0 && (
