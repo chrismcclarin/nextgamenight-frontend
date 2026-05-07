@@ -274,13 +274,17 @@ function HeatmapTooltip({
     'aria-label': ariaLabel ?? child.props['aria-label'],
   });
 
-  // Tone-specific styling. Default = compact desktop tooltip; mobile = larger
-  // type, more padding, stronger contrast (ring), wider max-width for the
-  // mobile expand surface in Plan 02 (MergedHeatmapCell).
+  // Tone-specific styling. Default = desktop tooltip; mobile = larger type,
+  // more padding, stronger contrast (ring), wider max-width for the mobile
+  // expand surface in Plan 02 (MergedHeatmapCell).
+  // Plan 72-02 UAT hotfix: bumped default tone padding/type from
+  // `px-3 py-2 text-sm` to `px-4 py-2.5 text-base` for desktop readability —
+  // the prior default felt cramped next to the (intentionally large) mobile
+  // tone. Mobile tone unchanged.
   const toneClassName =
     tone === 'mobile'
       ? 'bg-surface-elevated text-content-primary rounded-card px-4 py-3 text-base font-medium shadow-theme-lg max-w-[calc(100vw-2rem)] z-50 ring-1 ring-line'
-      : 'bg-surface-elevated text-content-primary rounded-card px-3 py-2 text-sm shadow-theme-lg max-w-xs z-50';
+      : 'bg-surface-elevated text-content-primary rounded-card px-4 py-2.5 text-base shadow-theme-lg max-w-xs z-50';
 
   // Arrow positioning per floating-ui's arrow-middleware contract.
   // The arrow div is absolutely positioned by middlewareData.arrow.x/y on the

@@ -259,15 +259,20 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
                   placement="top"
                   ariaLabel={`Availability for ${date} hour ${s.hour}`}
                 >
+                  {/* Plan 72-02 UAT hotfix: bumped minHeight from 18px to 28px
+                      so the entire cell is a comfortable hover/tap target —
+                      previously only the centered count badge had a meaningful
+                      hit area. Badge text bumped from text-[9px] to text-[11px]
+                      so the number stays readable inside the larger cell. */}
                   <div
                     className={`${bg} rounded-sm flex items-center justify-center cursor-default`}
-                    style={{ minHeight: '18px' }}
+                    style={{ minHeight: '28px' }}
                     role="gridcell"
                   >
                     {/* Show count badge once per hour (on the :00 row) so the
                         number doesn't visually duplicate. */}
                     {count > 0 && s.minute === 0 && (
-                      <span className="text-[9px] text-content-secondary font-medium">{count}</span>
+                      <span className="text-[11px] text-content-secondary font-medium">{count}</span>
                     )}
                   </div>
                 </HeatmapTooltip>
