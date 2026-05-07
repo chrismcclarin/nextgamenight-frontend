@@ -769,6 +769,13 @@ export const promptAPI = {
     apiFetch(`/availability-prompts/${promptId}/close`, {
       method: 'PATCH',
     }),
+
+  // Phase 71.2 / Plan 03 hotfix — fetch a heatmap shape derived ONLY from this
+  // prompt's submitted responses (not group-wide availability). Used by the
+  // createEvent modal when arriving via the close-notification CTA so the
+  // visual time picker shows poll results instead of standard availability.
+  getPromptHeatmap: (promptId) =>
+    apiFetch(`/prompts/${promptId}/heatmap`),
 };
 
 /**

@@ -61,11 +61,12 @@ export default function GroupPlanningPage() {
         }
     }, [user, groupId]);
 
-    // Auto-open the createEvent modal when the URL carries prefill params.
-    // The "Schedule it?" email CTA (Plan 02) lands users here with the slot
-    // already pre-filled — opening the modal automatically saves an extra tap.
+    // Auto-open the createEvent modal when the URL carries prefill params OR
+    // a prompt_id (Plan 03 single-CTA model: email links to ?prompt_id=X with
+    // no per-slot prefill; the modal renders a poll-restricted heatmap and
+    // the user picks visually).
     useEffect(() => {
-        if (prefillDate && prefillTime) {
+        if ((prefillDate && prefillTime) || promptId) {
             setEventModal(true);
         }
         // Only run on initial mount when params are present; subsequent toggles
@@ -273,7 +274,12 @@ export default function GroupPlanningPage() {
                     fetchGroupEvents();
                 }}
                 user={user}
-                hideVisualCalendar={true}
+                // Phase 71.2 / Plan 03 hotfix — when arriving via the email CTA
+                // (prompt_id present), surface the visual heatmap so the user
+                // can pick from the poll's response data. Other entry points
+                // into groupPlanning's CreateEvent stay heatmap-hidden.
+                hideVisualCalendar={!promptId}
+                promptId={promptId}
                 prefillDate={prefillDate}
                 prefillTime={prefillTime}
                 prefillDuration={prefillDuration ? Number(prefillDuration) : null}

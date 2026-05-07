@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
-import { gamesAPI, eventsAPI, groupsAPI, ballotAPI, availabilityAPI, API_BASE_URL } from '../../lib/api';
+import { gamesAPI, eventsAPI, groupsAPI, ballotAPI, availabilityAPI, promptAPI, API_BASE_URL } from '../../lib/api';
 import { format, parseISO, differenceInMinutes, startOfWeek } from 'date-fns';
 import EventScheduler from './EventScheduler';
 import EventHeatmapBackground from './EventHeatmapBackground';
@@ -16,7 +16,7 @@ import { useTimezone } from './TimezoneProvider';
 import { utcToWallClock, wallClockToUtc } from '../../lib/tzUtils';
 import TimezoneNudgeBanner from './TimezoneNudgeBanner';
 
-function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week' }) {
+function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId = null }) {
   const authUser = user || Auth().user;
   const { timezone, browserTimezone } = useTimezone();
   const effectiveTz = timezone || browserTimezone || 'UTC';
@@ -285,6 +285,24 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     const fetchHeatmap = async () => {
       try {
         setHeatmapLoading(true);
+
+        // Phase 71.2 / Plan 03 hotfix — when arriving via a poll-closed CTA
+        // (promptId in URL), the heatmap shows ONLY this poll's submitted
+        // responses, not the group's standard availability. Same shape, so
+        // EventHeatmapBackground renders unchanged. Week anchor is the
+        // earliest response date so the picker centers on the poll's window.
+        if (promptId) {
+          const data = await promptAPI.getPromptHeatmap(promptId);
+          setHeatmapData(data);
+          if (data?.weekStart) {
+            // weekStart is YYYY-MM-DD UTC; snap a noon-UTC Date for stable date-only ops.
+            const [y, m, d] = data.weekStart.split('-').map(Number);
+            const anchor = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+            setHeatmapWeekStart(startOfWeek(anchor, { weekStartsOn: 1 }));
+          }
+          return;
+        }
+
         // Resolve "today" as observed in the user's effective TZ, then snap to Monday.
         // Build a Date at noon UTC of that wall-clock date so date-only ops are TZ-safe.
         const nowWall = utcToWallClock(new Date(), effectiveTz);
@@ -302,7 +320,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       }
     };
     fetchHeatmap();
-  }, [modal, group_id, effectiveTz]);
+  }, [modal, group_id, effectiveTz, promptId]);
 
   const fetchGroupMembers = async () => {
     try {
