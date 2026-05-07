@@ -48,7 +48,14 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
     <div className="space-y-4">
       {schedules.map((schedule) => {
         const dayName = DAYS[schedule.schedule_day_of_week] || 'Unknown';
-        const timeFormatted = formatTime(schedule.schedule_time, timezone);
+        // Use the schedule's own configured timezone for display, not the
+        // viewer's profile TZ. Otherwise different group members see
+        // different times for the same schedule, which is confusing.
+        // Falls back to viewer's profile TZ only if the schedule has no TZ
+        // (legacy data) — that path resolves to 'UTC' on the user's first
+        // render and shows "GMT" if hit, but normal schedules created via
+        // the form always have schedule_timezone set.
+        const timeFormatted = formatTime(schedule.schedule_time, schedule.schedule_timezone || timezone);
         const game = games.find(g => g.id === schedule.game_id);
         const gameName = game?.name || 'Game TBD';
         const isActive = schedule.is_active;
