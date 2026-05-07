@@ -523,8 +523,16 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   const calendarInitialDate = useMemo(() => {
     if (prefillDate) return parseISO(prefillDate);
     if (editingEvent?.start_date) return new Date(editingEvent.start_date);
+    // Phase 71.2 / Plan 03 hotfix — when arriving from a poll-closed CTA the
+    // user has no prefilled slot, but the heatmap response carries weekStart
+    // (earliest viable slot date). Anchor the calendar there so the rendered
+    // week actually contains the poll's slots; otherwise the calendar opens
+    // on the current week and no green tiles appear.
+    if (promptId && heatmapData?.weekStart) {
+      return parseISO(heatmapData.weekStart);
+    }
     return new Date();
-  }, [prefillDate, editingEvent?.start_date]);
+  }, [prefillDate, editingEvent?.start_date, promptId, heatmapData?.weekStart]);
 
   if (!modal) return null;
 
@@ -631,7 +639,11 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                         ? `Week of ${format(heatmapWeekStart, 'EEE MMM d')}`
                         : 'Group Availability This Week'}
                     </p>
-                    <EventHeatmapBackground heatmapData={heatmapData} loading={heatmapLoading} />
+                    <EventHeatmapBackground
+                      heatmapData={heatmapData}
+                      loading={heatmapLoading}
+                      anchorDate={promptId ? heatmapData?.weekStart : null}
+                    />
                   </div>
                 )}
                 {/* Start Date */}

@@ -10,8 +10,13 @@ import { useTimezone } from '../components/TimezoneProvider';
  * @param {Object} props
  * @param {Object|null} props.heatmapData - Full API response from getGroupHeatmap
  * @param {boolean} props.loading - Whether data is still being fetched
+ * @param {string|null} [props.anchorDate] - Optional YYYY-MM-DD that the
+ *   rendered week should contain. The component snaps it to Monday and
+ *   renders that week. Used by the prompt-restricted heatmap (Phase 71.2)
+ *   so a poll's slots show up even when they're not in the current week.
+ *   Defaults to today.
  */
-export default function EventHeatmapBackground({ heatmapData, loading }) {
+export default function EventHeatmapBackground({ heatmapData, loading, anchorDate = null }) {
   const { timezone } = useTimezone();
   // No-data state: render nothing
   if (!heatmapData && !loading) return null;
@@ -74,13 +79,19 @@ export default function EventHeatmapBackground({ heatmapData, loading }) {
     slotMap.set(`${tzDateStr}_${tzHour}`, slot);
   }
 
-  // Get 7 dates starting from Monday of the current week in the viewer's timezone
-  const now = new Date();
-  const nowDateStr = toTzDateStr(now);
-  const [ny, nm, nd] = nowDateStr.split('-').map(Number);
-  const nowLocal = new Date(ny, nm - 1, nd);
-  const mondayOffset = (nowLocal.getDay() + 6) % 7; // days since Monday
-  const monday = new Date(ny, nm - 1, nd - mondayOffset);
+  // Get 7 dates starting from Monday of the anchor week in the viewer's timezone.
+  // anchorDate is YYYY-MM-DD; if absent, fall back to today in viewer-tz.
+  let anchorY, anchorM, anchorD;
+  if (anchorDate && /^\d{4}-\d{2}-\d{2}$/.test(anchorDate)) {
+    [anchorY, anchorM, anchorD] = anchorDate.split('-').map(Number);
+  } else {
+    const now = new Date();
+    const nowDateStr = toTzDateStr(now);
+    [anchorY, anchorM, anchorD] = nowDateStr.split('-').map(Number);
+  }
+  const anchorLocal = new Date(anchorY, anchorM - 1, anchorD);
+  const mondayOffset = (anchorLocal.getDay() + 6) % 7; // days since Monday
+  const monday = new Date(anchorY, anchorM - 1, anchorD - mondayOffset);
 
   const dates = [];
   for (let i = 0; i < 7; i++) {
