@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { groupsAPI, eventsAPI, promptAPI, usersAPI } from '../../lib/api';
 import Link from 'next/link';
 import CreateEvent from '../components/createEvent';
@@ -12,6 +12,8 @@ import PromptScheduleSection from '../components/PromptScheduleSection';
 export default function GroupPlanningPage() {
     const { user, isLoading: authLoading } = Auth();
     const searchParams = useSearchParams();
+    const router = useRouter();
+    const pathname = usePathname();
     const groupId = searchParams.get('group_id');
     const promptId = searchParams.get('prompt_id');
 
@@ -159,8 +161,25 @@ export default function GroupPlanningPage() {
         }
     };
 
+    // Phase 71.2 / Plan 03 hotfix — clear the email-CTA query params (prompt_id,
+    // prefillDate, etc.) when the modal closes for any reason. Without this, a
+    // page refresh after submit auto-reopens the modal because the auto-open
+    // useEffect re-fires on mount whenever those params are still in the URL.
+    const clearEventModalParams = () => {
+        if (!searchParams) return;
+        const ctaParams = ['prompt_id', 'prefillDate', 'prefillTime', 'prefillDuration', 'prefillGameId'];
+        const hasAny = ctaParams.some((k) => searchParams.has(k));
+        if (!hasAny) return;
+        const next = new URLSearchParams(searchParams.toString());
+        ctaParams.forEach((k) => next.delete(k));
+        const qs = next.toString();
+        router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    };
+
     const toggleEventModal = () => {
+        const willClose = eventModal;
         setEventModal(!eventModal);
+        if (willClose) clearEventModalParams();
     };
 
     const handleEventCreated = (newEvent) => {

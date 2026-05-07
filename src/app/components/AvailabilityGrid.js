@@ -56,10 +56,13 @@ export default function AvailabilityGrid({
     return Array.from({ length: numDays }, (_, i) => addDays(weekStart, i));
   }, [weekStart, numDays]);
 
-  // Generate 12 time slots (5:00 PM - 10:30 PM, 30-min intervals)
+  // Generate 28 time slots (10:00 AM - 11:30 PM, 30-min intervals).
+  // Matches EventScheduler.js's defaultMinTime/defaultMaxTime range so that
+  // the slots a user can vote on cover the same window they can pick when
+  // creating an event from the poll's results.
   const timeSlots = useMemo(() => {
-    return Array.from({ length: 12 }, (_, i) => {
-      const baseHour = 17; // 5:00 PM
+    return Array.from({ length: 28 }, (_, i) => {
+      const baseHour = 10; // 10:00 AM
       const minutes = i * 30;
       const hour = baseHour + Math.floor(minutes / 60);
       const min = minutes % 60;
