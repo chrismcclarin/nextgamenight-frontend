@@ -79,6 +79,15 @@ export default function AvailabilityFormPage() {
           gameName: validation.game?.name || null,
         });
 
+        // Phase 71.2 / Plan 03 hotfix — prefer the user's profile timezone
+        // (returned from /magic-auth/validate) over browser-detected TZ.
+        // Profile TZ is the source of truth in the rest of the app, and the
+        // browser may be on a different timezone than where the user normally
+        // games (different machine, VPN, travel).
+        if (validation.user?.timezone) {
+          setTimezone(validation.user.timezone);
+        }
+
         // Try to fetch existing response for pre-fill
         try {
           const existing = await availabilityFormAPI.getExistingResponse(
