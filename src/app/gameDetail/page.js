@@ -1665,7 +1665,7 @@ export default function GameDetailPage() {
                                         )}
                                         {/* RSVP Section - interactive for future events, read-only for past */}
                                         <RsvpSection
-                                            key={rsvpRefreshKey}
+                                            key={`${event.id}-${rsvpRefreshKey}`}
                                             eventId={event.id}
                                             currentUserId={user?.sub}
                                             eventDate={event.start_date}
