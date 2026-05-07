@@ -5,9 +5,7 @@ import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import CreateEvent from '../components/createEvent';
 import ManageMembers from '../components/ManageMembers';
-import { listsAPI, groupsAPI, eventsAPI, pollsAPI, API_BASE_URL } from '../../lib/api';
-import StartPollModal from '../components/StartPollModal';
-import ActivePollCard from '../components/ActivePollCard';
+import { listsAPI, groupsAPI, eventsAPI, API_BASE_URL } from '../../lib/api';
 import GroupGamesList from '../components/GroupGamesList';
 import { getTextStyle, getSubtitleStyle } from '../../lib/colorUtils';
 import SafeImage from '../components/SafeImage';
@@ -49,14 +47,6 @@ function GroupHomePage(){
     // re-renders even if React batches/dedupes the state update by accident.
     // Mirrors the pattern already used in UserHomePage.
     const [eventsRefreshKey, setEventsRefreshKey] = useState(0);
-
-    // POLL-01 (Plan 71-05): active-poll surface state. activePoll mirrors
-    // GET /api/polls/group/:groupId — null when no open poll exists for the
-    // group. Backend runs lazy-on-read deadline auto-close inside the GET so
-    // a poll past its response_deadline returns null here even before any
-    // worker would tick (D-POLL-CREATE-04 deadline path REQUIRED).
-    const [startPollOpen, setStartPollOpen] = useState(false);
-    const [activePoll, setActivePoll] = useState(null);
 
     const searchParams = useSearchParams();
     const Router = searchParams.get('id');
@@ -199,25 +189,6 @@ function GroupHomePage(){
             getGamesForGroup();
         }
     }, [Router, user?.sub, membershipChecked, getGamesForGroup]);
-
-    // POLL-01 (Plan 71-05): fetch the active poll (if any) once we know the
-    // user is a confirmed group member. Pending members SHOULD be allowed to
-    // see the running heatmap per D-POLL-CREATE-11 visibility (mirrors the
-    // existing recurring-schedule heatmap), but they CANNOT create polls
-    // (D-POLL-CREATE-02 active-only) — the trigger button below is gated.
-    // Errors are silent: poll surfaces are non-critical, and a 404/500 here
-    // should not block the group-page render.
-    useEffect(() => {
-        if (!Router || !user?.sub || !membershipChecked) return;
-        let cancelled = false;
-        pollsAPI.getActivePoll(Router)
-            .then((poll) => { if (!cancelled) setActivePoll(poll || null); })
-            .catch(() => { if (!cancelled) setActivePoll(null); });
-        return () => { cancelled = true; };
-    }, [Router, user?.sub, membershipChecked]);
-
-    const isActiveMember = userRole && userRole !== 'pending';
-    const hasOpenPoll = !!activePoll;
 
     const handleEventCreated = async (newEvent) => {
         // Refresh games list and calendar events after creating new event
@@ -377,27 +348,6 @@ function GroupHomePage(){
                             Add New Game Event
                         </button>
                     )}
-                    {/* POLL-01 (Plan 71-05): "Start a poll" entry — D-POLL-CREATE-01
-                        sibling action to the scheduling controls. Active-only per
-                        D-POLL-CREATE-02 (matches "Add New Game Event" gating).
-                        Disabled with the locked tooltip when an open poll already
-                        exists per D-POLL-CREATE-10 (client-side mirror of the DB
-                        partial unique index). */}
-                    {isActiveMember && (
-                        <button
-                            type="button"
-                            onClick={() => setStartPollOpen(true)}
-                            disabled={hasOpenPoll}
-                            title={hasOpenPoll ? "There's already an active poll" : "Start a one-off availability poll for this group"}
-                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap text-white border-2 border-white/30 rounded-btn backdrop-blur-sm hover:bg-white/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                            style={{
-                                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-                            }}
-                        >
-                            Start a poll
-                        </button>
-                    )}
                 </div>
             </div>
 
@@ -429,21 +379,6 @@ function GroupHomePage(){
 
             {activeTab === 'home' && (
               <>
-                {/* POLL-01 (Plan 71-05): active-poll surface — D-POLL-CREATE-11
-                    visibility (running heatmap visible to all active members,
-                    same as the existing recurring-schedule heatmap). The card
-                    unmounts when the poll closes via any path (manual End,
-                    consensus, or lazy-on-read deadline auto-close). */}
-                {activePoll && activePoll.status === 'open' && (
-                    <ActivePollCard
-                        poll={activePoll}
-                        userRole={userRole}
-                        members={UserList}
-                        onUpdated={setActivePoll}
-                        onClosed={() => setActivePoll(null)}
-                    />
-                )}
-
                 {/* Group Calendar */}
                 <EventCalendar
                     refreshKey={eventsRefreshKey}
@@ -501,23 +436,6 @@ function GroupHomePage(){
                 onMembersUpdated={getGroupMembers}
                 group_name={Group?.name || 'this group'}
             />
-
-            {/* POLL-01 (Plan 71-05): create-poll surface mounted as a sibling
-                modal. Backend enforces D-POLL-CREATE-02 active-only and
-                D-POLL-CREATE-10 one-open-poll-per-group; the trigger button
-                above is gated client-side as a defensive mirror, but a
-                stale tab can still race into the modal so the backend is
-                the source of truth. */}
-            {startPollOpen && (
-                <StartPollModal
-                    groupId={Router}
-                    onCancel={() => setStartPollOpen(false)}
-                    onCreated={(poll) => {
-                        setActivePoll(poll);
-                        setStartPollOpen(false);
-                    }}
-                />
-            )}
 
             {showGroupSettings && Group && (
                 <GroupSettings
