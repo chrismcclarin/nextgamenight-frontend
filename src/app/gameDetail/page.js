@@ -996,7 +996,7 @@ export default function GameDetailPage() {
 
                 <div className="space-y-4">
                     <RsvpSection
-                        key={rsvpRefreshKey}
+                        key={`rsvp-${rsvpRefreshKey}`}
                         eventId={singleEvent.id}
                         currentUserId={user?.sub}
                         eventDate={singleEvent.start_date}
