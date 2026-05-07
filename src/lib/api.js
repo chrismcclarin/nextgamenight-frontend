@@ -756,6 +756,19 @@ export const promptAPI = {
   // Fetch heatmap suggestions for a prompt
   getSuggestions: (promptId) =>
     apiFetch(`/prompts/${promptId}/suggestions`),
+
+  // Phase 71.2 / D-UI-02 — list ALL open prompts for a group (manual + auto)
+  // with Creator info, GroupPromptSettings.template_name (for "From [schedule name]"),
+  // and a per-requester `can_close` flag derived server-side.
+  getOpenPrompts: (groupId) =>
+    apiFetch(`/groups/${groupId}/prompts/open`),
+
+  // Phase 71.2 / D-CLOSE-05 — soft-close a poll. Backend gates to creator OR
+  // group owner/admin; frontend should hide the action when can_close === false.
+  closePrompt: (promptId) =>
+    apiFetch(`/availability-prompts/${promptId}/close`, {
+      method: 'PATCH',
+    }),
 };
 
 /**
