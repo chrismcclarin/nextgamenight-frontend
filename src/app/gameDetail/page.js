@@ -169,6 +169,11 @@ export default function GameDetailPage() {
     const [showBringPicker, setShowBringPicker] = useState(false);
     const [bringPickerEventId, setBringPickerEventId] = useState(null);
     const [bringRefreshKey, setBringRefreshKey] = useState(0);
+    // Phase 71.1-02: rsvpRefreshKey forces RsvpSection to remount + refetch
+    // after Edit Event removes a participant (RsvpSection holds private state
+    // that only refetches on eventId change, so a parent-side bump is the
+    // simplest signal — same pattern as ballotRefreshKey on BallotSection).
+    const [rsvpRefreshKey, setRsvpRefreshKey] = useState(0);
     const [eventSuggestions, setEventSuggestions] = useState([]);
     const [suggestionsPlayerCount, setSuggestionsPlayerCount] = useState(null);
 
@@ -607,9 +612,20 @@ export default function GameDetailPage() {
     };
 
     const handleEventUpdated = () => {
+        // Capture editingEvent.id before clearing — needed for refreshBringersSet
+        // so the 🎲 indicators on the strip + See-all modal drop the removed
+        // user immediately (same pattern as Phase 65-02 RSVP-flip-deletes-brings).
+        const updatedEventId = editingEvent?.id;
         setEditEventModal(false);
         setEditingEvent(null);
         fetchGameData(); // Refresh the event data
+        // Phase 71.1-02: bump every per-event refresh signal so child
+        // components that hold private state (RsvpSection, BallotSection) and
+        // parent-owned derived state (bringersSet) all reflect the cascade.
+        setBallotRefreshKey(k => k + 1);
+        setRsvpRefreshKey(k => k + 1);
+        setBringRefreshKey(k => k + 1);
+        if (updatedEventId) refreshBringersSet(updatedEventId);
     };
 
     const handleReviewSubmit = async (e) => {
@@ -980,6 +996,7 @@ export default function GameDetailPage() {
 
                 <div className="space-y-4">
                     <RsvpSection
+                        key={rsvpRefreshKey}
                         eventId={singleEvent.id}
                         currentUserId={user?.sub}
                         eventDate={singleEvent.start_date}
@@ -1052,7 +1069,21 @@ export default function GameDetailPage() {
                         group_id={group_id}
                         modal={editEventModal}
                         modaltoggle={() => { setEditEventModal(false); setEditingEvent(null); }}
-                        onEventCreated={() => { setEditEventModal(false); setEditingEvent(null); fetchEventOnly(); setBallotRefreshKey(k => k + 1); }}
+                        onEventCreated={() => {
+                            // Phase 71.1-02: bump RSVP / brings refresh signals in
+                            // addition to the existing ballot bump so the cascade
+                            // (Edit Event removing a participant deletes their
+                            // RSVP / EventBring / EventBallotVote rows on the
+                            // backend) is visible without a manual page refresh.
+                            const updatedEventId = singleEvent?.id;
+                            setEditEventModal(false);
+                            setEditingEvent(null);
+                            fetchEventOnly();
+                            setBallotRefreshKey(k => k + 1);
+                            setRsvpRefreshKey(k => k + 1);
+                            setBringRefreshKey(k => k + 1);
+                            if (updatedEventId) refreshBringersSet(updatedEventId);
+                        }}
                         editingEvent={editingEvent}
                         user={user}
                     />
@@ -1634,6 +1665,7 @@ export default function GameDetailPage() {
                                         )}
                                         {/* RSVP Section - interactive for future events, read-only for past */}
                                         <RsvpSection
+                                            key={rsvpRefreshKey}
                                             eventId={event.id}
                                             currentUserId={user?.sub}
                                             eventDate={event.start_date}
