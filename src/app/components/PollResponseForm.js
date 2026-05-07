@@ -70,6 +70,14 @@ export default function PollResponseForm({
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  // Plan 71-05 manual-checkpoint Bug 2 fix: show inline "Response saved"
+  // confirmation BEFORE the parent's onSuccess fires. This matters because the
+  // backend's consensus auto-close (D-POLL-CREATE-04) closes the poll
+  // immediately when the last active member submits — for solo testing (1/1)
+  // or final-submitter (N/N) cases, the parent's onClosed handler unmounts
+  // the entire ActivePollCard the moment we call onSuccess. Without this
+  // success state, the user sees no feedback that their submit landed.
+  const [justSaved, setJustSaved] = useState(false);
 
   // Build the weekStart Date from date_window_start. Use local-midnight parse
   // (NOT new Date('YYYY-MM-DD'), which is interpreted as UTC midnight and
@@ -150,7 +158,14 @@ export default function PollResponseForm({
             };
           });
       const response = await pollsAPI.submitResponse(pollId, slotData);
-      onSuccess?.(response);
+      // Show inline "Response saved" first so the user gets confirmation even
+      // when the parent's onSuccess triggers an immediate consensus-close
+      // unmount. 1500ms is long enough to read but short enough that the
+      // post-close state transition still feels responsive.
+      setJustSaved(true);
+      setTimeout(() => {
+        onSuccess?.(response);
+      }, 1500);
     } catch (err) {
       setError(err?.message || 'Failed to submit response. Please try again.');
     } finally {
@@ -222,12 +237,21 @@ export default function PollResponseForm({
         </div>
       )}
 
+      {justSaved && (
+        <div className="bg-status-success/10 border border-status-success/30 rounded-btn p-3 flex items-center gap-2">
+          <svg className="w-5 h-5 text-status-success flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+          </svg>
+          <p className="text-sm text-status-success font-medium">Response saved</p>
+        </div>
+      )}
+
       <button
         type="submit"
-        disabled={submitting}
-        className={`btn btn-primary w-full py-2 ${submitting ? 'opacity-60 cursor-not-allowed' : ''}`}
+        disabled={submitting || justSaved}
+        className={`btn btn-primary w-full py-2 ${submitting || justSaved ? 'opacity-60 cursor-not-allowed' : ''}`}
       >
-        {submitting ? 'Submitting...' : isUpdate ? 'Update response' : 'Submit response'}
+        {submitting ? 'Submitting...' : justSaved ? 'Saved' : isUpdate ? 'Update response' : 'Submit response'}
       </button>
     </form>
   );
