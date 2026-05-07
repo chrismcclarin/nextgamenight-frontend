@@ -40,15 +40,6 @@ export default function AvailabilityGrid({
   // (1-14 day windows) compute "All" correctly for any window length.
   const allChecked = checkedDays.length === numDays;
 
-  // Toggle a single day checkbox
-  const toggleDayCheck = useCallback((dayIndex) => {
-    setCheckedDays((prev) =>
-      prev.includes(dayIndex)
-        ? prev.filter((d) => d !== dayIndex)
-        : [...prev, dayIndex]
-    );
-  }, []);
-
   // Calculate the week start date (next Monday if not provided)
   const weekStart = useMemo(() => {
     if (weekStartDate) {
@@ -92,6 +83,49 @@ export default function AvailabilityGrid({
     return date.toISOString();
   }, []);
 
+  // Toggle a single per-day "All" column checkbox. Plan 71-05 manual-checkpoint
+  // Bug 1 (round 2) fix: previously this only flipped `checkedDays` state,
+  // which made subsequent CLICKS broadcast across days but did NOT paint
+  // anything in the day column on its own. Users clicking the per-day "All"
+  // header expected every slot in that column to fill — and got an empty
+  // submit + "You haven't selected a timeframe" error.
+  //
+  // New behavior: toggling a per-day "All" ON paints every slot in THAT day's
+  // column with the current paintMode. Toggling OFF clears every slot in that
+  // day's column. The cross-day broadcast for subsequent clicks still works
+  // because we keep `checkedDays` in sync.
+  //
+  // Declared AFTER days/timeSlots/generateSlotId because the callback closes
+  // over them; declaring earlier triggers a TDZ ReferenceError at render.
+  const toggleDayCheck = useCallback((dayIndex) => {
+    const day = days[dayIndex];
+    if (!day) return;
+    const isCurrentlyChecked = checkedDays.includes(dayIndex);
+    if (isCurrentlyChecked) {
+      // Uncheck: remove from checkedDays AND clear every slot in this day column.
+      setCheckedDays((prev) => prev.filter((d) => d !== dayIndex));
+      const dayKeys = new Set(timeSlots.map((ts) => generateSlotId(day, ts)));
+      const filtered = value.filter((s) => !dayKeys.has(s.slotId));
+      if (filtered.length !== value.length) {
+        onChange?.(filtered);
+      }
+    } else {
+      // Check: add to checkedDays AND paint every empty slot in this day column.
+      setCheckedDays((prev) => [...prev, dayIndex]);
+      const existing = new Set(value.map((s) => s.slotId));
+      const additions = [];
+      timeSlots.forEach((ts) => {
+        const id = generateSlotId(day, ts);
+        if (!existing.has(id)) {
+          additions.push({ slotId: id, preference: paintMode });
+        }
+      });
+      if (additions.length > 0) {
+        onChange?.([...value, ...additions]);
+      }
+    }
+  }, [checkedDays, days, timeSlots, generateSlotId, value, paintMode, onChange]);
+
   // Toggle Select All: when toggled ON, paint every visible slot with the
   // current paint mode (matches user expectation "All = I'm available for
   // everything in this window"). When toggled OFF, clear every painted slot.
@@ -99,8 +133,6 @@ export default function AvailabilityGrid({
   // the cross-day broadcast behavior. Plan 71-05 manual-checkpoint Bug 1 fix:
   // previously this only set checkedDays without painting, so submitting after
   // toggling "All" failed validation with "Pick at least one time slot".
-  // Declared AFTER days/timeSlots/generateSlotId because the callback closes
-  // over them; declaring earlier triggers a TDZ ReferenceError at render.
   const toggleSelectAll = useCallback(() => {
     const willCheckAll = checkedDays.length !== numDays;
     if (willCheckAll) {
