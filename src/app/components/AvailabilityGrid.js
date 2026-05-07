@@ -49,12 +49,6 @@ export default function AvailabilityGrid({
     );
   }, []);
 
-  // Toggle Select All: check all days or uncheck all (sized to numDays for
-  // Plan 71-05 variable-length poll windows).
-  const toggleSelectAll = useCallback(() => {
-    setCheckedDays((prev) => (prev.length === numDays ? [] : Array.from({ length: numDays }, (_, i) => i)));
-  }, [numDays]);
-
   // Calculate the week start date (next Monday if not provided)
   const weekStart = useMemo(() => {
     if (weekStartDate) {
@@ -97,6 +91,40 @@ export default function AvailabilityGrid({
     date.setHours(timeSlot.hour, timeSlot.minute, 0, 0);
     return date.toISOString();
   }, []);
+
+  // Toggle Select All: when toggled ON, paint every visible slot with the
+  // current paint mode (matches user expectation "All = I'm available for
+  // everything in this window"). When toggled OFF, clear every painted slot.
+  // Also keeps `checkedDays` in sync so subsequent per-day clicks still get
+  // the cross-day broadcast behavior. Plan 71-05 manual-checkpoint Bug 1 fix:
+  // previously this only set checkedDays without painting, so submitting after
+  // toggling "All" failed validation with "Pick at least one time slot".
+  // Declared AFTER days/timeSlots/generateSlotId because the callback closes
+  // over them; declaring earlier triggers a TDZ ReferenceError at render.
+  const toggleSelectAll = useCallback(() => {
+    const willCheckAll = checkedDays.length !== numDays;
+    if (willCheckAll) {
+      setCheckedDays(Array.from({ length: numDays }, (_, i) => i));
+      // Paint every slot in the grid that isn't already painted.
+      const existing = new Set(value.map((s) => s.slotId));
+      const additions = [];
+      days.forEach((day) => {
+        timeSlots.forEach((ts) => {
+          const id = generateSlotId(day, ts);
+          if (!existing.has(id)) {
+            additions.push({ slotId: id, preference: paintMode });
+          }
+        });
+      });
+      if (additions.length > 0) {
+        onChange?.([...value, ...additions]);
+      }
+    } else {
+      setCheckedDays([]);
+      // Uncheck All clears every painted slot — symmetric with the check path.
+      onChange?.([]);
+    }
+  }, [checkedDays.length, numDays, days, timeSlots, generateSlotId, value, paintMode, onChange]);
 
   // Format time label for the row
   const formatTimeLabel = useCallback((timeSlot) => {
