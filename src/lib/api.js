@@ -880,66 +880,6 @@ export const suggestionsAPI = {
 };
 
 /**
- * API functions for Member-Created Availability Polls (POLL-01)
- *
- * Mirrors the 7 endpoints exposed by Plan 71-04's routes/polls.js. The
- * `getActivePoll(groupId)` endpoint runs lazy-on-read deadline auto-close on
- * the server side (D-POLL-CREATE-04 deadline path), so a poll that just
- * tipped past its deadline returns null here even before a worker would run.
- *
- * Locked URL contract for the close-notification CTA (consumed by
- * NotificationBell): `${FRONTEND_URL}/groupHomePage?groupId=X&pollId=Y&prefillStart=ISO`.
- * notifyPollClosed (server-side) builds this exact shape; the bell-side
- * helper builds it identically so behavior matches across email + bell.
- */
-export const pollsAPI = {
-  // POST /api/polls — create (D-POLL-CREATE-02 active-only enforced server-side)
-  createPoll: (payload) =>
-    apiFetch('/polls', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
-
-  // POST /api/polls/:id/responses — upsert caller's response
-  submitResponse: (pollId, slotData) =>
-    apiFetch(`/polls/${pollId}/responses`, {
-      method: 'POST',
-      body: JSON.stringify({ slot_data: slotData }),
-    }),
-
-  // POST /api/polls/:id/close — manual "End poll" (D-POLL-CREATE-13).
-  // Server-side authorization: creator OR admin OR owner.
-  closePoll: (pollId) =>
-    apiFetch(`/polls/${pollId}/close`, { method: 'POST' }),
-
-  // GET /api/polls/group/:groupId — active poll + responses (D-POLL-CREATE-11
-  // running heatmap visibility). Returns null if no open poll.
-  getActivePoll: (groupId) =>
-    apiFetch(`/polls/group/${groupId}`),
-
-  // GET /api/polls/:id — single poll fetch (open or closed) for refetch flows.
-  getPoll: (pollId) =>
-    apiFetch(`/polls/${pollId}`),
-
-  // GET /api/polls/pending-for-me — bell-side feed of open polls the caller
-  // hasn't yet responded to (NotificationBell consumer).
-  getPendingForMe: () =>
-    apiFetch('/polls/pending-for-me'),
-
-  // GET /api/polls/closed-awaiting-me — bell-side feed of closed polls
-  // where the caller is the creator AND closed_notification_dismissed_at is
-  // null. Drives the "Schedule it?" CTA in NotificationBell.
-  getClosedAwaitingMe: () =>
-    apiFetch('/polls/closed-awaiting-me'),
-
-  // POST /api/polls/:id/dismiss-notification — server-side dismissal of the
-  // close-notification bell row. Creator-only. Server-side state, NOT
-  // localStorage (D-POLL-CREATE-07 cross-device guarantee).
-  dismissNotification: (pollId) =>
-    apiFetch(`/polls/${pollId}/dismiss-notification`, { method: 'POST' }),
-};
-
-/**
  * API functions for Game Voting Ballots
  */
 export const ballotAPI = {

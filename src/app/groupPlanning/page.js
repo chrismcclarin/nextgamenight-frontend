@@ -3,13 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
-import { groupsAPI, eventsAPI, promptAPI, pollsAPI } from '../../lib/api';
+import { groupsAPI, eventsAPI, promptAPI } from '../../lib/api';
 import Link from 'next/link';
 import CreateEvent from '../components/createEvent';
 import ResponseDashboard from '../components/ResponseDashboard';
 import PromptScheduleSection from '../components/PromptScheduleSection';
-import StartPollModal from '../components/StartPollModal';
-import ActivePollCard from '../components/ActivePollCard';
 
 export default function GroupPlanningPage() {
     const { user, isLoading: authLoading } = Auth();
@@ -29,17 +27,6 @@ export default function GroupPlanningPage() {
     const [heatmapError, setHeatmapError] = useState(null);
     const [userRole, setUserRole] = useState(null);
 
-    // POLL-01 (Plan 71-05): active-poll surface state. activePoll mirrors
-    // GET /api/polls/group/:groupId — null when no open poll exists for the
-    // group. Backend runs lazy-on-read deadline auto-close inside the GET so
-    // a poll past its response_deadline returns null here even before any
-    // worker would tick (D-POLL-CREATE-04 deadline path REQUIRED).
-    // Mounted on /groupPlanning per user correction at the 71-05 checkpoint —
-    // D-POLL-CREATE-01 sibling-to-scheduling-surface placement applies here,
-    // since the actual scheduling/calendar surface lives on this page.
-    const [startPollOpen, setStartPollOpen] = useState(false);
-    const [activePoll, setActivePoll] = useState(null);
-
     useEffect(() => {
         if (!authLoading && !user) {
             const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
@@ -55,22 +42,6 @@ export default function GroupPlanningPage() {
             fetchUserRole();
         }
     }, [user, groupId]);
-
-    // POLL-01 (Plan 71-05): fetch the active poll (if any) once we know the
-    // user's role. Pending members SHOULD be allowed to see the running
-    // heatmap per D-POLL-CREATE-11 visibility (mirrors the existing
-    // recurring-schedule heatmap), but they CANNOT create polls
-    // (D-POLL-CREATE-02 active-only) — the trigger button below is gated.
-    // Errors are silent: poll surfaces are non-critical, and a 404/500 here
-    // should not block the planning-page render.
-    useEffect(() => {
-        if (!groupId || !user?.sub || !userRole) return;
-        let cancelled = false;
-        pollsAPI.getActivePoll(groupId)
-            .then((poll) => { if (!cancelled) setActivePoll(poll || null); })
-            .catch(() => { if (!cancelled) setActivePoll(null); });
-        return () => { cancelled = true; };
-    }, [groupId, user?.sub, userRole]);
 
     const fetchGroup = async () => {
         if (!groupId) return;
@@ -166,8 +137,6 @@ export default function GroupPlanningPage() {
     }
 
     const isAdmin = ['owner', 'admin'].includes(userRole);
-    const isActiveMember = userRole && userRole !== 'pending';
-    const hasOpenPoll = !!activePoll;
     const pollClosed = !heatmapPrompt ||
         heatmapPrompt.status === 'closed' ||
         heatmapPrompt.status === 'converted' ||
@@ -201,40 +170,8 @@ export default function GroupPlanningPage() {
                             Send availability polls and manage responses
                         </p>
                     </div>
-                    {/* POLL-01 (Plan 71-05): "Start a poll" entry — D-POLL-CREATE-01
-                        sibling action to the scheduling controls. Active-only per
-                        D-POLL-CREATE-02. Disabled with the locked tooltip when an
-                        open poll already exists per D-POLL-CREATE-10 (client-side
-                        mirror of the DB partial unique index). Mounted here on
-                        /groupPlanning per user correction at the 71-05 checkpoint. */}
-                    {isActiveMember && (
-                        <button
-                            type="button"
-                            onClick={() => setStartPollOpen(true)}
-                            disabled={hasOpenPoll}
-                            title={hasOpenPoll ? "There's already an active poll" : "Start a one-off availability poll for this group"}
-                            className="btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap rounded-btn shadow-theme-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            Start a poll
-                        </button>
-                    )}
                 </div>
             </div>
-
-            {/* POLL-01 (Plan 71-05): active-poll surface — D-POLL-CREATE-11
-                visibility (running heatmap visible to all active members,
-                same as the existing recurring-schedule heatmap). The card
-                unmounts when the poll closes via any path (manual End,
-                consensus, or lazy-on-read deadline auto-close). */}
-            {activePoll && activePoll.status === 'open' && (
-                <ActivePollCard
-                    poll={activePoll}
-                    userRole={userRole}
-                    members={group?.Users || []}
-                    onUpdated={setActivePoll}
-                    onClosed={() => setActivePoll(null)}
-                />
-            )}
 
             {/* Availability Polls + Response Dashboard in one card */}
             <div className="card p-4 md:p-6 mb-6">
@@ -285,23 +222,6 @@ export default function GroupPlanningPage() {
                 user={user}
                 hideVisualCalendar={true}
             />
-
-            {/* POLL-01 (Plan 71-05): create-poll surface mounted as a sibling
-                modal. Backend enforces D-POLL-CREATE-02 active-only and
-                D-POLL-CREATE-10 one-open-poll-per-group; the trigger button
-                above is gated client-side as a defensive mirror, but a
-                stale tab can still race into the modal so the backend is
-                the source of truth. */}
-            {startPollOpen && (
-                <StartPollModal
-                    groupId={groupId}
-                    onCancel={() => setStartPollOpen(false)}
-                    onCreated={(poll) => {
-                        setActivePoll(poll);
-                        setStartPollOpen(false);
-                    }}
-                />
-            )}
         </div>
     );
 }

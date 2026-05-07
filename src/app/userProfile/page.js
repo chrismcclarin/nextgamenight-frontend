@@ -17,11 +17,6 @@ const NOTIFICATION_TYPES = [
     { key: 'reminder', label: 'Event Reminders', description: 'Before upcoming events' },
     { key: 'event_updated', label: 'Event Updates', description: 'When event details change' },
     { key: 'event_cancelled', label: 'Event Cancelled', description: 'When an event is cancelled' },
-    // POLL-01 (Plan 71-05) D-POLL-CREATE-08: separate channel so users can mute
-    // poll-create notifications without muting event notifications. Backend
-    // validTypes allowlist (routes/users.js) extended in the companion 71-05
-    // backend commit so this row's PATCH succeeds.
-    { key: 'poll_created', label: 'New Polls', description: 'When a member starts an availability poll in your group' },
 ];
 
 const REMINDER_WINDOWS = [
@@ -36,10 +31,6 @@ const DEFAULT_PREFERENCES = {
     reminder: { email: true, sms: false, window_hours: 1 },
     event_updated: { email: true, sms: false },
     event_cancelled: { email: true, sms: false },
-    // POLL-01 (Plan 71-05) D-POLL-CREATE-08: default email-on, sms-off matches
-    // event_created. Symmetric with PREF_KEYS in routes/users.js phone-removal
-    // cascade and DEFAULT_PREFERENCES in notificationService.js.
-    poll_created: { email: true, sms: false },
 };
 
 function Profile(){
