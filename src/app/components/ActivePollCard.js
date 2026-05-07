@@ -48,11 +48,18 @@ export default function ActivePollCard({ poll, userRole, members, onUpdated, onC
   const canClose = isCreator || isAdminOrOwner;
 
   // Active members are the denominator for both the heatmap ratio and the
-  // "X of N responded" caption. Pending members don't count toward
-  // consensus per D-POLL-CREATE-05.
+  // "X of N responded" caption. Pending (game-only) members don't count
+  // toward consensus per D-POLL-CREATE-05 — they were invited to a single
+  // game event, not the group's poll cadence.
+  // Plan 71-05 manual-checkpoint Bug 2 (round 2) fix: explicitly exclude
+  // role='pending' to match the backend's checkAutoClose denominator.
   const activeMembers = useMemo(() => {
     if (!Array.isArray(members)) return [];
-    return members.filter((m) => m?.UserGroup?.status === 'active');
+    return members.filter((m) => {
+      const ug = m?.UserGroup;
+      if (!ug || ug.status !== 'active') return false;
+      return ug.role === 'member' || ug.role === 'admin' || ug.role === 'owner';
+    });
   }, [members]);
   const activeMemberCount = activeMembers.length;
 
