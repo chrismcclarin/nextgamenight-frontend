@@ -7,6 +7,7 @@ import CreateEvent from '../components/createEvent';
 import ManageMembers from '../components/ManageMembers';
 import { listsAPI, groupsAPI, eventsAPI, pollsAPI, API_BASE_URL } from '../../lib/api';
 import StartPollModal from '../components/StartPollModal';
+import ActivePollCard from '../components/ActivePollCard';
 import GroupGamesList from '../components/GroupGamesList';
 import { getTextStyle, getSubtitleStyle } from '../../lib/colorUtils';
 import SafeImage from '../components/SafeImage';
@@ -428,6 +429,21 @@ function GroupHomePage(){
 
             {activeTab === 'home' && (
               <>
+                {/* POLL-01 (Plan 71-05): active-poll surface — D-POLL-CREATE-11
+                    visibility (running heatmap visible to all active members,
+                    same as the existing recurring-schedule heatmap). The card
+                    unmounts when the poll closes via any path (manual End,
+                    consensus, or lazy-on-read deadline auto-close). */}
+                {activePoll && activePoll.status === 'open' && (
+                    <ActivePollCard
+                        poll={activePoll}
+                        userRole={userRole}
+                        members={UserList}
+                        onUpdated={setActivePoll}
+                        onClosed={() => setActivePoll(null)}
+                    />
+                )}
+
                 {/* Group Calendar */}
                 <EventCalendar
                     refreshKey={eventsRefreshKey}

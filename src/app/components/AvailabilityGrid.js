@@ -8,7 +8,7 @@ import TimeSlotCell from './TimeSlotCell';
 /**
  * AvailabilityGrid - Paint-to-select availability grid component
  *
- * Displays a 7-day x 12-slot grid (5PM-11PM, 30-min intervals)
+ * Displays an N-day x 12-slot grid (5PM-11PM, 30-min intervals)
  * Users can click-and-drag to paint time slots
  *
  * @param {Object} props
@@ -16,7 +16,10 @@ import TimeSlotCell from './TimeSlotCell';
  * @param {function} props.onChange - RHF field.onChange
  * @param {string} props.timezone - User's detected timezone (IANA)
  * @param {boolean} props.disabled - When "I'm unavailable" is checked
- * @param {Date} props.weekStartDate - Optional: override week start (defaults to next Monday)
+ * @param {Date} props.weekStartDate - Optional: override start date (defaults to next Monday)
+ * @param {number} props.numDays - Optional: column count, default 7. Plan 71-05
+ *   POLL-01 passes the poll's date_window length (1-14 days). The "Select All"
+ *   day-checkbox UX still works because it just iterates days[].
  */
 export default function AvailabilityGrid({
   value = [],
@@ -24,6 +27,7 @@ export default function AvailabilityGrid({
   timezone = Intl.DateTimeFormat().resolvedOptions().timeZone,
   disabled = false,
   weekStartDate,
+  numDays = 7,
 }) {
   // Ref for drag state — must be a ref (not state) so pointer events read the
   // latest value synchronously without waiting for a re-render
@@ -32,8 +36,9 @@ export default function AvailabilityGrid({
   const [checkedDays, setCheckedDays] = useState([]); // array of day indices (0-6)
   const gridRef = useRef(null);
 
-  // Derived: are all 7 days checked?
-  const allChecked = checkedDays.length === 7;
+  // Derived: are all days checked? Sized to numDays so the Plan 71-05 polls
+  // (1-14 day windows) compute "All" correctly for any window length.
+  const allChecked = checkedDays.length === numDays;
 
   // Toggle a single day checkbox
   const toggleDayCheck = useCallback((dayIndex) => {
@@ -44,10 +49,11 @@ export default function AvailabilityGrid({
     );
   }, []);
 
-  // Toggle Select All: check all 7 or uncheck all
+  // Toggle Select All: check all days or uncheck all (sized to numDays for
+  // Plan 71-05 variable-length poll windows).
   const toggleSelectAll = useCallback(() => {
-    setCheckedDays((prev) => (prev.length === 7 ? [] : [0, 1, 2, 3, 4, 5, 6]));
-  }, []);
+    setCheckedDays((prev) => (prev.length === numDays ? [] : Array.from({ length: numDays }, (_, i) => i)));
+  }, [numDays]);
 
   // Calculate the week start date (next Monday if not provided)
   const weekStart = useMemo(() => {
@@ -58,10 +64,12 @@ export default function AvailabilityGrid({
     return nextMonday(now);
   }, [weekStartDate]);
 
-  // Generate 7 days starting from weekStart
+  // Generate N days starting from weekStart. numDays defaults to 7 so all
+  // existing callers (recurring-schedule magic-token form) keep their shape;
+  // Plan 71-05 polls pass the variable-length date_window count.
   const days = useMemo(() => {
-    return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  }, [weekStart]);
+    return Array.from({ length: numDays }, (_, i) => addDays(weekStart, i));
+  }, [weekStart, numDays]);
 
   // Generate 12 time slots (5:00 PM - 10:30 PM, 30-min intervals)
   const timeSlots = useMemo(() => {
