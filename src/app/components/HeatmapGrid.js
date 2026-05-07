@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { format, addDays, nextMonday } from 'date-fns';
 import HeatmapCell from './HeatmapCell';
 import ThresholdSlider from './ThresholdSlider';
@@ -39,6 +39,17 @@ export default function HeatmapGrid({
   const { timezone: contextTimezone } = useTimezone();
   const timezone = timezoneProp || contextTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [threshold, setThreshold] = useState(defaultThreshold);
+
+  // ARIA grid roving tabindex pattern: only the focused cell holds tabIndex=0;
+  // arrow keys move focus and update tabIndex via state. Cell focus uses
+  // HeatmapTooltip's triggerRef prop (Plan 72-01 API) to expose the cloned
+  // trigger DOM element. Linear index = rowIndex * COLS + colIndex.
+  const COLS = 7; // 7 days
+  const cellRefs = useRef([]);
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const setCellRef = useCallback((idx) => (el) => {
+    if (el) cellRefs.current[idx] = el;
+  }, []);
 
   // Calculate the week start date (next Monday if not provided)
   const weekStart = useMemo(() => {
@@ -132,6 +143,53 @@ export default function HeatmapGrid({
     [onSlotSelect, threshold]
   );
 
+  // Roving-tabindex arrow-key navigation (Plan 72-02 a11y goal: WCAG 2.1 AA).
+  // Total cells = timeSlots.length × COLS. The tooltip auto-reveals on focus
+  // via HeatmapTooltip's useFocus interaction; Esc dismisses (also handled by
+  // the primitive's useDismiss).
+  const totalRows = timeSlots.length;
+  const handleKeyDown = useCallback((event) => {
+    const idx = focusedIndex;
+    const row = Math.floor(idx / COLS);
+    const col = idx % COLS;
+    let target = idx;
+    switch (event.key) {
+      case 'ArrowLeft':
+        target = row * COLS + Math.max(0, col - 1);
+        break;
+      case 'ArrowRight':
+        target = row * COLS + Math.min(COLS - 1, col + 1);
+        break;
+      case 'ArrowUp':
+        target = Math.max(0, row - 1) * COLS + col;
+        break;
+      case 'ArrowDown':
+        target = Math.min(totalRows - 1, row + 1) * COLS + col;
+        break;
+      case 'Home':
+        target = row * COLS;
+        break;
+      case 'End':
+        target = row * COLS + (COLS - 1);
+        break;
+      case 'PageUp':
+        target = col;
+        break;
+      case 'PageDown':
+        target = (totalRows - 1) * COLS + col;
+        break;
+      default:
+        return; // not a nav key — bail without preventDefault
+    }
+    if (target !== idx) {
+      event.preventDefault();
+      setFocusedIndex(target);
+      cellRefs.current[target]?.focus();
+    } else {
+      event.preventDefault();
+    }
+  }, [focusedIndex, totalRows]);
+
   return (
     <div className="w-full">
       {/* Threshold slider */}
@@ -165,7 +223,12 @@ export default function HeatmapGrid({
 
       {/* Grid container with horizontal scroll for mobile */}
       <div className="overflow-x-auto pb-2">
-        <div className="min-w-max" role="grid" aria-label="Availability heatmap">
+        <div
+          className="min-w-max"
+          role="grid"
+          aria-label="Availability heatmap"
+          onKeyDown={handleKeyDown}
+        >
           {/* Day headers */}
           <div className="flex" role="row">
             {/* Spacer for time labels column */}
@@ -193,12 +256,14 @@ export default function HeatmapGrid({
                 const preferredCount = suggestion?.preferred_count || 0;
                 const participants = suggestion?.participants || [];
                 const hidden = participantCount < threshold;
+                const linearIndex = rowIndex * COLS + colIndex;
 
                 return (
                   <div
                     key={slotId}
                     className="flex-shrink-0"
                     onClick={() => handleSlotClick(slotId, suggestion)}
+                    onFocus={() => setFocusedIndex(linearIndex)}
                   >
                     <HeatmapCell
                       slotId={slotId}
@@ -209,6 +274,8 @@ export default function HeatmapGrid({
                       hidden={hidden}
                       timeLabel={formatTimeLabel(timeSlot)}
                       showTimeLabel={colIndex === 0}
+                      triggerRef={setCellRef(linearIndex)}
+                      tabIndex={focusedIndex === linearIndex ? 0 : -1}
                     />
                   </div>
                 );
