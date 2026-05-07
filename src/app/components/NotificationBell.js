@@ -1,10 +1,67 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { invitesAPI } from '../../lib/api';
+import { useRouter } from 'next/navigation';
+import { invitesAPI, pollsAPI } from '../../lib/api';
 import { useFriendshipStatus } from './FriendshipStatusProvider';
 
+/**
+ * Compute the top-availability slots from a closed poll's PollResponses.
+ *
+ * Mirrors the backend tally in pollService.notifyPollClosed so the bell-side
+ * "Schedule it?" CTA surfaces the SAME slots the close email surfaced. Both
+ * surfaces consume the locked URL contract from notifyPollClosed:
+ *   ${FRONTEND_URL}/groupHomePage?groupId=X&pollId=Y&prefillStart=ISO
+ *
+ * Returns an array of slot keys `${date}|${slotIso}` tied for the max
+ * availability count. D-POLL-CREATE-12: surface ALL tied slots; do NOT
+ * auto-pick.
+ */
+function computeTopSlots(poll) {
+  if (!poll?.PollResponses) return [];
+  const tally = new Map();
+  for (const r of poll.PollResponses) {
+    if (!r.slot_data || !Array.isArray(r.slot_data)) continue;
+    for (const s of r.slot_data) {
+      if (!s || !s.available || !s.slot || !s.date) continue;
+      const key = `${s.date}|${s.slot}`;
+      tally.set(key, (tally.get(key) || 0) + 1);
+    }
+  }
+  let max = 0;
+  let top = [];
+  for (const [key, count] of tally) {
+    if (count > max) { max = count; top = [key]; }
+    else if (count === max) top.push(key);
+  }
+  return { slots: top, maxCount: max };
+}
+
+function formatSlotLabel(slotKey) {
+  const [, slotIso] = slotKey.split('|');
+  if (!slotIso) return slotKey;
+  const d = new Date(slotIso);
+  if (Number.isNaN(d.getTime())) return slotKey;
+  // e.g. "Mon 5/12 at 7:00 PM"
+  return d.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 function NotificationBell({ user, variant = 'icon', label }) {
+  const router = useRouter();
   const [invites, setInvites] = useState([]);
+  // POLL-01 (Plan 71-05): bell-side poll feeds.
+  //   pendingPolls = open polls in groups where the caller is an active
+  //                  member AND has not yet responded (consume /pending-for-me)
+  //   closedPollsForMe = closed polls the caller created where the close
+  //                  notification has not yet been dismissed (consume
+  //                  /closed-awaiting-me — Plan 71-05 backend addition)
+  const [pendingPolls, setPendingPolls] = useState([]);
+  const [closedPollsForMe, setClosedPollsForMe] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
@@ -20,28 +77,45 @@ function NotificationBell({ user, variant = 'icon', label }) {
     declineRequest: ctxDeclineFriend,
   } = useFriendshipStatus();
 
-  const totalCount = invites.length + friendRequests.length;
+  const totalCount = invites.length + friendRequests.length + pendingPolls.length + closedPollsForMe.length;
 
-  // Fetch pending GROUP invites only — friend requests now come from
-  // FriendshipStatusProvider context.
+  // Fetch pending GROUP invites + poll feeds. Friend requests come from
+  // FriendshipStatusProvider context. Each fetch is independent — a single
+  // failure (e.g. polls 500) shouldn't black out the whole dropdown.
   useEffect(() => {
     if (!user?.sub) return;
 
-    async function fetchInvites() {
+    async function fetchAll() {
       try {
-        const data = await invitesAPI.getPendingInvites();
-        setInvites(
-          Array.isArray(data) ? data : data?.invites || []
-        );
-      } catch (err) {
-        console.error('Failed to fetch invites:', err.message);
-        setInvites([]);
+        const [invitesData, pendingPollsData, closedPollsData] = await Promise.all([
+          invitesAPI.getPendingInvites().catch((err) => {
+            console.error('Failed to fetch invites:', err.message);
+            return [];
+          }),
+          // /pending-for-me runs lazy-on-read deadline auto-close server-side
+          // (D-POLL-CREATE-04 deadline path REQUIRED) so a poll that just
+          // tipped past its deadline drops out here without a worker.
+          pollsAPI.getPendingForMe().catch((err) => {
+            console.error('Failed to fetch pending polls:', err.message);
+            return [];
+          }),
+          // Plan 71-05 backend addition — server-side filter for closed polls
+          // where caller is creator AND closed_notification_dismissed_at is
+          // NULL. Avoids the per-group N+1 the plan body called out as v1.
+          pollsAPI.getClosedAwaitingMe().catch((err) => {
+            console.error('Failed to fetch closed-awaiting polls:', err.message);
+            return [];
+          }),
+        ]);
+        setInvites(Array.isArray(invitesData) ? invitesData : invitesData?.invites || []);
+        setPendingPolls(Array.isArray(pendingPollsData) ? pendingPollsData : []);
+        setClosedPollsForMe(Array.isArray(closedPollsData) ? closedPollsData : []);
       } finally {
         setLoading(false);
       }
     }
 
-    fetchInvites();
+    fetchAll();
   }, [user?.sub]);
 
   // Click-outside detection to close dropdown
@@ -62,6 +136,59 @@ function NotificationBell({ user, variant = 'icon', label }) {
     const timer = setTimeout(() => setConfirmation(null), 3000);
     return () => clearTimeout(timer);
   }, [confirmation]);
+
+  // POLL-01 (Plan 71-05): consumes the locked URL contract from
+  // pollService.notifyPollClosed:
+  //   ${FRONTEND_URL}/groupHomePage?groupId=X&pollId=Y&prefillStart=ISO
+  // Same shape as the close email's CTA so behavior is identical whether
+  // the creator arrives via email or via the bell. createEvent's existing
+  // prefillDate + prefillTime params (Phase 65-03 EVT-05 contract) read
+  // from the URL via groupHomePage's existing search-param plumbing — the
+  // create modal opens auto-prefilled to the chosen slot.
+  function openCreateEventPrefilled(poll, slotKey) {
+    const [, slotIso] = slotKey.split('|');
+    const start = new Date(slotIso);
+    if (Number.isNaN(start.getTime())) return;
+    // groupHomePage reads `date` (YYYY-MM-DD) + `time` (HH:mm) from search
+    // params and auto-opens the createEvent modal. Build them from the
+    // chosen slot's local time so the modal lands on the user-visible slot.
+    const yyyy = start.getFullYear();
+    const mm = String(start.getMonth() + 1).padStart(2, '0');
+    const dd = String(start.getDate()).padStart(2, '0');
+    const hh = String(start.getHours()).padStart(2, '0');
+    const mi = String(start.getMinutes()).padStart(2, '0');
+    const params = new URLSearchParams({
+      id: poll.group_id,
+      date: `${yyyy}-${mm}-${dd}`,
+      time: `${hh}:${mi}`,
+      create_event: 'true',
+      // Locked URL contract param — kept for parity with pollService's
+      // notifyPollClosed email body even though groupHomePage's existing
+      // prefill plumbing reads from `date`+`time`. Future flows can
+      // consume `prefillStart` directly.
+      prefillStart: start.toISOString(),
+      pollId: poll.id,
+    });
+    setIsOpen(false);
+    router.push(`/groupHomePage?${params.toString()}`);
+  }
+
+  async function handleDismissClosedPoll(pollId) {
+    setActionLoading(pollId);
+    try {
+      // Server-side state per D-POLL-CREATE-07 cross-device guarantee —
+      // dismissing here also dismisses on every other device the creator
+      // is signed in on. (No client-side persistence is used for this row;
+      // the server-side closed_notification_dismissed_at column is the
+      // single source of truth.)
+      await pollsAPI.dismissNotification(pollId);
+      setClosedPollsForMe((prev) => prev.filter((p) => p.id !== pollId));
+    } catch (err) {
+      console.error('Failed to dismiss poll notification:', err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  }
 
   async function handleAccept(invite) {
     setActionLoading(invite.id);
@@ -313,6 +440,111 @@ function NotificationBell({ user, variant = 'icon', label }) {
                                 className="flex-1 btn btn-secondary text-xs px-3 py-1.5"
                               >
                                 Decline
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                )}
+
+                {/* POLL-01 (Plan 71-05): pending poll rows — open polls in
+                    groups where the caller is an active member AND has not
+                    yet responded. D-POLL-CREATE-03 in-app channel. */}
+                {pendingPolls.length > 0 && (
+                  <>
+                    <p className="text-xs font-semibold text-content-muted uppercase tracking-wider px-4 pt-3 pb-1">
+                      Polls
+                    </p>
+                    <ul>
+                      {pendingPolls.map((poll) => {
+                        const groupName = poll.Group?.name || 'a group';
+                        const deadlineLabel = (() => {
+                          try { return new Date(poll.response_deadline).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }); }
+                          catch { return ''; }
+                        })();
+                        return (
+                          <li key={`poll-pending-${poll.id}`} className="px-4 py-3 border-b border-line last:border-b-0">
+                            <p className="text-sm font-semibold text-content-primary">New poll in {groupName}</p>
+                            <p className="text-xs text-content-muted mt-0.5">
+                              {poll.date_window_start} → {poll.date_window_end}
+                              {deadlineLabel && ` · respond by ${deadlineLabel}`}
+                            </p>
+                            <button
+                              onClick={() => {
+                                setIsOpen(false);
+                                router.push(`/groupHomePage?id=${encodeURIComponent(poll.group_id)}&pollId=${encodeURIComponent(poll.id)}`);
+                              }}
+                              className="mt-2 btn btn-primary text-xs px-3 py-1.5"
+                            >
+                              Respond
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                )}
+
+                {/* POLL-01 (Plan 71-05): closed-poll "Schedule it?" CTA.
+                    D-POLL-CREATE-07 close-notification + D-POLL-CREATE-12
+                    multi-tied-slot surface. computeTopSlots mirrors the
+                    backend tally in pollService.notifyPollClosed so the
+                    bell-side and email-side surface the SAME slots. */}
+                {closedPollsForMe.length > 0 && (
+                  <>
+                    <p className="text-xs font-semibold text-content-muted uppercase tracking-wider px-4 pt-3 pb-1">
+                      Poll Results
+                    </p>
+                    <ul>
+                      {closedPollsForMe.map((poll) => {
+                        const groupName = poll.Group?.name || 'your group';
+                        const { slots: topSlots, maxCount } = computeTopSlots(poll);
+                        const tied = topSlots.length > 1;
+                        const isLoading = actionLoading === poll.id;
+                        return (
+                          <li key={`poll-closed-${poll.id}`} className="px-4 py-3 border-b border-line last:border-b-0">
+                            <p className="text-sm font-semibold text-content-primary">Poll closed for {groupName}</p>
+                            {topSlots.length === 0 && (
+                              <p className="text-xs text-content-muted mt-0.5">
+                                No availability submitted — open the group to plan manually.
+                              </p>
+                            )}
+                            {topSlots.length === 1 && (
+                              <p className="text-xs text-content-muted mt-0.5">
+                                Top slot ({maxCount} available): {formatSlotLabel(topSlots[0])}
+                              </p>
+                            )}
+                            {tied && (
+                              <p className="text-xs text-content-muted mt-0.5">
+                                {topSlots.length} slots tied for top ({maxCount} each):
+                              </p>
+                            )}
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {topSlots.length === 1 && (
+                                <button
+                                  onClick={() => openCreateEventPrefilled(poll, topSlots[0])}
+                                  className="btn btn-primary text-xs px-3 py-1.5"
+                                >
+                                  Schedule it?
+                                </button>
+                              )}
+                              {tied && topSlots.map((slotKey) => (
+                                <button
+                                  key={slotKey}
+                                  onClick={() => openCreateEventPrefilled(poll, slotKey)}
+                                  className="btn btn-primary text-xs px-3 py-1.5"
+                                >
+                                  Schedule {formatSlotLabel(slotKey)}
+                                </button>
+                              ))}
+                              <button
+                                onClick={() => handleDismissClosedPoll(poll.id)}
+                                disabled={isLoading}
+                                className="btn btn-secondary text-xs px-3 py-1.5"
+                              >
+                                {isLoading ? 'Dismissing...' : 'Dismiss'}
                               </button>
                             </div>
                           </li>
