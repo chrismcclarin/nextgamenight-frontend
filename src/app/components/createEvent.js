@@ -594,8 +594,14 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     if (promptId && heatmapData?.weekStart) {
       return parseISO(heatmapData.weekStart);
     }
+    // Keep the visual calendar synced to the heatmap-navigated week so that
+    // backend slot data (keyed for the navigated week) lines up with the
+    // calendar's rendered week. Without this, navigating weeks updated the
+    // heatmap data but left the calendar showing today's week, producing a
+    // blank grid in next/prior-week views.
+    if (heatmapWeekStart) return heatmapWeekStart;
     return new Date();
-  }, [prefillDate, editingEvent?.start_date, promptId, heatmapData?.weekStart]);
+  }, [prefillDate, editingEvent?.start_date, promptId, heatmapData?.weekStart, heatmapWeekStart]);
 
   if (!modal) return null;
 
@@ -670,6 +676,19 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             {useVisualCalendar && !hideVisualCalendar ? (
               <>
                 <EventScheduler
+                onWeekChange={(date) => {
+                  // Bubble react-big-calendar nav into currentWeekStart so the
+                  // heatmap fetch re-fires for the navigated week. Skip the
+                  // update when the date is in the same week we already have
+                  // (day-view nav within a week shouldn't trigger a refetch),
+                  // and clamp to the same -3/+12 bounds the manual-mode nav
+                  // buttons enforce so the backend doesn't 400 on out-of-range
+                  // weeks.
+                  const navMonday = startOfWeek(date, { weekStartsOn: 1 });
+                  if (isSameWeek(navMonday, effectiveMondayForUI, { weekStartsOn: 1 })) return;
+                  if (navMonday < minWeek || navMonday > maxWeek) return;
+                  setCurrentWeekStart(navMonday);
+                }}
                 onTimeSelected={(start, end) => {
                   // Phase 66-01: write canonical fields only. The visual
                   // highlight will round-trip back via derivedSelectedSlot
@@ -753,7 +772,11 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                     <EventHeatmapBackground
                       heatmapData={heatmapData}
                       loading={heatmapLoading}
-                      anchorDate={promptId ? heatmapData?.weekStart : null}
+                      anchorDate={
+                        promptId
+                          ? heatmapData?.weekStart
+                          : (heatmapWeekStart ? format(heatmapWeekStart, 'yyyy-MM-dd') : null)
+                      }
                     />
                   </div>
                 )}

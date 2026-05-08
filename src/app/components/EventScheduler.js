@@ -46,6 +46,12 @@ export default function EventScheduler({
   // of the visible viewport. Date portion is ignored by scrollToTime.
   // null = no auto-scroll (use the calendar's default scroll position).
   scrollToTime = null,
+  // Bubble react-big-calendar's Next/Previous navigation up to the parent
+  // so the heatmap fetch can re-fire for the navigated week. Without this,
+  // visual-mode week-nav only updates the calendar's internal currentDate
+  // and the heatmap data goes stale (old week's slots vs new week's
+  // calendar cells -- lookup misses and tints disappear).
+  onWeekChange,
 }) {
   const [currentDate, setCurrentDate] = useState(initialDate || new Date());
   const [currentView, setCurrentView] = useState(
@@ -492,7 +498,10 @@ export default function EventScheduler({
           min={defaultMinTime}
           max={defaultMaxTime}
           date={currentDate}
-          onNavigate={(date) => setCurrentDate(date)}
+          onNavigate={(date) => {
+            setCurrentDate(date);
+            if (onWeekChange) onWeekChange(date);
+          }}
           events={displayEvents}
           className="h-full"
           style={{ height: '100%' }}
