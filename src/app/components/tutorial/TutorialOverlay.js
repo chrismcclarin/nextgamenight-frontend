@@ -250,15 +250,17 @@ export default function TutorialOverlay({ onComplete }) {
           )}
         </div>
 
-        {/* Footer — Back / Skip / Next. Skip is mid-row, near the action. */}
+        {/* Footer — Back / Skip / Next. Back and Next are symmetric peer
+            controls (same button styling). Skip is the lighter text link
+            in between because it's a different kind of action. */}
         <div className="border-t border-line px-6 py-3 flex items-center justify-between gap-3">
           <button
             onClick={goBack}
             disabled={isWelcome}
-            className={`text-sm transition-colors ${
+            className={`px-4 py-1.5 text-sm font-medium border rounded-btn transition-colors ${
               isWelcome
-                ? 'text-content-muted/40 cursor-not-allowed'
-                : 'text-content-secondary hover:text-content-primary'
+                ? 'text-content-muted/40 bg-surface-elevated/40 border-line/40 cursor-not-allowed'
+                : 'text-content-primary bg-surface-elevated hover:bg-surface-card-hover border-line'
             }`}
           >
             ← Back
@@ -270,7 +272,7 @@ export default function TutorialOverlay({ onComplete }) {
             Skip tutorial
           </button>
           {isHandoff ? (
-            <div className="w-16" />
+            <div className="w-[88px]" aria-hidden="true" />
           ) : (
             <button
               onClick={goNext}
