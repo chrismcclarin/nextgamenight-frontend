@@ -223,13 +223,13 @@ export default function TutorialOverlay({ onComplete }) {
           {phase === 'checkin' && (
             <div className="w-full text-center">
               <p className="text-content-primary text-lg mb-4 font-semibold">
-                Send your group a check-in.
+                Two ways to fill the heatmap.
               </p>
               <CheckInDemo stage={stage} />
               <p className="text-content-secondary text-sm mt-4">
                 {stage >= 2
-                  ? 'One-off or recurring. Email or SMS — they pick the channel. No app install.'
-                  : 'Members get an email or text asking when they’re free. One tap opens the availability page.'}
+                  ? 'Set a recurring check-in and it sends itself every week.'
+                  : 'Members can set their availability themselves, or you can send them a check-in.'}
               </p>
             </div>
           )}

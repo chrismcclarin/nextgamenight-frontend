@@ -1,33 +1,35 @@
 'use client';
 
 /**
- * CheckInDemo — Step 2 of 6.
+ * CheckInDemo — Step 2 of 6: "Two ways to fill the heatmap."
  *
- * Answers the obvious question after Step 1: "How will my group know to
- * fill out their availability?" Shows the actual email format Nextgamenight
- * sends — subject line, body, "When Can You Play?" CTA — alongside a
- * sample SMS preview to communicate that members can opt for either
- * channel. Then slides in a recurring-schedule card to show the
- * automation.
+ * Shows the two flows for getting availability data into the heatmap:
+ *   A. Members set it themselves (self-serve via app or magic link)
+ *   B. You send a check-in (email — SMS is opt-in for select users so
+ *      it's left out of onboarding)
  *
- * Mock content mirrors production exactly:
- *   Email subject:  "{Group} - {Game} - When are you available?"
- *   Email body:     "{Group} is planning a {Game} session! Let us know
- *                    when you're free this week."
- *   Email CTA:      "When Can You Play?"
- *   SMS template:   "NextGameNight: {Group} wants to schedule a game.
- *                    Share your availability: {url}"
+ * Then a recurring-schedule card slides in to communicate the automation
+ * available for the second flow.
+ *
+ * Email mock content mirrors production exactly:
+ *   Subject: "{Group} - {Game} - When are you available?"
+ *   Body:    "{Group} is planning a {Game} session. Let us know when
+ *             you're free this week."
+ *   CTA:     "When Can You Play?"
  *
  * Stage progression:
  *   0 - all hidden
- *   1 - email + SMS previews fade in
+ *   1 - both path cards (self-serve + check-in) fade in
  *   2 - recurring schedule card slides in below
  *   3 - settled (timer-driven advance handled by parent)
  */
 export default function CheckInDemo({ stage }) {
   return (
-    <div className="text-center space-y-4">
-      {/* Email preview — matches production AvailabilityPrompt template */}
+    <div className="text-center space-y-3">
+      {/* Path A: Member self-serve.
+          Mocks a tiny availability-grid header so users see "members can
+          do this on their own" as a peer to the check-in path, not just a
+          consequence of one. */}
       <div
         className="bg-surface-card border border-line rounded-card shadow-theme-md max-w-md mx-auto text-left transition-all duration-700"
         style={{
@@ -35,28 +37,67 @@ export default function CheckInDemo({ stage }) {
           transform: stage >= 1 ? 'translateY(0)' : 'translateY(6px)',
         }}
       >
-        {/* Email header — sender + subject */}
-        <div className="px-4 py-3 border-b border-line flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-btn-primary text-btn-primary-content flex items-center justify-center text-xs font-bold flex-shrink-0">
-            NG
+        <div className="px-4 pt-3 pb-1 border-b border-line">
+          <div className="text-[10px] uppercase tracking-wide font-semibold text-content-muted mb-1">
+            Members set their own availability
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-semibold text-content-primary truncate">
-                Tabletop Crew
-              </span>
-              <span className="text-xs text-content-muted flex-shrink-0">now</span>
-            </div>
-            <div className="text-xs text-content-muted truncate">
-              Wingspan — When are you available?
-            </div>
+          <div className="text-sm font-bold text-content-primary">
+            When are you available?
+          </div>
+          <div className="text-xs text-content-muted mb-2">
+            Group: Tabletop Crew
           </div>
         </div>
+        {/* Tiny grid hint — three colored cells suggest the paint UI without
+            re-rendering the full grid (that's Step 3). */}
+        <div className="px-4 py-2 flex items-center gap-1.5">
+          <div className="w-6 h-3 rounded-sm bg-green-300 border border-green-400" />
+          <div className="w-6 h-3 rounded-sm bg-green-300 border border-green-400" />
+          <div className="w-6 h-3 rounded-sm bg-green-300 border border-green-400" />
+          <div className="w-6 h-3 rounded-sm bg-surface-elevated border border-line" />
+          <div className="w-6 h-3 rounded-sm bg-surface-elevated border border-line" />
+          <span className="text-xs text-content-muted ml-2">in the app, anytime</span>
+        </div>
+      </div>
 
-        {/* Email body */}
+      {/* Path B: Send a check-in.
+          Email preview matching production AvailabilityPrompt template
+          and promptInvitationService subject line. SMS removed (currently
+          opt-in for select users only — leaving it in misrepresents the
+          default product experience). */}
+      <div
+        className="bg-surface-card border border-line rounded-card shadow-theme-md max-w-md mx-auto text-left transition-all duration-700"
+        style={{
+          opacity: stage >= 1 ? 1 : 0,
+          transform: stage >= 1 ? 'translateY(0)' : 'translateY(6px)',
+          transitionDelay: stage >= 1 ? '200ms' : '0ms',
+        }}
+      >
+        <div className="px-4 pt-3 pb-1 border-b border-line">
+          <div className="text-[10px] uppercase tracking-wide font-semibold text-content-muted mb-1">
+            Or send them a check-in
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-btn-primary text-btn-primary-content flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+              NG
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-content-primary truncate">
+                Tabletop Crew
+              </div>
+              <div className="text-xs text-content-muted truncate">
+                Wingspan — When are you available?
+              </div>
+            </div>
+            <span className="text-xs text-content-muted flex-shrink-0">now</span>
+          </div>
+        </div>
         <div className="px-4 py-3">
           <p className="text-sm text-content-primary leading-snug mb-3">
-            Hey Sarah! <span className="text-content-secondary">Tabletop Crew is planning a Wingspan session. Let us know when you&apos;re free this week.</span>
+            Hey Sarah!{' '}
+            <span className="text-content-secondary">
+              Tabletop Crew is planning a Wingspan session. Let us know when you&apos;re free this week.
+            </span>
           </p>
           <button
             disabled
@@ -67,29 +108,8 @@ export default function CheckInDemo({ stage }) {
         </div>
       </div>
 
-      {/* SMS preview — matches production smsService availability_prompt template.
-          Sits beside the email in copy: "or via text — they pick the channel". */}
-      <div
-        className="max-w-md mx-auto transition-all duration-700"
-        style={{
-          opacity: stage >= 1 ? 1 : 0,
-          transform: stage >= 1 ? 'translateY(0)' : 'translateY(6px)',
-          transitionDelay: stage >= 1 ? '200ms' : '0ms',
-        }}
-      >
-        <div className="bg-surface-card-hover border border-line rounded-card px-4 py-3 text-left">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold text-content-primary">SMS</span>
-            <span className="text-xs text-content-muted">now</span>
-          </div>
-          <p className="text-sm text-content-primary leading-snug">
-            <span className="font-medium">NextGameNight:</span>{' '}
-            Tabletop Crew wants to schedule a game. Share your availability: <span className="text-content-link">nxt.gn/wHk2A</span>
-          </p>
-        </div>
-      </div>
-
-      {/* Recurring schedule card — slides in below. Frames the automation. */}
+      {/* Recurring schedule card — slides in below as the third beat to
+          frame the automation around Path B. */}
       <div
         className="transition-all duration-500"
         style={{
