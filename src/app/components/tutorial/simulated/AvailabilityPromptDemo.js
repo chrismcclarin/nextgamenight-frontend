@@ -56,10 +56,19 @@ export default function AvailabilityPromptDemo({ stage }) {
 
   return (
     <div className="text-center">
-      {/* Mini AvailabilityGrid header — mimics the real toolbar */}
-      <div className="bg-surface-card rounded-t-card border border-line border-b-0 px-3 py-2 inline-block">
-        <div className="flex items-center justify-between gap-4 text-xs">
-          <span className="text-content-secondary">When are you free?</span>
+      {/* Page header — mirrors the magic-link respond page (groups/[id]/
+          availability/respond) so users recognize the surface they'll
+          actually land on after tapping a check-in. */}
+      <div className="bg-surface-card border border-line rounded-t-card px-4 py-3 inline-block">
+        <h3 className="text-sm font-bold text-content-primary mb-0.5">
+          When are you available this week?
+        </h3>
+        <p className="text-xs text-content-muted">Group: Tabletop Crew</p>
+      </div>
+
+      {/* Toolbar row — paint mode toggle (matches real AvailabilityGrid) */}
+      <div className="bg-surface-card border-x border-line px-3 py-1.5 inline-block">
+        <div className="flex items-center justify-end">
           <span className="px-2 py-0.5 bg-green-100 border border-green-400 text-green-800 rounded text-[10px] font-medium">
             Adding: Preferred
           </span>

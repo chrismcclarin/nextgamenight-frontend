@@ -58,10 +58,15 @@ export default function TutorialOverlay({ onComplete }) {
     }
   }, []);
 
-  // Reset stage whenever phase changes — each demo runs its own animation.
-  useEffect(() => {
+  // Atomic phase change — resets stage in the same React batch so the new
+  // demo never renders with the previous phase's stage value. UAT bug:
+  // without atomic reset, the deferred `useEffect(() => setStage(0))`
+  // ran AFTER the first render, so demo cards flashed at full opacity
+  // then transitioned out before the new animation started.
+  const transitionTo = useCallback((nextPhase) => {
+    setPhase(nextPhase);
     setStage(0);
-  }, [phase]);
+  }, []);
 
   // Per-phase animation timers. Stage advances on a fixed cadence; the user
   // can also manually click Next to skip ahead, or Back to revisit.
@@ -78,22 +83,20 @@ export default function TutorialOverlay({ onComplete }) {
         timeouts.push(
           setTimeout(() => {
             if (i < 4) setStage(i + 1);
-            else setPhase('checkin');
+            else transitionTo('checkin');
           }, ms)
         );
       });
     } else if (phase === 'checkin') {
-      // Extended dwell so the message is actually readable. UAT: prior 3.5s
-      // gap between bubble appearance and recurring card felt like the
-      // bubble flashed and was gone before users could read it. Now: bubble
-      // enters at 1s with a 700ms slow fade, gets ~5s of solo reading time
-      // before the recurring card joins, and another ~5s of both visible
-      // before advancing.
+      // Extended dwell — message bubble enters at 1s with a slow 700ms fade,
+      // gets ~5s of solo reading time, then the recurring card joins for
+      // another ~5s before advancing. Auto-advance fires the realistic
+      // email/SMS preview entrance.
       [1000, 6000, 11000].forEach((ms, i) => {
         timeouts.push(
           setTimeout(() => {
             if (i < 2) setStage(i + 1);
-            else setPhase('availability');
+            else transitionTo('availability');
           }, ms)
         );
       });
@@ -102,7 +105,7 @@ export default function TutorialOverlay({ onComplete }) {
         timeouts.push(
           setTimeout(() => {
             if (i < 6) setStage(i + 1);
-            else setPhase('heatmap');
+            else transitionTo('heatmap');
           }, ms)
         );
       });
@@ -111,7 +114,7 @@ export default function TutorialOverlay({ onComplete }) {
         timeouts.push(
           setTimeout(() => {
             if (i < 2) setStage(i + 1);
-            else setPhase('schedule');
+            else transitionTo('schedule');
           }, ms)
         );
       });
@@ -120,38 +123,38 @@ export default function TutorialOverlay({ onComplete }) {
         timeouts.push(
           setTimeout(() => {
             if (i < 3) setStage(i + 1);
-            else setPhase('handoff');
+            else transitionTo('handoff');
           }, ms)
         );
       });
     }
 
     return () => timeouts.forEach(clearTimeout);
-  }, [phase]);
+  }, [phase, transitionTo]);
 
   const skip = useCallback(() => onComplete(), [onComplete]);
 
   const goNext = useCallback(() => {
     if (phase === 'welcome') {
-      setPhase('problem');
+      transitionTo('problem');
       return;
     }
     const idx = DEMO_PHASES.indexOf(phase);
     if (idx >= 0 && idx < DEMO_PHASES.length - 1) {
-      setPhase(DEMO_PHASES[idx + 1]);
+      transitionTo(DEMO_PHASES[idx + 1]);
     }
-  }, [phase]);
+  }, [phase, transitionTo]);
 
   const goBack = useCallback(() => {
     if (phase === 'problem') {
-      setPhase('welcome');
+      transitionTo('welcome');
       return;
     }
     const idx = DEMO_PHASES.indexOf(phase);
     if (idx > 0) {
-      setPhase(DEMO_PHASES[idx - 1]);
+      transitionTo(DEMO_PHASES[idx - 1]);
     }
-  }, [phase]);
+  }, [phase, transitionTo]);
 
   // Handoff actions — persist completion FIRST so re-trigger is impossible,
   // then route. Mirrors the prior implementation's wiring.
@@ -212,7 +215,7 @@ export default function TutorialOverlay({ onComplete }) {
         {/* Main scene area — scrollable on small viewports */}
         <div className="flex-1 overflow-y-auto px-6 py-4 flex items-center justify-center">
           {phase === 'welcome' && (
-            <WelcomeSlide onStart={() => setPhase('problem')} />
+            <WelcomeSlide onStart={() => transitionTo('problem')} />
           )}
 
           {phase === 'problem' && <ProblemSlide stage={stage} />}
@@ -225,8 +228,8 @@ export default function TutorialOverlay({ onComplete }) {
               <CheckInDemo stage={stage} />
               <p className="text-content-secondary text-sm mt-4">
                 {stage >= 2
-                  ? 'One-off or recurring — they tap, paint their availability, done. No app install.'
-                  : 'Send a message asking when they’re free. They tap to respond — 30 seconds, no app install.'}
+                  ? 'One-off or recurring. Email or SMS — they pick the channel. No app install.'
+                  : 'Members get an email or text asking when they’re free. One tap opens the availability page.'}
               </p>
             </div>
           )}
@@ -332,7 +335,7 @@ function HandoffSlide({ signupSource, onPrimary, onSecondary }) {
       <p className="text-content-primary text-xl font-semibold mb-2">
         {isInvited
           ? "You're in. Mark when you're free — the heatmap fills in for everyone."
-          : "Ready? Send your group the invite — the heatmap needs them to fill in."}
+          : 'First, get your group on board. Once they join, send a check-in to start filling the heatmap.'}
       </p>
       <p className="text-content-secondary text-sm mb-6">
         Once you&apos;ve got a night, your group RSVPs and votes on the game.
