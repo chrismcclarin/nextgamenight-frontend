@@ -16,7 +16,7 @@ export default function LandingPage() {
             Your next game night<br className="hidden sm:block" /> starts here.
           </h1>
           <p className="text-xl text-white/70 mb-10 max-w-2xl mx-auto">
-            Schedule sessions, track what you&apos;ve played, and keep your whole group in the loop — all in one place.
+            Find the night your whole group is free. In one glance.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -24,7 +24,7 @@ export default function LandingPage() {
               href="/api/auth/login"
               className="btn btn-primary px-8 py-4 text-lg shadow-theme-lg hover:shadow-xl transition-all w-full sm:w-auto text-center font-bold"
             >
-              Get Started Free
+              Get Started
             </a>
             <a
               href="/api/auth/login?connection=google-oauth2"
@@ -61,7 +61,7 @@ export default function LandingPage() {
               <div className="text-4xl mb-4">👥</div>
               <h3 className="text-xl font-bold mb-2 text-content-primary">Gather Your Crew</h3>
               <p className="text-content-secondary">
-                Create groups, invite friends, and coordinate schedules with automatic availability reminders.
+                Coordinate without the group-chat back-and-forth. Availability fills itself in.
               </p>
             </div>
 

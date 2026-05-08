@@ -51,7 +51,6 @@ function Header(){
             { href: '/api/auth/logout', label: 'Logout', isLink: false },
           ]
         : [
-            { href: '/', label: 'Home', isLink: true },
             { href: '/api/auth/login', label: 'Login', isLink: false },
           ];
 
