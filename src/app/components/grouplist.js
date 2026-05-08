@@ -136,7 +136,14 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                 }}
               >
                 {bgImage && (
-                  <div className="absolute inset-0 bg-white/85 z-0 rounded-card" />
+                  // Phase 73-02 light-mode audit: replaced hardcoded white
+                  // overlay with semantic bg-surface-card so the overlay themes
+                  // with the rest of the card. In dark mode the previous
+                  // overlay dimmed the bg image to near-white while
+                  // text-content-primary stays light, making text invisible.
+                  // surface-card is #fff in light, purple-900 in dark —
+                  // preserves the dim effect AND keeps text readable.
+                  <div className="absolute inset-0 bg-surface-card/85 z-0 rounded-card" />
                 )}
                 <div className="relative z-[1]">
                   <div className="flex justify-between items-center mb-3 max-[480px]:flex-col max-[480px]:items-start max-[480px]:gap-2">
