@@ -240,11 +240,18 @@ function HeatmapTooltip({
     role,
   ]);
 
-  // Animation — fade + tiny slide. Conservative defaults under CONTEXT
+  // Animation — fade only. Conservative defaults under CONTEXT
   // "Claude's discretion on animation curve and duration".
+  // IMPORTANT: `initial` is opacity-only (no transform). Reason: floating-ui's
+  // `floatingStyles.transform` carries the positioning translate(x, y) that
+  // anchors the tooltip to the trigger. If `transitionStyles.transform` is
+  // also set, spreading `transitionStyles` after `floatingStyles` clobbers
+  // positioning and the tooltip falls back to its DOM mount point (top-left
+  // of the FloatingPortal target). Plan 72-02 UAT regression — see split
+  // positioning/animation onto two stacked divs below.
   const { isMounted, styles: transitionStyles } = useTransitionStyles(context, {
     duration: { open: 120, close: 80 },
-    initial: { opacity: 0, transform: 'translateY(2px)' },
+    initial: { opacity: 0 },
   });
 
   // ---- Disabled / no-content pass-through ----------------------------------
@@ -307,24 +314,35 @@ function HeatmapTooltip({
       {cloneElement(child, mergeProps(child.props, referenceProps))}
       {isMounted && (
         <FloatingPortal>
+          {/*
+            Positioning and animation are split onto two stacked divs:
+              - Outer: owns floating-ui positioning (refs.setFloating + floatingStyles).
+                floatingStyles carries `transform: translate(x, y)` that anchors
+                the tooltip to the trigger. Nothing else may write `transform`
+                here, or positioning breaks.
+              - Inner: owns animation (transitionStyles, opacity-only) and the
+                visible chrome (toneClassName + arrow). The arrow is positioned
+                relative to this inner div so it lands on the cell edge correctly.
+          */}
           <div
             {...getFloatingProps({
               ref: refs.setFloating,
               id: tooltipDomId,
             })}
-            style={{ ...floatingStyles, ...transitionStyles }}
-            className={toneClassName}
+            style={floatingStyles}
           >
-            {content}
-            <div
-              ref={arrowRef}
-              className="absolute w-2 h-2 bg-surface-elevated border border-line rotate-45"
-              style={{
-                left: middlewareData.arrow?.x != null ? `${middlewareData.arrow.x}px` : '',
-                top: middlewareData.arrow?.y != null ? `${middlewareData.arrow.y}px` : '',
-                [staticSide]: '-4px',
-              }}
-            />
+            <div style={transitionStyles} className={toneClassName}>
+              {content}
+              <div
+                ref={arrowRef}
+                className="absolute w-2 h-2 bg-surface-elevated border border-line rotate-45"
+                style={{
+                  left: middlewareData.arrow?.x != null ? `${middlewareData.arrow.x}px` : '',
+                  top: middlewareData.arrow?.y != null ? `${middlewareData.arrow.y}px` : '',
+                  [staticSide]: '-4px',
+                }}
+              />
+            </div>
           </div>
         </FloatingPortal>
       )}

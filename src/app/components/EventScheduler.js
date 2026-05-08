@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay, differenceInMinutes, setHours, setMinutes, addMinutes, addDays, getHours, getMinutes } from 'date-fns';
 import { enUS } from 'date-fns/locale';
+import { useUser as Auth } from '@auth0/nextjs-auth0/client';
+import HeatmapTooltip from './HeatmapTooltip';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 // Calendar styling is handled by globals.css .rbc-* overrides (from design system Plan 01)
@@ -49,6 +51,12 @@ export default function EventScheduler({
   const [currentView, setCurrentView] = useState(
     defaultView === 'day' ? 'day' : 'week'
   );
+
+  // Phase 72-02 UAT: identify the viewing user so we can render a self-conflict
+  // line ("You have a Google Calendar conflict at this time") in the per-slot
+  // tooltip — matches EventHeatmapBackground's content shape.
+  const { user } = Auth();
+  const currentUserSub = user?.sub || null;
 
   // Build heatmap lookup: "localDate_localHour" -> slot
   // Backend returns UTC dates/hours -- convert to local so keys match the calendar
@@ -355,7 +363,19 @@ export default function EventScheduler({
     };
   }, [heatmapLookup, totalMembers]);
 
-  // Custom time slot wrapper: adds availability count + hover tooltip with conflict info
+  // Custom time slot wrapper: adds availability count + per-slot tooltip with
+  // conflict info. Phase 72-02 UAT: migrated from the legacy `<div title={tip}>`
+  // native browser balloon to the shared HeatmapTooltip primitive — same
+  // surface, same green-ratio ramp, same `count` badge, now with the same
+  // touch/keyboard/singleton behavior the rest of the heatmap surfaces use,
+  // and the same content shape as EventHeatmapBackground (self-conflict line
+  // for the viewing user, plus other-user conflict lines).
+  //
+  // Drag-select coexistence (Phase 68 MOB-07): HeatmapTooltip's mergeProps
+  // chains existing handlers, so onMouseDown/onTouchStart that react-big-
+  // calendar relies on for selection still reach the calendar. The wrapper
+  // div doesn't capture pointer events on its own — it just hosts the
+  // tooltip trigger semantics on top of the existing slot DOM.
   const calendarComponents = useMemo(() => ({
     timeSlotWrapper: ({ children, value }) => {
       if (!value || !(value instanceof Date)) return children;
@@ -364,42 +384,72 @@ export default function EventScheduler({
       const hour = value.getHours();
       const key = `${dateStr}_${hour}`;
       const slot = heatmapLookup.get(key);
-      const conflicts = conflictLookup.get(key);
+      const conflicts = conflictLookup.get(key) || [];
+      const hasAvailability = slot && slot.availableCount > 0;
+      const userHasConflict = currentUserSub
+        ? conflicts.some(c => c.user_id === currentUserSub)
+        : false;
+      const otherConflicts = conflicts.filter(c => c.user_id !== currentUserSub);
 
-      if ((!slot || slot.availableCount === 0) && !conflicts) return children;
-
-      const names = (slot?.availableMembers || []).map(m => m.username).join(', ');
-      let tip = slot?.availableCount > 0
-        ? `${slot.availableCount}/${totalMembers} available: ${names}`
-        : '';
-
-      if (conflicts && conflicts.length > 0) {
-        for (const c of conflicts) {
-          tip += `${tip ? '\n' : ''}⚠ ${c.username} said yes, but calendar shows busy`;
-        }
+      // Pass children through unwrapped when there's nothing to show.
+      if (!hasAvailability && !userHasConflict && otherConflicts.length === 0) {
+        return children;
       }
 
-      return (
-        <div title={tip} style={{ position: 'relative', height: '100%' }}>
-          {children}
-          {slot?.availableCount > 0 && (
-            <span style={{
-              position: 'absolute',
-              top: '2px',
-              right: '4px',
-              fontSize: '10px',
-              color: 'var(--color-status-success)',
-              fontWeight: 600,
-              pointerEvents: 'none',
-              zIndex: 1,
-            }}>
-              {slot.availableCount}
-            </span>
+      const names = hasAvailability
+        ? (slot.availableMembers || []).map(m => m.username).join(', ')
+        : '';
+
+      const tooltipContent = (
+        <div>
+          {hasAvailability && (
+            <div>
+              {slot.availableCount} of {totalMembers} available{names ? ` — ${names}` : ''}
+            </div>
           )}
+          {userHasConflict && (
+            <div className="text-amber-700 mt-1">
+              You have a Google Calendar conflict at this time
+            </div>
+          )}
+          {otherConflicts.map(c => (
+            <div key={c.user_id} className="text-amber-700 text-xs mt-1">
+              {c.username}: said yes, calendar shows busy
+            </div>
+          ))}
         </div>
       );
+
+      // Tone='default' here — EventScheduler is a primary-input grid in the
+      // create-event modal where the compact desktop tone reads better and
+      // matches EventHeatmapBackground (the manual-mode heatmap in the same
+      // modal) for visual consistency. The mobile floating-popover variant is
+      // reserved for MergedHeatmapCell (CONTEXT D).
+      return (
+        <HeatmapTooltip
+          content={tooltipContent}
+          ariaLabel={`Availability for ${dateStr} hour ${hour}`}
+        >
+          <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+            {children}
+            {hasAvailability && (
+              <span style={{
+                position: 'absolute',
+                top: '2px',
+                right: '4px',
+                fontSize: '10px',
+                color: 'var(--color-status-success)',
+                fontWeight: 600,
+                zIndex: 1,
+              }}>
+                {slot.availableCount}
+              </span>
+            )}
+          </div>
+        </HeatmapTooltip>
+      );
     },
-  }), [heatmapLookup, conflictLookup, totalMembers]);
+  }), [heatmapLookup, conflictLookup, totalMembers, currentUserSub]);
 
   return (
     <div className="space-y-4">
@@ -468,7 +518,6 @@ export default function EventScheduler({
             <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'rgba(34, 197, 94, 0.55)' }} />
           </div>
           <span>More available</span>
-          <span className="text-content-muted ml-1">(hover for names)</span>
         </div>
       )}
 
