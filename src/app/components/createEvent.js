@@ -3,11 +3,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { gamesAPI, eventsAPI, groupsAPI, ballotAPI, availabilityAPI, promptAPI, API_BASE_URL } from '../../lib/api';
-import { format, parseISO, differenceInMinutes, startOfWeek } from 'date-fns';
+import { format, parseISO, differenceInMinutes, startOfWeek, addWeeks, subWeeks, isSameWeek } from 'date-fns';
 import EventScheduler from './EventScheduler';
 import EventHeatmapBackground from './EventHeatmapBackground';
 import GameComboInput from './GameComboInput';
 import QuickSuggestions from './QuickSuggestions';
+import useSwipeNavigation from './useSwipeNavigation';
 import { createParticipant, createEventForm, prepareEventData } from '../../lib/eventFormUtils';
 import ParticipantRow from './ParticipantRow';
 import BallotOptionsEditor from './BallotOptionsEditor';
@@ -29,6 +30,21 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   const [heatmapData, setHeatmapData] = useState(null);
   const [heatmapLoading, setHeatmapLoading] = useState(false);
   const [heatmapWeekStart, setHeatmapWeekStart] = useState(null);
+  // Phase 72 HUX-04: user-controlled week navigation for the manual-entry
+  // heatmap. null sentinel = "use today's Monday in effective TZ" (page-load
+  // / modal-open default). Reset back to null on modal open / promptId change
+  // so reopening always centers on today (CONTEXT — no localStorage).
+  const [currentWeekStart, setCurrentWeekStart] = useState(null);
+  // (hover: none) detection for gating swipe gestures.
+  const [isHoverNone, setIsHoverNone] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(hover: none)');
+    const update = () => setIsHoverNone(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
 
   // Phase 66-01: derive the visual scheduler's `selectedSlot` from the
   // canonical date/time fields. This is the single source of truth — both
@@ -307,11 +323,14 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         // Build a Date at noon UTC of that wall-clock date so date-only ops are TZ-safe.
         const nowWall = utcToWallClock(new Date(), effectiveTz);
         const localToday = new Date(Date.UTC(nowWall.year, nowWall.month - 1, nowWall.day, 12, 0, 0));
-        const monday = startOfWeek(localToday, { weekStartsOn: 1 });
-        const weekStartStr = format(monday, 'yyyy-MM-dd');
+        const todayMondayLocal = startOfWeek(localToday, { weekStartsOn: 1 });
+        // Phase 72 HUX-04 — user-navigated week overrides the "today" default.
+        // null currentWeekStart means "show today" (page-load / modal-open).
+        const effectiveMonday = currentWeekStart || todayMondayLocal;
+        const weekStartStr = format(effectiveMonday, 'yyyy-MM-dd');
         const data = await availabilityAPI.getGroupHeatmap(group_id, weekStartStr, effectiveTz);
         setHeatmapData(data);
-        setHeatmapWeekStart(monday);
+        setHeatmapWeekStart(effectiveMonday);
       } catch (err) {
         console.error('Failed to load heatmap:', err);
         // Silently fail -- heatmap is a nice-to-have visual, not critical
@@ -320,7 +339,51 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       }
     };
     fetchHeatmap();
-  }, [modal, group_id, effectiveTz, promptId]);
+  }, [modal, group_id, effectiveTz, promptId, currentWeekStart]);
+
+  // Phase 72 HUX-04: reset to current week on modal open / promptId change.
+  // CONTEXT — no localStorage / no URL state; page-load reset semantics.
+  useEffect(() => {
+    setCurrentWeekStart(null);
+  }, [modal, promptId]);
+
+  // Phase 72 HUX-04 — week-nav range / handlers for the manual-entry heatmap.
+  // Only used when !promptId (poll-restricted path stays anchored).
+  // todayMonday is computed from the user's effective TZ so users near
+  // midnight or with profile TZ ≠ browser TZ see the correct "today".
+  const todayMonday = useMemo(() => {
+    const nowWall = utcToWallClock(new Date(), effectiveTz);
+    const localToday = new Date(Date.UTC(nowWall.year, nowWall.month - 1, nowWall.day, 12, 0, 0));
+    return startOfWeek(localToday, { weekStartsOn: 1 });
+  }, [effectiveTz]);
+  const minWeek = useMemo(() => subWeeks(todayMonday, 3), [todayMonday]);
+  const maxWeek = useMemo(() => addWeeks(todayMonday, 12), [todayMonday]);
+  const effectiveMondayForUI = currentWeekStart || todayMonday;
+  const canGoBack = effectiveMondayForUI > minWeek;
+  const canGoForward = effectiveMondayForUI < maxWeek;
+  const handlePrevWeek = () => {
+    if (canGoBack) setCurrentWeekStart(subWeeks(effectiveMondayForUI, 1));
+  };
+  const handleNextWeek = () => {
+    if (canGoForward) setCurrentWeekStart(addWeeks(effectiveMondayForUI, 1));
+  };
+  // null sentinel = "use today's Monday" (page-load reset). Today button
+  // returns to the null-state which the fetch effect resolves to today's
+  // actual Monday — label-accurate semantics consistent with HeatmapGrid
+  // and MergedHeatmap.
+  const handleToday = () => setCurrentWeekStart(null);
+  const isOnTodayMonday = isSameWeek(effectiveMondayForUI, todayMonday, { weekStartsOn: 1 });
+
+  // CONTEXT note: the long-press-drag-to-select gesture from Phase 68 MOB-07
+  // lives on EventScheduler (visual-calendar mode). EventHeatmapBackground
+  // is only rendered in manual-entry mode — these two modes are mutually
+  // exclusive (toggled via `useVisualCalendar`). The swipe handler here
+  // therefore cannot collide with the EventScheduler drag-select gesture.
+  const swipeHandlers = useSwipeNavigation({
+    onSwipeLeft: handleNextWeek,
+    onSwipeRight: handlePrevWeek,
+    enabled: !promptId && isHoverNone,
+  });
 
   const fetchGroupMembers = async () => {
     try {
@@ -631,14 +694,62 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
               </>
             ) : (
               <div className="space-y-4">
-                {/* Heatmap reference for manual entry mode */}
+                {/* Heatmap reference for manual entry mode.
+                    Phase 72 HUX-04 — group-availability path (`!promptId`)
+                    gets full week navigation (Prev / Today / Week label /
+                    Next + mobile swipe). Poll-restricted path (promptId set)
+                    stays anchored to the poll's weekStart; no nav UI. */}
                 {(heatmapData || heatmapLoading) && (
-                  <div className="bg-surface-page rounded-lg p-3 border border-line">
-                    <p className="text-xs font-medium text-content-muted mb-2">
-                      {heatmapWeekStart && !heatmapLoading
-                        ? `Week of ${format(heatmapWeekStart, 'EEE MMM d')}`
-                        : 'Group Availability This Week'}
-                    </p>
+                  <div
+                    className="bg-surface-page rounded-lg p-3 border border-line"
+                    onTouchStart={!promptId ? swipeHandlers.onTouchStart : undefined}
+                    onTouchMove={!promptId ? swipeHandlers.onTouchMove : undefined}
+                    onTouchEnd={!promptId ? swipeHandlers.onTouchEnd : undefined}
+                    onTouchCancel={!promptId ? swipeHandlers.onTouchCancel : undefined}
+                  >
+                    {!promptId && (
+                      <div className="flex items-center justify-between mb-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={handlePrevWeek}
+                          disabled={!canGoBack}
+                          aria-label="Previous week"
+                          className="px-2 py-1 text-sm rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
+                        >
+                          &lt;
+                        </button>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-content-muted">
+                            Week of {format(effectiveMondayForUI, 'EEE MMM d')}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleToday}
+                            disabled={isOnTodayMonday}
+                            aria-label="Jump to current week"
+                            className="px-2 py-1 text-xs rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
+                          >
+                            Today
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleNextWeek}
+                          disabled={!canGoForward}
+                          aria-label="Next week"
+                          className="px-2 py-1 text-sm rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
+                        >
+                          &gt;
+                        </button>
+                      </div>
+                    )}
+                    {promptId && (
+                      <p className="text-xs font-medium text-content-muted mb-2">
+                        {heatmapWeekStart && !heatmapLoading
+                          ? `Week of ${format(heatmapWeekStart, 'EEE MMM d')}`
+                          : 'Poll Availability'}
+                      </p>
+                    )}
                     <EventHeatmapBackground
                       heatmapData={heatmapData}
                       loading={heatmapLoading}
