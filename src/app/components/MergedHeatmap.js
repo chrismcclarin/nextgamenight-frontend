@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { startOfWeek, addWeeks, subWeeks, addDays, differenceInWeeks, format } from 'date-fns';
+import { startOfWeek, addWeeks, subWeeks, addDays, differenceInWeeks, format, isSameWeek } from 'date-fns';
 import MergedHeatmapGrid from './MergedHeatmapGrid';
+import useSwipeNavigation from './useSwipeNavigation';
 
 const LEGEND_ITEMS = [
   { label: '0', className: 'bg-surface-elevated' },
@@ -74,8 +75,9 @@ export default function MergedHeatmap({
     []
   );
 
-  const canGoBack = differenceInWeeks(selectedWeek, subWeeks(currentMonday, 2)) > 0;
-  const canGoForward = differenceInWeeks(addWeeks(currentMonday, 4), selectedWeek) > 0;
+  // Phase 72 HUX-04: -3/+12 weeks per CONTEXT (asymmetric, favors forward planning).
+  const canGoBack = differenceInWeeks(selectedWeek, subWeeks(currentMonday, 3)) > 0;
+  const canGoForward = differenceInWeeks(addWeeks(currentMonday, 12), selectedWeek) > 0;
 
   const handlePrevWeek = () => {
     if (canGoBack) onWeekChange(subWeeks(selectedWeek, 1));
@@ -84,6 +86,28 @@ export default function MergedHeatmap({
   const handleNextWeek = () => {
     if (canGoForward) onWeekChange(addWeeks(selectedWeek, 1));
   };
+
+  const handleToday = () => onWeekChange(currentMonday);
+
+  // Phase 72 HUX-04: detect (hover: none) for swipe gating. Visible chevrons
+  // remain primary; swipe is a power-user shortcut on top.
+  const [isHoverNone, setIsHoverNone] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(hover: none)');
+    const update = () => setIsHoverNone(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
+  const swipeHandlers = useSwipeNavigation({
+    onSwipeLeft: handleNextWeek,
+    onSwipeRight: handlePrevWeek,
+    enabled: isHoverNone,
+  });
+
+  const isOnCurrentWeek = isSameWeek(selectedWeek, currentMonday, { weekStartsOn: 1 });
 
   const membersWithoutData = heatmapData?.membersWithoutData || [];
   const totalMembers = heatmapData?.totalMembers ?? 0;
@@ -105,8 +129,8 @@ export default function MergedHeatmap({
 
   return (
     <div>
-      {/* Week navigation bar */}
-      <div className="flex items-center justify-between mb-4">
+      {/* Week navigation bar — Phase 72 HUX-04: chevrons + label + Today button */}
+      <div className="flex items-center justify-between mb-4 gap-2">
         <button
           onClick={handlePrevWeek}
           disabled={!canGoBack}
@@ -115,9 +139,19 @@ export default function MergedHeatmap({
         >
           &lt;
         </button>
-        <span className="text-lg font-semibold text-content-primary">
-          {formatWeekLabel(selectedWeek)}
-        </span>
+        <div className="flex items-center gap-3 flex-1 justify-center">
+          <span className="text-lg font-semibold text-content-primary">
+            {formatWeekLabel(selectedWeek)}
+          </span>
+          <button
+            onClick={handleToday}
+            disabled={isOnCurrentWeek}
+            className="px-3 py-1 text-sm rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
+            aria-label="Jump to current week"
+          >
+            Today
+          </button>
+        </div>
         <button
           onClick={handleNextWeek}
           disabled={!canGoForward}
@@ -184,14 +218,24 @@ export default function MergedHeatmap({
       )}
 
       {/* Grid -- renders even during the 200ms pre-skeleton window so a
-          refetch with stale data on screen does not flash blank. */}
+          refetch with stale data on screen does not flash blank.
+          Swipe handlers are scoped to the grid wrapper (NOT the whole
+          component) so taps on chevrons / Today / slot CTA can never be
+          accidentally interpreted as swipes. */}
       {!showSkeleton && !error && heatmapData && (
-        <MergedHeatmapGrid
-          slots={heatmapData.slots || []}
-          totalMembers={heatmapData.totalMembers || 0}
-          selectedSlot={selectedSlot}
-          onSlotSelect={onSlotSelect}
-        />
+        <div
+          onTouchStart={swipeHandlers.onTouchStart}
+          onTouchMove={swipeHandlers.onTouchMove}
+          onTouchEnd={swipeHandlers.onTouchEnd}
+          onTouchCancel={swipeHandlers.onTouchCancel}
+        >
+          <MergedHeatmapGrid
+            slots={heatmapData.slots || []}
+            totalMembers={heatmapData.totalMembers || 0}
+            selectedSlot={selectedSlot}
+            onSlotSelect={onSlotSelect}
+          />
+        </div>
       )}
 
       {/* All-data-less CTA (D-02): every group member is data-less, so the grid

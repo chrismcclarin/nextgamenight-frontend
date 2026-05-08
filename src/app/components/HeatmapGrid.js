@@ -1,11 +1,32 @@
 'use client';
 
-import { useState, useMemo, useCallback, useRef } from 'react';
-import { format, addDays, nextMonday } from 'date-fns';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { format, addDays, nextMonday, startOfWeek, addWeeks, subWeeks, isSameWeek } from 'date-fns';
 import HeatmapCell from './HeatmapCell';
 import ThresholdSlider from './ThresholdSlider';
 import SuggestionCard from './SuggestionCard';
+import useSwipeNavigation from './useSwipeNavigation';
 import { useTimezone } from '../components/TimezoneProvider';
+
+// HeatmapGrid week semantics (Phase 72 HUX-04):
+//   - Page-load default:  nextMonday(today)  (forward-looking poll-suggestions surface)
+//   - Today button click: startOfWeek(today) (consistent label semantics across all three surfaces)
+//   - Range bounds:       -3 weeks ... +12 weeks from today's Monday
+
+/**
+ * Format the week label. If months differ across the week, show both months.
+ * (Same idiom as MergedHeatmap.formatWeekLabel — copied here since both are
+ * leaf components and the helper is only 4 lines.)
+ */
+function formatWeekLabel(weekStart) {
+  const weekEnd = addDays(weekStart, 6);
+  const startMonth = format(weekStart, 'MMM');
+  const endMonth = format(weekEnd, 'MMM');
+  if (startMonth === endMonth) {
+    return `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'd')}`;
+  }
+  return `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'MMM d')}`;
+}
 
 /**
  * HeatmapGrid - Displays collective availability as a color-coded heatmap
@@ -22,6 +43,7 @@ import { useTimezone } from '../components/TimezoneProvider';
  * @param {Date} props.weekStartDate - Optional: override week start (defaults to next Monday)
  * @param {number} props.defaultThreshold - Initial threshold value (default: 1)
  * @param {function} props.onSlotSelect - Optional callback when a slot is clicked
+ * @param {function} props.onWeekChange - Optional callback fired when user changes week via nav (Phase 72 HUX-04)
  */
 export default function HeatmapGrid({
   suggestions = [],
@@ -30,6 +52,7 @@ export default function HeatmapGrid({
   weekStartDate,
   defaultThreshold = 1,
   onSlotSelect,
+  onWeekChange,
   // Props for SuggestionCard integration
   groupId,
   isAdmin = false,
@@ -51,14 +74,67 @@ export default function HeatmapGrid({
     if (el) cellRefs.current[idx] = el;
   }, []);
 
-  // Calculate the week start date (next Monday if not provided)
-  const weekStart = useMemo(() => {
-    if (weekStartDate) {
-      return new Date(weekStartDate);
-    }
-    const now = new Date();
-    return nextMonday(now);
+  // Page-load default: nextMonday(today) — this is a forward-looking
+  // poll-suggestions surface. Today button (handleToday below) jumps to
+  // today's actual Monday for label-accurate semantics. These are two
+  // different concerns: initial-render default vs. user-initiated "go to
+  // current week" action.
+  const initialWeekStart = useMemo(() => {
+    if (weekStartDate) return new Date(weekStartDate);
+    return nextMonday(new Date());
   }, [weekStartDate]);
+  const [weekStart, setWeekStartState] = useState(initialWeekStart);
+  // If the weekStartDate prop changes (e.g., callers passing a new value),
+  // reset internal state so the prop remains the source of truth on update.
+  useEffect(() => {
+    setWeekStartState(initialWeekStart);
+  }, [initialWeekStart]);
+
+  // Wrap the setter so optional onWeekChange callback fires on every nav
+  // action (chevron / Today / swipe).
+  const setWeekStart = useCallback(
+    (next) => {
+      setWeekStartState(next);
+      onWeekChange?.(next);
+    },
+    [onWeekChange]
+  );
+
+  // Phase 72 HUX-04: today's actual Monday. Distinct from the page-load
+  // nextMonday(today) default — Today button MUST land on this.
+  const todayMonday = useMemo(() => startOfWeek(new Date(), { weekStartsOn: 1 }), []);
+  const minWeek = useMemo(() => subWeeks(todayMonday, 3), [todayMonday]);
+  const maxWeek = useMemo(() => addWeeks(todayMonday, 12), [todayMonday]);
+  const canGoBack = weekStart > minWeek;
+  const canGoForward = weekStart < maxWeek;
+
+  const handlePrevWeek = useCallback(() => {
+    if (canGoBack) setWeekStart(subWeeks(weekStart, 1));
+  }, [canGoBack, weekStart, setWeekStart]);
+  const handleNextWeek = useCallback(() => {
+    if (canGoForward) setWeekStart(addWeeks(weekStart, 1));
+  }, [canGoForward, weekStart, setWeekStart]);
+  // Today button jumps to today's Monday — NOT nextMonday(today). The button
+  // label promises "Today", so it MUST land on the current week (W4 — Plan 03).
+  const handleToday = useCallback(() => setWeekStart(todayMonday), [todayMonday, setWeekStart]);
+  const isOnTodayMonday = isSameWeek(weekStart, todayMonday, { weekStartsOn: 1 });
+
+  // Swipe gating — visible chevrons remain primary; swipe is a power-user
+  // shortcut on (hover: none) devices.
+  const [isHoverNone, setIsHoverNone] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(hover: none)');
+    const update = () => setIsHoverNone(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+  const swipeHandlers = useSwipeNavigation({
+    onSwipeLeft: handleNextWeek,
+    onSwipeRight: handlePrevWeek,
+    enabled: isHoverNone,
+  });
 
   // Generate 7 days starting from weekStart
   const days = useMemo(() => {
@@ -192,6 +268,41 @@ export default function HeatmapGrid({
 
   return (
     <div className="w-full">
+      {/* Week navigation bar — Phase 72 HUX-04: chevrons + label + Today button.
+          Page-load default is nextMonday(today); Today button jumps to today's
+          actual Monday. -3/+12 week range. */}
+      <div className="flex items-center justify-between mb-4 gap-2">
+        <button
+          onClick={handlePrevWeek}
+          disabled={!canGoBack}
+          className="px-3 py-2 rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
+          aria-label="Previous week"
+        >
+          &lt;
+        </button>
+        <div className="flex items-center gap-3 flex-1 justify-center">
+          <span className="text-lg font-semibold text-content-primary">
+            {formatWeekLabel(weekStart)}
+          </span>
+          <button
+            onClick={handleToday}
+            disabled={isOnTodayMonday}
+            className="px-3 py-1 text-sm rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
+            aria-label="Jump to current week"
+          >
+            Today
+          </button>
+        </div>
+        <button
+          onClick={handleNextWeek}
+          disabled={!canGoForward}
+          className="px-3 py-2 rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
+          aria-label="Next week"
+        >
+          &gt;
+        </button>
+      </div>
+
       {/* Threshold slider */}
       <div className="mb-4">
         <ThresholdSlider
@@ -221,8 +332,18 @@ export default function HeatmapGrid({
         <span className="text-content-secondary">More available</span>
       </div>
 
-      {/* Grid container with horizontal scroll for mobile */}
-      <div className="overflow-x-auto pb-2">
+      {/* Grid container with horizontal scroll for mobile.
+          Phase 72 HUX-04 — swipe handlers attach to this scroll wrapper so
+          horizontal swipes on the grid advance/retreat the week (gated to
+          (hover: none) devices). Vertical scroll is preserved by the
+          horizontal-vs-vertical guard inside useSwipeNavigation. */}
+      <div
+        className="overflow-x-auto pb-2"
+        onTouchStart={swipeHandlers.onTouchStart}
+        onTouchMove={swipeHandlers.onTouchMove}
+        onTouchEnd={swipeHandlers.onTouchEnd}
+        onTouchCancel={swipeHandlers.onTouchCancel}
+      >
         <div
           className="min-w-max"
           role="grid"
