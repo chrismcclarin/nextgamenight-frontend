@@ -18,32 +18,34 @@
 export default function CheckInDemo({ stage }) {
   return (
     <div className="text-center">
-      {/* Faux message preview — looks like a phone notification */}
+      {/* Faux message preview — looks like a phone notification.
+          Slower 800ms fade-in (was 500ms — too flash-y at small size)
+          and bumped text to text-base for legibility inside the modal. */}
       <div
-        className="bg-surface-card border border-line rounded-card shadow-theme-md max-w-sm mx-auto p-4 transition-all duration-500"
+        className="bg-surface-card border border-line rounded-card shadow-theme-md max-w-md mx-auto p-5 transition-all duration-700"
         style={{
           opacity: stage >= 1 ? 1 : 0,
-          transform: stage >= 1 ? 'translateY(0)' : 'translateY(8px)',
+          transform: stage >= 1 ? 'translateY(0)' : 'translateY(6px)',
         }}
       >
         <div className="flex items-start gap-3 text-left">
           {/* Avatar circle */}
-          <div className="w-10 h-10 rounded-full bg-btn-primary text-btn-primary-content flex items-center justify-center text-sm font-semibold flex-shrink-0">
+          <div className="w-11 h-11 rounded-full bg-btn-primary text-btn-primary-content flex items-center justify-center text-sm font-bold flex-shrink-0">
             NG
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
               <span className="text-sm font-semibold text-content-primary">
                 Nextgamenight
               </span>
-              <span className="text-[10px] text-content-muted">now</span>
+              <span className="text-xs text-content-muted">now</span>
             </div>
-            <p className="text-sm text-content-secondary mb-2">
+            <p className="text-base text-content-primary mb-3 leading-snug">
               Hey! When are you free this week?
             </p>
             <button
               disabled
-              className="text-xs font-medium text-btn-primary-content bg-btn-primary px-3 py-1.5 rounded-btn"
+              className="text-sm font-medium text-btn-primary-content bg-btn-primary px-4 py-2 rounded-btn"
             >
               Tap to respond →
             </button>

@@ -83,10 +83,13 @@ export default function TutorialOverlay({ onComplete }) {
         );
       });
     } else if (phase === 'checkin') {
-      // More breathing room: ~1s entrance for the message bubble, then
-      // ~3.5s for users to read the message + CTA before the recurring
-      // card slides in, then ~4s to absorb both before advancing.
-      [1000, 4500, 8500].forEach((ms, i) => {
+      // Extended dwell so the message is actually readable. UAT: prior 3.5s
+      // gap between bubble appearance and recurring card felt like the
+      // bubble flashed and was gone before users could read it. Now: bubble
+      // enters at 1s with a 700ms slow fade, gets ~5s of solo reading time
+      // before the recurring card joins, and another ~5s of both visible
+      // before advancing.
+      [1000, 6000, 11000].forEach((ms, i) => {
         timeouts.push(
           setTimeout(() => {
             if (i < 2) setStage(i + 1);
