@@ -62,6 +62,21 @@ function App(){
     return () => window.removeEventListener('nggroups:refresh', onRefresh);
   }, []);
 
+  // ONBD-04 (Phase 73): cold-branch tutorial handoff.
+  // The TutorialOverlay can't call modaltoggle directly (state lives here), so
+  // it dispatches 'ngtutorial:openCreateGroup' on the window. We listen here
+  // and force the CreateGroup modal open. setGroupModal(true) is deterministic
+  // — using modaltoggle would close the modal if it happened to be open already.
+  // Mirrors the 'nggroups:refresh' listener pattern above.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onOpenCreateGroup = () => {
+      setGroupModal(true);
+    };
+    window.addEventListener('ngtutorial:openCreateGroup', onOpenCreateGroup);
+    return () => window.removeEventListener('ngtutorial:openCreateGroup', onOpenCreateGroup);
+  }, []);
+
   const modaltoggle = () => {
     setGroupModal(!groupModal);
   }

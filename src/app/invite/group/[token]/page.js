@@ -64,8 +64,16 @@ function GroupInvitePage() {
         } else if (result.success) {
           // GROUP-08: signal /userHome to refresh its groups list on next visit
           // so the freshly-joined group appears without a manual reload.
+          // ONBD-04: also flag this as an invited-source signup so the
+          // tutorial uses the invited-branch handoff ("Set my availability")
+          // instead of the cold-branch ("Invite your group"). Set AFTER
+          // result.success — sessionStorage doesn't survive the Auth0 cross-
+          // origin redirect (Pitfall 1 in 73-RESEARCH.md), so we stash it
+          // post-join when the user is back on app origin. Self-deletes on
+          // read in TutorialOverlay.
           if (typeof window !== 'undefined') {
             sessionStorage.setItem('nggroups:refresh', '1');
+            sessionStorage.setItem('ngtutorial:invitedSource', '1');
           }
           setStatus('joined');
           setTimeout(() => {

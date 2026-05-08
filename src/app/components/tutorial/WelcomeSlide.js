@@ -1,38 +1,38 @@
 'use client';
 
 /**
- * Full-screen welcome slide shown at the start of the tutorial.
- * Offers "Get Started" to begin the tour or "Skip" to dismiss.
+ * Welcome slide for the heatmap-first tutorial (Phase 73 ONBD-04).
+ *
+ * Tone: crisp + product-led (Linear/Stripe filter). Lead with the benefit;
+ * no humor, no game-night flavor. The headline tees up the heatmap reveal —
+ * "in one glance" sets the expectation that the next screen IS the answer.
+ *
+ * Renders inside TutorialOverlay's dark backdrop, so we use a card surface
+ * for contrast rather than a full-page bg.
  */
 export default function WelcomeSlide({ onStart, onSkip }) {
   return (
-    <div className="fixed inset-0 z-[9998] bg-surface-page flex flex-col items-center justify-center px-6">
-      <div className="max-w-md w-full text-center">
-        {/* App icon placeholder */}
-        <div className="w-16 h-16 bg-accent rounded-2xl flex items-center justify-center mx-auto mb-6">
-          <span className="text-white text-2xl font-bold">NG</span>
-        </div>
+    <div className="bg-surface-card rounded-card p-8 max-w-md w-full text-center shadow-theme-lg">
+      <h1 className="text-3xl font-bold text-content-primary mb-2">
+        Find the night your whole group is free.
+      </h1>
+      <p className="text-content-muted text-base mb-8">
+        In one glance.
+      </p>
 
-        <h1 className="text-3xl font-bold text-content-primary mb-3">Next Game Night</h1>
+      <button
+        onClick={onStart}
+        className="btn btn-primary w-full py-3 px-6 font-semibold transition-colors text-base"
+      >
+        Show me
+      </button>
 
-        <p className="text-content-secondary text-base mb-8">
-          Schedule game nights, build your game library, and stay connected with your group.
-        </p>
-
-        <button
-          onClick={onStart}
-          className="w-full bg-accent btn btn-primary py-3 px-6 font-semibold transition-colors text-base"
-        >
-          Get Started
-        </button>
-
-        <button
-          onClick={onSkip}
-          className="mt-4 text-sm text-content-muted hover:text-content-secondary underline transition-colors"
-        >
-          Skip
-        </button>
-      </div>
+      <button
+        onClick={onSkip}
+        className="mt-4 text-sm text-content-muted hover:text-content-secondary transition-colors"
+      >
+        Skip
+      </button>
     </div>
   );
 }

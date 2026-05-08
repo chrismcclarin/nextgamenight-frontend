@@ -527,6 +527,21 @@ function Profile(){
         }
     }, [searchParams, user, checkGoogleCalendarStatus]);
 
+    // ONBD-04 (Phase 73): invited-branch tutorial handoff.
+    // TutorialOverlay's invited-primary CTA routes to /userProfile?section=availability.
+    // Wait one tick for the section to render, then scroll the Availability
+    // Settings card into view. Strip the query param so a refresh doesn't re-scroll.
+    useEffect(() => {
+        if (!searchParams || !user?.sub) return;
+        if (searchParams.get('section') !== 'availability') return;
+        const t = setTimeout(() => {
+            const el = document.getElementById('availability-settings');
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            window.history.replaceState({}, '', '/userProfile/');
+        }, 50);
+        return () => clearTimeout(t);
+    }, [searchParams, user]);
+
     const handleConnectGoogleCalendar = () => {
         if (!user?.sub) return;
         // Redirect to Next.js API route that handles authentication and redirects to Google OAuth
@@ -1290,7 +1305,10 @@ function Profile(){
                 )}
 
                 {/* Availability Settings Section */}
-                <div className="card p-4 md:p-6 mb-6">
+                {/* id="availability-settings" — scroll target for the invited-branch
+                    tutorial handoff (ONBD-04, Phase 73). Read by the
+                    ?section=availability useEffect above. */}
+                <div id="availability-settings" className="card p-4 md:p-6 mb-6">
                     <h2 className="text-xl md:text-2xl font-bold text-content-primary mb-4">Availability Settings</h2>
                     <p className="text-sm text-content-secondary mb-4">
                         Set the times when you are <strong>available</strong> (free) to help groups find the best time to schedule game sessions. 

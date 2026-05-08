@@ -1,58 +1,19 @@
 /**
  * Static mock data for tutorial simulated pages.
  * These values never change -- they exist purely for visual demonstration.
+ *
+ * Phase 73 (ONBD-04) trimmed this file: the only consumer of MOCK_AVAILABILITY
+ * is HeatmapReveal. SimulatedUserHome / SimulatedGroupHome / SimulatedAvailability
+ * were deleted as part of the tutorial gut-and-rewrite, so the MOCK_GROUPS /
+ * MOCK_PLAYERS / MOCK_GAMES / MOCK_EVENTS / MOCK_LIBRARY_GAMES exports were
+ * removed with them.
  */
 
-export const MOCK_GROUPS = [
-  {
-    id: 1,
-    name: 'Friday Night Games',
-    memberCount: 5,
-    color: '#3B82F6',
-    profilePic: '🎲',
-    players: ['Alex', 'Jordan', 'Sam', 'Taylor'],
-    lastGame: 'Catan',
-    lastGameDate: 'Mar 21, 2026',
-  },
-  {
-    id: 2,
-    name: 'The Settlers',
-    memberCount: 3,
-    color: '#10B981',
-    profilePic: '🏰',
-    players: ['Jordan', 'Riley'],
-    lastGame: 'Ticket to Ride',
-    lastGameDate: 'Mar 18, 2026',
-  },
-];
-
-export const MOCK_PLAYERS = [
-  { id: 1, name: 'Alex' },
-  { id: 2, name: 'Jordan' },
-  { id: 3, name: 'Sam' },
-  { id: 4, name: 'Taylor' },
-];
-
-export const MOCK_GAMES = [
-  { id: 1, name: 'Catan', playCount: 8, lastPlayed: 'Mar 21, 2026', rating: '4.2' },
-  { id: 2, name: 'Ticket to Ride', playCount: 5, lastPlayed: 'Mar 18, 2026', rating: '4.5' },
-  { id: 3, name: 'Wingspan', playCount: 3, lastPlayed: 'Mar 14, 2026', rating: '4.8' },
-  { id: 4, name: 'Azul', playCount: 2, lastPlayed: 'Mar 10, 2026', rating: '3.9' },
-];
-
-export const MOCK_EVENTS = [
-  { id: 1, title: 'Game Night - Friday 7pm', game: 'Catan', date: 'This Friday', participants: ['Alex', 'Jordan', 'Sam'] },
-  { id: 2, title: 'Weekend Boardgames', game: 'Wingspan', date: 'Saturday 2pm', participants: ['Taylor', 'Alex'] },
-];
-
-export const MOCK_LIBRARY_GAMES = [
-  { id: 1, name: 'Catan', owner: 'Alex', playerCount: '3-4', playTime: '90 min', imageEmoji: '\uD83C\uDFDD\uFE0F' },
-  { id: 2, name: 'Wingspan', owner: 'Jordan', playerCount: '1-5', playTime: '60 min', imageEmoji: '\uD83D\uDC26' },
-  { id: 3, name: 'Ticket to Ride', owner: 'Sam', playerCount: '2-5', playTime: '45 min', imageEmoji: '\uD83D\uDE82' },
-  { id: 4, name: 'Azul', owner: 'Taylor', playerCount: '2-4', playTime: '30 min', imageEmoji: '\uD83C\uDFA8' },
-];
-
-// Pre-filled heatmap data: 7 days x 6 time slots (4pm-10pm)
+// Pre-filled heatmap data: 7 days x 6 time slots (4pm-9pm)
+// data[rowIdx][colIdx] where colIdx 0=Mon, 1=Tue, ..., 4=Fri, ..., 6=Sun.
+// data[3][4] (7pm Fri) intentionally set to 4 to anchor the reveal copy
+// "Friday night, 7pm. Everyone's in." (chosen over rewriting copy because
+// Friday is the cultural shorthand for game night).
 export const MOCK_AVAILABILITY = {
   timeSlots: ['4:00 PM', '5:00 PM', '6:00 PM', '7:00 PM', '8:00 PM', '9:00 PM'],
   days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -61,8 +22,8 @@ export const MOCK_AVAILABILITY = {
     [0, 0, 1, 2, 3, 2, 1],  // 4pm
     [0, 1, 2, 3, 4, 3, 2],  // 5pm
     [1, 2, 3, 4, 4, 3, 2],  // 6pm
-    [2, 3, 4, 4, 3, 2, 1],  // 7pm
-    [1, 2, 3, 3, 2, 1, 0],  // 8pm
+    [2, 3, 4, 4, 4, 2, 1],  // 7pm  -- Fri 7pm bumped 3 -> 4 (the hot spot)
+    [1, 2, 3, 3, 3, 1, 0],  // 8pm  -- Fri 8pm bumped 2 -> 3 for gradient
     [0, 1, 1, 2, 1, 0, 0],  // 9pm
   ],
 };
