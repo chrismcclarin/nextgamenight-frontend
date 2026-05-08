@@ -214,7 +214,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
       <div className="bg-surface-card rounded-card border border-line">
         {/* Header without close button */}
         <div className="flex justify-between items-center p-4 pb-3 border-b border-line">
-          <h3 className="text-lg font-semibold text-content-primary">Prompt Schedules</h3>
+          <h3 className="text-lg font-semibold text-content-primary">Recurring Check-ins</h3>
           <div className="flex items-center gap-2">
             {renderViewToggle()}
           </div>
@@ -233,7 +233,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
       <div className="modal-content max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* Header - pinned above scrollable content */}
         <div className="modal-header p-6 pb-4 border-b border-line flex-shrink-0">
-          <h2 className="text-2xl font-bold text-content-primary">Prompt Schedules</h2>
+          <h2 className="text-2xl font-bold text-content-primary">Recurring Check-ins</h2>
 
           <div className="flex items-center gap-2">
             {renderViewToggle()}

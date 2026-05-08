@@ -170,7 +170,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header mb-4 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-content-primary">Start a poll</h2>
+          <h2 className="text-2xl font-bold text-content-primary">Start a check-in</h2>
           <button
             type="button"
             onClick={onClose}
@@ -182,7 +182,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
         </div>
 
         <p className="text-sm text-content-secondary mb-4">
-          Send an availability poll to your group to find a time that works for everyone.
+          Send a check-in to your group asking when they&apos;re free — they tap, paint their availability, you find the night.
         </p>
 
         {error && (

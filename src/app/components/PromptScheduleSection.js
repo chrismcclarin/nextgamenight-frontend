@@ -161,13 +161,13 @@ export default function PromptScheduleSection({
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-            <span className="font-medium text-content-primary">Prompt Schedule</span>
+            <span className="font-medium text-content-primary">Check-ins</span>
           </div>
           {renderBadge()}
         </div>
         {!isExpanded && isAdmin && !loading && nextPromptDay && (
           <p className="text-sm text-content-muted mt-1 ml-6">
-            Next prompt: {nextPromptDay}
+            Next check-in: {nextPromptDay}
           </p>
         )}
       </div>

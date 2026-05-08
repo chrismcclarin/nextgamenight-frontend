@@ -64,7 +64,7 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
       // Match the existing PromptScheduleManager pattern (alert on close-action
       // failure). KebabMenu has already closed by this point.
       // eslint-disable-next-line no-alert
-      alert(`Failed to close poll: ${msg}`);
+      alert(`Failed to end check-in: ${msg}`);
     }
   };
 
@@ -76,7 +76,7 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
           onClick={() => setShowStartPoll(true)}
           className="btn btn-primary mb-4"
         >
-          + Start a poll
+          + Start a check-in
         </button>
       )}
 
@@ -87,11 +87,11 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
       )}
 
       {loading ? (
-        <p className="text-content-muted text-sm py-4 text-center">Loading polls...</p>
+        <p className="text-content-muted text-sm py-4 text-center">Loading check-ins...</p>
       ) : prompts.length === 0 ? (
         // D-UI-03: unified empty-state copy for ALL roles (admin/member alike).
         <p className="text-content-muted text-sm py-8 text-center">
-          No active polls. Start one to find a time that works for everyone.
+          No active check-ins. Start one to find a time that works for everyone.
         </p>
       ) : (
         <ul className="space-y-2">
@@ -158,7 +158,7 @@ function OpenPollCard({ prompt, group, onClose }) {
     }
     return null;
   })();
-  const title = gameName || 'Availability poll';
+  const title = gameName || 'Availability check-in';
 
   // Format deadline in viewer's local timezone using Intl.
   const deadlineDisplay = (() => {
@@ -196,10 +196,10 @@ function OpenPollCard({ prompt, group, onClose }) {
 
       {prompt.can_close === true && (
         <KebabMenu
-          ariaLabel="Poll actions"
+          ariaLabel="Check-in actions"
           items={[
             {
-              label: 'End poll',
+              label: 'End check-in',
               danger: true,
               twoTap: true,
               confirmLabel: 'Tap again to end',

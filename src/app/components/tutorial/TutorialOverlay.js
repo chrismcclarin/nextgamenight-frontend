@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import WelcomeSlide from './WelcomeSlide';
 import ProblemSlide from './simulated/ProblemSlide';
+import CheckInDemo from './simulated/CheckInDemo';
 import AvailabilityPromptDemo from './simulated/AvailabilityPromptDemo';
 import HeatmapDemo from './simulated/HeatmapDemo';
 import ScheduleDemo from './simulated/ScheduleDemo';
@@ -18,10 +19,11 @@ import ScheduleDemo from './simulated/ScheduleDemo';
  * Flow:
  *   1. Welcome  ("Show me how it works")
  *   2. Problem  — three pain points + the punchline (~6s)
- *   3. Availability — animated click-drag fill of an availability prompt (~4.5s)
- *   4. Heatmap   — group's merged availability with peak highlighted (~5s)
- *   5. Schedule  — drag across the peak to create an event (~4.5s)
- *   6. Handoff   — branched CTA based on signupSource (invited vs cold)
+ *   3. Check-in — faux message preview + recurring schedule card (~5s)
+ *   4. Availability — animated click-drag fill of an availability check-in (~4.5s)
+ *   5. Heatmap   — group's merged availability with peak highlighted (~5s)
+ *   6. Schedule  — drag across the peak to create an event (~4.5s)
+ *   7. Handoff   — branched CTA based on signupSource (invited vs cold)
  *
  * Persistent chrome:
  *   - Step indicator (top of card): "Step N of 5"
@@ -37,7 +39,7 @@ import ScheduleDemo from './simulated/ScheduleDemo';
  *                                       and dismisses the overlay.
  */
 
-const DEMO_PHASES = ['problem', 'availability', 'heatmap', 'schedule', 'handoff'];
+const DEMO_PHASES = ['problem', 'checkin', 'availability', 'heatmap', 'schedule', 'handoff'];
 
 export default function TutorialOverlay({ onComplete }) {
   const router = useRouter();
@@ -73,6 +75,16 @@ export default function TutorialOverlay({ onComplete }) {
         timeouts.push(
           setTimeout(() => {
             if (i < 4) setStage(i + 1);
+            else setPhase('checkin');
+          }, ms)
+        );
+      });
+    } else if (phase === 'checkin') {
+      // Stage 1: message bubble appears. Stage 2: recurring card slides in.
+      [600, 2400, 5000].forEach((ms, i) => {
+        timeouts.push(
+          setTimeout(() => {
+            if (i < 2) setStage(i + 1);
             else setPhase('availability');
           }, ms)
         );
@@ -164,7 +176,7 @@ export default function TutorialOverlay({ onComplete }) {
               ? 'Welcome'
               : isHandoff
               ? 'Last step'
-              : `Step ${stepNumber} of 5`}
+              : `Step ${stepNumber} of 6`}
           </div>
           {/* Progress dots — visual companion to the step indicator */}
           {!isWelcome && (
@@ -196,6 +208,20 @@ export default function TutorialOverlay({ onComplete }) {
           )}
 
           {phase === 'problem' && <ProblemSlide stage={stage} />}
+
+          {phase === 'checkin' && (
+            <div className="w-full text-center">
+              <p className="text-content-primary text-lg mb-4 font-semibold">
+                Send your group a check-in.
+              </p>
+              <CheckInDemo stage={stage} />
+              <p className="text-content-secondary text-sm mt-4">
+                {stage >= 2
+                  ? 'One-off or recurring — they tap, paint their availability, done. No app install.'
+                  : 'Send a message asking when they’re free. They tap to respond — 30 seconds, no app install.'}
+              </p>
+            </div>
+          )}
 
           {phase === 'availability' && (
             <div className="w-full text-center">

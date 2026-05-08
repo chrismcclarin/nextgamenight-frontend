@@ -40,7 +40,7 @@ export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
   return (
     <div>
       <h3 className="text-lg font-semibold text-content-primary mb-3">
-        Prompt Schedule ({activeCount})
+        Recurring Check-ins ({activeCount})
       </h3>
 
       {loading && (
