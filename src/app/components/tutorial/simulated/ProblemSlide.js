@@ -11,10 +11,10 @@
 export default function ProblemSlide({ stage }) {
   return (
     <div className="max-w-xl text-center space-y-4">
-      <h2 className="text-white text-2xl font-semibold mb-6">
+      <h2 className="text-content-primary text-2xl font-semibold mb-6">
         Coordinating game nights is hard.
       </h2>
-      <ul className="space-y-3 text-white/80 text-base">
+      <ul className="space-y-3 text-content-secondary text-base">
         <li
           className="transition-all duration-500"
           style={{
@@ -44,7 +44,7 @@ export default function ProblemSlide({ stage }) {
         </li>
       </ul>
       <p
-        className="text-white text-lg font-medium pt-4 transition-opacity duration-500"
+        className="text-content-primary text-lg font-semibold pt-4 transition-opacity duration-500"
         style={{ opacity: stage >= 4 ? 1 : 0 }}
       >
         Nextgamenight handles availability for you.

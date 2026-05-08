@@ -13,11 +13,11 @@
  */
 export default function WelcomeSlide({ onStart }) {
   return (
-    <div className="bg-surface-card rounded-card p-8 max-w-md w-full text-center shadow-theme-lg">
+    <div className="max-w-md w-full text-center">
       <h1 className="text-3xl font-bold text-content-primary mb-2">
         Find the night your whole group is free.
       </h1>
-      <p className="text-content-muted text-base mb-8">
+      <p className="text-content-secondary text-base mb-8">
         In one glance.
       </p>
 

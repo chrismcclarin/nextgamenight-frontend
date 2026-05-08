@@ -11,33 +11,32 @@ import ScheduleDemo from './simulated/ScheduleDemo';
 /**
  * TutorialOverlay — explanatory 5-step tour (Phase 73 ONBD-04 rewrite).
  *
- * The previous version was a cinematic heatmap reveal that taught nothing.
- * This rewrite walks the user through the system that produces the heatmap:
+ * All content lives inside a single bg-surface-card modal so text is always
+ * legible regardless of what's behind. The dark backdrop dims the site;
+ * the card provides the actual reading surface.
  *
- *   1. Welcome slide ("Show me how it works")
+ * Flow:
+ *   1. Welcome  ("Show me how it works")
  *   2. Problem  — three pain points + the punchline (~6s)
- *   3. Availability — animated click-drag fill of an availability prompt (~6s)
+ *   3. Availability — animated click-drag fill of an availability prompt (~4.5s)
  *   4. Heatmap   — group's merged availability with peak highlighted (~5s)
- *   5. Schedule  — drag across the peak to create an event (~6s)
+ *   5. Schedule  — drag across the peak to create an event (~4.5s)
  *   6. Handoff   — branched CTA based on signupSource (invited vs cold)
  *
- * Persistent chrome surrounds every demo step:
- *   - Step indicator (top-left): "Step N of 5"
- *   - Skip Tutorial button (top-right): always high-contrast
- *   - Back / Next buttons (bottom): manual pacing for users who want to skim
- *     or re-watch. Each demo also auto-advances after its timer completes.
+ * Persistent chrome:
+ *   - Step indicator (top of card): "Step N of 5"
+ *   - Footer row (bottom of card): ← Back  ·  Skip tutorial  ·  Next →
+ *     Skip is mid-row, near the action — not buried in a corner.
  *
  * Visual fidelity: AvailabilityPromptDemo uses bg-green-300 (matching the
  * real AvailabilityGrid's "Preferred" preference). HeatmapDemo uses
  * bg-green-100..500 (matching MergedHeatmap's LEGEND_ITEMS exactly).
- * ScheduleDemo overlays a blue selection ring on the same heatmap.
  *
  * @param {Object} props
  * @param {Function} props.onComplete - Persists tutorial_version=3 to backend
  *                                       and dismisses the overlay.
  */
 
-// Total demo phases (excludes welcome). Used for the "Step N of 5" indicator.
 const DEMO_PHASES = ['problem', 'availability', 'heatmap', 'schedule', 'handoff'];
 
 export default function TutorialOverlay({ onComplete }) {
@@ -63,16 +62,13 @@ export default function TutorialOverlay({ onComplete }) {
   }, [phase]);
 
   // Per-phase animation timers. Stage advances on a fixed cadence; the user
-  // can also manually click Next to skip ahead, or Back to revisit. Each
-  // demo's auto-advance triggers the next phase only if the user hasn't
-  // already moved on.
+  // can also manually click Next to skip ahead, or Back to revisit.
   useEffect(() => {
     if (phase === 'welcome' || phase === 'handoff') return;
 
-    let timeouts = [];
+    const timeouts = [];
 
     if (phase === 'problem') {
-      // 4 stages of fade-in (3 pain points + payoff), then auto-advance
       [800, 1800, 2800, 4000, 6000].forEach((ms, i) => {
         timeouts.push(
           setTimeout(() => {
@@ -82,7 +78,6 @@ export default function TutorialOverlay({ onComplete }) {
         );
       });
     } else if (phase === 'availability') {
-      // 6-cell drag at 500ms per cell, then 1.5s pause, then auto-advance
       [400, 800, 1200, 1600, 2000, 2400, 4000].forEach((ms, i) => {
         timeouts.push(
           setTimeout(() => {
@@ -92,7 +87,6 @@ export default function TutorialOverlay({ onComplete }) {
         );
       });
     } else if (phase === 'heatmap') {
-      // Stage 1 fills cells, stage 2 highlights peak, then auto-advance
       [400, 2500, 5000].forEach((ms, i) => {
         timeouts.push(
           setTimeout(() => {
@@ -102,7 +96,6 @@ export default function TutorialOverlay({ onComplete }) {
         );
       });
     } else if (phase === 'schedule') {
-      // 3-cell drag at 600ms per cell, then 2s pause to show event card
       [600, 1200, 1800, 4500].forEach((ms, i) => {
         timeouts.push(
           setTimeout(() => {
@@ -118,7 +111,6 @@ export default function TutorialOverlay({ onComplete }) {
 
   const skip = useCallback(() => onComplete(), [onComplete]);
 
-  // Manual nav — Next/Back let the user pace the tutorial themselves.
   const goNext = useCallback(() => {
     if (phase === 'welcome') {
       setPhase('problem');
@@ -159,131 +151,154 @@ export default function TutorialOverlay({ onComplete }) {
 
   const stepNumber =
     phase === 'welcome' ? 0 : DEMO_PHASES.indexOf(phase) + 1;
-  const isDemoPhase = phase !== 'welcome' && phase !== 'handoff';
+  const isWelcome = phase === 'welcome';
+  const isHandoff = phase === 'handoff';
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/85 flex flex-col p-4">
-      {/* Persistent top chrome — step indicator + prominent skip */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="text-white/70 text-sm font-medium">
-          {phase === 'welcome'
-            ? 'Welcome'
-            : phase === 'handoff'
-            ? 'Last step'
-            : `Step ${stepNumber} of 5`}
+    <div className="fixed inset-0 z-[60] bg-black/85 flex items-center justify-center p-4">
+      <div className="bg-surface-page rounded-card shadow-theme-lg max-w-3xl w-full max-h-[92vh] flex flex-col border border-line">
+        {/* Header — step indicator */}
+        <div className="px-6 pt-5 pb-3 flex items-center justify-between">
+          <div className="text-content-muted text-sm font-medium">
+            {isWelcome
+              ? 'Welcome'
+              : isHandoff
+              ? 'Last step'
+              : `Step ${stepNumber} of 5`}
+          </div>
+          {/* Progress dots — visual companion to the step indicator */}
+          {!isWelcome && (
+            <div className="flex items-center gap-1.5">
+              {DEMO_PHASES.map((p, i) => {
+                const active = i === DEMO_PHASES.indexOf(phase);
+                const past = i < DEMO_PHASES.indexOf(phase);
+                return (
+                  <div
+                    key={p}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                      active
+                        ? 'w-6 bg-btn-primary'
+                        : past
+                        ? 'w-1.5 bg-content-secondary'
+                        : 'w-1.5 bg-line'
+                    }`}
+                  />
+                );
+              })}
+            </div>
+          )}
         </div>
-        <button
-          onClick={skip}
-          className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-btn border border-white/20 transition-colors"
-          aria-label="Skip tutorial"
-        >
-          Skip tutorial
-        </button>
-      </div>
 
-      {/* Main scene area — vertically centered */}
-      <div className="flex-1 flex items-center justify-center overflow-y-auto">
-        {phase === 'welcome' && (
-          <WelcomeSlide onStart={() => setPhase('problem')} onSkip={skip} />
-        )}
+        {/* Main scene area — scrollable on small viewports */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 flex items-center justify-center">
+          {phase === 'welcome' && (
+            <WelcomeSlide onStart={() => setPhase('problem')} />
+          )}
 
-        {phase === 'problem' && (
-          <div className="text-center">
-            <ProblemSlide stage={stage} />
-          </div>
-        )}
+          {phase === 'problem' && <ProblemSlide stage={stage} />}
 
-        {phase === 'availability' && (
-          <div className="max-w-3xl text-center">
-            <p className="text-white text-lg mb-4 font-medium">
-              Each member marks when they&apos;re free.
-            </p>
-            <AvailabilityPromptDemo stage={stage} />
-            <p className="text-white/70 text-sm mt-4">
-              Click and drag across the times you&apos;re available — takes 30 seconds.
-            </p>
-          </div>
-        )}
+          {phase === 'availability' && (
+            <div className="w-full text-center">
+              <p className="text-content-primary text-lg mb-4 font-semibold">
+                Each member marks when they&apos;re free.
+              </p>
+              <AvailabilityPromptDemo stage={stage} />
+              <p className="text-content-secondary text-sm mt-4">
+                Click and drag across the times you&apos;re available — takes 30 seconds.
+              </p>
+            </div>
+          )}
 
-        {phase === 'heatmap' && (
-          <div className="max-w-3xl text-center">
-            <p className="text-white text-lg mb-4 font-medium">
-              Their availability lights up your group&apos;s heatmap.
-            </p>
-            <HeatmapDemo stage={stage} />
-            <p className="text-white/70 text-sm mt-4">
-              Darker green = more people free.
-              {stage >= 2 && (
-                <span className="text-amber-300">
-                  {' '}
-                  Friday 7–8 PM is the peak — everyone&apos;s in.
-                </span>
-              )}
-            </p>
-          </div>
-        )}
+          {phase === 'heatmap' && (
+            <div className="w-full text-center">
+              <p className="text-content-primary text-lg mb-4 font-semibold">
+                Their availability lights up your group&apos;s heatmap.
+              </p>
+              <HeatmapDemo stage={stage} />
+              <p className="text-content-secondary text-sm mt-4">
+                Darker green = more people free.
+                {stage >= 2 && (
+                  <span className="text-amber-600 dark:text-amber-400 font-medium">
+                    {' '}
+                    Friday 7–8 PM is the peak — everyone&apos;s in.
+                  </span>
+                )}
+              </p>
+            </div>
+          )}
 
-        {phase === 'schedule' && (
-          <div className="max-w-3xl text-center">
-            <p className="text-white text-lg mb-4 font-medium">
-              Drag across the peak to schedule.
-            </p>
-            <ScheduleDemo stage={stage} />
-            <p className="text-white/70 text-sm mt-4">
-              {stage >= 3
-                ? 'Event created. Your group gets RSVP and game-vote notifications.'
-                : 'Click and drag to set the time window — same gesture as availability.'}
-            </p>
-          </div>
-        )}
+          {phase === 'schedule' && (
+            <div className="w-full text-center">
+              <p className="text-content-primary text-lg mb-4 font-semibold">
+                Drag across the peak to schedule.
+              </p>
+              <ScheduleDemo stage={stage} />
+              <p className="text-content-secondary text-sm mt-4">
+                {stage >= 3
+                  ? 'Event created. Your group gets RSVP and game-vote notifications.'
+                  : 'Click and drag to set the time window — same gesture as availability.'}
+              </p>
+            </div>
+          )}
 
-        {phase === 'handoff' && (
-          <HandoffSlide
-            signupSource={signupSource}
-            onPrimary={handlePrimaryHandoff}
-            onSecondary={handleSecondaryHandoff}
-            onSkip={skip}
-          />
-        )}
-      </div>
+          {phase === 'handoff' && (
+            <HandoffSlide
+              signupSource={signupSource}
+              onPrimary={handlePrimaryHandoff}
+              onSecondary={handleSecondaryHandoff}
+            />
+          )}
+        </div>
 
-      {/* Persistent bottom chrome — Back / Next on demo phases only */}
-      {isDemoPhase && (
-        <div className="flex items-center justify-between mt-4">
+        {/* Footer — Back / Skip / Next. Skip is mid-row, near the action. */}
+        <div className="border-t border-line px-6 py-3 flex items-center justify-between gap-3">
           <button
             onClick={goBack}
-            className="px-4 py-2 text-white/70 hover:text-white text-sm transition-colors"
+            disabled={isWelcome}
+            className={`text-sm transition-colors ${
+              isWelcome
+                ? 'text-content-muted/40 cursor-not-allowed'
+                : 'text-content-secondary hover:text-content-primary'
+            }`}
           >
             ← Back
           </button>
           <button
-            onClick={goNext}
-            className="px-5 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-btn border border-white/20 transition-colors"
+            onClick={skip}
+            className="text-sm text-content-muted hover:text-content-secondary transition-colors underline-offset-2 hover:underline"
           >
-            Next →
+            Skip tutorial
           </button>
+          {isHandoff ? (
+            <div className="w-16" />
+          ) : (
+            <button
+              onClick={goNext}
+              className="px-4 py-1.5 text-sm font-medium text-content-primary bg-surface-elevated hover:bg-surface-card-hover border border-line rounded-btn transition-colors"
+            >
+              Next →
+            </button>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
 /**
  * HandoffSlide — terminal scene before the user is dropped into a real surface.
- * Branches on signupSource:
- *   - invited: single primary CTA "Set my availability"
- *   - cold:    primary "Invite your group" + secondary "I'll add availability first"
+ * Renders inside the modal card (no nested card bg).
  */
-function HandoffSlide({ signupSource, onPrimary, onSecondary, onSkip }) {
+function HandoffSlide({ signupSource, onPrimary, onSecondary }) {
   const isInvited = signupSource === 'invited';
   return (
-    <div className="bg-surface-card rounded-card p-8 max-w-md text-center shadow-theme-lg">
+    <div className="max-w-md text-center">
       <p className="text-content-primary text-xl font-semibold mb-2">
         {isInvited
           ? "You're in. Mark when you're free — the heatmap fills in for everyone."
           : "Ready? Send your group the invite — the heatmap needs them to fill in."}
       </p>
-      <p className="text-content-muted text-sm mb-6">
+      <p className="text-content-secondary text-sm mb-6">
         Once you&apos;ve got a night, your group RSVPs and votes on the game.
       </p>
       <div className="flex flex-col gap-2">
