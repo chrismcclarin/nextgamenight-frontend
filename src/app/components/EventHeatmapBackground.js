@@ -269,10 +269,12 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
                     style={{ minHeight: '28px' }}
                     role="gridcell"
                   >
-                    {/* Show count badge once per hour (on the :00 row) so the
-                        number doesn't visually duplicate. */}
-                    {count > 0 && s.minute === 0 && (
-                      <span className="text-[11px] text-content-secondary font-medium">{count}</span>
+                    {/* Show count badge on every green cell (both :00 and :30
+                        rows) for visual consistency with EventScheduler's
+                        visual-calendar surface, which repeats the hourly count
+                        on each 30-min slot. */}
+                    {count > 0 && (
+                      <span className="text-[11px] text-green-900 font-semibold">{count}</span>
                     )}
                   </div>
                 </HeatmapTooltip>

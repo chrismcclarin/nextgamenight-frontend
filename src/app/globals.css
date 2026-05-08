@@ -376,6 +376,29 @@ body {
   font-weight: 500;
 }
 
+/* react-big-calendar's slotPropGetter applies the heatmap green tint to
+   every slot it sees, including the time-gutter slots on the left edge.
+   The wrapper-side filter (timeSlotWrapper) handles the count badge + tooltip,
+   but the bg color comes from a separate path — strip it here. */
+.rbc-time-gutter .rbc-time-slot {
+  background-color: transparent !important;
+}
+
+/* react-big-calendar's `.rbc-events-container` is absolute-positioned over
+   every day column with no `pointer-events: none`. That invisible layer sits
+   on top of all time slots and intercepts hover, which broke the heatmap
+   tooltip — only the count badge was reachable because it lives in the 10px
+   right-margin strip the container leaves uncovered. Pass pointer events
+   through the empty container; events themselves re-enable pointer events so
+   they stay clickable. Phase 72-02 UAT regression. */
+.rbc-day-slot .rbc-events-container {
+  pointer-events: none;
+}
+.rbc-day-slot .rbc-event,
+.rbc-day-slot .rbc-background-event {
+  pointer-events: auto;
+}
+
 .rbc-label {
   color: var(--color-text-muted);
   font-weight: 500;

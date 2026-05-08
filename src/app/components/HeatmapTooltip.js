@@ -288,10 +288,12 @@ function HeatmapTooltip({
   // `px-3 py-2 text-sm` to `px-4 py-2.5 text-base` for desktop readability —
   // the prior default felt cramped next to the (intentionally large) mobile
   // tone. Mobile tone unchanged.
+  // z-index lives on the outer positioned div — see render below. Inner has no
+  // z-class so it can't fight the outer's stacking context.
   const toneClassName =
     tone === 'mobile'
-      ? 'bg-surface-elevated text-content-primary rounded-card px-4 py-3 text-base font-medium shadow-theme-lg max-w-[calc(100vw-2rem)] z-50 ring-1 ring-line'
-      : 'bg-surface-elevated text-content-primary rounded-card px-4 py-2.5 text-base shadow-theme-lg max-w-xs z-50';
+      ? 'bg-surface-elevated text-content-primary rounded-card px-4 py-3 text-base font-medium shadow-theme-lg max-w-[calc(100vw-2rem)] ring-1 ring-line'
+      : 'bg-surface-elevated text-content-primary rounded-card px-4 py-2.5 text-base shadow-theme-lg max-w-xs';
 
   // Arrow positioning per floating-ui's arrow-middleware contract.
   // The arrow div is absolutely positioned by middlewareData.arrow.x/y on the
@@ -329,7 +331,13 @@ function HeatmapTooltip({
               ref: refs.setFloating,
               id: tooltipDomId,
             })}
-            style={floatingStyles}
+            // z-index lives on the OUTER positioned element. The inner div's
+            // z-50 was scoped to the outer's stacking context (`transform` on
+            // the outer creates one), so it couldn't lift the tooltip above
+            // modal-overlay (z-50) or FriendInvitePanel (z-70). Tooltips are
+            // always topmost — z-100 clears every existing overlay tier.
+            // Plan 72-02 UAT regression.
+            style={{ ...floatingStyles, zIndex: 100 }}
           >
             <div style={transitionStyles} className={toneClassName}>
               {content}

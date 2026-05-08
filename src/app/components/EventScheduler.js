@@ -380,6 +380,14 @@ export default function EventScheduler({
     timeSlotWrapper: ({ children, value }) => {
       if (!value || !(value instanceof Date)) return children;
 
+      // Skip gutter time-label slots. react-big-calendar's TimeSlotGroup
+      // applies timeSlotWrapper to BOTH day-column slots and the left-edge
+      // time-gutter slots (which render `<span class="rbc-label">10:00 am</span>`
+      // inside the rbc-time-slot div). Without this guard the gutter labels
+      // would receive the green tint + count badge + tooltip too.
+      const inner = children?.props?.children;
+      if (inner?.props?.className?.includes('rbc-label')) return children;
+
       const dateStr = format(value, 'yyyy-MM-dd');
       const hour = value.getHours();
       const key = `${dateStr}_${hour}`;
