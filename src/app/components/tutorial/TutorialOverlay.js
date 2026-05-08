@@ -71,7 +71,10 @@ export default function TutorialOverlay({ onComplete }) {
     const timeouts = [];
 
     if (phase === 'problem') {
-      [800, 1800, 2800, 4000, 6000].forEach((ms, i) => {
+      // Faster line cadence (~700ms apart) so the bullets feel snappy,
+      // then ~3.5s dwell on the payoff so users have time to read it
+      // before the transition to Step 2.
+      [500, 1200, 1900, 2700, 6200].forEach((ms, i) => {
         timeouts.push(
           setTimeout(() => {
             if (i < 4) setStage(i + 1);
@@ -80,8 +83,10 @@ export default function TutorialOverlay({ onComplete }) {
         );
       });
     } else if (phase === 'checkin') {
-      // Stage 1: message bubble appears. Stage 2: recurring card slides in.
-      [600, 2400, 5000].forEach((ms, i) => {
+      // More breathing room: ~1s entrance for the message bubble, then
+      // ~3.5s for users to read the message + CTA before the recurring
+      // card slides in, then ~4s to absorb both before advancing.
+      [1000, 4500, 8500].forEach((ms, i) => {
         timeouts.push(
           setTimeout(() => {
             if (i < 2) setStage(i + 1);
