@@ -781,11 +781,13 @@ function Profile(){
     return (
         user && (
             <div className="p-3 md:p-6 max-w-4xl mx-auto">
-                {/* SMS-disabled banner (REVISION) — gated on phoneJustRemoved (session flag
-                    set by handleRemovePhone success) NOT just !userData.phone, so it does
-                    NOT fire for users who never had a phone. Banner clears automatically when
-                    user re-adds a phone. Tokens mirror Phase 62-02 TimezoneNudgeBanner. */}
-                {phoneJustRemoved && !userData?.phone && !smsDisabledBannerDismissed && (
+                {/* SMS-disabled banner — gated on phoneJustRemoved (session flag
+                    set by handleRemovePhone success) so it does NOT fire for users
+                    who never had a phone. Also gated on sms_enabled per the
+                    admin-entitlement model: non-entitled users never see SMS UI,
+                    including this banner. Banner clears automatically when user
+                    re-adds a phone. Tokens mirror Phase 62-02 TimezoneNudgeBanner. */}
+                {userData?.sms_enabled && phoneJustRemoved && !userData?.phone && !smsDisabledBannerDismissed && (
                     <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 flex items-start gap-3">
                         <p className="flex-1 text-sm text-amber-900 dark:text-amber-100">
                             SMS disabled — add a phone number to re-enable.
@@ -885,11 +887,14 @@ function Profile(){
                         </div>
                     )}
 
-                    {/* Phone Input — always rendered (D-SMS-01: disabled-not-hidden).
-                        Used as scroll/focus target for the Verify CTA and as the place
-                        to add a phone after removal. Visibility decoupled from sms_enabled.
-                        Wrapper div carries phoneInputRef so the CTA can scrollIntoView +
-                        focus the inner <input type="tel"> regardless of phone state. */}
+                    {/* Phone Input — gated on sms_enabled per the admin-entitlement
+                        model. sms_enabled is admin-set in the DB; users without it
+                        see no phone surface at all. When sms_enabled=true the entire
+                        phone flow (input, verify, change, remove) renders; when
+                        false, the user is unaware SMS exists.
+                        Wrapper div carries phoneInputRef so the verify CTA can
+                        scrollIntoView + focus the inner <input type="tel">. */}
+                    {userData?.sms_enabled && (
                     <div className="mt-2" ref={phoneInputRef}>
                                     {(phoneState === 'idle' || phoneState === 'editing') && (
                                         <div className="flex flex-col sm:flex-row sm:items-start gap-2">
@@ -1014,6 +1019,7 @@ function Profile(){
                                         <p className="text-status-error text-xs mt-1">{phoneError}</p>
                                     )}
                                 </div>
+                    )}
 
                     {/* Google Calendar Connection */}
                     <div className="mt-4 pt-4 border-t border-line">
@@ -1171,11 +1177,10 @@ function Profile(){
 
                     {/* Preferences Matrix */}
                     <div className="space-y-0">
-                        {/* Verify-phone CTA — single shared line above the SMS column
-                            (D-SMS-01, D-SMS-02). Gate is `!phone_verified` (NOT
-                            `sms_enabled && !phone_verified`) per the Task 3 decoupling.
-                            Click smooth-scrolls to + focuses the always-rendered phone input. */}
-                        {!userData?.phone_verified && (
+                        {/* Verify-phone CTA — only shown to entitled users (sms_enabled=true)
+                            who haven't yet verified their number. Click smooth-scrolls to +
+                            focuses the phone input above. Non-entitled users never see this. */}
+                        {userData?.sms_enabled && !userData?.phone_verified && (
                             <div className="flex items-center justify-end gap-2 pb-2 text-sm">
                                 <span className="text-content-secondary">Verify your phone to enable SMS</span>
                                 <button
@@ -1191,9 +1196,12 @@ function Profile(){
                         <div className="flex items-center py-2 border-b border-line">
                             <div className="flex-1 text-sm font-medium text-content-muted">Notification Type</div>
                             <div className="w-16 text-center text-sm font-medium text-content-muted">Email</div>
-                            {/* SMS column header — always rendered (D-SMS-01). Toggles below
-                                grey out when phone unverified; visibility decoupled from sms_enabled. */}
-                            <div className="w-16 text-center text-sm font-medium text-content-muted">SMS</div>
+                            {/* SMS column — only rendered for entitled users (sms_enabled=true).
+                                Non-entitled users see an Email-only matrix and never know
+                                SMS is a feature of the app. */}
+                            {userData?.sms_enabled && (
+                                <div className="w-16 text-center text-sm font-medium text-content-muted">SMS</div>
+                            )}
                             <div className="w-20"></div>
                         </div>
 
@@ -1220,24 +1228,27 @@ function Profile(){
                                         </button>
                                     </div>
 
-                                    {/* SMS Toggle — always rendered (D-SMS-01).
-                                        Disabled (greyed) when phone is unverified — three
-                                        layers of defense: onClick guard, native disabled prop,
-                                        opacity-50 cursor-not-allowed styling. */}
-                                    <div className="w-16 flex justify-center">
-                                        <button
-                                            onClick={() => userData?.phone_verified && handleToggle(type.key, 'sms', !preferences[type.key]?.sms)}
-                                            disabled={!userData?.phone_verified}
-                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                                preferences[type.key]?.sms ? 'bg-status-success' : 'bg-line-strong'
-                                            } ${!userData?.phone_verified ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                            aria-label={`${type.label} SMS notifications`}
-                                        >
-                                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                                preferences[type.key]?.sms ? 'translate-x-6' : 'translate-x-1'
-                                            }`} />
-                                        </button>
-                                    </div>
+                                    {/* SMS Toggle — only rendered for entitled users
+                                        (sms_enabled=true). Within that, the toggle is
+                                        disabled (greyed) until the user has verified their
+                                        phone number — three layers of defense: onClick
+                                        guard, native disabled prop, opacity-50 styling. */}
+                                    {userData?.sms_enabled && (
+                                        <div className="w-16 flex justify-center">
+                                            <button
+                                                onClick={() => userData?.phone_verified && handleToggle(type.key, 'sms', !preferences[type.key]?.sms)}
+                                                disabled={!userData?.phone_verified}
+                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                                    preferences[type.key]?.sms ? 'bg-status-success' : 'bg-line-strong'
+                                                } ${!userData?.phone_verified ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                aria-label={`${type.label} SMS notifications`}
+                                            >
+                                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                                    preferences[type.key]?.sms ? 'translate-x-6' : 'translate-x-1'
+                                                }`} />
+                                            </button>
+                                        </div>
+                                    )}
 
                                     {/* Status indicator */}
                                     <div className="w-20 text-right">
