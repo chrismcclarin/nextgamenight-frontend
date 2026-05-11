@@ -17,6 +17,7 @@ import { useTimezone } from '../components/TimezoneProvider';
 import TimezoneNudgeBanner from '../components/TimezoneNudgeBanner';
 import SafeImage from '../components/SafeImage';
 import ClickableMemberName from '../components/ClickableMemberName';
+import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import StarRatingPicker from '../components/StarRatingPicker';
 
 // Phase 65-02: small helper that renders a colored RSVP-status indicator.
@@ -122,6 +123,11 @@ function GuestInviteButton({ groupId, email }) {
 export default function GameDetailPage() {
     const { user } = Auth();
     const { timezone } = useTimezone();
+    // Phase 76 SOCL-06: compute friendship status at the participants-modal
+    // call site so the trailing-slot affordance branches per relationship.
+    // ClickableMemberName already handles its own status internally; this
+    // hook is just for the modal's pill rendering and Self-row short-circuit.
+    const { getStatus: getFriendshipStatus } = useFriendshipStatus();
     const searchParams = useSearchParams();
     const router = useRouter();
     const game_id = searchParams.get('game_id');
@@ -1135,6 +1141,25 @@ export default function GameDetailPage() {
                                         && !!p.user_id // hide for custom guests (no DB user)
                                         && !isCurrentUser;
                                     const isConfirming = removeConfirmingId === p.user_id;
+                                    // Phase 76 SOCL-06: compute friendship status at the modal call site so the
+                                    // trailing-slot affordance matches the per-row relationship. SOCL-06 is a
+                                    // DESKTOP-ONLY bug per CONTEXT — mobile participants modal is already correct
+                                    // (no hover model; existing inline indicators from ClickableMemberName stay
+                                    // intact). The Self "You" pill is the one dual-viewport exception CONTEXT
+                                    // calls out: "visible on both mobile and desktop, not just hover".
+                                    //
+                                    // Per-state behavior:
+                                    //   Self      → 'You' pill on BOTH viewports + route name through plain <span>
+                                    //               (ClickableMemberName already renders plain <span> for self, so
+                                    //               the short-circuit is byte-equivalent and avoids a context lookup).
+                                    //   accepted  → 'Friend' pill on DESKTOP ONLY (hidden md:inline-flex) + keep
+                                    //               name rendering through ClickableMemberName so the existing
+                                    //               'md:hidden ✓ Friend' mobile inline indicator stays preserved.
+                                    //   pending_* → unchanged. ClickableMemberName provides desktop hover popover +
+                                    //               mobile inline indicator.
+                                    //   none      → unchanged. ClickableMemberName provides 'Add friend' on hover.
+                                    const friendStatus = auth0Id ? getFriendshipStatus(auth0Id) : 'unknown';
+                                    const isSelfRow = friendStatus === 'self' || isCurrentUser;
                                     return (
                                         <div
                                             key={p.user_id || `custom-${p.username}`}
@@ -1144,15 +1169,51 @@ export default function GameDetailPage() {
                                                 <span className="font-medium text-content-primary truncate">
                                                     {p.is_custom ? (
                                                         <>{p.username || 'Guest'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
+                                                    ) : isSelfRow ? (
+                                                        // Self renders as a plain span on both viewports.
+                                                        // ClickableMemberName already returns a plain <span> for
+                                                        // status === 'self' (no popover, no indicator) so this
+                                                        // short-circuit is byte-equivalent on both mobile + desktop.
+                                                        <span>{p.username || 'Unknown'}</span>
+                                                    ) : auth0Id ? (
+                                                        // Stranger / pending / accepted all route through
+                                                        // ClickableMemberName. For accepted on mobile this preserves
+                                                        // the existing md:hidden ✓ Friend indicator (pre-phase
+                                                        // affordance). For accepted on desktop ClickableMemberName
+                                                        // renders only the plain name — the desktop-only 'Friend'
+                                                        // pill below gives desktop its read-only indicator.
+                                                        <ClickableMemberName userId={auth0Id} username={p.username || 'Unknown'} />
                                                     ) : (
-                                                        auth0Id ? (
-                                                            <ClickableMemberName userId={auth0Id} username={p.username || 'Unknown'} />
-                                                        ) : (
-                                                            p.username || 'Unknown'
-                                                        )
+                                                        // auth0Id couldn't be resolved through groupMembersByUserId
+                                                        // (game-only viewer or missing-from-group edge case).
+                                                        // Render plain text — same fallback as before.
+                                                        <span>{p.username || 'Unknown'}</span>
                                                     )}
                                                 </span>
                                                 <RsvpStatusPill status={status} />
+                                                {isSelfRow && (
+                                                    // Phase 76 SOCL-06: "You" pill — visible on BOTH viewports per
+                                                    // CONTEXT D-SOCL-06: "visible on both mobile and desktop, not
+                                                    // just hover". Blue fill matches the existing role-pill family
+                                                    // (Owner=purple, Admin=blue) while staying distinguishable from
+                                                    // Owner's purple. Self is a viewer-perspective indicator, not a
+                                                    // role, but the visual family is the closest existing pattern.
+                                                    <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded font-semibold">
+                                                        You
+                                                    </span>
+                                                )}
+                                                {!isSelfRow && friendStatus === 'accepted' && (
+                                                    // Phase 76 SOCL-06: "Friend" pill — DESKTOP ONLY
+                                                    // (hidden md:inline-flex) per CONTEXT: "SOCL-06 is desktop-only".
+                                                    // Mobile already shows the existing md:hidden ✓ Friend indicator
+                                                    // from ClickableMemberName, preserved by routing accepted rows
+                                                    // through ClickableMemberName above. Emerald color echoes the
+                                                    // text-status-success used by that mobile inline indicator for
+                                                    // visual continuity across viewports.
+                                                    <span className="hidden md:inline-flex items-center text-[10px] uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded font-semibold">
+                                                        Friend
+                                                    </span>
+                                                )}
                                                 {role === 'owner' && (
                                                     <span className="text-[10px] uppercase tracking-wide bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-semibold">Owner</span>
                                                 )}
