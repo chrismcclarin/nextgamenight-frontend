@@ -339,9 +339,20 @@ export const eventBringsAPI = {
  * API functions for Users
  */
 export const usersAPI = {
-  // Get user by user_id (Auth0 identifier)
-  getUser: (user_id) => 
-    apiFetch(`/users/${encodeURIComponent(user_id)}`),
+  // Get user by user_id (Auth0 identifier).
+  // Phase 78 / TZ-01: Optional detectedTimezone is forwarded as ?timezone=...
+  // so the backend's GET /:user_id auto-create handler can persist it on first
+  // creation OR backfill it for an existing null-timezone user.
+  // Pass null/undefined/empty -> the query param is omitted entirely (matching
+  // CONTEXT D-Frontend: "On detection failure, omit the field. Do NOT send
+  // 'UTC', do NOT send null, do NOT send a placeholder").
+  getUser: (user_id, detectedTimezone = null) => {
+    const path = `/users/${encodeURIComponent(user_id)}`;
+    if (typeof detectedTimezone === 'string' && detectedTimezone.length > 0) {
+      return apiFetch(`${path}?timezone=${encodeURIComponent(detectedTimezone)}`);
+    }
+    return apiFetch(path);
+  },
   
   // Update user's username
   updateUsername: (user_id, username) =>
