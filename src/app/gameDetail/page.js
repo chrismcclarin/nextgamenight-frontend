@@ -193,6 +193,15 @@ export default function GameDetailPage() {
     const [removeConfirmingId, setRemoveConfirmingId] = useState(null); // participant.user_id of confirming row
     const removeConfirmTimerRef = useRef(null);
 
+    // Phase 76 EVT-09: mobile-only inline expand for title (2-line clamp) and
+    // description (3-line clamp). Two independent pieces per CONTEXT D-EVT-09
+    // (title tap-toggle is a separate UX from description Show More/Less).
+    // Desktop (md: ≥768px) renders untouched via `md:line-clamp-none` overrides;
+    // a media-query check inside the title onClick keeps the BGG <a> link
+    // navigating on touch-laptops at desktop widths.
+    const [titleExpanded, setTitleExpanded] = useState(false);
+    const [descExpanded, setDescExpanded] = useState(false);
+
     // Session filtering and pagination state
     const [visibleSessions, setVisibleSessions] = useState(3);
     const [filteredEvents, setFilteredEvents] = useState([]);
@@ -1334,7 +1343,16 @@ export default function GameDetailPage() {
                     <div>
                         {/* Phase 65-03 EVT-04: BGG link on game name. Custom games
                             almost always have null bgg_id — fallback renders plain text. */}
-                        <h1 className="text-3xl font-bold text-content-primary mb-2">
+                        {/* Phase 76 EVT-09: mobile-only line-clamp + inline expand. Desktop (md:) renders full text exactly as before. */}
+                        <h1
+                            onClick={(e) => {
+                                if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+                                    e.preventDefault();
+                                    setTitleExpanded((v) => !v);
+                                }
+                            }}
+                            className={`text-3xl font-bold text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} cursor-pointer md:cursor-auto`}
+                        >
                             {game.bgg_id ? (
                                 <a
                                     href={`https://boardgamegeek.com/boardgame/${game.bgg_id}`}
@@ -1366,7 +1384,16 @@ export default function GameDetailPage() {
                                 link color + underline only on hover; no separate button,
                                 no chip, no external-link icon. Fallback to plain text
                                 when bgg_id is null (rare on this branch). */}
-                            <h1 className="text-3xl font-bold text-content-primary mb-2">
+                            {/* Phase 76 EVT-09: mobile-only line-clamp + inline expand. Desktop (md:) renders full text exactly as before. */}
+                            <h1
+                                onClick={(e) => {
+                                    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+                                        e.preventDefault();
+                                        setTitleExpanded((v) => !v);
+                                    }
+                                }}
+                                className={`text-3xl font-bold text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} cursor-pointer md:cursor-auto`}
+                            >
                                 {game.bgg_id ? (
                                     <a
                                         href={`https://boardgamegeek.com/boardgame/${game.bgg_id}`}
@@ -1395,7 +1422,19 @@ export default function GameDetailPage() {
                                 <p className="text-content-secondary mb-2">Playing Time: {game.playing_time} minutes</p>
                             )}
                             {game.description && (
-                                <p className="text-content-secondary mt-4">{game.description}</p>
+                                /* Phase 76 EVT-09: mobile-only line-clamp + inline expand. Desktop (md:) renders full text exactly as before. */
+                                <div className="mt-4">
+                                    <p className={`text-content-secondary ${descExpanded ? '' : 'line-clamp-3 md:line-clamp-none'}`}>
+                                        {game.description}
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDescExpanded((v) => !v)}
+                                        className="md:hidden mt-1 text-sm text-content-link hover:text-content-link-hover font-medium"
+                                    >
+                                        {descExpanded ? 'Show Less' : 'Show More'}
+                                    </button>
+                                </div>
                             )}
                         </div>
                     </div>
