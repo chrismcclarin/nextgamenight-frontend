@@ -313,7 +313,7 @@ function GroupHomePage(){
                         </div>
                     )}
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 relative z-20 w-full flex-shrink-0 items-stretch sm:items-center">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 relative z-20 w-full flex-shrink-0 items-stretch sm:items-center md:justify-end">
                     {userRole && userRole !== 'pending' && (
                         <button
                             onClick={() => setMemberModal(true)}
