@@ -20,6 +20,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
+import * as Sentry from '@sentry/nextjs';
 import { usersAPI } from '../../lib/api';
 
 const TimezoneContext = createContext({
@@ -36,11 +37,28 @@ const TimezoneContext = createContext({
 function detectBrowserTimezone() {
   try {
     const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if (!detected) return null;
+    if (!detected) {
+      // Phase 78 / TZ-01: production signal that the browser API returned empty.
+      Sentry.addBreadcrumb({
+        category: 'timezone.detection-failure',
+        message: 'Intl.DateTimeFormat returned empty timeZone',
+        level: 'info',
+        data: { detection_failure: true, reason: 'empty' },
+      });
+      return null;
+    }
     // Validate by attempting to create a formatter with it
     Intl.DateTimeFormat(undefined, { timeZone: detected });
     return detected;
-  } catch {
+  } catch (err) {
+    // Phase 78 / TZ-01: production signal that the browser threw during
+    // detection or validation (rare — typically a polyfill / sandbox issue).
+    Sentry.addBreadcrumb({
+      category: 'timezone.detection-failure',
+      message: 'Intl.DateTimeFormat threw during detection or validation',
+      level: 'info',
+      data: { detection_failure: true, reason: err?.message || 'unknown' },
+    });
     return null;
   }
 }
@@ -97,7 +115,11 @@ export function TimezoneProvider({ children }) {
 
     async function loadProfileTimezone() {
       try {
-        const userInfo = await usersAPI.getUser(user.sub);
+        // Phase 78 / TZ-01: Forward browser-detected timezone so the backend
+        // can persist on first creation OR backfill an existing null-TZ user.
+        // Per CONTEXT D-Frontend: if detection failed, `detected` is null and
+        // usersAPI.getUser omits the query param entirely.
+        const userInfo = await usersAPI.getUser(user.sub, detected);
         if (cancelled) return;
 
         const stored = userInfo?.timezone || null;
