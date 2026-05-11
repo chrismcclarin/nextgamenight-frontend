@@ -5,12 +5,22 @@ import { useUser } from '@auth0/nextjs-auth0/client';
 import DieLogo from './components/DieLogo';
 import NotificationBell from './components/NotificationBell';
 import ThemeToggle from './components/ThemeToggle';
+import { useUnreadNotificationCount } from './components/UnreadNotificationProvider';
 
 function Header(){
     const { user, error, isLoading } = useUser();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const triggerRef = useRef(null);
     const wasOpenRef = useRef(false);
+
+    // MOB-08 (Plan 77-01): mobile hamburger unread-indicator dot.
+    // Same totalCount source as the in-menu bell badge — the
+    // UnreadNotificationProvider (mounted in app/layout.js) owns the
+    // single pending-invites fetch + the friend-request count. Hook is
+    // safe to call here even when logged out (provider returns
+    // totalCount = 0 in that case); gating the render below on
+    // `user && totalCount > 0` handles the logged-out case explicitly.
+    const { totalCount } = useUnreadNotificationCount();
 
     // Escape closes the mobile hamburger menu while it's open.
     // Reuses the FeedbackButton.js:41-50 idiom (document keydown listener,
@@ -109,10 +119,12 @@ function Header(){
                             <li><ThemeToggle /></li>
                         </ul>
 
-                        {/* Mobile menu button */}
+                        {/* Mobile menu button — `relative` parent lets the
+                            MOB-08 unread-indicator dot absolutely position
+                            over the hamburger icon's top-right corner. */}
                         <button
                             ref={triggerRef}
-                            className="md:hidden text-white p-2 hover:text-accent transition-colors"
+                            className="relative md:hidden text-white p-2 hover:text-accent transition-colors"
                             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                             aria-label="Toggle menu"
                             aria-expanded={mobileMenuOpen}
@@ -124,6 +136,30 @@ function Header(){
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                                 )}
                             </svg>
+
+                            {/* MOB-08: unread-notification dot.
+                                - bg-red-500 matches NotificationBell badge token verbatim.
+                                - rounded-full matches the bell badge shape language.
+                                - h-2.5 w-2.5 (~10px) reads as a dot, not a numeric badge.
+                                - absolute top-1 right-1 positions inside the button's p-2
+                                  padding so the dot sits at the hamburger icon's top-right
+                                  corner without overflowing the tap surface.
+                                - ring-2 ring-surface-header gives the dot a header-bg halo
+                                  so it visually separates from the white hamburger lines
+                                  (Slack/Discord/Linear pattern).
+                                - aria-hidden because it's decorative; the menu contents
+                                  announce the unread state to screen readers, and the
+                                  button's aria-label "Toggle menu" stays unchanged.
+                                - Inherits md:hidden from the parent button — desktop
+                                  renders zero hamburger UI and therefore zero dot.
+                                - No animation per CONTEXT D (badge appears/disappears
+                                  instantly when count crosses 0). */}
+                            {user && totalCount > 0 && (
+                                <span
+                                    className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-surface-header"
+                                    aria-hidden="true"
+                                />
+                            )}
                         </button>
                     </div>
 
