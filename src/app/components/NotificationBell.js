@@ -2,47 +2,32 @@
 import { useState, useEffect, useRef } from 'react';
 import { invitesAPI } from '../../lib/api';
 import { useFriendshipStatus } from './FriendshipStatusProvider';
+import { useUnreadNotificationCount } from './UnreadNotificationProvider';
 
 function NotificationBell({ user, variant = 'icon', label }) {
-  const [invites, setInvites] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   const [confirmation, setConfirmation] = useState(null);
   const dropdownRef = useRef(null);
 
-  // POLL-02: friend-request state pulled from the shared context so the
-  // bell and the friends page reflect the same receivedRequests array.
-  // The provider is mounted at root (src/app/layout.js).
+  // MOB-08 (Plan 77-01): invites + friendRequests now live in
+  // UnreadNotificationProvider so the in-menu badge AND the mobile hamburger
+  // dot read the exact same totalCount — including optimistic updates after
+  // Accept/Decline (which go through ctxSetInvites below).
   const {
-    receivedRequests: friendRequests,
+    invites,
+    friendRequests,
+    totalCount,
+    loading,
+    setInvites: ctxSetInvites,
+  } = useUnreadNotificationCount();
+
+  // Friend accept/decline still go through FriendshipStatusProvider — that
+  // provider owns the friend-request state and its optimistic mutators.
+  const {
     acceptRequest: ctxAcceptFriend,
     declineRequest: ctxDeclineFriend,
   } = useFriendshipStatus();
-
-  const totalCount = invites.length + friendRequests.length;
-
-  // Fetch pending GROUP invites only — friend requests now come from
-  // FriendshipStatusProvider context.
-  useEffect(() => {
-    if (!user?.sub) return;
-
-    async function fetchInvites() {
-      try {
-        const data = await invitesAPI.getPendingInvites();
-        setInvites(
-          Array.isArray(data) ? data : data?.invites || []
-        );
-      } catch (err) {
-        console.error('Failed to fetch invites:', err.message);
-        setInvites([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchInvites();
-  }, [user?.sub]);
 
   // Click-outside detection to close dropdown
   useEffect(() => {
@@ -67,7 +52,9 @@ function NotificationBell({ user, variant = 'icon', label }) {
     setActionLoading(invite.id);
     try {
       await invitesAPI.acceptInvite(invite.id);
-      setInvites((prev) => prev.filter((i) => i.id !== invite.id));
+      // Optimistic update via the shared context — drops totalCount
+      // immediately for BOTH the bell badge and the mobile hamburger dot.
+      ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
       const groupName = invite.Group?.name || invite.group_name || 'the group';
       setConfirmation(`Joined ${groupName}!`);
       // GROUP-08: signal the home page to refresh its groups list. sessionStorage
@@ -88,7 +75,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
     setActionLoading(invite.id);
     try {
       await invitesAPI.declineInvite(invite.id);
-      setInvites((prev) => prev.filter((i) => i.id !== invite.id));
+      ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
     } catch (err) {
       console.error('Failed to decline invite:', err.message);
     } finally {

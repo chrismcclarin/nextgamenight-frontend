@@ -8,6 +8,7 @@ import TutorialProvider from './components/tutorial/TutorialProvider'
 import TimezoneProvider from './components/TimezoneProvider'
 import ThemeProvider from './components/ThemeProvider'
 import FriendshipStatusProvider from './components/FriendshipStatusProvider'
+import UnreadNotificationProvider from './components/UnreadNotificationProvider'
 
 const plusJakartaSans = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -31,12 +32,20 @@ export default function RootLayout({ children }) {
                     the same commit so their nested instances no longer
                     shadow the root state. */}
                 <FriendshipStatusProvider>
-                  <Header />
-                  <main className="min-h-screen">
-                    {children}
-                  </main>
-                  <Footer />
-                  <FeedbackButton />
+                  {/* MOB-08 (Plan 77-01): single source of truth for the
+                      unread notification count. Wraps Header + content so
+                      the in-menu NotificationBell badge AND the mobile
+                      hamburger dot read the same totalCount. Must nest
+                      INSIDE FriendshipStatusProvider since the unread
+                      count includes received friend requests. */}
+                  <UnreadNotificationProvider>
+                    <Header />
+                    <main className="min-h-screen">
+                      {children}
+                    </main>
+                    <Footer />
+                    <FeedbackButton />
+                  </UnreadNotificationProvider>
                 </FriendshipStatusProvider>
               </TutorialProvider>
             </TimezoneProvider>
