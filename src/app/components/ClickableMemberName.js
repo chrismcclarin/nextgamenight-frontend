@@ -23,10 +23,11 @@ import { FriendshipContext } from './FriendshipStatusProvider';
  * that does not depend on hover or popover gymnastics.
  *
  * Render decisions per status:
- * - self     → plain span (no tooltip, no indicator)
+ * - self     → name with desktop hover-tooltip showing blue "You" pill
+ *              (no mobile inline indicator — self is informational, not actionable)
  * - unknown  → plain span (API failed; graceful degradation, no indicator)
- * - accepted → name + mobile-only "✓ Friend" indicator (no popover —
- *              already-friends has no actionable affordance)
+ * - accepted → name with desktop hover-tooltip showing green "Friend" pill
+ *              + mobile-only "✓ Friend" inline indicator (preserved for touch parity)
  * - none / pending_sent / pending_received → name with desktop hover-tooltip
  *              popover + existing touch-tap-toggle fallback for hybrid
  *              touch laptops at desktop widths + mobile inline indicator
@@ -94,28 +95,33 @@ export default function ClickableMemberName({ userId, username, children }) {
     }
   };
 
-  // Plain-text cases — no popover, no inline affordance.
-  if (status === 'self' || status === 'unknown') {
+  // Graceful degrade for unknown (API failed) — no popover, no inline indicator.
+  if (status === 'unknown') {
     return children || <span>{username}</span>;
   }
 
-  // Already friends — no actionable affordance, but show "✓ Friend" inline
-  // on mobile so the relationship state has touch parity with the desktop
-  // hover-tooltip semantics.
-  if (status === 'accepted') {
-    return (
-      <>
-        {children || <span>{username}</span>}
-        <span className="md:hidden ml-1 text-xs text-status-success">✓ Friend</span>
-      </>
-    );
-  }
-
-  // Pending or none — both render the desktop hover-tooltip + the existing
-  // touch tap-toggle (preserved for hybrid touch laptops at ≥768px) PLUS a
-  // mobile-only inline indicator (+ for none, ⏳ Pending for pending_*).
+  // All other states render the name with a desktop hover-tooltip popover.
+  // Mobile inline indicators vary per status (handled in renderMobileIndicator).
 
   const renderTooltipContent = () => {
+    // Self → blue "You" pill. Informational only, no action.
+    if (status === 'self') {
+      return (
+        <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded font-semibold">
+          You
+        </span>
+      );
+    }
+
+    // Accepted → green "Friend" pill. Informational only, no action.
+    if (status === 'accepted') {
+      return (
+        <span className="text-[10px] uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded font-semibold">
+          Friend
+        </span>
+      );
+    }
+
     // Already sent (optimistic UI after clicking Add friend)
     if (sent) {
       return (
@@ -159,6 +165,14 @@ export default function ClickableMemberName({ userId, username, children }) {
 
   // Mobile inline indicator. md:hidden so desktop visuals stay untouched.
   const renderMobileIndicator = () => {
+    // Self has no mobile inline indicator — informational only, surfaced
+    // via desktop hover popover.
+    if (status === 'self') return null;
+    // Accepted preserves the existing md:hidden ✓ Friend mobile indicator
+    // (desktop now also shows a "Friend" pill via the hover popover).
+    if (status === 'accepted') {
+      return <span className="md:hidden ml-1 text-xs text-status-success">✓ Friend</span>;
+    }
     if (sendError) {
       return <span className="md:hidden ml-1 text-xs text-status-error">Failed</span>;
     }
