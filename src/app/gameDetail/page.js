@@ -1404,15 +1404,17 @@ export default function GameDetailPage() {
                     <div>
                         {/* Phase 65-03 EVT-04: BGG link on game name. Custom games
                             almost always have null bgg_id — fallback renders plain text. */}
-                        {/* Phase 76 EVT-09: mobile-only line-clamp + inline expand. Desktop (md:) renders full text exactly as before. */}
+                        {/* Phase 76 EVT-09: mobile-only line-clamp + one-shot expand.
+                            First mobile tap expands; subsequent taps fall through to
+                            the BGG <a> (when bgg_id present). */}
                         <h1
                             onClick={(e) => {
-                                if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+                                if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches && !titleExpanded) {
                                     e.preventDefault();
-                                    setTitleExpanded((v) => !v);
+                                    setTitleExpanded(true);
                                 }
                             }}
-                            className={`text-3xl font-bold text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} cursor-pointer md:cursor-auto`}
+                            className={`text-3xl font-bold text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} ${titleExpanded ? 'md:cursor-auto' : 'cursor-pointer md:cursor-auto'}`}
                         >
                             {game.bgg_id ? (
                                 <a
@@ -1434,26 +1436,28 @@ export default function GameDetailPage() {
                     </div>
                 ) : (
                     /* BGG game: show full detail view */
-                    <div className="flex gap-6">
+                    <div className="flex flex-col md:flex-row gap-6">
                         <SafeImage
                             src={game.image_url}
                             alt={game.name}
-                            className="w-48 h-48 object-cover rounded-lg"
+                            className="w-full max-w-xs mx-auto h-auto md:mx-0 md:w-48 md:h-48 md:max-w-none object-cover rounded-lg"
                         />
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                             {/* Phase 65-03 EVT-04: BGG link on game name. Subtle —
                                 link color + underline only on hover; no separate button,
                                 no chip, no external-link icon. Fallback to plain text
                                 when bgg_id is null (rare on this branch). */}
-                            {/* Phase 76 EVT-09: mobile-only line-clamp + inline expand. Desktop (md:) renders full text exactly as before. */}
+                            {/* Phase 76 EVT-09: mobile-only line-clamp + one-shot expand.
+                                First mobile tap expands; subsequent taps fall through to
+                                the BGG <a>. Desktop renders full text + native link click. */}
                             <h1
                                 onClick={(e) => {
-                                    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+                                    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches && !titleExpanded) {
                                         e.preventDefault();
-                                        setTitleExpanded((v) => !v);
+                                        setTitleExpanded(true);
                                     }
                                 }}
-                                className={`text-3xl font-bold text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} cursor-pointer md:cursor-auto`}
+                                className={`text-3xl font-bold text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} ${titleExpanded ? 'md:cursor-auto' : 'cursor-pointer md:cursor-auto'}`}
                             >
                                 {game.bgg_id ? (
                                     <a
