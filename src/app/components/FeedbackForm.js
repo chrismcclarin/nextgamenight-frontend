@@ -6,11 +6,11 @@ import { API_BASE_URL } from '../../lib/api';
 const MAX_FILE_SIZE_MB = 2;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
-export default function FeedbackForm({ onClose }) {
+export default function FeedbackForm({ onClose, initialType = 'bug', initialSubject = '', initialDescription = '' }) {
   const { user } = Auth();
-  const [type, setType] = useState('bug');
-  const [subject, setSubject] = useState('');
-  const [description, setDescription] = useState('');
+  const [type, setType] = useState(initialType);
+  const [subject, setSubject] = useState(initialSubject);
+  const [description, setDescription] = useState(initialDescription);
   const [screenshot, setScreenshot] = useState(null);
   const [screenshotError, setScreenshotError] = useState(null);
   const [submitting, setSubmitting] = useState(false);

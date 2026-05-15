@@ -1897,7 +1897,16 @@ function Profile(){
                     Mirrors Footer.js pattern. Mounted at page level so it overlays regardless
                     of which availability tab is active. */}
                 {showPatternsFeedback && (
-                    <FeedbackForm onClose={() => setShowPatternsFeedback(false)} />
+                    <FeedbackForm
+                        onClose={() => setShowPatternsFeedback(false)}
+                        initialType="bug"
+                        initialSubject="Couldn't load availability patterns on /userProfile"
+                        initialDescription={
+                            "The availability schedules failed to load on the userProfile page after a silent retry. The error UI prompting me to refresh was shown.\n\n" +
+                            "What I was doing when this happened:\n\n" +
+                            "Anything else worth noting:\n"
+                        }
+                    />
                 )}
             </div>
         )
