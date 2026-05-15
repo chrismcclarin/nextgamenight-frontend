@@ -11,6 +11,8 @@ import SafeImage from '../components/SafeImage';
 import { useTutorial } from '../components/tutorial/TutorialProvider';
 import { useTimezone } from '../components/TimezoneProvider';
 import { useTheme } from 'next-themes';
+import * as Sentry from '@sentry/nextjs';
+import FeedbackForm from '../components/FeedbackForm';
 
 const NOTIFICATION_TYPES = [
     { key: 'event_created', label: 'New Event', description: 'When a game session is scheduled' },
@@ -60,6 +62,13 @@ function Profile(){
     const [availabilityTab, setAvailabilityTab] = useState('recurring'); // 'recurring' or 'specific'
     const [availabilityPatterns, setAvailabilityPatterns] = useState([]);
     const [loadingPatterns, setLoadingPatterns] = useState(true);
+    // Phase 79 / UX-01: visible-error state for fetchAvailabilityPatterns.
+    // null = no error, object = visible error (silent retry already exhausted).
+    // Shape: { message: string } — kept structured so future fields (status, code)
+    // can be added without changing call sites. v1.12 REFAC-08 will extract this
+    // into a shared FetchErrorState primitive.
+    const [patternsError, setPatternsError] = useState(null);
+    const [showPatternsFeedback, setShowPatternsFeedback] = useState(false);
     const [showRecurringForm, setShowRecurringForm] = useState(false);
     const [showSpecificForm, setShowSpecificForm] = useState(false);
     const [recurringForm, setRecurringForm] = useState({
@@ -636,13 +645,64 @@ function Profile(){
 
     const fetchAvailabilityPatterns = useCallback(async () => {
         if (!user?.sub) return;
+
+        // Phase 79 / UX-01: silent retry once before showing visible error.
+        // Hides transient network blips. If both attempts fail, render the
+        // amber error UI (instead of the misleading empty state) and emit
+        // Sentry telemetry so we can see real-user occurrences in prod.
+        const attemptFetch = async () => availabilityAPI.getUserPatterns(user.sub);
+
+        setLoadingPatterns(true);
         try {
-            setLoadingPatterns(true);
-            const patterns = await availabilityAPI.getUserPatterns(user.sub);
+            const patterns = await attemptFetch();
             setAvailabilityPatterns(patterns || []);
-        } catch (error) {
-            console.error('Error fetching availability patterns:', error);
-            setAvailabilityPatterns([]);
+            setPatternsError(null); // clear stale error on success (SC2 + refocus-refetch recovery)
+        } catch (firstError) {
+            // Breadcrumb on the silent-retry attempt — warning level because
+            // we're escalating from "transient blip" toward "real failure".
+            try {
+                Sentry.addBreadcrumb({
+                    category: 'userProfile.patternsFetch',
+                    message: 'First availabilityPatterns fetch failed; silent retry in 500ms',
+                    level: 'warning',
+                    data: {
+                        user_id: user.sub,
+                        error_message: firstError?.message || 'unknown',
+                        error_status: firstError?.status || firstError?.response?.status || null,
+                    },
+                });
+            } catch { /* Sentry not initialized — never block the UX */ }
+
+            // Silent retry once at ~500ms (per CONTEXT D-Retry).
+            await new Promise(resolve => setTimeout(resolve, 500));
+            try {
+                const patterns = await attemptFetch();
+                setAvailabilityPatterns(patterns || []);
+                setPatternsError(null); // silent retry succeeded — UI never sees the failure
+            } catch (secondError) {
+                // Visible error escalation: captureException so we get a real
+                // event (not just a breadcrumb) tagged for filtering.
+                console.error('Error fetching availability patterns (after retry):', secondError);
+                try {
+                    Sentry.captureException(secondError, {
+                        tags: { feature: 'userProfile-patterns' },
+                        extra: {
+                            user_id: user.sub,
+                            first_error_message: firstError?.message || 'unknown',
+                            second_error_message: secondError?.message || 'unknown',
+                            second_error_status: secondError?.status || secondError?.response?.status || null,
+                        },
+                    });
+                } catch { /* never block the UX on a Sentry failure */ }
+
+                // Render visible amber error in both tabs. Do NOT clear
+                // availabilityPatterns — if a stale array exists from a prior
+                // successful fetch, keep it visible behind the error so the
+                // user isn't double-punished. Empty array stays empty.
+                setPatternsError({
+                    message: "Couldn't load your overrides. Refresh the page to try again.",
+                });
+            }
         } finally {
             setLoadingPatterns(false);
         }
@@ -656,6 +716,22 @@ function Profile(){
             fetchAvailabilityPatterns();
         }
     }, [user, fetchUserData, fetchOwnedGames, checkGoogleCalendarStatus, fetchAvailabilityPatterns]);
+
+    // Phase 79 / UX-01: refocus refetch — when the page regains visibility AND
+    // the error UI is currently showing, re-attempt the fetch. This is the
+    // targeted mitigation for the mobile close-and-reopen scenario (the bug
+    // friend hit). Successful state must NOT churn on tab switches, so this
+    // effect short-circuits unless `patternsError` is truthy.
+    useEffect(() => {
+        if (!patternsError) return; // guard: only refetch while error UI is visible
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') {
+                fetchAvailabilityPatterns();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+        return () => document.removeEventListener('visibilitychange', handleVisibility);
+    }, [patternsError, fetchAvailabilityPatterns]);
 
     const handleCreateRecurringPattern = async () => {
         if (!user?.sub) return;
@@ -1464,6 +1540,39 @@ function Profile(){
 
                             {loadingPatterns ? (
                                 <p className="text-content-secondary">Loading schedules...</p>
+                            ) : patternsError ? (
+                                <div
+                                    role="status"
+                                    className="bg-amber-50 border border-amber-200 rounded-card p-3 flex items-start gap-3"
+                                >
+                                    <svg
+                                        className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                        strokeWidth={2}
+                                        aria-hidden="true"
+                                    >
+                                        <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+                                        />
+                                    </svg>
+                                    <div className="flex-1 text-sm text-amber-900">
+                                        <p className="mb-1">{patternsError.message}</p>
+                                        <p className="text-amber-800">
+                                            Still broken after refresh?{' '}
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPatternsFeedback(true)}
+                                                className="underline hover:text-amber-950 font-medium"
+                                            >
+                                                Report this issue
+                                            </button>
+                                        </p>
+                                    </div>
+                                </div>
                             ) : (
                                 <div className="space-y-2">
                                     {availabilityPatterns
@@ -1569,6 +1678,39 @@ function Profile(){
 
                             {loadingPatterns ? (
                                 <p className="text-content-secondary">Loading overrides...</p>
+                            ) : patternsError ? (
+                                <div
+                                    role="status"
+                                    className="bg-amber-50 border border-amber-200 rounded-card p-3 flex items-start gap-3"
+                                >
+                                    <svg
+                                        className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                        strokeWidth={2}
+                                        aria-hidden="true"
+                                    >
+                                        <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+                                        />
+                                    </svg>
+                                    <div className="flex-1 text-sm text-amber-900">
+                                        <p className="mb-1">{patternsError.message}</p>
+                                        <p className="text-amber-800">
+                                            Still broken after refresh?{' '}
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPatternsFeedback(true)}
+                                                className="underline hover:text-amber-950 font-medium"
+                                            >
+                                                Report this issue
+                                            </button>
+                                        </p>
+                                    </div>
+                                </div>
                             ) : (
                                 <div className="space-y-2">
                                     {availabilityPatterns
@@ -1750,6 +1892,13 @@ function Profile(){
                         <p className="text-content-secondary">You don't have any games in your collection yet. Search BoardGameGeek to add games!</p>
                     )}
                 </div>
+
+                {/* Phase 79 / UX-01: bug-report modal mount for the patterns-fetch error CTA.
+                    Mirrors Footer.js pattern. Mounted at page level so it overlays regardless
+                    of which availability tab is active. */}
+                {showPatternsFeedback && (
+                    <FeedbackForm onClose={() => setShowPatternsFeedback(false)} />
+                )}
             </div>
         )
     );
