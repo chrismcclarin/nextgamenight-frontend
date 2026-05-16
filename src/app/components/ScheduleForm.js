@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useUser } from '@auth0/nextjs-auth0/client';
 import { promptSettingsAPI } from '../../lib/api';
 import { DAYS_OF_WEEK, TOKEN_EXPIRY_OPTIONS, DEADLINE_DAY_OPTIONS, scheduleSchema } from '../../lib/scheduleFormSchema';
 import MemberSelector from './MemberSelector';
+import GameComboInput from './GameComboInput';
 
 /**
  * ScheduleForm - Form component for creating/editing prompt schedules
@@ -28,6 +30,7 @@ export default function ScheduleForm({
 }) {
   const [serverError, setServerError] = useState(null);
   const isEditMode = !!existingSchedule;
+  const { user: authUser } = useUser();
 
   // Detect user's timezone using Intl API
   const userTimezone = typeof window !== 'undefined'
@@ -60,6 +63,13 @@ export default function ScheduleForm({
       ? {
           ...existingSchedule,
           default_deadline_hours: bucketDeadline(existingSchedule.default_deadline_hours),
+          // Seed transient game_name for GameComboInput controlled value.
+          // Prefer the joined Game.name if the parent passed it; fall back to
+          // the games[] lookup for older callsites that don't include it.
+          game_name:
+            existingSchedule.Game?.name ||
+            games.find(g => g.id === existingSchedule.game_id)?.name ||
+            '',
         }
       : {
           schedule_day_of_week: 1, // Monday
@@ -68,6 +78,7 @@ export default function ScheduleForm({
           default_deadline_hours: 72,
           default_token_expiry_hours: 168,
           game_id: null,
+          game_name: '',
           template_name: '',
           min_participants: null,
           selected_member_ids: members.map(m => m.user_id || m.id),
@@ -76,6 +87,7 @@ export default function ScheduleForm({
 
   // Watch values for auto-generating template name
   const watchedGameId = watch('game_id');
+  const watchedGameName = watch('game_name');
   const watchedDayOfWeek = watch('schedule_day_of_week');
   const watchedTime = watch('schedule_time');
   const watchedTemplateName = watch('template_name');
@@ -83,14 +95,13 @@ export default function ScheduleForm({
   // Auto-generate template name when fields change (only if template_name is empty)
   useEffect(() => {
     if (!watchedTemplateName && !isEditMode) {
-      const selectedGame = games.find(g => g.id === watchedGameId);
-      const gameName = selectedGame?.name || 'Game TBD';
+      const gameName = watchedGameName || 'Game TBD';
       const dayName = DAYS_OF_WEEK.find(d => d.value === watchedDayOfWeek)?.label || '';
       const autoName = `${gameName} - ${dayName} ${watchedTime}`;
       // Don't set if user has typed something
       setValue('template_name', autoName, { shouldValidate: false });
     }
-  }, [watchedGameId, watchedDayOfWeek, watchedTime, games, setValue, watchedTemplateName, isEditMode]);
+  }, [watchedGameName, watchedDayOfWeek, watchedTime, setValue, watchedTemplateName, isEditMode]);
 
   // Form submission handler
   const onSubmit = async (data) => {
@@ -100,6 +111,8 @@ export default function ScheduleForm({
       ...data,
       game_id: data.game_id || null,
     };
+    // Strip transient UI-only field — backend doesn't expect it.
+    delete normalizedData.game_name;
 
     try {
       if (isEditMode) {
@@ -255,31 +268,19 @@ export default function ScheduleForm({
             <label className="block text-sm font-medium text-content-secondary mb-1">
               Game
             </label>
-            <div className="flex items-center gap-2">
-              <select
-                {...register('game_id')}
-                className="flex-1 p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
-              >
-                <option value="">Game TBD</option>
-                {games.map((game) => (
-                  <option key={game.id} value={game.id}>
-                    {game.name}
-                  </option>
-                ))}
-              </select>
-              {watchedGameId && (
-                <button
-                  type="button"
-                  onClick={() => setValue('game_id', '', { shouldValidate: true })}
-                  className="p-2 text-content-muted hover:text-content-secondary hover:bg-surface-card-hover rounded-btn transition-colors"
-                  title="Clear game selection"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
-            </div>
+            <GameComboInput
+              value={{ game_id: watchedGameId, game_name: watchedGameName }}
+              onChange={({ game_id, game_name }) => {
+                setValue('game_id', game_id || '', { shouldValidate: true });
+                setValue('game_name', game_name || '', { shouldValidate: false });
+              }}
+              groupId={groupId}
+              userId={authUser?.sub}
+              placeholder="Search for a game or type a name (leave blank for Game TBD)"
+            />
+            <p className="text-xs text-content-muted mt-1">
+              Leave blank to keep the schedule as &quot;Game TBD&quot;.
+            </p>
             {errors.game_id && (
               <p className="text-status-error text-sm mt-1">{errors.game_id.message}</p>
             )}
