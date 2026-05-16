@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react';
 import { promptSettingsAPI } from '../../lib/api';
 import ScheduleForm from './ScheduleForm';
 import ScheduleList from './ScheduleList';
-import ScheduleCalendar from './ScheduleCalendar';
 
 /**
  * PromptScheduleManager - Main container for schedule management
- * Orchestrates list/calendar views and form state
+ * Renders the schedule list and create/edit form (list-only as of Phase 81 CHKIN-04;
+ * the unused calendar view was removed).
  *
  * @param {Object} props
  * @param {string} props.groupId - Group UUID
@@ -23,7 +23,6 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [view, setView] = useState('list'); // 'list' | 'calendar'
   const [showForm, setShowForm] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState(null);
   // POLL-03: bump on every Create open so React fully remounts ScheduleForm
@@ -150,20 +149,14 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
         <div className="text-center py-12">
           <p className="text-content-muted">Loading schedules...</p>
         </div>
-      ) : view === 'list' ? (
-        // List view
+      ) : (
+        // List view (the only view as of Phase 81 CHKIN-04)
         <ScheduleList
           schedules={schedules}
           games={games}
           onEdit={canManageSchedules ? handleEdit : null}
           onToggle={canManageSchedules ? handleToggle : null}
           onDelete={canManageSchedules ? handleDelete : null}
-        />
-      ) : (
-        // Calendar view
-        <ScheduleCalendar
-          schedules={schedules}
-          onSelectEvent={canManageSchedules ? handleEdit : null}
         />
       )}
 
@@ -178,36 +171,6 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
     </>
   );
 
-  // View toggle buttons shared between variants
-  const renderViewToggle = () => (
-    <>
-      {!showForm && (
-        <>
-          <button
-            onClick={() => setView('list')}
-            className={`px-4 py-2 rounded-btn transition-colors ${
-              view === 'list'
-                ? 'bg-btn-primary text-btn-primary-text'
-                : 'bg-surface-card-hover text-content-secondary hover:text-content-primary'
-            }`}
-          >
-            List
-          </button>
-          <button
-            onClick={() => setView('calendar')}
-            className={`px-4 py-2 rounded-btn transition-colors ${
-              view === 'calendar'
-                ? 'bg-btn-primary text-btn-primary-text'
-                : 'bg-surface-card-hover text-content-secondary hover:text-content-primary'
-            }`}
-          >
-            Calendar
-          </button>
-        </>
-      )}
-    </>
-  );
-
   // Inline variant: no modal backdrop, rendered directly in page flow
   if (variant === 'inline') {
     return (
@@ -215,9 +178,6 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
         {/* Header without close button */}
         <div className="flex justify-between items-center p-4 pb-3 border-b border-line">
           <h3 className="text-lg font-semibold text-content-primary">Recurring Check-ins</h3>
-          <div className="flex items-center gap-2">
-            {renderViewToggle()}
-          </div>
         </div>
         {/* Content */}
         <div className="p-4 pt-3">
@@ -235,20 +195,16 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
         <div className="modal-header p-6 pb-4 border-b border-line flex-shrink-0">
           <h2 className="text-2xl font-bold text-content-primary">Recurring Check-ins</h2>
 
-          <div className="flex items-center gap-2">
-            {renderViewToggle()}
-
-            {/* Close button */}
-            {onClose && (
-              <button
-                onClick={onClose}
-                className="text-content-muted hover:text-content-primary text-2xl ml-2"
-                type="button"
-              >
-                &times;
-              </button>
-            )}
-          </div>
+          {/* Close button */}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="text-content-muted hover:text-content-primary text-2xl"
+              type="button"
+            >
+              &times;
+            </button>
+          )}
         </div>
 
         {/* Scrollable content area */}
