@@ -72,11 +72,19 @@ export default function AvailabilityFormPage() {
         }
 
         // Token is valid - store the data
+        // Phase 81 Plan 01: capture gcal_connected + has_saved_availability so
+        // we can forward them to AvailabilityForm as props. Plans 02 + 03 will
+        // consume them to gate "Import from Google Calendar" + "Use my saved
+        // availability" pre-fill button rendering. Defaulted to false so old
+        // backend deployments (no booleans on the response) silently hide the
+        // buttons rather than crashing.
         setTokenData({
           userName: validation.user?.name || 'User',
           promptId: validation.prompt_id,
           expiresAt: validation.expiresAt,
           gameName: validation.game?.name || null,
+          gcalConnected: validation.gcal_connected ?? false,
+          hasSavedAvailability: validation.has_saved_availability ?? false,
         });
 
         // Phase 71.2 / Plan 03 hotfix — prefer the user's profile timezone
@@ -264,6 +272,12 @@ export default function AvailabilityFormPage() {
             existingResponse={existingResponse}
             timezone={timezone}
             onSuccess={handleSubmissionSuccess}
+            // Phase 81 Plan 01 — pre-fill button gates. Plans 02 + 03 wire these
+            // into the AvailabilityForm pre-fill button row; this plan only
+            // threads the prop pipeline so the wave-2 plans don't have to
+            // touch this page.
+            gcalConnected={tokenData?.gcalConnected ?? false}
+            hasSavedAvailability={tokenData?.hasSavedAvailability ?? false}
           />
         </div>
 
