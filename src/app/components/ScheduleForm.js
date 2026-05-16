@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { promptSettingsAPI } from '../../lib/api';
-import { DAYS_OF_WEEK, TOKEN_EXPIRY_OPTIONS, scheduleSchema } from '../../lib/scheduleFormSchema';
+import { DAYS_OF_WEEK, TOKEN_EXPIRY_OPTIONS, DEADLINE_DAY_OPTIONS, scheduleSchema } from '../../lib/scheduleFormSchema';
 import MemberSelector from './MemberSelector';
 
 /**
@@ -34,6 +34,16 @@ export default function ScheduleForm({
     ? Intl.DateTimeFormat().resolvedOptions().timeZone
     : 'UTC';
 
+  // Bucket legacy default_deadline_hours into a valid DEADLINE_DAY_OPTIONS value
+  // for edit-mode display. Round UP to the nearest day so users don't silently
+  // lose response window; floor at 1 day (24h), cap at 7 days (168h).
+  // The stored DB value is preserved until the user explicitly saves — this
+  // only affects what the dropdown displays on load. (CHKIN-01 SC#5)
+  const bucketDeadline = (hours) => {
+    if (typeof hours !== 'number' || !Number.isFinite(hours)) return 72;
+    return Math.min(168, Math.max(24, Math.ceil(hours / 24) * 24));
+  };
+
   // Initialize form with React Hook Form + Zod
   const {
     register,
@@ -46,17 +56,22 @@ export default function ScheduleForm({
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(scheduleSchema),
-    defaultValues: existingSchedule || {
-      schedule_day_of_week: 1, // Monday
-      schedule_time: '09:00',
-      schedule_timezone: userTimezone,
-      default_deadline_hours: 72,
-      default_token_expiry_hours: 168,
-      game_id: null,
-      template_name: '',
-      min_participants: null,
-      selected_member_ids: members.map(m => m.user_id || m.id),
-    },
+    defaultValues: existingSchedule
+      ? {
+          ...existingSchedule,
+          default_deadline_hours: bucketDeadline(existingSchedule.default_deadline_hours),
+        }
+      : {
+          schedule_day_of_week: 1, // Monday
+          schedule_time: '09:00',
+          schedule_timezone: userTimezone,
+          default_deadline_hours: 72,
+          default_token_expiry_hours: 168,
+          game_id: null,
+          template_name: '',
+          min_participants: null,
+          selected_member_ids: members.map(m => m.user_id || m.id),
+        },
   });
 
   // Watch values for auto-generating template name
@@ -192,17 +207,20 @@ export default function ScheduleForm({
           {/* Response Deadline */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-content-secondary mb-1">
-              Response Deadline (hours)
+              Response Deadline
             </label>
-            <input
-              type="number"
+            <select
               {...register('default_deadline_hours', { valueAsNumber: true })}
-              min={1}
-              max={336}
               className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
-            />
+            >
+              {DEADLINE_DAY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
             <p className="text-xs text-content-muted mt-1">
-              How long members have to respond after prompt is sent (1-336 hours)
+              How long members have to respond (1-7 days)
             </p>
             {errors.default_deadline_hours && (
               <p className="text-status-error text-sm mt-1">{errors.default_deadline_hours.message}</p>
