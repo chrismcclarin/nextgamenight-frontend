@@ -97,7 +97,11 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
                   )}
                   {schedule.default_deadline_hours && (
                     <p>
-                      <span className="font-medium">Response window:</span> {schedule.default_deadline_hours} hours
+                      <span className="font-medium">Response window:</span> {(() => {
+                        const days = Math.round(schedule.default_deadline_hours / 24);
+                        if (days < 1) return 'Less than 1 day';
+                        return `${days} day${days === 1 ? '' : 's'}`;
+                      })()}
                     </p>
                   )}
                 </div>
