@@ -727,6 +727,29 @@ export const availabilityFormAPI = {
     }
     return res.json(); // { slot_ids, count }
   },
+
+  // Phase 81 Plan 03 (CHKIN-06) — pre-fill the grid from the magic-token
+  // user's saved availability (recurring patterns + specific overrides,
+  // override-beats-recurring). Returns { slot_ids: ["ISO datetime", ...],
+  // count }. Backend filters source:'default' so users with zero saved
+  // patterns get an empty array, NOT the whole grid (research Pitfall 3).
+  prefillFromSaved: async ({ magicToken, startDate, numDays, timezone }) => {
+    const res = await fetch(`${API_BASE_URL}/availability-prefill/saved`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        magic_token: magicToken,
+        start_date: startDate,
+        num_days: numDays,
+        timezone,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to use saved availability');
+    }
+    return res.json(); // { slot_ids, count }
+  },
 };
 
 /**

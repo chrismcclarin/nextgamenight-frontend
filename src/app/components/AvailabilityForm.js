@@ -166,6 +166,40 @@ export default function AvailabilityForm({
     }
   }, [magicToken, weekStartIsoDate, timezone, watch, setValue]);
 
+  // Phase 81 Plan 03 (CHKIN-06) — pre-fill the grid from the user's saved
+  // availability (recurring patterns + specific overrides, override-beats-
+  // recurring). Mirrors handleImportGcal's confirm → fetch → paint → status
+  // flow. Backend filters source:'default' so users with zero saved patterns
+  // get an empty result here, NOT the whole grid (research Pitfall 3).
+  const handleUseSaved = useCallback(async () => {
+    const currentSlots = watch('time_slots') || [];
+    if (currentSlots.length > 0) {
+      if (!window.confirm('This will replace your current selections. Continue?')) return;
+    }
+
+    setIsPrefilling(true);
+    try {
+      const { slot_ids, count } = await availabilityFormAPI.prefillFromSaved({
+        magicToken,
+        startDate: weekStartIsoDate,
+        numDays: 7,
+        timezone,
+      });
+      setValue(
+        'time_slots',
+        slot_ids.map((id) => ({ slotId: id, preference: 'preferred' }))
+      );
+      setPrefillStatus({ source: 'saved', count });
+      setTimeout(() => setPrefillStatus(null), 2500);
+    } catch (err) {
+      console.error('[AvailabilityForm] Saved prefill failed:', err);
+      setPrefillStatus({ source: 'saved', count: 0, error: err.message });
+      setTimeout(() => setPrefillStatus(null), 4000);
+    } finally {
+      setIsPrefilling(false);
+    }
+  }, [magicToken, weekStartIsoDate, timezone, watch, setValue]);
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       {/* Header Section */}
@@ -199,12 +233,23 @@ export default function AvailabilityForm({
                 {isPrefilling && prefillStatus?.source !== 'saved' ? 'Importing…' : 'Import from Google Calendar'}
               </button>
             )}
-            {/* hasSavedAvailability button: plan 03 inserts here */}
+            {hasSavedAvailability && (
+              <button
+                type="button"
+                onClick={handleUseSaved}
+                disabled={isPrefilling || isUnavailable}
+                className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong font-medium transition-colors disabled:opacity-50"
+              >
+                {isPrefilling && prefillStatus?.source !== 'gcal' ? 'Loading…' : 'Use my saved availability'}
+              </button>
+            )}
           </div>
           {prefillStatus && (
             <p className="text-sm text-content-secondary transition-opacity">
               {prefillStatus.error
-                ? `Couldn't import from Google Calendar: ${prefillStatus.error}`
+                ? (prefillStatus.source === 'saved'
+                    ? `Couldn't use saved availability: ${prefillStatus.error}`
+                    : `Couldn't import from Google Calendar: ${prefillStatus.error}`)
                 : prefillStatus.source === 'gcal'
                   ? (prefillStatus.count > 0
                       ? `Filled ${prefillStatus.count} slots from Google Calendar.`
