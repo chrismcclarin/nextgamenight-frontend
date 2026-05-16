@@ -13,9 +13,9 @@ export const DAYS_OF_WEEK = [
 
 // Token expiry options per PROMPT-05 requirement
 export const TOKEN_EXPIRY_OPTIONS = [
-  { value: 24, label: '24 hours (1 day)' },
-  { value: 72, label: '72 hours (3 days)' },
-  { value: 168, label: '168 hours (7 days)' },
+  { value: 24, label: '1 day' },
+  { value: 72, label: '3 days' },
+  { value: 168, label: '7 days' },
 ];
 
 // Response deadline options per CHKIN-01.
