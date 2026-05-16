@@ -705,6 +705,28 @@ export const availabilityFormAPI = {
     fetch(`${API_BASE_URL}/availability-responses/${promptId}?magic_token=${encodeURIComponent(token)}`, {
       headers: { 'Content-Type': 'application/json' },
     }).then(res => res.ok ? res.json() : null),
+
+  // Phase 81 Plan 02 (CHKIN-05) — pre-fill the grid from the magic-token user's
+  // Google Calendar. Returns { slot_ids: ["ISO datetime", ...], count } for
+  // 30-min slots where the user is FREE in the requested week. Magic-token
+  // authenticated via body (no Auth0 bearer).
+  prefillFromGcal: async ({ magicToken, startDate, numDays, timezone }) => {
+    const res = await fetch(`${API_BASE_URL}/availability-prefill/gcal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        magic_token: magicToken,
+        start_date: startDate,
+        num_days: numDays,
+        timezone,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to import from Google Calendar');
+    }
+    return res.json(); // { slot_ids, count }
+  },
 };
 
 /**

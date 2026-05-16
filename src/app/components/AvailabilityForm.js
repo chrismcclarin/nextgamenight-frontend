@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { nextMonday, format } from 'date-fns';
 import AvailabilityGrid from './AvailabilityGrid';
 import { availabilityFormAPI } from '@/lib/api';
 
@@ -35,9 +36,30 @@ export default function AvailabilityForm({
   existingResponse = null,
   timezone = Intl.DateTimeFormat().resolvedOptions().timeZone,
   onSuccess,
+  // Phase 81 Plan 02 (CHKIN-05) — gates the "Import from Google Calendar"
+  // button. Plan 03 will use hasSavedAvailability for "Use my saved
+  // availability" in the same button row.
+  gcalConnected = false,
+  hasSavedAvailability = false,
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+
+  // Phase 81 Plan 02 — shared pre-fill state (Plan 03 reuses both):
+  //   prefillStatus: { source: 'gcal' | 'saved', count, error? } | null
+  //   isPrefilling: in-flight flag — disables both buttons during fetch
+  const [prefillStatus, setPrefillStatus] = useState(null);
+  const [isPrefilling, setIsPrefilling] = useState(false);
+
+  // Compute the week start once and share with both the prefill API call AND
+  // the grid (research Pitfall 5 — without sharing this anchor, a midnight /
+  // DST transition can shift the prefill response relative to the painted
+  // grid by one day).
+  const weekStartDate = useMemo(() => nextMonday(new Date()), []);
+  const weekStartIsoDate = useMemo(
+    () => format(weekStartDate, 'yyyy-MM-dd'),
+    [weekStartDate]
+  );
 
   const isUpdate = existingResponse !== null && existingResponse.time_slots;
   const defaultTimeSlots = existingResponse?.time_slots || [];
@@ -108,6 +130,42 @@ export default function AvailabilityForm({
     setValue('is_unavailable', !isUnavailable);
   };
 
+  // Phase 81 Plan 02 (CHKIN-05) — pre-fill the grid from Google Calendar.
+  // Confirms before overwriting existing painted slots, paints fetched slots
+  // as 'preferred' preference, surfaces an inline auto-fade status message.
+  // Pitfall 6 mitigation: backend uses { consume: false } — token survives.
+  const handleImportGcal = useCallback(async () => {
+    const currentSlots = watch('time_slots') || [];
+    if (currentSlots.length > 0) {
+      // window.confirm is the existing idiom (FriendInvitePanel, GroupSettings, ManageMembers)
+      if (!window.confirm('This will replace your current selections. Continue?')) return;
+    }
+
+    setIsPrefilling(true);
+    try {
+      const { slot_ids, count } = await availabilityFormAPI.prefillFromGcal({
+        magicToken,
+        startDate: weekStartIsoDate,
+        numDays: 7,
+        timezone,
+      });
+      // Pre-filled slots paint as 'preferred' (locked CONTEXT decision —
+      // matches the "I'm available" semantic from GCal/saved sources).
+      setValue(
+        'time_slots',
+        slot_ids.map((id) => ({ slotId: id, preference: 'preferred' }))
+      );
+      setPrefillStatus({ source: 'gcal', count });
+      setTimeout(() => setPrefillStatus(null), 2500);
+    } catch (err) {
+      console.error('[AvailabilityForm] GCal prefill failed:', err);
+      setPrefillStatus({ source: 'gcal', count: 0, error: err.message });
+      setTimeout(() => setPrefillStatus(null), 4000);
+    } finally {
+      setIsPrefilling(false);
+    }
+  }, [magicToken, weekStartIsoDate, timezone, watch, setValue]);
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       {/* Header Section */}
@@ -122,6 +180,42 @@ export default function AvailabilityForm({
           </p>
         )}
       </div>
+
+      {/* Pre-fill Button Row (Phase 81 — CHKIN-05 / CHKIN-06).
+          Renders only when the user has at least one available source.
+          - CHKIN-05 button (this plan): "Import from Google Calendar" — visible when gcalConnected.
+          - CHKIN-06 button (plan 03): "Use my saved availability" — inserted at the marker below. */}
+      {(gcalConnected || hasSavedAvailability) && (
+        <div className="bg-surface-elevated border border-line rounded-card p-4 space-y-2">
+          <p className="text-sm font-medium text-content-primary">Start with:</p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            {gcalConnected && (
+              <button
+                type="button"
+                onClick={handleImportGcal}
+                disabled={isPrefilling || isUnavailable}
+                className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong font-medium transition-colors disabled:opacity-50"
+              >
+                {isPrefilling && prefillStatus?.source !== 'saved' ? 'Importing…' : 'Import from Google Calendar'}
+              </button>
+            )}
+            {/* hasSavedAvailability button: plan 03 inserts here */}
+          </div>
+          {prefillStatus && (
+            <p className="text-sm text-content-secondary transition-opacity">
+              {prefillStatus.error
+                ? `Couldn't import from Google Calendar: ${prefillStatus.error}`
+                : prefillStatus.source === 'gcal'
+                  ? (prefillStatus.count > 0
+                      ? `Filled ${prefillStatus.count} slots from Google Calendar.`
+                      : 'No free slots found in Google Calendar for this week — paint manually below.')
+                  : (prefillStatus.count > 0
+                      ? `Filled ${prefillStatus.count} slots from your saved availability.`
+                      : 'No saved availability matches this week — paint manually below.')}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Unavailable Toggle Section */}
       <div className="bg-surface-elevated border border-line rounded-card p-4">
@@ -166,6 +260,7 @@ export default function AvailabilityForm({
               onChange={field.onChange}
               timezone={timezone}
               disabled={isUnavailable}
+              weekStartDate={weekStartDate}
             />
           )}
         />
