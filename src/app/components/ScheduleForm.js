@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useUser } from '@auth0/nextjs-auth0/client';
@@ -31,6 +31,10 @@ export default function ScheduleForm({
   const [serverError, setServerError] = useState(null);
   const isEditMode = !!existingSchedule;
   const { user: authUser } = useUser();
+  // CHKIN-03: once the user focuses/interacts with the template name field,
+  // stop auto-overwriting it on day/time/game changes. The ref persists across
+  // renders without triggering re-renders itself.
+  const templateNameDirtyRef = useRef(false);
 
   // Detect user's timezone using Intl API
   const userTimezone = typeof window !== 'undefined'
@@ -92,24 +96,42 @@ export default function ScheduleForm({
   const watchedTime = watch('schedule_time');
   const watchedTemplateName = watch('template_name');
 
-  // Auto-generate template name when fields change (only if template_name is empty)
+  // Auto-generate template name when fields change.
+  // CHKIN-03 gates:
+  //   1. Stop once the user has interacted with the template field (dirty ref)
+  //   2. Never run in edit mode (preserve existing custom names)
+  //   3. Only fill if the field is currently empty (existing semantics)
+  // Without the dirty bit, deleting an auto-name would immediately re-fire
+  // this effect and restore it — breaking the "cleared stays cleared" invariant.
   useEffect(() => {
-    if (!watchedTemplateName && !isEditMode) {
-      const gameName = watchedGameName || 'Game TBD';
-      const dayName = DAYS_OF_WEEK.find(d => d.value === watchedDayOfWeek)?.label || '';
-      const autoName = `${gameName} - ${dayName} ${watchedTime}`;
-      // Don't set if user has typed something
-      setValue('template_name', autoName, { shouldValidate: false });
-    }
+    if (templateNameDirtyRef.current || isEditMode) return;
+    if (watchedTemplateName) return;
+
+    const gameName = watchedGameName || 'Game TBD';
+    const dayName = DAYS_OF_WEEK.find(d => d.value === watchedDayOfWeek)?.label || '';
+    const autoName = `${gameName} - ${dayName} ${watchedTime}`;
+    setValue('template_name', autoName, { shouldValidate: false });
   }, [watchedGameName, watchedDayOfWeek, watchedTime, setValue, watchedTemplateName, isEditMode]);
 
   // Form submission handler
   const onSubmit = async (data) => {
     setServerError(null);
+
+    // CHKIN-03 silent fallback: if the user submits with an empty template name,
+    // synthesize the auto-generated default rather than blocking the save or
+    // showing an inline error. Template names are cosmetic admin labels.
+    let templateName = data.template_name?.trim();
+    if (!templateName) {
+      const gameName = data.game_name || 'Game TBD';
+      const dayName = DAYS_OF_WEEK.find(d => d.value === data.schedule_day_of_week)?.label || '';
+      templateName = `${gameName} - ${dayName} ${data.schedule_time}`;
+    }
+
     // Normalize game_id: empty string -> null
     const normalizedData = {
       ...data,
       game_id: data.game_id || null,
+      template_name: templateName,
     };
     // Strip transient UI-only field — backend doesn't expect it.
     delete normalizedData.game_name;
@@ -317,11 +339,12 @@ export default function ScheduleForm({
             <input
               type="text"
               {...register('template_name')}
+              onFocus={() => { templateNameDirtyRef.current = true; }}
               placeholder="Auto-generated from settings"
               className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
             />
             <p className="text-xs text-content-muted mt-1">
-              Name for this schedule template (auto-generated if left blank)
+              Name for this schedule template. Leave blank to auto-generate from game and day/time.
             </p>
             {errors.template_name && (
               <p className="text-status-error text-sm mt-1">{errors.template_name.message}</p>
