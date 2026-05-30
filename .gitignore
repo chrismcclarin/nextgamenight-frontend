@@ -59,3 +59,10 @@ logs
 
 # Sentry source maps (if uploaded)
 .sentryclirc
+
+# playwright / e2e
+# .auth/ holds the storageState appSession cookie — NEVER commit (Info Disclosure)
+.auth/
+/test-results/
+/playwright-report/
+/playwright/.cache/
