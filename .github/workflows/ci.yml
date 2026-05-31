@@ -107,10 +107,8 @@ jobs:
         with:
           repository: chrismcclarin/GameCalendarbackendv2
           path: backend # BE app then lives at backend/Sonnet/
-          # NOTE: `token` is required ONLY IF GameCalendarbackendv2 is PRIVATE.
-          # If the backend repo is PUBLIC, delete the next line — the default
-          # checkout can read public repos without a token. (Task 3 confirms visibility.)
-          token: ${{ secrets.BACKEND_REPO_TOKEN }}
+          # GameCalendarbackendv2 is PUBLIC (verified 2026-05-30) — no token needed;
+          # actions/checkout reads public repos with the default GITHUB_TOKEN.
 
       - name: Setup Node 20
         uses: actions/setup-node@v4
