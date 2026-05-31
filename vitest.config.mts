@@ -20,5 +20,10 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
+    // Unit tests use the `.test.ts(x)` suffix under src/. Playwright owns the
+    // `e2e/*.spec.ts` files — exclude them so `vitest run` doesn't try to
+    // collect Playwright's `test()` (which throws outside the PW runner).
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    exclude: ['e2e/**', 'node_modules/**'],
   },
 });
