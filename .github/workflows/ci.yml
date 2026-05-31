@@ -2,9 +2,12 @@
 #
 # This workflow lives in the FE repo, so the checkout root IS the Next.js app —
 # there is NO `periodictabletop/` subdir and NO `working-directory: periodictabletop`.
+# The e2e job CROSS-REPO checks out the backend (chrismcclarin/GameCalendarbackendv2),
+# whose app lives at `backend/Sonnet/`.
 #
-# Job:
+# Two jobs (D-01/D-02):
 #   quality  — fast gate: lint + tsc --noEmit + born-.tsx git-diff block + vitest run
+#   e2e      — slow gate (needs: quality): real backend + Postgres + Playwright journeys
 name: CI
 
 on:
@@ -57,3 +60,119 @@ jobs:
             exit 1
           fi
           echo "No newly-added src/ .js(x) files — born-.tsx enforcement passed."
+
+  e2e:
+    name: e2e
+    needs: quality # D-02: e2e only runs after the fast quality gate is green
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: boardgame_db
+        ports:
+          - 5432:5432
+        # Health-gate the container so DB steps never race the server coming up.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # DB connection — both forms, so create-database.js (DB_* vars) and
+      # the sequelize-cli migrate path + runtime (DATABASE_URL) agree on the
+      # same Postgres service container.
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: password
+      DB_NAME: boardgame_db
+      DATABASE_URL: postgres://postgres:password@localhost:5432/boardgame_db
+      # Backend boot env (minimal — optional integrations degrade gracefully, Pitfall 5).
+      AUTH0_DOMAIN: ${{ secrets.AUTH0_DOMAIN }}
+      AUTH0_CLIENT_ID: ${{ secrets.AUTH0_CLIENT_ID }}
+      AUTH0_AUDIENCE: ${{ secrets.AUTH0_AUDIENCE }}
+      FRONTEND_URL: http://localhost:3000
+
+    steps:
+      - name: Checkout frontend (gamecalendarfrontend — repo root = FE app)
+        uses: actions/checkout@v4
+
+      - name: "Checkout backend (cross-repo: GameCalendarbackendv2)"
+        uses: actions/checkout@v4
+        with:
+          repository: chrismcclarin/GameCalendarbackendv2
+          path: backend # BE app then lives at backend/Sonnet/
+          # NOTE: `token` is required ONLY IF GameCalendarbackendv2 is PRIVATE.
+          # If the backend repo is PUBLIC, delete the next line — the default
+          # checkout can read public repos without a token. (Task 3 confirms visibility.)
+          token: ${{ secrets.BACKEND_REPO_TOKEN }}
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/Sonnet/package-lock.json
+
+      # ---- Backend: install, provision DB via the REAL migrate path, boot ----
+      - name: Backend — install
+        working-directory: backend/Sonnet
+        run: npm ci
+
+      - name: Backend — create database
+        working-directory: backend/Sonnet
+        run: npm run db:create
+
+      - name: Backend — apply migrations (migrate:apply = sequelize-cli db:migrate; NEVER bare migrate — Pitfall 1)
+        working-directory: backend/Sonnet
+        run: npm run migrate:apply
+
+      - name: Backend — seed (seed data belongs to the E2E login identity)
+        working-directory: backend/Sonnet
+        env:
+          AUTH0_ALICE_SUB: ${{ secrets.AUTH0_ALICE_SUB }} # the test user's `sub`
+        run: npm run seed
+
+      - name: Backend — boot (server.js, :4000) and smoke-wait /health
+        working-directory: backend/Sonnet
+        run: |
+          npm start &
+          npx --yes wait-on http://localhost:4000/health --timeout 60000
+
+      # ---- Frontend: install, production build + start, then Playwright ----
+      - name: Frontend — install
+        run: npm ci
+
+      - name: Frontend — production build (proves the green build, SC#1 / Open Q3)
+        run: npm run build
+
+      - name: Frontend — start (next start, :3000) and wait
+        run: |
+          npm start &
+          npx --yes wait-on http://localhost:3000 --timeout 60000
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright journeys (setup logs in once; 4 journeys reuse storageState)
+        env:
+          # Auth credentials cross into the runner ONLY via env — never echoed (T-82-11).
+          E2E_AUTH0_USER: ${{ secrets.E2E_AUTH0_USER }}
+          E2E_AUTH0_PASS: ${{ secrets.E2E_AUTH0_PASS }}
+        run: npx playwright test
+
+      - name: Upload Playwright report on failure (excludes .auth/ — T-82-12)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/ # NOT .auth/ — never upload the appSession storageState
+          retention-days: 7
+          if-no-files-found: ignore
