@@ -917,6 +917,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             </button>
             <button
               type="submit"
+              data-testid="create-event-submit"
               className="btn btn-primary"
             >
               {editingEvent ? 'Update Event' : 'Create Event'}
