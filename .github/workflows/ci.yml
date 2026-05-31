@@ -1,0 +1,59 @@
+# CI pipeline for the Nextgamenight FRONTEND repo (chrismcclarin/gamecalendarfrontend).
+#
+# This workflow lives in the FE repo, so the checkout root IS the Next.js app —
+# there is NO `periodictabletop/` subdir and NO `working-directory: periodictabletop`.
+#
+# Job:
+#   quality  — fast gate: lint + tsc --noEmit + born-.tsx git-diff block + vitest run
+name: CI
+
+on:
+  pull_request:
+    branches: [main] # the FE repo's default branch (NOT the docs-root `master`)
+  push:
+    branches-ignore: [main]
+
+jobs:
+  quality:
+    name: quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for git-diff base comparison)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # so the born-.tsx git-diff can reach the PR base sha
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck (hard tsc gate — not relying on `next build` alone)
+        run: npm run typecheck # tsc --noEmit; checkJs:false keeps it sub-second
+
+      - name: Unit tests
+        run: npx vitest run
+
+      - name: Born-.tsx enforcement (fail on any NEW app-source .js/.jsx under src/)
+        # D-08: a NEW app-source file must be .ts/.tsx. Scoped to ADDED files only
+        # (--diff-filter=A) under the FE-repo-relative `src/` tree. Existing .js,
+        # config files, and e2e/ are unaffected. Only runs on pull_request (needs a base).
+        if: github.event_name == 'pull_request'
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          NEW_JS=$(git diff --name-only --diff-filter=A "$BASE_SHA"...HEAD \
+            | grep -E '^src/.*\.(js|jsx)$' || true)
+          if [ -n "$NEW_JS" ]; then
+            echo "::error::New app-source .js/.jsx files added under src/ — new files must be .ts/.tsx (TS-01 / D-08):"
+            echo "$NEW_JS"
+            exit 1
+          fi
+          echo "No newly-added src/ .js(x) files — born-.tsx enforcement passed."
