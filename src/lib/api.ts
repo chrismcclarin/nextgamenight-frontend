@@ -3,8 +3,66 @@
  * Centralized API base URL and common fetch patterns
  */
 
+import type { Group, GroupList, GroupMemberList, GroupInvitePreview } from './schemas/groups';
+import type {
+  Event,
+  EventList,
+  RsvpList,
+  EventBringList,
+  Ballot,
+} from './schemas/events';
+import type { User } from './schemas/users';
+import type { Availability, AvailabilityList } from './schemas/availability';
+import type { GameList, UserGameList } from './schemas/shared';
+
 // API Base URL - can be moved to environment variable in production
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+
+// -----------------------------------------------------------------------------
+// ApiError seam (D-07). ALL prose-matching lives in `mapErrorToCode`. When
+// BAPI-01 ships the real envelope (Phase 85/86), the swap is a one-function
+// rewrite — call sites NEVER change (they only read `err.code`).
+// Source: 82-RESEARCH.md Pattern 2 (verbatim).
+// -----------------------------------------------------------------------------
+export type ApiErrorCode =
+  | 'unknown'
+  | 'validation'
+  | 'unauthorized'
+  | 'forbidden'
+  | 'not_found'
+  | 'rate_limited'
+  | 'network'
+  | 'config';
+
+export class ApiError extends Error {
+  readonly code: ApiErrorCode;
+  readonly status: number;
+  readonly details?: unknown;
+  constructor(message: string, code: ApiErrorCode, status: number, details?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.status = status;
+    this.details = details;
+    Object.setPrototypeOf(this, ApiError.prototype); // instanceof works post-transpile
+  }
+}
+
+// STOPGAP until BAPI-01 (Phase 85) ships `{ code, message, details? }`.
+// When it ships: replace the prose-matching body with `return body?.code ?? 'unknown'`.
+// Call sites NEVER change — they only read err.code.
+export function mapErrorToCode(body: any, status: number): ApiErrorCode {
+  if (body && typeof body.code === 'string') return body.code as ApiErrorCode; // future-proof: prefer envelope if present
+  if (status === 401) return 'unauthorized';
+  if (status === 403) return 'forbidden';
+  if (status === 404) return 'not_found';
+  if (status === 429) return 'rate_limited';
+  if (status === 422 || (body?.errors && Array.isArray(body.errors))) return 'validation';
+  // prose-match fallback (X-004 stopgap)
+  const msg = (body?.error ?? '').toLowerCase();
+  if (msg.includes('network') || msg.includes('connect')) return 'network';
+  return 'unknown';
+}
 
 /**
  * Get Auth0 access token for API calls
@@ -20,7 +78,7 @@ export async function getAccessToken() {
     const data = await response.json();
     return data.accessToken || null;
   } catch (error) {
-    console.error('Error getting access token:', error.message);
+    console.error('Error getting access token:', error instanceof Error ? error.message : error);
     return null;
   }
 }
@@ -28,7 +86,10 @@ export async function getAccessToken() {
 /**
  * Generic fetch wrapper with error handling and Auth0 token injection
  */
-export async function apiFetch(endpoint, options = {}) {
+export async function apiFetch<T = unknown>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   
   // Try to get access token if available (for client-side calls)
@@ -45,11 +106,11 @@ export async function apiFetch(endpoint, options = {}) {
     }
   }
   
-  const defaultOptions = {
+  const defaultOptions: RequestInit = {
     headers: {
       'Content-Type': 'application/json',
       ...(accessToken && { 'Authorization': `Bearer ${accessToken}` }),
-      ...options.headers,
+      ...(options.headers as Record<string, string> | undefined),
     },
   };
 
@@ -64,11 +125,15 @@ export async function apiFetch(endpoint, options = {}) {
       console.error(`API Error: Received HTML instead of JSON. This usually means NEXT_PUBLIC_API_URL is incorrect.`);
       console.error(`Attempted URL: ${url}`);
       console.error(`Current API_BASE_URL: ${API_BASE_URL}`);
-      throw new Error(`API configuration error: Backend URL appears to be incorrect. Check NEXT_PUBLIC_API_URL environment variable. Current: ${API_BASE_URL}`);
+      throw new ApiError(
+        `API configuration error: Backend URL appears to be incorrect. Check NEXT_PUBLIC_API_URL environment variable. Current: ${API_BASE_URL}`,
+        'config',
+        response.status
+      );
     }
-    
+
     if (!response.ok) {
-      let errorData;
+      let errorData: any;
       try {
         // Try to parse as JSON
         errorData = JSON.parse(responseText);
@@ -76,29 +141,41 @@ export async function apiFetch(endpoint, options = {}) {
         // If not JSON, use the text as error message
         errorData = { error: responseText || `HTTP error! status: ${response.status}` };
       }
-      
-      // If there are validation errors, format them nicely
+
+      // The single throw site (D-07). mapErrorToCode is the ONLY prose-matching
+      // point; the Phase 85 envelope swap rewrites just that function.
+      // If there are validation errors, format them nicely for the message.
       if (errorData.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
-        const errorMessages = errorData.errors.map(err => err.message || `${err.field}: ${err.msg}`).join('. ');
-        throw new Error(errorMessages || errorData.error || `HTTP error! status: ${response.status}`);
+        const errorMessages = errorData.errors
+          .map((err: any) => err.message || `${err.field}: ${err.msg}`)
+          .join('. ');
+        const msg = errorMessages || errorData.error || `HTTP error! status: ${response.status}`;
+        throw new ApiError(msg, mapErrorToCode(errorData, response.status), response.status, errorData);
       }
-      
-      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+
+      const msg = errorData.error || `HTTP error! status: ${response.status}`;
+      throw new ApiError(msg, mapErrorToCode(errorData, response.status), response.status, errorData);
     }
-    
+
     // Parse successful response as JSON
     try {
-      return JSON.parse(responseText);
+      return JSON.parse(responseText) as T;
     } catch (jsonError) {
       // If response is not JSON, return the text
-      return responseText;
+      return responseText as unknown as T;
     }
   } catch (error) {
-    console.error(`API Error (${endpoint}):`, error.message || 'Unknown error');
+    const errName = error instanceof Error ? error.name : '';
+    const errMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`API Error (${endpoint}):`, errMessage || 'Unknown error');
     console.error(`API URL: ${url}`);
     // Re-throw with more context if it's a network error
-    if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      throw new Error('Network error: Could not connect to the server. Please check if the backend is running and NEXT_PUBLIC_API_URL is set correctly.');
+    if (errName === 'TypeError' && errMessage.includes('fetch')) {
+      throw new ApiError(
+        'Network error: Could not connect to the server. Please check if the backend is running and NEXT_PUBLIC_API_URL is set correctly.',
+        'network',
+        0
+      );
     }
     throw error;
   }
@@ -109,109 +186,109 @@ export async function apiFetch(endpoint, options = {}) {
  */
 export const groupsAPI = {
   // Get all groups for a user
-  getUserGroups: (user_id) => 
-    apiFetch(`/groups/user/${encodeURIComponent(user_id)}`),
-  
+  getUserGroups: (user_id: string) =>
+    apiFetch<GroupList>(`/groups/user/${encodeURIComponent(user_id)}`),
+
   // Get a single group by ID
-  getGroup: (group_id) => 
-    apiFetch(`/groups/${group_id}`),
-  
+  getGroup: (group_id: string) =>
+    apiFetch<Group>(`/groups/${group_id}`),
+
   // Get all users in a group
-  getGroupMembers: (group_id) => 
-    apiFetch(`/groups/${group_id}/users`),
-  
+  getGroupMembers: (group_id: string) =>
+    apiFetch<GroupMemberList>(`/groups/${group_id}/users`),
+
   // Create a new group
-  createGroup: (groupData) => 
-    apiFetch('/groups', {
+  createGroup: (groupData: Record<string, unknown>) =>
+    apiFetch<Group>('/groups', {
       method: 'POST',
       body: JSON.stringify(groupData),
     }),
-  
+
   // Add user to group
-  addUserToGroup: (group_id, user_id) => 
+  addUserToGroup: (group_id: string, user_id: string) =>
     apiFetch(`/groups/${group_id}/users`, {
       method: 'POST',
       body: JSON.stringify({ user_id }),
     }),
-  
+
   // Update user role in group (owner only)
-  updateUserRole: (group_id, target_user_id, requesting_user_id, role) => 
+  updateUserRole: (group_id: string, target_user_id: string, requesting_user_id: string, role: string) =>
     apiFetch(`/groups/${group_id}/users/${target_user_id}/role`, {
       method: 'PUT',
       body: JSON.stringify({ requesting_user_id, role }),
     }),
-  
+
   // Remove user from group (owner or admin)
-  removeUserFromGroup: (group_id, target_user_id, requesting_user_id) => 
+  removeUserFromGroup: (group_id: string, target_user_id: string, requesting_user_id: string) =>
     apiFetch(`/groups/${group_id}/users/${target_user_id}`, {
       method: 'DELETE',
       body: JSON.stringify({ requesting_user_id }),
     }),
-  
+
   // Update group settings (profile picture, background)
-  updateGroupSettings: (group_id, requesting_user_id, settings) => 
+  updateGroupSettings: (group_id: string, requesting_user_id: string, settings: Record<string, unknown>) =>
     apiFetch(`/groups/${group_id}/settings`, {
       method: 'PUT',
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         requesting_user_id,
-        ...settings 
+        ...settings,
       }),
     }),
-  
+
   // Delete group (owner only)
-  deleteGroup: (group_id, requesting_user_id) =>
+  deleteGroup: (group_id: string, requesting_user_id: string) =>
     apiFetch(`/groups/${group_id}`, {
       method: 'DELETE',
       body: JSON.stringify({ requesting_user_id }),
     }),
 
   // Approve a pending member (owner/admin only)
-  approveMember: (group_id, target_user_id) =>
+  approveMember: (group_id: string, target_user_id: string) =>
     apiFetch(`/groups/${group_id}/users/${encodeURIComponent(target_user_id)}/approve`, {
       method: 'POST',
     }),
 
   // Reject a pending member (owner/admin only)
-  rejectMember: (group_id, target_user_id) =>
+  rejectMember: (group_id: string, target_user_id: string) =>
     apiFetch(`/groups/${group_id}/users/${encodeURIComponent(target_user_id)}/reject`, {
       method: 'POST',
     }),
 
   // Leave a group (self-removal, non-owner only)
-  leaveGroup: (group_id) =>
+  leaveGroup: (group_id: string) =>
     apiFetch(`/groups/${group_id}/leave`, {
       method: 'POST',
     }),
 
   // Transfer group ownership to another active member (owner only)
-  transferOwnership: (group_id, new_owner_user_id) =>
+  transferOwnership: (group_id: string, new_owner_user_id: string) =>
     apiFetch(`/groups/${group_id}/transfer-ownership`, {
       method: 'POST',
       body: JSON.stringify({ new_owner_user_id }),
     }),
 
   // Get (or lazy-generate) group invite token
-  getInviteToken: (group_id) =>
+  getInviteToken: (group_id: string) =>
     apiFetch(`/groups/${group_id}/invite-token`),
 
   // Reset group invite token (owner/admin only)
-  resetInviteToken: (group_id) =>
+  resetInviteToken: (group_id: string) =>
     apiFetch(`/groups/${group_id}/reset-invite-token`, { method: 'POST' }),
 
   // Join group by invite token (authenticated)
-  joinByToken: (token) =>
+  joinByToken: (token: string) =>
     apiFetch('/groups/join-by-token', {
       method: 'POST',
       body: JSON.stringify({ token }),
     }),
 
   // Get group invite preview (public, no auth needed)
-  getInvitePreview: (token) =>
-    apiFetch(`/groups/invite-preview/${token}`),
+  getInvitePreview: (token: string) =>
+    apiFetch<GroupInvitePreview>(`/groups/invite-preview/${token}`),
 
   // Get the group's shared game library (all members' games, deduplicated with owners)
-  getGroupLibrary: (group_id) =>
-    apiFetch(`/groups/${group_id}/library`),
+  getGroupLibrary: (group_id: string) =>
+    apiFetch<GameList>(`/groups/${group_id}/library`),
 };
 
 /**
@@ -219,33 +296,33 @@ export const groupsAPI = {
  */
 export const eventsAPI = {
   // Get all events for a user across all groups
-  getUserEvents: (user_id, { includeRsvpSummary = false } = {}) =>
-    apiFetch(`/events/user/${encodeURIComponent(user_id)}${includeRsvpSummary ? '?include_rsvp_summary=true' : ''}`),
+  getUserEvents: (user_id: string, { includeRsvpSummary = false } = {}) =>
+    apiFetch<EventList>(`/events/user/${encodeURIComponent(user_id)}${includeRsvpSummary ? '?include_rsvp_summary=true' : ''}`),
 
   // Get all events for a group
-  getGroupEvents: (group_id, { includeRsvpSummary = false } = {}) =>
-    apiFetch(`/events/group/${group_id}${includeRsvpSummary ? '?include_rsvp_summary=true' : ''}`),
-  
+  getGroupEvents: (group_id: string, { includeRsvpSummary = false } = {}) =>
+    apiFetch<EventList>(`/events/group/${group_id}${includeRsvpSummary ? '?include_rsvp_summary=true' : ''}`),
+
   // Get a single event by ID
-  getEvent: (event_id) => 
-    apiFetch(`/events/${event_id}`),
+  getEvent: (event_id: string) =>
+    apiFetch<Event>(`/events/${event_id}`),
   
   // Create a new event
-  createEvent: (eventData) => 
+  createEvent: (eventData: Record<string, unknown>) => 
     apiFetch('/events', {
       method: 'POST',
       body: JSON.stringify(eventData),
     }),
   
   // Update an event (requires owner/admin)
-  updateEvent: (event_id, eventData, requesting_user_id) => 
+  updateEvent: (event_id: string, eventData: Record<string, unknown>, requesting_user_id: string) => 
     apiFetch(`/events/${event_id}`, {
       method: 'PUT',
       body: JSON.stringify({ ...eventData, requesting_user_id }),
     }),
   
   // Delete an event (requires owner/admin)
-  deleteEvent: (event_id, requesting_user_id) =>
+  deleteEvent: (event_id: string, requesting_user_id: string) =>
     apiFetch(`/events/${event_id}`, {
       method: 'DELETE',
       body: JSON.stringify({ requesting_user_id }),
@@ -255,7 +332,7 @@ export const eventsAPI = {
   // EVT-08: hard-destroys the EventParticipation row + writes an audit
   // log entry so a subsequent QR re-join is silent (no welcome email).
   // participation_user_id is the User.id (UUID), not the Auth0 string.
-  removeParticipation: (event_id, participation_user_id) =>
+  removeParticipation: (event_id: string, participation_user_id: string) =>
     apiFetch(`/events/${event_id}/participations/${participation_user_id}`, {
       method: 'DELETE',
     }),
@@ -269,24 +346,24 @@ export const eventsAPI = {
   // name from removeParticipation even though the underlying endpoint is
   // shared — semantically leaveEvent is self-action, removeParticipation is
   // admin-action; backend authz decides whether the caller is allowed.
-  leaveEvent: (event_id, user_db_id) =>
+  leaveEvent: (event_id: string, user_db_id: string) =>
     apiFetch(`/events/${event_id}/participations/${user_db_id}`, {
       method: 'DELETE',
     }),
 
   // Get (or lazy-generate) event invite token
-  getEventInviteToken: (event_id) =>
+  getEventInviteToken: (event_id: string) =>
     apiFetch(`/events/${event_id}/invite-token`),
 
   // Join game by invite token (authenticated)
-  joinGameByToken: (token) =>
+  joinGameByToken: (token: string) =>
     apiFetch('/events/join-game-by-token', {
       method: 'POST',
       body: JSON.stringify({ token }),
     }),
 
   // Get event invite preview (public, no auth needed)
-  getEventInvitePreview: (token) =>
+  getEventInvitePreview: (token: string) =>
     apiFetch(`/events/invite-preview/${token}`),
 };
 
@@ -295,19 +372,19 @@ export const eventsAPI = {
  */
 export const rsvpAPI = {
   // Create or update an RSVP for an event
-  submitRsvp: (event_id, status, note) =>
+  submitRsvp: (event_id: string, status: string, note?: string) =>
     apiFetch('/rsvp', {
       method: 'POST',
       body: JSON.stringify({ event_id, status, note }),
     }),
   // Get all RSVPs for an event (includes summary counts)
-  getEventRsvps: (event_id) =>
-    apiFetch(`/rsvp/event/${event_id}`),
+  getEventRsvps: (event_id: string) =>
+    apiFetch<RsvpList>(`/rsvp/event/${event_id}`),
   // Get all RSVPs for the current user
-  getUserRsvps: (user_id) =>
-    apiFetch(`/rsvp/user/${encodeURIComponent(user_id)}`),
+  getUserRsvps: (user_id: string) =>
+    apiFetch<RsvpList>(`/rsvp/user/${encodeURIComponent(user_id)}`),
   // Remove an RSVP
-  removeRsvp: (rsvp_id) =>
+  removeRsvp: (rsvp_id: string) =>
     apiFetch(`/rsvp/${rsvp_id}`, { method: 'DELETE' }),
 };
 
@@ -317,7 +394,7 @@ export const rsvpAPI = {
  */
 export const rsvpPublicAPI = {
   // Respond to RSVP via magic link token (no auth required)
-  respondViaToken: (token, eventId, userId, status) =>
+  respondViaToken: (token: string, eventId: string, userId: string, status: string) =>
     fetch(
       `${API_BASE_URL}/rsvp/respond?token=${encodeURIComponent(token)}&e=${eventId}&u=${encodeURIComponent(userId)}&s=${status}`
     ).then(res => res.json()),
@@ -327,12 +404,12 @@ export const rsvpPublicAPI = {
  * API functions for Event Brings (who is bringing which games)
  */
 export const eventBringsAPI = {
-  getEventBrings: (event_id) => apiFetch(`/event-brings/event/${event_id}`),
-  updateMyBrings: (event_id, game_ids) => apiFetch(`/event-brings/event/${event_id}/my-brings`, {
+  getEventBrings: (event_id: string) => apiFetch<EventBringList>(`/event-brings/event/${event_id}`),
+  updateMyBrings: (event_id: string, game_ids: unknown[]) => apiFetch(`/event-brings/event/${event_id}/my-brings`, {
     method: 'PUT',
     body: JSON.stringify({ game_ids }),
   }),
-  removeBring: (bring_id) => apiFetch(`/event-brings/${bring_id}`, { method: 'DELETE' }),
+  removeBring: (bring_id: string) => apiFetch(`/event-brings/${bring_id}`, { method: 'DELETE' }),
 };
 
 /**
@@ -346,68 +423,68 @@ export const usersAPI = {
   // Pass null/undefined/empty -> the query param is omitted entirely (matching
   // CONTEXT D-Frontend: "On detection failure, omit the field. Do NOT send
   // 'UTC', do NOT send null, do NOT send a placeholder").
-  getUser: (user_id, detectedTimezone = null) => {
+  getUser: (user_id: string, detectedTimezone: string | null = null) => {
     const path = `/users/${encodeURIComponent(user_id)}`;
     if (typeof detectedTimezone === 'string' && detectedTimezone.length > 0) {
-      return apiFetch(`${path}?timezone=${encodeURIComponent(detectedTimezone)}`);
+      return apiFetch<User>(`${path}?timezone=${encodeURIComponent(detectedTimezone)}`);
     }
-    return apiFetch(path);
+    return apiFetch<User>(path);
   },
   
   // Update user's username
-  updateUsername: (user_id, username) =>
+  updateUsername: (user_id: string, username: string) =>
     apiFetch(`/users/${encodeURIComponent(user_id)}/username`, {
       method: 'PUT',
       body: JSON.stringify({ username }),
     }),
   
   // Search user by email
-  searchUserByEmail: (email) => 
+  searchUserByEmail: (email: string) => 
     apiFetch(`/users/search/email/${encodeURIComponent(email)}`),
   
   // Create or update user
-  createOrUpdateUser: (userData) =>
+  createOrUpdateUser: (userData: Record<string, unknown>) =>
     apiFetch('/users', {
       method: 'POST',
       body: JSON.stringify(userData),
     }),
 
   // Mark tutorial as completed (with version tracking)
-  completeTutorial: (user_id, version = 2) =>
+  completeTutorial: (user_id: string, version = 2) =>
     apiFetch(`/users/${encodeURIComponent(user_id)}/tutorial`, {
       method: 'PUT',
       body: JSON.stringify({ version }),
     }),
 
   // Reset tutorial for replay
-  resetTutorial: (user_id) =>
+  resetTutorial: (user_id: string) =>
     apiFetch(`/users/${encodeURIComponent(user_id)}/tutorial`, {
       method: 'DELETE',
     }),
 
   // Update notification preferences
-  updateNotificationPreferences: (user_id, preferences) =>
+  updateNotificationPreferences: (user_id: string, preferences: Record<string, unknown>) =>
     apiFetch(`/users/${encodeURIComponent(user_id)}/notification-preferences`, {
       method: 'PATCH',
       body: JSON.stringify({ preferences }),
     }),
 
   // Update user's timezone
-  updateTimezone: (user_id, timezone) =>
+  updateTimezone: (user_id: string, timezone: string) =>
     apiFetch(`/users/${encodeURIComponent(user_id)}/timezone`, {
       method: 'PATCH',
       body: JSON.stringify({ timezone }),
     }),
 
   // Save phone number and initiate verification
-  savePhone: (user_id, phone) =>
+  savePhone: (user_id: string, phone: string) =>
     apiFetch(`/users/${encodeURIComponent(user_id)}/phone`, {
       method: 'POST',
       body: JSON.stringify({ phone }),
     }),
 
   // Verify phone with SMS code
-  verifyPhone: (user_id, code) =>
+  verifyPhone: (user_id: string, code: string) =>
     apiFetch(`/users/${encodeURIComponent(user_id)}/phone/verify`, {
       method: 'POST',
       body: JSON.stringify({ code }),
@@ -416,7 +493,7 @@ export const usersAPI = {
   // Remove phone number — backend cascades sms_enabled and all 4
   // notification_preferences[type].sms toggles to false in one transaction
   // per CONTEXT D-PHONE-02. Returns the updated user record.
-  removePhone: (user_id) =>
+  removePhone: (user_id: string) =>
     apiFetch(`/users/${encodeURIComponent(user_id)}/phone`, {
       method: 'DELETE',
     }),
@@ -433,32 +510,32 @@ export const gamesAPI = {
   },
   
   // Get a single game by ID
-  getGame: (game_id) => 
+  getGame: (game_id: string) => 
     apiFetch(`/games/${game_id}`),
   
   // Create a custom game
-  createGame: (gameData) => 
+  createGame: (gameData: Record<string, unknown>) => 
     apiFetch('/games', {
       method: 'POST',
       body: JSON.stringify(gameData),
     }),
   
   // Search BGG for games
-  searchBGG: (query) => 
+  searchBGG: (query: string) => 
     apiFetch(`/games/bgg/search?query=${encodeURIComponent(query)}`),
   
   // Import game from BGG
-  importFromBGG: (bgg_id) => 
+  importFromBGG: (bgg_id: string) => 
     apiFetch(`/games/import-bgg/${bgg_id}`, {
       method: 'POST',
     }),
   
   // Get games for event form (group played + user owned)
-  getGamesForEvent: (group_id, user_id) =>
+  getGamesForEvent: (group_id: string, user_id: string) =>
     apiFetch(`/games/for-event/${group_id}/${encodeURIComponent(user_id)}`),
 
   // Search all games (local custom + BGG) for combo input
-  searchAll: (query, groupId, userId) => {
+  searchAll: (query: string, groupId: string, userId: string) => {
     const params = new URLSearchParams({ query });
     if (groupId) params.append('group_id', groupId);
     if (userId) params.append('user_id', userId);
@@ -466,7 +543,7 @@ export const gamesAPI = {
   },
 
   // Resolve a game name to an existing or new custom game
-  resolveGame: (name) =>
+  resolveGame: (name: string) =>
     apiFetch('/games/resolve', {
       method: 'POST',
       body: JSON.stringify({ name }),
@@ -478,23 +555,23 @@ export const gamesAPI = {
  */
 export const userGamesAPI = {
   // Get all games owned by a user
-  getOwnedGames: (user_id) => 
-    apiFetch(`/user-games/user/${encodeURIComponent(user_id)}`),
+  getOwnedGames: (user_id: string) =>
+    apiFetch<UserGameList>(`/user-games/user/${encodeURIComponent(user_id)}`),
   
   // Add game to user's collection
-  addOwnedGame: (user_id, game_id) => 
+  addOwnedGame: (user_id: string, game_id: string) => 
     apiFetch(`/user-games/user/${encodeURIComponent(user_id)}/game/${game_id}`, {
       method: 'POST',
     }),
   
   // Remove game from user's collection
-  removeOwnedGame: (user_id, game_id) => 
+  removeOwnedGame: (user_id: string, game_id: string) => 
     apiFetch(`/user-games/user/${encodeURIComponent(user_id)}/game/${game_id}`, {
       method: 'DELETE',
     }),
   
   // Import entire BGG collection
-  importBGGCollection: (user_id, bgg_username) => 
+  importBGGCollection: (user_id: string, bgg_username: string) => 
     apiFetch(`/user-games/user/${encodeURIComponent(user_id)}/import-bgg-collection`, {
       method: 'POST',
       body: JSON.stringify({ bgg_username }),
@@ -508,25 +585,25 @@ export const listsAPI = {
   // Get games for a group with sorting options
   // sort: 'name' | 'play_count' | 'last_played' | 'rating'
   // order: 'asc' | 'desc'
-  getGroupGames: (group_id, user_id, sort = 'last_played', order = 'desc') => {
+  getGroupGames: (group_id: string, user_id: string, sort = 'last_played', order = 'desc') => {
     const params = new URLSearchParams({ sort, order });
     return apiFetch(`/lists/games/${group_id}/${encodeURIComponent(user_id)}?${params.toString()}`);
   },
   
   // Get most played games
-  getMostPlayed: (group_id, user_id) => 
+  getMostPlayed: (group_id: string, user_id: string) => 
     apiFetch(`/lists/most-played/${group_id}/${encodeURIComponent(user_id)}`),
   
   // Get least played games
-  getLeastPlayed: (group_id, user_id) => 
+  getLeastPlayed: (group_id: string, user_id: string) => 
     apiFetch(`/lists/least-played/${group_id}/${encodeURIComponent(user_id)}`),
   
   // Get games alphabetically
-  getAlphabetical: (group_id, user_id) => 
+  getAlphabetical: (group_id: string, user_id: string) => 
     apiFetch(`/lists/alphabetical/${group_id}/${encodeURIComponent(user_id)}`),
   
   // Get games by theme
-  getByTheme: (group_id, theme, user_id) => 
+  getByTheme: (group_id: string, theme: string, user_id: string) => 
     apiFetch(`/lists/by-theme/${group_id}/${encodeURIComponent(theme)}/${encodeURIComponent(user_id)}`),
 };
 
@@ -535,33 +612,33 @@ export const listsAPI = {
  */
 export const gameReviewsAPI = {
   // Get reviews for a game in a group
-  getGameReviews: (game_id, group_id, user_id = null) => {
+  getGameReviews: (game_id: string, group_id: string, user_id: string | null = null) => {
     const params = user_id ? `?user_id=${encodeURIComponent(user_id)}` : '';
     return apiFetch(`/game-reviews/game/${game_id}/group/${group_id}${params}`);
   },
   
   // Get all reviews by a user in a group
-  getUserReviews: (target_user_id, group_id, requesting_user_id = null) => {
+  getUserReviews: (target_user_id: string, group_id: string, requesting_user_id: string | null = null) => {
     const params = requesting_user_id ? `?user_id=${encodeURIComponent(requesting_user_id)}` : '';
     return apiFetch(`/game-reviews/user/${encodeURIComponent(target_user_id)}/group/${group_id}${params}`);
   },
   
   // Create or update a review
-  submitReview: (reviewData) => 
+  submitReview: (reviewData: Record<string, unknown>) => 
     apiFetch('/game-reviews', {
       method: 'POST',
       body: JSON.stringify(reviewData),
     }),
   
   // Update a review
-  updateReview: (review_id, reviewData) => 
+  updateReview: (review_id: string, reviewData: Record<string, unknown>) => 
     apiFetch(`/game-reviews/${review_id}`, {
       method: 'PUT',
       body: JSON.stringify(reviewData),
     }),
   
   // Delete a review
-  deleteReview: (review_id) => 
+  deleteReview: (review_id: string) => 
     apiFetch(`/game-reviews/${review_id}`, {
       method: 'DELETE',
     }),
@@ -572,14 +649,14 @@ export const gameReviewsAPI = {
  */
 export const feedbackAPI = {
   // Submit bug report or suggestion
-  submitFeedback: (feedbackData) =>
+  submitFeedback: (feedbackData: Record<string, unknown>) =>
     apiFetch('/feedback', {
       method: 'POST',
       body: JSON.stringify(feedbackData),
     }),
 
   // Submit feedback as a GitHub Issue (contextual feedback button)
-  submitGitHubFeedback: (data) =>
+  submitGitHubFeedback: (data: Record<string, unknown>) =>
     apiFetch('/feedback/github', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -591,11 +668,11 @@ export const feedbackAPI = {
  */
 export const googleCalendarAPI = {
   // Get Google Calendar connection status
-  getStatus: (user_id) => 
+  getStatus: (user_id: string) => 
     apiFetch(`/auth/google/status/${encodeURIComponent(user_id)}`),
   
   // Disconnect Google Calendar
-  disconnect: (user_id) => 
+  disconnect: (user_id: string) => 
     apiFetch('/auth/google/disconnect', {
       method: 'POST',
       body: JSON.stringify({ user_id }),
@@ -607,39 +684,49 @@ export const googleCalendarAPI = {
  */
 export const availabilityAPI = {
   // Get user's availability for a date range
-  getUserAvailability: (user_id, startDate = null, endDate = null, timezone = 'UTC') => {
+  getUserAvailability: (
+    user_id: string,
+    startDate: string | null = null,
+    endDate: string | null = null,
+    timezone: string = 'UTC'
+  ) => {
     const params = new URLSearchParams({ timezone });
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
-    return apiFetch(`/availability/user/${encodeURIComponent(user_id)}?${params.toString()}`);
+    return apiFetch<AvailabilityList>(`/availability/user/${encodeURIComponent(user_id)}?${params.toString()}`);
   },
-  
+
   // Get user's availability patterns (for editing/deleting)
-  getUserPatterns: (user_id) => 
-    apiFetch(`/availability/user/${encodeURIComponent(user_id)}/patterns`),
+  getUserPatterns: (user_id: string) =>
+    apiFetch<AvailabilityList>(`/availability/user/${encodeURIComponent(user_id)}/patterns`),
   
   // Create recurring availability schedule
-  createRecurringPattern: (user_id, patternData) => 
+  createRecurringPattern: (user_id: string, patternData: Record<string, unknown>) => 
     apiFetch(`/availability/user/${encodeURIComponent(user_id)}/recurring`, {
       method: 'POST',
       body: JSON.stringify(patternData),
     }),
   
   // Create specific date/time override
-  createOverride: (user_id, overrideData) => 
+  createOverride: (user_id: string, overrideData: Record<string, unknown>) => 
     apiFetch(`/availability/user/${encodeURIComponent(user_id)}/override`, {
       method: 'POST',
       body: JSON.stringify(overrideData),
     }),
   
   // Delete availability pattern/override
-  deleteAvailability: (availability_id) => 
+  deleteAvailability: (availability_id: string) => 
     apiFetch(`/availability/${availability_id}`, {
       method: 'DELETE',
     }),
   
   // Get overlapping free time for all group members
-  getGroupOverlaps: (group_id, startDate = null, endDate = null, timezone = 'UTC') => {
+  getGroupOverlaps: (
+    group_id: string,
+    startDate: string | null = null,
+    endDate: string | null = null,
+    timezone: string = 'UTC'
+  ) => {
     const params = new URLSearchParams({ timezone });
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
@@ -647,18 +734,18 @@ export const availabilityAPI = {
   },
 
   // Submit weekly availability response
-  submitWeeklyAvailability: (group_id, data) =>
+  submitWeeklyAvailability: (group_id: string, data: Record<string, unknown>) =>
     apiFetch(`/availability/groups/${group_id}/weekly`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
   // Get weekly availability for a group
-  getWeeklyAvailability: (group_id, week_start) =>
-    apiFetch(`/availability/groups/${group_id}/week/${week_start}`),
+  getWeeklyAvailability: (group_id: string, week_start: string) =>
+    apiFetch<Availability>(`/availability/groups/${group_id}/week/${week_start}`),
 
   // Get merged availability heatmap for a group (1-hour bucketed, 12pm-11pm)
-  getGroupHeatmap: (group_id, weekStart, timezone = 'UTC') => {
+  getGroupHeatmap: (group_id: string, weekStart: string, timezone: string = 'UTC') => {
     const params = new URLSearchParams({ timezone });
     if (weekStart) params.append('week_start', weekStart);
     return apiFetch(`/availability/group/${group_id}/heatmap?${params.toString()}`);
@@ -671,7 +758,7 @@ export const availabilityAPI = {
  */
 export const magicAuthAPI = {
   // Validate a magic token (returns user info, prompt_id, expiry)
-  validateToken: (token, formLoadedAt = null) =>
+  validateToken: (token: string, formLoadedAt = null) =>
     fetch(`${API_BASE_URL}/magic-auth/validate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -679,7 +766,7 @@ export const magicAuthAPI = {
     }).then(res => res.json()),
 
   // Request a new magic link (stub - returns 501 currently)
-  requestNew: (promptId) =>
+  requestNew: (promptId: string) =>
     fetch(`${API_BASE_URL}/magic-auth/request-new`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -693,7 +780,7 @@ export const magicAuthAPI = {
  */
 export const availabilityFormAPI = {
   // Submit availability response via magic token
-  submitResponse: (data) =>
+  submitResponse: (data: Record<string, unknown>) =>
     fetch(`${API_BASE_URL}/availability-responses`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -701,7 +788,7 @@ export const availabilityFormAPI = {
     }).then(res => res.json()),
 
   // Get existing response for pre-fill (if user returns to edit)
-  getExistingResponse: (promptId, token) =>
+  getExistingResponse: (promptId: string, token: string) =>
     fetch(`${API_BASE_URL}/availability-responses/${promptId}?magic_token=${encodeURIComponent(token)}`, {
       headers: { 'Content-Type': 'application/json' },
     }).then(res => res.ok ? res.json() : null),
@@ -710,7 +797,17 @@ export const availabilityFormAPI = {
   // Google Calendar. Returns { slot_ids: ["ISO datetime", ...], count } for
   // 30-min slots where the user is FREE in the requested week. Magic-token
   // authenticated via body (no Auth0 bearer).
-  prefillFromGcal: async ({ magicToken, startDate, numDays, timezone }) => {
+  prefillFromGcal: async ({
+    magicToken,
+    startDate,
+    numDays,
+    timezone,
+  }: {
+    magicToken: string;
+    startDate: string;
+    numDays: number;
+    timezone: string;
+  }) => {
     const res = await fetch(`${API_BASE_URL}/availability-prefill/gcal`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -733,7 +830,17 @@ export const availabilityFormAPI = {
   // override-beats-recurring). Returns { slot_ids: ["ISO datetime", ...],
   // count }. Backend filters source:'default' so users with zero saved
   // patterns get an empty array, NOT the whole grid (research Pitfall 3).
-  prefillFromSaved: async ({ magicToken, startDate, numDays, timezone }) => {
+  prefillFromSaved: async ({
+    magicToken,
+    startDate,
+    numDays,
+    timezone,
+  }: {
+    magicToken: string;
+    startDate: string;
+    numDays: number;
+    timezone: string;
+  }) => {
     const res = await fetch(`${API_BASE_URL}/availability-prefill/saved`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -757,31 +864,31 @@ export const availabilityFormAPI = {
  */
 export const promptSettingsAPI = {
   // Get prompt settings for a group (includes schedules array)
-  getGroupPromptSettings: (group_id) =>
+  getGroupPromptSettings: (group_id: string) =>
     apiFetch(`/groups/${group_id}/prompt-settings`),
 
   // Create a new schedule
-  createSchedule: (group_id, scheduleData) =>
+  createSchedule: (group_id: string, scheduleData: Record<string, unknown>) =>
     apiFetch(`/groups/${group_id}/prompt-settings/schedules`, {
       method: 'POST',
       body: JSON.stringify(scheduleData),
     }),
 
   // Update an existing schedule
-  updateSchedule: (group_id, schedule_id, scheduleData) =>
+  updateSchedule: (group_id: string, schedule_id: string, scheduleData: Record<string, unknown>) =>
     apiFetch(`/groups/${group_id}/prompt-settings/schedules/${schedule_id}`, {
       method: 'PATCH',
       body: JSON.stringify(scheduleData),
     }),
 
   // Soft delete a schedule
-  deleteSchedule: (group_id, schedule_id) =>
+  deleteSchedule: (group_id: string, schedule_id: string) =>
     apiFetch(`/groups/${group_id}/prompt-settings/schedules/${schedule_id}`, {
       method: 'DELETE',
     }),
 
   // Toggle schedule active status (pause/resume)
-  toggleSchedule: (group_id, schedule_id) =>
+  toggleSchedule: (group_id: string, schedule_id: string) =>
     apiFetch(`/groups/${group_id}/prompt-settings/schedules/${schedule_id}/toggle`, {
       method: 'PATCH',
     }),
@@ -792,36 +899,36 @@ export const promptSettingsAPI = {
  */
 export const promptAPI = {
   // Get respondent list for a prompt
-  getRespondents: (promptId) =>
+  getRespondents: (promptId: string) =>
     apiFetch(`/prompts/${promptId}/respondents`),
 
   // Send reminder to non-respondent (admin only)
-  sendReminder: (promptId, userId) =>
+  sendReminder: (promptId: string, userId: string) =>
     apiFetch(`/prompts/${promptId}/remind/${userId}`, {
       method: 'POST',
     }),
 
   // Fetch the most recent active/pending prompt for a group
-  getActivePrompt: (groupId) =>
+  getActivePrompt: (groupId: string) =>
     apiFetch(`/groups/${groupId}/prompts/active`),
 
   // Fetch a specific prompt by ID regardless of status (used for closed prompts from email links)
-  getPromptById: (promptId) =>
+  getPromptById: (promptId: string) =>
     apiFetch(`/prompts/${promptId}`),
 
   // Fetch heatmap suggestions for a prompt
-  getSuggestions: (promptId) =>
+  getSuggestions: (promptId: string) =>
     apiFetch(`/prompts/${promptId}/suggestions`),
 
   // Phase 71.2 / D-UI-02 — list ALL open prompts for a group (manual + auto)
   // with Creator info, GroupPromptSettings.template_name (for "From [schedule name]"),
   // and a per-requester `can_close` flag derived server-side.
-  getOpenPrompts: (groupId) =>
+  getOpenPrompts: (groupId: string) =>
     apiFetch(`/groups/${groupId}/prompts/open`),
 
   // Phase 71.2 / D-CLOSE-05 — soft-close a poll. Backend gates to creator OR
   // group owner/admin; frontend should hide the action when can_close === false.
-  closePrompt: (promptId) =>
+  closePrompt: (promptId: string) =>
     apiFetch(`/availability-prompts/${promptId}/close`, {
       method: 'PATCH',
     }),
@@ -830,7 +937,7 @@ export const promptAPI = {
   // prompt's submitted responses (not group-wide availability). Used by the
   // createEvent modal when arriving via the close-notification CTA so the
   // visual time picker shows poll results instead of standard availability.
-  getPromptHeatmap: (promptId) =>
+  getPromptHeatmap: (promptId: string) =>
     apiFetch(`/prompts/${promptId}/heatmap`),
 };
 
@@ -843,7 +950,7 @@ export const suggestionAPI = {
    * @param {string} suggestionId - UUID of the suggestion
    * @returns {Promise<{success: boolean, event_id: string}>}
    */
-  convert: (suggestionId) =>
+  convert: (suggestionId: string) =>
     apiFetch(`/suggestions/${suggestionId}/convert`, {
       method: 'POST',
     }),
@@ -854,7 +961,7 @@ export const suggestionAPI = {
  */
 export const invitesAPI = {
   // Send a group invite by email
-  sendInvite: (group_id, email) =>
+  sendInvite: (group_id: string, email: string) =>
     apiFetch('/invites/send', {
       method: 'POST',
       body: JSON.stringify({ group_id, email }),
@@ -865,26 +972,26 @@ export const invitesAPI = {
     apiFetch('/invites/pending'),
 
   // Accept a pending invite by invite ID
-  acceptInvite: (invite_id) =>
+  acceptInvite: (invite_id: string) =>
     apiFetch(`/invites/${invite_id}/accept`, { method: 'POST' }),
 
   // Decline a pending invite by invite ID
-  declineInvite: (invite_id) =>
+  declineInvite: (invite_id: string) =>
     apiFetch(`/invites/${invite_id}/decline`, { method: 'POST' }),
 
   // Accept invite by token (from email link)
-  acceptInviteByToken: (token) =>
+  acceptInviteByToken: (token: string) =>
     apiFetch('/invites/accept-by-token', {
       method: 'POST',
       body: JSON.stringify({ token }),
     }),
 
   // Get pending invites for a group (admin view)
-  getGroupPendingInvites: (group_id) =>
+  getGroupPendingInvites: (group_id: string) =>
     apiFetch(`/invites/group/${group_id}/pending`),
 
   // Get invite info by token (public, no auth required)
-  getInviteInfo: (token) =>
+  getInviteInfo: (token: string) =>
     apiFetch(`/invites/info/${token}`),
 };
 
@@ -905,35 +1012,43 @@ export const friendshipsAPI = {
     apiFetch('/friendships?status=pending&direction=sent'),
 
   // Search for a user by exact email (local DB only, no auto-create)
-  searchUserByEmail: (email) =>
+  searchUserByEmail: (email: string) =>
     apiFetch(`/friendships/search?email=${encodeURIComponent(email)}`),
 
   // Send a friend request by user_id
-  sendRequest: (addressee_user_id) =>
+  sendRequest: (addressee_user_id: string) =>
     apiFetch('/friendships/request', {
       method: 'POST',
       body: JSON.stringify({ addressee_user_id }),
     }),
 
   // Accept a pending friend request
-  acceptRequest: (friendship_id) =>
+  acceptRequest: (friendship_id: string) =>
     apiFetch(`/friendships/${friendship_id}/accept`, { method: 'POST' }),
 
   // Decline a pending friend request
-  declineRequest: (friendship_id) =>
+  declineRequest: (friendship_id: string) =>
     apiFetch(`/friendships/${friendship_id}/decline`, { method: 'POST' }),
 
   // Remove a friend (unfriend - hard delete)
-  removeFriend: (friendship_id) =>
+  removeFriend: (friendship_id: string) =>
     apiFetch(`/friendships/${friendship_id}`, { method: 'DELETE' }),
 };
 
 /**
  * API functions for Game Suggestions (smart game recommendations)
  */
+interface SuggestionParams {
+  playerCount?: string;
+  maxPlayTime?: string;
+  minWeight?: string;
+  maxWeight?: string;
+  sort?: string;
+}
+
 export const suggestionsAPI = {
   // Get suggestions for a specific event (uses RSVP player count)
-  getEventSuggestions: (eventId, params = {}) => {
+  getEventSuggestions: (eventId: string, params: SuggestionParams = {}) => {
     const query = new URLSearchParams();
     if (params.maxPlayTime) query.set('maxPlayTime', params.maxPlayTime);
     if (params.minWeight) query.set('minWeight', params.minWeight);
@@ -943,7 +1058,7 @@ export const suggestionsAPI = {
     return apiFetch(`/suggestions/event/${eventId}${qs ? '?' + qs : ''}`);
   },
   // Get suggestions for a group (requires playerCount)
-  getGroupSuggestions: (groupId, params = {}) => {
+  getGroupSuggestions: (groupId: string, params: SuggestionParams = {}) => {
     const query = new URLSearchParams();
     if (params.playerCount) query.set('playerCount', params.playerCount);
     if (params.maxPlayTime) query.set('maxPlayTime', params.maxPlayTime);
@@ -960,32 +1075,32 @@ export const suggestionsAPI = {
  */
 export const ballotAPI = {
   // Get ballot for an event (options, vote state, winner)
-  getBallot: (eventId) =>
-    apiFetch(`/ballot/${eventId}`),
+  getBallot: (eventId: string) =>
+    apiFetch<Ballot>(`/ballot/${eventId}`),
 
   // Create/set ballot options (organizer only, requires rsvp_deadline on event)
-  setBallotOptions: (eventId, options) =>
+  setBallotOptions: (eventId: string, options: unknown[]) =>
     apiFetch(`/ballot/${eventId}/options`, {
       method: 'POST',
       body: JSON.stringify({ options }),
     }),
 
   // Update ballot options (organizer only, before close)
-  updateBallotOptions: (eventId, options) =>
+  updateBallotOptions: (eventId: string, options: unknown[]) =>
     apiFetch(`/ballot/${eventId}/options`, {
       method: 'PUT',
       body: JSON.stringify({ options }),
     }),
 
   // Toggle vote on an option (approval voting: add or remove)
-  toggleVote: (eventId, optionId) =>
+  toggleVote: (eventId: string, optionId: string) =>
     apiFetch(`/ballot/${eventId}/vote`, {
       method: 'POST',
       body: JSON.stringify({ option_id: optionId }),
     }),
 
   // Resolve a tie or no-vote scenario (organizer picks winner)
-  resolveTie: (eventId, optionId) =>
+  resolveTie: (eventId: string, optionId: string) =>
     apiFetch(`/ballot/${eventId}/resolve-tie`, {
       method: 'POST',
       body: JSON.stringify({ option_id: optionId }),
