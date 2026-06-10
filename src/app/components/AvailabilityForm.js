@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { nextMonday, format } from 'date-fns';
+import { nextMonday, format, parseISO } from 'date-fns';
 import AvailabilityGrid from './AvailabilityGrid';
 import { availabilityFormAPI } from '@/lib/api';
 
@@ -41,6 +41,10 @@ export default function AvailabilityForm({
   // availability" in the same button row.
   gcalConnected = false,
   hasSavedAvailability = false,
+  // Rolling 7-day check-in window: the backend anchors this to the calendar
+  // day the prompt email was sent (YYYY-MM-DD), so a Thursday send paints
+  // Thu..Wed. Null (old backend deployments) falls back to nextMonday.
+  windowStart = null,
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
@@ -51,11 +55,16 @@ export default function AvailabilityForm({
   const [prefillStatus, setPrefillStatus] = useState(null);
   const [isPrefilling, setIsPrefilling] = useState(false);
 
-  // Compute the week start once and share with both the prefill API call AND
+  // Compute the window start once and share with both the prefill API call AND
   // the grid (research Pitfall 5 — without sharing this anchor, a midnight /
   // DST transition can shift the prefill response relative to the painted
-  // grid by one day).
-  const weekStartDate = useMemo(() => nextMonday(new Date()), []);
+  // grid by one day). Anchored to the prompt's send day when the backend
+  // provides it; parseISO yields LOCAL midnight (new Date('YYYY-MM-DD') would
+  // parse as UTC and render the previous day in negative-offset timezones).
+  const weekStartDate = useMemo(
+    () => (windowStart ? parseISO(windowStart) : nextMonday(new Date())),
+    [windowStart]
+  );
   const weekStartIsoDate = useMemo(
     () => format(weekStartDate, 'yyyy-MM-dd'),
     [weekStartDate]
@@ -216,51 +225,55 @@ export default function AvailabilityForm({
       </div>
 
       {/* Pre-fill Button Row (Phase 81 — CHKIN-05 / CHKIN-06).
-          Renders only when the user has at least one available source.
-          - CHKIN-05 button (this plan): "Import from Google Calendar" — visible when gcalConnected.
-          - CHKIN-06 button (plan 03): "Use my saved availability" — inserted at the marker below. */}
-      {(gcalConnected || hasSavedAvailability) && (
-        <div className="bg-surface-elevated border border-line rounded-card p-4 space-y-2">
-          <p className="text-sm font-medium text-content-primary">Start with:</p>
-          <div className="flex flex-col sm:flex-row gap-2">
-            {gcalConnected && (
-              <button
-                type="button"
-                onClick={handleImportGcal}
-                disabled={isPrefilling || isUnavailable}
-                className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong font-medium transition-colors disabled:opacity-50"
-              >
-                {isPrefilling && prefillStatus?.source !== 'saved' ? 'Importing…' : 'Import from Google Calendar'}
-              </button>
-            )}
-            {hasSavedAvailability && (
-              <button
-                type="button"
-                onClick={handleUseSaved}
-                disabled={isPrefilling || isUnavailable}
-                className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong font-medium transition-colors disabled:opacity-50"
-              >
-                {isPrefilling && prefillStatus?.source !== 'gcal' ? 'Loading…' : 'Use my saved availability'}
-              </button>
-            )}
-          </div>
-          {prefillStatus && (
-            <p className="text-sm text-content-secondary transition-opacity">
-              {prefillStatus.error
-                ? (prefillStatus.source === 'saved'
-                    ? `Couldn't use saved availability: ${prefillStatus.error}`
-                    : `Couldn't import from Google Calendar: ${prefillStatus.error}`)
-                : prefillStatus.source === 'gcal'
-                  ? (prefillStatus.count > 0
-                      ? `Filled ${prefillStatus.count} slots from Google Calendar.`
-                      : 'No free slots found in Google Calendar for this week — paint manually below.')
-                  : (prefillStatus.count > 0
-                      ? `Filled ${prefillStatus.count} slots from your saved availability.`
-                      : 'No saved availability matches this week — paint manually below.')}
-            </p>
+          - CHKIN-05 button: "Import from Google Calendar" — visible when gcalConnected.
+          - CHKIN-06 button: "Use my saved availability" — always rendered; disabled
+            with an explanatory hint when the user has no saved availability
+            overlapping this week (a hidden button read as a bug — it should
+            instead advertise that saving a schedule unlocks the shortcut). */}
+      <div className="bg-surface-elevated border border-line rounded-card p-4 space-y-2">
+        <p className="text-sm font-medium text-content-primary">Start with:</p>
+        <div className="flex flex-col sm:flex-row gap-2">
+          {gcalConnected && (
+            <button
+              type="button"
+              onClick={handleImportGcal}
+              disabled={isPrefilling || isUnavailable}
+              className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong font-medium transition-colors disabled:opacity-50"
+            >
+              {isPrefilling && prefillStatus?.source !== 'saved' ? 'Importing…' : 'Import from Google Calendar'}
+            </button>
           )}
+          <button
+            type="button"
+            onClick={handleUseSaved}
+            disabled={!hasSavedAvailability || isPrefilling || isUnavailable}
+            title={!hasSavedAvailability ? 'No saved availability for these dates' : undefined}
+            className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-line"
+          >
+            {isPrefilling && prefillStatus?.source !== 'gcal' ? 'Loading…' : 'Use my saved availability'}
+          </button>
         </div>
-      )}
+        {!hasSavedAvailability && (
+          <p className="text-sm text-content-muted">
+            No saved availability for these dates — add a weekly schedule in your profile settings to use this shortcut.
+          </p>
+        )}
+        {prefillStatus && (
+          <p className="text-sm text-content-secondary transition-opacity">
+            {prefillStatus.error
+              ? (prefillStatus.source === 'saved'
+                  ? `Couldn't use saved availability: ${prefillStatus.error}`
+                  : `Couldn't import from Google Calendar: ${prefillStatus.error}`)
+              : prefillStatus.source === 'gcal'
+                ? (prefillStatus.count > 0
+                    ? `Filled ${prefillStatus.count} slots from Google Calendar.`
+                    : 'No free slots found in Google Calendar for this week — paint manually below.')
+                : (prefillStatus.count > 0
+                    ? `Filled ${prefillStatus.count} slots from your saved availability.`
+                    : 'No saved availability matches this week — paint manually below.')}
+          </p>
+        )}
+      </div>
 
       {/* Unavailable Toggle Section */}
       <div className="bg-surface-elevated border border-line rounded-card p-4">
