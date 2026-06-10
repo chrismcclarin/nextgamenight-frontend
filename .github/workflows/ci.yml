@@ -119,7 +119,7 @@ jobs:
             package-lock.json
             backend/Sonnet/package-lock.json
 
-      # ---- Backend: install, provision DB via the REAL migrate path, boot ----
+      # ---- Backend: install, provision DB from the models, boot ----
       - name: Backend — install
         working-directory: backend/Sonnet
         run: npm ci
@@ -128,11 +128,12 @@ jobs:
         working-directory: backend/Sonnet
         run: npm run db:create
 
-      - name: Backend — apply migrations (migrate:apply = sequelize-cli db:migrate; NEVER bare migrate — Pitfall 1)
-        working-directory: backend/Sonnet
-        run: npm run migrate:apply
-
-      - name: Backend — seed (seed data belongs to the E2E login identity)
+      # NO migrate step: the repo's migrations evolve the pre-existing prod
+      # schema and cannot run from an empty DB (the earliest one assumes the
+      # "Users" table already exists — proven by CI run 27304799255). Schema
+      # comes from the models instead: the seed script runs
+      # sequelize.sync({ alter: true }) and server boot syncs again (force:false).
+      - name: Backend — seed (sync({alter:true}) builds the schema from models; seed data belongs to the E2E login identity)
         working-directory: backend/Sonnet
         env:
           AUTH0_ALICE_SUB: ${{ secrets.AUTH0_ALICE_SUB }} # the test user's `sub`
@@ -152,6 +153,16 @@ jobs:
         run: npm run build
 
       - name: Frontend — start (next start, :3000) and wait
+        env:
+          # Full @auth0/nextjs-auth0 server env — the Playwright setup project
+          # drives the real /api/auth/login route, so the Next server must be
+          # able to complete the Auth0 code exchange (T-82-11: secrets cross
+          # only via env, never echoed).
+          AUTH0_SECRET: ${{ secrets.AUTH0_SECRET }} # cookie-encryption key, CI-only random value
+          AUTH0_BASE_URL: http://localhost:3000
+          AUTH0_ISSUER_BASE_URL: https://${{ secrets.AUTH0_DOMAIN }}
+          AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
+          NEXT_PUBLIC_API_URL: http://localhost:4000/api
         run: |
           npm start &
           npx --yes wait-on http://localhost:3000 --timeout 60000
