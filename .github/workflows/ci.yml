@@ -177,11 +177,16 @@ jobs:
           E2E_AUTH0_PASS: ${{ secrets.E2E_AUTH0_PASS }}
         run: npx playwright test
 
-      - name: Upload Playwright report on failure (excludes .auth/ — T-82-12)
+      - name: Upload Playwright failure evidence (excludes .auth/ — T-82-12)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: playwright-report/ # NOT .auth/ — never upload the appSession storageState
+          # The CI reporter is 'github' (no playwright-report/ dir) — failure
+          # evidence (screenshots, traces, error-context.md) lands in
+          # test-results/. NOT .auth/ — never upload the appSession storageState.
+          path: |
+            playwright-report/
+            test-results/
           retention-days: 7
           if-no-files-found: ignore

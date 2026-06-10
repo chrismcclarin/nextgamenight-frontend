@@ -23,6 +23,9 @@ export default defineConfig({
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
     trace: 'on-first-retry',
+    // CI failures upload test-results/ — a screenshot shows WHAT page rendered
+    // when a locator never resolved (e.g. an Auth0 error page vs a renamed field).
+    screenshot: 'only-on-failure',
   },
   projects: [
     // The login journey + storageState producer (D-05).
