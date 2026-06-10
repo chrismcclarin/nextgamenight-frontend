@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { nextMonday, format } from 'date-fns';
+import { nextMonday, format, parseISO } from 'date-fns';
 import AvailabilityGrid from './AvailabilityGrid';
 import { availabilityFormAPI } from '@/lib/api';
 
@@ -41,6 +41,10 @@ export default function AvailabilityForm({
   // availability" in the same button row.
   gcalConnected = false,
   hasSavedAvailability = false,
+  // Rolling 7-day check-in window: the backend anchors this to the calendar
+  // day the prompt email was sent (YYYY-MM-DD), so a Thursday send paints
+  // Thu..Wed. Null (old backend deployments) falls back to nextMonday.
+  windowStart = null,
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
@@ -51,11 +55,16 @@ export default function AvailabilityForm({
   const [prefillStatus, setPrefillStatus] = useState(null);
   const [isPrefilling, setIsPrefilling] = useState(false);
 
-  // Compute the week start once and share with both the prefill API call AND
+  // Compute the window start once and share with both the prefill API call AND
   // the grid (research Pitfall 5 — without sharing this anchor, a midnight /
   // DST transition can shift the prefill response relative to the painted
-  // grid by one day).
-  const weekStartDate = useMemo(() => nextMonday(new Date()), []);
+  // grid by one day). Anchored to the prompt's send day when the backend
+  // provides it; parseISO yields LOCAL midnight (new Date('YYYY-MM-DD') would
+  // parse as UTC and render the previous day in negative-offset timezones).
+  const weekStartDate = useMemo(
+    () => (windowStart ? parseISO(windowStart) : nextMonday(new Date())),
+    [windowStart]
+  );
   const weekStartIsoDate = useMemo(
     () => format(weekStartDate, 'yyyy-MM-dd'),
     [weekStartDate]
@@ -238,7 +247,7 @@ export default function AvailabilityForm({
             type="button"
             onClick={handleUseSaved}
             disabled={!hasSavedAvailability || isPrefilling || isUnavailable}
-            title={!hasSavedAvailability ? 'No saved availability for this week' : undefined}
+            title={!hasSavedAvailability ? 'No saved availability for these dates' : undefined}
             className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-line"
           >
             {isPrefilling && prefillStatus?.source !== 'gcal' ? 'Loading…' : 'Use my saved availability'}
@@ -246,7 +255,7 @@ export default function AvailabilityForm({
         </div>
         {!hasSavedAvailability && (
           <p className="text-sm text-content-muted">
-            No saved availability for this week — add a weekly schedule in your profile settings to use this shortcut.
+            No saved availability for these dates — add a weekly schedule in your profile settings to use this shortcut.
           </p>
         )}
         {prefillStatus && (

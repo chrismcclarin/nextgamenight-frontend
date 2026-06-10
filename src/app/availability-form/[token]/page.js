@@ -85,6 +85,10 @@ export default function AvailabilityFormPage() {
           gameName: validation.game?.name || null,
           gcalConnected: validation.gcal_connected ?? false,
           hasSavedAvailability: validation.has_saved_availability ?? false,
+          // Rolling 7-day window anchor (YYYY-MM-DD) — the calendar day the
+          // prompt email was sent. Null on old backend deployments, which
+          // makes AvailabilityForm fall back to its legacy nextMonday anchor.
+          windowStart: validation.window_start ?? null,
         });
 
         // Phase 71.2 / Plan 03 hotfix — prefer the user's profile timezone
@@ -250,7 +254,7 @@ export default function AvailabilityFormPage() {
             Submit Your Availability
           </h1>
           <p className="text-content-secondary">
-            Select the times you&apos;re available for this week&apos;s {tokenData?.gameName || 'Game TBD'} session.
+            Select the times you&apos;re available for the upcoming {tokenData?.gameName || 'Game TBD'} session.
           </p>
 
           {/* Token expiry warning */}
@@ -278,6 +282,7 @@ export default function AvailabilityFormPage() {
             // touch this page.
             gcalConnected={tokenData?.gcalConnected ?? false}
             hasSavedAvailability={tokenData?.hasSavedAvailability ?? false}
+            windowStart={tokenData?.windowStart ?? null}
           />
         </div>
 
