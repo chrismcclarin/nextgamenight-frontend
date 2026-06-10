@@ -7,18 +7,18 @@ import { test, expect } from '@playwright/test';
  * their label text directly (RsvpSection.js L102/111/120 → "Yes"/"Maybe"/"No"),
  * so role+name selectors are stable. No Tailwind-class selectors.
  *
- * E2E_RSVP_TOKEN is a seeded RSVP magic-link token (provided in CI).
+ * E2E_RSVP_PATH is the full email-link path — /rsvp/<hmac>?e=<event>&u=<user>&s=yes
+ * — minted by the backend's scripts/e2e-fixtures.js in CI. The page reads e/u/s
+ * from the query string and auto-submits the RSVP on load (it's the email's
+ * one-click flow), so the journey asserts the confirmation rather than clicking.
  */
 test('user can RSVP to an event', async ({ page }) => {
-  const token = process.env.E2E_RSVP_TOKEN ?? 'seed-rsvp-token';
+  const rsvpPath = process.env.E2E_RSVP_PATH ?? '/rsvp/seed-rsvp-token?s=yes';
 
-  // The RSVP surface is the /rsvp/[token] route.
-  await page.goto(`/rsvp/${token}`);
+  // The RSVP surface is the /rsvp/[token] route + e/u/s query params.
+  await page.goto(rsvpPath);
 
-  // Click the "Yes" status button (RsvpSection.js renders config.buttonText).
-  await page.getByRole('button', { name: /^yes$/i }).click();
-
-  // The selection persists — the "going" confirmation copy appears
-  // (statusConfig.yes.label === "You're going!").
-  await expect(page.getByText(/you're going/i)).toBeVisible();
+  // The s=yes link auto-responds on load — the "going" confirmation copy
+  // appears (statusConfig.yes.label === "You're going!").
+  await expect(page.getByText(/you're going/i)).toBeVisible({ timeout: 15_000 });
 });

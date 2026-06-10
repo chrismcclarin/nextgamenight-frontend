@@ -10,8 +10,10 @@ import { test, expect } from '@playwright/test';
  * Tailwind classes, which churn in Waves 1-5.
  */
 test('user can create a group', async ({ page }) => {
-  // The create-group modal is launched from the user home group list.
-  await page.goto('/userHome');
+  // The create-group modal is launched from the user home group list. The
+  // home surface is the ROOT route — src/app/userHome/ holds only the
+  // component (no page.js), so /userHome 404s (run 27308153581).
+  await page.goto('/');
 
   // "+ Create New Group" button (grouplist.js: aria-label="Create new group").
   await page.getByRole('button', { name: /create new group/i }).click();

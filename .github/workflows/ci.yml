@@ -97,6 +97,10 @@ jobs:
       AUTH0_CLIENT_ID: ${{ secrets.AUTH0_CLIENT_ID }}
       AUTH0_AUDIENCE: ${{ secrets.AUTH0_AUDIENCE }}
       FRONTEND_URL: http://localhost:3000
+      # Signs availability magic JWTs + RSVP HMAC links (services/magicTokenService,
+      # routes/rsvp.js). Throwaway CI-only value — must merely AGREE between the
+      # fixture-minting step and the booted server, so plaintext is fine.
+      MAGIC_TOKEN_SECRET: e2e-ci-throwaway-magic-token-secret-1f2e3d4c5b6a
 
     steps:
       - name: Checkout frontend (gamecalendarfrontend — repo root = FE app)
@@ -138,6 +142,23 @@ jobs:
         env:
           AUTH0_ALICE_SUB: ${{ secrets.AUTH0_ALICE_SUB }} # the test user's `sub`
         run: npm run seed
+
+      - name: Backend — mint E2E fixtures (journey tokens + ids -> GITHUB_ENV)
+        working-directory: backend/Sonnet
+        env:
+          AUTH0_ALICE_SUB: ${{ secrets.AUTH0_ALICE_SUB }}
+        run: |
+          # Sequelize logs SQL to stdout — fish out the single marker line.
+          # Output goes to a file (NOT the log) so tokens never print (T-82-11).
+          node scripts/e2e-fixtures.js > /tmp/e2e-fixtures.out 2>&1 || { tail -40 /tmp/e2e-fixtures.out; exit 1; }
+          JSON=$(grep -m1 '^E2E_FIXTURES_JSON=' /tmp/e2e-fixtures.out | sed 's/^E2E_FIXTURES_JSON=//')
+          [ -n "$JSON" ] || { echo "::error::e2e-fixtures emitted no marker line"; tail -40 /tmp/e2e-fixtures.out; exit 1; }
+          {
+            echo "E2E_GROUP_ID=$(echo "$JSON" | jq -r .group_id)"
+            echo "E2E_AVAILABILITY_TOKEN=$(echo "$JSON" | jq -r .availability_token)"
+            echo "E2E_RSVP_PATH=$(echo "$JSON" | jq -r .rsvp_path)"
+          } >> "$GITHUB_ENV"
+          echo "Fixtures minted (group id, availability token, rsvp path)."
 
       - name: Backend — boot (server.js, :4000) and smoke-wait /health
         working-directory: backend/Sonnet
