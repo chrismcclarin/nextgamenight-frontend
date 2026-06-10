@@ -35,12 +35,19 @@ setup('login + cache session', async ({ page, baseURL }) => {
     throw new Error(`Never reached Auth0 Universal Login — browser is at: ${page.url()}`);
   });
 
-  // Auth0 hosted login page. Use accessible label selectors (survive Auth0 theme
-  // churn). New Universal Login labels the identifier field "Email address" or
-  // "Username" depending on connection settings — match any of them.
+  // Auth0 hosted login page. The identifier field is label-associated, but the
+  // password input is NOT reliably reachable via getByLabel in the New
+  // Universal Login markup (run 27306918140's screenshot shows it visible while
+  // getByLabel(/^password/i) timed out) — target the input directly instead;
+  // name="password" is stable across Auth0 NUL themes.
   await page.getByLabel(/email|username/i).first().fill(user!);
-  await page.getByLabel(/^password/i).fill(pass!);
+  await page.locator('input[name="password"], input[type="password"]').first().fill(pass!);
   await page.getByRole('button', { name: /continue|log in|log\s*in|sign in/i }).click();
+
+  // Auth0 cannot consent-skip localhost callbacks (non-verifiable first party),
+  // so a one-time authorize screen may follow valid credentials. Accept and
+  // move on; absent screen = no-op.
+  await page.getByRole('button', { name: /^accept$/i }).click({ timeout: 7_000 }).catch(() => {});
 
   // Back on the app after the Auth0 callback completes.
   const appOrigin = new URL(baseURL ?? 'http://localhost:3000').origin;
