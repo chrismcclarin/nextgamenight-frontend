@@ -42,7 +42,10 @@ setup('login + cache session', async ({ page, baseURL }) => {
   // name="password" is stable across Auth0 NUL themes.
   await page.getByLabel(/email|username/i).first().fill(user!);
   await page.locator('input[name="password"], input[type="password"]').first().fill(pass!);
-  await page.getByRole('button', { name: /continue|log in|log\s*in|sign in/i }).click();
+  // The name regex alone is ambiguous against "Continue with Google" (strict
+  // mode violation, run 27307831376). Auth0 NUL tags its primary submit with
+  // data-action-button-primary — deterministic across themes.
+  await page.locator('button[data-action-button-primary="true"]').click();
 
   // Auth0 cannot consent-skip localhost callbacks (non-verifiable first party),
   // so a one-time authorize screen may follow valid credentials. Accept and
