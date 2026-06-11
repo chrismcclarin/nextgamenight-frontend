@@ -2,27 +2,7 @@
 
 import React, { memo, useMemo } from 'react';
 import HeatmapTooltip from './HeatmapTooltip';
-
-/**
- * Calculate color intensity based on participant count and preference weighting
- *
- * @param {number} participantCount - Total number of available participants
- * @param {number} preferredCount - Number of participants who marked as preferred
- * @param {number} totalMembers - Total group members
- * @returns {string} Tailwind CSS classes for background and border
- */
-const getIntensityColor = (participantCount, preferredCount, totalMembers) => {
-  // Weight preferred 1.5x for intensity calculation only
-  const weightedScore = participantCount + (preferredCount * 0.5);
-  const maxPossible = totalMembers * 1.5; // if all preferred
-  const percentage = maxPossible > 0 ? (weightedScore / maxPossible) * 100 : 0;
-
-  if (participantCount === 0) return 'bg-surface-elevated border-line';
-  if (percentage <= 25) return 'bg-yellow-200 border-yellow-400';
-  if (percentage <= 50) return 'bg-yellow-400 border-yellow-500';
-  if (percentage <= 75) return 'bg-orange-400 border-orange-500';
-  return 'bg-red-500 border-red-600';
-};
+import { intensityColor as getIntensityColor } from '../../lib/availabilityColor';
 
 /**
  * HeatmapCell - Individual cell in the availability heatmap.

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import HeatmapTooltip from './HeatmapTooltip';
+import { mergedCellColor as getCellStyle } from '../../lib/availabilityColor';
 
 /**
  * useHoverNone — true on devices that report `(hover: none)` (touch). Updates
@@ -26,20 +27,6 @@ function useHoverNone() {
     return () => mq.removeListener(handler);
   }, []);
   return isHoverNone;
-}
-
-/**
- * Get Tailwind color classes based on availability ratio.
- * Green gradient: darker = more members available.
- */
-function getCellStyle(availableCount, totalMembers) {
-  if (totalMembers === 0 || availableCount === 0) return 'bg-surface-elevated text-content-muted';
-  const ratio = availableCount / totalMembers;
-  if (ratio <= 0.2) return 'bg-green-100 text-green-800';
-  if (ratio <= 0.4) return 'bg-green-200 text-green-800';
-  if (ratio <= 0.6) return 'bg-green-300 text-green-900';
-  if (ratio <= 0.8) return 'bg-green-400 text-green-900';
-  return 'bg-green-500 text-white';
 }
 
 /**

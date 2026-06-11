@@ -1,4 +1,4 @@
-// src/lib/tzUtils.js
+// src/lib/tzUtils.ts
 //
 // Single source of truth for frontend UTC <-> wall-clock conversions.
 // Phase 62 Plan 01 / Task 2.
@@ -14,6 +14,15 @@
 // to the caller (see TimezoneProvider).
 
 import { formatInTimeZone, zonedTimeToUtc } from 'date-fns-tz';
+
+/** Wall-clock parts as numbers (month is 1-12, NOT 0-11). */
+export interface WallClock {
+  year: number;
+  month: number;
+  day: number;
+  hours: number;
+  minutes: number;
+}
 
 /**
  * Convert a UTC Date or ISO string to wall-clock components in the given IANA TZ.
@@ -33,7 +42,10 @@ import { formatInTimeZone, zonedTimeToUtc } from 'date-fns-tz';
  *   // → { year: 2026, month: 6, day: 14, hours: 19, minutes: 30 }
  *   //   (June 14, 7:30 PM MDT — the same physical moment as 1:30 AM UTC June 15)
  */
-export function utcToWallClock(utcDate, timeZone) {
+export function utcToWallClock(
+  utcDate: Date | string | null | undefined,
+  timeZone: string | null | undefined
+): WallClock | null {
   if (utcDate === null || utcDate === undefined || utcDate === '') return null;
   const d = utcDate instanceof Date ? utcDate : new Date(utcDate);
   if (Number.isNaN(d.getTime())) return null;
@@ -67,7 +79,10 @@ export function utcToWallClock(utcDate, timeZone) {
  *   wallClockToUtc('2026-06-15T19:30', 'America/Denver').toISOString()
  *   // → '2026-06-16T01:30:00.000Z' (7:30 PM MDT = 1:30 AM UTC next day)
  */
-export function wallClockToUtc(wallClockString, timeZone) {
+export function wallClockToUtc(
+  wallClockString: string | null | undefined,
+  timeZone: string | null | undefined
+): Date | null {
   if (wallClockString === null || wallClockString === undefined || wallClockString === '') {
     return null;
   }
@@ -95,7 +110,11 @@ export function wallClockToUtc(wallClockString, timeZone) {
  *   formatWithTzAbbr(new Date('2026-06-15T01:30:00Z'), null)
  *   // → '1:30 AM UTC'
  */
-export function formatWithTzAbbr(date, timeZone, formatStr = 'h:mm a zzz') {
+export function formatWithTzAbbr(
+  date: Date | string | null | undefined,
+  timeZone: string | null | undefined,
+  formatStr: string = 'h:mm a zzz'
+): string {
   if (date === null || date === undefined || date === '') return '';
   const d = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(d.getTime())) return '';
