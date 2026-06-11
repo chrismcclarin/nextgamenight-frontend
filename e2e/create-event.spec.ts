@@ -35,6 +35,10 @@ test('user can create an event', async ({ page }) => {
   const startValue = `${start.toISOString().slice(0, 10)}T19:00`;
   await page.getByLabel(/start date & time/i).fill(startValue);
 
+  // Duration is also a required field — native browser validation blocks the
+  // submit with "Please fill out this field" (run 27318628271 screenshot).
+  await page.getByPlaceholder(/enter duration in minutes/i).fill('120');
+
   // Submit via the stable test-id added in this plan.
   await page.getByTestId('create-event-submit').click();
 
