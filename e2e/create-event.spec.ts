@@ -13,8 +13,10 @@ import { test, expect } from '@playwright/test';
 test('user can create an event', async ({ page }) => {
   const groupId = process.env.E2E_GROUP_ID ?? '1';
 
-  // Group planning surface hosts the create-event modal (groupPlanning/page.js).
-  await page.goto(`/groupPlanning?groupId=${groupId}`);
+  // Group planning surface hosts the create-event modal. The page reads the
+  // snake_case `group_id` search param (groupPlanning/page.js L17) — camelCase
+  // `groupId` rendered "No group specified" (run 27317492586 screenshot).
+  await page.goto(`/groupPlanning?group_id=${groupId}`);
 
   // Open the create-event modal — heading "Create Event" confirms it's mounted.
   await page.getByRole('button', { name: /create event|new event|add event/i }).first().click();

@@ -18,7 +18,7 @@ test('user can RSVP to an event', async ({ page }) => {
   // The RSVP surface is the /rsvp/[token] route + e/u/s query params.
   await page.goto(rsvpPath);
 
-  // The s=yes link auto-responds on load — the "going" confirmation copy
-  // appears (statusConfig.yes.label === "You're going!").
-  await expect(page.getByText(/you're going/i)).toBeVisible({ timeout: 15_000 });
+  // The s=yes link auto-responds on load — the confirmation card renders
+  // "You're in!" (run 27317492586 screenshot; "you're going" was wrong copy).
+  await expect(page.getByText(/you're (in|going)/i)).toBeVisible({ timeout: 15_000 });
 });
