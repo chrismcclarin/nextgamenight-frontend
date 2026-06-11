@@ -65,6 +65,7 @@ jobs:
     name: e2e
     needs: quality # D-02: e2e only runs after the fast quality gate is green
     runs-on: ubuntu-latest
+    timeout-minutes: 30 # a healthy run is ~10 min; a hung step burned an hour once (run 27309008729)
 
     services:
       postgres:
@@ -145,6 +146,7 @@ jobs:
 
       - name: Backend — mint E2E fixtures (journey tokens + ids -> GITHUB_ENV)
         working-directory: backend/Sonnet
+        timeout-minutes: 5
         env:
           AUTH0_ALICE_SUB: ${{ secrets.AUTH0_ALICE_SUB }}
         run: |
