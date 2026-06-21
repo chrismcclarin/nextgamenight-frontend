@@ -1,8 +1,8 @@
-# CI pipeline for the Nextgamenight FRONTEND repo (chrismcclarin/gamecalendarfrontend).
+# CI pipeline for the Nextgamenight FRONTEND repo (chrismcclarin/nextgamenight-frontend).
 #
 # This workflow lives in the FE repo, so the checkout root IS the Next.js app —
 # there is NO `periodictabletop/` subdir and NO `working-directory: periodictabletop`.
-# The e2e job CROSS-REPO checks out the backend (chrismcclarin/GameCalendarbackendv2),
+# The e2e job CROSS-REPO checks out the backend (chrismcclarin/nextgamenight-backend),
 # whose app lives at `backend/Sonnet/`.
 #
 # Two jobs (D-01/D-02):
@@ -104,15 +104,15 @@ jobs:
       MAGIC_TOKEN_SECRET: e2e-ci-throwaway-magic-token-secret-1f2e3d4c5b6a
 
     steps:
-      - name: Checkout frontend (gamecalendarfrontend — repo root = FE app)
+      - name: Checkout frontend (nextgamenight-frontend — repo root = FE app)
         uses: actions/checkout@v4
 
-      - name: "Checkout backend (cross-repo: GameCalendarbackendv2)"
+      - name: "Checkout backend (cross-repo: nextgamenight-backend)"
         uses: actions/checkout@v4
         with:
-          repository: chrismcclarin/GameCalendarbackendv2
+          repository: chrismcclarin/nextgamenight-backend
           path: backend # BE app then lives at backend/Sonnet/
-          # GameCalendarbackendv2 is PUBLIC (verified 2026-05-30) — no token needed;
+          # nextgamenight-backend is PUBLIC (verified 2026-05-30) — no token needed;
           # actions/checkout reads public repos with the default GITHUB_TOKEN.
 
       - name: Setup Node 20
