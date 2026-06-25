@@ -485,6 +485,7 @@ function FriendsPage() {
                                             </label>
                                             <select
                                                 id="group-invite-select"
+                                                aria-label="Invite to group"
                                                 value={selectedGroupId}
                                                 onChange={(e) => setSelectedGroupId(e.target.value)}
                                                 className="flex-1 min-w-[180px] max-w-xs px-3 py-2 border border-line rounded-btn text-sm text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
@@ -556,6 +557,7 @@ function FriendsPage() {
                                                 <div className="flex items-center gap-3 flex-1">
                                                     <input
                                                         type="checkbox"
+                                                        aria-label={`Select ${friend.username}`}
                                                         checked={isInGroup || selectedFriends.has(friendUserId)}
                                                         disabled={checkboxDisabled}
                                                         onChange={() => toggleFriendSelection(friendUserId)}
