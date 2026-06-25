@@ -267,13 +267,9 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                             />
                                             <div className="flex-1 min-w-0">
                                                 <p className={`font-medium truncate ${isInGroup ? 'text-content-muted' : 'text-content-primary'}`}>
-                                                    {friend.username || friend.email}
+                                                    {friend.username}
                                                 </p>
-                                                {friend.email && friend.email !== friend.username && (
-                                                    <p className={`text-xs truncate ${isInGroup ? 'text-content-muted' : 'text-content-muted'}`}>
-                                                        {friend.email}
-                                                    </p>
-                                                )}
+                                                {/* Friend email is no longer exposed in the friends payload (Phase 83-06 PII default-deny); invites resolve it server-side by user_id. */}
                                             </div>
                                             {isInGroup && (
                                                 <span className="text-xs text-content-muted italic flex-shrink-0">

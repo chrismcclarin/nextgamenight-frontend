@@ -566,15 +566,13 @@ function FriendsPage() {
                                                     <div className="flex-1">
                                                         <div className="flex items-center gap-2">
                                                             <p className="font-semibold text-content-primary">
-                                                                {friend.username || friend.email}
+                                                                {friend.username}
                                                             </p>
                                                             {isInGroup && (
                                                                 <span className="text-xs text-content-muted italic">(already in group)</span>
                                                             )}
                                                         </div>
-                                                        {friend.email && friend.email !== friend.username && (
-                                                            <p className="text-sm text-content-muted mt-0.5">{friend.email}</p>
-                                                        )}
+                                                        {/* Friend email is no longer exposed in the friends payload (Phase 83-06 PII default-deny); invites resolve it server-side by user_id. */}
                                                     </div>
                                                 </div>
                                                 <button
