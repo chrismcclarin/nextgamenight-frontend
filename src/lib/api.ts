@@ -960,11 +960,20 @@ export const suggestionAPI = {
  * API functions for Group Invites
  */
 export const invitesAPI = {
-  // Send a group invite by email
+  // Send a group invite by email (typed-email flow)
   sendInvite: (group_id: string, email: string) =>
     apiFetch('/invites/send', {
       method: 'POST',
       body: JSON.stringify({ group_id, email }),
+    }),
+
+  // Send a group invite to an existing friend by user_id. The friend's email is
+  // resolved server-side (behind an accepted-friendship gate) — the client never
+  // handles friend emails (preserves Phase 83-06 PII default-deny).
+  sendFriendInvite: (group_id: string, friend_user_id: string) =>
+    apiFetch('/invites/send', {
+      method: 'POST',
+      body: JSON.stringify({ group_id, friend_user_id }),
     }),
 
   // Get current user's pending invites

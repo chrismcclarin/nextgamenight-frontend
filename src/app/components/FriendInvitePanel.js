@@ -109,15 +109,14 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
         let failCount = 0;
 
         for (const friendUserId of selectedFriends) {
-            const friendship = friends.find(f => f.friend?.user_id === friendUserId);
-            const friendEmail = friendship?.friend?.email;
-            if (friendEmail && !groupMemberIds.includes(friendUserId)) {
-                try {
-                    await invitesAPI.sendInvite(group.id, friendEmail);
-                    successCount++;
-                } catch {
-                    failCount++;
-                }
+            // Skip anyone already in the group; otherwise invite by user_id.
+            // The friend's email is resolved server-side (83-06 PII default-deny).
+            if (groupMemberIds.includes(friendUserId)) continue;
+            try {
+                await invitesAPI.sendFriendInvite(group.id, friendUserId);
+                successCount++;
+            } catch {
+                failCount++;
             }
         }
 

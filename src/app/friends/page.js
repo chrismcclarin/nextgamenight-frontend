@@ -253,21 +253,14 @@ function FriendsPage() {
         let failCount = 0;
 
         for (const friendUserId of selectedFriends) {
-            const friendship = friends.find(f => {
-                return f.friend?.user_id === friendUserId ||
-                       f.Requester?.user_id === friendUserId ||
-                       f.Addressee?.user_id === friendUserId;
-            });
-            const email = friendship?.friend?.email ||
-                          friendship?.Requester?.email ||
-                          friendship?.Addressee?.email;
-            if (email && !groupMembers.includes(friendUserId)) {
-                try {
-                    await invitesAPI.sendInvite(selectedGroupId, email);
-                    successCount++;
-                } catch (err) {
-                    failCount++;
-                }
+            // Skip anyone already in the group; otherwise invite by user_id.
+            // The friend's email is resolved server-side (83-06 PII default-deny).
+            if (groupMembers.includes(friendUserId)) continue;
+            try {
+                await invitesAPI.sendFriendInvite(selectedGroupId, friendUserId);
+                successCount++;
+            } catch (err) {
+                failCount++;
             }
         }
 
