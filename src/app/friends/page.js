@@ -253,21 +253,14 @@ function FriendsPage() {
         let failCount = 0;
 
         for (const friendUserId of selectedFriends) {
-            const friendship = friends.find(f => {
-                return f.friend?.user_id === friendUserId ||
-                       f.Requester?.user_id === friendUserId ||
-                       f.Addressee?.user_id === friendUserId;
-            });
-            const email = friendship?.friend?.email ||
-                          friendship?.Requester?.email ||
-                          friendship?.Addressee?.email;
-            if (email && !groupMembers.includes(friendUserId)) {
-                try {
-                    await invitesAPI.sendInvite(selectedGroupId, email);
-                    successCount++;
-                } catch (err) {
-                    failCount++;
-                }
+            // Skip anyone already in the group; otherwise invite by user_id.
+            // The friend's email is resolved server-side (83-06 PII default-deny).
+            if (groupMembers.includes(friendUserId)) continue;
+            try {
+                await invitesAPI.sendFriendInvite(selectedGroupId, friendUserId);
+                successCount++;
+            } catch (err) {
+                failCount++;
             }
         }
 
@@ -492,6 +485,7 @@ function FriendsPage() {
                                             </label>
                                             <select
                                                 id="group-invite-select"
+                                                aria-label="Invite to group"
                                                 value={selectedGroupId}
                                                 onChange={(e) => setSelectedGroupId(e.target.value)}
                                                 className="flex-1 min-w-[180px] max-w-xs px-3 py-2 border border-line rounded-btn text-sm text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
@@ -563,6 +557,7 @@ function FriendsPage() {
                                                 <div className="flex items-center gap-3 flex-1">
                                                     <input
                                                         type="checkbox"
+                                                        aria-label={`Select ${friend.username}`}
                                                         checked={isInGroup || selectedFriends.has(friendUserId)}
                                                         disabled={checkboxDisabled}
                                                         onChange={() => toggleFriendSelection(friendUserId)}
@@ -573,15 +568,13 @@ function FriendsPage() {
                                                     <div className="flex-1">
                                                         <div className="flex items-center gap-2">
                                                             <p className="font-semibold text-content-primary">
-                                                                {friend.username || friend.email}
+                                                                {friend.username}
                                                             </p>
                                                             {isInGroup && (
                                                                 <span className="text-xs text-content-muted italic">(already in group)</span>
                                                             )}
                                                         </div>
-                                                        {friend.email && friend.email !== friend.username && (
-                                                            <p className="text-sm text-content-muted mt-0.5">{friend.email}</p>
-                                                        )}
+                                                        {/* Friend email is no longer exposed in the friends payload (Phase 83-06 PII default-deny); invites resolve it server-side by user_id. */}
                                                     </div>
                                                 </div>
                                                 <button

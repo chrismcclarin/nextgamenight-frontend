@@ -109,15 +109,14 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
         let failCount = 0;
 
         for (const friendUserId of selectedFriends) {
-            const friendship = friends.find(f => f.friend?.user_id === friendUserId);
-            const friendEmail = friendship?.friend?.email;
-            if (friendEmail && !groupMemberIds.includes(friendUserId)) {
-                try {
-                    await invitesAPI.sendInvite(group.id, friendEmail);
-                    successCount++;
-                } catch {
-                    failCount++;
-                }
+            // Skip anyone already in the group; otherwise invite by user_id.
+            // The friend's email is resolved server-side (83-06 PII default-deny).
+            if (groupMemberIds.includes(friendUserId)) continue;
+            try {
+                await invitesAPI.sendFriendInvite(group.id, friendUserId);
+                successCount++;
+            } catch {
+                failCount++;
             }
         }
 
@@ -268,13 +267,9 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                             />
                                             <div className="flex-1 min-w-0">
                                                 <p className={`font-medium truncate ${isInGroup ? 'text-content-muted' : 'text-content-primary'}`}>
-                                                    {friend.username || friend.email}
+                                                    {friend.username}
                                                 </p>
-                                                {friend.email && friend.email !== friend.username && (
-                                                    <p className={`text-xs truncate ${isInGroup ? 'text-content-muted' : 'text-content-muted'}`}>
-                                                        {friend.email}
-                                                    </p>
-                                                )}
+                                                {/* Friend email is no longer exposed in the friends payload (Phase 83-06 PII default-deny); invites resolve it server-side by user_id. */}
                                             </div>
                                             {isInGroup && (
                                                 <span className="text-xs text-content-muted italic flex-shrink-0">
