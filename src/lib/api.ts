@@ -976,6 +976,16 @@ export const invitesAPI = {
       body: JSON.stringify({ group_id, friend_user_id }),
     }),
 
+  // Invite a guest who played in one of the group's events to join the group.
+  // `participant_user_id` is a User.id UUID (EventParticipation.user_id). Email is
+  // resolved server-side, bound to the group's event participants and gated on the
+  // caller being owner/admin (preserves Phase 83-06 PII default-deny). [83.3 SEAM-01]
+  sendParticipantInvite: (group_id: string, participant_user_id: string) =>
+    apiFetch('/invites/send', {
+      method: 'POST',
+      body: JSON.stringify({ group_id, participant_user_id }),
+    }),
+
   // Get current user's pending invites
   getPendingInvites: () =>
     apiFetch('/invites/pending'),
