@@ -86,34 +86,47 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
     );
 }
 
-function GuestInviteButton({ groupId, email }) {
-    const [status, setStatus] = useState(null); // null | 'sending' | 'sent' | 'error'
+function GuestInviteButton({ groupId, userId }) {
+    const [status, setStatus] = useState(null); // null | 'sending' | 'sent' | 'already' | 'error'
 
     const handleInvite = async () => {
         setStatus('sending');
         try {
-            await invitesAPI.sendInvite(groupId, email);
+            // Invite by participant user_id — the guest's email is resolved
+            // server-side (83-06 PII default-deny stripped it from the client). [83.3 SEAM-01]
+            await invitesAPI.sendParticipantInvite(groupId, userId);
             setStatus('sent');
         } catch (err) {
-            setStatus('error');
+            // 409 = already a pending invite / already a member — not a failure to
+            // retry, so surface it as "Already invited" rather than "Retry". [83.3 SEAM-01]
+            setStatus(err?.status === 409 ? 'already' : 'error');
         }
     };
 
     return (
         <button
             onClick={handleInvite}
-            disabled={status === 'sending' || status === 'sent'}
+            disabled={status === 'sending' || status === 'sent' || status === 'already'}
             className={`text-xs px-2 py-0.5 rounded border transition-colors ${
                 status === 'sent'
                     ? 'text-status-success border-status-success/30 bg-status-success/10'
-                    : status === 'error'
-                        ? 'text-status-error border-status-error/30 bg-status-error/10 hover:bg-status-error/20'
-                        : 'text-content-link border-content-link/30 hover:bg-content-link/10'
+                    : status === 'already'
+                        ? 'text-content-muted border-line bg-surface-page'
+                        : status === 'error'
+                            ? 'text-status-error border-status-error/30 bg-status-error/10 hover:bg-status-error/20'
+                            : 'text-content-link border-content-link/30 hover:bg-content-link/10'
             }`}
-            title={status === 'sent' ? 'Invite sent!' : 'Invite this guest to join the group'}
+            title={
+                status === 'sent'
+                    ? 'Invite sent!'
+                    : status === 'already'
+                        ? 'This guest is already invited or a member'
+                        : 'Invite this guest to join the group'
+            }
         >
             {status === 'sending' && 'Sending...'}
             {status === 'sent' && 'Invite sent!'}
+            {status === 'already' && 'Already invited'}
             {status === 'error' && 'Retry'}
             {!status && 'Invite to group'}
         </button>
@@ -1759,8 +1772,8 @@ export default function GameDetailPage() {
                                                                     </span>
                                                                 )}
                                                             </span>
-                                                            {participation.is_guest && (userRole === 'owner' || userRole === 'admin') && participation.email && (
-                                                                <GuestInviteButton groupId={group_id} email={participation.email} />
+                                                            {participation.is_guest && (userRole === 'owner' || userRole === 'admin') && participation.user_id && (
+                                                                <GuestInviteButton groupId={group_id} userId={participation.user_id} />
                                                             )}
                                                         </div>
                                                     ))}
