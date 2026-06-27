@@ -57,8 +57,27 @@ interface ReadCellBaseProps {
   ariaLabel?: string;
   /** Tooltip body (participant list, etc.). */
   tooltipContent?: React.ReactNode;
+  /** Tooltip styling variant forwarded to HeatmapTooltip (merged-grid mobile tone). */
+  tone?: 'default' | 'mobile';
   /** Forwarded to HeatmapTooltip so the grid can register the cell's DOM node. */
   triggerRef?: React.Ref<HTMLDivElement>;
+  /**
+   * Structural cell classes (dims / border / flex / text-color). Applied
+   * BEFORE the color class so the verbatim availabilityColor string survives
+   * (no cn/tailwind-merge). When omitted, the cell's className is EXACTLY the
+   * color string (the 84-05 byte-identical contract for WeekGrid).
+   */
+  className?: string;
+  /** Inline style merged after the fill defaults (e.g. minHeight on the passive overlay). */
+  style?: React.CSSProperties;
+  /**
+   * Fill the parent (width/height 100%). Default `true` for the WeekGrid
+   * sized-wrapper pattern. Prod div-grids that size the cell via `className`
+   * (HeatmapGrid w-24/h-12) pass `fill={false}`.
+   */
+  fill?: boolean;
+  /** Cell content rendered inside the colored div (e.g. the participant-count badge). */
+  children?: React.ReactNode;
 }
 
 export interface IntensityReadCellProps extends ReadCellBaseProps {
@@ -97,7 +116,12 @@ export const ReadCell = memo(function ReadCell(props: ReadCellProps) {
     onSelect = noop,
     ariaLabel,
     tooltipContent = null,
+    tone = 'default',
     triggerRef,
+    className,
+    style,
+    fill = true,
+    children = null,
   } = props;
 
   // Hook is called unconditionally (rules of hooks). In passive mode we simply
@@ -117,20 +141,26 @@ export const ReadCell = memo(function ReadCell(props: ReadCellProps) {
   const onKeyDown = roving ? rovingKeyDown : undefined;
 
   const colorClass = resolveColor(props);
+  // Color string applied VERBATIM (no cn/tailwind-merge). When the consumer
+  // supplies structural classes they are PREPENDED, so the color substring
+  // survives byte-identical and the no-className path stays exactly the color.
+  const fullClassName = className ? `${className} ${colorClass}` : colorClass;
 
   const cell = (
     <div
-      className={colorClass}
+      className={fullClassName}
       role="gridcell"
       tabIndex={tabIndex}
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
-      style={{ width: '100%', height: '100%' }}
-    />
+      style={{ ...(fill ? { width: '100%', height: '100%' } : {}), ...style }}
+    >
+      {children}
+    </div>
   );
 
   return (
-    <HeatmapTooltip content={tooltipContent} ariaLabel={ariaLabel} triggerRef={triggerRef}>
+    <HeatmapTooltip content={tooltipContent} ariaLabel={ariaLabel} tone={tone} triggerRef={triggerRef}>
       {cell}
     </HeatmapTooltip>
   );

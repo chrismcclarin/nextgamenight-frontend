@@ -2,7 +2,7 @@
 
 import { useTimezone } from '../components/TimezoneProvider';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
-import HeatmapTooltip from './HeatmapTooltip';
+import ReadCell from './heatmap/ReadCell';
 
 /**
  * EventHeatmapBackground - Visual heatmap grid for group availability.
@@ -137,16 +137,9 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
     return `${h - 12}p`;
   }
 
-  // Color gradient based on availability ratio
-  function getCellBg(availableCount, total) {
-    if (total === 0 || availableCount === 0) return 'bg-surface-elevated';
-    const ratio = availableCount / total;
-    if (ratio <= 0.2) return 'bg-green-100';
-    if (ratio <= 0.4) return 'bg-green-200';
-    if (ratio <= 0.6) return 'bg-green-300';
-    if (ratio <= 0.8) return 'bg-green-400';
-    return 'bg-green-500';
-  }
+  // Color now comes from the shared ReadCell (variant="merged" -> mergedCellColor),
+  // which produces the SAME bg-* ramp the local getCellBg fork used to (84-10
+  // convergence: the per-grid color fork is retired; background bytes unchanged).
 
   // Build conflict lookup keyed by "tzDateStr_tzHour"
   const conflictMap = new Map();
@@ -250,34 +243,35 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
               const dateKey = `${date}_${s.hour}`;
               const slot = slotMap.get(dateKey);
               const count = slot?.availableCount || 0;
-              const bg = getCellBg(count, totalMembers);
               const tooltipContent = renderTooltipContent(slot, dateKey);
+              // PASSIVE read overlay (locked 72-02 / D1 Opt 1): ReadCell with
+              // roving={false} converges on the shared cell for COLOR + aria
+              // ONLY — it owns no focused-coordinate state, no focus-ref map, and
+              // no nav-key handler. Tab+focus+Esc model preserved (not an input grid).
+              // minHeight 28px keeps the whole cell a comfortable hover/tap
+              // target (Plan 72-02 UAT); the count badge repeats on both the
+              // :00 and :30 rows for parity with EventScheduler's density.
               return (
-                <HeatmapTooltip
+                <ReadCell
                   key={`${date}_${s.hour}_${s.minute}`}
-                  content={tooltipContent}
-                  placement="top"
+                  variant="merged"
+                  roving={false}
+                  row={0}
+                  col={0}
+                  rows={1}
+                  cols={1}
+                  availableCount={count}
+                  totalMembers={totalMembers}
                   ariaLabel={`Availability for ${date} hour ${s.hour}`}
+                  tooltipContent={tooltipContent}
+                  fill={false}
+                  style={{ minHeight: '28px' }}
+                  className="rounded-sm flex items-center justify-center cursor-default"
                 >
-                  {/* Plan 72-02 UAT hotfix: bumped minHeight from 18px to 28px
-                      so the entire cell is a comfortable hover/tap target —
-                      previously only the centered count badge had a meaningful
-                      hit area. Badge text bumped from text-[9px] to text-[11px]
-                      so the number stays readable inside the larger cell. */}
-                  <div
-                    className={`${bg} rounded-sm flex items-center justify-center cursor-default`}
-                    style={{ minHeight: '28px' }}
-                    role="gridcell"
-                  >
-                    {/* Show count badge on every green cell (both :00 and :30
-                        rows) for visual consistency with EventScheduler's
-                        visual-calendar surface, which repeats the hourly count
-                        on each 30-min slot. */}
-                    {count > 0 && (
-                      <span className="text-[11px] text-green-900 font-semibold">{count}</span>
-                    )}
-                  </div>
-                </HeatmapTooltip>
+                  {count > 0 && (
+                    <span className="text-[11px] text-green-900 font-semibold">{count}</span>
+                  )}
+                </ReadCell>
               );
             })}
           </div>

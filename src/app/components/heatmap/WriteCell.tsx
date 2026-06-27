@@ -57,6 +57,12 @@ export interface WriteCellProps {
   slotId?: string;
   /** Registers this cell's DOM node with the container's cellRefs map. */
   cellRef?: React.Ref<HTMLDivElement>;
+  /**
+   * Extra classes APPENDED after the verbatim preferenceColor string (e.g.
+   * `transition-colors duration-75`). Color stays byte-identical; the no-arg
+   * path keeps className EXACTLY equal to preferenceColor (84-05 contract).
+   */
+  className?: string;
 }
 
 export const WriteCell = memo(function WriteCell({
@@ -73,6 +79,7 @@ export const WriteCell = memo(function WriteCell({
   onPointerEnter,
   slotId,
   cellRef,
+  className,
 }: WriteCellProps) {
   // Keyboard select cycles the three-state preference; WriteCell owns the mapping
   // and reports the NEXT value so the hook stays semantics-agnostic.
@@ -105,7 +112,7 @@ export const WriteCell = memo(function WriteCell({
   return (
     <div
       ref={cellRef}
-      className={preferenceColor(preference, disabled)}
+      className={className ? `${preferenceColor(preference, disabled)} ${className}` : preferenceColor(preference, disabled)}
       style={{
         width: '100%',
         height: '100%',
