@@ -2,7 +2,7 @@
 // Pins the EXACT class-string outputs of the two VERBATIM-extracted functions at
 // every boundary. Assumption A5: do NOT assert a converged scheme — PRIM-01
 // (Phase 84) converges them; these tests are the net it refactors against.
-import { intensityColor, mergedCellColor } from './availabilityColor';
+import { intensityColor, mergedCellColor, preferenceColor } from './availabilityColor';
 
 describe('availabilityColor — intensityColor (yellow→orange→red intensity)', () => {
   // maxPossible = totalMembers * 1.5 = 7.5; percentage = (count + pref*0.5)/7.5 * 100
@@ -78,5 +78,31 @@ describe('availabilityColor — mergedCellColor (green availability gradient)', 
   it('maps ratio >0.8 to green-500', () => {
     // 5/5 = 1.0
     expect(mergedCellColor(5, 5)).toBe('bg-green-500 text-white');
+  });
+});
+
+describe('availabilityColor — preferenceColor (write-cell preference enum, D-05)', () => {
+  // Byte-identical to the UI-SPEC locked write-grid class table. Lifted VERBATIM
+  // from TimeSlotCell.js getBackgroundColor (lines 23-29); the disabled branch
+  // returns the FULL UI-SPEC string so opacity/cursor live in one place.
+  it("maps 'preferred' to green-300", () => {
+    expect(preferenceColor('preferred')).toBe('bg-green-300');
+  });
+
+  it("maps 'if-need-be' to yellow-300", () => {
+    expect(preferenceColor('if-need-be')).toBe('bg-yellow-300');
+  });
+
+  it('maps null (unselected) to the elevated/hover empty-cell classes', () => {
+    expect(preferenceColor(null)).toBe('bg-surface-elevated hover:bg-surface-card-hover');
+  });
+
+  it('returns the full disabled string (opacity + cursor) regardless of preference', () => {
+    expect(preferenceColor('preferred', true)).toBe(
+      'bg-surface-elevated opacity-50 cursor-not-allowed'
+    );
+    expect(preferenceColor(null, true)).toBe(
+      'bg-surface-elevated opacity-50 cursor-not-allowed'
+    );
   });
 });
