@@ -18,8 +18,14 @@ vi.mock('@auth0/nextjs-auth0/client', () => ({ useUser: () => ({ user: null }) }
 vi.mock('./GameComboInput', () => ({ default: () => <div data-testid="game-combo" /> }));
 vi.mock('./MemberSelector', () => ({ default: () => <div data-testid="member-selector" /> }));
 
-import ScheduleForm from './ScheduleForm';
+import type { ComponentType } from 'react';
+import ScheduleFormDefault from './ScheduleForm';
 import { logger } from '@/lib/logger';
+
+// ScheduleForm is a JS component; its inferred prop type marks every prop
+// required. Cast to a permissive type so the test can render with only the
+// props it exercises.
+const ScheduleForm = ScheduleFormDefault as unknown as ComponentType<{ groupId?: string }>;
 
 afterEach(cleanup);
 

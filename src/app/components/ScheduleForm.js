@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { promptSettingsAPI } from '../../lib/api';
 import { DAYS_OF_WEEK, TOKEN_EXPIRY_OPTIONS, DEADLINE_DAY_OPTIONS, scheduleSchema } from '../../lib/scheduleFormSchema';
+import { useAppForm } from '../../lib/useAppForm';
+import { FormField } from './form/FormField';
 import MemberSelector from './MemberSelector';
 import GameComboInput from './GameComboInput';
 
@@ -51,18 +51,17 @@ export default function ScheduleForm({
     return Math.min(168, Math.max(24, Math.ceil(hours / 24) * 24));
   };
 
-  // Initialize form with React Hook Form + Zod
+  // Initialize form with the shared rhf + Zod primitive (PRIM-06 / D-10)
   const {
     register,
-    handleSubmit,
+    handleAppSubmit,
     control,
     watch,
     setValue,
     setError,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm({
-    resolver: zodResolver(scheduleSchema),
+  } = useAppForm(scheduleSchema, {
     defaultValues: existingSchedule
       ? {
           ...existingSchedule,
@@ -144,9 +143,11 @@ export default function ScheduleForm({
       }
       onSuccess?.();
     } catch (error) {
-      console.error('Error saving schedule:', error);
+      // Set inline submit-error UI, then RE-THROW so handleAppSubmit's catch
+      // logs it to logger.error -> Sentry (the reachable Sentry path, PRIM-06).
       setServerError(error.message || 'Failed to save schedule. Please try again.');
       setError('root', { message: error.message });
+      throw error;
     }
   };
 
@@ -184,12 +185,9 @@ export default function ScheduleForm({
           )}
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form onSubmit={handleAppSubmit(onSubmit)}>
           {/* Day of Week */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-content-secondary mb-1">
-              Day of Week
-            </label>
+          <FormField label="Day of Week" error={errors.schedule_day_of_week?.message} className="mb-4">
             <select
               {...register('schedule_day_of_week', { valueAsNumber: true })}
               className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
@@ -200,50 +198,47 @@ export default function ScheduleForm({
                 </option>
               ))}
             </select>
-            {errors.schedule_day_of_week && (
-              <p className="text-status-error text-sm mt-1">{errors.schedule_day_of_week.message}</p>
-            )}
-          </div>
+          </FormField>
 
           {/* Time */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-content-secondary mb-1">
-              Time
-            </label>
+          <FormField label="Time" error={errors.schedule_time?.message} className="mb-4">
             <input
               type="time"
               {...register('schedule_time')}
               className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
             />
-            {errors.schedule_time && (
-              <p className="text-status-error text-sm mt-1">{errors.schedule_time.message}</p>
-            )}
-          </div>
+          </FormField>
 
           {/* Timezone */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-content-secondary mb-1">
-              Timezone
-            </label>
+          <FormField
+            label="Timezone"
+            error={errors.schedule_timezone?.message}
+            className="mb-4"
+            hint={
+              <p className="text-xs text-content-muted mt-1">
+                IANA timezone format (detected: {userTimezone})
+              </p>
+            }
+          >
             <input
               type="text"
               {...register('schedule_timezone')}
               placeholder="America/New_York"
               className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
             />
-            <p className="text-xs text-content-muted mt-1">
-              IANA timezone format (detected: {userTimezone})
-            </p>
-            {errors.schedule_timezone && (
-              <p className="text-status-error text-sm mt-1">{errors.schedule_timezone.message}</p>
-            )}
-          </div>
+          </FormField>
 
           {/* Response Deadline */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-content-secondary mb-1">
-              Response Deadline
-            </label>
+          <FormField
+            label="Response Deadline"
+            error={errors.default_deadline_hours?.message}
+            className="mb-4"
+            hint={
+              <p className="text-xs text-content-muted mt-1">
+                How long members have to respond (1-7 days)
+              </p>
+            }
+          >
             <select
               {...register('default_deadline_hours', { valueAsNumber: true })}
               className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
@@ -254,19 +249,19 @@ export default function ScheduleForm({
                 </option>
               ))}
             </select>
-            <p className="text-xs text-content-muted mt-1">
-              How long members have to respond (1-7 days)
-            </p>
-            {errors.default_deadline_hours && (
-              <p className="text-status-error text-sm mt-1">{errors.default_deadline_hours.message}</p>
-            )}
-          </div>
+          </FormField>
 
           {/* Token Expiry */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-content-secondary mb-1">
-              Magic Link Expiry
-            </label>
+          <FormField
+            label="Magic Link Expiry"
+            error={errors.default_token_expiry_hours?.message}
+            className="mb-4"
+            hint={
+              <p className="text-xs text-content-muted mt-1">
+                How long the one-click response link remains valid
+              </p>
+            }
+          >
             <select
               {...register('default_token_expiry_hours', { valueAsNumber: true })}
               className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
@@ -277,13 +272,7 @@ export default function ScheduleForm({
                 </option>
               ))}
             </select>
-            <p className="text-xs text-content-muted mt-1">
-              How long the one-click response link remains valid
-            </p>
-            {errors.default_token_expiry_hours && (
-              <p className="text-status-error text-sm mt-1">{errors.default_token_expiry_hours.message}</p>
-            )}
-          </div>
+          </FormField>
 
           {/* Game Selection */}
           <div className="mb-4">
@@ -309,10 +298,16 @@ export default function ScheduleForm({
           </div>
 
           {/* Min Participants */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-content-secondary mb-1">
-              Minimum Participants (optional)
-            </label>
+          <FormField
+            label="Minimum Participants (optional)"
+            error={errors.min_participants?.message}
+            className="mb-4"
+            hint={
+              <p className="text-xs text-content-muted mt-1">
+                Override the game&apos;s minimum player count for scheduling
+              </p>
+            }
+          >
             <input
               type="number"
               {...register('min_participants', {
@@ -323,19 +318,19 @@ export default function ScheduleForm({
               placeholder="Leave blank to use game minimum"
               className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
             />
-            <p className="text-xs text-content-muted mt-1">
-              Override the game&apos;s minimum player count for scheduling
-            </p>
-            {errors.min_participants && (
-              <p className="text-status-error text-sm mt-1">{errors.min_participants.message}</p>
-            )}
-          </div>
+          </FormField>
 
           {/* Template Name */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-content-secondary mb-1">
-              Template Name
-            </label>
+          <FormField
+            label="Template Name"
+            error={errors.template_name?.message}
+            className="mb-4"
+            hint={
+              <p className="text-xs text-content-muted mt-1">
+                Name for this schedule template. Leave blank to auto-generate from game and day/time.
+              </p>
+            }
+          >
             <input
               type="text"
               {...register('template_name')}
@@ -343,13 +338,7 @@ export default function ScheduleForm({
               placeholder="Auto-generated from settings"
               className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
             />
-            <p className="text-xs text-content-muted mt-1">
-              Name for this schedule template. Leave blank to auto-generate from game and day/time.
-            </p>
-            {errors.template_name && (
-              <p className="text-status-error text-sm mt-1">{errors.template_name.message}</p>
-            )}
-          </div>
+          </FormField>
 
           {/* Member Selection */}
           {members.length > 0 && (
@@ -371,10 +360,10 @@ export default function ScheduleForm({
             />
           )}
 
-          {/* Server Error */}
+          {/* Server Error (inline submit-error UI) */}
           {serverError && (
             <div className="mb-4 p-3 bg-status-error/10 border border-status-error/30 rounded-btn">
-              <p className="text-status-error text-sm">{serverError}</p>
+              <p role="alert" className="text-status-error text-sm">{serverError}</p>
             </div>
           )}
 

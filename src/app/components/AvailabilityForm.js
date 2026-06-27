@@ -1,12 +1,16 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { Controller } from 'react-hook-form';
 import { z } from 'zod';
 import { nextMonday, format, parseISO } from 'date-fns';
 import AvailabilityGrid from './AvailabilityGrid';
-import { availabilityFormAPI } from '@/lib/api';
+// Relative (not `@/`) so this `.js` component resolves under vitest:
+// vite-tsconfig-paths only maps `@/` for files in the TS project (tsconfig
+// `include` is .ts/.tsx only), so `@/` aliases don't resolve from `.js`
+// importers in tests. Matches the sibling ScheduleForm's import style.
+import { availabilityFormAPI } from '../../lib/api';
+import { useAppForm } from '../../lib/useAppForm';
 
 /**
  * Zod schema with cross-field validation
@@ -46,7 +50,6 @@ export default function AvailabilityForm({
   // Thu..Wed. Null (old backend deployments) falls back to nextMonday.
   windowStart = null,
 }) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
   // Phase 81 Plan 02 — shared pre-fill state (Plan 03 reuses both):
@@ -76,12 +79,11 @@ export default function AvailabilityForm({
 
   const {
     control,
-    handleSubmit,
+    handleAppSubmit,
     watch,
     setValue,
-    formState: { errors },
-  } = useForm({
-    resolver: zodResolver(schema),
+    formState: { errors, isSubmitting },
+  } = useAppForm(schema, {
     defaultValues: {
       time_slots: defaultTimeSlots,
       is_unavailable: defaultUnavailable,
@@ -97,7 +99,6 @@ export default function AvailabilityForm({
   }, [isUnavailable, setValue]);
 
   const onSubmit = async (data) => {
-    setIsSubmitting(true);
     setSubmitError(null);
 
     try {
@@ -128,10 +129,10 @@ export default function AvailabilityForm({
         response,
       });
     } catch (error) {
-      console.error('Submission error:', error);
+      // Set inline submit-error UI, then RE-THROW so handleAppSubmit's catch
+      // logs it to logger.error -> Sentry (the reachable Sentry path, PRIM-06).
       setSubmitError(error.message || 'Failed to submit availability. Please try again.');
-    } finally {
-      setIsSubmitting(false);
+      throw error;
     }
   };
 
@@ -210,7 +211,7 @@ export default function AvailabilityForm({
   }, [magicToken, weekStartIsoDate, timezone, watch, setValue]);
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={handleAppSubmit(onSubmit)} className="space-y-6">
       {/* Header Section */}
       <div className="border-b border-line pb-4">
         <div className="flex items-center gap-2 text-sm text-content-secondary">
@@ -333,10 +334,10 @@ export default function AvailabilityForm({
         </div>
       )}
 
-      {/* Submission Error Display */}
+      {/* Submission Error Display (inline submit-error UI) */}
       {submitError && (
         <div className="bg-status-error/10 border border-status-error/30 rounded-btn p-3">
-          <p className="text-sm text-status-error">
+          <p role="alert" className="text-sm text-status-error">
             {submitError}
           </p>
         </div>

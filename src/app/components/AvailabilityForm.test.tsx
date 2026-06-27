@@ -17,8 +17,18 @@ vi.mock('@/lib/api', () => ({
 }));
 vi.mock('./AvailabilityGrid', () => ({ default: () => <div data-testid="grid" /> }));
 
-import AvailabilityForm from './AvailabilityForm';
+import type { ComponentType } from 'react';
+import AvailabilityFormDefault from './AvailabilityForm';
 import { logger } from '@/lib/logger';
+
+// AvailabilityForm is a JS component; its inferred prop type marks every prop
+// required. Cast to a permissive type so the test can render with only the
+// props it exercises.
+const AvailabilityForm = AvailabilityFormDefault as unknown as ComponentType<{
+  magicToken?: string;
+  userName?: string;
+  promptId?: string;
+}>;
 
 afterEach(cleanup);
 
