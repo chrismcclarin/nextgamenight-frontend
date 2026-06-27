@@ -1,11 +1,11 @@
 'use client';
 import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { DialogTitle } from '../../components/ui/dialog';
+import { Modal } from './Modal';
 
-function QRCodeModal({ isOpen, onClose, url, title, onReset, showReset = false }) {
+function QRCodeModal({ isOpen, onClose, url, title, onReset = null, showReset = false }) {
   const [copied, setCopied] = useState(false);
-
-  if (!isOpen) return null;
 
   const handleCopyLink = async () => {
     try {
@@ -17,9 +17,14 @@ function QRCodeModal({ isOpen, onClose, url, title, onReset, showReset = false }
     }
   };
 
+  // size="sm" maps to the legacy `max-w-sm` width. This modal is freeform (no
+  // header/footer chrome): the title + QR + actions live in <Modal.Body>. The
+  // centered title is rendered as the DialogTitle so Radix auto-wires
+  // aria-labelledby (the modal's accessible name) while keeping the original
+  // centered visual. Esc / focus-trap / aria-modal come from <Modal>.
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content max-w-sm w-full mx-4 p-6 relative" onClick={(e) => e.stopPropagation()}>
+    <Modal open={isOpen} onClose={onClose} size="sm">
+      <Modal.Body className="relative">
         <button
           onClick={onClose}
           className="absolute top-3 right-3 text-content-muted hover:text-content-primary text-2xl"
@@ -28,11 +33,19 @@ function QRCodeModal({ isOpen, onClose, url, title, onReset, showReset = false }
           &times;
         </button>
 
-        <h2 className="text-xl font-bold text-content-primary mb-4 text-center">{title}</h2>
+        <DialogTitle className="text-xl font-bold text-content-primary mb-4 text-center">
+          {title}
+        </DialogTitle>
 
         {/* QR Code */}
         <div className="flex justify-center mb-4">
-          <QRCodeSVG value={url || ''} size={200} level="M" marginSize={2} />
+          <QRCodeSVG
+            value={url || ''}
+            size={200}
+            level="M"
+            marginSize={2}
+            title="QR code for the invite link"
+          />
         </div>
 
         {/* Copy Invite Link Button */}
@@ -60,8 +73,8 @@ function QRCodeModal({ isOpen, onClose, url, title, onReset, showReset = false }
         >
           Close
         </button>
-      </div>
-    </div>
+      </Modal.Body>
+    </Modal>
   );
 }
 

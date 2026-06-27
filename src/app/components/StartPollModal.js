@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { apiFetch } from '../../lib/api';
+import { Modal } from './Modal';
 
 /**
  * StartPollModal — Phase 71.2 (POLL-01 / D-UI-01)
@@ -100,8 +101,6 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
     return [];
   }, [group]);
 
-  if (!isOpen) return null;
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -159,28 +158,14 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
     }
   };
 
+  // dismissable={false} defeats overlay/outside-click dismissal so an accidental
+  // click can't discard the in-progress form (D-09). Esc + the explicit Close /
+  // Cancel still close. The submit button lives in <Modal.Footer> (outside the
+  // <form>) but stays wired to it via the `form="start-poll-form"` attribute.
   return (
-    <div
-      className="modal-overlay"
-      style={{ zIndex: 100 }}
-      onClick={onClose}
-    >
-      <div
-        className="modal-content p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-header mb-4 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-content-primary">Start a check-in</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-content-muted hover:text-content-primary text-2xl leading-none"
-            aria-label="Close"
-          >
-            &times;
-          </button>
-        </div>
-
+    <Modal open={isOpen} onClose={onClose} dismissable={false}>
+      <Modal.Header>Start a check-in</Modal.Header>
+      <Modal.Body>
         <p className="text-sm text-content-secondary mb-4">
           Send a check-in to your group asking when they&apos;re free — they tap, paint their availability, you find the night.
         </p>
@@ -191,7 +176,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form id="start-poll-form" onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-content-primary mb-1" htmlFor="poll-deadline">
               Deadline
@@ -210,10 +195,11 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-content-primary mb-1">
+            <label className="block text-sm font-medium text-content-primary mb-1" htmlFor="poll-week">
               Week
             </label>
             <input
+              id="poll-week"
               type="text"
               value={weekDisplay ? `Week of ${weekDisplay} (${weekIdentifier})` : ''}
               readOnly
@@ -262,26 +248,25 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
               {customMessage.length}/280 characters
             </p>
           </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={submitting}
-              className="btn btn-secondary"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="btn btn-primary"
-            >
-              {submitting ? 'Starting...' : 'Start poll'}
-            </button>
-          </div>
         </form>
-      </div>
-    </div>
+      </Modal.Body>
+      <Modal.Footer>
+        <Modal.Action
+          variant="secondary"
+          onClick={onClose}
+          disabled={submitting}
+        >
+          Cancel
+        </Modal.Action>
+        <Modal.Action
+          variant="primary"
+          type="submit"
+          form="start-poll-form"
+          disabled={submitting}
+        >
+          {submitting ? 'Starting...' : 'Start poll'}
+        </Modal.Action>
+      </Modal.Footer>
+    </Modal>
   );
 }

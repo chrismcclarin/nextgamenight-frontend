@@ -37,7 +37,7 @@ describe('QRCodeModal (migrated onto <Modal size="sm">)', () => {
     expect(await axe(dialog)).toHaveNoViolations();
   });
 
-  it('preserves the accessible Close affordance', () => {
+  it('preserves both Close affordances (corner X + footer button)', () => {
     render(
       <QRCodeModal
         isOpen
@@ -46,8 +46,10 @@ describe('QRCodeModal (migrated onto <Modal size="sm">)', () => {
         title="Invite to group"
       />
     );
+    // The freeform QR modal keeps its original two close affordances: the
+    // top-right X (aria-label="Close") and the full-width "Close" button.
     expect(
-      screen.getByRole('button', { name: /close/i })
-    ).toBeInTheDocument();
+      screen.getAllByRole('button', { name: /close/i })
+    ).toHaveLength(2);
   });
 });
