@@ -1,7 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { promptAPI } from '../../lib/api';
+import { promptKeys } from '../../lib/queryKeys/promptKeys';
+import {
+  openPromptsSchema,
+  softFailPromptQueryFn,
+  EMPTY_OPEN_PROMPTS,
+} from '../../lib/schemas/prompts';
 import KebabMenu from './KebabMenu';
 import StartPollModal from './StartPollModal';
 
@@ -23,29 +30,32 @@ import StartPollModal from './StartPollModal';
  *   informational; the can_close gate is server-derived in the response).
  */
 export default function OpenPollsList({ groupId, group, userRole, currentUserDbId }) {
-  const [prompts, setPrompts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [showStartPoll, setShowStartPoll] = useState(false);
+  const queryClient = useQueryClient();
 
-  const loadPrompts = useCallback(async () => {
-    if (!groupId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await promptAPI.getOpenPrompts(groupId);
-      setPrompts(Array.isArray(data?.prompts) ? data.prompts : []);
-    } catch (err) {
-      setError(err?.message || 'Failed to load polls.');
-      setPrompts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [groupId]);
+  // Phase 84 (PRIM-07 / D-12): open prompts via useQuery on the shared promptKeys
+  // factory so this fetch dedups with the parent Section's badge-count query
+  // (F-826: 2x → 1x). Role gate mirrors the parent's pending exclusion (the
+  // backend GET /prompts/open requires active membership) and is Boolean-wrapped
+  // so `enabled` is never undefined.
+  const { data, isPending } = useQuery({
+    queryKey: promptKeys.openPolls(groupId),
+    queryFn: softFailPromptQueryFn(
+      openPromptsSchema,
+      `/groups/${groupId}/prompts/open`,
+      promptKeys.openPolls(groupId),
+      EMPTY_OPEN_PROMPTS,
+    ),
+    enabled: Boolean(groupId) && Boolean(userRole) && userRole !== 'pending',
+  });
 
-  useEffect(() => {
-    loadPrompts();
-  }, [loadPrompts]);
+  const loading = isPending;
+  const prompts = data?.prompts || [];
+
+  // Post-write cache invalidation replaces the old loadPrompts() refetch — keeps
+  // the open-polls list fresh after a direct-API write (A1/A4).
+  const invalidateOpenPolls = () =>
+    queryClient.invalidateQueries({ queryKey: promptKeys.openPolls(groupId) });
 
   // Gate alignment: parent PromptScheduleSection uses `!userRole || userRole
   // === 'pending' → return null`. We mirror the same negative check so any
@@ -56,9 +66,9 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
   const handleClose = async (promptId) => {
     try {
       await promptAPI.closePrompt(promptId);
-      // Optimistic refresh — backend has already flipped status to 'closed'
-      // so the GET /prompts/open response will exclude it on next fetch.
-      await loadPrompts();
+      // Backend has already flipped status to 'closed'; invalidate so the
+      // GET /prompts/open query refetches and drops it from the list.
+      await invalidateOpenPolls();
     } catch (err) {
       const msg = err?.message || 'Unknown error';
       // Match the existing PromptScheduleManager pattern (alert on close-action
@@ -78,12 +88,6 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
         >
           + Start a check-in
         </button>
-      )}
-
-      {error && (
-        <div className="mb-3 p-3 bg-status-error/10 border border-status-error/30 rounded-btn">
-          <p className="text-status-error text-sm">{error}</p>
-        </div>
       )}
 
       {loading ? (
@@ -113,7 +117,7 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
         onClose={() => setShowStartPoll(false)}
         onSuccess={() => {
           setShowStartPoll(false);
-          loadPrompts();
+          invalidateOpenPolls();
         }}
       />
     </div>

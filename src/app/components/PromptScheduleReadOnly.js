@@ -1,39 +1,42 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { promptSettingsAPI } from '../../lib/api';
+import { useQuery } from '@tanstack/react-query';
+import { promptKeys } from '../../lib/queryKeys/promptKeys';
+import {
+  promptSettingsSchema,
+  softFailPromptQueryFn,
+  EMPTY_PROMPT_SETTINGS,
+} from '../../lib/schemas/prompts';
 
 /**
  * PromptScheduleReadOnly - Read-only schedule summary for GroupSettings
  * Shows active schedule count, simple list, and link to manage on group page.
+ *
+ * Phase 84 (PRIM-07 / D-12): migrated to useQuery on the shared promptKeys
+ * factory so the settings fetch dedups across the trio. This is MEMBER-visible
+ * (mounted at GroupSettings.js:310) — the backend GET prompt-settings requires
+ * ACTIVE MEMBERSHIP, NOT admin — so the query gates only on `Boolean(groupId)`.
+ * An isAdmin gate here would blank the summary for every non-admin member.
  *
  * @param {Object} props
  * @param {string} props.groupId - Group UUID
  * @param {string} props.groupPageUrl - URL to the group page for "Manage on group page" link
  */
 export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
-  const [schedules, setSchedules] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { data, isPending } = useQuery({
+    queryKey: promptKeys.settings(groupId),
+    queryFn: softFailPromptQueryFn(
+      promptSettingsSchema,
+      `/groups/${groupId}/prompt-settings`,
+      promptKeys.settings(groupId),
+      EMPTY_PROMPT_SETTINGS,
+    ),
+    enabled: Boolean(groupId),
+  });
 
-  useEffect(() => {
-    const fetchSchedules = async () => {
-      try {
-        setLoading(true);
-        const settings = await promptSettingsAPI.getGroupPromptSettings(groupId);
-        setSchedules(settings.schedules || []);
-      } catch (err) {
-        console.error('Error loading schedules:', err);
-        setError(err.message || 'Failed to load schedules.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (groupId) {
-      fetchSchedules();
-    }
-  }, [groupId]);
+  // Soft-fail queryFn never throws; on benign drift it returns the empty shape.
+  const loading = isPending;
+  const schedules = data?.schedules || [];
 
   const activeCount = schedules.filter(s => s.is_active).length;
 
@@ -47,15 +50,11 @@ export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
         <p className="text-sm text-content-muted">Loading schedules...</p>
       )}
 
-      {error && (
-        <p className="text-sm text-status-error">{error}</p>
-      )}
-
-      {!loading && !error && schedules.length === 0 && (
+      {!loading && schedules.length === 0 && (
         <p className="text-sm text-content-muted">No schedules configured.</p>
       )}
 
-      {!loading && !error && schedules.length > 0 && (
+      {!loading && schedules.length > 0 && (
         <ul className="space-y-2 mb-4">
           {schedules.map(s => (
             <li key={s.id} className="flex items-center gap-2 text-sm text-content-secondary">
