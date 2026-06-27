@@ -12,7 +12,7 @@ import BringGamePicker from '../components/BringGamePicker';
 import BringSummary from '../components/BringSummary';
 import GameSuggestionCard from '../components/GameSuggestionCard';
 import QRCodeModal from '../components/QRCodeModal';
-import { formatDate, formatDateTime, formatDuration, formatTime } from '../../lib/dateUtils';
+import { formatDate, formatDateTime, formatDuration, formatTime, formatLongDate } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
 import TimezoneNudgeBanner from '../components/TimezoneNudgeBanner';
 import SafeImage from '../components/SafeImage';
@@ -940,17 +940,12 @@ export default function GameDetailPage() {
                         )}
                     </div>
                     <div className="text-content-secondary space-y-1">
-                        {/* Phase 62-02: render event start in viewer's profile TZ
-                            with TZ abbreviation. Was: toLocaleDateString/Time
-                            without timezone, which silently used browser TZ. */}
+                        {/* Phase 84 PRIM-05: render event start in the viewer's
+                            profile TZ via the consolidated datetime layer.
+                            formatLongDate is golden-pinned byte-for-byte against
+                            the prior bespoke long-form header call. */}
                         <p>
-                            {new Date(singleEvent.start_date).toLocaleDateString('en-US', {
-                                weekday: 'long',
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric',
-                                ...(timezone ? { timeZone: timezone } : {}),
-                            })}
+                            {formatLongDate(singleEvent.start_date, timezone)}
                             {' at '}
                             {formatTime(singleEvent.start_date, timezone)}
                         </p>

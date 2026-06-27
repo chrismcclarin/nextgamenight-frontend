@@ -21,6 +21,53 @@
 // the caller (see TimezoneProvider).
 
 import { formatInTimeZone, zonedTimeToUtc } from 'date-fns-tz';
+import * as Sentry from '@sentry/nextjs';
+
+// ============================================================================
+// Browser timezone detection (moved verbatim from TimezoneProvider.js)
+//
+// This is the single home for browser IANA-TZ detection + validation. Only the
+// caller (TimezoneProvider) decides policy (profile TZ canonical, browser TZ
+// fallback) — this helper just reports what the browser claims, or null.
+// It NEVER mutates profile state. Safe to call client-side only (it reads the
+// browser's resolved timezone); on the server `Intl.DateTimeFormat()` resolves
+// to the host TZ, which callers should not rely on.
+// ============================================================================
+
+/**
+ * Detects the browser's IANA timezone and validates it.
+ * Returns the detected timezone string, or null if invalid/unavailable.
+ * Emits a Sentry breadcrumb (not an error) on detection failure so production
+ * can observe how often the browser API returns empty or throws.
+ */
+export function detectBrowserTimezone(): string | null {
+  try {
+    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!detected) {
+      // Phase 78 / TZ-01: production signal that the browser API returned empty.
+      Sentry.addBreadcrumb({
+        category: 'timezone.detection-failure',
+        message: 'Intl.DateTimeFormat returned empty timeZone',
+        level: 'info',
+        data: { detection_failure: true, reason: 'empty' },
+      });
+      return null;
+    }
+    // Validate by attempting to create a formatter with it
+    Intl.DateTimeFormat(undefined, { timeZone: detected });
+    return detected;
+  } catch (err) {
+    // Phase 78 / TZ-01: production signal that the browser threw during
+    // detection or validation (rare — typically a polyfill / sandbox issue).
+    Sentry.addBreadcrumb({
+      category: 'timezone.detection-failure',
+      message: 'Intl.DateTimeFormat threw during detection or validation',
+      level: 'info',
+      data: { detection_failure: true, reason: (err as Error)?.message || 'unknown' },
+    });
+    return null;
+  }
+}
 
 // ============================================================================
 // UTC <-> wall-clock TZ math (moved verbatim from tzUtils.ts — DO NOT re-derive)

@@ -9,7 +9,7 @@ import CalendarMonthView from './CalendarMonthView';
 import CalendarListView from './CalendarListView';
 import EventDayModal from './EventDayModal';
 import { useTimezone } from './TimezoneProvider';
-import { formatWithTzAbbr } from '../../lib/tzUtils';
+import { formatWithTzAbbr } from '../../lib/datetime';
 
 export default function EventCalendar({
   refreshKey = 0,

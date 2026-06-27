@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { getContrastColor } from '../../lib/colorUtils';
-import { formatTime } from '../../lib/dateUtils';
+import { formatTime, formatLongDate } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
 import QRCodeModal from './QRCodeModal';
@@ -50,12 +50,7 @@ export default function EventDayModal({
         {/* Modal Header */}
         <div className="modal-header">
           <h3 className="text-xl font-bold text-content-primary">
-            {selectedDay.date.toLocaleDateString('en-US', {
-              weekday: 'long',
-              month: 'long',
-              day: 'numeric',
-              year: 'numeric'
-            })}
+            {formatLongDate(selectedDay.date)}
           </h3>
           <button
             onClick={onClose}

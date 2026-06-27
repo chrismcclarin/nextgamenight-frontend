@@ -1,9 +1,8 @@
 'use client';
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import { getContrastColor } from '../../lib/colorUtils';
-import { formatTime } from '../../lib/dateUtils';
+import { formatTime, formatWithTzAbbr } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
-import { formatWithTzAbbr } from '../../lib/tzUtils';
 import SafeImage from './SafeImage';
 import RsvpCount from './RsvpCount';
 
@@ -98,22 +97,19 @@ export default function CalendarListView({
   // Today's local-calendar date key (in the user's effective TZ).
   const todayKey = useMemo(() => dateKey(new Date()), [timezone]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Long, friendly date header — "Saturday, May 10".
+  // Long, friendly date header — "Saturday, May 10". Rendered in the viewer's
+  // timezone via the consolidated datetime layer; formatWithTzAbbr falls back to
+  // UTC internally when timezone is unset (the provider already defaults it to
+  // browser/UTC, so the bare-UTC branch is defensive only). The catch handles a
+  // malformed IANA string by rendering in UTC rather than crashing.
   const formatDayHeader = (utc) => {
-    if (timezone) {
-      try {
-        return formatWithTzAbbr(utc, timezone, 'EEEE, MMMM d');
-      } catch {
-        // fall through
-      }
-    }
     const d = new Date(utc);
     if (isNaN(d.getTime())) return '';
-    return d.toLocaleDateString('en-US', {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-    });
+    try {
+      return formatWithTzAbbr(d, timezone, 'EEEE, MMMM d');
+    } catch {
+      return formatWithTzAbbr(d, null, 'EEEE, MMMM d');
+    }
   };
 
   // Sort events chronologically and split into past vs today/future buckets.
@@ -240,17 +236,15 @@ export default function CalendarListView({
     return () => observer.disconnect();
   }, [allMorePastLoaded, pastEvents.length]);
 
-  // Today delineator label — TZ-aware, short. e.g. "Today, May 4".
+  // Today delineator label — TZ-aware, short. e.g. "Today, May 4". Rendered via
+  // the consolidated datetime layer (UTC fallback handled internally / in catch).
   const todayLabel = useMemo(() => {
     const now = new Date();
-    if (timezone) {
-      try {
-        return `Today, ${formatWithTzAbbr(now, timezone, 'MMM d')}`;
-      } catch {
-        // fall through
-      }
+    try {
+      return `Today, ${formatWithTzAbbr(now, timezone, 'MMM d')}`;
+    } catch {
+      return `Today, ${formatWithTzAbbr(now, null, 'MMM d')}`;
     }
-    return `Today, ${now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
     // todayKey included so the label re-renders if the calendar day rolls
     // over while the component is mounted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
