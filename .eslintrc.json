@@ -14,6 +14,12 @@
   },
   "overrides": [
     {
+      "files": ["src/lib/datetime.ts", "src/lib/datetime.test.ts"],
+      "rules": {
+        "no-restricted-syntax": "off"
+      }
+    },
+    {
       "files": [
         "src/app/api/auth/google-connect/route.js",
         "src/app/api/auth/token/route.js",
