@@ -39,9 +39,13 @@ describe('useAppForm', () => {
 
   it('invalid values surface formState.errors and never reach onValid', async () => {
     const onValid = vi.fn();
-    const { result } = renderHook(() =>
-      useAppForm(schema, { defaultValues: { name: '' } })
-    );
+    const { result } = renderHook(() => {
+      const form = useAppForm(schema, { defaultValues: { name: '' } });
+      // rhf's formState is a lazily-subscribed proxy: read `errors` during render
+      // so the hook re-renders (and result.current updates) when validation fails.
+      void form.formState.errors;
+      return form;
+    });
     await act(async () => {
       await result.current.handleAppSubmit(onValid)();
     });
