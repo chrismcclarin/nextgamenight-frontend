@@ -15,3 +15,21 @@ import 'vitest-axe/extend-expect';
 import * as axeMatchers from 'vitest-axe/matchers';
 
 expect.extend(axeMatchers);
+
+// jsdom does not implement window.matchMedia. Several heatmap components
+// (MergedHeatmapGrid/cell `(hover: none)` tone detection, HeatmapGrid swipe
+// gating) call it on mount, so provide a minimal, inert stub. Guarded so a
+// real implementation (if ever added) is not clobbered.
+if (typeof window !== 'undefined' && !window.matchMedia) {
+  window.matchMedia = (query: string) =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }) as unknown as MediaQueryList;
+}
