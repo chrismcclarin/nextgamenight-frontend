@@ -52,3 +52,29 @@ export function mergedCellColor(availableCount: number, totalMembers: number): s
   if (ratio <= 0.8) return 'bg-green-400 text-green-900';
   return 'bg-green-500 text-white';
 }
+
+/**
+ * Get the write-cell background class for an availability preference enum (D-05).
+ * Lifted VERBATIM from TimeSlotCell.js `getBackgroundColor` (the `preferred`,
+ * `if-need-be`, and null branches) so the single source of truth for write-grid
+ * colors lives here. The disabled branch returns the FULL UI-SPEC string
+ * (`bg-surface-elevated opacity-50 cursor-not-allowed`) — TimeSlotCell historically
+ * applied the opacity/cursor classes separately in element styling; consolidating
+ * them here means the write cell consumes one class string (WriteCell wiring in 84-05).
+ *
+ * Byte-identical output is pinned by tests — do NOT route these strings through
+ * `tailwind-merge`/`cn` (it would reorder/dedupe and break the pinned strings).
+ *
+ * @param preference - 'preferred' | 'if-need-be' | null (unselected)
+ * @param disabled - when true, returns the disabled string regardless of preference
+ * @returns Tailwind CSS background/state classes for the write cell
+ */
+export function preferenceColor(
+  preference: 'preferred' | 'if-need-be' | null,
+  disabled = false
+): string {
+  if (disabled) return 'bg-surface-elevated opacity-50 cursor-not-allowed';
+  if (preference === 'preferred') return 'bg-green-300';
+  if (preference === 'if-need-be') return 'bg-yellow-300';
+  return 'bg-surface-elevated hover:bg-surface-card-hover';
+}
