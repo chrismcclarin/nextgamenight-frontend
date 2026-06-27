@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { suggestionsAPI } from '../../lib/api';
 import GameSuggestionCard from './GameSuggestionCard';
+import { Modal } from './Modal';
 
 /**
  * BrowseMoreModal — In-app modal that replaces the legacy standalone
@@ -54,7 +55,7 @@ export default function BrowseMoreModal({
   open,
   onClose,
   groupId,
-  eventId,
+  eventId = null,
   defaultPlayerCount,
   onSelectGame,
 }) {
@@ -145,8 +146,6 @@ export default function BrowseMoreModal({
     return suggestions;
   }, [suggestions, sortDirection]);
 
-  if (!open) return null;
-
   const handleCardClick = (game) => {
     onSelectGame?.({ id: game.id, name: game.name });
     onClose?.();
@@ -183,28 +182,17 @@ export default function BrowseMoreModal({
 
   const decrementDisabled = (playerCount || 1) <= 1;
 
+  // size="lg" maps to the legacy max-w-4xl width. Modal.Body owns the scroll
+  // (p-0 so the toolbar can pin flush); the filter/sort toolbar is sticky top-0
+  // over the scrollable grid. Focus-trap / Esc / aria-modal come from <Modal>.
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal-content max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-header">
-          <h3 className="text-xl font-bold text-content-primary">Browse games</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="text-content-muted hover:text-content-primary text-2xl leading-none px-2"
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Filter / sort row — populated by Plan 67-02 */}
+    <Modal open={open} onClose={onClose} size="lg">
+      <Modal.Header>Browse games</Modal.Header>
+      <Modal.Body className="p-0">
+        {/* Filter / sort row — pinned over the scrolling grid */}
         <div
           data-testid="browse-more-controls"
-          className="px-4 pt-3 pb-3 border-b border-line"
+          className="sticky top-0 z-10 bg-card px-4 pt-3 pb-3 border-b border-line"
         >
           <div className="flex flex-wrap items-center gap-3">
             {/* Player-count stepper */}
@@ -324,7 +312,7 @@ export default function BrowseMoreModal({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="p-4">
           {loading ? (
             <p className="text-content-muted text-center py-12">Loading suggestions...</p>
           ) : error ? (
@@ -351,8 +339,8 @@ export default function BrowseMoreModal({
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </Modal.Body>
+    </Modal>
   );
 }
 
