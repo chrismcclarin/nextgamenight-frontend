@@ -22,6 +22,12 @@ vi.mock('@sentry/nextjs', () => ({
   captureException: vi.fn(),
 }));
 
+// The 2nd captureException arg is a wide Sentry union; in these tests we only
+// ever pass the `{ tags, extra }` object shape, so narrow it for assertions.
+type CaptureCtx = { tags?: Record<string, unknown>; extra?: Record<string, unknown> };
+const ctxOf = (callIndex = 0): CaptureCtx =>
+  vi.mocked(Sentry.captureException).mock.calls[callIndex][1] as CaptureCtx;
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -44,11 +50,10 @@ describe('GAP4 — QueryCache.onError → Sentry escalation (wired, via a live q
       .catch(() => {});
 
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);
-    const [, opts] = vi.mocked(Sentry.captureException).mock.calls[0];
-    expect(opts?.tags).toMatchObject({ entity: 'games', scope: 'list' });
-    // The full key must NEVER be serialized into the tag (PII guard, T-84-05).
-    expect(JSON.stringify(opts?.tags)).not.toContain('JSON.stringify');
-    expect(opts?.tags).not.toHaveProperty('queryKey');
+    const opts = ctxOf();
+    expect(opts.tags).toMatchObject({ entity: 'games', scope: 'list' });
+    // The full key must NEVER be serialized into a tag (PII guard, T-84-05).
+    expect(opts.tags).not.toHaveProperty('queryKey');
   });
 });
 
@@ -70,17 +75,18 @@ describe('GAP5 — ZodError PII-scrub (T-84-05)', () => {
     queryCacheOnError(leaky, { queryKey: ['games', 'list'] });
 
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);
-    const [errArg, opts] = vi.mocked(Sentry.captureException).mock.calls[0];
+    const errArg = vi.mocked(Sentry.captureException).mock.calls[0][0];
+    const opts = ctxOf();
 
     // A scrubbed sentinel Error is forwarded, NOT the raw ZodError.
     expect(errArg).toBeInstanceOf(Error);
     expect(errArg).not.toBeInstanceOf(ZodError);
 
     // Only {path, code} survives per issue.
-    expect(opts?.extra?.zodIssues).toEqual([{ path: ['games', 0, 'min_players'], code: 'invalid_type' }]);
+    expect(opts.extra?.zodIssues).toEqual([{ path: ['games', 0, 'min_players'], code: 'invalid_type' }]);
 
     // Entity/scope tags still present.
-    expect(opts?.tags).toMatchObject({ entity: 'games', scope: 'list' });
+    expect(opts.tags).toMatchObject({ entity: 'games', scope: 'list' });
 
     // The raw PII value must be ABSENT from EVERYTHING captured.
     expect(JSON.stringify(vi.mocked(Sentry.captureException).mock.calls[0])).not.toContain('SECRET_PII');
@@ -91,9 +97,9 @@ describe('GAP5 — ZodError PII-scrub (T-84-05)', () => {
     queryCacheOnError(apiErr, { queryKey: ['groups', 'detail'] });
 
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);
-    const [errArg, opts] = vi.mocked(Sentry.captureException).mock.calls[0];
+    const errArg = vi.mocked(Sentry.captureException).mock.calls[0][0];
     expect(errArg).toBe(apiErr);
-    expect(opts?.tags).toMatchObject({ entity: 'groups', scope: 'detail' });
+    expect(ctxOf().tags).toMatchObject({ entity: 'groups', scope: 'detail' });
   });
 });
 
