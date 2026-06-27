@@ -21,14 +21,20 @@ import HeatmapGrid from './HeatmapGrid';
 
 afterEach(cleanup);
 
+// HeatmapGrid is a checkJs .js component whose inferred props type marks the
+// no-default fields required; cast to keep the test focused on behavior.
+const Grid = HeatmapGrid as unknown as (props: Record<string, unknown>) => React.JSX.Element;
+const renderGrid = () =>
+  render(<Grid suggestions={[]} totalMembers={4} weekStartDate={new Date('2026-06-29')} />);
+
 describe('HeatmapGrid — converged on ReadCell with container-owned roving focus', () => {
   it('renders role="gridcell" cells (7 cols x 12 rows)', () => {
-    render(<HeatmapGrid suggestions={[]} totalMembers={4} weekStartDate={new Date('2026-06-29')} />);
+    renderGrid();
     expect(screen.getAllByRole('gridcell')).toHaveLength(7 * 12);
   });
 
   it('arrow keydown moves document.activeElement to the adjacent cell (cellRefs focus)', () => {
-    render(<HeatmapGrid suggestions={[]} totalMembers={4} weekStartDate={new Date('2026-06-29')} />);
+    renderGrid();
     const cells = screen.getAllByRole('gridcell');
     cells[0].focus();
     expect(document.activeElement).toBe(cells[0]);
