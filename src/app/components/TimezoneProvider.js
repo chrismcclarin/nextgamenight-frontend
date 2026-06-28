@@ -20,8 +20,11 @@
 
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
-import * as Sentry from '@sentry/nextjs';
 import { usersAPI } from '../../lib/api';
+// Phase 84 PRIM-05: browser-TZ detection lives in the consolidated datetime
+// layer. The provider owns the policy (profile TZ canonical, browser fallback);
+// datetime.ts owns the detection mechanics.
+import { detectBrowserTimezone } from '../../lib/datetime';
 
 const TimezoneContext = createContext({
   timezone: null,
@@ -29,39 +32,6 @@ const TimezoneContext = createContext({
   isProfileTimezoneSet: false,
   browserTimezone: null,
 });
-
-/**
- * Detects the browser's IANA timezone and validates it.
- * Returns the detected timezone string or null if invalid/unavailable.
- */
-function detectBrowserTimezone() {
-  try {
-    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if (!detected) {
-      // Phase 78 / TZ-01: production signal that the browser API returned empty.
-      Sentry.addBreadcrumb({
-        category: 'timezone.detection-failure',
-        message: 'Intl.DateTimeFormat returned empty timeZone',
-        level: 'info',
-        data: { detection_failure: true, reason: 'empty' },
-      });
-      return null;
-    }
-    // Validate by attempting to create a formatter with it
-    Intl.DateTimeFormat(undefined, { timeZone: detected });
-    return detected;
-  } catch (err) {
-    // Phase 78 / TZ-01: production signal that the browser threw during
-    // detection or validation (rare — typically a polyfill / sandbox issue).
-    Sentry.addBreadcrumb({
-      category: 'timezone.detection-failure',
-      message: 'Intl.DateTimeFormat threw during detection or validation',
-      level: 'info',
-      data: { detection_failure: true, reason: err?.message || 'unknown' },
-    });
-    return null;
-  }
-}
 
 export function TimezoneProvider({ children }) {
   const { user, isLoading } = useUser();

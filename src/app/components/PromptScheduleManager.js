@@ -1,7 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { promptSettingsAPI } from '../../lib/api';
+import { promptKeys } from '../../lib/queryKeys/promptKeys';
+import {
+  promptSettingsSchema,
+  softFailPromptQueryFn,
+  EMPTY_PROMPT_SETTINGS,
+} from '../../lib/schemas/prompts';
 import ScheduleForm from './ScheduleForm';
 import ScheduleList from './ScheduleList';
 
@@ -18,10 +25,6 @@ import ScheduleList from './ScheduleList';
  * @param {string} props.variant - 'modal' (default) or 'inline' rendering mode
  */
 export default function PromptScheduleManager({ groupId, group, userRole, onClose, variant = 'modal' }) {
-  const [schedules, setSchedules] = useState([]);
-  const [games, setGames] = useState([]);
-  const [members, setMembers] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState(null);
@@ -30,29 +33,34 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
   // (template_name='' rather than the prior dirty value).
   const [createOpenCounter, setCreateOpenCounter] = useState(0);
 
-  // Load data on mount
-  useEffect(() => {
-    loadData();
-  }, [groupId]);
+  const queryClient = useQueryClient();
+  const isAdmin = ['owner', 'admin'].includes(userRole);
 
-  const loadData = async () => {
-    setLoading(true);
-    setError(null);
+  // Phase 84 (PRIM-07 / D-12): settings (schedules + games + members) via useQuery
+  // on the shared promptKeys factory so it dedups with the rest of the trio.
+  // The API only requires active membership (backend isActiveMember gate); the
+  // Boolean(isAdmin) gate below is a deliberate FE/product choice (admin-only
+  // manager surface), NOT an API constraint.
+  const { data, isPending } = useQuery({
+    queryKey: promptKeys.settings(groupId),
+    queryFn: softFailPromptQueryFn(
+      promptSettingsSchema,
+      `/groups/${groupId}/prompt-settings`,
+      promptKeys.settings(groupId),
+      EMPTY_PROMPT_SETTINGS,
+    ),
+    enabled: Boolean(groupId) && Boolean(isAdmin),
+  });
 
-    try {
-      // Load prompt settings which includes schedules, games, and members
-      const settings = await promptSettingsAPI.getGroupPromptSettings(groupId);
+  const loading = isPending;
+  const schedules = data?.schedules || [];
+  const games = data?.games || [];
+  const members = data?.members || [];
 
-      setSchedules(settings.schedules || []);
-      setGames(settings.games || []);
-      setMembers(settings.members || []);
-    } catch (err) {
-      console.error('Error loading schedules:', err);
-      setError(err.message || 'Failed to load schedules. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Post-write cache invalidation replaces the old loadData() refetch — keeps
+  // the settings list fresh after a direct-API mutation (A1/A4).
+  const invalidateSettings = () =>
+    queryClient.invalidateQueries({ queryKey: promptKeys.settings(groupId) });
 
   // Handler: Create new schedule
   const handleCreate = () => {
@@ -74,7 +82,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
   const handleToggle = async (scheduleId) => {
     try {
       await promptSettingsAPI.toggleSchedule(groupId, scheduleId);
-      await loadData(); // Refresh to get updated status
+      await invalidateSettings(); // Refresh to get updated status
     } catch (err) {
       console.error('Error toggling schedule:', err);
       alert('Failed to toggle schedule. Please try again.');
@@ -85,7 +93,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
   const handleDelete = async (scheduleId) => {
     try {
       await promptSettingsAPI.deleteSchedule(groupId, scheduleId);
-      await loadData(); // Refresh to remove deleted schedule
+      await invalidateSettings(); // Refresh to remove deleted schedule
     } catch (err) {
       console.error('Error deleting schedule:', err);
       alert('Failed to delete schedule. Please try again.');
@@ -96,7 +104,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
   const handleFormSuccess = () => {
     setShowForm(false);
     setEditingSchedule(null);
-    loadData(); // Refresh to show new/updated schedule
+    invalidateSettings(); // Refresh to show new/updated schedule
   };
 
   // Handler: Form cancel

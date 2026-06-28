@@ -4,6 +4,7 @@ import Header from './Header.js'
 import Footer from './components/Footer'
 import FeedbackButton from './components/FeedbackButton'
 import { UserProvider } from '@auth0/nextjs-auth0/client';
+import Providers from './providers'
 import TutorialProvider from './components/tutorial/TutorialProvider'
 import TimezoneProvider from './components/TimezoneProvider'
 import ThemeProvider from './components/ThemeProvider'
@@ -22,6 +23,10 @@ export default function RootLayout({ children }) {
     <html lang="en" suppressHydrationWarning>
       <UserProvider>
         <body className={plusJakartaSans.className}>
+          {/* PRIM-07 (Plan 84-04): TanStack Query provider mounted at the app
+              root via the server-fresh / browser-singleton getQueryClient()
+              factory. Must sit ABOVE any component that calls useQuery. */}
+          <Providers>
           <ThemeProvider>
             <TimezoneProvider>
               <TutorialProvider>
@@ -50,6 +55,7 @@ export default function RootLayout({ children }) {
               </TutorialProvider>
             </TimezoneProvider>
           </ThemeProvider>
+          </Providers>
         </body>
       </UserProvider>
     </html>

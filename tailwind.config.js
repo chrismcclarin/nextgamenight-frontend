@@ -50,6 +50,38 @@ module.exports = {
           DEFAULT: 'var(--color-accent)',
           hover: 'var(--color-accent-hover)',
           text: 'var(--color-accent-text)',
+          foreground: 'var(--accent-foreground)',
+        },
+        // shadcn/ui color bridge — direct var() (the bridge vars hold full color
+        // VALUES, not hsl() channels), aliased onto the existing palette in globals.css.
+        border: 'var(--border)',
+        input: 'var(--input)',
+        ring: 'var(--ring)',
+        background: 'var(--background)',
+        foreground: 'var(--foreground)',
+        primary: {
+          DEFAULT: 'var(--primary)',
+          foreground: 'var(--primary-foreground)',
+        },
+        secondary: {
+          DEFAULT: 'var(--secondary)',
+          foreground: 'var(--secondary-foreground)',
+        },
+        destructive: {
+          DEFAULT: 'var(--destructive)',
+          foreground: 'var(--destructive-foreground)',
+        },
+        muted: {
+          DEFAULT: 'var(--muted)',
+          foreground: 'var(--muted-foreground)',
+        },
+        popover: {
+          DEFAULT: 'var(--popover)',
+          foreground: 'var(--popover-foreground)',
+        },
+        card: {
+          DEFAULT: 'var(--card)',
+          foreground: 'var(--card-foreground)',
         },
         line: {
           DEFAULT: 'var(--color-border)',
@@ -86,5 +118,5 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  plugins: [require('tailwindcss-animate')],
 }

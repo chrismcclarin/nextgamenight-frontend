@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { format, addDays, nextMonday, startOfWeek, addWeeks, subWeeks, isSameWeek } from 'date-fns';
-import HeatmapCell from './HeatmapCell';
+import ReadCell from './heatmap/ReadCell';
 import ThresholdSlider from './ThresholdSlider';
 import SuggestionCard from './SuggestionCard';
 import useSwipeNavigation from './useSwipeNavigation';
@@ -63,15 +63,60 @@ export default function HeatmapGrid({
   const timezone = timezoneProp || contextTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [threshold, setThreshold] = useState(defaultThreshold);
 
-  // ARIA grid roving tabindex pattern: only the focused cell holds tabIndex=0;
-  // arrow keys move focus and update tabIndex via state. Cell focus uses
-  // HeatmapTooltip's triggerRef prop (Plan 72-01 API) to expose the cloned
-  // trigger DOM element. Linear index = rowIndex * COLS + colIndex.
+  // ARIA grid roving tabindex pattern (84-10 convergence): only the focused
+  // cell holds tabIndex=0. The roving keyboard state machine now lives in the
+  // shared ReadCell/useHeatmapCell engine; this container owns focusedCoord
+  // {row,col} + a cellRefs map keyed by "row:col" and drives REAL DOM focus on
+  // each cell's onMove (mirroring WeekGrid) — so the grid-level handleKeyDown
+  // could be removed without losing arrow-key navigation.
   const COLS = 7; // 7 days
-  const cellRefs = useRef([]);
-  const [focusedIndex, setFocusedIndex] = useState(0);
-  const setCellRef = useCallback((idx) => (el) => {
-    if (el) cellRefs.current[idx] = el;
+  const coordKey = (row, col) => `${row}:${col}`;
+  const cellRefs = useRef(new Map());
+  const refCallbacks = useRef(new Map());
+  const [focusedCoord, setFocusedCoord] = useState({ row: 0, col: 0 });
+  const getCellRef = useCallback((key) => {
+    let cb = refCallbacks.current.get(key);
+    if (!cb) {
+      cb = (node) => {
+        if (node) cellRefs.current.set(key, node);
+        else cellRefs.current.delete(key);
+      };
+      refCallbacks.current.set(key, cb);
+    }
+    return cb;
+  }, []);
+  // Single STABLE onMove: useHeatmapCell hands it the clamped target coord.
+  const handleCellMove = useCallback((row, col) => {
+    setFocusedCoord({ row, col });
+    cellRefs.current.get(coordKey(row, col))?.focus();
+  }, []);
+
+  // Build the per-cell tooltip body (participant names grouped by preference) —
+  // promoted from the old HeatmapCell now that the grid renders ReadCell.
+  const buildTooltipContent = useCallback((participants, participantCount) => {
+    if (participantCount <= 0) return null;
+    const preferred = [];
+    const ifNeeded = [];
+    participants.forEach((p) => {
+      if (p.preference === 'preferred') preferred.push(p.username || p.user_id);
+      else ifNeeded.push(p.username || p.user_id);
+    });
+    return (
+      <>
+        {preferred.length > 0 && (
+          <div className="mb-1">
+            <span className="text-green-400 font-medium">Preferred: </span>
+            <span>{preferred.join(', ')}</span>
+          </div>
+        )}
+        {ifNeeded.length > 0 && (
+          <div>
+            <span className="text-yellow-400 font-medium">If needed: </span>
+            <span>{ifNeeded.join(', ')}</span>
+          </div>
+        )}
+      </>
+    );
   }, []);
 
   // Page-load default: nextMonday(today) — this is a forward-looking
@@ -162,6 +207,27 @@ export default function HeatmapGrid({
     return map;
   }, [suggestions]);
 
+  // Precompute each visible slot's tooltip + count-badge nodes ONCE, keyed by
+  // slotId (= suggestion.suggested_start). ReadCell is React.memo and its memo is
+  // load-bearing for keyboard nav: passing a freshly-built buildTooltipContent(...)
+  // node and a fresh <span> child inline would change those prop references on
+  // every parent render, defeating the shallow-prop memo and re-rendering EVERY
+  // cell on each arrow-key focus move. Holding stable node references here means
+  // only the two cells whose `focused` flips actually re-render.
+  const cellNodesBySlot = useMemo(() => {
+    const map = new Map();
+    for (const [slotId, suggestion] of slotMap) {
+      const participantCount = suggestion?.participant_count || 0;
+      if (participantCount < threshold) continue; // hidden cells: no badge/tooltip
+      const participants = suggestion?.participants || [];
+      map.set(slotId, {
+        tooltip: buildTooltipContent(participants, participantCount),
+        badge: participantCount > 0 ? <span>{participantCount}</span> : null,
+      });
+    }
+    return map;
+  }, [slotMap, threshold, buildTooltipContent]);
+
   // Calculate viable count (slots meeting threshold)
   const viableCount = useMemo(() => {
     return suggestions.filter((s) => s.participant_count >= threshold).length;
@@ -219,52 +285,10 @@ export default function HeatmapGrid({
     [onSlotSelect, threshold]
   );
 
-  // Roving-tabindex arrow-key navigation (Plan 72-02 a11y goal: WCAG 2.1 AA).
-  // Total cells = timeSlots.length × COLS. The tooltip auto-reveals on focus
-  // via HeatmapTooltip's useFocus interaction; Esc dismisses (also handled by
-  // the primitive's useDismiss).
-  const totalRows = timeSlots.length;
-  const handleKeyDown = useCallback((event) => {
-    const idx = focusedIndex;
-    const row = Math.floor(idx / COLS);
-    const col = idx % COLS;
-    let target = idx;
-    switch (event.key) {
-      case 'ArrowLeft':
-        target = row * COLS + Math.max(0, col - 1);
-        break;
-      case 'ArrowRight':
-        target = row * COLS + Math.min(COLS - 1, col + 1);
-        break;
-      case 'ArrowUp':
-        target = Math.max(0, row - 1) * COLS + col;
-        break;
-      case 'ArrowDown':
-        target = Math.min(totalRows - 1, row + 1) * COLS + col;
-        break;
-      case 'Home':
-        target = row * COLS;
-        break;
-      case 'End':
-        target = row * COLS + (COLS - 1);
-        break;
-      case 'PageUp':
-        target = col;
-        break;
-      case 'PageDown':
-        target = (totalRows - 1) * COLS + col;
-        break;
-      default:
-        return; // not a nav key — bail without preventDefault
-    }
-    if (target !== idx) {
-      event.preventDefault();
-      setFocusedIndex(target);
-      cellRefs.current[target]?.focus();
-    } else {
-      event.preventDefault();
-    }
-  }, [focusedIndex, totalRows]);
+  // The grid-level roving handleKeyDown was removed in 84-10: the full nav-key
+  // state machine (arrows + Home/End/PageUp/PageDown + select) now lives in the
+  // shared useHeatmapCell engine inside each ReadCell, driving focus via the
+  // container's handleCellMove above (parity-tested in 84-02 before removal).
 
   return (
     <div className="w-full">
@@ -348,7 +372,6 @@ export default function HeatmapGrid({
           className="min-w-max"
           role="grid"
           aria-label="Availability heatmap"
-          onKeyDown={handleKeyDown}
         >
           {/* Day headers */}
           <div className="flex" role="row">
@@ -367,42 +390,75 @@ export default function HeatmapGrid({
             ))}
           </div>
 
-          {/* Time slot rows */}
-          {timeSlots.map((timeSlot, rowIndex) => (
-            <div key={`row-${rowIndex}`} className="flex" role="row">
-              {days.map((day, colIndex) => {
-                const slotId = generateSlotId(day, timeSlot);
-                const suggestion = slotMap.get(slotId);
-                const participantCount = suggestion?.participant_count || 0;
-                const preferredCount = suggestion?.preferred_count || 0;
-                const participants = suggestion?.participants || [];
-                const hidden = participantCount < threshold;
-                const linearIndex = rowIndex * COLS + colIndex;
+          {/* Time slot rows. The time label is now a dedicated leading column
+              (matching the header spacer) instead of living inside column 0's
+              cell, so every day cell renders the shared ReadCell uniformly. */}
+          {timeSlots.map((timeSlot, rowIndex) => {
+            const timeLabel = formatTimeLabel(timeSlot);
+            return (
+              <div key={`row-${rowIndex}`} className="flex" role="row">
+                {/* Time label column */}
+                <div className="w-16 sm:w-20 flex-shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium">
+                  {timeLabel}
+                </div>
 
-                return (
-                  <div
-                    key={slotId}
-                    className="flex-shrink-0"
-                    onClick={() => handleSlotClick(slotId, suggestion)}
-                    onFocus={() => setFocusedIndex(linearIndex)}
-                  >
-                    <HeatmapCell
-                      slotId={slotId}
-                      participantCount={participantCount}
-                      preferredCount={preferredCount}
-                      participants={participants}
-                      totalMembers={totalMembers}
-                      hidden={hidden}
-                      timeLabel={formatTimeLabel(timeSlot)}
-                      showTimeLabel={colIndex === 0}
-                      triggerRef={setCellRef(linearIndex)}
-                      tabIndex={focusedIndex === linearIndex ? 0 : -1}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+                {days.map((day, colIndex) => {
+                  const slotId = generateSlotId(day, timeSlot);
+                  const suggestion = slotMap.get(slotId);
+                  const participantCount = suggestion?.participant_count || 0;
+                  const preferredCount = suggestion?.preferred_count || 0;
+                  const cellNodes = cellNodesBySlot.get(slotId);
+                  const hidden = participantCount < threshold;
+                  const key = coordKey(rowIndex, colIndex);
+                  const focused = focusedCoord.row === rowIndex && focusedCoord.col === colIndex;
+
+                  const common = {
+                    row: rowIndex,
+                    col: colIndex,
+                    rows: timeSlots.length,
+                    cols: COLS,
+                    focused,
+                    onMove: handleCellMove,
+                    triggerRef: getCellRef(key),
+                    totalMembers,
+                    fill: false,
+                  };
+
+                  return (
+                    <div
+                      key={slotId}
+                      className="w-24 sm:w-28 flex-shrink-0"
+                      onClick={() => handleSlotClick(slotId, suggestion)}
+                      onFocus={() => setFocusedCoord({ row: rowIndex, col: colIndex })}
+                    >
+                      {hidden ? (
+                        // Below-threshold cell: dimmed stub, still keyboard-
+                        // navigable (color = participantCount 0). No badge/tooltip.
+                        <ReadCell
+                          {...common}
+                          participantCount={0}
+                          preferredCount={0}
+                          ariaLabel={`${timeLabel}: below threshold`}
+                          className="w-24 sm:w-28 h-12 sm:h-14 border opacity-30"
+                        />
+                      ) : (
+                        <ReadCell
+                          {...common}
+                          participantCount={participantCount}
+                          preferredCount={preferredCount}
+                          ariaLabel={`${timeLabel}: ${participantCount} of ${totalMembers} available`}
+                          tooltipContent={cellNodes?.tooltip ?? null}
+                          className={`w-24 sm:w-28 h-12 sm:h-14 border cursor-pointer transition-colors duration-75 flex items-center justify-center text-xs sm:text-sm font-medium ${participantCount > 0 ? 'text-content-primary' : 'text-content-muted'}`}
+                        >
+                          {cellNodes?.badge ?? null}
+                        </ReadCell>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       </div>
 

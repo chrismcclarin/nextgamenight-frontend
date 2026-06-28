@@ -1,7 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { promptSettingsAPI, promptAPI } from '../../lib/api';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { promptKeys } from '../../lib/queryKeys/promptKeys';
+import {
+  promptSettingsSchema,
+  openPromptsSchema,
+  softFailPromptQueryFn,
+  EMPTY_PROMPT_SETTINGS,
+  EMPTY_OPEN_PROMPTS,
+} from '../../lib/schemas/prompts';
 import PromptScheduleManager from './PromptScheduleManager';
 import OpenPollsList from './OpenPollsList';
 import AutoPromptBehaviorBanner from './AutoPromptBehaviorBanner';
@@ -40,63 +48,49 @@ export default function PromptScheduleSection({
   defaultExpanded = false,
 }) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-  const [schedules, setSchedules] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [openPollCount, setOpenPollCount] = useState(0);
-  const [openPollsLoading, setOpenPollsLoading] = useState(true);
 
   const isAdmin = userRole === 'owner' || userRole === 'admin';
 
-  // Fetch schedules — owner/admin only (the API requires elevated role for
-  // GET /groups/:id/prompt-settings; pre-Phase-71.2 the whole section was
-  // gated to admins so this fetch was always allowed).
-  useEffect(() => {
-    if (!groupId || !isAdmin) {
-      setSchedules([]);
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-    const fetchSchedules = async () => {
-      try {
-        setLoading(true);
-        const settings = await promptSettingsAPI.getGroupPromptSettings(groupId);
-        if (!cancelled) setSchedules(settings.schedules || []);
-      } catch (err) {
-        console.error('Error loading prompt schedules:', err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    fetchSchedules();
-    return () => { cancelled = true; };
-  }, [groupId, isAdmin]);
+  // Phase 84 (PRIM-07 / D-12): schedules + open-poll count via useQuery on the
+  // shared promptKeys factory so they dedup with the rest of the trio (settings
+  // 3x → 1x F-852; open 2x → 1x F-826). Each query carries its OWN per-component
+  // Boolean-wrapped `enabled` gate.
 
-  // Open-poll count for the badge — visible to ALL active members. Cheap to
-  // fetch; same endpoint OpenPollsList consumes (response cache via the
-  // browser when both fire, but this is also fine if it double-fetches).
-  useEffect(() => {
-    if (!groupId || !userRole || userRole === 'pending') {
-      setOpenPollCount(0);
-      setOpenPollsLoading(false);
-      return;
-    }
-    let cancelled = false;
-    const fetchCount = async () => {
-      try {
-        setOpenPollsLoading(true);
-        const data = await promptAPI.getOpenPrompts(groupId);
-        if (!cancelled) setOpenPollCount(Array.isArray(data?.prompts) ? data.prompts.length : 0);
-      } catch (err) {
-        console.error('Error loading open polls count:', err);
-        if (!cancelled) setOpenPollCount(0);
-      } finally {
-        if (!cancelled) setOpenPollsLoading(false);
-      }
-    };
-    fetchCount();
-    return () => { cancelled = true; };
-  }, [groupId, userRole]);
+  // Fetch schedules. The API (GET /groups/:id/prompt-settings) only requires
+  // ACTIVE MEMBERSHIP (backend isActiveMember gate), NOT an elevated role. The
+  // Boolean(isAdmin) gate below is a deliberate FE/product choice — only the
+  // owner/admin manager surface consumes the schedule settings — not an API
+  // constraint.
+  const { data: settingsData, isPending: settingsPending } = useQuery({
+    queryKey: promptKeys.settings(groupId),
+    queryFn: softFailPromptQueryFn(
+      promptSettingsSchema,
+      `/groups/${groupId}/prompt-settings`,
+      promptKeys.settings(groupId),
+      EMPTY_PROMPT_SETTINGS,
+    ),
+    enabled: Boolean(groupId) && Boolean(isAdmin),
+  });
+  const schedules = settingsData?.schedules || [];
+  // Loading is only meaningful while the admin-gated query can run; for
+  // non-admins the query is disabled and we treat schedules as resolved-empty.
+  const loading = isAdmin ? settingsPending : false;
+
+  // Open-poll count for the badge — visible to ALL active members. Shares the
+  // openPolls key with OpenPollsList so the two collapse to ONE fetch (F-826).
+  const { data: openData, isPending: openPending } = useQuery({
+    queryKey: promptKeys.openPolls(groupId),
+    queryFn: softFailPromptQueryFn(
+      openPromptsSchema,
+      `/groups/${groupId}/prompts/open`,
+      promptKeys.openPolls(groupId),
+      EMPTY_OPEN_PROMPTS,
+    ),
+    enabled: Boolean(groupId) && Boolean(userRole) && userRole !== 'pending',
+  });
+  const openPollCount = Array.isArray(openData?.prompts) ? openData.prompts.length : 0;
+  const enabledOpen = Boolean(groupId) && Boolean(userRole) && userRole !== 'pending';
+  const openPollsLoading = enabledOpen ? openPending : false;
 
   // Phase 71.2 D-UI-01: visible to ALL active members. Pending and removed
   // (no role at all) get nothing. Same negative check is mirrored inside

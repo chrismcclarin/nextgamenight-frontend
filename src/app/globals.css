@@ -176,6 +176,36 @@
   --color-focus-ring: var(--amber-400);
 }
 
+/* ===== shadcn/ui token bridge (Tailwind v3, mapped onto existing --color-* palette) =====
+   shadcn primitives reference these conventional names; each aliases a direct color
+   VALUE from the existing semantic palette (NOT hsl() channels — the project tokens
+   are full color values), so shadcn components inherit the warm/purple theme and the
+   .dark overrides for free (the --color-* targets already flip under .dark). No
+   default neutral/slate palette and no Tailwind-v4 constructs (Tailwind-v3 path,
+   Pitfall 3); animation utilities come from the tailwindcss-animate plugin. */
+:root {
+  --background: var(--color-bg-page);
+  --foreground: var(--color-text-primary);
+  --card: var(--color-bg-card);
+  --card-foreground: var(--color-text-primary);
+  --popover: var(--color-bg-card);
+  --popover-foreground: var(--color-text-primary);
+  --primary: var(--color-btn-primary-bg);
+  --primary-foreground: var(--color-btn-primary-text);
+  --secondary: var(--color-btn-secondary-bg);
+  --secondary-foreground: var(--color-btn-secondary-text);
+  --muted: var(--color-bg-card-hover);
+  --muted-foreground: var(--color-text-muted);
+  --accent: var(--color-accent);
+  --accent-foreground: var(--color-accent-text);
+  --destructive: var(--color-error);
+  --destructive-foreground: #ffffff;
+  --border: var(--color-border);
+  --input: var(--color-border);
+  --ring: var(--color-focus-ring);
+  --radius: 12px;
+}
+
 /* ===== DESIGN SYSTEM: Theme Transition ===== */
 html {
   transition: background-color 0.25s ease;

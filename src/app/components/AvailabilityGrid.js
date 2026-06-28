@@ -3,12 +3,12 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'; // useState kept for paintMode
 import { format, addDays, addMinutes, startOfWeek, nextMonday, parseISO } from 'date-fns';
 import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
-import TimeSlotCell from './TimeSlotCell';
+import WriteCell from './heatmap/WriteCell';
 
 /**
  * AvailabilityGrid - Paint-to-select availability grid component
  *
- * Displays an N-day x 12-slot grid (5PM-11PM, 30-min intervals)
+ * Displays an N-day x 28-slot grid (10:00 AM - 11:30 PM, 30-min intervals)
  * Users can click-and-drag to paint time slots
  *
  * @param {Object} props
@@ -35,6 +35,31 @@ export default function AvailabilityGrid({
   const [paintMode, setPaintMode] = useState('preferred'); // 'preferred' | 'if-need-be'
   const [checkedDays, setCheckedDays] = useState([]); // array of day indices (0-6)
   const gridRef = useRef(null);
+
+  // ARIA grid roving tabindex (84-10 / F-803/809): AvailabilityGrid is one of
+  // the three roving keyboard INPUT grids. The nav-key + select state machine
+  // lives in the shared WriteCell/useHeatmapCell engine; this container owns
+  // focusedCoord {row,col} + a cellRefs map keyed by "row:col" and drives REAL
+  // DOM focus on each cell's onMove (mirroring WeekGrid).
+  const coordKey = (row, col) => `${row}:${col}`;
+  const cellRefs = useRef(new Map());
+  const refCallbacks = useRef(new Map());
+  const [focusedCoord, setFocusedCoord] = useState({ row: 0, col: 0 });
+  const getCellRef = useCallback((key) => {
+    let cb = refCallbacks.current.get(key);
+    if (!cb) {
+      cb = (node) => {
+        if (node) cellRefs.current.set(key, node);
+        else cellRefs.current.delete(key);
+      };
+      refCallbacks.current.set(key, cb);
+    }
+    return cb;
+  }, []);
+  const handleCellMove = useCallback((row, col) => {
+    setFocusedCoord({ row, col });
+    cellRefs.current.get(coordKey(row, col))?.focus();
+  }, []);
 
   // Derived: are all days checked? Sized to numDays so the Plan 71-05 polls
   // (1-14 day windows) compute "All" correctly for any window length.
@@ -299,6 +324,22 @@ export default function AvailabilityGrid({
     isDraggingRef.current = false;
   }, []);
 
+  // Keyboard select-cycle (WriteCell reports the NEXT preference after Enter/
+  // Space). Single-cell edit by design: arrow+select keyboard nav operates on
+  // the focused cell only (the cross-day "All"/checkbox broadcast stays a
+  // pointer-paint affordance). next === null removes the slot.
+  const handleKeyboardSelect = useCallback(
+    (row, col, next) => {
+      const day = days[col];
+      const ts = timeSlots[row];
+      if (!day || !ts) return;
+      const slotId = generateSlotId(day, ts);
+      const without = value.filter((s) => s.slotId !== slotId);
+      onChange?.(next === null ? without : [...without, { slotId, preference: next }]);
+    },
+    [days, timeSlots, generateSlotId, value, onChange]
+  );
+
   // Global pointer up listener for catching release outside grid
   useEffect(() => {
     const handleGlobalPointerUp = () => {
@@ -466,19 +507,36 @@ export default function AvailabilityGrid({
                 {formatTimeLabel(timeSlot)}
               </div>
 
-              {/* Day columns */}
-              {days.map((day) => {
+              {/* Day columns. The wrapper carries the cell dims + border; the
+                  shared WriteCell fills it with the byte-identical preference
+                  color and owns roving keyboard + pointer-paint. */}
+              {days.map((day, colIndex) => {
                 const slotId = generateSlotId(day, timeSlot);
                 const preference = slotMap.get(slotId) || null;
+                const key = coordKey(rowIndex, colIndex);
+                const focused = focusedCoord.row === rowIndex && focusedCoord.col === colIndex;
 
                 return (
-                  <div key={slotId} className="w-24 sm:w-28 flex-shrink-0">
-                    <TimeSlotCell
-                      slotId={slotId}
+                  <div
+                    key={slotId}
+                    className="w-24 sm:w-28 flex-shrink-0 h-12 sm:h-14 border border-line"
+                    onFocus={() => setFocusedCoord({ row: rowIndex, col: colIndex })}
+                  >
+                    <WriteCell
+                      row={rowIndex}
+                      col={colIndex}
+                      rows={timeSlots.length}
+                      cols={numDays}
+                      focused={focused}
+                      disabled={disabled}
                       preference={preference}
+                      slotId={slotId}
+                      onMove={handleCellMove}
+                      onSelect={(next) => handleKeyboardSelect(rowIndex, colIndex, next)}
                       onPointerDown={handlePointerDown}
                       onPointerEnter={handlePointerEnter}
-                      disabled={disabled}
+                      cellRef={getCellRef(key)}
+                      className="transition-colors duration-75"
                     />
                   </div>
                 );

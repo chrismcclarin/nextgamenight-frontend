@@ -2,6 +2,72 @@
   "extends": "next",
   "rules": {
     "react/no-unescaped-entities": "off",
-    "@next/next/no-page-custom-font": "off"
-  }
+    "@next/next/no-page-custom-font": "off",
+    "no-console": "error",
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "CallExpression[callee.property.name=/^toLocale(String|DateString|TimeString)$/]",
+        "message": "Use the datetime layer (datetime.ts / formatWithTzAbbr), not raw toLocale*."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/lib/datetime.ts", "src/lib/datetime.test.ts"],
+      "rules": {
+        "no-restricted-syntax": "off"
+      }
+    },
+    {
+      "files": [
+        "src/app/api/auth/google-connect/route.js",
+        "src/app/api/auth/token/route.js",
+        "src/app/availability-form/\\[token\\]/page.js",
+        "src/app/components/AvailabilityForm.js",
+        "src/app/components/BallotSection.js",
+        "src/app/components/BringGamePicker.js",
+        "src/app/components/BringSummary.js",
+        "src/app/components/ClickableMemberName.js",
+        "src/app/components/EventCalendar.js",
+        "src/app/components/EventDayModal.js",
+        "src/app/components/FeedbackButton.js",
+        "src/app/components/FeedbackForm.js",
+        "src/app/components/FriendInvitePanel.js",
+        "src/app/components/FriendshipStatusProvider.js",
+        "src/app/components/GameComboInput.js",
+        "src/app/components/GroupLibrary.js",
+        "src/app/components/GroupSettings.js",
+        "src/app/components/ManageMembers.js",
+        "src/app/components/NotificationBell.js",
+        "src/app/components/PromptScheduleManager.js",
+        "src/app/components/PromptScheduleReadOnly.js",
+        "src/app/components/PromptScheduleSection.js",
+        "src/app/components/QRCodeModal.js",
+        "src/app/components/ResponseDashboard.js",
+        "src/app/components/RsvpSection.js",
+        "src/app/components/ScheduleForm.js",
+        "src/app/components/TimezoneProvider.js",
+        "src/app/components/UnreadNotificationProvider.js",
+        "src/app/components/createEvent.js",
+        "src/app/components/createGroup.js",
+        "src/app/components/grouplist.js",
+        "src/app/components/tutorial/TutorialProvider.js",
+        "src/app/friends/page.js",
+        "src/app/gameDetail/page.js",
+        "src/app/groupHomePage/page.js",
+        "src/app/groupPlanning/page.js",
+        "src/app/groups/\\[id\\]/availability/respond/page.js",
+        "src/app/invite/accept/page.js",
+        "src/app/page.js",
+        "src/app/rsvp/\\[token\\]/page.js",
+        "src/app/userHome/UserHomePage.js",
+        "src/app/userProfile/page.js",
+        "src/lib/api.ts"
+      ],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ]
 }
