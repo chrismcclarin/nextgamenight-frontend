@@ -9,6 +9,12 @@
  * Redaction is REGEX/PATTERN-based (email, JWT/bearer token, secret/auth/password,
  * long digit runs) — NOT a hardcoded key list — so PII is caught regardless of the
  * key it travels under. Pure functions; safe to unit-test in isolation.
+ *
+ * scrubEvent covers every standard Sentry PII vector: event.message, exception
+ * values, breadcrumb message + full breadcrumb.data, event.user (email/username/ip
+ * redacted wholesale), event.request (url, query_string, Authorization/Cookie
+ * headers, cookies, and the POST body), and a deep-scrub of event.extra +
+ * event.contexts. This holds even if sendDefaultPii / Sentry.setUser are enabled.
  */
 
 const REDACTED = '[REDACTED]';
@@ -114,13 +120,27 @@ function scrubEvent(event) {
       if (!bc) continue;
       if (typeof bc.message === 'string') bc.message = scrubString(bc.message);
       if (bc.data && typeof bc.data === 'object') {
+        // URL-bearing fields get the stronger scrubUrl (strips the whole query
+        // string); everything else (console-arg captures, logger ctx forwarded
+        // via Sentry.addBreadcrumb({data})) is deep-scrubbed by value/key so PII
+        // is caught regardless of the key it travels under.
         for (const field of ['url', 'from', 'to']) {
           if (typeof bc.data[field] === 'string') {
             bc.data[field] = scrubUrl(bc.data[field]);
           }
         }
+        deepScrub(bc.data);
       }
     }
+  }
+
+  // event.user: email / username / ip are identifying PII. Redact them wholesale
+  // (plain usernames won't trip the value patterns), then deep-scrub the rest.
+  if (event.user && typeof event.user === 'object') {
+    for (const field of ['email', 'username', 'ip_address']) {
+      if (typeof event.user[field] === 'string') event.user[field] = REDACTED;
+    }
+    deepScrub(event.user);
   }
 
   if (event.request && typeof event.request === 'object') {
@@ -129,6 +149,22 @@ function scrubEvent(event) {
     }
     if (typeof event.request.query_string === 'string') {
       event.request.query_string = REDACTED;
+    }
+    // Authorization / Cookie headers carry bearer JWTs and the Auth0 session —
+    // redact those keys wholesale, then deep-scrub remaining header values.
+    if (event.request.headers && typeof event.request.headers === 'object') {
+      for (const h of Object.keys(event.request.headers)) {
+        if (/authorization|cookie/i.test(h)) event.request.headers[h] = REDACTED;
+      }
+      deepScrub(event.request.headers);
+    }
+    // Cookies carry the Auth0 session wholesale.
+    if (typeof event.request.cookies !== 'undefined') {
+      event.request.cookies = REDACTED;
+    }
+    // The POST body can carry magic-link / verify tokens and credential payloads.
+    if (typeof event.request.data !== 'undefined') {
+      event.request.data = deepScrub(event.request.data);
     }
   }
 

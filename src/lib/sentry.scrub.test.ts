@@ -77,6 +77,49 @@ describe('scrubEvent', () => {
     expect(JSON.stringify(out.contexts)).not.toContain(JWT);
     expect(JSON.stringify(out.contexts)).toContain('[REDACTED]');
   });
+
+  it('(e) redacts event.user email / username / ip wholesale', () => {
+    const event = {
+      user: { id: 'auth0|keep', email: 'x@y.com', username: 'janedoe', ip_address: '203.0.113.7' },
+    };
+    const out = scrubEvent(event);
+    expect(out.user.email).toBe('[REDACTED]');
+    expect(out.user.username).toBe('[REDACTED]');
+    expect(out.user.ip_address).toBe('[REDACTED]');
+    expect(JSON.stringify(out.user)).not.toContain('x@y.com');
+    // non-PII id is preserved for debugging.
+    expect(out.user.id).toBe('auth0|keep');
+  });
+
+  it('(f) redacts event.request Authorization/Cookie headers, cookies, and POST body', () => {
+    const event = {
+      request: {
+        headers: { Authorization: `Bearer ${JWT}`, Cookie: 'appSession=secret', 'User-Agent': 'jest' },
+        cookies: { appSession: 'secret' },
+        data: { email: 'x@y.com', magic_token: 'tok_live_123', note: 'hi' },
+      },
+    };
+    const out = scrubEvent(event);
+    expect(out.request.headers.Authorization).toBe('[REDACTED]');
+    expect(out.request.headers.Cookie).toBe('[REDACTED]');
+    expect(out.request.cookies).toBe('[REDACTED]');
+    expect(JSON.stringify(out.request)).not.toContain(JWT);
+    expect(JSON.stringify(out.request)).not.toContain('x@y.com');
+    expect(JSON.stringify(out.request)).not.toContain('tok_live_123');
+    // non-PII header + body fields survive.
+    expect(out.request.headers['User-Agent']).toBe('jest');
+    expect(out.request.data.note).toBe('hi');
+  });
+
+  it('(g) deep-scrubs arbitrary breadcrumb.data fields (logger ctx / console args)', () => {
+    const event = {
+      breadcrumbs: [{ message: 'login', data: { actor: 'x@y.com', arguments: [`Bearer ${JWT}`] } }],
+    };
+    const out = scrubEvent(event);
+    expect(JSON.stringify(out.breadcrumbs)).not.toContain('x@y.com');
+    expect(JSON.stringify(out.breadcrumbs)).not.toContain(JWT);
+    expect(JSON.stringify(out.breadcrumbs)).toContain('[REDACTED]');
+  });
 });
 
 describe('scrubRecordingEvent (replay pipeline)', () => {
