@@ -108,7 +108,7 @@ describe('GAP6 — retry predicate truth table (D-13, T-84-08)', () => {
     expect(shouldRetry(0, new ZodError([]))).toBe(false);
   });
 
-  it.each(['unauthorized', 'forbidden', 'not_found', 'validation'] as const)(
+  it.each(['unauthorized', 'forbidden', 'not_found', 'validation', 'rate_limited'] as const)(
     'never retries non-transient ApiError code %s',
     (code) => {
       expect(shouldRetry(0, new ApiError('x', code, 400))).toBe(false);

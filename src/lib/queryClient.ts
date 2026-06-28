@@ -27,6 +27,10 @@ const NON_RETRYABLE_API_CODES: ReadonlyArray<string> = [
   'forbidden',
   'not_found',
   'validation',
+  // 429: the backend is explicitly asking us to slow down — an immediate retry
+  // worsens the rate-limit storm we're trying to avoid (T-84-08). Honoring
+  // Retry-After backoff is a later enhancement; for now, do not retry.
+  'rate_limited',
 ];
 
 /**
