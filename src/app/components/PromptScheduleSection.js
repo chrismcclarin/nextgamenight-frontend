@@ -56,9 +56,11 @@ export default function PromptScheduleSection({
   // 3x → 1x F-852; open 2x → 1x F-826). Each query carries its OWN per-component
   // Boolean-wrapped `enabled` gate.
 
-  // Fetch schedules — owner/admin only (the API requires elevated role for
-  // GET /groups/:id/prompt-settings; pre-Phase-71.2 the whole section was
-  // gated to admins so this fetch was always allowed).
+  // Fetch schedules. The API (GET /groups/:id/prompt-settings) only requires
+  // ACTIVE MEMBERSHIP (backend isActiveMember gate), NOT an elevated role. The
+  // Boolean(isAdmin) gate below is a deliberate FE/product choice — only the
+  // owner/admin manager surface consumes the schedule settings — not an API
+  // constraint.
   const { data: settingsData, isPending: settingsPending } = useQuery({
     queryKey: promptKeys.settings(groupId),
     queryFn: softFailPromptQueryFn(

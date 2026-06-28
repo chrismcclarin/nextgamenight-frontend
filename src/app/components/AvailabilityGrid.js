@@ -8,7 +8,7 @@ import WriteCell from './heatmap/WriteCell';
 /**
  * AvailabilityGrid - Paint-to-select availability grid component
  *
- * Displays an N-day x 12-slot grid (5PM-11PM, 30-min intervals)
+ * Displays an N-day x 28-slot grid (10:00 AM - 11:30 PM, 30-min intervals)
  * Users can click-and-drag to paint time slots
  *
  * @param {Object} props

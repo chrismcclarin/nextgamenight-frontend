@@ -38,7 +38,9 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
 
   // Phase 84 (PRIM-07 / D-12): settings (schedules + games + members) via useQuery
   // on the shared promptKeys factory so it dedups with the rest of the trio.
-  // Admin-only manager surface → gated on Boolean(groupId) && Boolean(isAdmin).
+  // The API only requires active membership (backend isActiveMember gate); the
+  // Boolean(isAdmin) gate below is a deliberate FE/product choice (admin-only
+  // manager surface), NOT an API constraint.
   const { data, isPending } = useQuery({
     queryKey: promptKeys.settings(groupId),
     queryFn: softFailPromptQueryFn(
