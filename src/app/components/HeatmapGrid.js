@@ -207,6 +207,27 @@ export default function HeatmapGrid({
     return map;
   }, [suggestions]);
 
+  // Precompute each visible slot's tooltip + count-badge nodes ONCE, keyed by
+  // slotId (= suggestion.suggested_start). ReadCell is React.memo and its memo is
+  // load-bearing for keyboard nav: passing a freshly-built buildTooltipContent(...)
+  // node and a fresh <span> child inline would change those prop references on
+  // every parent render, defeating the shallow-prop memo and re-rendering EVERY
+  // cell on each arrow-key focus move. Holding stable node references here means
+  // only the two cells whose `focused` flips actually re-render.
+  const cellNodesBySlot = useMemo(() => {
+    const map = new Map();
+    for (const [slotId, suggestion] of slotMap) {
+      const participantCount = suggestion?.participant_count || 0;
+      if (participantCount < threshold) continue; // hidden cells: no badge/tooltip
+      const participants = suggestion?.participants || [];
+      map.set(slotId, {
+        tooltip: buildTooltipContent(participants, participantCount),
+        badge: participantCount > 0 ? <span>{participantCount}</span> : null,
+      });
+    }
+    return map;
+  }, [slotMap, threshold, buildTooltipContent]);
+
   // Calculate viable count (slots meeting threshold)
   const viableCount = useMemo(() => {
     return suggestions.filter((s) => s.participant_count >= threshold).length;
@@ -386,7 +407,7 @@ export default function HeatmapGrid({
                   const suggestion = slotMap.get(slotId);
                   const participantCount = suggestion?.participant_count || 0;
                   const preferredCount = suggestion?.preferred_count || 0;
-                  const participants = suggestion?.participants || [];
+                  const cellNodes = cellNodesBySlot.get(slotId);
                   const hidden = participantCount < threshold;
                   const key = coordKey(rowIndex, colIndex);
                   const focused = focusedCoord.row === rowIndex && focusedCoord.col === colIndex;
@@ -426,10 +447,10 @@ export default function HeatmapGrid({
                           participantCount={participantCount}
                           preferredCount={preferredCount}
                           ariaLabel={`${timeLabel}: ${participantCount} of ${totalMembers} available`}
-                          tooltipContent={buildTooltipContent(participants, participantCount)}
+                          tooltipContent={cellNodes?.tooltip ?? null}
                           className={`w-24 sm:w-28 h-12 sm:h-14 border cursor-pointer transition-colors duration-75 flex items-center justify-center text-xs sm:text-sm font-medium ${participantCount > 0 ? 'text-content-primary' : 'text-content-muted'}`}
                         >
-                          {participantCount > 0 && <span>{participantCount}</span>}
+                          {cellNodes?.badge ?? null}
                         </ReadCell>
                       )}
                     </div>
