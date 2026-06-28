@@ -145,9 +145,24 @@ export const promptItemSchema = z
   .passthrough();
 export type PromptItem = z.infer<typeof promptItemSchema>;
 
-export const openPromptsSchema = z.object({
-  prompts: z.array(promptItemSchema).optional().default([]),
-}).passthrough();
+export const openPromptsSchema = z
+  .object({
+    // ITEM-LEVEL tolerance (matches the field-level tolerance invariant above):
+    // a single malformed prompt item is DROPPED, never blanks the whole list +
+    // badge. We parse each element through `.nullable().catch(null)` so a bad
+    // element degrades to null instead of failing the entire `z.array`, then
+    // filter the nulls back out. `id` stays strict — a genuinely id-less item is
+    // dropped, not silently rendered with a broken key. NOTE: no array-level
+    // `.catch` — a wholly wrong-type `prompts` (e.g. a string) must still fail
+    // the top-level parse so the soft-fail layer reports it to Sentry and renders
+    // the empty fallback, rather than silently masquerading as "no open polls".
+    prompts: z
+      .array(promptItemSchema.nullable().catch(null))
+      .optional()
+      .default([])
+      .transform((arr) => arr.filter((p): p is PromptItem => p != null)),
+  })
+  .passthrough();
 export type OpenPrompts = z.infer<typeof openPromptsSchema>;
 
 // -----------------------------------------------------------------------------
