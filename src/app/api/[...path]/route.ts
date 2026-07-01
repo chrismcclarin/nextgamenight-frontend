@@ -48,7 +48,11 @@ const INBOUND_ALLOW_LIST = [
 // Response headers we must NOT pass back verbatim: hop-by-hop plus the
 // encoding/length trio (fetch already decoded the body, so the original
 // content-encoding/length would be wrong and break the browser).
-const RESPONSE_STRIP = new Set([...HOP_BY_HOP, 'content-encoding', 'content-length']);
+// Also strip `set-cookie`: the backend authenticates via bearer tokens (not
+// cookies), so it emits none today — but this proxy is the single chokepoint for
+// all authenticated data, and a backend-origin cookie or internal header must
+// never be projected onto the first-party app origin through it (defense-in-depth).
+const RESPONSE_STRIP = new Set([...HOP_BY_HOP, 'content-encoding', 'content-length', 'set-cookie']);
 
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
