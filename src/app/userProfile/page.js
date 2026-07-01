@@ -230,7 +230,7 @@ function Profile(){
             replayTutorial();
         } catch (error) {
             console.error('Error replaying tutorial:', error);
-            alert('Failed to replay tutorial. Please try again.');
+            toast.error('Failed to replay tutorial. Please try again.');
         } finally {
             setReplayingTutorial(false);
         }
@@ -494,12 +494,12 @@ function Profile(){
     
     const handleSaveUsername = async () => {
         if (!user?.sub || !username.trim()) {
-            alert('Please enter a username');
+            toast.error('Please enter a username');
             return;
         }
         
         if (username.length > 50) {
-            alert('Username must be 50 characters or less');
+            toast.error('Username must be 50 characters or less');
             return;
         }
         
@@ -508,10 +508,10 @@ function Profile(){
             const updatedUser = await usersAPI.updateUsername(user.sub, username.trim());
             setUserData(updatedUser);
             setEditingUsername(false);
-            alert('Username updated successfully!');
+            toast.success('Username updated successfully!');
         } catch (error) {
             console.error('Error updating username:', error);
-            alert(`Failed to update username: ${error.message || 'Please try again.'}`);
+            toast.error(`Failed to update username: ${error.message || 'Please try again.'}`);
         } finally {
             setSavingUsername(false);
         }
@@ -546,7 +546,7 @@ function Profile(){
             window.history.replaceState({}, '', '/userProfile/');
         } else if (calendarStatus === 'error') {
             const errorMessage = searchParams.get('message');
-            alert(`Failed to connect Google Calendar: ${errorMessage || 'Unknown error'}`);
+            toast.error(`Failed to connect Google Calendar: ${errorMessage || 'Unknown error'}`);
             setGoogleCalendarConnected(false);
             window.history.replaceState({}, '', '/userProfile/');
         }
@@ -581,10 +581,10 @@ function Profile(){
         try {
             await googleCalendarAPI.disconnect(user.sub);
             setGoogleCalendarConnected(false);
-            alert('Google Calendar disconnected successfully');
+            toast.success('Google Calendar disconnected successfully');
         } catch (error) {
             console.error('Error disconnecting Google Calendar:', error);
-            alert('Failed to disconnect Google Calendar. Please try again.');
+            toast.error('Failed to disconnect Google Calendar. Please try again.');
         }
     };
 
@@ -609,16 +609,16 @@ function Profile(){
             const results = await gamesAPI.searchBGG(bggSearchQuery);
             setBggSearchResults(results || []);
             if (results.length === 0) {
-                alert('No games found. Try a different search term.');
+                toast('No games found. Try a different search term.');
             }
         } catch (error) {
             console.error('Error searching BGG:', error);
             setBggSearchResults([]);
             const errorMessage = error.message || 'Failed to search BoardGameGeek';
             if (errorMessage.includes('401') || errorMessage.includes('403') || errorMessage.includes('rate limiting')) {
-                alert('BoardGameGeek API is currently unavailable or rate-limited. Please try again in a few moments.');
+                toast.error('BoardGameGeek API is currently unavailable or rate-limited. Please try again in a few moments.');
             } else {
-                alert(`Error searching BoardGameGeek: ${errorMessage}`);
+                toast.error(`Error searching BoardGameGeek: ${errorMessage}`);
             }
         } finally {
             setBggSearching(false);
@@ -643,7 +643,7 @@ function Profile(){
             setBggSearchResults([]);
         } catch (error) {
             console.error('Error adding game to collection:', error);
-            alert('Failed to add game to collection. Please try again.');
+            toast.error('Failed to add game to collection. Please try again.');
         }
     };
 
@@ -655,7 +655,7 @@ function Profile(){
             await fetchOwnedGames();
         } catch (error) {
             console.error('Error removing game from collection:', error);
-            alert('Failed to remove game from collection. Please try again.');
+            toast.error('Failed to remove game from collection. Please try again.');
         }
     };
 
@@ -751,7 +751,7 @@ function Profile(){
 
     const importBGGCollection = async () => {
         if (!user?.sub || !bggUsername.trim()) {
-            alert('Please enter your BGG username');
+            toast.error('Please enter your BGG username');
             return;
         }
         

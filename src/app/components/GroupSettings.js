@@ -5,6 +5,7 @@ import { groupsAPI, API_BASE_URL } from '../../lib/api';
 import PromptScheduleReadOnly from './PromptScheduleReadOnly';
 import SafeImage from './SafeImage';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
+import { toast } from 'sonner';
 
 // Default profile picture options
 const DEFAULT_PROFILE_PICTURES = [
@@ -91,7 +92,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
       if (onClose) onClose();
     } catch (error) {
       console.error('Error updating group settings:', error);
-      alert('Failed to update group settings. Please try again.');
+      toast.error('Failed to update group settings. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -144,7 +145,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
     
     // Triple check: user must type the exact group name
     if (deleteConfirmText !== group.name) {
-      alert(`Please type the exact group name "${group.name}" to confirm deletion.`);
+      toast.error(`Please type the exact group name "${group.name}" to confirm deletion.`);
       return;
     }
     
@@ -166,7 +167,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
       }
     } catch (error) {
       console.error('Error deleting group:', error);
-      alert(error.message || 'Failed to delete group. Please try again.');
+      toast.error(error.message || 'Failed to delete group. Please try again.');
     } finally {
       setDeleting(false);
     }

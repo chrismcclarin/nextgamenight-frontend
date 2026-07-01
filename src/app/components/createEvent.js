@@ -16,6 +16,7 @@ import EventResultFields from './EventResultFields';
 import { useTimezone } from './TimezoneProvider';
 import { utcToWallClock, wallClockToUtc } from '../../lib/tzUtils';
 import TimezoneNudgeBanner from './TimezoneNudgeBanner';
+import { toast } from 'sonner';
 
 function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId = null }) {
   const authUser = user || Auth().user;
@@ -474,7 +475,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           gameId = resolvedGame.id;
         } catch (resolveError) {
           console.error('Error resolving game:', resolveError);
-          alert('Failed to create custom game. Please try again.');
+          toast.error('Failed to create custom game. Please try again.');
           return;
         }
       }
@@ -499,7 +500,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         // a wall-clock in the viewer's profile TZ and convert to UTC.
         const utc = wallClockToUtc(eventDataToSubmit.start_date, userTimezone);
         if (!utc) {
-          alert('Invalid start date/time. Please re-enter and try again.');
+          toast.error('Invalid start date/time. Please re-enter and try again.');
           return;
         }
         eventDataToSubmit.start_date = utc.toISOString();
@@ -511,7 +512,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       // Validate ballot options: if any are provided, need at least 2
       const validBallotOptions = ballotOptions.filter(o => o.game_name && o.game_name.trim());
       if (validBallotOptions.length > 0 && validBallotOptions.length < 2) {
-        alert('A ballot requires at least 2 game options. Please add more or remove all options.');
+        toast.error('A ballot requires at least 2 game options. Please add more or remove all options.');
         return;
       }
 
@@ -520,7 +521,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       if (newEvent.rsvp_deadline) {
         const utc = wallClockToUtc(newEvent.rsvp_deadline, userTimezone);
         if (!utc) {
-          alert('Invalid RSVP deadline. Please re-enter and try again.');
+          toast.error('Invalid RSVP deadline. Please re-enter and try again.');
           return;
         }
         eventDataToSubmit.rsvp_deadline = utc.toISOString();
@@ -576,7 +577,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       setUseVisualCalendar(true);
     } catch (error) {
       console.error(`Error ${editingEvent ? 'updating' : 'creating'} event:`, error);
-      alert(`Failed to ${editingEvent ? 'update' : 'create'} event. ${error.message || 'Please try again.'}`);
+      toast.error(`Failed to ${editingEvent ? 'update' : 'create'} event. ${error.message || 'Please try again.'}`);
     }
   };
 

@@ -8,6 +8,7 @@ import { format, parse, startOfWeek, getDay, startOfISOWeek, addDays, difference
 import { enUS } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { groupsAPI, availabilityAPI } from '../../../../../lib/api';
+import { toast } from 'sonner';
 
 const locales = {
   'en-US': enUS,
@@ -124,12 +125,12 @@ export default function AvailabilityResponsePage() {
 
   const handleSubmit = async () => {
     if (cannotMakeIt && availableSlots.length > 0) {
-      alert('Please either mark "I can\'t make it this week" OR select available time slots, not both.');
+      toast.error('Please either mark "I can\'t make it this week" OR select available time slots, not both.');
       return;
     }
 
     if (!cannotMakeIt && availableSlots.length === 0) {
-      alert('Please select at least one time slot when you\'re available, or mark "I can\'t make it this week".');
+      toast.error('Please select at least one time slot when you\'re available, or mark "I can\'t make it this week".');
       return;
     }
 
@@ -144,7 +145,7 @@ export default function AvailabilityResponsePage() {
       setSubmitted(true);
     } catch (error) {
       console.error('Error submitting availability:', error);
-      alert('Error submitting availability: ' + (error.message || 'Please try again.'));
+      toast.error('Error submitting availability: ' + (error.message || 'Please try again.'));
     } finally {
       setSubmitting(false);
     }

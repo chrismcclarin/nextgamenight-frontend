@@ -5,6 +5,7 @@ import { groupsAPI, invitesAPI, API_BASE_URL } from '../../lib/api';
 import ClickableMemberName from './ClickableMemberName';
 import KebabMenu from './KebabMenu';
 import FriendInvitePanel from './FriendInvitePanel';
+import { toast } from 'sonner';
 
 function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, group_name }) {
     const router = useRouter();
@@ -93,9 +94,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             }
         } catch (error) {
             console.error('Error updating role:', error);
-            // TODO(GUARD-02, Plan 86-08): replace window.alert with toast.error once
-            // the Toaster substrate lands (86-08 owns the failure-visibility swap).
-            alert(error.message || 'Failed to update user role. Please try again.');
+            toast.error(error.message || 'Failed to update user role. Please try again.');
         }
     };
 
@@ -113,9 +112,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             }
         } catch (error) {
             console.error('Error removing member:', error);
-            // TODO(GUARD-02, Plan 86-08): replace window.alert with toast.error once
-            // the Toaster substrate lands (86-08 owns the failure-visibility swap).
-            alert(error.message || 'Failed to remove user. Please try again.');
+            toast.error(error.message || 'Failed to remove user. Please try again.');
         }
     };
 
@@ -137,7 +134,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             if (onMembersUpdated) onMembersUpdated();
         } catch (error) {
             console.error('Error approving member:', error);
-            alert(error.message || 'Failed to approve member. Please try again.');
+            toast.error(error.message || 'Failed to approve member. Please try again.');
         }
     };
 
@@ -152,7 +149,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             if (onMembersUpdated) onMembersUpdated();
         } catch (error) {
             console.error('Error rejecting member:', error);
-            alert(error.message || 'Failed to reject member. Please try again.');
+            toast.error(error.message || 'Failed to reject member. Please try again.');
         }
     };
 
@@ -237,7 +234,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                         await groupsAPI.resetInviteToken(group_id);
                                     } catch (err) {
                                         console.error('Failed to reset invite token:', err);
-                                        alert(err.message || 'Failed to reset invite link. Please try again.');
+                                        toast.error(err.message || 'Failed to reset invite link. Please try again.');
                                     } finally {
                                         setResettingInvite(false);
                                     }
@@ -560,7 +557,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                     if (modaltoggle) modaltoggle(); // close ManageMembers — caller refetches role
                                 } catch (err) {
                                     console.error('Transfer ownership failed:', err);
-                                    alert(err.message || 'Failed to transfer ownership. Please try again.');
+                                    toast.error(err.message || 'Failed to transfer ownership. Please try again.');
                                 } finally {
                                     setTransferring(false);
                                 }

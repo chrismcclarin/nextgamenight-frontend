@@ -19,6 +19,7 @@ import SafeImage from '../components/SafeImage';
 import ClickableMemberName from '../components/ClickableMemberName';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import StarRatingPicker from '../components/StarRatingPicker';
+import { toast } from 'sonner';
 
 // Phase 65-02: small helper that renders a colored RSVP-status indicator.
 // status is one of 'yes' | 'maybe' | 'no' | null/undefined (no response).
@@ -440,7 +441,7 @@ export default function GameDetailPage() {
             router.push(`/groupHomePage?id=${group_id}`);
         } catch (err) {
             console.error('Error cancelling event:', err);
-            alert(err.message || 'Failed to cancel event.');
+            toast.error(err.message || 'Failed to cancel event.');
             setCancellingEvent(false);
             setShowActionsMenu(false);
         }
@@ -462,7 +463,7 @@ export default function GameDetailPage() {
                 callerSub: user.sub,
                 groupMembersLength: (groupMembers || []).length,
             });
-            alert("Couldn't leave event. Please refresh and try again.");
+            toast.error("Couldn't leave event. Please refresh and try again.");
             return;
         }
 
@@ -473,7 +474,7 @@ export default function GameDetailPage() {
             router.push('/');
         } catch (err) {
             console.error('[handleLeaveEvent] DELETE failed:', err);
-            alert(err?.message || "Couldn't leave event. Please try again.");
+            toast.error(err?.message || "Couldn't leave event. Please try again.");
             setLeavingEvent(false);
             setShowActionsMenu(false);
         }
@@ -490,7 +491,7 @@ export default function GameDetailPage() {
             setShowGameQR(true);
         } catch (err) {
             console.error('Failed to get game invite token:', err);
-            alert(err.message || 'Failed to load Share QR.');
+            toast.error(err.message || 'Failed to load Share QR.');
         } finally {
             setQrLoading(false);
         }
@@ -529,7 +530,7 @@ export default function GameDetailPage() {
             setParticipants(prev => prev.filter(p => p.user_id !== targetUserDbId));
         } catch (err) {
             console.error('Failed to remove participant:', err);
-            alert(err.message || 'Failed to remove participant.');
+            toast.error(err.message || 'Failed to remove participant.');
         }
     };
 
@@ -630,7 +631,7 @@ export default function GameDetailPage() {
             fetchGameData();
         } catch (error) {
             console.error('Error deleting event:', error);
-            alert(error.message || 'Failed to delete event. Only group owners and admins can delete events.');
+            toast.error(error.message || 'Failed to delete event. Only group owners and admins can delete events.');
         }
     };
 
@@ -688,7 +689,7 @@ export default function GameDetailPage() {
         } catch (error) {
             console.error('Error submitting review:', error);
             const errorMessage = error.message || 'Failed to submit review. Please try again.';
-            alert(errorMessage);
+            toast.error(errorMessage);
         }
     };
 
