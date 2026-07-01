@@ -1,6 +1,7 @@
 'use client';
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import { getContrastColor } from '../../lib/colorUtils';
+import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { formatTime, formatWithTzAbbr } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
@@ -474,7 +475,7 @@ const EventRow = forwardRef(function EventRow({ event, timezone, onClick }, ref)
       className="p-3 sm:p-4 border rounded-lg transition-all hover:shadow-md cursor-pointer focus:outline-none focus:ring-2 focus:ring-content-link"
       style={{
         backgroundColor: groupBgColor,
-        backgroundImage: groupBgImage ? `url(${groupBgImage})` : 'none',
+        ...safeBgImageStyle(groupBgImage),
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         position: 'relative',

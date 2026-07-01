@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { groupsAPI, API_BASE_URL } from '../../lib/api';
 import PromptScheduleReadOnly from './PromptScheduleReadOnly';
 import SafeImage from './SafeImage';
+import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 
 // Default profile picture options
 const DEFAULT_PROFILE_PICTURES = [
@@ -256,9 +257,9 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
           <h3 className="text-lg font-semibold text-content-primary mb-3">Background</h3>
           
           {/* Current Selection Preview */}
-          <div className="mb-4 p-4 border rounded-lg" style={{ 
+          <div className="mb-4 p-4 border rounded-lg" style={{
             backgroundColor: backgroundColor,
-            backgroundImage: backgroundImageUrl ? `url(${backgroundImageUrl})` : 'none',
+            ...safeBgImageStyle(backgroundImageUrl),
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             minHeight: '100px'
