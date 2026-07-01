@@ -53,7 +53,10 @@ export const AvailabilityPatternSchema = z.object({
   pattern_data: AvailabilityPatternDataSchema,
   start_date: z.string().nullable().optional(), // recurring
   end_date: z.string().nullable().optional(),
-  is_available: z.boolean().optional(), // specific override
+  // Nullable in the DB (UserAvailability.is_available allowNull) — recurring_pattern
+  // rows serialize it as `null` (the column exists, value is null), NOT omitted. Must
+  // be `.nullable()` or the parse throws on every recurring row (schema-drift, 86-03).
+  is_available: z.boolean().nullable().optional(), // specific override
 });
 export type AvailabilityPattern = z.infer<typeof AvailabilityPatternSchema>;
 

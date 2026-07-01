@@ -31,9 +31,13 @@ export const CAPTURED_USER_PATTERNS_BODY: unknown[] = [
   {
     id: 'a1b2c3d4-0000-4000-8000-000000000001',
     type: 'recurring_pattern',
-    pattern_data: { dayOfWeek: 3, startTime: '18:00', endTime: '22:00' },
+    pattern_data: { dayOfWeek: 3, startTime: '18:00', endTime: '22:00', timezone: 'UTC' },
     start_date: '2026-01-01',
     end_date: '2026-12-31',
+    // Sequelize serializes the nullable is_available column as `null` (present,
+    // not omitted) on recurring rows — the real drift that broke /userProfile.
+    is_available: null,
+    timezone: 'UTC',
     user_id: 'auth0|abc123',
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
@@ -75,6 +79,9 @@ describe('GET /availability/user/:id/patterns contract', () => {
     expect(typeof recurring.pattern_data.dayOfWeek).toBe('number');
     expect(typeof recurring.pattern_data.startTime).toBe('string');
     expect(typeof recurring.start_date).toBe('string');
+    // Drift guard (86-03 regression): recurring rows carry is_available === null;
+    // the schema MUST accept present-and-null, not only omitted/undefined.
+    expect(recurring.is_available).toBeNull();
 
     // specific override — date + availability flag.
     expect(override.type).toBe('specific_override');
