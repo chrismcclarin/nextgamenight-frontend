@@ -125,7 +125,13 @@ export default function AvailabilityGrid({
     (day, timeSlot) => {
       const wall = `${format(day, 'yyyy-MM-dd')}T${pad2(timeSlot.hour)}:${pad2(timeSlot.minute)}`;
       const utc = wallClockToUtc(wall, timezone);
-      return (utc || new Date(wall)).toISOString();
+      // wallClockToUtc returns null only on a degenerate/invalid profile TZ. Do
+      // NOT fall back to `new Date(wall)` — that parses the wall string in the
+      // BROWSER-local TZ, which reintroduces the exact BUG-01/F-810 corruption
+      // (the same slot would persist a different UTC instant for each viewer).
+      // Interpret the wall string as UTC instead: deterministic and viewer-
+      // independent, so a bad TZ can never silently emit a browser-relative instant.
+      return (utc || new Date(`${wall}:00Z`)).toISOString();
     },
     [timezone]
   );
