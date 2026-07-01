@@ -68,9 +68,26 @@ export default function ResponseDashboard({
     } catch (err) {
       console.error('Failed to send reminder:', err);
 
-      // Handle 429 rate limit error
-      if (err.message && err.message.includes('24 hours')) {
-        setReminderError('Cannot remind this user more than once per 24 hours');
+      // Cooldown is code-driven, not prose-matched (the BE rewrote the old
+      // cooldown-duration wording to the generic registry message). Branch on the
+      // machine code `reminder_cooldown` and surface the exact reopen time from
+      // the envelope. NOTE: ApiError.details carries the WHOLE response body, so
+      // the envelope's own `details` is nested one level deeper —
+      // err.details.details.next_reminder_available (verified against the BE
+      // sendError('reminder_cooldown', { next_reminder_available }) shape).
+      if (err?.code === 'reminder_cooldown') {
+        const nextAvailable = err?.details?.details?.next_reminder_available;
+        if (nextAvailable) {
+          const when = new Date(nextAvailable).toLocaleString([], {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+          });
+          setReminderError(`You reminded this user recently. You can remind them again after ${when}.`);
+        } else {
+          setReminderError('You reminded this user recently. Please wait before reminding them again.');
+        }
       } else {
         setReminderError(err.message || 'Failed to send reminder');
       }

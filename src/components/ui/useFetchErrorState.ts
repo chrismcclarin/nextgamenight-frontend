@@ -50,6 +50,11 @@ const MESSAGE_BY_CODE: Record<FetchErrorCode, string> = {
   forbidden: "You don't have access to this. Refresh the page to try again.",
   not_found: "We couldn't find what you were looking for.",
   validation: 'Something looks off with that request. Refresh the page to try again.',
+  token_invalid: 'This link is invalid or has expired. Request a new one and try again.',
+  prompt_closed: 'This availability poll is already closed.',
+  prompt_deadline_expired: 'The deadline for this availability poll has passed.',
+  reminder_cooldown: 'A reminder was sent recently. Please wait before sending another.',
+  internal: "Something went wrong on our end. Please try again shortly.",
   config: "Something's misconfigured on our end. Please try again shortly.",
   unknown: 'Something went wrong. Refresh the page to try again.',
 };
