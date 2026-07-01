@@ -530,7 +530,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
       if (editingEvent) {
         // Update existing event
-        await eventsAPI.updateEvent(editingEvent.id, eventDataToSubmit, authUser?.sub);
+        await eventsAPI.updateEvent(editingEvent.id, eventDataToSubmit);
 
         // Update ballot options if we have valid ones
         if (validBallotOptions.length >= 2) {

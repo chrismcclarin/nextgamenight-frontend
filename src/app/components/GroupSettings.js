@@ -85,7 +85,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
         background_image_url: backgroundImageUrl || null,
       };
       
-      await groupsAPI.updateGroupSettings(group.id, user.sub, settings);
+      await groupsAPI.updateGroupSettings(group.id, settings);
       if (onUpdate) onUpdate();
       if (onClose) onClose();
     } catch (error) {
@@ -153,7 +153,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
     
     try {
       setDeleting(true);
-      await groupsAPI.deleteGroup(group.id, user.sub);
+      await groupsAPI.deleteGroup(group.id);
       
       // Close modal and navigate away
       if (onClose) onClose();

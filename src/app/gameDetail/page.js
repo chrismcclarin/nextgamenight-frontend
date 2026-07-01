@@ -436,7 +436,7 @@ export default function GameDetailPage() {
         if (!user?.sub || !singleEvent?.id) return;
         setCancellingEvent(true);
         try {
-            await eventsAPI.deleteEvent(singleEvent.id, user.sub);
+            await eventsAPI.deleteEvent(singleEvent.id);
             router.push(`/groupHomePage?id=${group_id}`);
         } catch (err) {
             console.error('Error cancelling event:', err);
@@ -625,7 +625,7 @@ export default function GameDetailPage() {
         }
         
         try {
-            await eventsAPI.deleteEvent(event_id, user.sub);
+            await eventsAPI.deleteEvent(event_id);
             // Refresh events after deletion
             fetchGameData();
         } catch (error) {

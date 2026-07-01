@@ -253,34 +253,32 @@ export const groupsAPI = {
     }),
 
   // Update user role in group (owner only)
-  updateUserRole: (group_id: string, target_user_id: string, requesting_user_id: string, role: string) =>
+  updateUserRole: (group_id: string, target_user_id: string, role: string) =>
     apiFetch(`/groups/${group_id}/users/${target_user_id}/role`, {
       method: 'PUT',
-      body: JSON.stringify({ requesting_user_id, role }),
+      body: JSON.stringify({ role }),
     }),
 
-  // Remove user from group (owner or admin)
-  removeUserFromGroup: (group_id: string, target_user_id: string, requesting_user_id: string) =>
+  // Remove user from group (owner or admin). Authz derives the caller from the
+  // Auth0 token (FSEC-02) — no client-supplied caller identity in the body.
+  removeUserFromGroup: (group_id: string, target_user_id: string) =>
     apiFetch(`/groups/${group_id}/users/${target_user_id}`, {
       method: 'DELETE',
-      body: JSON.stringify({ requesting_user_id }),
     }),
 
   // Update group settings (profile picture, background)
-  updateGroupSettings: (group_id: string, requesting_user_id: string, settings: Record<string, unknown>) =>
+  updateGroupSettings: (group_id: string, settings: Record<string, unknown>) =>
     apiFetch(`/groups/${group_id}/settings`, {
       method: 'PUT',
       body: JSON.stringify({
-        requesting_user_id,
         ...settings,
       }),
     }),
 
   // Delete group (owner only)
-  deleteGroup: (group_id: string, requesting_user_id: string) =>
+  deleteGroup: (group_id: string) =>
     apiFetch(`/groups/${group_id}`, {
       method: 'DELETE',
-      body: JSON.stringify({ requesting_user_id }),
     }),
 
   // Approve a pending member (owner/admin only)
@@ -357,17 +355,17 @@ export const eventsAPI = {
     }),
   
   // Update an event (requires owner/admin)
-  updateEvent: (event_id: string, eventData: Record<string, unknown>, requesting_user_id: string) => 
+  updateEvent: (event_id: string, eventData: Record<string, unknown>) =>
     apiFetch(`/events/${event_id}`, {
       method: 'PUT',
-      body: JSON.stringify({ ...eventData, requesting_user_id }),
+      body: JSON.stringify({ ...eventData }),
     }),
-  
-  // Delete an event (requires owner/admin)
-  deleteEvent: (event_id: string, requesting_user_id: string) =>
+
+  // Delete an event (requires owner/admin). Authz derives the caller from the
+  // Auth0 token (FSEC-02) — no client-supplied caller identity in the body.
+  deleteEvent: (event_id: string) =>
     apiFetch(`/events/${event_id}`, {
       method: 'DELETE',
-      body: JSON.stringify({ requesting_user_id }),
     }),
 
   // Remove a single participant from an event (owner/admin only).
@@ -662,9 +660,8 @@ export const gameReviewsAPI = {
   },
   
   // Get all reviews by a user in a group
-  getUserReviews: (target_user_id: string, group_id: string, requesting_user_id: string | null = null) => {
-    const params = requesting_user_id ? `?user_id=${encodeURIComponent(requesting_user_id)}` : '';
-    return apiFetch(`/game-reviews/user/${encodeURIComponent(target_user_id)}/group/${group_id}${params}`);
+  getUserReviews: (target_user_id: string, group_id: string) => {
+    return apiFetch(`/game-reviews/user/${encodeURIComponent(target_user_id)}/group/${group_id}`);
   },
   
   // Create or update a review

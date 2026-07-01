@@ -86,13 +86,15 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         if (!group_id || !user?.sub) return;
         
         try {
-            await groupsAPI.updateUserRole(group_id, target_user_id, user.sub, newRole);
+            await groupsAPI.updateUserRole(group_id, target_user_id, newRole);
             await fetchMembers(); // Refresh the list
             if (onMembersUpdated) {
                 onMembersUpdated();
             }
         } catch (error) {
             console.error('Error updating role:', error);
+            // TODO(GUARD-02, Plan 86-08): replace window.alert with toast.error once
+            // the Toaster substrate lands (86-08 owns the failure-visibility swap).
             alert(error.message || 'Failed to update user role. Please try again.');
         }
     };
@@ -104,13 +106,15 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     const handleRemoveMemberConfirmed = async (target_user_id) => {
         if (!group_id || !user?.sub) return;
         try {
-            await groupsAPI.removeUserFromGroup(group_id, target_user_id, user.sub);
+            await groupsAPI.removeUserFromGroup(group_id, target_user_id);
             await fetchMembers(); // Refresh the list
             if (onMembersUpdated) {
                 onMembersUpdated();
             }
         } catch (error) {
             console.error('Error removing member:', error);
+            // TODO(GUARD-02, Plan 86-08): replace window.alert with toast.error once
+            // the Toaster substrate lands (86-08 owns the failure-visibility swap).
             alert(error.message || 'Failed to remove user. Please try again.');
         }
     };
