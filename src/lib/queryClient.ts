@@ -21,16 +21,31 @@ import { ZodError } from 'zod';
 import { ApiError } from '@/lib/api';
 
 // ApiError codes that are NOT transient — retrying them is pointless and a DoS
-// risk against our own backend (T-84-08).
+// risk against our own backend (T-84-08 / T-86-11). Retry classification for the
+// Phase 85 BE domain codes was decided in 86-04 (Decision A):
+//   unauthorized / forbidden / not_found / validation — client-side faults; a
+//     retry cannot change the outcome. NON-retryable.
+//   rate_limited (429) — the backend is explicitly asking us to slow down; an
+//     immediate retry worsens the storm. Also the status-mapped code for raw
+//     `{ error }` 429s, so unconverted routes back off too. NON-retryable.
+//   reminder_cooldown (429) — a domain 429 the BE explicitly asks us to back
+//     off on (next_reminder_available). NON-retryable.
+//   prompt_closed / prompt_deadline_expired (400) — terminal domain states; the
+//     prompt won't reopen on retry. NON-retryable.
+//   token_invalid (400) — a bad/expired token won't validate on retry.
+//     NON-retryable.
+// Left RETRYABLE-once (transient): `internal` (500 — may be a blip) and the
+// client-side `network` code, plus `unknown` — shouldRetry allows one retry.
 const NON_RETRYABLE_API_CODES: ReadonlyArray<string> = [
   'unauthorized',
   'forbidden',
   'not_found',
   'validation',
-  // 429: the backend is explicitly asking us to slow down — an immediate retry
-  // worsens the rate-limit storm we're trying to avoid (T-84-08). Honoring
-  // Retry-After backoff is a later enhancement; for now, do not retry.
   'rate_limited',
+  'reminder_cooldown',
+  'prompt_closed',
+  'prompt_deadline_expired',
+  'token_invalid',
 ];
 
 /**

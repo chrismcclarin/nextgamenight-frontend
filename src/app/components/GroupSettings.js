@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation';
 import { groupsAPI, API_BASE_URL } from '../../lib/api';
 import PromptScheduleReadOnly from './PromptScheduleReadOnly';
 import SafeImage from './SafeImage';
+import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
+import { toast } from 'sonner';
 
 // Default profile picture options
 const DEFAULT_PROFILE_PICTURES = [
@@ -85,12 +87,12 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
         background_image_url: backgroundImageUrl || null,
       };
       
-      await groupsAPI.updateGroupSettings(group.id, user.sub, settings);
+      await groupsAPI.updateGroupSettings(group.id, settings);
       if (onUpdate) onUpdate();
       if (onClose) onClose();
     } catch (error) {
       console.error('Error updating group settings:', error);
-      alert('Failed to update group settings. Please try again.');
+      toast.error('Failed to update group settings. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -143,7 +145,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
     
     // Triple check: user must type the exact group name
     if (deleteConfirmText !== group.name) {
-      alert(`Please type the exact group name "${group.name}" to confirm deletion.`);
+      toast.error(`Please type the exact group name "${group.name}" to confirm deletion.`);
       return;
     }
     
@@ -153,7 +155,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
     
     try {
       setDeleting(true);
-      await groupsAPI.deleteGroup(group.id, user.sub);
+      await groupsAPI.deleteGroup(group.id);
       
       // Close modal and navigate away
       if (onClose) onClose();
@@ -165,7 +167,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
       }
     } catch (error) {
       console.error('Error deleting group:', error);
-      alert(error.message || 'Failed to delete group. Please try again.');
+      toast.error(error.message || 'Failed to delete group. Please try again.');
     } finally {
       setDeleting(false);
     }
@@ -256,9 +258,9 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
           <h3 className="text-lg font-semibold text-content-primary mb-3">Background</h3>
           
           {/* Current Selection Preview */}
-          <div className="mb-4 p-4 border rounded-lg" style={{ 
+          <div className="mb-4 p-4 border rounded-lg" style={{
             backgroundColor: backgroundColor,
-            backgroundImage: backgroundImageUrl ? `url(${backgroundImageUrl})` : 'none',
+            ...safeBgImageStyle(backgroundImageUrl),
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             minHeight: '100px'

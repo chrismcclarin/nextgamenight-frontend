@@ -7,6 +7,7 @@ import GroupSettings from './GroupSettings';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { groupsAPI } from '../../lib/api';
 import { getTextStyle } from '../../lib/colorUtils';
+import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { formatDate } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
@@ -130,7 +131,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                 }}
                 style={{
                   backgroundColor: bgColor,
-                  backgroundImage: bgImage ? `url(${bgImage})` : 'none',
+                  ...safeBgImageStyle(bgImage),
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
                 }}

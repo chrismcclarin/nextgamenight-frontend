@@ -7,6 +7,7 @@ import CreateEvent from '../components/createEvent';
 import ManageMembers from '../components/ManageMembers';
 import { listsAPI, groupsAPI, eventsAPI, API_BASE_URL } from '../../lib/api';
 import GroupGamesList from '../components/GroupGamesList';
+import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { getTextStyle, getSubtitleStyle } from '../../lib/colorUtils';
 import SafeImage from '../components/SafeImage';
 import EventCalendar from '../components/EventCalendar';
@@ -251,7 +252,7 @@ function GroupHomePage(){
                 className="mb-6 flex flex-col gap-4 p-4 md:p-6 rounded-lg relative overflow-visible"
                 style={{
                     backgroundColor: Group?.background_color || '#111418',
-                    backgroundImage: Group?.background_image_url ? `url(${Group.background_image_url})` : 'none',
+                    ...safeBgImageStyle(Group?.background_image_url),
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
                     minHeight: '120px',

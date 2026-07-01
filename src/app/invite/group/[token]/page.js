@@ -1,9 +1,10 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import Link from 'next/link';
 import { groupsAPI } from '../../../../lib/api';
+import { Card } from '@/components/ui/Card';
 
 function GroupInvitePage() {
   const { token } = useParams();
@@ -13,6 +14,15 @@ function GroupInvitePage() {
   const [status, setStatus] = useState('loading'); // loading | preview | joining | joined | already-member | error
   const [groupInfo, setGroupInfo] = useState(null);
   const [error, setError] = useState(null);
+
+  // BUG-02 (F-450) single-shot guard — mirrors the game-invite fix
+  // (invite/game/[token]/page.js:59). The previous implementation listed
+  // `status` in the autoJoin effect deps, so setStatus('joining') re-fired
+  // the effect and issued parallel joinByToken POSTs. The ref keeps the join
+  // single-shot per page-load regardless of effect re-fires (React 18
+  // strict-mode dev double-render included); belt-and-suspenders alongside
+  // removing `status` from the dep array.
+  const joiningRef = useRef(false);
 
   // Fetch group preview info (public, no auth needed)
   useEffect(() => {
@@ -25,6 +35,15 @@ function GroupInvitePage() {
     async function fetchPreview() {
       try {
         const data = await groupsAPI.getInvitePreview(token);
+        // F-190 infinite-load fix: a 2xx with an empty/falsy body would leave
+        // `groupInfo` falsy forever, so the auth effect's `!groupInfo` guard
+        // returns on every run and the page spins on 'loading' with no error
+        // state. Treat a missing preview payload as a terminal error instead.
+        if (!data) {
+          setStatus('error');
+          setError('This invite link is no longer valid.');
+          return;
+        }
         setGroupInfo(data);
       } catch (err) {
         setStatus('error');
@@ -44,6 +63,11 @@ function GroupInvitePage() {
       setStatus('preview');
       return;
     }
+
+    // BUG-02 single-shot guard: once the join POST has fired for this
+    // page-load, never fire again even if the effect re-runs.
+    if (joiningRef.current) return;
+    joiningRef.current = true;
 
     // User is logged in -- auto-join
     async function autoJoin() {
@@ -87,7 +111,11 @@ function GroupInvitePage() {
     }
 
     autoJoin();
-  }, [authLoading, user, groupInfo, status, token, router]);
+    // NOTE: `status` deliberately omitted from deps — its inclusion was the
+    // root cause of the parallel-POST double-join (BUG-02 / F-450). `router`
+    // is a stable Next.js ref and is intentionally omitted alongside it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user, groupInfo, token]);
 
   // Loading state
   if (authLoading || status === 'loading') {
@@ -103,7 +131,9 @@ function GroupInvitePage() {
 
   return (
     <div className="min-h-screen bg-surface-page flex items-center justify-center">
-      <div className="bg-surface-card rounded-card shadow-theme-md p-8 max-w-md w-full mx-4">
+      {/* PRIM-04 adoption: the group-info surface renders inside the shared Card
+          primitive (elevated surface + semantic tokens). */}
+      <Card className="p-8 max-w-md w-full mx-4 shadow-theme-md">
 
         {/* Preview state (unauthenticated) */}
         {status === 'preview' && groupInfo && (
@@ -201,7 +231,7 @@ function GroupInvitePage() {
           </div>
         )}
 
-      </div>
+      </Card>
     </div>
   );
 }

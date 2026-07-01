@@ -103,6 +103,12 @@ export default function AvailabilityForm({
 
     try {
       const transformedSlots = data.time_slots.map(slot => {
+        // BUG-01 / F-810: slot.slotId is now a correct UTC instant emitted by
+        // AvailabilityGrid.generateSlotId (profile-TZ wall-clock -> UTC via
+        // wallClockToUtc). The +30min end is pure instant arithmetic on that
+        // corrected UTC instant — NO browser-local wall-clock re-derivation —
+        // so start/end round-trip correctly when the profile TZ != browser TZ.
+        // `user_timezone` (below) still threads the profile TZ to the payload.
         const startDate = new Date(slot.slotId);
         const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
         return {

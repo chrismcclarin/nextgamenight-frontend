@@ -131,15 +131,6 @@ export default function AvailabilityFormPage() {
     setPageState(PAGE_STATES.SUBMITTED);
   }, []);
 
-  // Handle request new link
-  const handleRequestNewLink = useCallback(async () => {
-    // This would call magicAuthAPI.requestNew but that's not implemented yet
-    // For now, show instruction to contact organizer
-    setErrorMessage(
-      'Please contact your group organizer to request a new availability link.'
-    );
-  }, []);
-
   // Calculate time remaining until token expires
   const getTimeRemaining = useCallback(() => {
     if (!tokenData?.expiresAt) return null;
@@ -194,14 +185,8 @@ export default function AvailabilityFormPage() {
           <p className="text-content-secondary mb-6">
             {errorMessage}
           </p>
-          <button
-            onClick={handleRequestNewLink}
-            className="btn btn-primary w-full"
-          >
-            Request New Link
-          </button>
-          <p className="mt-4 text-sm text-content-muted">
-            Or contact your group organizer for assistance.
+          <p className="text-sm text-content-muted">
+            Please contact your group organizer to request a new availability link.
           </p>
         </div>
       </div>

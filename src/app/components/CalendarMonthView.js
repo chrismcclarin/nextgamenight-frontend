@@ -1,6 +1,7 @@
 'use client';
 import { getEventsForDate, isToday } from '../../lib/calendarUtils';
 import { getEventTileTextColor, getBrightness } from '../../lib/colorUtils';
+import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import SafeImage from './SafeImage';
 import RsvpCount from './RsvpCount';
 
@@ -171,7 +172,7 @@ export default function CalendarMonthView({
                             className={`text-xs p-1 rounded truncate hover:opacity-90 transition-opacity flex items-center gap-1 font-medium cursor-pointer`}
                             style={{
                               backgroundColor: groupBgColor,
-                              backgroundImage: groupBgImage ? `url(${groupBgImage})` : 'none',
+                              ...safeBgImageStyle(groupBgImage),
                               backgroundSize: 'cover',
                               backgroundPosition: 'center',
                               color: isPastDate ? '#6b7280' : getEventTileTextColor(groupBgColor),

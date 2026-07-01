@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { getContrastColor } from '../../lib/colorUtils';
+import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { formatTime, formatLongDate } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
@@ -99,7 +100,7 @@ export default function EventDayModal({
                     className={`p-4 border rounded-lg transition-all hover:shadow-md cursor-pointer`}
                     style={{
                       backgroundColor: groupBgColor,
-                      backgroundImage: groupBgImage ? `url(${groupBgImage})` : 'none',
+                      ...safeBgImageStyle(groupBgImage),
                       backgroundSize: 'cover',
                       backgroundPosition: 'center',
                       position: 'relative',

@@ -4,7 +4,9 @@ import Header from './Header.js'
 import Footer from './components/Footer'
 import FeedbackButton from './components/FeedbackButton'
 import { UserProvider } from '@auth0/nextjs-auth0/client';
+import { Toaster } from 'sonner'
 import Providers from './providers'
+import AppErrorBoundary from './components/AppErrorBoundary'
 import TutorialProvider from './components/tutorial/TutorialProvider'
 import TimezoneProvider from './components/TimezoneProvider'
 import ThemeProvider from './components/ThemeProvider'
@@ -23,6 +25,16 @@ export default function RootLayout({ children }) {
     <html lang="en" suppressHydrationWarning>
       <UserProvider>
         <body className={plusJakartaSans.className}>
+          {/* GUARD-01 (Plan 86-08, D-07): AppErrorBoundary wraps the entire
+              provider stack INSIDE <body> so a render-time throw in any
+              provider degrades to a styled fallback (keeps shell/theme/fonts)
+              and auto-reports to Sentry — never a white screen. global-error.tsx
+              is the bare last-resort net for throws in the layout itself. */}
+          <AppErrorBoundary>
+          {/* GUARD-02 (Plan 86-08, D-08): exactly ONE sonner <Toaster/> mounted
+              at the root layout (NOT per-route — the G2 check) providing the
+              transient failure-visibility substrate. Has built-in aria-live. */}
+          <Toaster position="top-right" richColors closeButton theme="system" />
           {/* PRIM-07 (Plan 84-04): TanStack Query provider mounted at the app
               root via the server-fresh / browser-singleton getQueryClient()
               factory. Must sit ABOVE any component that calls useQuery. */}
@@ -56,6 +68,7 @@ export default function RootLayout({ children }) {
             </TimezoneProvider>
           </ThemeProvider>
           </Providers>
+          </AppErrorBoundary>
         </body>
       </UserProvider>
     </html>

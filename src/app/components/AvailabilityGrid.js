@@ -2,8 +2,16 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'; // useState kept for paintMode
 import { format, addDays, addMinutes, startOfWeek, nextMonday, parseISO } from 'date-fns';
-import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
+// BUG-01 / F-810: slot instants are generated AND parsed against the PROFILE
+// timezone via the Phase 84 date-fns-tz layer (v2-pinned, test-pinned). Relative
+// (not `@/`) import so this `.js` component resolves under vitest — mirrors
+// AvailabilityForm's `../../lib/api` note.
+import { wallClockToUtc, utcToWallClock } from '../../lib/datetime';
 import WriteCell from './heatmap/WriteCell';
+
+// Zero-pad an hour/minute to two digits for the "yyyy-MM-ddTHH:mm" wall-clock
+// string handed to wallClockToUtc. Module-level (stable identity, no deps).
+const pad2 = (n) => String(n).padStart(2, '0');
 
 /**
  * AvailabilityGrid - Paint-to-select availability grid component
@@ -104,12 +112,60 @@ export default function AvailabilityGrid({
     return map;
   }, [value]);
 
-  // Generate slot ID from date and time
-  const generateSlotId = useCallback((day, timeSlot) => {
-    const date = new Date(day);
-    date.setHours(timeSlot.hour, timeSlot.minute, 0, 0);
-    return date.toISOString();
-  }, []);
+  // Generate slot ID from date and time.
+  //
+  // BUG-01 / F-810 fix: build a wall-clock string in the PROFILE timezone and
+  // convert to a UTC instant via the existing date-fns-tz layer, instead of the
+  // old browser-local `setHours`/`toISOString` (which corrupted the persisted
+  // instant whenever the profile TZ differed from the browser TZ). Kept as a
+  // routed-through-wallClockToUtc function, but it is invoked ONCE per
+  // [days, timeSlots, timezone] change to build `slotIdGrid` below — NOT inline
+  // per cell per render or per pointermove (see the memoized map).
+  const generateSlotId = useCallback(
+    (day, timeSlot) => {
+      const wall = `${format(day, 'yyyy-MM-dd')}T${pad2(timeSlot.hour)}:${pad2(timeSlot.minute)}`;
+      const utc = wallClockToUtc(wall, timezone);
+      // wallClockToUtc returns null only on a degenerate/invalid profile TZ. Do
+      // NOT fall back to `new Date(wall)` — that parses the wall string in the
+      // BROWSER-local TZ, which reintroduces the exact BUG-01/F-810 corruption
+      // (the same slot would persist a different UTC instant for each viewer).
+      // Interpret the wall string as UTC instead: deterministic and viewer-
+      // independent, so a bad TZ can never silently emit a browser-relative instant.
+      return (utc || new Date(`${wall}:00Z`)).toISOString();
+    },
+    [timezone]
+  );
+
+  // Precompute the whole grid's slot-id mapping ONCE per [days, timeSlots,
+  // timezone] change. The heavy TZ conversion (wallClockToUtc) runs O(cells)
+  // here — never inline on the per-cell render loop or the paint/pointermove
+  // handlers, which instead READ from this structure:
+  //   - byCoord: "dayIndex:timeSlotIndex" -> slotId  (forward, render + paint)
+  //   - byId:    slotId -> { dayIndex, timeSlotIndex, hour, minute }
+  //             (reverse, so the cross-day handlers parse a slotId in the SAME
+  //              profile TZ that generateSlotId emitted — symmetric by
+  //              construction, closing the BUG-01 write/parse asymmetry)
+  // `timezone` is a transitive dependency via generateSlotId, so the precomputed
+  // ids invalidate and regenerate when the profile TZ changes.
+  const slotIdGrid = useMemo(() => {
+    const byCoord = new Map();
+    const byId = new Map();
+    days.forEach((day, dayIndex) => {
+      timeSlots.forEach((ts, timeSlotIndex) => {
+        const slotId = generateSlotId(day, ts);
+        byCoord.set(`${dayIndex}:${timeSlotIndex}`, slotId);
+        byId.set(slotId, { dayIndex, timeSlotIndex, hour: ts.hour, minute: ts.minute });
+      });
+    });
+    return { byCoord, byId };
+  }, [days, timeSlots, generateSlotId]);
+
+  // O(1) forward lookup: the render loop and paint/toggle/clear handlers read
+  // slot ids from here instead of invoking the TZ conversion inline.
+  const slotIdForCoord = useCallback(
+    (dayIndex, timeSlotIndex) => slotIdGrid.byCoord.get(`${dayIndex}:${timeSlotIndex}`),
+    [slotIdGrid]
+  );
 
   // Toggle a single per-day "All" column checkbox. Plan 71-05 manual-checkpoint
   // Bug 1 (round 2) fix: previously this only flipped `checkedDays` state,
@@ -132,7 +188,7 @@ export default function AvailabilityGrid({
     if (isCurrentlyChecked) {
       // Uncheck: remove from checkedDays AND clear every slot in this day column.
       setCheckedDays((prev) => prev.filter((d) => d !== dayIndex));
-      const dayKeys = new Set(timeSlots.map((ts) => generateSlotId(day, ts)));
+      const dayKeys = new Set(timeSlots.map((_, ti) => slotIdForCoord(dayIndex, ti)));
       const filtered = value.filter((s) => !dayKeys.has(s.slotId));
       if (filtered.length !== value.length) {
         onChange?.(filtered);
@@ -142,9 +198,9 @@ export default function AvailabilityGrid({
       setCheckedDays((prev) => [...prev, dayIndex]);
       const existing = new Set(value.map((s) => s.slotId));
       const additions = [];
-      timeSlots.forEach((ts) => {
-        const id = generateSlotId(day, ts);
-        if (!existing.has(id)) {
+      timeSlots.forEach((_, ti) => {
+        const id = slotIdForCoord(dayIndex, ti);
+        if (id && !existing.has(id)) {
           additions.push({ slotId: id, preference: paintMode });
         }
       });
@@ -152,7 +208,7 @@ export default function AvailabilityGrid({
         onChange?.([...value, ...additions]);
       }
     }
-  }, [checkedDays, days, timeSlots, generateSlotId, value, paintMode, onChange]);
+  }, [checkedDays, days, timeSlots, slotIdForCoord, value, paintMode, onChange]);
 
   // Toggle Select All: when toggled ON, paint every visible slot with the
   // current paint mode (matches user expectation "All = I'm available for
@@ -168,10 +224,10 @@ export default function AvailabilityGrid({
       // Paint every slot in the grid that isn't already painted.
       const existing = new Set(value.map((s) => s.slotId));
       const additions = [];
-      days.forEach((day) => {
-        timeSlots.forEach((ts) => {
-          const id = generateSlotId(day, ts);
-          if (!existing.has(id)) {
+      days.forEach((day, di) => {
+        timeSlots.forEach((ts, ti) => {
+          const id = slotIdForCoord(di, ti);
+          if (id && !existing.has(id)) {
             additions.push({ slotId: id, preference: paintMode });
           }
         });
@@ -184,13 +240,15 @@ export default function AvailabilityGrid({
       // Uncheck All clears every painted slot — symmetric with the check path.
       onChange?.([]);
     }
-  }, [checkedDays.length, numDays, days, timeSlots, generateSlotId, value, paintMode, onChange]);
+  }, [checkedDays.length, numDays, days, timeSlots, slotIdForCoord, value, paintMode, onChange]);
 
-  // Format time label for the row
+  // Format time label for the row. Pure hour/minute -> "h:mm a" (byte-identical
+  // to the prior `format(date, 'h:mm a')` output) with no `setHours` — the label
+  // is a fixed time-of-day, independent of any date or timezone.
   const formatTimeLabel = useCallback((timeSlot) => {
-    const date = new Date();
-    date.setHours(timeSlot.hour, timeSlot.minute, 0, 0);
-    return format(date, 'h:mm a');
+    const h12 = timeSlot.hour % 12 || 12;
+    const ampm = timeSlot.hour >= 12 ? 'PM' : 'AM';
+    return `${h12}:${pad2(timeSlot.minute)} ${ampm}`;
   }, []);
 
   // Format day header
@@ -213,25 +271,54 @@ export default function AvailabilityGrid({
     }
   }, []);
 
-  // Helper: get the day index (0-6) from a slotId (ISO date string)
+  // Reverse slot-id parsers — BUG-01 / F-810.
+  //
+  // These interpret a slotId in the SAME profile timezone that generateSlotId
+  // emitted (via the precomputed byId map, or utcToWallClock as the symmetric
+  // fallback), NOT the old browser-local `getFullYear`/`getDate`/`getHours`.
+  // Generation and parsing now share one TZ basis, so the cross-day branches of
+  // handleToggleSlot / handlePaintSlot / handleClearAll stay correct when the
+  // profile TZ differs from the browser TZ. They run once per handler call
+  // (discrete pointer/clear events) — never per cell per render.
+
+  // Helper: get the day index from a slotId.
   const getDayIndexFromSlotId = useCallback(
     (slotId) => {
-      const slotDate = new Date(slotId);
-      const slotY = slotDate.getFullYear();
-      const slotM = slotDate.getMonth();
-      const slotD = slotDate.getDate();
+      const meta = slotIdGrid.byId.get(slotId);
+      if (meta) return meta.dayIndex;
+      // Fallback: interpret in the profile TZ and match against the grid's days.
+      const wc = utcToWallClock(slotId, timezone);
+      if (!wc) return -1;
       return days.findIndex((d) => {
-        return d.getFullYear() === slotY && d.getMonth() === slotM && d.getDate() === slotD;
+        const [dy, dm, dd] = format(d, 'yyyy-MM-dd').split('-').map(Number);
+        return dy === wc.year && dm === wc.month && dd === wc.day;
       });
     },
-    [days]
+    [slotIdGrid, days, timezone]
   );
 
-  // Helper: extract { hour, minute } from a slotId
-  const getTimeSlotFromSlotId = useCallback((slotId) => {
-    const d = new Date(slotId);
-    return { hour: d.getHours(), minute: d.getMinutes() };
-  }, []);
+  // Helper: extract { hour, minute } from a slotId in the profile TZ.
+  const getTimeSlotFromSlotId = useCallback(
+    (slotId) => {
+      const meta = slotIdGrid.byId.get(slotId);
+      if (meta) return { hour: meta.hour, minute: meta.minute };
+      const wc = utcToWallClock(slotId, timezone);
+      return wc ? { hour: wc.hours, minute: wc.minutes } : { hour: 0, minute: 0 };
+    },
+    [slotIdGrid, timezone]
+  );
+
+  // Helper: get the time-slot index from a slotId (used by the cross-day
+  // handlers to re-derive the same time on every checked day).
+  const getTimeSlotIndexFromSlotId = useCallback(
+    (slotId) => {
+      const meta = slotIdGrid.byId.get(slotId);
+      if (meta) return meta.timeSlotIndex;
+      const { hour, minute } = getTimeSlotFromSlotId(slotId);
+      return timeSlots.findIndex((ts) => ts.hour === hour && ts.minute === minute);
+    },
+    [slotIdGrid, getTimeSlotFromSlotId, timeSlots]
+  );
 
   // Handle slot toggle (click)
   const handleToggleSlot = useCallback(
@@ -251,14 +338,14 @@ export default function AvailabilityGrid({
         } else {
           // Cross-day: add matching time on all checked days
           const clickedDayIndex = getDayIndexFromSlotId(slotId);
-          const timeSlot = getTimeSlotFromSlotId(slotId);
+          const timeSlotIndex = getTimeSlotIndexFromSlotId(slotId);
           const daysToFill = checkedDays.includes(clickedDayIndex)
             ? checkedDays
             : [clickedDayIndex]; // unchecked day = single slot only
           const newSlots = [];
           daysToFill.forEach((di) => {
-            const id = generateSlotId(days[di], timeSlot);
-            if (!slotMap.has(id)) {
+            const id = slotIdForCoord(di, timeSlotIndex);
+            if (id && !slotMap.has(id)) {
               newSlots.push({ slotId: id, preference: paintMode });
             }
           });
@@ -268,7 +355,7 @@ export default function AvailabilityGrid({
         }
       }
     },
-    [value, onChange, slotMap, paintMode, checkedDays, days, generateSlotId, getDayIndexFromSlotId, getTimeSlotFromSlotId]
+    [value, onChange, slotMap, paintMode, checkedDays, slotIdForCoord, getDayIndexFromSlotId, getTimeSlotIndexFromSlotId]
   );
 
   // Handle slot paint (drag - add only, additive across checked days)
@@ -283,14 +370,14 @@ export default function AvailabilityGrid({
       } else {
         // Cross-day paint: add matching time on all checked days
         const paintedDayIndex = getDayIndexFromSlotId(slotId);
-        const timeSlot = getTimeSlotFromSlotId(slotId);
+        const timeSlotIndex = getTimeSlotIndexFromSlotId(slotId);
         const daysToFill = checkedDays.includes(paintedDayIndex)
           ? checkedDays
           : [paintedDayIndex]; // unchecked day = single cell only
         const newSlots = [];
         daysToFill.forEach((di) => {
-          const id = generateSlotId(days[di], timeSlot);
-          if (!slotMap.has(id)) {
+          const id = slotIdForCoord(di, timeSlotIndex);
+          if (id && !slotMap.has(id)) {
             newSlots.push({ slotId: id, preference: paintMode });
           }
         });
@@ -299,7 +386,7 @@ export default function AvailabilityGrid({
         }
       }
     },
-    [value, onChange, slotMap, paintMode, checkedDays, days, generateSlotId, getDayIndexFromSlotId, getTimeSlotFromSlotId]
+    [value, onChange, slotMap, paintMode, checkedDays, slotIdForCoord, getDayIndexFromSlotId, getTimeSlotIndexFromSlotId]
   );
 
   // Pointer event handlers
@@ -333,11 +420,12 @@ export default function AvailabilityGrid({
       const day = days[col];
       const ts = timeSlots[row];
       if (!day || !ts) return;
-      const slotId = generateSlotId(day, ts);
+      const slotId = slotIdForCoord(col, row);
+      if (!slotId) return;
       const without = value.filter((s) => s.slotId !== slotId);
       onChange?.(next === null ? without : [...without, { slotId, preference: next }]);
     },
-    [days, timeSlots, generateSlotId, value, onChange]
+    [days, timeSlots, slotIdForCoord, value, onChange]
   );
 
   // Global pointer up listener for catching release outside grid
@@ -511,7 +599,9 @@ export default function AvailabilityGrid({
                   shared WriteCell fills it with the byte-identical preference
                   color and owns roving keyboard + pointer-paint. */}
               {days.map((day, colIndex) => {
-                const slotId = generateSlotId(day, timeSlot);
+                // Read the precomputed slot id — the TZ conversion already ran
+                // once in slotIdGrid, so this hot per-cell path stays O(1).
+                const slotId = slotIdForCoord(colIndex, rowIndex);
                 const preference = slotMap.get(slotId) || null;
                 const key = coordKey(rowIndex, colIndex);
                 const focused = focusedCoord.row === rowIndex && focusedCoord.col === colIndex;

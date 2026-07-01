@@ -15,8 +15,22 @@ import type { User } from './schemas/users';
 import type { Availability, AvailabilityList } from './schemas/availability';
 import type { GameList, UserGameList } from './schemas/shared';
 
-// API Base URL - can be moved to environment variable in production
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+// Absolute backend origin. Used ONLY by PUBLIC/unauthenticated callers that must
+// bypass the BFF proxy (magic-link, invite-preview, public RSVP respond,
+// invite-info). Authenticated calls go through apiFetch -> same-origin '/api'
+// (BFF_BASE), where the catch-all route attaches the Auth0 token SERVER-SIDE
+// (FSEC-01) — the raw token never reaches client JS.
+export const PUBLIC_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+
+// Back-compat alias for external direct-fetch callers (e.g. the public /feedback
+// submit in FeedbackForm.js). Same absolute backend origin as PUBLIC_API_BASE_URL
+// — NOT the same-origin BFF. New public callers should reference PUBLIC_API_BASE_URL.
+export const API_BASE_URL = PUBLIC_API_BASE_URL;
+
+// Same-origin BFF base for AUTHENTICATED apiFetch calls. The catch-all route
+// handler (app/api/[...path]/route.ts) attaches the Auth0 access token
+// server-side; apiFetch itself sends no bearer.
+const BFF_BASE = '/api';
 
 // -----------------------------------------------------------------------------
 // ApiError seam (D-07). ALL prose-matching lives in `mapErrorToCode`. When
@@ -24,6 +38,14 @@ export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost
 // rewrite — call sites NEVER change (they only read `err.code`).
 // Source: 82-RESEARCH.md Pattern 2 (verbatim).
 // -----------------------------------------------------------------------------
+// The full wire vocabulary. Envelope-PREFERRED (Decision A, 2026-06-30):
+//   - BE registry codes (Phase 85 ERROR_REGISTRY): validation, unauthorized,
+//     forbidden, not_found, rate_limited, token_invalid, prompt_closed,
+//     prompt_deadline_expired, reminder_cooldown, internal.
+//   - client-side codes apiFetch itself throws: `network` (fetch/connect
+//     failure) and `config` (misconfiguration). These are ADDITIVE — the widen
+//     over the BE registry must NOT drop them (86-04 Task 1 / MED #6).
+//   - `unknown` is the terminal fallback for an unmapped status.
 export type ApiErrorCode =
   | 'unknown'
   | 'validation'
@@ -31,6 +53,11 @@ export type ApiErrorCode =
   | 'forbidden'
   | 'not_found'
   | 'rate_limited'
+  | 'token_invalid'
+  | 'prompt_closed'
+  | 'prompt_deadline_expired'
+  | 'reminder_cooldown'
+  | 'internal'
   | 'network'
   | 'config';
 
@@ -48,68 +75,123 @@ export class ApiError extends Error {
   }
 }
 
-// STOPGAP until BAPI-01 (Phase 85) ships `{ code, message, details? }`.
-// When it ships: replace the prose-matching body with `return body?.code ?? 'unknown'`.
-// Call sites NEVER change — they only read err.code.
-export function mapErrorToCode(body: any, status: number): ApiErrorCode {
-  if (body && typeof body.code === 'string') return body.code as ApiErrorCode; // future-proof: prefer envelope if present
+// HTTP-status -> code fallback for routes NOT yet emitting the envelope `code`.
+// ~497 BE routes still return a raw `{ error }` (no `code`) until Phase 93 /
+// BAPI-03 converts them; this gives them a sensible code (and therefore correct
+// retry classification) in the meantime. Mirrors the BE ERROR_REGISTRY httpStatus
+// map so a status-mapped 429 lands on `rate_limited` (non-retryable) etc.
+function statusToCode(status: number): ApiErrorCode {
+  if (status === 400 || status === 422) return 'validation';
   if (status === 401) return 'unauthorized';
   if (status === 403) return 'forbidden';
   if (status === 404) return 'not_found';
   if (status === 429) return 'rate_limited';
-  if (status === 422 || (body?.errors && Array.isArray(body.errors))) return 'validation';
-  // prose-match fallback (X-004 stopgap)
-  const msg = (body?.error ?? '').toLowerCase();
-  if (msg.includes('network') || msg.includes('connect')) return 'network';
+  if (status >= 500) return 'internal';
   return 'unknown';
 }
 
+// ENVELOPE-PREFERRED (Decision A, 2026-06-30). Consume the Phase 85 envelope
+// `body.code` when present; OTHERWISE map the HTTP status to a code so
+// unconverted raw-`{ error }` routes still get a real code. Never throws on a
+// raw `{ error }` body. Call sites NEVER change — they only read err.code.
+export function mapErrorToCode(body: any, status: number): ApiErrorCode {
+  if (body && typeof body.code === 'string') return body.code as ApiErrorCode; // PREFERRED: envelope code
+  // Legacy validation hint: a body carrying a top-level errors[] (the Phase 85
+  // legacy mirror, or an old raw validation body) is a validation failure
+  // regardless of status. Retained as a FALLBACK for unconverted routes.
+  if (body?.errors && Array.isArray(body.errors)) return 'validation';
+  return statusToCode(status); // FALLBACK: HTTP-status -> code
+}
+
+// Envelope-PREFERRED human message. Prefer the envelope `body.message`; fall
+// back to the legacy `body.error` alias (RETAINED for the ~497 unconverted
+// routes until Phase 93 / BAPI-03 removes both sides). This is the fallback
+// chain the acceptance criteria pins.
+function extractErrorMessage(body: any, status: number): string {
+  return body?.message ?? body?.error ?? `HTTP error! status: ${status}`;
+}
+
+// Envelope-PREFERRED validation field-errors. Prefer `body.details.errors`
+// (Phase 85 envelope); fall back to the top-level legacy `body.errors[]` mirror
+// (RETAINED for unconverted routes until Phase 93).
+function extractFieldErrors(body: any): any[] | undefined {
+  const fieldErrors = body?.details?.errors ?? body?.errors;
+  return Array.isArray(fieldErrors) ? fieldErrors : undefined;
+}
+
 /**
- * Get Auth0 access token for API calls
- * This function should be called from client components that have access to Auth0
+ * Direct-to-backend fetch for PUBLIC/unauthenticated callers (invite-preview,
+ * invite-info, and other no-Auth0 flows). Targets the absolute backend origin
+ * (PUBLIC_API_BASE_URL) so a logged-out caller NEVER hits the BFF proxy's
+ * server-side getAccessToken(). Mirrors apiFetch's JSON-parse + ApiError throw
+ * contract via the shared ApiError/mapErrorToCode seam, so callers converted
+ * from apiFetch keep their exact return/error shape.
  */
-export async function getAccessToken() {
+export async function publicFetch<T = unknown>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const url = `${PUBLIC_API_BASE_URL}${endpoint}`;
+  const defaultOptions: RequestInit = {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string> | undefined),
+    },
+  };
+
+  let response: Response;
   try {
-    // Get token from Auth0 session
-    const response = await fetch('/api/auth/token');
-    if (!response.ok) {
-      return null;
-    }
-    const data = await response.json();
-    return data.accessToken || null;
+    response = await fetch(url, { ...defaultOptions, ...options });
   } catch (error) {
-    console.error('Error getting access token:', error instanceof Error ? error.message : error);
-    return null;
+    const errName = error instanceof Error ? error.name : '';
+    const errMessage = error instanceof Error ? error.message : 'Unknown error';
+    if (errName === 'TypeError' && errMessage.includes('fetch')) {
+      throw new ApiError(
+        'Network error: Could not connect to the server. Please check if the backend is running.',
+        'network',
+        0
+      );
+    }
+    throw error;
+  }
+
+  const responseText = await response.text();
+  if (!response.ok) {
+    let errorData: any;
+    try {
+      errorData = JSON.parse(responseText);
+    } catch {
+      errorData = { error: responseText || `HTTP error! status: ${response.status}` };
+    }
+    const msg = extractErrorMessage(errorData, response.status);
+    throw new ApiError(msg, mapErrorToCode(errorData, response.status), response.status, errorData);
+  }
+
+  try {
+    return JSON.parse(responseText) as T;
+  } catch {
+    return responseText as unknown as T;
   }
 }
 
 /**
- * Generic fetch wrapper with error handling and Auth0 token injection
+ * Generic fetch wrapper with error handling.
+ *
+ * FSEC-01: authenticated calls go to the same-origin BFF ('/api/...'). The
+ * catch-all route handler (app/api/[...path]/route.ts) attaches the Auth0 access
+ * token SERVER-SIDE — apiFetch sends NO bearer and the token never reaches
+ * client JS. PUBLIC/unauthenticated callers must NOT use apiFetch; they bypass
+ * the proxy via PUBLIC_API_BASE_URL (see publicFetch / the magic-link helpers).
  */
 export async function apiFetch<T = unknown>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
-  
-  // Try to get access token if available (for client-side calls)
-  let accessToken = null;
-  if (typeof window !== 'undefined') {
-    try {
-      const tokenResponse = await fetch('/api/auth/token');
-      if (tokenResponse.ok) {
-        const tokenData = await tokenResponse.json();
-        accessToken = tokenData.accessToken;
-      }
-    } catch (error) {
-      // Silently fail if token can't be retrieved
-    }
-  }
-  
+  const url = `${BFF_BASE}${endpoint}`;
+
   const defaultOptions: RequestInit = {
     headers: {
       'Content-Type': 'application/json',
-      ...(accessToken && { 'Authorization': `Bearer ${accessToken}` }),
       ...(options.headers as Record<string, string> | undefined),
     },
   };
@@ -142,18 +224,21 @@ export async function apiFetch<T = unknown>(
         errorData = { error: responseText || `HTTP error! status: ${response.status}` };
       }
 
-      // The single throw site (D-07). mapErrorToCode is the ONLY prose-matching
-      // point; the Phase 85 envelope swap rewrites just that function.
+      // The single throw site (D-07). mapErrorToCode is envelope-PREFERRED;
+      // the message/field-error reads prefer the envelope and fall back to the
+      // legacy aliases (retained until Phase 93). ApiError.details carries the
+      // WHOLE body, so envelope `details` is nested at err.details.details.
       // If there are validation errors, format them nicely for the message.
-      if (errorData.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
-        const errorMessages = errorData.errors
+      const fieldErrors = extractFieldErrors(errorData);
+      if (fieldErrors && fieldErrors.length > 0) {
+        const errorMessages = fieldErrors
           .map((err: any) => err.message || `${err.field}: ${err.msg}`)
           .join('. ');
-        const msg = errorMessages || errorData.error || `HTTP error! status: ${response.status}`;
+        const msg = errorMessages || extractErrorMessage(errorData, response.status);
         throw new ApiError(msg, mapErrorToCode(errorData, response.status), response.status, errorData);
       }
 
-      const msg = errorData.error || `HTTP error! status: ${response.status}`;
+      const msg = extractErrorMessage(errorData, response.status);
       throw new ApiError(msg, mapErrorToCode(errorData, response.status), response.status, errorData);
     }
 
@@ -212,34 +297,32 @@ export const groupsAPI = {
     }),
 
   // Update user role in group (owner only)
-  updateUserRole: (group_id: string, target_user_id: string, requesting_user_id: string, role: string) =>
+  updateUserRole: (group_id: string, target_user_id: string, role: string) =>
     apiFetch(`/groups/${group_id}/users/${target_user_id}/role`, {
       method: 'PUT',
-      body: JSON.stringify({ requesting_user_id, role }),
+      body: JSON.stringify({ role }),
     }),
 
-  // Remove user from group (owner or admin)
-  removeUserFromGroup: (group_id: string, target_user_id: string, requesting_user_id: string) =>
+  // Remove user from group (owner or admin). Authz derives the caller from the
+  // Auth0 token (FSEC-02) — no client-supplied caller identity in the body.
+  removeUserFromGroup: (group_id: string, target_user_id: string) =>
     apiFetch(`/groups/${group_id}/users/${target_user_id}`, {
       method: 'DELETE',
-      body: JSON.stringify({ requesting_user_id }),
     }),
 
   // Update group settings (profile picture, background)
-  updateGroupSettings: (group_id: string, requesting_user_id: string, settings: Record<string, unknown>) =>
+  updateGroupSettings: (group_id: string, settings: Record<string, unknown>) =>
     apiFetch(`/groups/${group_id}/settings`, {
       method: 'PUT',
       body: JSON.stringify({
-        requesting_user_id,
         ...settings,
       }),
     }),
 
   // Delete group (owner only)
-  deleteGroup: (group_id: string, requesting_user_id: string) =>
+  deleteGroup: (group_id: string) =>
     apiFetch(`/groups/${group_id}`, {
       method: 'DELETE',
-      body: JSON.stringify({ requesting_user_id }),
     }),
 
   // Approve a pending member (owner/admin only)
@@ -282,9 +365,10 @@ export const groupsAPI = {
       body: JSON.stringify({ token }),
     }),
 
-  // Get group invite preview (public, no auth needed)
+  // Get group invite preview (public, no auth needed) — runs BEFORE the auth
+  // check on logged-out invite pages, so it MUST bypass the BFF proxy.
   getInvitePreview: (token: string) =>
-    apiFetch<GroupInvitePreview>(`/groups/invite-preview/${token}`),
+    publicFetch<GroupInvitePreview>(`/groups/invite-preview/${token}`),
 
   // Get the group's shared game library (all members' games, deduplicated with owners)
   getGroupLibrary: (group_id: string) =>
@@ -315,17 +399,17 @@ export const eventsAPI = {
     }),
   
   // Update an event (requires owner/admin)
-  updateEvent: (event_id: string, eventData: Record<string, unknown>, requesting_user_id: string) => 
+  updateEvent: (event_id: string, eventData: Record<string, unknown>) =>
     apiFetch(`/events/${event_id}`, {
       method: 'PUT',
-      body: JSON.stringify({ ...eventData, requesting_user_id }),
+      body: JSON.stringify({ ...eventData }),
     }),
-  
-  // Delete an event (requires owner/admin)
-  deleteEvent: (event_id: string, requesting_user_id: string) =>
+
+  // Delete an event (requires owner/admin). Authz derives the caller from the
+  // Auth0 token (FSEC-02) — no client-supplied caller identity in the body.
+  deleteEvent: (event_id: string) =>
     apiFetch(`/events/${event_id}`, {
       method: 'DELETE',
-      body: JSON.stringify({ requesting_user_id }),
     }),
 
   // Remove a single participant from an event (owner/admin only).
@@ -362,9 +446,10 @@ export const eventsAPI = {
       body: JSON.stringify({ token }),
     }),
 
-  // Get event invite preview (public, no auth needed)
+  // Get event invite preview (public, no auth needed) — runs BEFORE the auth
+  // check on logged-out invite pages, so it MUST bypass the BFF proxy.
   getEventInvitePreview: (token: string) =>
-    apiFetch(`/events/invite-preview/${token}`),
+    publicFetch(`/events/invite-preview/${token}`),
 };
 
 /**
@@ -393,10 +478,11 @@ export const rsvpAPI = {
  * Uses direct fetch without Auth0 token injection
  */
 export const rsvpPublicAPI = {
-  // Respond to RSVP via magic link token (no auth required)
+  // Respond to RSVP via magic link token (no auth required) — direct-to-backend
+  // (PUBLIC_API_BASE_URL), never the BFF proxy.
   respondViaToken: (token: string, eventId: string, userId: string, status: string) =>
     fetch(
-      `${API_BASE_URL}/rsvp/respond?token=${encodeURIComponent(token)}&e=${eventId}&u=${encodeURIComponent(userId)}&s=${status}`
+      `${PUBLIC_API_BASE_URL}/rsvp/respond?token=${encodeURIComponent(token)}&e=${eventId}&u=${encodeURIComponent(userId)}&s=${status}`
     ).then(res => res.json()),
 };
 
@@ -618,9 +704,8 @@ export const gameReviewsAPI = {
   },
   
   // Get all reviews by a user in a group
-  getUserReviews: (target_user_id: string, group_id: string, requesting_user_id: string | null = null) => {
-    const params = requesting_user_id ? `?user_id=${encodeURIComponent(requesting_user_id)}` : '';
-    return apiFetch(`/game-reviews/user/${encodeURIComponent(target_user_id)}/group/${group_id}${params}`);
+  getUserReviews: (target_user_id: string, group_id: string) => {
+    return apiFetch(`/game-reviews/user/${encodeURIComponent(target_user_id)}/group/${group_id}`);
   },
   
   // Create or update a review
@@ -759,7 +844,7 @@ export const availabilityAPI = {
 export const magicAuthAPI = {
   // Validate a magic token (returns user info, prompt_id, expiry)
   validateToken: (token: string, formLoadedAt = null) =>
-    fetch(`${API_BASE_URL}/magic-auth/validate`, {
+    fetch(`${PUBLIC_API_BASE_URL}/magic-auth/validate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, formLoadedAt }),
@@ -767,7 +852,7 @@ export const magicAuthAPI = {
 
   // Request a new magic link (stub - returns 501 currently)
   requestNew: (promptId: string) =>
-    fetch(`${API_BASE_URL}/magic-auth/request-new`, {
+    fetch(`${PUBLIC_API_BASE_URL}/magic-auth/request-new`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt_id: promptId }),
@@ -781,7 +866,7 @@ export const magicAuthAPI = {
 export const availabilityFormAPI = {
   // Submit availability response via magic token
   submitResponse: (data: Record<string, unknown>) =>
-    fetch(`${API_BASE_URL}/availability-responses`, {
+    fetch(`${PUBLIC_API_BASE_URL}/availability-responses`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -789,7 +874,7 @@ export const availabilityFormAPI = {
 
   // Get existing response for pre-fill (if user returns to edit)
   getExistingResponse: (promptId: string, token: string) =>
-    fetch(`${API_BASE_URL}/availability-responses/${promptId}?magic_token=${encodeURIComponent(token)}`, {
+    fetch(`${PUBLIC_API_BASE_URL}/availability-responses/${promptId}?magic_token=${encodeURIComponent(token)}`, {
       headers: { 'Content-Type': 'application/json' },
     }).then(res => res.ok ? res.json() : null),
 
@@ -808,7 +893,7 @@ export const availabilityFormAPI = {
     numDays: number;
     timezone: string;
   }) => {
-    const res = await fetch(`${API_BASE_URL}/availability-prefill/gcal`, {
+    const res = await fetch(`${PUBLIC_API_BASE_URL}/availability-prefill/gcal`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -841,7 +926,7 @@ export const availabilityFormAPI = {
     numDays: number;
     timezone: string;
   }) => {
-    const res = await fetch(`${API_BASE_URL}/availability-prefill/saved`, {
+    const res = await fetch(`${PUBLIC_API_BASE_URL}/availability-prefill/saved`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1009,9 +1094,10 @@ export const invitesAPI = {
   getGroupPendingInvites: (group_id: string) =>
     apiFetch(`/invites/group/${group_id}/pending`),
 
-  // Get invite info by token (public, no auth required)
+  // Get invite info by token (public, no auth required) — consumed LOGGED-OUT on
+  // invite/accept/page.js, so it MUST bypass the BFF proxy (direct-to-backend).
   getInviteInfo: (token: string) =>
-    apiFetch(`/invites/info/${token}`),
+    publicFetch(`/invites/info/${token}`),
 };
 
 /**

@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { friendshipsAPI, invitesAPI, groupsAPI } from '../../lib/api';
 import { QRCodeSVG } from 'qrcode.react';
+import { toast } from 'sonner';
+import { UserChip } from '@/components/ui/UserChip';
 
 function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = false }) {
     const { user } = useUser();
@@ -146,21 +148,28 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
             setEmail('');
             if (onMemberAdded) onMemberAdded();
 
-            // Check if this person is a registered user and not already a friend
-            const isAlreadyFriend = friends.some(f => f.friend?.email === invitedEmail);
-            if (!isAlreadyFriend) {
-                try {
-                    const foundUser = await friendshipsAPI.searchUserByEmail(invitedEmail);
-                    if (foundUser && foundUser.user_id && foundUser.user_id !== user?.sub) {
+            // SEAM-02 (BUG-03): resolve the user by email FIRST, then decide
+            // friend-existence on user_id. The friend email is stripped from
+            // the friends payload post-83-06, so the old email-equality guard
+            // was ALWAYS false — every existing-friend invite mis-prompted
+            // "Add X as a friend?". A pre-search email compare can't work
+            // (no friend identity still carries the email), so the existence
+            // check MUST run after the search resolves foundUser and compare
+            // on foundUser.user_id.
+            try {
+                const foundUser = await friendshipsAPI.searchUserByEmail(invitedEmail);
+                if (foundUser && foundUser.user_id && foundUser.user_id !== user?.sub) {
+                    const isAlreadyFriend = friends.some(f => f.friend?.user_id === foundUser.user_id);
+                    if (!isAlreadyFriend) {
                         setFriendPrompt({
                             user_id: foundUser.user_id,
                             username: foundUser.username,
                             email: foundUser.email,
                         });
                     }
-                } catch {
-                    // User not found or search failed — no prompt, that's fine
                 }
+            } catch {
+                // User not found or search failed — no prompt, that's fine
             }
         } catch (err) {
             const message = err.message || '';
@@ -201,19 +210,34 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
         }
     };
 
-    const handleResetInviteLink = async () => {
+    // GUARD-02 G5: no blocking browser dialogs on a touched path. The
+    // destructive reset is confirmed via a sonner toast action button, and
+    // failures surface through toast.error (live-region backed) instead of a
+    // blocking modal.
+    const doResetInviteLink = async () => {
         if (!group?.id || resetting) return;
-        if (!window.confirm('Reset invite link? The current QR code and link will stop working.')) return;
         setResetting(true);
         try {
             const data = await groupsAPI.resetInviteToken(group.id);
             setInviteUrl(data.invite_url);
+            toast.success('Invite link reset. The old QR code and link no longer work.');
         } catch (err) {
             console.error('Failed to reset invite token:', err);
-            alert(err.message || 'Failed to reset invite link. Please try again.');
+            toast.error(err.message || 'Failed to reset invite link. Please try again.');
         } finally {
             setResetting(false);
         }
+    };
+
+    const handleResetInviteLink = () => {
+        if (!group?.id || resetting) return;
+        toast('Reset invite link?', {
+            description: 'The current QR code and link will stop working.',
+            action: {
+                label: 'Reset',
+                onClick: () => doResetInviteLink(),
+            },
+        });
     };
 
     if (!open) return null;
@@ -363,9 +387,15 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                         )}
                         {friendPrompt && !friendRequestSent && (
                             <div className="mt-3 p-3 bg-surface-card-hover border border-line rounded-lg flex items-center justify-between gap-3">
-                                <p className="text-sm text-content-primary">
-                                    Add <span className="font-medium">{friendPrompt.username || friendPrompt.email}</span> as a friend?
-                                </p>
+                                {/* PRIM-04 adoption: render the resolved found-user identity
+                                    via the shared UserChip primitive. */}
+                                <div className="min-w-0">
+                                    <UserChip
+                                        user={{ name: friendPrompt.username || friendPrompt.email }}
+                                        size="sm"
+                                    />
+                                    <p className="text-xs text-content-muted mt-0.5">Add as a friend?</p>
+                                </div>
                                 <button
                                     onClick={handleAddFriend}
                                     disabled={addingFriend}
