@@ -38,6 +38,14 @@ const BFF_BASE = '/api';
 // rewrite — call sites NEVER change (they only read `err.code`).
 // Source: 82-RESEARCH.md Pattern 2 (verbatim).
 // -----------------------------------------------------------------------------
+// The full wire vocabulary. Envelope-PREFERRED (Decision A, 2026-06-30):
+//   - BE registry codes (Phase 85 ERROR_REGISTRY): validation, unauthorized,
+//     forbidden, not_found, rate_limited, token_invalid, prompt_closed,
+//     prompt_deadline_expired, reminder_cooldown, internal.
+//   - client-side codes apiFetch itself throws: `network` (fetch/connect
+//     failure) and `config` (misconfiguration). These are ADDITIVE — the widen
+//     over the BE registry must NOT drop them (86-04 Task 1 / MED #6).
+//   - `unknown` is the terminal fallback for an unmapped status.
 export type ApiErrorCode =
   | 'unknown'
   | 'validation'
@@ -45,6 +53,11 @@ export type ApiErrorCode =
   | 'forbidden'
   | 'not_found'
   | 'rate_limited'
+  | 'token_invalid'
+  | 'prompt_closed'
+  | 'prompt_deadline_expired'
+  | 'reminder_cooldown'
+  | 'internal'
   | 'network'
   | 'config';
 
@@ -62,20 +75,48 @@ export class ApiError extends Error {
   }
 }
 
-// STOPGAP until BAPI-01 (Phase 85) ships `{ code, message, details? }`.
-// When it ships: replace the prose-matching body with `return body?.code ?? 'unknown'`.
-// Call sites NEVER change — they only read err.code.
-export function mapErrorToCode(body: any, status: number): ApiErrorCode {
-  if (body && typeof body.code === 'string') return body.code as ApiErrorCode; // future-proof: prefer envelope if present
+// HTTP-status -> code fallback for routes NOT yet emitting the envelope `code`.
+// ~497 BE routes still return a raw `{ error }` (no `code`) until Phase 93 /
+// BAPI-03 converts them; this gives them a sensible code (and therefore correct
+// retry classification) in the meantime. Mirrors the BE ERROR_REGISTRY httpStatus
+// map so a status-mapped 429 lands on `rate_limited` (non-retryable) etc.
+function statusToCode(status: number): ApiErrorCode {
+  if (status === 400 || status === 422) return 'validation';
   if (status === 401) return 'unauthorized';
   if (status === 403) return 'forbidden';
   if (status === 404) return 'not_found';
   if (status === 429) return 'rate_limited';
-  if (status === 422 || (body?.errors && Array.isArray(body.errors))) return 'validation';
-  // prose-match fallback (X-004 stopgap)
-  const msg = (body?.error ?? '').toLowerCase();
-  if (msg.includes('network') || msg.includes('connect')) return 'network';
+  if (status >= 500) return 'internal';
   return 'unknown';
+}
+
+// ENVELOPE-PREFERRED (Decision A, 2026-06-30). Consume the Phase 85 envelope
+// `body.code` when present; OTHERWISE map the HTTP status to a code so
+// unconverted raw-`{ error }` routes still get a real code. Never throws on a
+// raw `{ error }` body. Call sites NEVER change — they only read err.code.
+export function mapErrorToCode(body: any, status: number): ApiErrorCode {
+  if (body && typeof body.code === 'string') return body.code as ApiErrorCode; // PREFERRED: envelope code
+  // Legacy validation hint: a body carrying a top-level errors[] (the Phase 85
+  // legacy mirror, or an old raw validation body) is a validation failure
+  // regardless of status. Retained as a FALLBACK for unconverted routes.
+  if (body?.errors && Array.isArray(body.errors)) return 'validation';
+  return statusToCode(status); // FALLBACK: HTTP-status -> code
+}
+
+// Envelope-PREFERRED human message. Prefer the envelope `body.message`; fall
+// back to the legacy `body.error` alias (RETAINED for the ~497 unconverted
+// routes until Phase 93 / BAPI-03 removes both sides). This is the fallback
+// chain the acceptance criteria pins.
+function extractErrorMessage(body: any, status: number): string {
+  return body?.message ?? body?.error ?? `HTTP error! status: ${status}`;
+}
+
+// Envelope-PREFERRED validation field-errors. Prefer `body.details.errors`
+// (Phase 85 envelope); fall back to the top-level legacy `body.errors[]` mirror
+// (RETAINED for unconverted routes until Phase 93).
+function extractFieldErrors(body: any): any[] | undefined {
+  const fieldErrors = body?.details?.errors ?? body?.errors;
+  return Array.isArray(fieldErrors) ? fieldErrors : undefined;
 }
 
 /**
@@ -122,7 +163,7 @@ export async function publicFetch<T = unknown>(
     } catch {
       errorData = { error: responseText || `HTTP error! status: ${response.status}` };
     }
-    const msg = errorData.error || `HTTP error! status: ${response.status}`;
+    const msg = extractErrorMessage(errorData, response.status);
     throw new ApiError(msg, mapErrorToCode(errorData, response.status), response.status, errorData);
   }
 
@@ -183,18 +224,21 @@ export async function apiFetch<T = unknown>(
         errorData = { error: responseText || `HTTP error! status: ${response.status}` };
       }
 
-      // The single throw site (D-07). mapErrorToCode is the ONLY prose-matching
-      // point; the Phase 85 envelope swap rewrites just that function.
+      // The single throw site (D-07). mapErrorToCode is envelope-PREFERRED;
+      // the message/field-error reads prefer the envelope and fall back to the
+      // legacy aliases (retained until Phase 93). ApiError.details carries the
+      // WHOLE body, so envelope `details` is nested at err.details.details.
       // If there are validation errors, format them nicely for the message.
-      if (errorData.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
-        const errorMessages = errorData.errors
+      const fieldErrors = extractFieldErrors(errorData);
+      if (fieldErrors && fieldErrors.length > 0) {
+        const errorMessages = fieldErrors
           .map((err: any) => err.message || `${err.field}: ${err.msg}`)
           .join('. ');
-        const msg = errorMessages || errorData.error || `HTTP error! status: ${response.status}`;
+        const msg = errorMessages || extractErrorMessage(errorData, response.status);
         throw new ApiError(msg, mapErrorToCode(errorData, response.status), response.status, errorData);
       }
 
-      const msg = errorData.error || `HTTP error! status: ${response.status}`;
+      const msg = extractErrorMessage(errorData, response.status);
       throw new ApiError(msg, mapErrorToCode(errorData, response.status), response.status, errorData);
     }
 
