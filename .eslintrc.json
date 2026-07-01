@@ -23,6 +23,7 @@
       "files": [
         "src/app/api/auth/google-connect/route.js",
         "src/app/api/auth/token/route.js",
+        "src/app/api/*/route.ts",
         "src/app/availability-form/\\[token\\]/page.js",
         "src/app/components/AvailabilityForm.js",
         "src/app/components/BallotSection.js",
