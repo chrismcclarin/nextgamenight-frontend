@@ -36,7 +36,6 @@ export default function AvailabilityResponsePage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [weekStart, setWeekStart] = useState(null);
-  const [useVisualCalendar, setUseVisualCalendar] = useState(true);
 
   useEffect(() => {
     if (groupId && user?.sub) {
@@ -210,87 +209,64 @@ export default function AvailabilityResponsePage() {
         )}
       </div>
 
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <p className="text-sm text-content-secondary">
-            {availableSlots.length > 0
-              ? `You've marked ${availableSlots.length} time slot${availableSlots.length === 1 ? '' : 's'} as available`
-              : 'No time slots selected yet'}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setUseVisualCalendar(!useVisualCalendar)}
-          className="text-xs text-content-link hover:text-content-link-hover underline"
-        >
-          {useVisualCalendar ? 'Switch to Manual Entry' : 'Switch to Visual Calendar'}
-        </button>
+      <div className="mb-4">
+        <p className="text-sm text-content-secondary">
+          {availableSlots.length > 0
+            ? `You've marked ${availableSlots.length} time slot${availableSlots.length === 1 ? '' : 's'} as available`
+            : 'No time slots selected yet'}
+        </p>
       </div>
 
-      {useVisualCalendar ? (
-        <div className="mb-6">
-          <div className="h-[400px] md:h-[600px] bg-surface-card rounded-card border border-line overflow-hidden mb-4">
-            <Calendar
-              localizer={localizer}
-              selectable
-              onSelectSlot={handleSelectSlot}
-              defaultView="week"
-              views={['week']}
-              step={30}
-              timeslots={1}
-              min={new Date(0, 0, 0, 16, 0)} // 4 PM
-              max={new Date(0, 0, 0, 23, 59)} // 11:59 PM
-              defaultDate={weekStart}
-              date={weekStart}
-              events={calendarEvents}
-              className="h-full"
-              style={{ height: '100%' }}
-              eventPropGetter={() => ({
-                style: {
-                  backgroundColor: 'var(--color-accent)',
-                  borderColor: 'var(--color-accent)',
-                  color: 'white',
-                  borderRadius: '4px',
-                },
-              })}
-            />
-          </div>
+      <div className="mb-6">
+        <div className="h-[400px] md:h-[600px] bg-surface-card rounded-card border border-line overflow-hidden mb-4">
+          <Calendar
+            localizer={localizer}
+            selectable
+            onSelectSlot={handleSelectSlot}
+            defaultView="week"
+            views={['week']}
+            step={30}
+            timeslots={1}
+            min={new Date(0, 0, 0, 16, 0)} // 4 PM
+            max={new Date(0, 0, 0, 23, 59)} // 11:59 PM
+            defaultDate={weekStart}
+            date={weekStart}
+            events={calendarEvents}
+            className="h-full"
+            style={{ height: '100%' }}
+            eventPropGetter={() => ({
+              style: {
+                backgroundColor: 'var(--color-accent)',
+                borderColor: 'var(--color-accent)',
+                color: 'white',
+                borderRadius: '4px',
+              },
+            })}
+          />
+        </div>
 
-          {availableSlots.length > 0 && (
-            <div className="bg-accent/10 border border-accent/30 rounded-card p-4">
-              <h3 className="font-semibold text-content-primary mb-2">Selected Time Slots:</h3>
-              <div className="space-y-2">
-                {availableSlots.map((slot, index) => (
-                  <div key={index} className="flex items-center justify-between bg-surface-card p-2 rounded-btn border border-line">
-                    <span className="text-sm text-content-secondary">
-                      {format(parseISO(`${slot.date}T${slot.start_time}`), 'EEEE, MMMM d')} - {slot.start_time} to {slot.end_time}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removeSlot(index)}
-                      className="text-xs text-status-error hover:underline"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
+        {availableSlots.length > 0 && (
+          <div className="bg-accent/10 border border-accent/30 rounded-card p-4">
+            <h3 className="font-semibold text-content-primary mb-2">Selected Time Slots:</h3>
+            <div className="space-y-2">
+              {availableSlots.map((slot, index) => (
+                <div key={index} className="flex items-center justify-between bg-surface-card p-2 rounded-btn border border-line">
+                  <span className="text-sm text-content-secondary">
+                    {format(parseISO(`${slot.date}T${slot.start_time}`), 'EEEE, MMMM d')} - {slot.start_time} to {slot.end_time}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeSlot(index)}
+                    className="text-xs text-status-error hover:underline"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
             </div>
-          )}
-        </div>
-      ) : (
-        <div className="mb-6 space-y-4">
-          <p className="text-sm text-content-secondary">
-            Manual entry mode - add time slots manually
-          </p>
-          {/* Manual entry UI can be added here if needed */}
-          <div className="bg-surface-elevated border border-line rounded-card p-4">
-            <p className="text-sm text-content-secondary">
-              Manual entry interface coming soon. Please use the visual calendar.
-            </p>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="mb-6">
         <label className="flex items-center space-x-2">
