@@ -15,8 +15,22 @@ import type { User } from './schemas/users';
 import type { Availability, AvailabilityList } from './schemas/availability';
 import type { GameList, UserGameList } from './schemas/shared';
 
-// API Base URL - can be moved to environment variable in production
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+// Absolute backend origin. Used ONLY by PUBLIC/unauthenticated callers that must
+// bypass the BFF proxy (magic-link, invite-preview, public RSVP respond,
+// invite-info). Authenticated calls go through apiFetch -> same-origin '/api'
+// (BFF_BASE), where the catch-all route attaches the Auth0 token SERVER-SIDE
+// (FSEC-01) — the raw token never reaches client JS.
+export const PUBLIC_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+
+// Back-compat alias for external direct-fetch callers (e.g. the public /feedback
+// submit in FeedbackForm.js). Same absolute backend origin as PUBLIC_API_BASE_URL
+// — NOT the same-origin BFF. New public callers should reference PUBLIC_API_BASE_URL.
+export const API_BASE_URL = PUBLIC_API_BASE_URL;
+
+// Same-origin BFF base for AUTHENTICATED apiFetch calls. The catch-all route
+// handler (app/api/[...path]/route.ts) attaches the Auth0 access token
+// server-side; apiFetch itself sends no bearer.
+const BFF_BASE = '/api';
 
 // -----------------------------------------------------------------------------
 // ApiError seam (D-07). ALL prose-matching lives in `mapErrorToCode`. When
@@ -65,51 +79,78 @@ export function mapErrorToCode(body: any, status: number): ApiErrorCode {
 }
 
 /**
- * Get Auth0 access token for API calls
- * This function should be called from client components that have access to Auth0
+ * Direct-to-backend fetch for PUBLIC/unauthenticated callers (invite-preview,
+ * invite-info, and other no-Auth0 flows). Targets the absolute backend origin
+ * (PUBLIC_API_BASE_URL) so a logged-out caller NEVER hits the BFF proxy's
+ * server-side getAccessToken(). Mirrors apiFetch's JSON-parse + ApiError throw
+ * contract via the shared ApiError/mapErrorToCode seam, so callers converted
+ * from apiFetch keep their exact return/error shape.
  */
-export async function getAccessToken() {
+export async function publicFetch<T = unknown>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const url = `${PUBLIC_API_BASE_URL}${endpoint}`;
+  const defaultOptions: RequestInit = {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string> | undefined),
+    },
+  };
+
+  let response: Response;
   try {
-    // Get token from Auth0 session
-    const response = await fetch('/api/auth/token');
-    if (!response.ok) {
-      return null;
-    }
-    const data = await response.json();
-    return data.accessToken || null;
+    response = await fetch(url, { ...defaultOptions, ...options });
   } catch (error) {
-    console.error('Error getting access token:', error instanceof Error ? error.message : error);
-    return null;
+    const errName = error instanceof Error ? error.name : '';
+    const errMessage = error instanceof Error ? error.message : 'Unknown error';
+    if (errName === 'TypeError' && errMessage.includes('fetch')) {
+      throw new ApiError(
+        'Network error: Could not connect to the server. Please check if the backend is running.',
+        'network',
+        0
+      );
+    }
+    throw error;
+  }
+
+  const responseText = await response.text();
+  if (!response.ok) {
+    let errorData: any;
+    try {
+      errorData = JSON.parse(responseText);
+    } catch {
+      errorData = { error: responseText || `HTTP error! status: ${response.status}` };
+    }
+    const msg = errorData.error || `HTTP error! status: ${response.status}`;
+    throw new ApiError(msg, mapErrorToCode(errorData, response.status), response.status, errorData);
+  }
+
+  try {
+    return JSON.parse(responseText) as T;
+  } catch {
+    return responseText as unknown as T;
   }
 }
 
 /**
- * Generic fetch wrapper with error handling and Auth0 token injection
+ * Generic fetch wrapper with error handling.
+ *
+ * FSEC-01: authenticated calls go to the same-origin BFF ('/api/...'). The
+ * catch-all route handler (app/api/[...path]/route.ts) attaches the Auth0 access
+ * token SERVER-SIDE — apiFetch sends NO bearer and the token never reaches
+ * client JS. PUBLIC/unauthenticated callers must NOT use apiFetch; they bypass
+ * the proxy via PUBLIC_API_BASE_URL (see publicFetch / the magic-link helpers).
  */
 export async function apiFetch<T = unknown>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
-  
-  // Try to get access token if available (for client-side calls)
-  let accessToken = null;
-  if (typeof window !== 'undefined') {
-    try {
-      const tokenResponse = await fetch('/api/auth/token');
-      if (tokenResponse.ok) {
-        const tokenData = await tokenResponse.json();
-        accessToken = tokenData.accessToken;
-      }
-    } catch (error) {
-      // Silently fail if token can't be retrieved
-    }
-  }
-  
+  const url = `${BFF_BASE}${endpoint}`;
+
   const defaultOptions: RequestInit = {
     headers: {
       'Content-Type': 'application/json',
-      ...(accessToken && { 'Authorization': `Bearer ${accessToken}` }),
       ...(options.headers as Record<string, string> | undefined),
     },
   };
@@ -282,9 +323,10 @@ export const groupsAPI = {
       body: JSON.stringify({ token }),
     }),
 
-  // Get group invite preview (public, no auth needed)
+  // Get group invite preview (public, no auth needed) — runs BEFORE the auth
+  // check on logged-out invite pages, so it MUST bypass the BFF proxy.
   getInvitePreview: (token: string) =>
-    apiFetch<GroupInvitePreview>(`/groups/invite-preview/${token}`),
+    publicFetch<GroupInvitePreview>(`/groups/invite-preview/${token}`),
 
   // Get the group's shared game library (all members' games, deduplicated with owners)
   getGroupLibrary: (group_id: string) =>
@@ -362,9 +404,10 @@ export const eventsAPI = {
       body: JSON.stringify({ token }),
     }),
 
-  // Get event invite preview (public, no auth needed)
+  // Get event invite preview (public, no auth needed) — runs BEFORE the auth
+  // check on logged-out invite pages, so it MUST bypass the BFF proxy.
   getEventInvitePreview: (token: string) =>
-    apiFetch(`/events/invite-preview/${token}`),
+    publicFetch(`/events/invite-preview/${token}`),
 };
 
 /**
@@ -393,10 +436,11 @@ export const rsvpAPI = {
  * Uses direct fetch without Auth0 token injection
  */
 export const rsvpPublicAPI = {
-  // Respond to RSVP via magic link token (no auth required)
+  // Respond to RSVP via magic link token (no auth required) — direct-to-backend
+  // (PUBLIC_API_BASE_URL), never the BFF proxy.
   respondViaToken: (token: string, eventId: string, userId: string, status: string) =>
     fetch(
-      `${API_BASE_URL}/rsvp/respond?token=${encodeURIComponent(token)}&e=${eventId}&u=${encodeURIComponent(userId)}&s=${status}`
+      `${PUBLIC_API_BASE_URL}/rsvp/respond?token=${encodeURIComponent(token)}&e=${eventId}&u=${encodeURIComponent(userId)}&s=${status}`
     ).then(res => res.json()),
 };
 
@@ -759,7 +803,7 @@ export const availabilityAPI = {
 export const magicAuthAPI = {
   // Validate a magic token (returns user info, prompt_id, expiry)
   validateToken: (token: string, formLoadedAt = null) =>
-    fetch(`${API_BASE_URL}/magic-auth/validate`, {
+    fetch(`${PUBLIC_API_BASE_URL}/magic-auth/validate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, formLoadedAt }),
@@ -767,7 +811,7 @@ export const magicAuthAPI = {
 
   // Request a new magic link (stub - returns 501 currently)
   requestNew: (promptId: string) =>
-    fetch(`${API_BASE_URL}/magic-auth/request-new`, {
+    fetch(`${PUBLIC_API_BASE_URL}/magic-auth/request-new`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt_id: promptId }),
@@ -781,7 +825,7 @@ export const magicAuthAPI = {
 export const availabilityFormAPI = {
   // Submit availability response via magic token
   submitResponse: (data: Record<string, unknown>) =>
-    fetch(`${API_BASE_URL}/availability-responses`, {
+    fetch(`${PUBLIC_API_BASE_URL}/availability-responses`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -789,7 +833,7 @@ export const availabilityFormAPI = {
 
   // Get existing response for pre-fill (if user returns to edit)
   getExistingResponse: (promptId: string, token: string) =>
-    fetch(`${API_BASE_URL}/availability-responses/${promptId}?magic_token=${encodeURIComponent(token)}`, {
+    fetch(`${PUBLIC_API_BASE_URL}/availability-responses/${promptId}?magic_token=${encodeURIComponent(token)}`, {
       headers: { 'Content-Type': 'application/json' },
     }).then(res => res.ok ? res.json() : null),
 
@@ -808,7 +852,7 @@ export const availabilityFormAPI = {
     numDays: number;
     timezone: string;
   }) => {
-    const res = await fetch(`${API_BASE_URL}/availability-prefill/gcal`, {
+    const res = await fetch(`${PUBLIC_API_BASE_URL}/availability-prefill/gcal`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -841,7 +885,7 @@ export const availabilityFormAPI = {
     numDays: number;
     timezone: string;
   }) => {
-    const res = await fetch(`${API_BASE_URL}/availability-prefill/saved`, {
+    const res = await fetch(`${PUBLIC_API_BASE_URL}/availability-prefill/saved`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1009,9 +1053,10 @@ export const invitesAPI = {
   getGroupPendingInvites: (group_id: string) =>
     apiFetch(`/invites/group/${group_id}/pending`),
 
-  // Get invite info by token (public, no auth required)
+  // Get invite info by token (public, no auth required) — consumed LOGGED-OUT on
+  // invite/accept/page.js, so it MUST bypass the BFF proxy (direct-to-backend).
   getInviteInfo: (token: string) =>
-    apiFetch(`/invites/info/${token}`),
+    publicFetch(`/invites/info/${token}`),
 };
 
 /**
