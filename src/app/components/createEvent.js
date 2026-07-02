@@ -515,6 +515,17 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         toast.error('A ballot requires at least 2 game options. Please add more or remove all options.');
         return;
       }
+      // Phase 87 (adversarial review #6/#7): the backend de-dups ballot options
+      // by trimmed game_name, so two options with the same name collapse to one
+      // and the ballot would be rejected server-side (400). Block it here with a
+      // clear inline message so duplicate names never reach submit.
+      if (validBallotOptions.length >= 2) {
+        const distinctNames = new Set(validBallotOptions.map(o => o.game_name.trim()));
+        if (distinctNames.size < 2) {
+          toast.error('Ballot options must have at least 2 different games. Please give each option a distinct name.');
+          return;
+        }
+      }
 
       // Include rsvp_deadline in the submission data — same TZ-01 wall-clock
       // → profile-TZ → UTC conversion as start_date above.
