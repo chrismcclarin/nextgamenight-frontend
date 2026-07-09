@@ -8,6 +8,7 @@ import { parsePhoneNumber } from 'libphonenumber-js';
 import Link from 'next/link';
 import { formatDate, toLocalDateString } from '../../lib/dateUtils';
 import SafeImage from '../components/SafeImage';
+import DangerZoneDeleteAccount from '../components/DangerZoneDeleteAccount';
 import { useTutorial } from '../components/tutorial/TutorialProvider';
 import { useTimezone } from '../components/TimezoneProvider';
 import { useTheme } from 'next-themes';
@@ -1778,6 +1779,13 @@ function Profile(){
                     ) : (
                         <p className="text-content-secondary">You don't have any games in your collection yet. Search BoardGameGeek to add games!</p>
                     )}
+                </div>
+
+                {/* Danger Zone — irreversible account deletion (Phase 87.2 / D-13).
+                    The component owns its own modal-open blockers fetch; the page
+                    stays thin (mount only, no inline flow logic). */}
+                <div className="mt-6">
+                    <DangerZoneDeleteAccount />
                 </div>
 
                 {/* PRIM-03: the patterns-fetch bug-report modal now lives inside

@@ -146,9 +146,11 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
           setBlockedGroups(res.groups);
         }
       })
-      .catch((err) => {
-        // Non-authoritative pre-flight failure — the DELETE re-checks the gate.
-        console.error('Deletion-blockers pre-flight failed:', err);
+      .catch(() => {
+        // Intentionally swallowed: the pre-flight is non-authoritative (it only
+        // pre-populates the blocked state as a UX courtesy). A transient failure
+        // here must NOT block the flow — the authoritative owner gate re-checks
+        // on the DELETE (D-10), and the query layer already reports errors.
       })
       .finally(() => setPreflightPending(false));
   }, [resetState]);
