@@ -131,6 +131,66 @@ describe('DangerZoneDeleteAccount — DELETE outcome split', () => {
     expect(assignSpy).not.toHaveBeenCalled();
   });
 
+  it('shows a generic blocked failure message when the 409 envelope has no renderable groups (WR-05)', async () => {
+    mockGetBlockers.mockResolvedValue({ groups: [] });
+    // Contract drift / stripped body: blocked outcome with EMPTY details.groups.
+    // Must NOT silently no-op — the failure-message slot gets a generic
+    // blocked explanation, the session survives, and no navigation fires.
+    mockDeleteAccount.mockRejectedValue(
+      new ApiError('You still own active groups', 'owner_of_active_groups', 409, {
+        code: 'owner_of_active_groups',
+        message: 'You still own active groups',
+        details: { groups: [] },
+        error: 'You still own active groups',
+      })
+    );
+
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await openAndSettle(user);
+    await user.type(
+      screen.getByPlaceholderText('delete my account'),
+      'delete my account'
+    );
+    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+
+    expect(
+      await screen.findByText(
+        'You still own groups with other members. Transfer ownership, then try again.'
+      )
+    ).toBeInTheDocument();
+    expect(assignSpy).not.toHaveBeenCalled();
+    // Modal stays in the confirm state (not the blocked-groups rendering).
+    expect(screen.getByPlaceholderText('delete my account')).toBeInTheDocument();
+  });
+
+  it('shows the generic blocked failure message when details.groups is entirely absent (WR-05)', async () => {
+    mockGetBlockers.mockResolvedValue({ groups: [] });
+    mockDeleteAccount.mockRejectedValue(
+      new ApiError('You still own active groups', 'owner_of_active_groups', 409, {
+        code: 'owner_of_active_groups',
+        message: 'You still own active groups',
+        error: 'You still own active groups',
+      })
+    );
+
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await openAndSettle(user);
+    await user.type(
+      screen.getByPlaceholderText('delete my account'),
+      'delete my account'
+    );
+    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+
+    expect(
+      await screen.findByText(
+        'You still own groups with other members. Transfer ownership, then try again.'
+      )
+    ).toBeInTheDocument();
+    expect(assignSpy).not.toHaveBeenCalled();
+  });
+
   it('navigates to logout->goodbye on DELETE success', async () => {
     mockGetBlockers.mockResolvedValue({ groups: [] });
     mockDeleteAccount.mockResolvedValue({ message: 'deleted' });

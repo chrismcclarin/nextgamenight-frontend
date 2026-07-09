@@ -59,6 +59,11 @@ const CONFIRM_PHRASE = 'delete my account';
 const LOGOUT_GOODBYE_URL = '/api/auth/logout?returnTo=/goodbye';
 const DEFINITIVE_FAILURE_MESSAGE =
   'Deletion failed — nothing was deleted. Please try again.';
+// A 409 blocked outcome whose envelope carries no renderable groups list
+// (contract drift, a proxy stripping the body) must NOT silently no-op —
+// fall back to a generic blocked explanation in the failure-message slot.
+const BLOCKED_NO_DETAILS_MESSAGE =
+  'You still own groups with other members. Transfer ownership, then try again.';
 
 /**
  * Classify a DELETE rejection into the three outcome lanes. The ApiError seam
@@ -172,7 +177,15 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
           err instanceof ApiError
             ? getEnvelopeDetails<{ groups?: DeletionBlockerGroup[] }>(err)
             : undefined;
-        setBlockedGroups(details?.groups ?? []);
+        const groups = details?.groups;
+        if (groups && groups.length > 0) {
+          setBlockedGroups(groups);
+        } else {
+          // Missing/empty groups would leave isBlocked false and render NOTHING
+          // — a silent dead-end on the most destructive action (WR-05). Surface
+          // a generic blocked message instead.
+          setFailureMessage(BLOCKED_NO_DETAILS_MESSAGE);
+        }
         setDeleting(false);
         return;
       }
