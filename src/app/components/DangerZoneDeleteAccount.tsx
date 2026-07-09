@@ -52,6 +52,7 @@ import {
   ApiError,
   getEnvelopeDetails,
   usersAPI,
+  type DeleteAccountBlockedDetails,
   type DeletionBlockerGroup,
 } from '@/lib/api';
 
@@ -115,6 +116,9 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
   const [blockedGroups, setBlockedGroups] = React.useState<
     DeletionBlockerGroup[] | null
   >(null);
+  // WR-02: true only when the 409 envelope reported that the blocked-at-recheck
+  // deletion had ALREADY revoked the user's Google Calendar integration.
+  const [googleAccessRevoked, setGoogleAccessRevoked] = React.useState(false);
   const [failureMessage, setFailureMessage] = React.useState<string | null>(
     null
   );
@@ -126,6 +130,7 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
     setPreflightPending(false);
     setDeleting(false);
     setBlockedGroups(null);
+    setGoogleAccessRevoked(false);
     setFailureMessage(null);
   }, []);
 
@@ -175,11 +180,15 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
         // read it through the typed envelope-details seam.
         const details =
           err instanceof ApiError
-            ? getEnvelopeDetails<{ groups?: DeletionBlockerGroup[] }>(err)
+            ? getEnvelopeDetails<DeleteAccountBlockedDetails>(err)
             : undefined;
         const groups = details?.groups;
         if (groups && groups.length > 0) {
           setBlockedGroups(groups);
+          // WR-02: a blocked-at-recheck 409 arrives AFTER the user's Google
+          // Calendar integration was already revoked — surface the reconnect
+          // note in the blocked state. Fixed contract key: google_access_revoked.
+          setGoogleAccessRevoked(details?.google_access_revoked === true);
         } else {
           // Missing/empty groups would leave isBlocked false and render NOTHING
           // — a silent dead-end on the most destructive action (WR-05). Surface
@@ -254,6 +263,12 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
                 ownership to another member or remove members, then return here
                 to delete your account.
               </p>
+              {googleAccessRevoked && (
+                <p className="text-sm text-content-secondary">
+                  Note: your Google Calendar connection was reset during this
+                  attempt &mdash; reconnect it from your profile settings.
+                </p>
+              )}
             </div>
           ) : (
             <div className="space-y-4">

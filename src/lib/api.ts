@@ -116,6 +116,19 @@ export interface DeletionBlockers {
   groups: DeletionBlockerGroup[];
 }
 
+/**
+ * The DELETE /users/me 409 `owner_of_active_groups` envelope `details` shape
+ * (read via getEnvelopeDetails, i.e. nested at err.details.details).
+ * `google_access_revoked` is a fixed FE/BE contract key: the backend sets it
+ * (true) ONLY when the deletion was blocked at the last-moment in-transaction
+ * owner re-check, AFTER the user's Google Calendar integration was already
+ * irreversibly revoked (WR-02) — the FE must tell the user to reconnect.
+ */
+export interface DeleteAccountBlockedDetails {
+  groups?: DeletionBlockerGroup[];
+  google_access_revoked?: boolean;
+}
+
 // HTTP-status -> code fallback for routes NOT yet emitting the envelope `code`.
 // ~497 BE routes still return a raw `{ error }` (no `code`) until Phase 93 /
 // BAPI-03 converts them; this gives them a sensible code (and therefore correct

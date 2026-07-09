@@ -131,6 +131,66 @@ describe('DangerZoneDeleteAccount — DELETE outcome split', () => {
     expect(assignSpy).not.toHaveBeenCalled();
   });
 
+  it('renders the Google Calendar reconnect note when the 409 carries google_access_revoked: true (WR-02)', async () => {
+    mockGetBlockers.mockResolvedValue({ groups: [] });
+    // Blocked at the in-transaction re-check — the BE has ALREADY revoked the
+    // user's Google Calendar integration and flags it on the envelope details.
+    mockDeleteAccount.mockRejectedValue(
+      new ApiError('You still own active groups', 'owner_of_active_groups', 409, {
+        code: 'owner_of_active_groups',
+        message: 'You still own active groups',
+        details: {
+          groups: [{ id: 'g7', name: 'Wingspan Wing', memberCount: 3 }],
+          google_access_revoked: true,
+        },
+        error: 'You still own active groups',
+      })
+    );
+
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await openAndSettle(user);
+    await user.type(
+      screen.getByPlaceholderText('delete my account'),
+      'delete my account'
+    );
+    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+
+    await screen.findByRole('link', { name: 'Wingspan Wing' });
+    expect(
+      screen.getByText(/your Google Calendar connection was reset/i)
+    ).toBeInTheDocument();
+    expect(assignSpy).not.toHaveBeenCalled();
+  });
+
+  it('does NOT render the reconnect note on a blocked 409 without google_access_revoked (WR-02)', async () => {
+    mockGetBlockers.mockResolvedValue({ groups: [] });
+    mockDeleteAccount.mockRejectedValue(
+      new ApiError('You still own active groups', 'owner_of_active_groups', 409, {
+        code: 'owner_of_active_groups',
+        message: 'You still own active groups',
+        details: {
+          groups: [{ id: 'g7', name: 'Wingspan Wing', memberCount: 3 }],
+        },
+        error: 'You still own active groups',
+      })
+    );
+
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await openAndSettle(user);
+    await user.type(
+      screen.getByPlaceholderText('delete my account'),
+      'delete my account'
+    );
+    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+
+    await screen.findByRole('link', { name: 'Wingspan Wing' });
+    expect(
+      screen.queryByText(/your Google Calendar connection was reset/i)
+    ).not.toBeInTheDocument();
+  });
+
   it('shows a generic blocked failure message when the 409 envelope has no renderable groups (WR-05)', async () => {
     mockGetBlockers.mockResolvedValue({ groups: [] });
     // Contract drift / stripped body: blocked outcome with EMPTY details.groups.
