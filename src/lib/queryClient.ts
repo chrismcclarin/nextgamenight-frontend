@@ -34,6 +34,11 @@ import { ApiError } from '@/lib/api';
 //     prompt won't reopen on retry. NON-retryable.
 //   token_invalid (400) — a bad/expired token won't validate on retry.
 //     NON-retryable.
+//   owner_of_active_groups (409) — the account-deletion owner gate (Phase 87.2 /
+//     Pitfall 11). A retried pre-flight/DELETE cannot change the gate outcome and
+//     only wastes a request + delays the blocked-state UI. NON-retryable.
+//   account_deleted (410) — terminal tombstone (repeat-DELETE against a gone
+//     account). Maps to the logout->/goodbye path, never a retry. NON-retryable.
 // Left RETRYABLE-once (transient): `internal` (500 — may be a blip) and the
 // client-side `network` code, plus `unknown` — shouldRetry allows one retry.
 const NON_RETRYABLE_API_CODES: ReadonlyArray<string> = [
@@ -46,6 +51,8 @@ const NON_RETRYABLE_API_CODES: ReadonlyArray<string> = [
   'prompt_closed',
   'prompt_deadline_expired',
   'token_invalid',
+  'owner_of_active_groups',
+  'account_deleted',
 ];
 
 /**
