@@ -291,12 +291,16 @@ export async function apiFetch<T = unknown>(
       return responseText as unknown as T;
     }
   } catch (error) {
-    const errName = error instanceof Error ? error.name : '';
     const errMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error(`API Error (${endpoint}):`, errMessage || 'Unknown error');
     console.error(`API URL: ${url}`);
-    // Re-throw with more context if it's a network error
-    if (errName === 'TypeError' && errMessage.includes('fetch')) {
+    // Re-throw with more context if it's a network error. ANY TypeError thrown
+    // by fetch() is a network-level failure per the spec, but the message text
+    // is engine-specific — Chrome throws "Failed to fetch", Safari throws
+    // "Load failed" — so match on the type alone, never the message (WR-04).
+    // Abort/timeout rejections are DOMExceptions, not TypeErrors, and fall
+    // through to the raw rethrow below.
+    if (error instanceof TypeError) {
       throw new ApiError(
         'Network error: Could not connect to the server. Please check if the backend is running and NEXT_PUBLIC_API_URL is set correctly.',
         'network',

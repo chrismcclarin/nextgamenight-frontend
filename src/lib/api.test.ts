@@ -2,8 +2,11 @@
 // Proves the error-code contract every call site reads (`err.code`) is stable
 // AND that mapErrorToCode already prefers an envelope `code` — so the BAPI-01
 // swap in Phase 85 is a one-function rewrite that leaves call sites untouched.
-// Pure: no network / no fetch mock needed for these assertions.
-import { ApiError, mapErrorToCode } from './api';
+// Mostly pure (no fetch mock); the one exception is the network-failure
+// classification block, which stubs global fetch to pin the WR-04 contract.
+import { afterEach, vi } from 'vitest';
+
+import { ApiError, apiFetch, mapErrorToCode } from './api';
 
 describe('ApiError — shape', () => {
   it('is both an Error and an ApiError, carrying code + status + details', () => {
@@ -54,5 +57,31 @@ describe('mapErrorToCode — envelope code preference (BAPI-01 forward-compat)',
     // Asserted via a string var so the future-domain code is not type-narrowed.
     const result: string = mapErrorToCode({ code: 'reminder_cooldown' }, 400);
     expect(result).toBe('reminder_cooldown');
+  });
+});
+
+describe('apiFetch — network-failure classification (WR-04)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("converts Safari's TypeError('Load failed') into ApiError code 'network'", async () => {
+    // Any TypeError from fetch() is a network failure; the message text is
+    // engine-specific (Chrome: "Failed to fetch", Safari: "Load failed"), so
+    // the seam must classify on the type alone — a message-substring gate
+    // would misroute Safari failures into the definitive lane (Pitfall 9).
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(new TypeError('Load failed'))
+    );
+    const rejection = apiFetch('/users/me');
+    await expect(rejection).rejects.toBeInstanceOf(ApiError);
+    await expect(rejection).rejects.toMatchObject({ code: 'network', status: 0 });
+  });
+
+  it('rethrows a non-TypeError (abort) untouched', async () => {
+    const abort = new DOMException('The user aborted a request.', 'AbortError');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abort));
+    await expect(apiFetch('/users/me')).rejects.toBe(abort);
   });
 });
