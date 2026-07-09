@@ -54,6 +54,9 @@ const MESSAGE_BY_CODE: Record<FetchErrorCode, string> = {
   prompt_closed: 'This availability poll is already closed.',
   prompt_deadline_expired: 'The deadline for this availability poll has passed.',
   reminder_cooldown: 'A reminder was sent recently. Please wait before sending another.',
+  owner_of_active_groups:
+    'You still own active groups. Transfer ownership or delete them, then try again.',
+  account_deleted: 'This account has already been deleted.',
   internal: "Something went wrong on our end. Please try again shortly.",
   config: "Something's misconfigured on our end. Please try again shortly.",
   unknown: 'Something went wrong. Refresh the page to try again.',

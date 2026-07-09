@@ -46,6 +46,12 @@ const BFF_BASE = '/api';
 //     failure) and `config` (misconfiguration). These are ADDITIVE — the widen
 //     over the BE registry must NOT drop them (86-04 Task 1 / MED #6).
 //   - `unknown` is the terminal fallback for an unmapped status.
+//   - account-deletion codes (Phase 87.2, registered in the BE ERROR_REGISTRY):
+//     `owner_of_active_groups` (@409 — the caller still owns active groups and
+//     must transfer/delete them first; carries a blocked-groups list nested at
+//     details.groups) and `account_deleted` (@410 — repeat-DELETE / tombstone
+//     refusal, terminal). Both MUST be in the union or `mapErrorToCode`'s
+//     body.code preference yields a code outside ApiErrorCode.
 export type ApiErrorCode =
   | 'unknown'
   | 'validation'
@@ -57,6 +63,8 @@ export type ApiErrorCode =
   | 'prompt_closed'
   | 'prompt_deadline_expired'
   | 'reminder_cooldown'
+  | 'owner_of_active_groups'
+  | 'account_deleted'
   | 'internal'
   | 'network'
   | 'config';
@@ -73,6 +81,52 @@ export class ApiError extends Error {
     this.details = details;
     Object.setPrototypeOf(this, ApiError.prototype); // instanceof works post-transpile
   }
+}
+
+/**
+ * Typed accessor for the Phase 85 envelope's OWN `details` object.
+ *
+ * The single apiFetch throw site stores the WHOLE parsed error body as
+ * `ApiError.details` (see the in-code comment at the throw site), and the BE
+ * envelope shape is `{ code, message, details: { ... }, error }`. So the
+ * envelope's structured payload (e.g. the owner-gate blocked-groups list) is
+ * NESTED at `err.details.details`, NOT `err.details`. Consumers must read it
+ * through this one seam instead of hand-casting the double-nesting — reading
+ * `err.details.groups` directly is always `undefined` and renders a dead-end.
+ */
+export function getEnvelopeDetails<T>(err: ApiError): T | undefined {
+  return (err.details as { details?: T } | undefined)?.details;
+}
+
+/**
+ * The GET /users/me/deletion-blockers pre-flight shape (Phase 87.2). Resolves
+ * 200 for any authenticated caller — `groups` is empty when not blocked and
+ * non-empty (each group's TOTAL member count) when the caller owns active
+ * groups. `memberCount` is the group's whole-membership count (pinned in plan
+ * 87.2-04) — render it as the member count, NOT an "others" count. This
+ * endpoint NEVER rejects with `owner_of_active_groups`; that code arrives only
+ * on the DELETE response (the server-side TOCTOU re-check, D-10).
+ */
+export interface DeletionBlockerGroup {
+  id: string;
+  name: string;
+  memberCount: number;
+}
+export interface DeletionBlockers {
+  groups: DeletionBlockerGroup[];
+}
+
+/**
+ * The DELETE /users/me 409 `owner_of_active_groups` envelope `details` shape
+ * (read via getEnvelopeDetails, i.e. nested at err.details.details).
+ * `google_access_revoked` is a fixed FE/BE contract key: the backend sets it
+ * (true) ONLY when the deletion was blocked at the last-moment in-transaction
+ * owner re-check, AFTER the user's Google Calendar integration was already
+ * irreversibly revoked (WR-02) — the FE must tell the user to reconnect.
+ */
+export interface DeleteAccountBlockedDetails {
+  groups?: DeletionBlockerGroup[];
+  google_access_revoked?: boolean;
 }
 
 // HTTP-status -> code fallback for routes NOT yet emitting the envelope `code`.
@@ -250,12 +304,16 @@ export async function apiFetch<T = unknown>(
       return responseText as unknown as T;
     }
   } catch (error) {
-    const errName = error instanceof Error ? error.name : '';
     const errMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error(`API Error (${endpoint}):`, errMessage || 'Unknown error');
     console.error(`API URL: ${url}`);
-    // Re-throw with more context if it's a network error
-    if (errName === 'TypeError' && errMessage.includes('fetch')) {
+    // Re-throw with more context if it's a network error. ANY TypeError thrown
+    // by fetch() is a network-level failure per the spec, but the message text
+    // is engine-specific — Chrome throws "Failed to fetch", Safari throws
+    // "Load failed" — so match on the type alone, never the message (WR-04).
+    // Abort/timeout rejections are DOMExceptions, not TypeErrors, and fall
+    // through to the raw rethrow below.
+    if (error instanceof TypeError) {
       throw new ApiError(
         'Network error: Could not connect to the server. Please check if the backend is running and NEXT_PUBLIC_API_URL is set correctly.',
         'network',
@@ -583,6 +641,22 @@ export const usersAPI = {
     apiFetch(`/users/${encodeURIComponent(user_id)}/phone`, {
       method: 'DELETE',
     }),
+
+  // Account-deletion pre-flight (Phase 87.2 / D-11). Resolves 200 { groups }
+  // for an authenticated caller — empty array when nothing blocks deletion,
+  // non-empty (owned active groups + TOTAL member counts) when the owner gate
+  // would fire. NEVER rejects with owner_of_active_groups; that arrives only on
+  // the DELETE (the server-side TOCTOU re-check). Caller derives from the Auth0
+  // token server-side — no user_id in the path (self-scoped /users/me).
+  getDeletionBlockers: () =>
+    apiFetch<DeletionBlockers>('/users/me/deletion-blockers'),
+
+  // Hard-delete the authenticated account (Phase 87.2). The BFF proxy forwards
+  // DELETE with same-origin CSRF checks; caller identity comes from the Auth0
+  // token server-side. On success the caller MUST navigate to logout IMMEDIATELY
+  // (no toast-then-wait) so no authenticated fetch re-provisions a JIT ghost row.
+  deleteAccount: () =>
+    apiFetch<{ message: string }>('/users/me', { method: 'DELETE' }),
 };
 
 /**
