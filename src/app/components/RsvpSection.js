@@ -6,8 +6,13 @@ import ClickableMemberName from './ClickableMemberName';
 /**
  * RsvpSection - RSVP interface for a single event
  * Shows status buttons, note field, count banner, and grouped respondent list
+ *
+ * @param {object} self - The resolved self-identity row from useSelfIdentity
+ *   ({ id: <Users.id UUID>, ... }). Own-RSVP resolution keys on `self.id` vs the
+ *   nested `rsvp.User.id` UUID (Phase 87.3-04, D-04) — never the flat `user_id`
+ *   (a sub through the PR-C window). Undefined while identity is still resolving.
  */
-export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpChange }) {
+export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) {
   const [rsvps, setRsvps] = useState([]);
   const [summary, setSummary] = useState({ yes: 0, maybe: 0, no: 0 });
   const [userRsvp, setUserRsvp] = useState(null);
@@ -28,8 +33,12 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
       setRsvps(data.rsvps || []);
       setSummary(data.summary || { yes: 0, maybe: 0, no: 0 });
 
-      if (currentUserId) {
-        const mine = (data.rsvps || []).find(r => r.user_id === currentUserId);
+      // Phase 87.3-04: own-RSVP resolution keys on the nested User.id UUID vs
+      // the resolved self UUID. Gated on identity resolution — while `self` is
+      // unresolved, leave userRsvp untouched (loading/indeterminate), NEVER clear
+      // it to "not mine". `self?.id` is in the dep array so this re-runs on resolve.
+      if (self?.id) {
+        const mine = (data.rsvps || []).find(r => r.User?.id === self.id);
         if (mine) {
           setUserRsvp(mine);
           setSelectedStatus(mine.status);
@@ -46,7 +55,7 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
     } finally {
       setLoading(false);
     }
-  }, [eventId, currentUserId]);
+  }, [eventId, self?.id]);
 
   useEffect(() => {
     fetchRsvps();
@@ -267,8 +276,14 @@ export default function RsvpSection({ eventId, currentUserId, eventDate, onRsvpC
                     {group.map((rsvp) => (
                       <div key={rsvp.id} className="flex flex-col">
                         <span className="text-sm text-content-primary">
-                          {rsvp.User?.user_id ? (
-                            <ClickableMemberName userId={rsvp.User.user_id} username={rsvp.User.username || 'Unknown'} />
+                          {/* Phase 87.3-04: guard + key the friend-request
+                              affordance on the nested User.id UUID, not the
+                              sub-shaped nested-sub field — so PR-C dropping that
+                              field from the include cannot silently remove the
+                              affordance, and the userId handed to the (soon
+                              UUID-keyed) friendship provider is a UUID. */}
+                          {rsvp.User?.id ? (
+                            <ClickableMemberName userId={rsvp.User.id} username={rsvp.User.username || 'Unknown'} />
                           ) : (
                             'Unknown'
                           )}

@@ -10,10 +10,15 @@ import SafeImage from './SafeImage';
  * @param {boolean} isOpen - Controls modal visibility
  * @param {Function} onClose - Called when user closes or skips
  * @param {string} eventId - UUID of the event
- * @param {string} currentUserId - Auth0 user ID (user.sub)
+ * @param {object} self - Resolved self-identity row from useSelfIdentity
+ *   ({ id: <Users.id UUID>, user_id: <sub>, ... }). Phase 87.3-04: my-brings
+ *   preselect keys on `self.id` vs the nested `bring.User.id` UUID (D-04). The
+ *   getOwnedGames server call keeps the SUB (`self.user_id`) — that route
+ *   enforces `param === req.user.user_id` (the sub), so its arg shape is
+ *   unchanged per the plan-wide "is-me is render-gating only" rule.
  * @param {Function} onSave - Called after successful save (triggers BringSummary refetch)
  */
-export default function BringGamePicker({ isOpen, onClose, eventId, currentUserId, onSave }) {
+export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave }) {
   const [ownedGames, setOwnedGames] = useState([]);
   const [selectedGameIds, setSelectedGameIds] = useState(new Set());
   const [othersBringing, setOthersBringing] = useState({});
@@ -22,7 +27,11 @@ export default function BringGamePicker({ isOpen, onClose, eventId, currentUserI
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!isOpen || !eventId || !currentUserId) return;
+    // Phase 87.3-04: gate the fetch on identity resolution — `self` is undefined
+    // while useSelfIdentity is still resolving; the effect re-runs when it lands
+    // (self in the dep array), so my-brings preselect never evaluates against an
+    // unresolved identity (indeterminate, never "not mine").
+    if (!isOpen || !eventId || !self?.user_id) return;
 
     let cancelled = false;
 
@@ -30,7 +39,9 @@ export default function BringGamePicker({ isOpen, onClose, eventId, currentUserI
       setLoading(true);
       try {
         const [gamesRes, bringsRes] = await Promise.all([
-          userGamesAPI.getOwnedGames(currentUserId),
+          // Server-call ARG keeps the SUB (self.user_id) — the owned-games route
+          // enforces `param === req.user.user_id` (the sub); not an is-me compare.
+          userGamesAPI.getOwnedGames(self.user_id),
           eventBringsAPI.getEventBrings(eventId),
         ]);
 
@@ -48,7 +59,8 @@ export default function BringGamePicker({ isOpen, onClose, eventId, currentUserI
         const othersCount = {};
 
         for (const bring of brings) {
-          if (bring.user_id === currentUserId) {
+          // Phase 87.3-04 (D-04): "mine" = nested User.id UUID === self.id UUID.
+          if (bring.User?.id === self.id) {
             myGameIds.add(bring.game_id);
           } else {
             othersCount[bring.game_id] = (othersCount[bring.game_id] || 0) + 1;
@@ -66,7 +78,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, currentUserI
 
     fetchData();
     return () => { cancelled = true; };
-  }, [isOpen, eventId, currentUserId]);
+  }, [isOpen, eventId, self?.user_id, self?.id]);
 
   if (!isOpen) return null;
 

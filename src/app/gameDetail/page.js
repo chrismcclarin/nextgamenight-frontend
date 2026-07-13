@@ -219,7 +219,11 @@ export default function GameDetailPage() {
     const [participants, setParticipants] = useState([]);
     const [groupMembersByUserId, setGroupMembersByUserId] = useState({}); // keyed by User.id (UUID)
     const [bringersSet, setBringersSet] = useState(new Set()); // set of User.id (UUID) bringing games
-    const [rsvpByAuth0Id, setRsvpByAuth0Id] = useState({}); // { auth0_user_id: 'yes'|'no'|'maybe'|null }
+    // Phase 87.3-04 (D-07): per-participant RSVP status map keyed by the nested
+    // User.id UUID (renamed off "Auth0Id"). Built from rsvp rows' nested User.id
+    // and looked up by roster member.id — a UUID-to-UUID join, so the PR-C
+    // flat-field flip cannot silently zero out the participant RSVP chips.
+    const [rsvpByUserId, setRsvpByUserId] = useState({}); // { user_uuid: 'yes'|'no'|'maybe'|null }
     const [showAllParticipants, setShowAllParticipants] = useState(false);
     const [showGameQR, setShowGameQR] = useState(false);
     const [gameInviteUrl, setGameInviteUrl] = useState('');
@@ -419,14 +423,17 @@ export default function GameDetailPage() {
                         const myRsvp = (rsvpData.rsvps || []).find(r => r.User?.id === selfUuid);
                         setEventRsvpStatuses({ [event_id]: myRsvp?.status || null });
                     }
-                    const byAuth0 = {};
+                    // Phase 87.3-04 (D-07): key on the nested User.id UUID (build
+                    // side) so the modal lookup (roster member.id, also a UUID) is
+                    // a UUID-to-UUID join — no sub/UUID mixed key anywhere.
+                    const byUserId = {};
                     for (const r of (rsvpData.rsvps || [])) {
-                        if (r.user_id) byAuth0[r.user_id] = r.status;
+                        if (r.User?.id) byUserId[r.User.id] = r.status;
                     }
-                    setRsvpByAuth0Id(byAuth0);
+                    setRsvpByUserId(byUserId);
                 } catch {
                     setEventRsvpStatuses({ [event_id]: null });
-                    setRsvpByAuth0Id({});
+                    setRsvpByUserId({});
                 }
 
                 // Fetch event brings to flag participants who are bringing a
@@ -1047,9 +1054,11 @@ export default function GameDetailPage() {
                         <div className="flex flex-wrap gap-2">
                             {participants.slice(0, 5).map((p) => {
                                 const member = p.user_id ? groupMembersByUserId[p.user_id] : null;
-                                const auth0Id = member?.user_id;
+                                // Phase 87.3-04: derive the member DB UUID (not the
+                                // sub) and look up the RSVP chip on the UUID-keyed map.
+                                const memberUuid = member?.id;
                                 const role = member?.UserGroup?.role;
-                                const status = auth0Id ? rsvpByAuth0Id[auth0Id] : null;
+                                const status = memberUuid ? rsvpByUserId[memberUuid] : null;
                                 const isBringing = p.user_id && bringersSet.has(p.user_id);
                                 return (
                                     <ParticipantChip
@@ -1079,7 +1088,7 @@ export default function GameDetailPage() {
                     <RsvpSection
                         key={`rsvp-${rsvpRefreshKey}`}
                         eventId={singleEvent.id}
-                        currentUserId={user?.sub}
+                        self={self}
                         eventDate={singleEvent.start_date}
                         onRsvpChange={(status) => {
                             const prevStatus = eventRsvpStatuses[singleEvent.id];
@@ -1107,7 +1116,7 @@ export default function GameDetailPage() {
                     <BringSummary
                         eventId={singleEvent.id}
                         groupId={effectiveGroupId}
-                        currentUserId={user?.sub}
+                        self={self}
                         refreshKey={bringRefreshKey}
                         onEditClick={() => { setBringPickerEventId(singleEvent.id); setShowBringPicker(true); }}
                     />
@@ -1198,11 +1207,16 @@ export default function GameDetailPage() {
                             <div className="max-h-[60vh] overflow-y-auto space-y-2 -mx-1 px-1">
                                 {participants.map((p) => {
                                     const member = p.user_id ? groupMembersByUserId[p.user_id] : null;
-                                    const auth0Id = member?.user_id;
+                                    // Phase 87.3-04: the per-member identity is the DB
+                                    // UUID (member.id) — feeds ALL FOUR downstream uses
+                                    // (chip lookup, isCurrentUser, getFriendshipStatus
+                                    // arg, ClickableMemberName userId) so none is left
+                                    // sub-shaped against the UUID-keyed provider/routes.
+                                    const memberUuid = member?.id;
                                     const role = member?.UserGroup?.role;
-                                    const status = auth0Id ? rsvpByAuth0Id[auth0Id] : null;
+                                    const status = memberUuid ? rsvpByUserId[memberUuid] : null;
                                     const isBringing = p.user_id && bringersSet.has(p.user_id);
-                                    const isCurrentUser = auth0Id && auth0Id === user?.sub;
+                                    const isCurrentUser = !!memberUuid && memberUuid === selfUuid;
                                     const canRemove = (userRole === 'owner' || userRole === 'admin')
                                         && !!p.user_id // hide for custom guests (no DB user)
                                         && !isCurrentUser;
@@ -1224,7 +1238,7 @@ export default function GameDetailPage() {
                                     //   pending_* → unchanged. ClickableMemberName provides desktop hover popover +
                                     //               mobile inline indicator.
                                     //   none      → unchanged. ClickableMemberName provides 'Add friend' on hover.
-                                    const friendStatus = auth0Id ? getFriendshipStatus(auth0Id) : 'unknown';
+                                    const friendStatus = memberUuid ? getFriendshipStatus(memberUuid) : 'unknown';
                                     const isSelfRow = friendStatus === 'self' || isCurrentUser;
                                     return (
                                         <div
@@ -1241,16 +1255,16 @@ export default function GameDetailPage() {
                                                         // status === 'self' (no popover, no indicator) so this
                                                         // short-circuit is byte-equivalent on both mobile + desktop.
                                                         <span>{p.username || 'Unknown'}</span>
-                                                    ) : auth0Id ? (
+                                                    ) : memberUuid ? (
                                                         // Stranger / pending / accepted all route through
                                                         // ClickableMemberName. For accepted on mobile this preserves
                                                         // the existing md:hidden ✓ Friend indicator (pre-phase
                                                         // affordance). For accepted on desktop ClickableMemberName
                                                         // renders only the plain name — the desktop-only 'Friend'
                                                         // pill below gives desktop its read-only indicator.
-                                                        <ClickableMemberName userId={auth0Id} username={p.username || 'Unknown'} />
+                                                        <ClickableMemberName userId={memberUuid} username={p.username || 'Unknown'} />
                                                     ) : (
-                                                        // auth0Id couldn't be resolved through groupMembersByUserId
+                                                        // memberUuid couldn't be resolved through groupMembersByUserId
                                                         // (game-only viewer or missing-from-group edge case).
                                                         // Render plain text — same fallback as before.
                                                         <span>{p.username || 'Unknown'}</span>
@@ -1344,7 +1358,7 @@ export default function GameDetailPage() {
                     isOpen={showBringPicker}
                     onClose={() => { setShowBringPicker(false); setBringPickerEventId(null); }}
                     eventId={bringPickerEventId}
-                    currentUserId={user?.sub}
+                    self={self}
                     onSave={() => {
                         setBringRefreshKey(k => k + 1);
                         // Phase 65-02 EVT-02 followup: show 🎲 immediately
@@ -1837,7 +1851,7 @@ export default function GameDetailPage() {
                                         <RsvpSection
                                             key={`${event.id}-${rsvpRefreshKey}`}
                                             eventId={event.id}
-                                            currentUserId={user?.sub}
+                                            self={self}
                                             eventDate={event.start_date}
                                             onRsvpChange={(status) => {
                                                 const prevStatus = eventRsvpStatuses[event.id];
@@ -1861,7 +1875,7 @@ export default function GameDetailPage() {
                                         <BringSummary
                                             eventId={event.id}
                                             groupId={group_id}
-                                            currentUserId={user?.sub}
+                                            self={self}
                                             refreshKey={bringRefreshKey}
                                             onEditClick={() => { setBringPickerEventId(event.id); setShowBringPicker(true); }}
                                         />
@@ -1913,8 +1927,8 @@ export default function GameDetailPage() {
                         <div className="flex justify-between items-start mb-2">
                             <div>
                                 <p className="font-semibold text-content-primary">
-                                    {userReview.User?.user_id ? (
-                                        <ClickableMemberName userId={userReview.User.user_id} username={userReview.User.username || 'You'} />
+                                    {userReview.User?.id ? (
+                                        <ClickableMemberName userId={userReview.User.id} username={userReview.User.username || 'You'} />
                                     ) : (
                                         userReview.User?.username || 'You'
                                     )} <span className="text-xs text-content-link ml-1">(You)</span>
@@ -1961,8 +1975,8 @@ export default function GameDetailPage() {
                                             <div>
                                                 <div className="flex items-center gap-2">
                                                     <p className="font-semibold text-content-primary">
-                                                        {review.User?.user_id ? (
-                                                            <ClickableMemberName userId={review.User.user_id} username={review.User.username || 'Unknown'} />
+                                                        {review.User?.id ? (
+                                                            <ClickableMemberName userId={review.User.id} username={review.User.username || 'Unknown'} />
                                                         ) : (
                                                             <span>{review.User?.username || 'Unknown'}</span>
                                                         )}
@@ -2109,7 +2123,7 @@ export default function GameDetailPage() {
                 isOpen={showBringPicker}
                 onClose={() => { setShowBringPicker(false); setBringPickerEventId(null); }}
                 eventId={bringPickerEventId}
-                currentUserId={user?.sub}
+                self={self}
                 onSave={() => setBringRefreshKey(k => k + 1)}
             />
         </div>

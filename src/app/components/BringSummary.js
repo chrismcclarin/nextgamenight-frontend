@@ -10,11 +10,14 @@ import { eventBringsAPI } from '../../lib/api';
  *
  * @param {string} eventId - UUID of the event
  * @param {string} groupId - UUID of the group (for game detail links)
- * @param {string} currentUserId - Auth0 user ID (for identifying own brings)
+ * @param {object} self - Resolved self-identity row from useSelfIdentity
+ *   ({ id: <Users.id UUID>, ... }). Phase 87.3-04: brings are grouped by the
+ *   nested `bring.User.id` UUID and the own-brings check keys on `self.id` (D-04)
+ *   — never the flat `user_id` (a sub through the PR-C window).
  * @param {number|string} refreshKey - Changes to trigger refetch
  * @param {Function} onEditClick - Callback to open BringGamePicker for editing
  */
-export default function BringSummary({ eventId, groupId, currentUserId, refreshKey, onEditClick }) {
+export default function BringSummary({ eventId, groupId, self, refreshKey, onEditClick }) {
   const [bringsByUser, setBringsByUser] = useState({});
   const [loading, setLoading] = useState(true);
   const [hasData, setHasData] = useState(false);
@@ -38,10 +41,13 @@ export default function BringSummary({ eventId, groupId, currentUserId, refreshK
           return;
         }
 
-        // Group by user
+        // Group by user. Phase 87.3-04 (D-04/D-07): key on the nested User.id
+        // UUID so the own-brings check below (self.id) is a UUID-to-UUID match —
+        // no flat `user_id` (sub) key that the PR-C flip would silently break.
         const grouped = {};
         for (const bring of brings) {
-          const userId = bring.user_id;
+          const userId = bring.User?.id;
+          if (!userId) continue;
           if (!grouped[userId]) {
             grouped[userId] = {
               username: bring.User?.username || bring.username || 'Unknown',
@@ -77,7 +83,11 @@ export default function BringSummary({ eventId, groupId, currentUserId, refreshK
     a[1].username.localeCompare(b[1].username)
   );
 
-  const currentUserHasBrings = currentUserId && bringsByUser[currentUserId];
+  // Phase 87.3-04: own-brings check keys on the resolved self UUID vs the
+  // UUID-keyed grouping. Falsy while identity is unresolved (indeterminate —
+  // Edit affordance simply stays hidden until `self` resolves, never a wrong
+  // "not mine"); recomputes on the next render once `self` lands.
+  const currentUserHasBrings = self?.id && bringsByUser[self.id];
 
   return (
     <div className="card p-4">
