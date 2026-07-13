@@ -6,9 +6,19 @@ import ClickableMemberName from './ClickableMemberName';
 import KebabMenu from './KebabMenu';
 import FriendInvitePanel from './FriendInvitePanel';
 import { toast } from 'sonner';
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
 function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, group_name }) {
     const router = useRouter();
+    // Phase 87.3-05 (PR-B): resolve the caller's own Users.id UUID once via the
+    // shared identity primitive. The self-badge, current-member role derive, and
+    // every group-admin mutation target key on the nested member.id (UUID) — not
+    // the flat member.user_id vs sub compare (which flips value at PR-C). selfUuid resolves
+    // ASYNC (D-04), so the current-member role derive re-runs when it resolves.
+    const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
+    const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [userRole, setUserRole] = useState(null);
@@ -17,7 +27,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     const [pendingLoading, setPendingLoading] = useState(false);
     // Phase 69-02 GROUP-06: per-row Transfer Ownership confirm modal target.
     // Owner-only kebab on each non-owner active row sets this; null = closed.
-    const [transferTarget, setTransferTarget] = useState(null); // { user_id, name } or null
+    const [transferTarget, setTransferTarget] = useState(null); // { id (member UUID), name } or null
     const [transferring, setTransferring] = useState(false);
     // Invite modal + reset-link state — buttons live in the Manage Members header,
     // the actual invite UI is the existing FriendInvitePanel modal.
@@ -34,7 +44,11 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         if (modal && group_id && user?.sub) {
             fetchMembers();
         }
-    }, [modal, group_id, user?.sub]);
+        // selfUuid is in the deps so that when identity resolves on a cold
+        // cache, fetchMembers re-runs and the current-member role derive (which
+        // gates the pending-invites fetch + admin controls) recomputes against
+        // the resolved UUID instead of sticking at a wrong "no role".
+    }, [modal, group_id, user?.sub, selfUuid]);
 
     const fetchMembers = async () => {
         if (!group_id || !user?.sub) return;
@@ -54,8 +68,15 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
 
             setMembers(data || []);
 
-            // Find current user's role
-            const currentUserMember = data.find(m => m.user_id === user.sub);
+            // Find current user's role by the nested member.id (UUID) vs the
+            // resolved selfUuid. Gated on identity resolution: while selfUuid is
+            // undefined we skip the derive (loading), never store a wrong "no
+            // role" — the effect re-runs when identity resolves (selfUuid in deps).
+            if (!selfUuid) {
+                setPendingInvites([]);
+                return;
+            }
+            const currentUserMember = data.find(m => m.id === selfUuid);
             const role = currentUserMember?.UserGroup?.role || null;
             if (role) setUserRole(role);
 
@@ -257,6 +278,11 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                     </div>
                 )}
 
+                {/* D-08: identity-resolution failure hides the self "(You)" badge
+                    and the admin controls gated on the derived role — surface a
+                    compact, non-blocking degrade notice rather than fail silently. */}
+                <FetchErrorBanner state={selfIdentityErrorState} compact />
+
                 {loading ? (
                     <p className="text-content-secondary">Loading members...</p>
                 ) : error ? (
@@ -281,20 +307,20 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                             <div className="flex items-center gap-3 flex-1">
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-2">
-                                                        <p className="font-semibold text-content-primary"><ClickableMemberName userId={member.user_id} username={member.username || member.email} /></p>
+                                                        <p className="font-semibold text-content-primary"><ClickableMemberName userId={member.id} username={member.username || member.email} /></p>
                                                         {getRoleBadge('pending')}
                                                     </div>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <button
-                                                    onClick={() => handleApproveMember(member.user_id)}
+                                                    onClick={() => handleApproveMember(member.id)}
                                                     className="btn btn-primary text-sm px-4 py-2"
                                                 >
                                                     Approve
                                                 </button>
                                                 <button
-                                                    onClick={() => handleRejectMember(member.user_id)}
+                                                    onClick={() => handleRejectMember(member.id)}
                                                     className="btn btn-danger text-sm px-4 py-2"
                                                 >
                                                     Reject
@@ -310,7 +336,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                         <div className="space-y-3">
                             {members.filter(m => m.UserGroup?.role !== 'pending').map((member) => {
                                 const memberRole = member.UserGroup?.role || 'member';
-                                const isCurrentUser = member.user_id === user?.sub;
+                                const isCurrentUser = member.id === selfUuid;
                                 const isOwner = memberRole === 'owner';
 
                                 return (
@@ -322,7 +348,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-2">
                                                     <p className="font-semibold text-content-primary">
-                                                        <ClickableMemberName userId={member.user_id} username={member.username || member.email} />
+                                                        <ClickableMemberName userId={member.id} username={member.username || member.email} />
                                                     </p>
                                                     {isCurrentUser && (
                                                         <span className="text-xs text-accent font-medium">(You)</span>
@@ -359,7 +385,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                             {/* Role Dropdown */}
                                                             <select
                                                                 value={memberRole}
-                                                                onChange={(e) => handleRoleChange(member.user_id, e.target.value)}
+                                                                onChange={(e) => handleRoleChange(member.id, e.target.value)}
                                                                 className="px-3 py-2 border border-line rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
                                                             >
                                                                 <option value="member">Member</option>
@@ -368,7 +394,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
 
                                                             {/* Remove Button — desktop entry point uses window.confirm() inside handleRemoveMember */}
                                                             <button
-                                                                onClick={() => handleRemoveMember(member.user_id)}
+                                                                onClick={() => handleRemoveMember(member.id)}
                                                                 className="btn btn-danger text-sm px-4 py-2"
                                                                 title="Remove from group"
                                                             >
@@ -388,7 +414,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                                             label: 'Transfer ownership to this member',
                                                                             danger: true,
                                                                             onClick: () => setTransferTarget({
-                                                                                user_id: member.user_id,
+                                                                                id: member.id,
                                                                                 name: member.username || member.email || 'this member',
                                                                             }),
                                                                         },
@@ -411,7 +437,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                                     {
                                                                         label: memberRole === 'admin' ? 'Make member' : 'Make admin',
                                                                         onClick: () => handleRoleChange(
-                                                                            member.user_id,
+                                                                            member.id,
                                                                             memberRole === 'admin' ? 'member' : 'admin'
                                                                         ),
                                                                     },
@@ -420,14 +446,14 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                                         danger: true,
                                                                         twoTap: true,
                                                                         confirmLabel: 'Tap again to remove',
-                                                                        onClick: () => handleRemoveMemberConfirmed(member.user_id),
+                                                                        onClick: () => handleRemoveMemberConfirmed(member.id),
                                                                     },
                                                                     // Phase 69-02 GROUP-06: owner-only — admins don't see this item.
                                                                     ...(userRole === 'owner' ? [{
                                                                         label: 'Transfer ownership to this member',
                                                                         danger: true,
                                                                         onClick: () => setTransferTarget({
-                                                                            user_id: member.user_id,
+                                                                            id: member.id,
                                                                             name: member.username || member.email || 'this member',
                                                                         }),
                                                                     }] : []),
@@ -551,7 +577,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                             onClick={async () => {
                                 setTransferring(true);
                                 try {
-                                    await groupsAPI.transferOwnership(group_id, transferTarget.user_id);
+                                    await groupsAPI.transferOwnership(group_id, transferTarget.id);
                                     setTransferTarget(null);
                                     if (onMembersUpdated) onMembersUpdated();
                                     if (modaltoggle) modaltoggle(); // close ManageMembers — caller refetches role
