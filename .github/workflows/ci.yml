@@ -15,6 +15,12 @@ on:
     branches: [main] # the FE repo's default branch (NOT the docs-root `master`)
   push:
     branches-ignore: [main]
+  workflow_dispatch:
+    inputs:
+      backend-ref:
+        description: "Backend branch/ref for the e2e job's cross-repo checkout (pre-merge backend PRs point this at their feature branch)"
+        required: false
+        default: "main"
 
 jobs:
   quality:
@@ -112,6 +118,9 @@ jobs:
         with:
           repository: chrismcclarin/nextgamenight-backend
           path: backend # BE app then lives at backend/Sonnet/
+          # workflow_dispatch can point the e2e job at a pre-merge backend branch
+          # (phase 87.1 review HIGH-2); PR/push runs keep checking out main.
+          ref: ${{ github.event.inputs.backend-ref || 'main' }}
           # nextgamenight-backend is PUBLIC (verified 2026-05-30) — no token needed;
           # actions/checkout reads public repos with the default GITHUB_TOKEN.
 
