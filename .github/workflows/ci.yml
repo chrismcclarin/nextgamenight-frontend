@@ -74,20 +74,27 @@ jobs:
         # bug class this phase converged away. This gate makes that compare class
         # permanently un-shippable in `src/app`.
         #
-        # SYMMETRIC to operand order: matches `x === user.sub` (sub on RHS),
-        # `user.sub === x` (sub on LHS), and `.find(...user.sub)` /
-        # `.filter(...user.sub)`. ALLOWLISTED by construction (no compare operator
-        # adjacent to `.sub`, so they never match): self-fetch calls
-        # `getUser(user.sub)`, presence guards `if (!user?.sub)`, and API args
-        # `getUserGroups(user.sub)` / `getUserEvents(user.sub)`.
+        # SYMMETRIC to operand order and equality flavor: matches strict AND
+        # loose equality (`===`, `==`, `!==`, `!=`) with the sub on either side,
+        # membership idioms (`.find(...user.sub)`, `.filter(`, `.includes(`,
+        # `.has(`, `.some(`), and object bracket-lookups keyed by the sub
+        # (`rolesById[user.sub]` — an identifier char must precede `[`, so
+        # dependency arrays like `}, [user.sub])` stay allowlisted).
+        # ALLOWLISTED by construction (no compare/membership context adjacent
+        # to `.sub`): self-fetch calls `getUser(user.sub)`, presence guards
+        # `if (!user?.sub)`, and API args `getUserGroups(user.sub)`.
         #
         # Inverted-grep idiom (Pitfall 2): grep exits nonzero on NO MATCH, so
         # capture with `|| true`, filter full-line comments (which may quote the
         # old pattern in explanatory prose), and `exit 1` only when HITS is
-        # non-empty. The pattern is kept BYTE-FOR-BYTE identical to the lockstep
-        # self-test in `src/lib/ci-grep-gate.fixture.test.ts` (run by vitest).
+        # non-empty. The comment filter is ANCHORED to the content start after
+        # grep's `path:line:` prefix so a genuine hit on a line containing `://`
+        # (e.g. a URL in a string) is never dropped. The lockstep self-test
+        # `src/lib/ci-grep-gate.fixture.test.ts` (run by vitest) parses BOTH the
+        # pattern and the filter out of THIS file — edits here are exercised
+        # there automatically.
         run: |
-          HITS=$(grep -rnE '([!=]==[[:space:]]*user\??\.sub)|(user\??\.sub[[:space:]]*[!=]==)|\.(find|filter)\([^)]*user\??\.sub' src/app | grep -vE ':[[:space:]]*//' || true)
+          HITS=$(grep -rnE '([!=]=[=]?[[:space:]]*user\??\.sub)|(user\??\.sub[[:space:]]*[!=]=)|\.(find|filter|includes|has|some)\([^)]*user\??\.sub|[A-Za-z0-9_$]\[[[:space:]]*user\??\.sub[[:space:]]*\]' src/app | grep -vE '^[^:]*:[0-9]+:[[:space:]]*//' || true)
           if [ -n "$HITS" ]; then
             echo "::error::user.sub compared against an API data field in src/app — the sub is not a Users.id UUID; compare the resolved self UUID (useSelfIdentity's selfUuid) against the nested User.id instead (Req 3 / BINT-02):"
             echo "$HITS"
