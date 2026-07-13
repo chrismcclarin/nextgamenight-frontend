@@ -99,8 +99,9 @@ function formatRelativeDateTime(dateStr, timezone) {
  *   (NOT Auth0 string). When provided, events where the viewer's
  *   EventParticipation row has is_guest=true are visually distinguished
  *   (game-only / two-QR-model events) with a dashed amber border + Guest pill.
- *   Resolved at the parent via usersAPI.getUser(user.sub). When null/missing,
- *   no event is marked as guest (graceful default).
+ *   Resolved at the parent via the shared useSelfIdentity() query (selfUuid);
+ *   Phase 87.3-07 (D-02). When null/missing, no event is marked as guest
+ *   (graceful default).
  */
 export default function UpcomingEventsCard({ events, showGroupName = false, loading = false, viewerDbUserId = null }) {
   const router = useRouter();
