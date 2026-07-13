@@ -11,7 +11,7 @@ import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, availabilityAPI } 
 // on this page routes its success through the cache helpers so a remount reads
 // post-mutation data (SELF_IDENTITY_KEY invalidation contract).
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
-import { patchSelfCache, replaceSelfCache } from '../../lib/hooks/selfIdentityCache';
+import { patchSelfCache } from '../../lib/hooks/selfIdentityCache';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import Link from 'next/link';
 import { formatDate, toLocalDateString } from '../../lib/dateUtils';
@@ -373,10 +373,15 @@ function Profile(){
         try {
             const updatedUser = await usersAPI.removePhone(user.sub);
             setUserData(updatedUser);
-            // Cache-coherence: the cascade cleared phone + sms_enabled + all SMS
-            // toggles server-side; replace the immortal self row wholesale so a
-            // remount reflects the removal.
-            replaceSelfCache(queryClient, updatedUser);
+            // Cache-coherence: PATCH only the fields the cascade changed. The
+            // DELETE response is a DEFAULT-scope row (no phone/email), while the
+            // immortal self row was hydrated withContactInfo — replacing it
+            // wholesale would strip email from the cached self for the session.
+            patchSelfCache(queryClient, {
+                phone: null,
+                phone_verified: false,
+                notification_preferences: updatedUser.notification_preferences || DEFAULT_PREFERENCES,
+            });
             setPhoneInput('');
             setPhoneValidation({ valid: false, error: null });
             setPhoneState('idle');
@@ -542,9 +547,11 @@ function Profile(){
             setSavingUsername(true);
             const updatedUser = await usersAPI.updateUsername(user.sub, username.trim());
             setUserData(updatedUser);
-            // Cache-coherence: replace the immortal self row so a remount reads the
-            // new username, not the stale pre-edit one.
-            replaceSelfCache(queryClient, updatedUser);
+            // Cache-coherence: PATCH only the changed field. The PUT response is
+            // a DEFAULT-scope row (no phone/email), while the immortal self row
+            // was hydrated withContactInfo — replacing it wholesale would make a
+            // verified phone vanish from the cached self for the session.
+            patchSelfCache(queryClient, { username: updatedUser.username });
             setEditingUsername(false);
             toast.success('Username updated successfully!');
         } catch (error) {

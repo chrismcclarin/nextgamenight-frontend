@@ -12,8 +12,14 @@
  * state, phone/phone_verified, notification preferences) from the stale
  * pre-mutation row.
  *
- * All three resolve the query key from {@link SELF_IDENTITY_KEY} exported by the
- * hook module — no mutation site hand-writes the `['users','self']` literal.
+ * The immortal row is hydrated from GET with the `withContactInfo` scope
+ * (phone/email present); mutation responses are DEFAULT-scope (phone/email
+ * absent). NEVER write a mutation response into this cache wholesale — PATCH
+ * the changed fields, or invalidate. (A wholesale `replaceSelfCache` helper
+ * existed briefly and was removed for exactly this scope-mismatch poisoning.)
+ *
+ * Both helpers resolve the query key from {@link SELF_IDENTITY_KEY} exported by
+ * the hook module — no mutation site hand-writes the `['users','self']` literal.
  */
 import type { QueryClient } from '@tanstack/react-query';
 import { SELF_IDENTITY_KEY, type SelfIdentity } from './useSelfIdentity';
@@ -30,17 +36,6 @@ export function patchSelfCache(
   queryClient.setQueryData<SelfIdentity>(SELF_IDENTITY_KEY, (old) =>
     old ? { ...old, ...patch } : old,
   );
-}
-
-/**
- * Replace the cached self row wholesale with a server-returned record (e.g. the
- * updated user returned by updateUsername / removePhone). No network round-trip.
- */
-export function replaceSelfCache(
-  queryClient: QueryClient,
-  row: SelfIdentity,
-): void {
-  queryClient.setQueryData<SelfIdentity>(SELF_IDENTITY_KEY, row);
 }
 
 /**

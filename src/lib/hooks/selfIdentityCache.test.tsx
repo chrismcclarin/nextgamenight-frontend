@@ -3,7 +3,7 @@
  *
  * The plan-07 migrated mutation paths (updateUsername, timezone, tutorial
  * completion, phone verify/remove, notification preferences) route their success
- * through patchSelfCache / replaceSelfCache / invalidateSelfCache. Because the
+ * through patchSelfCache / invalidateSelfCache. Because the
  * shared ['users','self'] query is staleTime: Infinity, the immortal cache would
  * otherwise re-serve the PRE-mutation row on the next remount. These tests prove
  * a freshly-mounted useSelfIdentity consumer (the "remount") reads POST-mutation
@@ -32,7 +32,7 @@ vi.mock('@/lib/datetime', () => ({
 
 import { usersAPI } from '@/lib/api';
 import { useSelfIdentity } from './useSelfIdentity';
-import { patchSelfCache, replaceSelfCache, invalidateSelfCache } from './selfIdentityCache';
+import { patchSelfCache, invalidateSelfCache } from './selfIdentityCache';
 
 const mockGetUser = usersAPI.getUser as ReturnType<typeof vi.fn>;
 
@@ -81,19 +81,31 @@ describe('self-row cache coherence (SELF_IDENTITY_KEY contract)', () => {
     expect(second.result.current.self?.timezone).toBe('UTC');
   });
 
-  it('replaceSelfCache: a remounted consumer reads the server-returned row wholesale', async () => {
+  it('patchSelfCache preserves withContactInfo-scope fields a mutation response omits (scope-poisoning guard)', async () => {
     const { client, wrapper } = makeSharedClient();
 
+    // The immortal row is hydrated withContactInfo — phone/email present.
+    mockGetUser.mockResolvedValue({
+      ...PRE_ROW,
+      phone: '+15555550100',
+      phone_verified: true,
+      email: 'me@example.com',
+    });
     const first = renderHook(() => useSelfIdentity(), { wrapper });
-    await waitFor(() => expect(first.result.current.self?.username).toBe('old'));
+    await waitFor(() => expect(first.result.current.self?.phone_verified).toBe(true));
     first.unmount();
 
+    // A username save returns a DEFAULT-scope row (no phone/email). The success
+    // path must PATCH the changed field only — never write the response wholesale.
     mockGetUser.mockClear();
-    replaceSelfCache(client, { id: SELF_UUID, user_id: 'auth0|abc123', username: 'renamed', timezone: 'Europe/Paris' });
+    patchSelfCache(client, { username: 'renamed' });
 
     const second = renderHook(() => useSelfIdentity(), { wrapper });
     await waitFor(() => expect(second.result.current.self?.username).toBe('renamed'));
-    expect(second.result.current.self?.timezone).toBe('Europe/Paris');
+    // The verified phone and email survive the mutation for the session.
+    expect(second.result.current.self?.phone).toBe('+15555550100');
+    expect(second.result.current.self?.phone_verified).toBe(true);
+    expect(second.result.current.self?.email).toBe('me@example.com');
     expect(mockGetUser).not.toHaveBeenCalled();
   });
 
