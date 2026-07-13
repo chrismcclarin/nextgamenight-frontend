@@ -4,9 +4,20 @@ import { useState, useEffect } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { friendshipsAPI, groupsAPI, invitesAPI } from '../../lib/api';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
 function FriendsPage() {
     const { user, isLoading: authLoading } = useUser();
+
+    // D-09 (Pitfall 5 / D-07 window rule): the friends page GATES on identity.
+    // Incoming-vs-outgoing request classification, the admin-group derive, and
+    // the is-self search guard all need the caller's own Users.id UUID, so the
+    // whole page waits on `selfUuid` (full loading) and shows a standard error
+    // state on permanent failure — it never degrades to a mixed-keyspace render.
+    const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
+    const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
 
     // POLL-02: receivedRequests + accept/decline mutators come from the
     // shared FriendshipStatusProvider (mounted at root). NotificationBell
@@ -75,7 +86,7 @@ function FriendsPage() {
         try {
             const groups = await groupsAPI.getUserGroups(user.sub);
             const adminGroups = (Array.isArray(groups) ? groups : []).filter(g => {
-                const currentUser = g.Users?.find(u => u.user_id === user.sub);
+                const currentUser = g.Users?.find(u => u.id === selfUuid);
                 const role = currentUser?.UserGroup?.role;
                 return role === 'owner' || role === 'admin';
             });
@@ -201,15 +212,19 @@ function FriendsPage() {
         }
     };
 
-    // Check if a user is already a friend
+    // Check if a user is already a friend. `userId` is the SEARCHED user's
+    // Users.id UUID (not the caller's) — both sides of the join key on the
+    // nested `.id` UUID keyspace so it stays correct pre- and post-PR-C.
     const isAlreadyFriend = (userId) => {
-        return friends.some(f => f.friend?.user_id === userId);
+        return friends.some(f => f.friend?.id === userId);
     };
 
-    // Check if a request is already pending with a user
+    // Check if a request is already pending with a user. Same target-parameter
+    // shape as isAlreadyFriend — classifies the SEARCHED user via `userId`,
+    // both join sides on the nested `.id` UUID.
     const isPendingRequest = (userId) => {
-        return sentRequests.some(r => r.Addressee?.user_id === userId) ||
-               receivedRequests.some(r => r.Requester?.user_id === userId);
+        return sentRequests.some(r => r.Addressee?.id === userId) ||
+               receivedRequests.some(r => r.Requester?.id === userId);
     };
 
     // Fetch group members when selected group changes
@@ -223,7 +238,12 @@ function FriendsPage() {
         groupsAPI.getGroupMembers(selectedGroupId)
             .then(members => {
                 const memberList = Array.isArray(members) ? members : members?.members || [];
-                const memberUserIds = memberList.map(m => m.user_id);
+                // Roster side of the already-in-group join keys on the Users.id
+                // UUID (member.id). The friend side (friend.id below) keys on the
+                // same keyspace, so the membership check is UUID-vs-UUID pre- and
+                // post-PR-C (roster user_id aliases to the UUID / friend user_id
+                // is dropped — a flat-keyed join would silently mismatch, D-07).
+                const memberUserIds = memberList.map(m => m.id);
                 setGroupMembers(memberUserIds);
             })
             .catch(() => setGroupMembers([]))
@@ -280,15 +300,19 @@ function FriendsPage() {
 
     // Determine search result display state
     const getSearchResultAction = (foundUser) => {
-        if (!foundUser || !foundUser.user_id) return null;
+        // Presence-guard the whole affordance on the Users.id UUID (present in
+        // the GET /friendships/search response both pre- and post-PR-C). A
+        // missing `id` is a missing-identity state — never fall back to the flat
+        // `user_id`, which PR-C drops from this response (BE-12 / D-07).
+        if (!foundUser || !foundUser.id) return null;
 
-        if (foundUser.user_id === user?.sub) {
+        if (foundUser.id === selfUuid) {
             return { type: 'self', label: "That's you!" };
         }
-        if (isAlreadyFriend(foundUser.user_id)) {
+        if (isAlreadyFriend(foundUser.id)) {
             return { type: 'already-friends', label: 'Already friends' };
         }
-        if (isPendingRequest(foundUser.user_id)) {
+        if (isPendingRequest(foundUser.id)) {
             return { type: 'pending', label: 'Request pending' };
         }
         if (requestSent) {
@@ -319,6 +343,34 @@ function FriendsPage() {
                         Log In
                     </a>
                 </div>
+            </div>
+        );
+    }
+
+    // D-09 identity GATE. The friend↔friend classification (already-friends,
+    // pending, is-self) IS the page content, so we do NOT render a mixed/partial
+    // list before the caller's UUID resolves. Permanent identity failure shows
+    // the standard (non-compact) error surface — not the compact degrade notice
+    // other surfaces use — because there is no meaningful partial view here.
+    if (selfIdentityErrorState.showError) {
+        return (
+            <div className="min-h-screen bg-surface-page">
+                <div className="max-w-3xl mx-auto px-4 py-8">
+                    <h1 className="text-3xl font-bold text-content-primary mb-6">Friends</h1>
+                    <FetchErrorBanner
+                        state={selfIdentityErrorState}
+                        title="Couldn't load your friends"
+                        reportContext="friends page — self-identity resolution"
+                    />
+                </div>
+            </div>
+        );
+    }
+
+    if (!selfUuid) {
+        return (
+            <div className="min-h-screen bg-surface-page flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-btn-primary" />
             </div>
         );
     }
@@ -415,7 +467,7 @@ function FriendsPage() {
                                         case 'send':
                                             return (
                                                 <button
-                                                    onClick={() => handleSendRequest(searchResult.user_id)}
+                                                    onClick={() => handleSendRequest(searchResult.id)}
                                                     disabled={sendingRequest}
                                                     className="btn btn-primary px-4 py-2 text-sm disabled:opacity-50"
                                                 >
@@ -545,7 +597,10 @@ function FriendsPage() {
                                         const friend = friendship.friend;
                                         if (!friend) return null;
 
-                                        const friendUserId = friend.user_id;
+                                        // Friend side of the already-in-group join + the bulk-invite
+                                        // write arg both key on the Users.id UUID (friend.id), matching
+                                        // the roster side (member.id) above — single keyspace end-to-end.
+                                        const friendUserId = friend.id;
                                         const isInGroup = selectedGroupId && groupMembers.includes(friendUserId);
                                         const checkboxDisabled = !selectedGroupId || isInGroup;
 
