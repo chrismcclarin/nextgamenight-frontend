@@ -15,11 +15,22 @@ import PendingMemberBanner from '../components/PendingMemberBanner';
 import GroupLibrary from '../components/GroupLibrary';
 import KebabMenu from '../components/KebabMenu';
 import GroupSettings from '../components/GroupSettings';
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
 // A groups home page
 function GroupHomePage(){
     const { user } = Auth();
     const router = useRouter();
+    // Phase 87.3-05 (PR-B): resolve the caller's own Users.id UUID via the
+    // shared identity primitive. The membership/removal gate keys on the nested
+    // member.id (UUID) vs selfUuid. CRITICAL: selfUuid resolves ASYNC, so the
+    // removal redirect must NOT run until identity resolves — an unresolved
+    // selfUuid makes the find miss and would bounce an active member off their
+    // own group. Identity-unresolved is a LOADING state, never "removed".
+    const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
+    const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
     const [Group, setGroup] = useState(null);
     const [UserList, setUserList] = useState(null);
     const [gamesList, setGamesList] = useState([]);
@@ -96,7 +107,12 @@ function GroupHomePage(){
     };
 
     const getGroupMembers = async () => {
-        if (!Router || !user?.sub) return;
+        // Gate the membership derive on identity resolution. Until selfUuid is
+        // resolved the find below would miss and the redirect-as-removed branch
+        // would fire on an active member — so we wait. membershipChecked stays
+        // false (page shows "Loading group…"); when selfUuid resolves the effect
+        // re-runs (selfUuid is in its deps) and the derive recomputes.
+        if (!Router || !user?.sub || !selfUuid) return;
         try {
             // Use groupsAPI.getGroupMembers which automatically includes Authorization header
             const data = await groupsAPI.getGroupMembers(Router);
@@ -113,7 +129,7 @@ function GroupHomePage(){
             // absence is the real removal signal. Redirect BEFORE any
             // setState that would paint the group view, so removed users
             // never see a flash of group content.
-            const currentUserMember = data.find(m => m.user_id === user.sub);
+            const currentUserMember = data.find(m => m.id === selfUuid);
             if (!currentUserMember || !currentUserMember.UserGroup) {
                 redirectToHomeAsRemoved();
                 return;
@@ -170,6 +186,8 @@ function GroupHomePage(){
     useEffect(() => {
         if (Router && user?.sub) {
             getGroup();
+            // getGroupMembers self-gates on selfUuid (see its guard); selfUuid is
+            // in the deps so the membership derive re-runs once identity resolves.
             getGroupMembers();
             fetchGroupEvents();
         }
@@ -177,7 +195,7 @@ function GroupHomePage(){
         if (shouldCreateEvent && prefillDate && prefillTime) {
             setEventModal(true);
         }
-    }, [Router, user?.sub, shouldCreateEvent, prefillDate, prefillTime]);
+    }, [Router, user?.sub, selfUuid, shouldCreateEvent, prefillDate, prefillTime]);
 
     // Defer the games fetch until the membership check has confirmed the
     // user belongs to the group. The games endpoint 403s non-members
@@ -218,8 +236,12 @@ function GroupHomePage(){
     // between mount and redirect.
     if (!membershipChecked) {
         return (
-            <div className="p-6 flex items-center justify-center min-h-screen">
+            <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-screen">
                 <p className="text-content-secondary">Loading group…</p>
+                {/* D-08: if identity resolution permanently fails, the membership
+                    check can never complete — surface a compact, non-blocking
+                    degrade notice instead of an indefinite silent spinner (D-11). */}
+                <FetchErrorBanner state={selfIdentityErrorState} compact />
             </div>
         );
     }
