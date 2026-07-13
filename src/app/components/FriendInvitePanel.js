@@ -5,9 +5,12 @@ import { friendshipsAPI, invitesAPI, groupsAPI } from '../../lib/api';
 import { QRCodeSVG } from 'qrcode.react';
 import { toast } from 'sonner';
 import { UserChip } from '@/components/ui/UserChip';
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 
 function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = false }) {
     const { user } = useUser();
+    // FE-18 cutover: exclude-self keys on the resolved Users.id UUID (async).
+    const { selfUuid } = useSelfIdentity();
 
     const [friends, setFriends] = useState([]);
     const [loadingFriends, setLoadingFriends] = useState(true);
@@ -25,7 +28,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
     const [emailSuccess, setEmailSuccess] = useState('');
 
     // Add friend prompt state
-    const [friendPrompt, setFriendPrompt] = useState(null); // { user_id, username, email }
+    const [friendPrompt, setFriendPrompt] = useState(null); // { id, username, email } — id is the Users.id UUID
     const [addingFriend, setAddingFriend] = useState(false);
     const [friendRequestSent, setFriendRequestSent] = useState(false);
 
@@ -55,7 +58,10 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
             groupsAPI.getGroupMembers(group.id)
                 .then(members => {
                     const memberList = Array.isArray(members) ? members : members?.members || [];
-                    setGroupMemberIds(memberList.map(m => m.user_id));
+                    // Roster side of the already-in-group join keys on the
+                    // Users.id UUID (member.id) — matches the friend side
+                    // (friend.id) so the join is UUID-vs-UUID pre-/post-PR-C.
+                    setGroupMemberIds(memberList.map(m => m.id));
                 })
                 .catch(() => setGroupMemberIds([]))
                 .finally(() => setLoadingMembers(false));
@@ -149,20 +155,28 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
             if (onMemberAdded) onMemberAdded();
 
             // SEAM-02 (BUG-03): resolve the user by email FIRST, then decide
-            // friend-existence on user_id. The friend email is stripped from
-            // the friends payload post-83-06, so the old email-equality guard
+            // friend-existence on the Users.id UUID. The friend email is stripped
+            // from the friends payload post-83-06, so the old email-equality guard
             // was ALWAYS false — every existing-friend invite mis-prompted
             // "Add X as a friend?". A pre-search email compare can't work
             // (no friend identity still carries the email), so the existence
             // check MUST run after the search resolves foundUser and compare
-            // on foundUser.user_id.
+            // on foundUser.id (Phase 87.3-06 PR-B).
             try {
                 const foundUser = await friendshipsAPI.searchUserByEmail(invitedEmail);
-                if (foundUser && foundUser.user_id && foundUser.user_id !== user?.sub) {
-                    const isAlreadyFriend = friends.some(f => f.friend?.user_id === foundUser.user_id);
+                // Post-invite add-friend chain cut as ONE unit on the Users.id
+                // UUID: (1) presence guard on foundUser.id (PR-C drops the flat
+                // user_id from this response — a flat guard would silently kill
+                // the prompt for everyone); (2) exclude-self on selfUuid with
+                // async-gating — require selfUuid resolved before concluding
+                // "not self" (never offer the prompt off a false negative while
+                // identity is unresolved); (3) isAlreadyFriend joins both sides
+                // on .id.
+                if (foundUser && foundUser.id && selfUuid && foundUser.id !== selfUuid) {
+                    const isAlreadyFriend = friends.some(f => f.friend?.id === foundUser.id);
                     if (!isAlreadyFriend) {
                         setFriendPrompt({
-                            user_id: foundUser.user_id,
+                            id: foundUser.id,
                             username: foundUser.username,
                             email: foundUser.email,
                         });
@@ -186,10 +200,10 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
     };
 
     const handleAddFriend = async () => {
-        if (!friendPrompt?.user_id) return;
+        if (!friendPrompt?.id) return;
         setAddingFriend(true);
         try {
-            await friendshipsAPI.sendRequest(friendPrompt.user_id);
+            await friendshipsAPI.sendRequest(friendPrompt.id);
             setFriendRequestSent(true);
         } catch {
             // Silently fail — they may already have a pending request
@@ -243,7 +257,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
     if (!open) return null;
 
     const availableFriends = friends.filter(f => f.friend);
-    const selectableCount = availableFriends.filter(f => !groupMemberIds.includes(f.friend.user_id)).length;
+    const selectableCount = availableFriends.filter(f => !groupMemberIds.includes(f.friend.id)).length;
 
     const body = (
         <>
@@ -269,7 +283,10 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                             <div className="space-y-2">
                                 {availableFriends.map(friendship => {
                                     const friend = friendship.friend;
-                                    const isInGroup = groupMemberIds.includes(friend.user_id);
+                                    // Friend side of the membership join + the bulk-invite write arg
+                                    // (selectedFriends → sendFriendInvite) all key on the Users.id UUID
+                                    // (friend.id), matching the roster side (member.id).
+                                    const isInGroup = groupMemberIds.includes(friend.id);
 
                                     return (
                                         <label
@@ -277,16 +294,16 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                             className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
                                                 isInGroup
                                                     ? 'border-line bg-surface-page cursor-default'
-                                                    : selectedFriends.has(friend.user_id)
+                                                    : selectedFriends.has(friend.id)
                                                         ? 'border-accent bg-surface-card-hover cursor-pointer'
                                                         : 'border-line hover:bg-surface-card-hover cursor-pointer'
                                             }`}
                                         >
                                             <input
                                                 type="checkbox"
-                                                checked={isInGroup || selectedFriends.has(friend.user_id)}
+                                                checked={isInGroup || selectedFriends.has(friend.id)}
                                                 disabled={isInGroup}
-                                                onChange={() => toggleFriend(friend.user_id)}
+                                                onChange={() => toggleFriend(friend.id)}
                                                 className="h-4 w-4 rounded border-line text-accent focus:ring-focus-ring disabled:opacity-40"
                                             />
                                             <div className="flex-1 min-w-0">

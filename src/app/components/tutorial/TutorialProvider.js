@@ -3,7 +3,12 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { usePathname } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { usersAPI } from '../../../lib/api';
+// Phase 87.3-07 (D-02): tutorial state resolves via the shared ['users','self']
+// query instead of an ad-hoc getUser self-fetch.
+import { useSelfIdentity } from '../../../lib/hooks/useSelfIdentity';
+import { patchSelfCache } from '../../../lib/hooks/selfIdentityCache';
 import TutorialOverlay from './TutorialOverlay';
 import { CURRENT_TUTORIAL_VERSION } from './steps';
 
@@ -44,6 +49,9 @@ export function useTutorial() {
 
 export default function TutorialProvider({ children }) {
   const { user, isLoading } = Auth();
+  const queryClient = useQueryClient();
+  // D-02: read tutorial_version off the shared self row (no duplicate fetch).
+  const { self } = useSelfIdentity();
   const pathname = usePathname();
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialChecked, setTutorialChecked] = useState(false);
@@ -52,33 +60,16 @@ export default function TutorialProvider({ children }) {
   useEffect(() => {
     if (!user?.sub || isLoading || tutorialChecked) return;
     if (!pathname || pathname !== '/') return;
+    // Fail-open: wait for the shared self row. If the query errors terminally it
+    // stays undefined and we simply never auto-show (matching the old catch →
+    // mark-checked, do-not-show behavior once the guard below marks it checked).
+    if (!self) return;
 
-    let cancelled = false;
-
-    async function checkTutorialStatus() {
-      try {
-        const userData = await usersAPI.getUser(user.sub);
-        if (!cancelled) {
-          setTutorialChecked(true);
-          if (userData && (userData.tutorial_version ?? 0) < CURRENT_TUTORIAL_VERSION) {
-            setShowTutorial(true);
-          }
-        }
-      } catch (err) {
-        // Fail-open: if check fails, mark as checked and do not show tutorial
-        console.error('Tutorial status check failed:', err);
-        if (!cancelled) {
-          setTutorialChecked(true);
-        }
-      }
+    setTutorialChecked(true);
+    if ((self.tutorial_version ?? 0) < CURRENT_TUTORIAL_VERSION) {
+      setShowTutorial(true);
     }
-
-    checkTutorialStatus();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.sub, isLoading, tutorialChecked, pathname]);
+  }, [user?.sub, isLoading, tutorialChecked, pathname, self]);
 
   // Complete tutorial: dismiss immediately, persist to backend async
   const completeTutorial = useCallback(() => {
@@ -86,12 +77,19 @@ export default function TutorialProvider({ children }) {
     setTutorialChecked(true);
 
     if (user?.sub) {
-      usersAPI.completeTutorial(user.sub, CURRENT_TUTORIAL_VERSION).catch((err) => {
-        // Log silently -- optimistic dismissal already happened
-        console.error('Failed to persist tutorial completion:', err);
-      });
+      usersAPI.completeTutorial(user.sub, CURRENT_TUTORIAL_VERSION)
+        .then(() => {
+          // Cache-coherence (SELF_IDENTITY_KEY contract): persist the new
+          // tutorial_version into the immortal self cache so a remount doesn't
+          // re-trigger the tutorial from the stale pre-completion row.
+          patchSelfCache(queryClient, { tutorial_version: CURRENT_TUTORIAL_VERSION });
+        })
+        .catch((err) => {
+          // Log silently -- optimistic dismissal already happened
+          console.error('Failed to persist tutorial completion:', err);
+        });
     }
-  }, [user?.sub]);
+  }, [user?.sub, queryClient]);
 
   // Replay tutorial: re-show from any page (no pathname gate)
   const replayTutorial = useCallback(() => {

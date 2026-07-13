@@ -6,20 +6,23 @@ import GroupList from '../components/grouplist';
 import EventCalendar from '../components/EventCalendar';
 import FriendInvitePanel from '../components/FriendInvitePanel';
 import UpcomingEventsCard from '../components/UpcomingEventsCard';
-import { usersAPI, eventsAPI } from '../../lib/api';
+import { eventsAPI } from '../../lib/api';
+// Phase 87.3-07 (D-02): the viewer's User.id UUID resolves via the shared
+// ['users','self'] query instead of an ad-hoc getUser self-fetch.
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 
 // List of all the groups for the logged in User
 function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, groupListRefreshKey, onMemberAdded: onMemberAddedProp }) {
     const { user } = Auth();
     const searchParams = useSearchParams();
+    // Phase 71.1 GAMP-07: viewer's User.id UUID (NOT Auth0 string), used by
+    // UpcomingEventsCard to match EventParticipations rows for game-only-event
+    // Guest-pill distinction. Phase 87.3-07 (D-02): resolved via the shared
+    // ['users','self'] query instead of a per-page getUser self-fetch.
+    const { selfUuid } = useSelfIdentity();
     const [selectedGroup, setSelectedGroup] = useState(null);
     const [invitePanelOpen, setInvitePanelOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
-    // Phase 71.1 GAMP-07: viewer's User.id UUID (NOT Auth0 string). Resolved
-    // once at mount via usersAPI.getUser(user.sub). Used by UpcomingEventsCard
-    // to match EventParticipations rows for game-only-event Guest-pill
-    // distinction.
-    const [viewerDbUserId, setViewerDbUserId] = useState(null);
     const [upcomingEvents, setUpcomingEvents] = useState([]);
     const [upcomingLoading, setUpcomingLoading] = useState(false);
 
@@ -30,19 +33,6 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     useEffect(() => {
         if (removedFromName) setRemovedBannerVisible(true);
     }, [removedFromName]);
-
-    // Phase 71.1 GAMP-07: resolve caller's User.id UUID once at mount.
-    // Auth0 user.sub → User.id via existing usersAPI.getUser helper.
-    useEffect(() => {
-        if (!user?.sub) return;
-        let cancelled = false;
-        usersAPI.getUser(user.sub).then(row => {
-            if (!cancelled && row?.id) setViewerDbUserId(row.id);
-        }).catch(err => {
-            console.error('[UserHomePage] Failed to resolve viewerDbUserId:', err);
-        });
-        return () => { cancelled = true; };
-    }, [user?.sub]);
 
     // Phase 71.1 GAMP-07: fetch upcoming events for the user.
     // GET /events/user/:user_id was UNIONed in Plan 71.1-01 to include
@@ -136,7 +126,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                         events={upcomingEvents}
                         loading={upcomingLoading}
                         showGroupName={true}
-                        viewerDbUserId={viewerDbUserId}
+                        viewerDbUserId={selfUuid ?? null}
                     />
                 </div>
             </div>

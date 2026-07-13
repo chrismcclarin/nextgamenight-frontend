@@ -22,13 +22,27 @@ export type Group = z.infer<typeof GroupSchema>;
 export const GroupListSchema = z.array(GroupSchema);
 export type GroupList = z.infer<typeof GroupListSchema>;
 
-// A member row as returned by GET /groups/:id/users.
+// A member row as returned by GET /groups/:id/users (roster attributes
+// ['id', 'username', 'user_id'] + through attributes ['role', 'joined_at']).
+//   `id`        — the member's Users.id UUID. Phase 87.3 PR-B (D-04): this is the
+//                 permanent is-me compare target (`member.id === selfUuid`),
+//                 tightened to z.uuid(). Optional to tolerate an absent association.
+//   `user_id`   — the Auth0 sub; stays z.string() until PR-C (D-07 fast-follow).
+//   `UserGroup` — role/joined_at ride the join-table include, NESTED — never flat
+//                 (consumers read member.UserGroup?.role). Null on game-only rows
+//                 (stripMemberPII preserves the explicit null as the signal); no
+//                 email on the wire (BSEC-01 removed it from the roster).
 export const GroupMemberSchema = z.object({
+  id: z.uuid().optional(),
   user_id: z.string(),
   username: z.string().nullable().optional(),
-  email: z.string().nullable().optional(),
-  role: GroupRoleSchema.nullable().optional(),
-  profile_picture_url: z.string().nullable().optional(),
+  UserGroup: z
+    .object({
+      role: GroupRoleSchema.nullable().optional(),
+      joined_at: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
 });
 export type GroupMember = z.infer<typeof GroupMemberSchema>;
 

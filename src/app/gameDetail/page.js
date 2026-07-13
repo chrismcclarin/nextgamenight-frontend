@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
-import { eventsAPI, gameReviewsAPI, usersAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI, invitesAPI, eventBringsAPI, API_BASE_URL } from '../../lib/api';
+import { eventsAPI, gameReviewsAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI, invitesAPI, eventBringsAPI, API_BASE_URL } from '../../lib/api';
 import CreateEvent from '../components/createEvent';
 import RsvpSection from '../components/RsvpSection';
 import BallotSection from '../components/BallotSection';
@@ -19,6 +19,9 @@ import SafeImage from '../components/SafeImage';
 import ClickableMemberName from '../components/ClickableMemberName';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import StarRatingPicker from '../components/StarRatingPicker';
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { toast } from 'sonner';
 
 // Phase 65-02: small helper that renders a colored RSVP-status indicator.
@@ -136,6 +139,16 @@ function GuestInviteButton({ groupId, userId }) {
 
 export default function GameDetailPage() {
     const { user } = Auth();
+    // Phase 87.3-04 (D-01/D-04): the caller's resolved Users.id UUID from the
+    // shared self-identity hook. Every is-me/is-mine derive on this page keys on
+    // this UUID vs the nested `User.id` (never the flat `user_id`/`user.sub`),
+    // so the PR-C flat-field flip cannot silently break them. selfUuid resolves
+    // ASYNCHRONOUSLY (react-query) — is-me derives are gated on it (unresolved =
+    // loading/indeterminate, never "not me") and re-run when it resolves.
+    const { selfUuid, self, query: selfIdentityQuery } = useSelfIdentity();
+    // D-08: permanent identity-resolution failure degrades is-me affordances
+    // loudly-but-small via the compact FetchErrorBanner (never silently — D-11).
+    const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
     const { timezone } = useTimezone();
     // Phase 76 SOCL-06: compute friendship status at the participants-modal
     // call site so the trailing-slot affordance branches per relationship.
@@ -174,8 +187,9 @@ export default function GameDetailPage() {
     // the event response only when the URL omits it.
     const [effectiveGroupId, setEffectiveGroupId] = useState(group_id || null);
     // Phase 71.1: cached group members roster — needed by handleLeaveEvent
-    // to resolve the caller's User.id UUID via Plan 71.1-01's caller-self-row
-    // contract (`groupMembers.find(m => m.user_id === user.sub)`).
+    // to resolve the caller's own row via Plan 71.1-01's caller-self-row
+    // contract. Phase 87.3-04: the match now keys on the nested member UUID
+    // (`groupMembers.find(m => m.id === selfUuid)`), never the flat sub.
     const [groupMembers, setGroupMembers] = useState([]);
     const [editEventModal, setEditEventModal] = useState(false);
     const [editingEvent, setEditingEvent] = useState(null);
@@ -205,7 +219,11 @@ export default function GameDetailPage() {
     const [participants, setParticipants] = useState([]);
     const [groupMembersByUserId, setGroupMembersByUserId] = useState({}); // keyed by User.id (UUID)
     const [bringersSet, setBringersSet] = useState(new Set()); // set of User.id (UUID) bringing games
-    const [rsvpByAuth0Id, setRsvpByAuth0Id] = useState({}); // { auth0_user_id: 'yes'|'no'|'maybe'|null }
+    // Phase 87.3-04 (D-07): per-participant RSVP status map keyed by the nested
+    // User.id UUID (renamed off "Auth0Id"). Built from rsvp rows' nested User.id
+    // and looked up by roster member.id — a UUID-to-UUID join, so the PR-C
+    // flat-field flip cannot silently zero out the participant RSVP chips.
+    const [rsvpByUserId, setRsvpByUserId] = useState({}); // { user_uuid: 'yes'|'no'|'maybe'|null }
     const [showAllParticipants, setShowAllParticipants] = useState(false);
     const [showGameQR, setShowGameQR] = useState(false);
     const [gameInviteUrl, setGameInviteUrl] = useState('');
@@ -252,9 +270,11 @@ export default function GameDetailPage() {
     // UserGroup contains { role, joined_at }. For 'none', the caller never
     // reaches the success path — backend returns 403 — but we keep the branch
     // defensively.
-    const resolveUserScope = (rosterArray, callerSub) => {
-        if (!Array.isArray(rosterArray) || !callerSub) return { role: null, scope: 'none' };
-        const caller = rosterArray.find(m => m.user_id === callerSub);
+    const resolveUserScope = (rosterArray, callerUuid) => {
+        if (!Array.isArray(rosterArray) || !callerUuid) return { role: null, scope: 'none' };
+        // Phase 87.3-04 (D-04): key on the nested member UUID, not the sub. The
+        // caller-self-row contract guarantees the caller's `id` (UUID) is present.
+        const caller = rosterArray.find(m => m.id === callerUuid);
         if (!caller) return { role: null, scope: 'none' };
         if (caller.UserGroup && caller.UserGroup.role) {
             const r = caller.UserGroup.role;
@@ -264,13 +284,23 @@ export default function GameDetailPage() {
         return { role: null, scope: 'game-only' };
     };
 
+    // Tracks which entity the page last finished loading, so the selfUuid dep
+    // re-run below (identity resolving AFTER the first fetch) refreshes data
+    // WITHOUT flashing the whole page back to the full loading state. A real
+    // param change (different game/event) still gets the full loading screen.
+    const loadedEntityKeyRef = useRef(null);
+    const entityKey = `${game_id}|${group_id}|${event_id}`;
+
     useEffect(() => {
         if (game_id) {
             fetchGameData();
         } else if (event_id) {
             fetchEventOnly();
         }
-    }, [game_id, group_id, event_id, user?.sub]);
+        // Phase 87.3-04: selfUuid is in the dep array so the is-me/scope derives
+        // inside fetchGameData/fetchEventOnly re-run once identity resolves (they
+        // are gated on selfUuid and skipped while it is still undefined).
+    }, [game_id, group_id, event_id, user?.sub, selfUuid]);
 
     // Fetch game suggestions for event-only view.
     // Phase 71.1-02 Blocker 1 fix: gate on effectiveGroupId (URL-or-derived)
@@ -333,7 +363,9 @@ export default function GameDetailPage() {
     };
 
     const fetchEventOnly = async () => {
-        setLoading(true);
+        // Identity-only re-run (selfUuid resolved after first load of the SAME
+        // event): refresh in place — no full-page loading flash (#1/#18).
+        if (loadedEntityKeyRef.current !== entityKey) setLoading(true);
         try {
             const eventData = await eventsAPI.getEvent(event_id);
             setSingleEvent(eventData);
@@ -368,9 +400,16 @@ export default function GameDetailPage() {
                     // unified resolver. Plan 71.1-01's caller-self-row contract
                     // guarantees the caller's row is present (with UserGroup=null
                     // for game-only callers).
-                    const { role, scope } = resolveUserScope(fetchedGroupMembers, user?.sub);
-                    setUserRole(role);
-                    setUserScope(scope);
+                    // Phase 87.3-04: gate the is-me scope derive on identity
+                    // resolution — while selfUuid is unresolved leave userScope
+                    // at its prior/default value (loading/indeterminate), NEVER
+                    // downgrade to 'none'. The fetch effect's selfUuid dep re-runs
+                    // this flow once identity resolves.
+                    if (selfUuid) {
+                        const { role, scope } = resolveUserScope(fetchedGroupMembers, selfUuid);
+                        setUserRole(role);
+                        setUserScope(scope);
+                    }
                     // Cache the roster so handleLeaveEvent can resolve the
                     // caller's User.id UUID without a second fetch.
                     setGroupMembers(fetchedGroupMembers);
@@ -387,16 +426,23 @@ export default function GameDetailPage() {
                 // by Auth0 user_id string for the strip + See-all chips.
                 try {
                     const rsvpData = await rsvpAPI.getEventRsvps(event_id);
-                    const myRsvp = (rsvpData.rsvps || []).find(r => r.user_id === user.sub);
-                    setEventRsvpStatuses({ [event_id]: myRsvp?.status || null });
-                    const byAuth0 = {};
-                    for (const r of (rsvpData.rsvps || [])) {
-                        if (r.user_id) byAuth0[r.user_id] = r.status;
+                    // Phase 87.3-04: my-RSVP derive gated on identity resolution
+                    // (nested User.id vs selfUuid). Re-runs when selfUuid resolves.
+                    if (selfUuid) {
+                        const myRsvp = (rsvpData.rsvps || []).find(r => r.User?.id === selfUuid);
+                        setEventRsvpStatuses({ [event_id]: myRsvp?.status || null });
                     }
-                    setRsvpByAuth0Id(byAuth0);
+                    // Phase 87.3-04 (D-07): key on the nested User.id UUID (build
+                    // side) so the modal lookup (roster member.id, also a UUID) is
+                    // a UUID-to-UUID join — no sub/UUID mixed key anywhere.
+                    const byUserId = {};
+                    for (const r of (rsvpData.rsvps || [])) {
+                        if (r.User?.id) byUserId[r.User.id] = r.status;
+                    }
+                    setRsvpByUserId(byUserId);
                 } catch {
                     setEventRsvpStatuses({ [event_id]: null });
-                    setRsvpByAuth0Id({});
+                    setRsvpByUserId({});
                 }
 
                 // Fetch event brings to flag participants who are bringing a
@@ -406,6 +452,7 @@ export default function GameDetailPage() {
         } catch (error) {
             console.error('Error fetching event:', error);
         } finally {
+            loadedEntityKeyRef.current = entityKey;
             setLoading(false);
         }
     };
@@ -456,11 +503,18 @@ export default function GameDetailPage() {
     // participationUserId.
     const handleLeaveEvent = async () => {
         if (!user?.sub || !singleEvent?.id) return;
+        // Phase 87.3-04: identity must be resolved before we can resolve the
+        // caller's own roster row. Unresolved = indeterminate (try again), never
+        // a wrong "not in roster" that would swallow the leave action.
+        if (!selfUuid) {
+            toast.error('Still loading your account — please try again in a moment.');
+            return;
+        }
 
-        const myDbUser = (groupMembers || []).find(m => m.user_id === user.sub);
+        const myDbUser = (groupMembers || []).find(m => m.id === selfUuid);
         if (!myDbUser?.id) {
             console.error('[handleLeaveEvent] Caller row missing from groupMembers — backend contract violation. Plan 71.1-01 should always inject caller-self row for game-only scope.', {
-                callerSub: user.sub,
+                callerUuid: selfUuid,
                 groupMembersLength: (groupMembers || []).length,
             });
             toast.error("Couldn't leave event. Please refresh and try again.");
@@ -537,7 +591,9 @@ export default function GameDetailPage() {
     const fetchGameData = async () => {
         if (!game_id) return;
 
-        setLoading(true);
+        // Identity-only re-run (selfUuid resolved after first load of the SAME
+        // game): refresh in place — no full-page loading flash (#1/#18).
+        if (loadedEntityKeyRef.current !== entityKey) setLoading(true);
         try {
             // Fetch game details using gamesAPI which includes proper API URL and auth
             const gameData = await gamesAPI.getGame(game_id);
@@ -564,13 +620,17 @@ export default function GameDetailPage() {
                 const gameEvents = eventsData.filter(event => event.game_id === game_id);
                 setEvents(gameEvents);
 
-                // Fetch RSVP statuses for each event (for BallotSection)
-                if (user?.sub && gameEvents.length > 0) {
+                // Fetch RSVP statuses for each event (for BallotSection).
+                // Phase 87.3-04: gate on identity resolution — this whole
+                // per-event my-RSVP derive keys on selfUuid vs nested User.id.
+                // While selfUuid is unresolved, skip it (indeterminate); the
+                // fetch effect's selfUuid dep re-runs this once identity resolves.
+                if (selfUuid && gameEvents.length > 0) {
                     const rsvpStatusMap = {};
                     await Promise.all(gameEvents.map(async (evt) => {
                         try {
                             const rsvpData = await rsvpAPI.getEventRsvps(evt.id);
-                            const myRsvp = (rsvpData.rsvps || []).find(r => r.user_id === user.sub);
+                            const myRsvp = (rsvpData.rsvps || []).find(r => r.User?.id === selfUuid);
                             rsvpStatusMap[evt.id] = myRsvp?.status || null;
                         } catch {
                             rsvpStatusMap[evt.id] = null;
@@ -584,36 +644,46 @@ export default function GameDetailPage() {
                 const reviewsData = await gameReviewsAPI.getGameReviews(game_id, group_id, user?.sub || null);
                 setReviews(Array.isArray(reviewsData) ? reviewsData : []);
 
-                // Find current user's review
+                // Find current user's review + derive role.
+                // Phase 87.3-04 (D-01): the per-page usersAPI.getUser(user.sub)
+                // self-fetch is REMOVED — selfUuid now comes from the shared
+                // useSelfIdentity() hook. `user?.sub` here only gates "logged in".
                 if (user?.sub) {
-                    // Use usersAPI.getUser which automatically includes Authorization header
-                    const currentUserData = await usersAPI.getUser(user.sub);
-                    const myReview = Array.isArray(reviewsData) ? reviewsData.find(r => r.User?.id === currentUserData.id) : null;
-                    if (myReview) {
-                        setUserReview(myReview);
-                        setReviewForm({
-                            rating: myReview.rating || 2.5,
-                            review_text: myReview.review_text || '',
-                            is_recommended: myReview.is_recommended !== false
-                        });
-                    }
-
                     // Get user's role in the group
                     // Use groupsAPI.getGroupMembers which automatically includes Authorization header
                     const fetchedGroupMembers = await groupsAPI.getGroupMembers(group_id);
                     if (Array.isArray(fetchedGroupMembers)) {
-                        // Phase 71.1 GAMP-09: derive both userRole + userScope
-                        // via unified resolver. See fetchEventOnly for contract.
-                        const { role, scope } = resolveUserScope(fetchedGroupMembers, user?.sub);
-                        setUserRole(role);
-                        setUserScope(scope);
                         setGroupMembers(fetchedGroupMembers);
+                        // Phase 87.3-04: gate the scope derive on identity —
+                        // unresolved selfUuid stays indeterminate (never 'none').
+                        if (selfUuid) {
+                            const { role, scope } = resolveUserScope(fetchedGroupMembers, selfUuid);
+                            setUserRole(role);
+                            setUserScope(scope);
+                        }
+                    }
+
+                    // Phase 87.3-04 (:1892 sibling / Req 4): own-review detection
+                    // keys on nested User.id vs selfUuid. Gated on resolution so an
+                    // unresolved identity reads as "no own review yet" (loading),
+                    // never mislabels someone else's review as mine.
+                    if (selfUuid) {
+                        const myReview = Array.isArray(reviewsData) ? reviewsData.find(r => r.User?.id === selfUuid) : null;
+                        if (myReview) {
+                            setUserReview(myReview);
+                            setReviewForm({
+                                rating: myReview.rating || 2.5,
+                                review_text: myReview.review_text || '',
+                                is_recommended: myReview.is_recommended !== false
+                            });
+                        }
                     }
                 }
             }
         } catch (error) {
             console.error('Error fetching game data:', error);
         } finally {
+            loadedEntityKeyRef.current = entityKey;
             setLoading(false);
         }
     };
@@ -882,6 +952,13 @@ export default function GameDetailPage() {
                     notice before they read or edit the event time. */}
                 <TimezoneNudgeBanner />
 
+                {/* D-08 (Phase 87.3-04): non-blocking degrade notice on PERMANENT
+                    identity-resolution failure. Placed above the scope-gated
+                    Participants/RSVP surface (userScope defaults to 'none' when
+                    selfUuid can't resolve, hiding those sections) so the failure
+                    surfaces loudly-but-small instead of silently. */}
+                <FetchErrorBanner state={selfIdentityErrorState} compact />
+
                 <div className="card p-6 mb-6">
                     {/* Phase 65-02 EVT-01 + Phase 71.1 GAMP-10: header row with
                         title + scope-aware kebab actions menu. Single-click
@@ -990,9 +1067,11 @@ export default function GameDetailPage() {
                         <div className="flex flex-wrap gap-2">
                             {participants.slice(0, 5).map((p) => {
                                 const member = p.user_id ? groupMembersByUserId[p.user_id] : null;
-                                const auth0Id = member?.user_id;
+                                // Phase 87.3-04: derive the member DB UUID (not the
+                                // sub) and look up the RSVP chip on the UUID-keyed map.
+                                const memberUuid = member?.id;
                                 const role = member?.UserGroup?.role;
-                                const status = auth0Id ? rsvpByAuth0Id[auth0Id] : null;
+                                const status = memberUuid ? rsvpByUserId[memberUuid] : null;
                                 const isBringing = p.user_id && bringersSet.has(p.user_id);
                                 return (
                                     <ParticipantChip
@@ -1022,7 +1101,7 @@ export default function GameDetailPage() {
                     <RsvpSection
                         key={`rsvp-${rsvpRefreshKey}`}
                         eventId={singleEvent.id}
-                        currentUserId={user?.sub}
+                        self={self}
                         eventDate={singleEvent.start_date}
                         onRsvpChange={(status) => {
                             const prevStatus = eventRsvpStatuses[singleEvent.id];
@@ -1042,7 +1121,6 @@ export default function GameDetailPage() {
                     <BallotSection
                         key={ballotRefreshKey}
                         eventId={singleEvent.id}
-                        currentUserId={user?.sub}
                         eventDate={singleEvent.start_date}
                         userRole={userRole}
                         userRsvpStatus={eventRsvpStatuses[singleEvent.id] || null}
@@ -1050,7 +1128,7 @@ export default function GameDetailPage() {
                     <BringSummary
                         eventId={singleEvent.id}
                         groupId={effectiveGroupId}
-                        currentUserId={user?.sub}
+                        self={self}
                         refreshKey={bringRefreshKey}
                         onEditClick={() => { setBringPickerEventId(singleEvent.id); setShowBringPicker(true); }}
                     />
@@ -1141,11 +1219,16 @@ export default function GameDetailPage() {
                             <div className="max-h-[60vh] overflow-y-auto space-y-2 -mx-1 px-1">
                                 {participants.map((p) => {
                                     const member = p.user_id ? groupMembersByUserId[p.user_id] : null;
-                                    const auth0Id = member?.user_id;
+                                    // Phase 87.3-04: the per-member identity is the DB
+                                    // UUID (member.id) — feeds ALL FOUR downstream uses
+                                    // (chip lookup, isCurrentUser, getFriendshipStatus
+                                    // arg, ClickableMemberName userId) so none is left
+                                    // sub-shaped against the UUID-keyed provider/routes.
+                                    const memberUuid = member?.id;
                                     const role = member?.UserGroup?.role;
-                                    const status = auth0Id ? rsvpByAuth0Id[auth0Id] : null;
+                                    const status = memberUuid ? rsvpByUserId[memberUuid] : null;
                                     const isBringing = p.user_id && bringersSet.has(p.user_id);
-                                    const isCurrentUser = auth0Id && auth0Id === user?.sub;
+                                    const isCurrentUser = !!memberUuid && memberUuid === selfUuid;
                                     const canRemove = (userRole === 'owner' || userRole === 'admin')
                                         && !!p.user_id // hide for custom guests (no DB user)
                                         && !isCurrentUser;
@@ -1167,7 +1250,7 @@ export default function GameDetailPage() {
                                     //   pending_* → unchanged. ClickableMemberName provides desktop hover popover +
                                     //               mobile inline indicator.
                                     //   none      → unchanged. ClickableMemberName provides 'Add friend' on hover.
-                                    const friendStatus = auth0Id ? getFriendshipStatus(auth0Id) : 'unknown';
+                                    const friendStatus = memberUuid ? getFriendshipStatus(memberUuid) : 'unknown';
                                     const isSelfRow = friendStatus === 'self' || isCurrentUser;
                                     return (
                                         <div
@@ -1184,16 +1267,16 @@ export default function GameDetailPage() {
                                                         // status === 'self' (no popover, no indicator) so this
                                                         // short-circuit is byte-equivalent on both mobile + desktop.
                                                         <span>{p.username || 'Unknown'}</span>
-                                                    ) : auth0Id ? (
+                                                    ) : memberUuid ? (
                                                         // Stranger / pending / accepted all route through
                                                         // ClickableMemberName. For accepted on mobile this preserves
                                                         // the existing md:hidden ✓ Friend indicator (pre-phase
                                                         // affordance). For accepted on desktop ClickableMemberName
                                                         // renders only the plain name — the desktop-only 'Friend'
                                                         // pill below gives desktop its read-only indicator.
-                                                        <ClickableMemberName userId={auth0Id} username={p.username || 'Unknown'} />
+                                                        <ClickableMemberName userId={memberUuid} username={p.username || 'Unknown'} />
                                                     ) : (
-                                                        // auth0Id couldn't be resolved through groupMembersByUserId
+                                                        // memberUuid couldn't be resolved through groupMembersByUserId
                                                         // (game-only viewer or missing-from-group edge case).
                                                         // Render plain text — same fallback as before.
                                                         <span>{p.username || 'Unknown'}</span>
@@ -1287,7 +1370,7 @@ export default function GameDetailPage() {
                     isOpen={showBringPicker}
                     onClose={() => { setShowBringPicker(false); setBringPickerEventId(null); }}
                     eventId={bringPickerEventId}
-                    currentUserId={user?.sub}
+                    self={self}
                     onSave={() => {
                         setBringRefreshKey(k => k + 1);
                         // Phase 65-02 EVT-02 followup: show 🎲 immediately
@@ -1700,7 +1783,7 @@ export default function GameDetailPage() {
                                                             {event.Winner.is_custom ? (
                                                                 <>{event.Winner.username || event.Winner.name || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
                                                             ) : (
-                                                                <ClickableMemberName userId={event.Winner.user_id} username={event.Winner.username || 'Unknown'} />
+                                                                <ClickableMemberName userId={event.Winner.id} username={event.Winner.username || 'Unknown'} />
                                                             )}
                                                         </span>
                                                     </p>
@@ -1739,7 +1822,15 @@ export default function GameDetailPage() {
                                                                     {participation.is_custom ? (
                                                                         <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
                                                                     ) : (
-                                                                        <ClickableMemberName userId={participation.User?.user_id || participation.user_id} username={participation.User?.username || participation.username || 'Unknown'} />
+                                                                        // Phase 87.3-06: SANCTIONED flat read. Past-events participation
+                                                                        // rows come through formatEventWithCustomParticipants (events.js),
+                                                                        // which replaces EventParticipations with flat entries
+                                                                        // `{ user_id: ep.User?.id }` — already the Users.id UUID, with NO
+                                                                        // nested User to source from. The dead `participation.User?.user_id`
+                                                                        // prefix is dropped; `participation.user_id` here is UUID-keyed
+                                                                        // (unlike every other flat user_id site) and is allowlisted in the
+                                                                        // plan-06 residue grep.
+                                                                        <ClickableMemberName userId={participation.user_id} username={participation.User?.username || participation.username || 'Unknown'} />
                                                                     )}
                                                                 </span>
                                                                 {participation.is_guest && (
@@ -1780,7 +1871,7 @@ export default function GameDetailPage() {
                                         <RsvpSection
                                             key={`${event.id}-${rsvpRefreshKey}`}
                                             eventId={event.id}
-                                            currentUserId={user?.sub}
+                                            self={self}
                                             eventDate={event.start_date}
                                             onRsvpChange={(status) => {
                                                 const prevStatus = eventRsvpStatuses[event.id];
@@ -1795,7 +1886,6 @@ export default function GameDetailPage() {
                                         {/* Ballot Section - game voting */}
                                         <BallotSection
                                             eventId={event.id}
-                                            currentUserId={user?.sub}
                                             eventDate={event.start_date}
                                             userRole={userRole}
                                             userRsvpStatus={eventRsvpStatuses[event.id] || null}
@@ -1804,7 +1894,7 @@ export default function GameDetailPage() {
                                         <BringSummary
                                             eventId={event.id}
                                             groupId={group_id}
-                                            currentUserId={user?.sub}
+                                            self={self}
                                             refreshKey={bringRefreshKey}
                                             onEditClick={() => { setBringPickerEventId(event.id); setShowBringPicker(true); }}
                                         />
@@ -1834,6 +1924,10 @@ export default function GameDetailPage() {
 
             {/* Reviews Section */}
             <div className="card p-6">
+                {/* D-08 (Phase 87.3-04): non-blocking degrade notice on PERMANENT
+                    identity-resolution failure — own-review edit/delete gate on
+                    selfUuid, so surface (never silently hide) when it can't resolve. */}
+                <FetchErrorBanner state={selfIdentityErrorState} compact />
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold text-content-primary">Reviews ({reviews.length})</h2>
                     {user && !userReview && userRole && userRole !== 'pending' && (
@@ -1852,8 +1946,8 @@ export default function GameDetailPage() {
                         <div className="flex justify-between items-start mb-2">
                             <div>
                                 <p className="font-semibold text-content-primary">
-                                    {userReview.User?.user_id ? (
-                                        <ClickableMemberName userId={userReview.User.user_id} username={userReview.User.username || 'You'} />
+                                    {userReview.User?.id ? (
+                                        <ClickableMemberName userId={userReview.User.id} username={userReview.User.username || 'You'} />
                                     ) : (
                                         userReview.User?.username || 'You'
                                     )} <span className="text-xs text-content-link ml-1">(You)</span>
@@ -1889,15 +1983,19 @@ export default function GameDetailPage() {
                         {reviews
                             .filter(r => !userReview || r.id !== userReview.id)
                             .map((review) => {
-                                const isUserReview = review.User?.id === user?.sub;
+                                // Phase 87.3-04 (Req 4 — THE :1892 bug fix): compare
+                                // the nested review author UUID to the resolved self
+                                // UUID. Previously `=== user?.sub` (UUID-vs-sub) was
+                                // ALWAYS false, so own-review affordances never rendered.
+                                const isUserReview = !!selfUuid && review.User?.id === selfUuid;
                                 return (
                                     <div key={review.id} className="border-l-4 border-line pl-4 py-2">
                                         <div className="flex justify-between items-start mb-2">
                                             <div>
                                                 <div className="flex items-center gap-2">
                                                     <p className="font-semibold text-content-primary">
-                                                        {review.User?.user_id ? (
-                                                            <ClickableMemberName userId={review.User.user_id} username={review.User.username || 'Unknown'} />
+                                                        {review.User?.id ? (
+                                                            <ClickableMemberName userId={review.User.id} username={review.User.username || 'Unknown'} />
                                                         ) : (
                                                             <span>{review.User?.username || 'Unknown'}</span>
                                                         )}
@@ -2044,7 +2142,7 @@ export default function GameDetailPage() {
                 isOpen={showBringPicker}
                 onClose={() => { setShowBringPicker(false); setBringPickerEventId(null); }}
                 eventId={bringPickerEventId}
-                currentUserId={user?.sub}
+                self={self}
                 onSave={() => setBringRefreshKey(k => k + 1)}
             />
         </div>

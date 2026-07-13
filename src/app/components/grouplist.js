@@ -12,11 +12,21 @@ import { formatDate } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
 import ClickableMemberName from './ClickableMemberName';
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
 const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
   const router = useRouter();
   const { user: authUser } = Auth();
   const { timezone } = useTimezone();
+  // Phase 87.3-05 (PR-B): resolve the caller's own Users.id UUID via the shared
+  // identity primitive. Every is-me compare below keys on the nested member.id
+  // (UUID) vs selfUuid — never the flat member.user_id vs sub compare (which
+  // flips value at PR-C). selfUuid resolves ASYNC, so role derivation runs in its own effect
+  // gated on resolution (D-04 async-resolution constraint).
+  const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
+  const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [settingsGroup, setSettingsGroup] = useState(null);
@@ -28,29 +38,33 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     }
   }, [user, refreshTrigger]); // Add refreshTrigger to dependencies
 
+  // Derive per-group self role reactively off the resolved UUID. Kept separate
+  // from the group fetch so an unresolved selfUuid never stores a wrong "no
+  // role" derive — the effect re-runs (and roles populate) once identity
+  // resolves. selfUuid is in the dependency array per the async-resolution rule.
+  useEffect(() => {
+    if (!selfUuid) return;
+    const roles = {};
+    groups.forEach(group => {
+      if (group.Users && Array.isArray(group.Users)) {
+        const userMember = group.Users.find(u => u.id === selfUuid);
+        if (userMember) {
+          // Role is in UserGroup object from the through relationship
+          roles[group.id] = userMember.UserGroup?.role || 'member';
+        }
+      }
+    });
+    setUserRoles(roles);
+  }, [groups, selfUuid]);
+
   const fetchGroups = async () => {
     if (!user?.sub) return;
-    
+
     try {
       setLoading(true);
       // Use groupsAPI.getUserGroups which automatically includes Authorization header
       const groupsData = await groupsAPI.getUserGroups(user.sub);
       setGroups(groupsData || []);
-      
-      // Extract user roles from groups
-      const roles = {};
-      if (groupsData && Array.isArray(groupsData)) {
-        groupsData.forEach(group => {
-          if (group.Users && Array.isArray(group.Users)) {
-            const userMember = group.Users.find(u => u.user_id === user?.sub);
-            if (userMember) {
-              // Role is in UserGroup object from the through relationship
-              roles[group.id] = userMember.UserGroup?.role || 'member';
-            }
-          }
-        });
-      }
-      setUserRoles(roles);
     } catch (error) {
       console.error('Error fetching groups:', error.message || 'Unknown error');
       setGroups([]);
@@ -93,6 +107,11 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
         )}
       </div>
 
+      {/* D-08: if identity resolution permanently fails, per-group role
+          affordances (Invite / settings) silently vanish — surface a compact,
+          non-blocking degrade notice instead of failing silently (D-11). */}
+      <FetchErrorBanner state={selfIdentityErrorState} compact />
+
       <div className="flex-1 overflow-y-auto p-4 pb-8 flex flex-col gap-4 max-md:max-h-[60vh] max-md:p-3">
         {groups.length === 0 ? (
           <div className="text-center py-8 px-4 text-content-muted">
@@ -108,8 +127,8 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
 
             // Get user role - check both userRoles state and directly from group.Users
             let userRole = userRoles[group.id];
-            if (!userRole && group.Users) {
-              const userMember = group.Users.find(u => u.user_id === user?.sub);
+            if (!userRole && group.Users && selfUuid) {
+              const userMember = group.Users.find(u => u.id === selfUuid);
               userRole = userMember?.UserGroup?.role || userMember?.role;
             }
             const canEdit = userRole === 'owner' || userRole === 'admin';
@@ -180,14 +199,14 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
 
                 <div className="flex flex-wrap gap-2 mb-3">
                   {groupUsers
-                    .filter((member) => member.user_id !== user?.sub)
+                    .filter((member) => member.id !== selfUuid)
                     .slice(0, 4)
                     .map((member, index) => (
                       <span key={member.id || index} className="bg-surface-card-hover text-content-secondary px-2 py-1 rounded-md text-[0.8rem] border border-line">
-                        <ClickableMemberName userId={member.user_id} username={member.username || member.email} />
+                        <ClickableMemberName userId={member.id} username={member.username || member.email} />
                       </span>
                     ))}
-                  {groupUsers.filter((member) => member.user_id !== user?.sub).length > 4 && (
+                  {groupUsers.filter((member) => member.id !== selfUuid).length > 4 && (
                     <span className="bg-surface-card-hover text-content-muted px-2 py-1 rounded-md text-[0.8rem] border border-line font-medium">
                       +{groupUsers.length - 5} more
                     </span>
@@ -249,7 +268,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
         <GroupSettings
           group={settingsGroup}
           user={authUser}
-          userRole={userRoles[settingsGroup.id] || (settingsGroup.Users?.find(u => u.user_id === user?.sub)?.UserGroup?.role)}
+          userRole={userRoles[settingsGroup.id] || (selfUuid && settingsGroup.Users?.find(u => u.id === selfUuid)?.UserGroup?.role)}
           onClose={() => setSettingsGroup(null)}
           onUpdate={() => {
             fetchGroups();

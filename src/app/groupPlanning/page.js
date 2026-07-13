@@ -3,14 +3,23 @@
 import { useState, useEffect } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
-import { groupsAPI, eventsAPI, promptAPI, usersAPI } from '../../lib/api';
+import { groupsAPI, eventsAPI, promptAPI } from '../../lib/api';
 import Link from 'next/link';
 import CreateEvent from '../components/createEvent';
 import ResponseDashboard from '../components/ResponseDashboard';
 import PromptScheduleSection from '../components/PromptScheduleSection';
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
 export default function GroupPlanningPage() {
     const { user, isLoading: authLoading } = Auth();
+    // Phase 87.3-05 (D-02): resolve the caller's own Users.id UUID via the
+    // shared identity primitive, collapsing the former per-page usersAPI
+    // self-fetch (getUser by sub). selfUuid feeds the self-role derive
+    // (UUID vs nested member.id) and PromptScheduleSection's currentUserDbId.
+    const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
+    const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();
@@ -40,12 +49,6 @@ export default function GroupPlanningPage() {
     const [heatmapError, setHeatmapError] = useState(null);
     const [userRole, setUserRole] = useState(null);
 
-    // Phase 71.2 D-UI-01 — caller's User.id UUID (sourced from /api/users/me
-    // via existing usersAPI.getUser by Auth0 sub). Plumbed to
-    // PromptScheduleSection -> OpenPollsList for parity with other components
-    // that render UUID-keyed UI; the can_close gate itself is server-derived.
-    const [currentUserDbId, setCurrentUserDbId] = useState(null);
-
     useEffect(() => {
         if (!authLoading && !user) {
             const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
@@ -58,10 +61,11 @@ export default function GroupPlanningPage() {
             fetchGroup();
             fetchGroupEvents();
             fetchHeatmapData();
+            // fetchUserRole self-gates on selfUuid; selfUuid is in the deps so
+            // the self-role derive re-runs once identity resolves (D-04).
             fetchUserRole();
-            fetchCurrentUserDbId();
         }
-    }, [user, groupId]);
+    }, [user, groupId, selfUuid]);
 
     // Auto-open the createEvent modal when the URL carries prefill params OR
     // a prompt_id (Plan 03 single-CTA model: email links to ?prompt_id=X with
@@ -132,32 +136,18 @@ export default function GroupPlanningPage() {
     };
 
     const fetchUserRole = async () => {
-        if (!groupId || !user?.sub) return;
+        // Gate on identity resolution — the self-role find keys on the nested
+        // member.id vs selfUuid, so we wait until selfUuid resolves rather than
+        // storing a wrong "no role". Re-runs when selfUuid lands (in effect deps).
+        if (!groupId || !user?.sub || !selfUuid) return;
         try {
             const members = await groupsAPI.getGroupMembers(groupId);
-            const me = (members || []).find(m => m.user_id === user.sub);
+            const me = (members || []).find(m => m.id === selfUuid);
             if (me?.UserGroup?.role) {
                 setUserRole(me.UserGroup.role);
             }
-            // Plan 71.2 — opportunistic UUID resolution from the same fetch.
-            // Most members ship User.id on the row; if it's missing we fall
-            // back to the dedicated /users/:user_id call below.
-            if (me?.id) {
-                setCurrentUserDbId(me.id);
-            }
         } catch (err) {
             console.error('Error fetching user role:', err);
-        }
-    };
-
-    const fetchCurrentUserDbId = async () => {
-        if (!user?.sub) return;
-        try {
-            const data = await usersAPI.getUser(user.sub);
-            if (data?.id) setCurrentUserDbId(data.id);
-        } catch (err) {
-            // Non-fatal — currentUserDbId is informational. Auth gate is server-derived.
-            console.error('Error fetching current user db id:', err);
         }
     };
 
@@ -240,6 +230,11 @@ export default function GroupPlanningPage() {
                 </div>
             </div>
 
+            {/* D-08: identity-resolution failure hides the self-role affordances
+                (admin poll controls gated on userRole) — surface a compact,
+                non-blocking degrade notice rather than fail silently (D-11). */}
+            <FetchErrorBanner state={selfIdentityErrorState} compact />
+
             {/* Availability Polls + Response Dashboard in one card */}
             <div className="card p-4 md:p-6 mb-6">
                 <h2 className="text-xl font-bold text-content-primary mb-4">Availability Polls</h2>
@@ -248,7 +243,7 @@ export default function GroupPlanningPage() {
                         groupId={groupId}
                         group={group}
                         userRole={userRole}
-                        currentUserDbId={currentUserDbId}
+                        currentUserDbId={selfUuid}
                         defaultExpanded={true}
                     />
 
