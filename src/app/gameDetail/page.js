@@ -284,6 +284,13 @@ export default function GameDetailPage() {
         return { role: null, scope: 'game-only' };
     };
 
+    // Tracks which entity the page last finished loading, so the selfUuid dep
+    // re-run below (identity resolving AFTER the first fetch) refreshes data
+    // WITHOUT flashing the whole page back to the full loading state. A real
+    // param change (different game/event) still gets the full loading screen.
+    const loadedEntityKeyRef = useRef(null);
+    const entityKey = `${game_id}|${group_id}|${event_id}`;
+
     useEffect(() => {
         if (game_id) {
             fetchGameData();
@@ -356,7 +363,9 @@ export default function GameDetailPage() {
     };
 
     const fetchEventOnly = async () => {
-        setLoading(true);
+        // Identity-only re-run (selfUuid resolved after first load of the SAME
+        // event): refresh in place — no full-page loading flash (#1/#18).
+        if (loadedEntityKeyRef.current !== entityKey) setLoading(true);
         try {
             const eventData = await eventsAPI.getEvent(event_id);
             setSingleEvent(eventData);
@@ -443,6 +452,7 @@ export default function GameDetailPage() {
         } catch (error) {
             console.error('Error fetching event:', error);
         } finally {
+            loadedEntityKeyRef.current = entityKey;
             setLoading(false);
         }
     };
@@ -581,7 +591,9 @@ export default function GameDetailPage() {
     const fetchGameData = async () => {
         if (!game_id) return;
 
-        setLoading(true);
+        // Identity-only re-run (selfUuid resolved after first load of the SAME
+        // game): refresh in place — no full-page loading flash (#1/#18).
+        if (loadedEntityKeyRef.current !== entityKey) setLoading(true);
         try {
             // Fetch game details using gamesAPI which includes proper API URL and auth
             const gameData = await gamesAPI.getGame(game_id);
@@ -671,6 +683,7 @@ export default function GameDetailPage() {
         } catch (error) {
             console.error('Error fetching game data:', error);
         } finally {
+            loadedEntityKeyRef.current = entityKey;
             setLoading(false);
         }
     };
