@@ -67,6 +67,34 @@ jobs:
           fi
           echo "No newly-added src/ .js(x) files — born-.tsx enforcement passed."
 
+      - name: "Grep gate — no user.sub compared against an API data field (Req 3 / BINT-02)"
+        # Phase 87.3 anti-regression backstop. The Auth0 `user.sub` is NOT a
+        # `Users.id` UUID; comparing it against an API-supplied identity field
+        # (`m.user_id`, `review.User?.id`, an rsvp `.User.id`, …) is the is-me
+        # bug class this phase converged away. This gate makes that compare class
+        # permanently un-shippable in `src/app`.
+        #
+        # SYMMETRIC to operand order: matches `x === user.sub` (sub on RHS),
+        # `user.sub === x` (sub on LHS), and `.find(...user.sub)` /
+        # `.filter(...user.sub)`. ALLOWLISTED by construction (no compare operator
+        # adjacent to `.sub`, so they never match): self-fetch calls
+        # `getUser(user.sub)`, presence guards `if (!user?.sub)`, and API args
+        # `getUserGroups(user.sub)` / `getUserEvents(user.sub)`.
+        #
+        # Inverted-grep idiom (Pitfall 2): grep exits nonzero on NO MATCH, so
+        # capture with `|| true`, filter full-line comments (which may quote the
+        # old pattern in explanatory prose), and `exit 1` only when HITS is
+        # non-empty. The pattern is kept BYTE-FOR-BYTE identical to the lockstep
+        # self-test in `src/lib/ci-grep-gate.fixture.test.ts` (run by vitest).
+        run: |
+          HITS=$(grep -rnE '([!=]==[[:space:]]*user\??\.sub)|(user\??\.sub[[:space:]]*[!=]==)|\.(find|filter)\([^)]*user\??\.sub' src/app | grep -vE ':[[:space:]]*//' || true)
+          if [ -n "$HITS" ]; then
+            echo "::error::user.sub compared against an API data field in src/app — the sub is not a Users.id UUID; compare the resolved self UUID (useSelfIdentity's selfUuid) against the nested User.id instead (Req 3 / BINT-02):"
+            echo "$HITS"
+            exit 1
+          fi
+          echo "No-sub-compare gate passed — no user.sub vs API-field is-me compares in src/app."
+
   e2e:
     name: e2e
     needs: quality # D-02: e2e only runs after the fast quality gate is green
