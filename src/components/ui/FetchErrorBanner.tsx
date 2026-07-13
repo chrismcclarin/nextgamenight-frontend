@@ -34,6 +34,15 @@ export interface FetchErrorBannerProps {
   reportSubject?: string;
   /** Human context (surface/action) folded into the report description. */
   reportContext?: string;
+  /**
+   * Compact one-line non-blocking degrade notice (D-08). When true, on a
+   * PERMANENT failure (`state.showError` — retries exhausted) render a single
+   * line plus the retry button, skipping the full Banner/FeedbackForm scaffold.
+   * Used by identity-resolution consumers so a failed `useSelfIdentity` degrades
+   * loudly-but-small instead of silently (D-11). The notice carries NO identity
+   * value (Security: PII-in-notice mitigation, T-873-02-01).
+   */
+  compact?: boolean;
 }
 
 export function FetchErrorBanner({
@@ -41,6 +50,7 @@ export function FetchErrorBanner({
   title = 'Something went wrong',
   reportSubject,
   reportContext,
+  compact = false,
 }: FetchErrorBannerProps) {
   const [showReport, setShowReport] = React.useState(false);
   const [retrying, setRetrying] = React.useState(false);
@@ -55,6 +65,28 @@ export function FetchErrorBanner({
       setRetrying(false);
     }
   };
+
+  // D-08: compact degrade notice — one generic line (no identity value) + the
+  // retry affordance, mounted ONLY on permanent failure (the guard above).
+  if (compact) {
+    return (
+      <div
+        role="status"
+        className="flex flex-wrap items-center gap-2 text-sm text-content-secondary"
+      >
+        <span>Some personal controls are unavailable.</span>
+        <button
+          type="button"
+          onClick={handleRetry}
+          disabled={retrying}
+          className="inline-flex items-center gap-1 font-medium text-content-link underline hover:no-underline disabled:opacity-50"
+        >
+          <Icon name="RefreshCw" size={14} className={retrying ? 'animate-spin' : undefined} />
+          {retrying ? 'Retrying…' : 'Retry'}
+        </button>
+      </div>
+    );
+  }
 
   const subject = reportSubject ?? `Couldn't load: ${state.message}`;
   const description =
