@@ -20,11 +20,17 @@
 
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
+import { useQueryClient } from '@tanstack/react-query';
 import { usersAPI } from '../../lib/api';
 // Phase 84 PRIM-05: browser-TZ detection lives in the consolidated datetime
 // layer. The provider owns the policy (profile TZ canonical, browser fallback);
 // datetime.ts owns the detection mechanics.
 import { detectBrowserTimezone } from '../../lib/datetime';
+// Phase 87.3-07 (D-02): identity/timezone resolves via the shared
+// ['users','self'] query (staleTime Infinity) instead of an ad-hoc getUser
+// self-fetch, so this provider stops issuing a duplicate session-start request.
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { patchSelfCache } from '../../lib/hooks/selfIdentityCache';
 
 const TimezoneContext = createContext({
   timezone: null,
@@ -35,6 +41,12 @@ const TimezoneContext = createContext({
 
 export function TimezoneProvider({ children }) {
   const { user, isLoading } = useUser();
+  const queryClient = useQueryClient();
+
+  // TZ-01 forwarding (detectBrowserTimezone() as getUser's 2nd arg → backend
+  // persist/backfill) lives inside the hook's queryFn, so migrating the fetch
+  // onto the shared cache preserves the persist/backfill write side-effect.
+  const { self } = useSelfIdentity();
 
   // Browser TZ is captured once on mount and stays available — used both as
   // fallback for `timezone` when profile TZ is unset, AND exposed to consumers
@@ -61,13 +73,17 @@ export function TimezoneProvider({ children }) {
     if (user?.sub) {
       try {
         await usersAPI.updateTimezone(user.sub, newTimezone);
+        // Cache-coherence (SELF_IDENTITY_KEY contract): keep the immortal self
+        // cache in sync so a later remount reads the new profile TZ, not the
+        // stale pre-mutation one.
+        patchSelfCache(queryClient, { timezone: newTimezone });
       } catch (err) {
         console.error('Failed to update timezone:', err.message);
       }
     }
-  }, [user?.sub]);
+  }, [user?.sub, queryClient]);
 
-  // On mount / user change: read stored profile TZ; never write.
+  // On mount / user change / self resolution: read stored profile TZ; never write.
   useEffect(() => {
     // Re-detect browser TZ on (re)mount in case the user moved devices.
     const detected = detectBrowserTimezone();
@@ -81,42 +97,29 @@ export function TimezoneProvider({ children }) {
       return;
     }
 
-    let cancelled = false;
+    // Wait for the shared self row. Until it resolves — or if the query errors
+    // terminally (self stays undefined) — keep the browser-TZ fallback the
+    // display state was initialized to. This preserves the old catch-branch
+    // behavior (network/API failure → browser TZ for display) without a
+    // duplicate fetch here.
+    if (!self) return;
 
-    async function loadProfileTimezone() {
-      try {
-        // Phase 78 / TZ-01: Forward browser-detected timezone so the backend
-        // can persist on first creation OR backfill an existing null-TZ user.
-        // Per CONTEXT D-Frontend: if detection failed, `detected` is null and
-        // usersAPI.getUser omits the query param entirely.
-        const userInfo = await usersAPI.getUser(user.sub, detected);
-        if (cancelled) return;
+    // Phase 78 / TZ-01: the browser-TZ persist/backfill write already happened
+    // in the hook's queryFn (getUser's 2nd arg); we only READ the stored TZ here.
+    const stored = self.timezone || null;
 
-        const stored = userInfo?.timezone || null;
-
-        if (stored) {
-          // Profile TZ is set — use it. DO NOT auto-sync browser → profile.
-          setTimezoneState(stored);
-          setIsProfileTimezoneSet(true);
-        } else {
-          // Profile TZ is null — fall back to browser TZ for display.
-          // DO NOT auto-write to backend. The user must set their TZ
-          // explicitly via the userProfile picker or the nudge banner.
-          setTimezoneState(detected || 'UTC');
-          setIsProfileTimezoneSet(false);
-        }
-      } catch (err) {
-        if (cancelled) return;
-        console.error('Failed to fetch user timezone:', err.message);
-        // Network/API failure — fall back to browser TZ for display.
-        setTimezoneState(detected || 'UTC');
-        setIsProfileTimezoneSet(false);
-      }
+    if (stored) {
+      // Profile TZ is set — use it. DO NOT auto-sync browser → profile.
+      setTimezoneState(stored);
+      setIsProfileTimezoneSet(true);
+    } else {
+      // Profile TZ is null — fall back to browser TZ for display.
+      // DO NOT auto-write to backend. The user must set their TZ
+      // explicitly via the userProfile picker or the nudge banner.
+      setTimezoneState(detected || 'UTC');
+      setIsProfileTimezoneSet(false);
     }
-
-    loadProfileTimezone();
-    return () => { cancelled = true; };
-  }, [user?.sub, isLoading]);
+  }, [user?.sub, isLoading, self]);
 
   return (
     <TimezoneContext.Provider
