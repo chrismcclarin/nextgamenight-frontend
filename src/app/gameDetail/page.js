@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
-import { eventsAPI, gameReviewsAPI, usersAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI, invitesAPI, eventBringsAPI, API_BASE_URL } from '../../lib/api';
+import { eventsAPI, gameReviewsAPI, groupsAPI, gamesAPI, rsvpAPI, suggestionsAPI, invitesAPI, eventBringsAPI, API_BASE_URL } from '../../lib/api';
 import CreateEvent from '../components/createEvent';
 import RsvpSection from '../components/RsvpSection';
 import BallotSection from '../components/BallotSection';
@@ -19,6 +19,9 @@ import SafeImage from '../components/SafeImage';
 import ClickableMemberName from '../components/ClickableMemberName';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import StarRatingPicker from '../components/StarRatingPicker';
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { toast } from 'sonner';
 
 // Phase 65-02: small helper that renders a colored RSVP-status indicator.
@@ -136,6 +139,16 @@ function GuestInviteButton({ groupId, userId }) {
 
 export default function GameDetailPage() {
     const { user } = Auth();
+    // Phase 87.3-04 (D-01/D-04): the caller's resolved Users.id UUID from the
+    // shared self-identity hook. Every is-me/is-mine derive on this page keys on
+    // this UUID vs the nested `User.id` (never the flat `user_id`/`user.sub`),
+    // so the PR-C flat-field flip cannot silently break them. selfUuid resolves
+    // ASYNCHRONOUSLY (react-query) — is-me derives are gated on it (unresolved =
+    // loading/indeterminate, never "not me") and re-run when it resolves.
+    const { selfUuid, self, query: selfIdentityQuery } = useSelfIdentity();
+    // D-08: permanent identity-resolution failure degrades is-me affordances
+    // loudly-but-small via the compact FetchErrorBanner (never silently — D-11).
+    const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
     const { timezone } = useTimezone();
     // Phase 76 SOCL-06: compute friendship status at the participants-modal
     // call site so the trailing-slot affordance branches per relationship.
@@ -174,8 +187,9 @@ export default function GameDetailPage() {
     // the event response only when the URL omits it.
     const [effectiveGroupId, setEffectiveGroupId] = useState(group_id || null);
     // Phase 71.1: cached group members roster — needed by handleLeaveEvent
-    // to resolve the caller's User.id UUID via Plan 71.1-01's caller-self-row
-    // contract (`groupMembers.find(m => m.user_id === user.sub)`).
+    // to resolve the caller's own row via Plan 71.1-01's caller-self-row
+    // contract. Phase 87.3-04: the match now keys on the nested member UUID
+    // (`groupMembers.find(m => m.id === selfUuid)`), never the flat sub.
     const [groupMembers, setGroupMembers] = useState([]);
     const [editEventModal, setEditEventModal] = useState(false);
     const [editingEvent, setEditingEvent] = useState(null);
@@ -252,9 +266,11 @@ export default function GameDetailPage() {
     // UserGroup contains { role, joined_at }. For 'none', the caller never
     // reaches the success path — backend returns 403 — but we keep the branch
     // defensively.
-    const resolveUserScope = (rosterArray, callerSub) => {
-        if (!Array.isArray(rosterArray) || !callerSub) return { role: null, scope: 'none' };
-        const caller = rosterArray.find(m => m.user_id === callerSub);
+    const resolveUserScope = (rosterArray, callerUuid) => {
+        if (!Array.isArray(rosterArray) || !callerUuid) return { role: null, scope: 'none' };
+        // Phase 87.3-04 (D-04): key on the nested member UUID, not the sub. The
+        // caller-self-row contract guarantees the caller's `id` (UUID) is present.
+        const caller = rosterArray.find(m => m.id === callerUuid);
         if (!caller) return { role: null, scope: 'none' };
         if (caller.UserGroup && caller.UserGroup.role) {
             const r = caller.UserGroup.role;
@@ -270,7 +286,10 @@ export default function GameDetailPage() {
         } else if (event_id) {
             fetchEventOnly();
         }
-    }, [game_id, group_id, event_id, user?.sub]);
+        // Phase 87.3-04: selfUuid is in the dep array so the is-me/scope derives
+        // inside fetchGameData/fetchEventOnly re-run once identity resolves (they
+        // are gated on selfUuid and skipped while it is still undefined).
+    }, [game_id, group_id, event_id, user?.sub, selfUuid]);
 
     // Fetch game suggestions for event-only view.
     // Phase 71.1-02 Blocker 1 fix: gate on effectiveGroupId (URL-or-derived)
@@ -368,9 +387,16 @@ export default function GameDetailPage() {
                     // unified resolver. Plan 71.1-01's caller-self-row contract
                     // guarantees the caller's row is present (with UserGroup=null
                     // for game-only callers).
-                    const { role, scope } = resolveUserScope(fetchedGroupMembers, user?.sub);
-                    setUserRole(role);
-                    setUserScope(scope);
+                    // Phase 87.3-04: gate the is-me scope derive on identity
+                    // resolution — while selfUuid is unresolved leave userScope
+                    // at its prior/default value (loading/indeterminate), NEVER
+                    // downgrade to 'none'. The fetch effect's selfUuid dep re-runs
+                    // this flow once identity resolves.
+                    if (selfUuid) {
+                        const { role, scope } = resolveUserScope(fetchedGroupMembers, selfUuid);
+                        setUserRole(role);
+                        setUserScope(scope);
+                    }
                     // Cache the roster so handleLeaveEvent can resolve the
                     // caller's User.id UUID without a second fetch.
                     setGroupMembers(fetchedGroupMembers);
@@ -387,8 +413,12 @@ export default function GameDetailPage() {
                 // by Auth0 user_id string for the strip + See-all chips.
                 try {
                     const rsvpData = await rsvpAPI.getEventRsvps(event_id);
-                    const myRsvp = (rsvpData.rsvps || []).find(r => r.user_id === user.sub);
-                    setEventRsvpStatuses({ [event_id]: myRsvp?.status || null });
+                    // Phase 87.3-04: my-RSVP derive gated on identity resolution
+                    // (nested User.id vs selfUuid). Re-runs when selfUuid resolves.
+                    if (selfUuid) {
+                        const myRsvp = (rsvpData.rsvps || []).find(r => r.User?.id === selfUuid);
+                        setEventRsvpStatuses({ [event_id]: myRsvp?.status || null });
+                    }
                     const byAuth0 = {};
                     for (const r of (rsvpData.rsvps || [])) {
                         if (r.user_id) byAuth0[r.user_id] = r.status;
@@ -456,11 +486,18 @@ export default function GameDetailPage() {
     // participationUserId.
     const handleLeaveEvent = async () => {
         if (!user?.sub || !singleEvent?.id) return;
+        // Phase 87.3-04: identity must be resolved before we can resolve the
+        // caller's own roster row. Unresolved = indeterminate (try again), never
+        // a wrong "not in roster" that would swallow the leave action.
+        if (!selfUuid) {
+            toast.error('Still loading your account — please try again in a moment.');
+            return;
+        }
 
-        const myDbUser = (groupMembers || []).find(m => m.user_id === user.sub);
+        const myDbUser = (groupMembers || []).find(m => m.id === selfUuid);
         if (!myDbUser?.id) {
             console.error('[handleLeaveEvent] Caller row missing from groupMembers — backend contract violation. Plan 71.1-01 should always inject caller-self row for game-only scope.', {
-                callerSub: user.sub,
+                callerUuid: selfUuid,
                 groupMembersLength: (groupMembers || []).length,
             });
             toast.error("Couldn't leave event. Please refresh and try again.");
@@ -564,13 +601,17 @@ export default function GameDetailPage() {
                 const gameEvents = eventsData.filter(event => event.game_id === game_id);
                 setEvents(gameEvents);
 
-                // Fetch RSVP statuses for each event (for BallotSection)
-                if (user?.sub && gameEvents.length > 0) {
+                // Fetch RSVP statuses for each event (for BallotSection).
+                // Phase 87.3-04: gate on identity resolution — this whole
+                // per-event my-RSVP derive keys on selfUuid vs nested User.id.
+                // While selfUuid is unresolved, skip it (indeterminate); the
+                // fetch effect's selfUuid dep re-runs this once identity resolves.
+                if (selfUuid && gameEvents.length > 0) {
                     const rsvpStatusMap = {};
                     await Promise.all(gameEvents.map(async (evt) => {
                         try {
                             const rsvpData = await rsvpAPI.getEventRsvps(evt.id);
-                            const myRsvp = (rsvpData.rsvps || []).find(r => r.user_id === user.sub);
+                            const myRsvp = (rsvpData.rsvps || []).find(r => r.User?.id === selfUuid);
                             rsvpStatusMap[evt.id] = myRsvp?.status || null;
                         } catch {
                             rsvpStatusMap[evt.id] = null;
@@ -584,30 +625,39 @@ export default function GameDetailPage() {
                 const reviewsData = await gameReviewsAPI.getGameReviews(game_id, group_id, user?.sub || null);
                 setReviews(Array.isArray(reviewsData) ? reviewsData : []);
 
-                // Find current user's review
+                // Find current user's review + derive role.
+                // Phase 87.3-04 (D-01): the per-page usersAPI.getUser(user.sub)
+                // self-fetch is REMOVED — selfUuid now comes from the shared
+                // useSelfIdentity() hook. `user?.sub` here only gates "logged in".
                 if (user?.sub) {
-                    // Use usersAPI.getUser which automatically includes Authorization header
-                    const currentUserData = await usersAPI.getUser(user.sub);
-                    const myReview = Array.isArray(reviewsData) ? reviewsData.find(r => r.User?.id === currentUserData.id) : null;
-                    if (myReview) {
-                        setUserReview(myReview);
-                        setReviewForm({
-                            rating: myReview.rating || 2.5,
-                            review_text: myReview.review_text || '',
-                            is_recommended: myReview.is_recommended !== false
-                        });
-                    }
-
                     // Get user's role in the group
                     // Use groupsAPI.getGroupMembers which automatically includes Authorization header
                     const fetchedGroupMembers = await groupsAPI.getGroupMembers(group_id);
                     if (Array.isArray(fetchedGroupMembers)) {
-                        // Phase 71.1 GAMP-09: derive both userRole + userScope
-                        // via unified resolver. See fetchEventOnly for contract.
-                        const { role, scope } = resolveUserScope(fetchedGroupMembers, user?.sub);
-                        setUserRole(role);
-                        setUserScope(scope);
                         setGroupMembers(fetchedGroupMembers);
+                        // Phase 87.3-04: gate the scope derive on identity —
+                        // unresolved selfUuid stays indeterminate (never 'none').
+                        if (selfUuid) {
+                            const { role, scope } = resolveUserScope(fetchedGroupMembers, selfUuid);
+                            setUserRole(role);
+                            setUserScope(scope);
+                        }
+                    }
+
+                    // Phase 87.3-04 (:1892 sibling / Req 4): own-review detection
+                    // keys on nested User.id vs selfUuid. Gated on resolution so an
+                    // unresolved identity reads as "no own review yet" (loading),
+                    // never mislabels someone else's review as mine.
+                    if (selfUuid) {
+                        const myReview = Array.isArray(reviewsData) ? reviewsData.find(r => r.User?.id === selfUuid) : null;
+                        if (myReview) {
+                            setUserReview(myReview);
+                            setReviewForm({
+                                rating: myReview.rating || 2.5,
+                                review_text: myReview.review_text || '',
+                                is_recommended: myReview.is_recommended !== false
+                            });
+                        }
                     }
                 }
             }
@@ -881,6 +931,13 @@ export default function GameDetailPage() {
                 {/* Phase 62-02: nudge banner so users without a profile TZ
                     notice before they read or edit the event time. */}
                 <TimezoneNudgeBanner />
+
+                {/* D-08 (Phase 87.3-04): non-blocking degrade notice on PERMANENT
+                    identity-resolution failure. Placed above the scope-gated
+                    Participants/RSVP surface (userScope defaults to 'none' when
+                    selfUuid can't resolve, hiding those sections) so the failure
+                    surfaces loudly-but-small instead of silently. */}
+                <FetchErrorBanner state={selfIdentityErrorState} compact />
 
                 <div className="card p-6 mb-6">
                     {/* Phase 65-02 EVT-01 + Phase 71.1 GAMP-10: header row with
@@ -1834,6 +1891,10 @@ export default function GameDetailPage() {
 
             {/* Reviews Section */}
             <div className="card p-6">
+                {/* D-08 (Phase 87.3-04): non-blocking degrade notice on PERMANENT
+                    identity-resolution failure — own-review edit/delete gate on
+                    selfUuid, so surface (never silently hide) when it can't resolve. */}
+                <FetchErrorBanner state={selfIdentityErrorState} compact />
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold text-content-primary">Reviews ({reviews.length})</h2>
                     {user && !userReview && userRole && userRole !== 'pending' && (
@@ -1889,7 +1950,11 @@ export default function GameDetailPage() {
                         {reviews
                             .filter(r => !userReview || r.id !== userReview.id)
                             .map((review) => {
-                                const isUserReview = review.User?.id === user?.sub;
+                                // Phase 87.3-04 (Req 4 — THE :1892 bug fix): compare
+                                // the nested review author UUID to the resolved self
+                                // UUID. Previously `=== user?.sub` (UUID-vs-sub) was
+                                // ALWAYS false, so own-review affordances never rendered.
+                                const isUserReview = !!selfUuid && review.User?.id === selfUuid;
                                 return (
                                     <div key={review.id} className="border-l-4 border-line pl-4 py-2">
                                         <div className="flex justify-between items-start mb-2">
