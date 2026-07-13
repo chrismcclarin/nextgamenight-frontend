@@ -22,8 +22,14 @@ export type Group = z.infer<typeof GroupSchema>;
 export const GroupListSchema = z.array(GroupSchema);
 export type GroupList = z.infer<typeof GroupListSchema>;
 
-// A member row as returned by GET /groups/:id/users.
+// A member row as returned by GET /groups/:id/users (roster attributes
+// ['id', 'username', 'user_id']).
+//   `id`      — the member's Users.id UUID. Phase 87.3 PR-B (D-04): this is the
+//               permanent is-me compare target (`member.id === selfUuid`),
+//               tightened to z.uuid(). Optional to tolerate an absent association.
+//   `user_id` — the Auth0 sub; stays z.string() until PR-C (D-07 fast-follow).
 export const GroupMemberSchema = z.object({
+  id: z.uuid().optional(),
   user_id: z.string(),
   username: z.string().nullable().optional(),
   email: z.string().nullable().optional(),

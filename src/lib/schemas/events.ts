@@ -7,6 +7,20 @@
 import { z } from 'zod';
 import { GameSchema } from './shared';
 
+// Nested User include shared by the rsvp/bring list responses (Sequelize include
+// attributes: ['id', 'username', 'user_id']).
+//   `id`      — the Users.id UUID. Phase 87.3 PR-B (D-04): the permanent is-me
+//               compare target (`rsvp.User.id === selfUuid`), tightened to z.uuid().
+//               Optional to tolerate an absent User association.
+//   `user_id` — the Auth0 sub carried via the D-12 wire shim; stays z.string()
+//               until PR-C (D-07 — its .uuid() tighten is the plan-10 fast-follow).
+export const NestedUserIdentitySchema = z.object({
+  id: z.uuid().optional(),
+  username: z.string().nullable().optional(),
+  user_id: z.string().optional(),
+});
+export type NestedUserIdentity = z.infer<typeof NestedUserIdentitySchema>;
+
 // RSVP status (yes/no/maybe).
 export const RsvpStatusSchema = z.enum(['yes', 'no', 'maybe']);
 export type RsvpStatus = z.infer<typeof RsvpStatusSchema>;
@@ -55,9 +69,12 @@ export type EventInvitePreview = z.infer<typeof EventInvitePreviewSchema>;
 export const RsvpSchema = z.object({
   rsvp_id: z.string(),
   event_id: z.string(),
+  // Flat user_id carries the Auth0 sub via the D-12 shim until PR-C (D-07).
   user_id: z.string(),
   status: RsvpStatusSchema,
   note: z.string().nullable().optional(),
+  // D-04: nested User.id is the UUID compare target (tightened via z.uuid()).
+  User: NestedUserIdentitySchema.optional(),
 });
 export type Rsvp = z.infer<typeof RsvpSchema>;
 
@@ -76,9 +93,12 @@ export type RsvpPublicResponse = z.infer<typeof RsvpPublicResponseSchema>;
 export const EventBringSchema = z.object({
   bring_id: z.string(),
   event_id: z.string(),
+  // Flat user_id carries the Auth0 sub via the D-12 shim until PR-C (D-07).
   user_id: z.string(),
   game_id: z.string(),
   game: GameSchema.optional(),
+  // D-04: nested User.id is the UUID compare target (tightened via z.uuid()).
+  User: NestedUserIdentitySchema.optional(),
 });
 export type EventBring = z.infer<typeof EventBringSchema>;
 
