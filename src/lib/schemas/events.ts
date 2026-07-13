@@ -67,7 +67,8 @@ export type EventInvitePreview = z.infer<typeof EventInvitePreviewSchema>;
 
 // rsvpAPI (L296) — RSVP records + the summary-bearing event RSVP list.
 export const RsvpSchema = z.object({
-  rsvp_id: z.string(),
+  // EventRsvp row PK — the wire field the FE keys rows by (RsvpSection).
+  id: z.string(),
   event_id: z.string(),
   // Flat user_id carries the Auth0 sub via the D-12 shim until PR-C (D-07).
   user_id: z.string(),
@@ -91,12 +92,15 @@ export type RsvpPublicResponse = z.infer<typeof RsvpPublicResponseSchema>;
 
 // eventBringsAPI (L329) — who is bringing which games.
 export const EventBringSchema = z.object({
-  bring_id: z.string(),
+  // EventBring row PK.
+  id: z.string(),
   event_id: z.string(),
   // Flat user_id carries the Auth0 sub via the D-12 shim until PR-C (D-07).
   user_id: z.string(),
   game_id: z.string(),
-  game: GameSchema.optional(),
+  // Sequelize `include: [Game]` with no alias — the wire key is capitalized
+  // (BringSummary reads `bring.Game?.name`).
+  Game: GameSchema.optional(),
   // D-04: nested User.id is the UUID compare target (tightened via z.uuid()).
   User: NestedUserIdentitySchema.optional(),
 });

@@ -22,7 +22,13 @@ export const UserSchema = z.object({
   profile_picture_url: z.string().nullable().optional(),
   timezone: z.string().nullable().optional(),
   sms_enabled: z.boolean().optional(),
-  phone_number: z.string().nullable().optional(),
+  // Real wire fields (models/User.js): `phone` (E.164, withContactInfo scope
+  // only) + `phone_verified`. The former `phone_number` field existed on no
+  // route — removed as part of the PRB-H3 wire-truth pass.
+  phone: z.string().nullable().optional(),
+  phone_verified: z.boolean().optional(),
+  tutorial_version: z.number().optional(),
+  notification_preferences: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 export type User = z.infer<typeof UserSchema>;
 
