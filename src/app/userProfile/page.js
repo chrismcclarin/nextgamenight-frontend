@@ -3,7 +3,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { userGamesAPI, gamesAPI, googleCalendarAPI, usersAPI, availabilityAPI } from '../../lib/api';
+// Phase 87.3-07 (D-02): the profile's self row resolves via the shared
+// ['users','self'] query (useSelfIdentity) instead of an ad-hoc getUser
+// self-fetch. Because that cache is staleTime Infinity, every self-row mutation
+// on this page routes its success through the cache helpers so a remount reads
+// post-mutation data (SELF_IDENTITY_KEY invalidation contract).
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { patchSelfCache, replaceSelfCache } from '../../lib/hooks/selfIdentityCache';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import Link from 'next/link';
 import { formatDate, toLocalDateString } from '../../lib/dateUtils';
@@ -44,6 +52,9 @@ const DEFAULT_PREFERENCES = {
 function Profile(){
     const { user, error, isLoading } = Auth();
     const searchParams = useSearchParams();
+    const queryClient = useQueryClient();
+    // D-02: the profile's self row comes from the shared, deduped query.
+    const { self, query: selfQuery } = useSelfIdentity();
     const [ownedGames, setOwnedGames] = useState([]);
     const [loadingGames, setLoadingGames] = useState(true);
     const [bggSearchQuery, setBggSearchQuery] = useState('');
@@ -271,6 +282,10 @@ function Profile(){
             setPhoneState('saving');
             setPhoneError(null);
             await usersAPI.savePhone(user.sub, phoneInput);
+            // Persist the (still-unverified) number into the self cache so a
+            // remount mid-verification re-hydrates the entered number rather than
+            // the stale pre-save row.
+            patchSelfCache(queryClient, { phone: phoneInput, phone_verified: false });
             setPhoneState('verifying');
         } catch (error) {
             console.error('Error saving phone:', error);
@@ -286,8 +301,12 @@ function Profile(){
             await usersAPI.verifyPhone(user.sub, verificationCode);
             setPhoneState('verified');
             setVerificationCode('');
-            // Refetch user data to get updated phone_verified
-            await fetchUserData();
+            // Reflect the now-verified number locally (enables the SMS toggles,
+            // which gate on userData?.phone_verified) and keep the immortal self
+            // cache coherent so a remount reads the verified state, not the stale
+            // pre-verification row.
+            setUserData(prev => (prev ? { ...prev, phone: phoneInput, phone_verified: true } : prev));
+            patchSelfCache(queryClient, { phone: phoneInput, phone_verified: true });
         } catch (error) {
             console.error('Error verifying code:', error);
             setPhoneError(error.message || 'Invalid verification code');
@@ -354,6 +373,10 @@ function Profile(){
         try {
             const updatedUser = await usersAPI.removePhone(user.sub);
             setUserData(updatedUser);
+            // Cache-coherence: the cascade cleared phone + sms_enabled + all SMS
+            // toggles server-side; replace the immortal self row wholesale so a
+            // remount reflects the removal.
+            replaceSelfCache(queryClient, updatedUser);
             setPhoneInput('');
             setPhoneValidation({ valid: false, error: null });
             setPhoneState('idle');
@@ -414,6 +437,8 @@ function Profile(){
 
         try {
             await usersAPI.updateNotificationPreferences(user.sub, updatedPrefs);
+            // Keep the immortal self cache coherent (SELF_IDENTITY_KEY contract).
+            patchSelfCache(queryClient, { notification_preferences: updatedPrefs });
             setSaveStatus({ type: notificationType, channel, status: 'saved' });
             setTimeout(() => setSaveStatus(null), 2000);
         } catch (error) {
@@ -436,6 +461,7 @@ function Profile(){
 
         try {
             await usersAPI.updateNotificationPreferences(user.sub, updatedPrefs);
+            patchSelfCache(queryClient, { notification_preferences: updatedPrefs });
             setSaveStatus({ type: 'reminder', channel: 'window', status: 'saved' });
             setTimeout(() => setSaveStatus(null), 2000);
         } catch (error) {
@@ -454,6 +480,7 @@ function Profile(){
 
         try {
             await usersAPI.updateNotificationPreferences(user.sub, DEFAULT_PREFERENCES);
+            patchSelfCache(queryClient, { notification_preferences: DEFAULT_PREFERENCES });
             setSaveStatus({ type: 'all', channel: 'reset', status: 'saved' });
             setTimeout(() => setSaveStatus(null), 2000);
         } catch (error) {
@@ -464,35 +491,42 @@ function Profile(){
         }
     };
 
-    const fetchUserData = useCallback(async () => {
-        if (!user?.sub) return;
-        try {
-            const userInfo = await usersAPI.getUser(user.sub);
-            setUserData(userInfo);
-            setUsername(userInfo.username || user.name || user.email?.split('@')[0] || '');
-            // Initialize phone state
-            if (userInfo.phone && userInfo.phone_verified) {
-                setPhoneState('verified');
-                setPhoneInput(userInfo.phone);
-            } else if (userInfo.phone) {
-                setPhoneState('idle');
-                setPhoneInput(userInfo.phone);
-            }
-            // Initialize notification preferences
-            setPreferences(userInfo.notification_preferences || DEFAULT_PREFERENCES);
-            // Paint gate (D-PAINT-01): unblock username/avatar zone after backend resolves.
-            setProfileLoaded(true);
-        } catch (error) {
-            console.error('Error fetching user data:', error);
-            // Fallback to Auth0 user data
-            setUsername(user.name || user.email?.split('@')[0] || 'User');
+    // D-02: initialize editable state from the shared self row exactly ONCE. The
+    // self cache is staleTime Infinity, and mutation handlers below own their own
+    // optimistic local-state updates + cache writes, so a reactive re-init on
+    // every `self` change would risk clobbering an in-progress edit. A one-shot
+    // guard keeps the mount-time population without that hazard.
+    const profileInitRef = useRef(false);
+    useEffect(() => {
+        if (profileInitRef.current) return;
+        // Terminal identity-resolution failure — fall back to Auth0 user data and
+        // unblock the paint gate (D-PAINT-01) so the user doesn't stare at a
+        // skeleton forever. Mirrors the old fetchUserData catch branch.
+        if (selfQuery.isError) {
+            profileInitRef.current = true;
+            setUsername(user?.name || user?.email?.split('@')[0] || 'User');
             setPreferences(DEFAULT_PREFERENCES);
-            // Paint gate: unblock even on failure so user doesn't stare at skeleton forever.
-            // Auth0 fallback name will appear; this is the documented degradation path.
             setProfileLoaded(true);
+            return;
         }
-    }, [user]);
-    
+        if (!self) return;
+        profileInitRef.current = true;
+        setUserData(self);
+        setUsername(self.username || user?.name || user?.email?.split('@')[0] || '');
+        // Initialize phone state
+        if (self.phone && self.phone_verified) {
+            setPhoneState('verified');
+            setPhoneInput(self.phone);
+        } else if (self.phone) {
+            setPhoneState('idle');
+            setPhoneInput(self.phone);
+        }
+        // Initialize notification preferences
+        setPreferences(self.notification_preferences || DEFAULT_PREFERENCES);
+        // Paint gate (D-PAINT-01): unblock username/avatar zone after backend resolves.
+        setProfileLoaded(true);
+    }, [self, selfQuery.isError, user?.name, user?.email]);
+
     const handleSaveUsername = async () => {
         if (!user?.sub || !username.trim()) {
             toast.error('Please enter a username');
@@ -508,6 +542,9 @@ function Profile(){
             setSavingUsername(true);
             const updatedUser = await usersAPI.updateUsername(user.sub, username.trim());
             setUserData(updatedUser);
+            // Cache-coherence: replace the immortal self row so a remount reads the
+            // new username, not the stale pre-edit one.
+            replaceSelfCache(queryClient, updatedUser);
             setEditingUsername(false);
             toast.success('Username updated successfully!');
         } catch (error) {
@@ -667,11 +704,12 @@ function Profile(){
 
     useEffect(() => {
         if (user?.sub) {
-            fetchUserData();
+            // Self-row init now happens in the one-shot effect above (driven by the
+            // shared useSelfIdentity query); only the non-self fetches remain here.
             fetchOwnedGames();
             checkGoogleCalendarStatus();
         }
-    }, [user, fetchUserData, fetchOwnedGames, checkGoogleCalendarStatus]);
+    }, [user, fetchOwnedGames, checkGoogleCalendarStatus]);
 
     const handleCreateRecurringPattern = async () => {
         if (!user?.sub) return;
