@@ -59,6 +59,7 @@ function FriendsPage() {
     // Group invite shortcut state
     const [selectedFriends, setSelectedFriends] = useState(new Set());
     const [selectedGroupId, setSelectedGroupId] = useState('');
+    const [rawGroups, setRawGroups] = useState([]);
     const [userGroups, setUserGroups] = useState([]);
     const [groupMembers, setGroupMembers] = useState([]);
     const [groupMembersLoading, setGroupMembersLoading] = useState(false);
@@ -85,17 +86,26 @@ function FriendsPage() {
     const fetchUserGroups = async () => {
         try {
             const groups = await groupsAPI.getUserGroups(user.sub);
-            const adminGroups = (Array.isArray(groups) ? groups : []).filter(g => {
-                const currentUser = g.Users?.find(u => u.id === selfUuid);
-                const role = currentUser?.UserGroup?.role;
-                return role === 'owner' || role === 'admin';
-            });
-            setUserGroups(adminGroups);
+            setRawGroups(Array.isArray(groups) ? groups : []);
         } catch (err) {
             console.error('Error fetching user groups:', err);
-            setUserGroups([]);
+            setRawGroups([]);
         }
     };
+
+    // Admin-group derive runs in its own effect keyed on [rawGroups, selfUuid]
+    // (grouplist.js pattern): the mount fetch fires before selfUuid resolves,
+    // so filtering inline would race and permanently empty the invite bar for
+    // admins. selfUuid is in the dependency array per the async-resolution rule.
+    useEffect(() => {
+        if (!selfUuid) return;
+        const adminGroups = rawGroups.filter(g => {
+            const currentUser = g.Users?.find(u => u.id === selfUuid);
+            const role = currentUser?.UserGroup?.role;
+            return role === 'owner' || role === 'admin';
+        });
+        setUserGroups(adminGroups);
+    }, [rawGroups, selfUuid]);
 
     const fetchFriends = async () => {
         setLoadingFriends(true);
