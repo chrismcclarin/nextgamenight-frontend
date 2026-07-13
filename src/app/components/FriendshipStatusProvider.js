@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { friendshipsAPI } from '../../lib/api';
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 
 export const FriendshipContext = createContext({
   getStatus: () => 'unknown',
@@ -24,6 +25,10 @@ export function useFriendshipStatus() {
 
 export function FriendshipStatusProvider({ children }) {
   const { user } = useUser();
+  // FE-17 cutover: self-classification keys on the resolved Users.id UUID, not
+  // the Auth0 sub. `selfUuid` resolves ASYNCHRONOUSLY (react-query) — see the
+  // async-gating rule inside getStatus below.
+  const { selfUuid } = useSelfIdentity();
   const [friends, setFriends] = useState([]);
   const [sentRequests, setSentRequests] = useState([]);
   const [receivedRequests, setReceivedRequests] = useState([]);
@@ -92,41 +97,55 @@ export function FriendshipStatusProvider({ children }) {
     (targetUserId) => {
       if (loadError) return 'unknown';
       if (!targetUserId) return 'unknown';
-      if (targetUserId === user?.sub) return 'self';
 
-      // Check accepted friends
+      // Friend / pending classifications key on the nested Users.id UUID and do
+      // NOT depend on the async self-identity — resolve them FIRST so friend and
+      // pending pills render immediately, even before `selfUuid` lands.
       const isFriend = friends.some(
-        (f) => f.friend?.user_id === targetUserId
+        (f) => f.friend?.id === targetUserId
       );
       if (isFriend) return 'accepted';
 
-      // Check sent requests
       const isSent = sentRequests.some(
-        (r) => r.Addressee?.user_id === targetUserId
+        (r) => r.Addressee?.id === targetUserId
       );
       if (isSent) return 'pending_sent';
 
-      // Check received requests
       const isReceived = receivedRequests.some(
-        (r) => r.Requester?.user_id === targetUserId
+        (r) => r.Requester?.id === targetUserId
       );
       if (isReceived) return 'pending_received';
 
+      // Not a friend/pending — the row is either the viewer themself or an
+      // addable stranger. Distinguishing them needs the async-resolved self
+      // UUID. ASYNC-GATING (same rule as plans 04/05/11): while `selfUuid` is
+      // unresolved (loading) or has permanently errored (it stays undefined),
+      // we cannot rule out that this row is self — withhold the addable
+      // conclusion ('unknown' → ClickableMemberName renders the plain name, no
+      // "Add friend") rather than falling through to 'none' and offering a
+      // self-request that 400s. `selfUuid` is in the dep array so classification
+      // updates the instant identity resolves.
+      if (!selfUuid) return 'unknown';
+      if (targetUserId === selfUuid) return 'self';
+
       return 'none';
     },
-    [loadError, user?.sub, friends, sentRequests, receivedRequests]
+    [loadError, selfUuid, friends, sentRequests, receivedRequests]
   );
 
   const handleSendRequest = useCallback(
     async (targetUserId) => {
       try {
         const result = await friendshipsAPI.sendRequest(targetUserId);
-        // Optimistically add to sentRequests so all tooltips update immediately
+        // Optimistically add to sentRequests so all tooltips update immediately.
+        // `targetUserId` is now the Users.id UUID (ClickableMemberName prop /
+        // foundUser.id), so the optimistic Addressee keys on `id` to match the
+        // isSent lookup (`r.Addressee?.id === targetUserId`) above.
         setSentRequests((prev) => [
           ...prev,
           {
             ...result,
-            Addressee: { user_id: targetUserId },
+            Addressee: { id: targetUserId },
           },
         ]);
       } catch (err) {

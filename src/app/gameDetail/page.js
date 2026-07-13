@@ -1771,7 +1771,7 @@ export default function GameDetailPage() {
                                                             {event.Winner.is_custom ? (
                                                                 <>{event.Winner.username || event.Winner.name || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
                                                             ) : (
-                                                                <ClickableMemberName userId={event.Winner.user_id} username={event.Winner.username || 'Unknown'} />
+                                                                <ClickableMemberName userId={event.Winner.id} username={event.Winner.username || 'Unknown'} />
                                                             )}
                                                         </span>
                                                     </p>
@@ -1810,7 +1810,15 @@ export default function GameDetailPage() {
                                                                     {participation.is_custom ? (
                                                                         <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
                                                                     ) : (
-                                                                        <ClickableMemberName userId={participation.User?.user_id || participation.user_id} username={participation.User?.username || participation.username || 'Unknown'} />
+                                                                        // Phase 87.3-06: SANCTIONED flat read. Past-events participation
+                                                                        // rows come through formatEventWithCustomParticipants (events.js),
+                                                                        // which replaces EventParticipations with flat entries
+                                                                        // `{ user_id: ep.User?.id }` — already the Users.id UUID, with NO
+                                                                        // nested User to source from. The dead `participation.User?.user_id`
+                                                                        // prefix is dropped; `participation.user_id` here is UUID-keyed
+                                                                        // (unlike every other flat user_id site) and is allowlisted in the
+                                                                        // plan-06 residue grep.
+                                                                        <ClickableMemberName userId={participation.user_id} username={participation.User?.username || participation.username || 'Unknown'} />
                                                                     )}
                                                                 </span>
                                                                 {participation.is_guest && (

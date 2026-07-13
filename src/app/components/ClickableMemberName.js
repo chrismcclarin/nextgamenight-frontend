@@ -39,7 +39,11 @@ import { FriendshipContext } from './FriendshipStatusProvider';
  * (md:hidden) is hidden — without the tap-toggle they would have no path
  * to the friend-request flow.
  *
- * @param {string} userId - Auth0 user_id of the member
+ * @param {string} userId - The member's nested `Users.id` UUID (Phase 87.3 PR-B).
+ *   This is NOT the Auth0 sub — it feeds BOTH getStatus (self/friend/pending
+ *   classification) AND sendRequest → POST /friendships/request, and both the
+ *   provider and the backend now key on the Users.id UUID. No sub-or-UUID
+ *   tolerance branch (D-06).
  * @param {string} username - Display name
  * @param {React.ReactNode} children - Optional custom render (defaults to username span)
  */
