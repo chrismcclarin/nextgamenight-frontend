@@ -25,17 +25,21 @@ import { detectBrowserTimezone } from '@/lib/datetime';
 import type { User } from '@/lib/schemas/users';
 
 /**
- * SELF_IDENTITY_KEY — the query key for the caller's own resolved self row.
+ * SELF_IDENTITY_KEY — the query-key PREFIX for the caller's own resolved self
+ * row. The live key is `[...SELF_IDENTITY_KEY, user.sub]` — scoped per account
+ * so an in-session account switch gets a fresh cache entry and can never be
+ * served the PREVIOUS user's identity/PII from the immortal cache.
  *
  * INVALIDATION CONTRACT (load-bearing): the self query is pinned at
  * `staleTime: Infinity`, so the cached self row NEVER self-refreshes. Every
  * mutation path that writes a self-row field — username, timezone, tutorial
  * completion, phone verification, notification preferences — MUST, on success,
- * either `queryClient.setQueryData(SELF_IDENTITY_KEY, ...)` or
- * `queryClient.invalidateQueries({ queryKey: SELF_IDENTITY_KEY })`. No consumer
- * may initialize editable state from a pre-mutation cached row: without an
- * explicit refresh the immortal cache would re-serve stale profile data on the
- * next remount. Plan 07's migrated mutation paths wire to this contract.
+ * either patch via `patchSelfCache` (prefix-matched `setQueriesData`) or
+ * `queryClient.invalidateQueries({ queryKey: SELF_IDENTITY_KEY })` (prefix
+ * match covers the sub-scoped key). No consumer may initialize editable state
+ * from a pre-mutation cached row: without an explicit refresh the immortal
+ * cache would re-serve stale profile data on the next remount. Plan 07's
+ * migrated mutation paths wire to this contract.
  */
 export const SELF_IDENTITY_KEY = ['users', 'self'] as const;
 
@@ -72,7 +76,9 @@ export function useSelfIdentity(): UseSelfIdentityResult {
   const { user } = useUser();
 
   const query = useQuery<SelfIdentity>({
-    queryKey: SELF_IDENTITY_KEY,
+    // Scoped by sub (see SELF_IDENTITY_KEY doc): a different logged-in account
+    // resolves against its own cache entry, never the previous user's row.
+    queryKey: [...SELF_IDENTITY_KEY, user?.sub ?? null],
     queryFn: async (): Promise<SelfIdentity> => {
       // TZ-01: forward the detected browser timezone as getUser's 2nd arg so the
       // self-fetch keeps its persist/backfill WRITE side-effect once plan 07

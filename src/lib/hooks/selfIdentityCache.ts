@@ -33,7 +33,10 @@ export function patchSelfCache(
   queryClient: QueryClient,
   patch: Partial<SelfIdentity>,
 ): void {
-  queryClient.setQueryData<SelfIdentity>(SELF_IDENTITY_KEY, (old) =>
+  // Prefix match: the live key is sub-scoped ([...SELF_IDENTITY_KEY, sub]).
+  // Only the logged-in account's entry is populated, so patching every match
+  // is equivalent to patching "the" self row.
+  queryClient.setQueriesData<SelfIdentity>({ queryKey: SELF_IDENTITY_KEY }, (old) =>
     old ? { ...old, ...patch } : old,
   );
 }

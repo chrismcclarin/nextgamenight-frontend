@@ -139,6 +139,31 @@ describe('useSelfIdentity — D-10 account_deleted', () => {
   });
 });
 
+describe('useSelfIdentity — per-account cache scoping (PII guard)', () => {
+  it('an in-session account switch never serves the previous user\'s cached row', async () => {
+    const OTHER_SUB = 'auth0|other999';
+    const OTHER_UUID = '22222222-2222-4222-8222-222222222222';
+    mockGetUser
+      .mockResolvedValueOnce({ id: SELF_UUID, user_id: SUB, username: 'first-user' })
+      .mockResolvedValueOnce({ id: OTHER_UUID, user_id: OTHER_SUB, username: 'second-user' });
+    const { wrapper } = makeWrapper();
+    const { result, rerender } = renderHook(() => useSelfIdentity(), { wrapper });
+
+    await waitFor(() => expect(result.current.selfUuid).toBe(SELF_UUID));
+
+    // A different account logs in on the SAME query client (same session).
+    mockUser = { sub: OTHER_SUB };
+    rerender();
+
+    // The sub-scoped key means the first user's immortal row is NOT served —
+    // the hook resolves the new account with a fresh fetch.
+    expect(result.current.selfUuid).not.toBe(SELF_UUID);
+    await waitFor(() => expect(result.current.selfUuid).toBe(OTHER_UUID));
+    expect(result.current.self?.username).toBe('second-user');
+    expect(mockGetUser).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('useSelfIdentity — invalidation contract', () => {
   it('refetches and serves the fresh row after SELF_IDENTITY_KEY is invalidated', async () => {
     mockGetUser
