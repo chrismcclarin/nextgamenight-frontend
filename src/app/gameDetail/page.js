@@ -1121,7 +1121,6 @@ export default function GameDetailPage() {
                     <BallotSection
                         key={ballotRefreshKey}
                         eventId={singleEvent.id}
-                        currentUserId={user?.sub}
                         eventDate={singleEvent.start_date}
                         userRole={userRole}
                         userRsvpStatus={eventRsvpStatuses[singleEvent.id] || null}
@@ -1887,7 +1886,6 @@ export default function GameDetailPage() {
                                         {/* Ballot Section - game voting */}
                                         <BallotSection
                                             eventId={event.id}
-                                            currentUserId={user?.sub}
                                             eventDate={event.start_date}
                                             userRole={userRole}
                                             userRsvpStatus={eventRsvpStatuses[event.id] || null}

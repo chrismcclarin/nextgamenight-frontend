@@ -46,8 +46,10 @@ export default function BringSummary({ eventId, groupId, self, refreshKey, onEdi
         // no flat `user_id` (sub) key that the PR-C flip would silently break.
         const grouped = {};
         for (const bring of brings) {
-          const userId = bring.User?.id;
-          if (!userId) continue;
+          // Rows missing the nested User include are still SHOWN (grouped under
+          // a single 'Unknown' bucket) — silently dropping them would hide a
+          // game someone is bringing just because attribution failed.
+          const userId = bring.User?.id || 'unknown';
           if (!grouped[userId]) {
             grouped[userId] = {
               username: bring.User?.username || bring.username || 'Unknown',

@@ -5,7 +5,7 @@ import { ballotAPI } from '../../lib/api';
 /**
  * BallotSection - Game voting ballot for an event
  */
-export default function BallotSection({ eventId, currentUserId, eventDate, userRole, userRsvpStatus }) {
+export default function BallotSection({ eventId, eventDate, userRole, userRsvpStatus }) {
   const [ballot, setBallot] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
