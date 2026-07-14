@@ -48,9 +48,11 @@ const LOGOUT_GOODBYE_URL = '/api/auth/logout?returnTo=/goodbye';
 
 /**
  * The resolved self row. `getUser` returns the persisted record which always
- * carries the `Users.id` UUID alongside the flat `user_id` (the Auth0 sub).
- * The Phase-82 `UserSchema` models the flat fields only, so we widen it here
- * with the nested `id` the is-me compares target (D-04).
+ * carries the `Users.id` UUID as `id`; post-PR-C (87.3 plan 09) the flat
+ * `user_id` carries the SAME UUID via the toSelfWire alias — the Auth0 sub
+ * never crosses the wire. `UserSchema` models `id` as optional (nested
+ * includes may omit it), so we narrow it to required here — it is the value
+ * the is-me compares target (D-04).
  */
 export type SelfIdentity = User & { id: string };
 

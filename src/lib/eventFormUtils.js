@@ -1,9 +1,11 @@
 // Helper function to create a participant object
-// Note: user_id here is the User.id (UUID), not the Auth0 user_id string
-export const createParticipant = (user_id = "", username = "", auth0_user_id = "", isFromGroup = false) => ({
+// Note: user_id here is the User.id (UUID), not the Auth0 user_id string.
+// (87.3-10 #16: the old auth0_user_id "reference" field was dead — never read
+// or transmitted — and post-PR-C would have stored a UUID under a name
+// claiming it was the sub. Deleted.)
+export const createParticipant = (user_id = "", username = "", isFromGroup = false) => ({
   user_id: user_id, // User.id (UUID) for database
   username: username, // For display purposes
-  auth0_user_id: auth0_user_id, // Auth0 identifier for reference
   score: null,
   faction: "",
   is_new_player: false,
@@ -24,10 +26,11 @@ export const createEventForm = (group_id, groupMembers = []) => ({
   picked_by_id: null,
   is_group_win: false,
   comments: "",
-  // Participants array - auto-populated with all group members (read-only)
-  // Use member.id (UUID) for user_id, not member.user_id (Auth0 string)
+  // Participants array - auto-populated with all group members (read-only).
+  // member.id is the Users.id UUID (post-PR-C member.user_id is the same UUID
+  // via the roster alias; keep keying on the canonical `id`).
   participants: groupMembers.map(member =>
-    createParticipant(member.id, member.username, member.user_id, true)
+    createParticipant(member.id, member.username, true)
   )
 });
 

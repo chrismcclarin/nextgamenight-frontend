@@ -79,7 +79,7 @@ describe('useSelfIdentity — key + contract', () => {
 
 describe('useSelfIdentity — resolution', () => {
   it('resolves the self UUID once for a logged-in user', async () => {
-    mockGetUser.mockResolvedValue({ id: SELF_UUID, user_id: SUB, username: 'me' });
+    mockGetUser.mockResolvedValue({ id: SELF_UUID, user_id: SELF_UUID, username: 'me' });
     const { wrapper } = makeWrapper();
     const { result } = renderHook(() => useSelfIdentity(), { wrapper });
 
@@ -99,7 +99,7 @@ describe('useSelfIdentity — resolution', () => {
   });
 
   it('forwards the detected browser timezone to getUser as the second arg (TZ-01)', async () => {
-    mockGetUser.mockResolvedValue({ id: SELF_UUID, user_id: SUB });
+    mockGetUser.mockResolvedValue({ id: SELF_UUID, user_id: SELF_UUID });
     const { wrapper } = makeWrapper();
     const { result } = renderHook(() => useSelfIdentity(), { wrapper });
 
@@ -109,7 +109,7 @@ describe('useSelfIdentity — resolution', () => {
 
   it('calls getUser with the sub alone when timezone detection returns null', async () => {
     mockDetected = null;
-    mockGetUser.mockResolvedValue({ id: SELF_UUID, user_id: SUB });
+    mockGetUser.mockResolvedValue({ id: SELF_UUID, user_id: SELF_UUID });
     const { wrapper } = makeWrapper();
     const { result } = renderHook(() => useSelfIdentity(), { wrapper });
 
@@ -144,8 +144,8 @@ describe('useSelfIdentity — per-account cache scoping (PII guard)', () => {
     const OTHER_SUB = 'auth0|other999';
     const OTHER_UUID = '22222222-2222-4222-8222-222222222222';
     mockGetUser
-      .mockResolvedValueOnce({ id: SELF_UUID, user_id: SUB, username: 'first-user' })
-      .mockResolvedValueOnce({ id: OTHER_UUID, user_id: OTHER_SUB, username: 'second-user' });
+      .mockResolvedValueOnce({ id: SELF_UUID, user_id: SELF_UUID, username: 'first-user' })
+      .mockResolvedValueOnce({ id: OTHER_UUID, user_id: OTHER_UUID, username: 'second-user' });
     const { wrapper } = makeWrapper();
     const { result, rerender } = renderHook(() => useSelfIdentity(), { wrapper });
 
@@ -167,8 +167,8 @@ describe('useSelfIdentity — per-account cache scoping (PII guard)', () => {
 describe('useSelfIdentity — invalidation contract', () => {
   it('refetches and serves the fresh row after SELF_IDENTITY_KEY is invalidated', async () => {
     mockGetUser
-      .mockResolvedValueOnce({ id: SELF_UUID, user_id: SUB, username: 'old' })
-      .mockResolvedValueOnce({ id: SELF_UUID, user_id: SUB, username: 'new' });
+      .mockResolvedValueOnce({ id: SELF_UUID, user_id: SELF_UUID, username: 'old' })
+      .mockResolvedValueOnce({ id: SELF_UUID, user_id: SELF_UUID, username: 'new' });
     const { client, wrapper } = makeWrapper();
     const { result } = renderHook(() => useSelfIdentity(), { wrapper });
 
