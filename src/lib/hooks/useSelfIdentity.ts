@@ -54,7 +54,10 @@ const LOGOUT_GOODBYE_URL = '/api/auth/logout?returnTo=/goodbye';
  * includes may omit it), so we narrow it to required here — it is the value
  * the is-me compares target (D-04).
  */
-export type SelfIdentity = User & { id: string };
+// `user_id` is also narrowed to required: toSelfWire ALWAYS emits it (aliased
+// to the UUID), and BringGamePicker feeds it as a server arg — pinned by the
+// CAPTURED_SELF_BODY contract test (user_id === id).
+export type SelfIdentity = User & { id: string; user_id: string };
 
 export interface UseSelfIdentityResult {
   /** The caller's resolved `Users.id` UUID (undefined until resolved). */

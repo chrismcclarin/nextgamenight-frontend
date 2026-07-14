@@ -423,7 +423,7 @@ export default function GameDetailPage() {
                 }
                 // Fetch RSVP status — both for the current viewer (already
                 // wired into RsvpSection) and as a per-participant map keyed
-                // by Auth0 user_id string for the strip + See-all chips.
+                // by the nested User.id UUID for the strip + See-all chips (D-04).
                 try {
                     const rsvpData = await rsvpAPI.getEventRsvps(event_id);
                     // Phase 87.3-04: my-RSVP derive gated on identity resolution
@@ -1885,11 +1885,12 @@ export default function GameDetailPage() {
                                             onRsvpChange={(status) => {
                                                 const prevStatus = eventRsvpStatuses[event.id];
                                                 setEventRsvpStatuses(prev => ({ ...prev, [event.id]: status }));
-                                                // Same own-chip sync as the single-event
-                                                // callback above (D-04 selfUuid gate).
-                                                if (selfUuid) {
-                                                    setRsvpByUserId(prev => ({ ...prev, [selfUuid]: status }));
-                                                }
+                                                // NO rsvpByUserId patch here: that map is
+                                                // single-event data (fetched/read only by the
+                                                // event view's strip + See-all) — a per-user
+                                                // write from the multi-event view would flatten
+                                                // per-event state into a map with no event
+                                                // dimension (plan-10 review #2).
                                                 if (status === 'yes' && prevStatus !== 'yes') {
                                                     setBringPickerEventId(event.id);
                                                     setShowBringPicker(true);

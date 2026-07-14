@@ -32,6 +32,12 @@
  *   - participants: events.js formatEventWithCustomParticipants — user_id is
  *                   the UUID for group members, null for custom participants.
  *
+ * ENFORCEMENT NOTE (plan-10 review #4/#11): these tightens bite at TEST time
+ * only — api.ts casts responses without runtime safeParse. The LIVE guards for
+ * wire drift are the BE-side wire-sweep.test.js and the cross-repo e2e
+ * backend-ref dispatch gate (phase runbook). Runtime enforcement arrives with
+ * the validatedQueryFn migration (see its FOUNDATION RULE).
+ *
  * Fixtures are authored field-for-field from the route res.json(...) source of
  * truth at the merged PR-C state (periodictabletopbackend_v2/Sonnet/routes/).
  * NOTE: this sandbox has no live bearer token / network, so the bodies below
@@ -222,6 +228,18 @@ describe('identity contract — real post-PR-C shapes parse (nested AND flat = U
   it('event participant: UUID flat user_id parses (events.js end-state)', () => {
     const r = EventParticipationSchema.safeParse(CAPTURED_PARTICIPANT_BODY);
     expect(r.success).toBe(true);
+  });
+
+  it('absent-User-association rows parse: flat user_id key DROPPED (derived via User?.id) is tolerated', () => {
+    // The BE computes every flat user_id from the optional nested association
+    // (`json.User?.id`) — an orphaned row drops the key entirely. The flat arm
+    // mirrors the nested `.optional()` tolerance (plan-10 review #1/#10/#12).
+    const { user_id: _u, User: _U, ...rsvpOrphan } = CAPTURED_RSVP_BODY;
+    expect(RsvpSchema.safeParse(rsvpOrphan).success).toBe(true);
+    const { user_id: _b, User: _BU, ...bringOrphan } = CAPTURED_BRING_BODY;
+    expect(EventBringSchema.safeParse(bringOrphan).success).toBe(true);
+    const { user_id: _p, ...participantOrphan } = CAPTURED_PARTICIPANT_BODY;
+    expect(EventParticipationSchema.safeParse(participantOrphan).success).toBe(true);
   });
 
   it('event participant: a custom (name-only) participant with user_id: null parses', () => {
