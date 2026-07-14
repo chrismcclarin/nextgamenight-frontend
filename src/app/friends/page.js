@@ -322,11 +322,17 @@ function FriendsPage() {
         if (isAlreadyFriend(foundUser.id)) {
             return { type: 'already-friends', label: 'Already friends' };
         }
-        if (isPendingRequest(foundUser.id)) {
-            return { type: 'pending', label: 'Request pending' };
-        }
+        // `requestSent` ranks ABOVE isPendingRequest: handleSendRequest refetches
+        // the sent list immediately, and once it lands the same request also
+        // classifies as pending — which raced the "Request sent" confirmation
+        // out after ~hundreds of ms. requestSent resets on the next search, so
+        // the just-sent confirmation persists for THIS result without going
+        // stale (owner UAT 2026-07-13, rode plan 10).
         if (requestSent) {
             return { type: 'sent', label: 'Request sent' };
+        }
+        if (isPendingRequest(foundUser.id)) {
+            return { type: 'pending', label: 'Request pending' };
         }
         return { type: 'send', label: 'Send Request' };
     };
