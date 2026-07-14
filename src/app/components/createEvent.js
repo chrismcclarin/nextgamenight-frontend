@@ -173,7 +173,6 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           return {
             user_id: '',
             username: ep.username || '',
-            auth0_user_id: '',
             score: ep.score,
             faction: ep.faction || '',
             is_new_player: ep.is_new_player || false,
@@ -190,7 +189,6 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           return {
             user_id: ep.user_id,
             username: ep.username || matchingGroupMember?.username || '',
-            auth0_user_id: matchingGroupMember?.user_id || '',
             score: ep.score,
             faction: ep.faction || '',
             is_new_player: ep.is_new_player || false,
@@ -204,7 +202,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       const finalParticipants = participants.length > 0 
         ? participants 
         : groupMembers.map(member => 
-            createParticipant(member.id, member.username, member.user_id, true)
+            createParticipant(member.id, member.username, true)
           );
 
       // Handle winner and picked_by - check if they're custom (no id, just username)
@@ -451,7 +449,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   const addParticipant = () => {
     setNewEvent({
       ...newEvent,
-      participants: [...newEvent.participants, createParticipant("", "", "", false)]
+      participants: [...newEvent.participants, createParticipant("", "", false)]
     });
   };
 

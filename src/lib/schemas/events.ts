@@ -7,17 +7,15 @@
 import { z } from 'zod';
 import { GameSchema } from './shared';
 
-// Nested User include shared by the rsvp/bring list responses (Sequelize include
-// attributes: ['id', 'username', 'user_id']).
-//   `id`      — the Users.id UUID. Phase 87.3 PR-B (D-04): the permanent is-me
-//               compare target (`rsvp.User.id === selfUuid`), tightened to z.uuid().
-//               Optional to tolerate an absent User association.
-//   `user_id` — the Auth0 sub carried via the D-12 wire shim; stays z.string()
-//               until PR-C (D-07 — its .uuid() tighten is the plan-10 fast-follow).
+// Nested User include shared by the rsvp/bring list responses. Post-PR-C
+// (87.3 plan 09) the Sequelize include attributes are ['id', 'username'] —
+// the sub `user_id` was stripped from every nested User include (Req 1).
+//   `id` — the Users.id UUID. Phase 87.3 PR-B (D-04): the permanent is-me
+//          compare target (`rsvp.User.id === selfUuid`), tightened to z.uuid().
+//          Optional to tolerate an absent User association.
 export const NestedUserIdentitySchema = z.object({
   id: z.uuid().optional(),
   username: z.string().nullable().optional(),
-  user_id: z.string().optional(),
 });
 export type NestedUserIdentity = z.infer<typeof NestedUserIdentitySchema>;
 
@@ -25,9 +23,15 @@ export type NestedUserIdentity = z.infer<typeof NestedUserIdentitySchema>;
 export const RsvpStatusSchema = z.enum(['yes', 'no', 'maybe']);
 export type RsvpStatus = z.infer<typeof RsvpStatusSchema>;
 
-// EventParticipation row.
+// EventParticipation row (events.js formatEventWithCustomParticipants).
+// `user_id` is the participant's Users.id UUID for group members and an
+// explicit null for custom (name-only) participants — never the Auth0 sub
+// (87.3 plan 10 tighten; the events participant path was already UUID-native).
+// `.nullish()`: the BE derives the member arm via `ep.User?.id`, so an absent
+// User association DROPS the key (undefined ≠ null) — the same absent-
+// association state the nested includes tolerate with `.optional()`.
 export const EventParticipationSchema = z.object({
-  user_id: z.string(),
+  user_id: z.uuid().nullish(),
   username: z.string().nullable().optional(),
   status: RsvpStatusSchema.nullable().optional(),
 });
@@ -70,8 +74,11 @@ export const RsvpSchema = z.object({
   // EventRsvp row PK — the wire field the FE keys rows by (RsvpSection).
   id: z.string(),
   event_id: z.string(),
-  // Flat user_id carries the Auth0 sub via the D-12 shim until PR-C (D-07).
-  user_id: z.string(),
+  // Post-PR-C (D-07 complete): the flat user_id carries the nested User.id
+  // UUID (rsvp.js wire map) — tightened to z.uuid() by the plan-10 fast-follow.
+  // `.optional()`: the wire value is derived via `json.User?.id`, so an absent
+  // User association drops the key — mirror the nested `User.id` tolerance.
+  user_id: z.uuid().optional(),
   status: RsvpStatusSchema,
   note: z.string().nullable().optional(),
   // D-04: nested User.id is the UUID compare target (tightened via z.uuid()).
@@ -95,8 +102,11 @@ export const EventBringSchema = z.object({
   // EventBring row PK.
   id: z.string(),
   event_id: z.string(),
-  // Flat user_id carries the Auth0 sub via the D-12 shim until PR-C (D-07).
-  user_id: z.string(),
+  // Post-PR-C (D-07 complete): the flat user_id carries the nested User.id
+  // UUID (eventBrings.js wire map) — tightened to z.uuid() (plan 10).
+  // `.optional()`: derived via `json.User?.id` — absent association drops the
+  // key; mirror the nested `User.id` tolerance.
+  user_id: z.uuid().optional(),
   game_id: z.string(),
   // Sequelize `include: [Game]` with no alias — the wire key is capitalized
   // (BringSummary reads `bring.Game?.name`).

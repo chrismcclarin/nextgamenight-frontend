@@ -423,7 +423,7 @@ export default function GameDetailPage() {
                 }
                 // Fetch RSVP status — both for the current viewer (already
                 // wired into RsvpSection) and as a per-participant map keyed
-                // by Auth0 user_id string for the strip + See-all chips.
+                // by the nested User.id UUID for the strip + See-all chips (D-04).
                 try {
                     const rsvpData = await rsvpAPI.getEventRsvps(event_id);
                     // Phase 87.3-04: my-RSVP derive gated on identity resolution
@@ -1106,6 +1106,15 @@ export default function GameDetailPage() {
                         onRsvpChange={(status) => {
                             const prevStatus = eventRsvpStatuses[singleEvent.id];
                             setEventRsvpStatuses(prev => ({ ...prev, [singleEvent.id]: status }));
+                            // Keep the participant-strip / See-all chips in sync
+                            // with the caller's own RSVP — rsvpByUserId is what
+                            // they read, and it otherwise stays stale until a
+                            // full refetch. Gate on selfUuid per the D-04 async-
+                            // resolution rule: unresolved = indeterminate, skip;
+                            // the next refetch reconciles.
+                            if (selfUuid) {
+                                setRsvpByUserId(prev => ({ ...prev, [selfUuid]: status }));
+                            }
                             if (status === 'yes' && prevStatus !== 'yes') {
                                 setBringPickerEventId(singleEvent.id);
                                 setShowBringPicker(true);
@@ -1876,6 +1885,12 @@ export default function GameDetailPage() {
                                             onRsvpChange={(status) => {
                                                 const prevStatus = eventRsvpStatuses[event.id];
                                                 setEventRsvpStatuses(prev => ({ ...prev, [event.id]: status }));
+                                                // NO rsvpByUserId patch here: that map is
+                                                // single-event data (fetched/read only by the
+                                                // event view's strip + See-all) — a per-user
+                                                // write from the multi-event view would flatten
+                                                // per-event state into a map with no event
+                                                // dimension (plan-10 review #2).
                                                 if (status === 'yes' && prevStatus !== 'yes') {
                                                     setBringPickerEventId(event.id);
                                                     setShowBringPicker(true);

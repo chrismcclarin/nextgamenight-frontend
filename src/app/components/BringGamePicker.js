@@ -11,11 +11,12 @@ import SafeImage from './SafeImage';
  * @param {Function} onClose - Called when user closes or skips
  * @param {string} eventId - UUID of the event
  * @param {object} self - Resolved self-identity row from useSelfIdentity
- *   ({ id: <Users.id UUID>, user_id: <sub>, ... }). Phase 87.3-04: my-brings
- *   preselect keys on `self.id` vs the nested `bring.User.id` UUID (D-04). The
- *   getOwnedGames server call keeps the SUB (`self.user_id`) — that route
- *   enforces `param === req.user.user_id` (the sub), so its arg shape is
- *   unchanged per the plan-wide "is-me is render-gating only" rule.
+ *   ({ id: <Users.id UUID>, user_id: <the SAME UUID via the PR-C toSelfWire
+ *   alias>, ... }). Phase 87.3-04: my-brings preselect keys on `self.id` vs
+ *   the nested `bring.User.id` UUID (D-04). The getOwnedGames server call
+ *   passes `self.user_id` (now the UUID) — the owned-games route's self-gate
+ *   accepts EITHER of the caller's own identifiers (sub OR Users.id UUID,
+ *   both JWT-resolved; dual-armed in PR-C), so the arg shape stays valid.
  * @param {Function} onSave - Called after successful save (triggers BringSummary refetch)
  */
 export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave }) {
@@ -39,8 +40,9 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
       setLoading(true);
       try {
         const [gamesRes, bringsRes] = await Promise.all([
-          // Server-call ARG keeps the SUB (self.user_id) — the owned-games route
-          // enforces `param === req.user.user_id` (the sub); not an is-me compare.
+          // Server-call ARG is self.user_id — post-PR-C the Users.id UUID
+          // (toSelfWire alias). The owned-games route's self-gate accepts both
+          // of the caller's own identifiers (sub OR UUID); not an is-me compare.
           userGamesAPI.getOwnedGames(self.user_id),
           eventBringsAPI.getEventBrings(eventId),
         ]);

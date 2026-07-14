@@ -53,13 +53,11 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
                 if (matchingMember) {
                   // If it matches a group member, set the user_id and mark as from group
                   onParticipantChange(index, 'user_id', matchingMember.id);
-                  onParticipantChange(index, 'auth0_user_id', matchingMember.user_id);
                   // Note: We can't change isFromGroup here, but the user_id will be set
                 } else {
                   // If it doesn't match, clear user_id (custom participant)
                   if (participant.user_id) {
                     onParticipantChange(index, 'user_id', '');
-                    onParticipantChange(index, 'auth0_user_id', '');
                   }
                 }
               }}
