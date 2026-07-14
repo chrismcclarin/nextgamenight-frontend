@@ -11,12 +11,16 @@ import { z } from 'zod';
 //               id is the permanent is-me compare target, tightened to z.uuid().
 //               Optional because a nested include may omit it when the User
 //               association is absent (see prompts.contract.test.ts member edge).
-//   `user_id` — the Auth0 string sub (NOT a UUID). Stays a bare z.string() through
-//               the rollout window; its .uuid() tighten is the plan-10 fast-follow
-//               AFTER PR-C removes the sub from the flat wire field (D-07).
+//   `user_id` — post-PR-C (87.3 plan 10, D-07 fast-follow) this carries the SAME
+//               Users.id UUID as `id` where emitted (toSelfWire alias on self
+//               reads/write echoes) — the Auth0 sub never crosses the wire.
+//               OPTIONAL because PR-C stripped it from every NESTED User include
+//               (friendships Requester/Addressee, rsvp/brings User) and dropped
+//               it from /friendships/search (BE-12) — those surfaces emit
+//               [id, username] only.
 export const UserSchema = z.object({
   id: z.uuid().optional(),
-  user_id: z.string(),
+  user_id: z.uuid().optional(),
   username: z.string().nullable().optional(),
   email: z.string().nullable().optional(),
   profile_picture_url: z.string().nullable().optional(),
@@ -41,10 +45,11 @@ export type FriendshipStatus = z.infer<typeof FriendshipStatusSchema>;
 
 export const FriendshipSchema = z.object({
   id: z.string(), // the friendship row's own PK (not a user-identity field)
-  // D-07: flat requester_id / addressee_id still carry the Auth0 sub via the
-  // BE toFriendshipWire shim until PR-C — leave them bare z.string() this PR.
-  requester_id: z.string().optional(),
-  addressee_id: z.string().optional(),
+  // Post-PR-C (D-07 complete): toFriendshipWire emits the flat requester_id /
+  // addressee_id as the Users.id UUIDs (equal to the nested Requester.id /
+  // Addressee.id) — tightened to z.uuid() by the plan-10 fast-follow.
+  requester_id: z.uuid().optional(),
+  addressee_id: z.uuid().optional(),
   status: FriendshipStatusSchema.nullable().optional(),
   friend: UserSchema.optional(),
   // D-04: the nested Requester/Addressee User rows carry the UUID `id` (the
@@ -58,6 +63,9 @@ export const FriendshipListSchema = z.array(FriendshipSchema);
 export type FriendshipList = z.infer<typeof FriendshipListSchema>;
 
 // magicAuthAPI (L672) — passwordless/magic-link auth results.
+// NOTE (87.3 plan 10): deliberately NOT tightened — the magic-auth/availability
+// family is the phase's named 87.4-deferred exclusion (wire-sweep allowlist);
+// the validate response emits no user_id at all today.
 export const MagicAuthResponseSchema = z.object({
   success: z.boolean().optional(),
   message: z.string().optional(),
