@@ -1106,6 +1106,15 @@ export default function GameDetailPage() {
                         onRsvpChange={(status) => {
                             const prevStatus = eventRsvpStatuses[singleEvent.id];
                             setEventRsvpStatuses(prev => ({ ...prev, [singleEvent.id]: status }));
+                            // Keep the participant-strip / See-all chips in sync
+                            // with the caller's own RSVP — rsvpByUserId is what
+                            // they read, and it otherwise stays stale until a
+                            // full refetch. Gate on selfUuid per the D-04 async-
+                            // resolution rule: unresolved = indeterminate, skip;
+                            // the next refetch reconciles.
+                            if (selfUuid) {
+                                setRsvpByUserId(prev => ({ ...prev, [selfUuid]: status }));
+                            }
                             if (status === 'yes' && prevStatus !== 'yes') {
                                 setBringPickerEventId(singleEvent.id);
                                 setShowBringPicker(true);
@@ -1876,6 +1885,11 @@ export default function GameDetailPage() {
                                             onRsvpChange={(status) => {
                                                 const prevStatus = eventRsvpStatuses[event.id];
                                                 setEventRsvpStatuses(prev => ({ ...prev, [event.id]: status }));
+                                                // Same own-chip sync as the single-event
+                                                // callback above (D-04 selfUuid gate).
+                                                if (selfUuid) {
+                                                    setRsvpByUserId(prev => ({ ...prev, [selfUuid]: status }));
+                                                }
                                                 if (status === 'yes' && prevStatus !== 'yes') {
                                                     setBringPickerEventId(event.id);
                                                     setShowBringPicker(true);
