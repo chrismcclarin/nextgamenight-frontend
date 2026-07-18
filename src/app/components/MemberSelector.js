@@ -56,7 +56,9 @@ export default function MemberSelector({
                   className="mr-2 h-4 w-4 rounded border-line"
                 />
                 <span className="text-content-secondary">
-                  {member.display_name || member.username || member.email || member.user_id}
+                  {/* 87.4 review PR2-L5: never render a raw identifier as a label —
+                      a username-less member falls back to 'Member', not their UUID. */}
+                  {member.display_name || member.username || member.email || 'Member'}
                 </span>
               </label>
             )}

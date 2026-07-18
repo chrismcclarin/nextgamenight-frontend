@@ -105,3 +105,33 @@ describe('MemberSelector — UUID-only schedule-edit checkboxes (87.4-10 PR-2)',
     expect(screen.getByRole('checkbox', { name: 'Ann' })).not.toBeChecked();
   });
 });
+
+// 87.4 review PR2-L5: a member with no display_name/username/email must render
+// the literal 'Member' label, NEVER their raw UUID (or any raw identifier).
+describe('MemberSelector — label fallback never renders a raw identifier (PR2-L5)', () => {
+  const CARL_UUID = '33333333-3333-3333-3333-333333333333';
+
+  function NamelessHarness() {
+    const { control, watch } = useForm<{ selected_member_ids: string[] }>({
+      defaultValues: { selected_member_ids: [] },
+    });
+    const selectedMemberIds = watch('selected_member_ids') || [];
+    return (
+      <MemberSelector
+        members={[
+          { user_id: 'auth0|carl', id: CARL_UUID, display_name: null, username: null, email: null },
+        ]}
+        control={control}
+        selectedMemberIds={selectedMemberIds}
+        onSelectAllMembers={() => {}}
+      />
+    );
+  }
+
+  it("renders 'Member' for a member with null display_name/username/email — not their UUID", () => {
+    render(<NamelessHarness />);
+    expect(screen.getByRole('checkbox', { name: 'Member' })).toBeInTheDocument();
+    expect(screen.queryByText(CARL_UUID)).not.toBeInTheDocument();
+    expect(screen.queryByText('auth0|carl')).not.toBeInTheDocument();
+  });
+});

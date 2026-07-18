@@ -159,7 +159,8 @@ export default function MergedHeatmapGrid({ slots = [], totalMembers, selectedSl
             const selectionRing = isSelected ? 'ring-2 ring-accent' : '';
             const tooltipContent =
               availableCount > 0 ? (
-                <div>{availableMembers.map((m) => m.username || m.user_id).join(', ')}</div>
+                // 87.4 review PR2-L5: 'Member' fallback — never render a raw UUID as a label
+                <div>{availableMembers.map((m) => m.username || 'Member').join(', ')}</div>
               ) : null;
 
             return (
