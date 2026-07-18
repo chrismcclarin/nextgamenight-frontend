@@ -5,6 +5,7 @@ import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay, differenceInMinutes, setHours, setMinutes, addMinutes, addDays, getHours, getMinutes } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import HeatmapTooltip from './HeatmapTooltip';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
@@ -63,6 +64,10 @@ export default function EventScheduler({
   // tooltip — matches EventHeatmapBackground's content shape.
   const { user } = Auth();
   const currentUserSub = user?.sub || null;
+  // 87.4 PR-1 (D-02): tolerate the caller's resolved Users.id UUID alongside the
+  // Auth0 sub at every is-me site, so the BE emission flip (PR-2) is safe in
+  // either deploy order. Plan 10 (PR-2) drops the sub arm.
+  const { selfUuid } = useSelfIdentity();
 
   // Build heatmap lookup: "localDate_localHour" -> slot
   // Backend returns UTC dates/hours -- convert to local so keys match the calendar
@@ -400,10 +405,12 @@ export default function EventScheduler({
       const slot = heatmapLookup.get(key);
       const conflicts = conflictLookup.get(key) || [];
       const hasAvailability = slot && slot.availableCount > 0;
-      const userHasConflict = currentUserSub
-        ? conflicts.some(c => c.user_id === currentUserSub)
-        : false;
-      const otherConflicts = conflicts.filter(c => c.user_id !== currentUserSub);
+      // ONE tolerant predicate shared by both the positive "is this conflict
+      // mine" compare and the adjacent negative "other members" filter, so they
+      // cannot drift apart after the PR-2 emission flip (87.4 D-02).
+      const isMe = (id) => id != null && (id === currentUserSub || id === selfUuid);
+      const userHasConflict = conflicts.some(c => isMe(c.user_id));
+      const otherConflicts = conflicts.filter(c => !isMe(c.user_id));
 
       // Pass children through unwrapped when there's nothing to show.
       if (!hasAvailability && !userHasConflict && otherConflicts.length === 0) {
@@ -463,7 +470,7 @@ export default function EventScheduler({
         </HeatmapTooltip>
       );
     },
-  }), [heatmapLookup, conflictLookup, totalMembers, currentUserSub]);
+  }), [heatmapLookup, conflictLookup, totalMembers, currentUserSub, selfUuid]);
 
   return (
     <div className="space-y-4">

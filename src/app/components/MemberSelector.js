@@ -41,12 +41,25 @@ export default function MemberSelector({
               <label className="flex items-center py-1">
                 <input
                   type="checkbox"
-                  checked={field.value?.includes(member.user_id || member.id)}
+                  // 87.4 PR-1 (D-02): a stored selected_member_ids entry may be
+                  // the member's sub (pre-backfill) OR their UUID (post-backfill),
+                  // so match against EITHER key -- not just whichever is truthy
+                  // first -- else a backfilled schedule renders every box
+                  // unchecked and re-saving silently drops the members.
+                  checked={field.value?.includes(member.user_id) || field.value?.includes(member.id)}
                   onChange={(e) => {
-                    const memberId = member.user_id || member.id;
+                    // ADD keeps writing the member's sub during PR-1 (falls back
+                    // to id only when a member has no sub) so writes stay
+                    // sub-based and either BE/FE deploy order is safe; Plan 10
+                    // (PR-2) collapses this to id-only.
+                    const addId = member.user_id || member.id;
+                    // REMOVE must drop whichever key is actually stored (sub OR
+                    // UUID); a sub-only filter leaves a backfilled UUID entry
+                    // behind, so the box re-renders checked and the member can
+                    // never be deselected.
                     const newValue = e.target.checked
-                      ? [...(field.value || []), memberId]
-                      : (field.value || []).filter(id => id !== memberId);
+                      ? [...(field.value || []), addId]
+                      : (field.value || []).filter(id => id !== member.user_id && id !== member.id);
                     field.onChange(newValue);
                   }}
                   className="mr-2 h-4 w-4 rounded border-line"

@@ -14,6 +14,12 @@ vi.mock('../components/TimezoneProvider', () => ({
   TimezoneProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock('@auth0/nextjs-auth0/client', () => ({ useUser: () => ({ user: { sub: 'me' } }) }));
+// 87.4 PR-1: EventHeatmapBackground now consumes useSelfIdentity (react-query);
+// mock it so this render path needs no QueryClientProvider. selfUuid undefined
+// here — the is-me predicate still resolves via the sub arm.
+vi.mock('../../lib/hooks/useSelfIdentity', () => ({
+  useSelfIdentity: () => ({ selfUuid: undefined, self: undefined, query: {}, isPending: false }),
+}));
 
 import EventHeatmapBackground from './EventHeatmapBackground';
 

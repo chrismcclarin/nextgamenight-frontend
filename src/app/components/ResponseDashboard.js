@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { promptAPI } from '@/lib/api';
+import { useSelfIdentity } from '@/lib/hooks/useSelfIdentity';
 
 /**
  * ResponseDashboard - Shows who has/hasn't responded to an availability prompt
@@ -29,6 +30,15 @@ export default function ResponseDashboard({
   const [error, setError] = useState(null);
   const [remindingUserId, setRemindingUserId] = useState(null);
   const [reminderError, setReminderError] = useState(null);
+
+  // 87.4 PR-1 (D-02): tolerate the caller's resolved Users.id UUID alongside the
+  // sub-fed currentUserId prop at every is-me compare, so the BE emission flip
+  // (PR-2) is safe in either deploy order. The remind-sender target and the
+  // groupPlanning currentUserId prop stay sub-based here -- they move together in
+  // Plan 10 (PR-2), since moving the sender to UUID before the BE remind endpoint
+  // is UUID-only would 404.
+  const { selfUuid } = useSelfIdentity();
+  const isMe = (id) => id != null && (id === currentUserId || id === selfUuid);
 
   // Fetch respondents on mount
   const fetchRespondents = useCallback(async () => {
@@ -98,7 +108,7 @@ export default function ResponseDashboard({
 
   // Calculate if user has responded (for blind voting visibility)
   const userHasResponded = respondents.find(
-    r => r.user_id === currentUserId
+    r => isMe(r.user_id)
   )?.has_responded;
 
   // Determine visibility level for slot counts
@@ -182,7 +192,7 @@ export default function ResponseDashboard({
 
                 <span className="text-content-primary truncate">
                   {r.username}
-                  {r.user_id === currentUserId && (
+                  {isMe(r.user_id) && (
                     <span className="text-content-muted text-sm ml-1">(you)</span>
                   )}
                 </span>
@@ -207,7 +217,7 @@ export default function ResponseDashboard({
               </div>
 
               {/* Remind button for admins on non-respondents */}
-              {isAdmin && !r.has_responded && r.user_id !== currentUserId && (
+              {isAdmin && !r.has_responded && !isMe(r.user_id) && (
                 <RemindButton
                   userId={r.user_id}
                   lastRemindedAt={r.last_reminded_at}
