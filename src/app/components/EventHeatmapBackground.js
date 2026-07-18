@@ -2,6 +2,7 @@
 
 import { useTimezone } from '../components/TimezoneProvider';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import ReadCell from './heatmap/ReadCell';
 
 /**
@@ -37,6 +38,9 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
   const { timezone } = useTimezone();
   const { user } = Auth();
   const currentUserSub = user?.sub || null;
+  // 87.4 PR-1 (D-02): tolerate the caller's resolved Users.id UUID alongside the
+  // Auth0 sub at every is-me site. Plan 10 (PR-2) drops the sub arm.
+  const { selfUuid } = useSelfIdentity();
   // No-data state: render nothing
   if (!heatmapData && !loading) return null;
 
@@ -160,10 +164,12 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
   function renderTooltipContent(slot, dateKey) {
     const hasAvailability = slot && slot.availableCount > 0;
     const conflicts = conflictMap.get(dateKey) || [];
-    const userHasConflict = currentUserSub
-      ? conflicts.some(c => c.user_id === currentUserSub)
-      : false;
-    const otherConflicts = conflicts.filter(c => c.user_id !== currentUserSub);
+    // ONE tolerant predicate shared by both the positive "is this conflict mine"
+    // compare and the adjacent negative "other members" filter, so they cannot
+    // drift apart after the PR-2 emission flip (87.4 D-02).
+    const isMe = (id) => id === currentUserSub || id === selfUuid;
+    const userHasConflict = conflicts.some(c => isMe(c.user_id));
+    const otherConflicts = conflicts.filter(c => !isMe(c.user_id));
 
     if (!hasAvailability && !userHasConflict && otherConflicts.length === 0) {
       return null;
