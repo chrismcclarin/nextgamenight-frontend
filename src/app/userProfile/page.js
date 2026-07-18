@@ -86,16 +86,24 @@ function Profile(){
     // FetchErrorBanner, so the global refetchOnWindowFocus:false default is never
     // touched. Replaces the old inline error state + hand-rolled setTimeout
     // silent-retry + manual window-refocus listener.
+    // 87.4 Plan 10 (SPEC Req 5): the availability self-param is the caller's
+    // resolved Users.id UUID (self.id from useSelfIdentity), not user.sub. The
+    // query is gated on self?.id -- NOT user?.sub -- so it cannot fire before
+    // identity resolves: `self` settles only after its own getUser round-trip
+    // past Auth0's session load, so gating on user?.sub alone would fire a
+    // doomed `/availability/user//patterns` request (empty id) that surfaces a
+    // transient FetchErrorBanner until self catches up. The BE matchesSelf
+    // dual-accept (Plan 02) still matches the caller on the UUID.
     const patternsQuery = useQuery({
-        queryKey: availabilityKeys.patterns(user?.sub),
+        queryKey: availabilityKeys.patterns(self?.id),
         queryFn: validatedQueryFn(
             AvailabilityPatternListSchema,
-            `/availability/user/${encodeURIComponent(user?.sub ?? '')}/patterns`
+            `/availability/user/${encodeURIComponent(self?.id ?? '')}/patterns`
         ),
-        enabled: Boolean(user?.sub),
+        enabled: Boolean(self?.id),
     });
     const availabilityPatterns = patternsQuery.data ?? [];
-    const loadingPatterns = Boolean(user?.sub) && patternsQuery.isPending;
+    const loadingPatterns = Boolean(self?.id) && patternsQuery.isPending;
     const patternsError = useFetchErrorState(patternsQuery);
     const [showRecurringForm, setShowRecurringForm] = useState(false);
     const [showSpecificForm, setShowSpecificForm] = useState(false);
@@ -719,7 +727,9 @@ function Profile(){
     }, [user, fetchOwnedGames, checkGoogleCalendarStatus]);
 
     const handleCreateRecurringPattern = async () => {
-        if (!user?.sub) return;
+        // 87.4 Plan 10: gate on the resolved self identity, not user?.sub, so the
+        // write cannot fire (and cannot send an empty self-param) before self resolves.
+        if (!self?.id) return;
         if (recurringForm.daysOfWeek.length === 0) {
             toast.error('Please select at least one day.');
             return;
@@ -733,7 +743,7 @@ function Profile(){
                 if (!formData.end_date || formData.end_date.trim() === '') {
                     delete formData.end_date;
                 }
-                await availabilityAPI.createRecurringPattern(user.sub, formData);
+                await availabilityAPI.createRecurringPattern(self.id, formData);
             }
             await patternsQuery.refetch();
             setShowRecurringForm(false);
@@ -756,10 +766,12 @@ function Profile(){
     };
 
     const handleCreateSpecificOverride = async () => {
-        if (!user?.sub) return;
+        // 87.4 Plan 10: gate on the resolved self identity, not user?.sub, so the
+        // write cannot fire (and cannot send an empty self-param) before self resolves.
+        if (!self?.id) return;
         try {
             setSavingPattern(true);
-            await availabilityAPI.createOverride(user.sub, specificForm);
+            await availabilityAPI.createOverride(self.id, specificForm);
             await patternsQuery.refetch();
             setShowSpecificForm(false);
             setSpecificForm({

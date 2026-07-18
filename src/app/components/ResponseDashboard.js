@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { promptAPI } from '@/lib/api';
-import { useSelfIdentity } from '@/lib/hooks/useSelfIdentity';
 
 /**
  * ResponseDashboard - Shows who has/hasn't responded to an availability prompt
@@ -31,14 +30,12 @@ export default function ResponseDashboard({
   const [remindingUserId, setRemindingUserId] = useState(null);
   const [reminderError, setReminderError] = useState(null);
 
-  // 87.4 PR-1 (D-02): tolerate the caller's resolved Users.id UUID alongside the
-  // sub-fed currentUserId prop at every is-me compare, so the BE emission flip
-  // (PR-2) is safe in either deploy order. The remind-sender target and the
-  // groupPlanning currentUserId prop stay sub-based here -- they move together in
-  // Plan 10 (PR-2), since moving the sender to UUID before the BE remind endpoint
-  // is UUID-only would 404.
-  const { selfUuid } = useSelfIdentity();
-  const isMe = (id) => id != null && (id === currentUserId || id === selfUuid);
+  // 87.4 PR-2 (D-02): the sub arm is dropped. groupPlanning now passes the
+  // caller's resolved Users.id UUID as `currentUserId` (was user?.sub), and the
+  // BE emits UUID respondent user_ids (Plan 08/09), so the is-me compare is
+  // UUID-only. The remind sender passes respondent.user_id straight through to
+  // the UUID-only BE remind endpoint (Plan 09) -- no sub survives either arm.
+  const isMe = (id) => id != null && id === currentUserId;
 
   // Fetch respondents on mount
   const fetchRespondents = useCallback(async () => {

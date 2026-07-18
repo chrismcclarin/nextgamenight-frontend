@@ -162,10 +162,18 @@ function GroupHomePage(){
     };
 
     const getGamesForGroup = useCallback(async () => {
-        if (!Router || !user?.sub) return;
+        // 87.4 Plan 10 (SPEC Req 5 + T-874-10-RACE): gate the games fetch on
+        // selfUuid resolution the same way getGroupMembers is (L109-115). selfUuid
+        // resolves ASYNC (after an Auth0-session-load round-trip), so a callback
+        // keyed only on user?.sub would close over an unresolved selfUuid on a hard
+        // load, send it as undefined, get a 403 from the self-gated lists endpoint,
+        // and have the catch below misread that 403 as a removal signal -- bouncing
+        // an active member. Gating here (and re-keying selfUuid into the deps) makes
+        // the fetch impossible to fire before identity resolves.
+        if (!Router || !user?.sub || !selfUuid) return;
         try {
             setLoading(true);
-            const games = await listsAPI.getGroupGames(Router, user.sub);
+            const games = await listsAPI.getGroupGames(Router, selfUuid);
             setGamesList(games || []);
         } catch (error) {
             // /api/lists/games/:groupId/:userId 403s non-members — treat
@@ -181,7 +189,7 @@ function GroupHomePage(){
             setLoading(false);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [Router, user?.sub]);
+    }, [Router, user?.sub, selfUuid]);
 
     useEffect(() => {
         if (Router && user?.sub) {
@@ -204,10 +212,13 @@ function GroupHomePage(){
     // there as a safety net — this gate just prevents the noise on the
     // happy path of "removed user opens a stale URL".
     useEffect(() => {
-        if (Router && user?.sub && membershipChecked) {
+        // 87.4 Plan 10: also gate the calling effect on selfUuid so it fires only
+        // once identity resolves (getGamesForGroup's own guard early-returns until
+        // then, and its identity changes when selfUuid lands via the deps above).
+        if (Router && user?.sub && selfUuid && membershipChecked) {
             getGamesForGroup();
         }
-    }, [Router, user?.sub, membershipChecked, getGamesForGroup]);
+    }, [Router, user?.sub, selfUuid, membershipChecked, getGamesForGroup]);
 
     const handleEventCreated = async (newEvent) => {
         // Refresh games list and calendar events after creating new event

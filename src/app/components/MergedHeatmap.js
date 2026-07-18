@@ -180,7 +180,8 @@ export default function MergedHeatmap({
             <span className="font-medium">
               {membersWithoutData.length} member{membersWithoutData.length !== 1 ? 's have' : ' has'} no availability schedule set up:
             </span>{' '}
-            {membersWithoutData.map((m) => m.username || m.user_id).join(', ')}
+            {/* 87.4 review PR2-L5: 'Member' fallback — never render a raw UUID as a label */}
+            {membersWithoutData.map((m) => m.username || 'Member').join(', ')}
           </div>
         </div>
       )}

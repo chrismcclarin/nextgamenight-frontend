@@ -34,38 +34,31 @@ export default function MemberSelector({
         {/* Individual members */}
         {members.map((member) => (
           <Controller
-            key={member.user_id || member.id}
+            key={member.id}
             name="selected_member_ids"
             control={control}
             render={({ field }) => (
               <label className="flex items-center py-1">
                 <input
                   type="checkbox"
-                  // 87.4 PR-1 (D-02): a stored selected_member_ids entry may be
-                  // the member's sub (pre-backfill) OR their UUID (post-backfill),
-                  // so match against EITHER key -- not just whichever is truthy
-                  // first -- else a backfilled schedule renders every box
-                  // unchecked and re-saving silently drops the members.
-                  checked={field.value?.includes(member.user_id) || field.value?.includes(member.id)}
+                  // 87.4 PR-2 (D-02): the PR-1 both-keys tolerance is collapsed to
+                  // UUID-only. selected_member_ids now stores member.id (the
+                  // Users.id UUID) exclusively -- the sub arm is gone from the
+                  // React key, the checked-state read, and the write below.
+                  checked={field.value?.includes(member.id)}
                   onChange={(e) => {
-                    // ADD keeps writing the member's sub during PR-1 (falls back
-                    // to id only when a member has no sub) so writes stay
-                    // sub-based and either BE/FE deploy order is safe; Plan 10
-                    // (PR-2) collapses this to id-only.
-                    const addId = member.user_id || member.id;
-                    // REMOVE must drop whichever key is actually stored (sub OR
-                    // UUID); a sub-only filter leaves a backfilled UUID entry
-                    // behind, so the box re-renders checked and the member can
-                    // never be deselected.
+                    const memberId = member.id;
                     const newValue = e.target.checked
-                      ? [...(field.value || []), addId]
-                      : (field.value || []).filter(id => id !== member.user_id && id !== member.id);
+                      ? [...(field.value || []), memberId]
+                      : (field.value || []).filter(id => id !== member.id);
                     field.onChange(newValue);
                   }}
                   className="mr-2 h-4 w-4 rounded border-line"
                 />
                 <span className="text-content-secondary">
-                  {member.display_name || member.username || member.email || member.user_id}
+                  {/* 87.4 review PR2-L5: never render a raw identifier as a label —
+                      a username-less member falls back to 'Member', not their UUID. */}
+                  {member.display_name || member.username || member.email || 'Member'}
                 </span>
               </label>
             )}
