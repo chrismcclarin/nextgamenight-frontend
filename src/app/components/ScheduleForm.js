@@ -84,7 +84,9 @@ export default function ScheduleForm({
           game_name: '',
           template_name: '',
           min_participants: null,
-          selected_member_ids: members.map(m => m.user_id || m.id),
+          // 87.4 PR-2 (D-02): create-mode default seeding emits member.id (UUID)
+          // only -- the PR-1 sub-or-UUID dual-key tolerance is collapsed.
+          selected_member_ids: members.map(m => m.id),
         },
   });
 
@@ -351,7 +353,8 @@ export default function ScheduleForm({
               selectedMemberIds={selectedMemberIds}
               onSelectAllMembers={(checked) => {
                 if (checked) {
-                  setValue('selected_member_ids', members.map(m => m.user_id || m.id));
+                  // 87.4 PR-2 (D-02): select-all emits member.id (UUID) only.
+                  setValue('selected_member_ids', members.map(m => m.id));
                 } else {
                   setValue('selected_member_ids', []);
                 }
