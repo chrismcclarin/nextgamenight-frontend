@@ -167,7 +167,7 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
     // ONE tolerant predicate shared by both the positive "is this conflict mine"
     // compare and the adjacent negative "other members" filter, so they cannot
     // drift apart after the PR-2 emission flip (87.4 D-02).
-    const isMe = (id) => id === currentUserSub || id === selfUuid;
+    const isMe = (id) => id != null && (id === currentUserSub || id === selfUuid);
     const userHasConflict = conflicts.some(c => isMe(c.user_id));
     const otherConflicts = conflicts.filter(c => !isMe(c.user_id));
 

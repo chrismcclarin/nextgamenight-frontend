@@ -38,7 +38,7 @@ export default function ResponseDashboard({
   // Plan 10 (PR-2), since moving the sender to UUID before the BE remind endpoint
   // is UUID-only would 404.
   const { selfUuid } = useSelfIdentity();
-  const isMe = (id) => id === currentUserId || id === selfUuid;
+  const isMe = (id) => id != null && (id === currentUserId || id === selfUuid);
 
   // Fetch respondents on mount
   const fetchRespondents = useCallback(async () => {
