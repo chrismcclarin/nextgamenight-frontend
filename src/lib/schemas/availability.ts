@@ -25,6 +25,20 @@ export type TimeSlot = z.infer<typeof TimeSlotSchema>;
 // and absent otherwise, never null on the wire). `.optional()` still permits a
 // genuinely-omitted field (dropped entry). This tighten lands in PR-2 AFTER the
 // BE flip is live (87.3 D-07 sequencing) so it cannot hard-fail live parsing.
+//
+// SCOPE (87.4 review PR2-M4): this z.uuid() tighten is TYPE-LEVEL-ONLY — no
+// caller runtime-parses AvailabilitySchema/AvailabilityListSchema today; its
+// enforcement is z.infer typing plus the safeParse contract pins in
+// availability.test.ts. It is deliberately NOT propagated onto
+// AvailabilityPatternSchema (the one runtime-parsed availability schema,
+// below): validatedQueryFn HARD-THROWS on parse failure (ZodError →
+// QueryCache.onError → Sentry, payload dropped), so a `user_id: z.uuid()`
+// field there would let one sub-shaped/legacy id fail the ENTIRE patterns
+// payload on /userProfile — breaking the Phase 86-03 schema-drift rule that
+// unknown/unconsumed top-level keys (user_id included) are stripped, never a
+// throw. If a runtime consumer of AvailabilitySchema is ever added, wire it
+// through a soft-fail (safeParse + log) boundary before relying on this
+// tighten at runtime.
 export const AvailabilitySchema = z.object({
   user_id: z.uuid().optional(),
   group_id: z.string().optional(),

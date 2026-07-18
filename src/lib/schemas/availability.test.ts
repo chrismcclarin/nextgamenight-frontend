@@ -18,7 +18,11 @@
 // This is PR-2 (after the BE flip is live), never PR-1: tightening before the
 // emissions are UUID would hard-fail live parsing (87.3 D-07 sequencing).
 import { describe, it, expect } from 'vitest';
-import { AvailabilitySchema, AvailabilityListSchema } from './availability';
+import {
+  AvailabilitySchema,
+  AvailabilityListSchema,
+  AvailabilityPatternSchema,
+} from './availability';
 
 // Properly-formed UUIDs (valid RFC version+variant nibbles) — z.uuid() enforces
 // both, so all-same-digit placeholders would false-fail the positive cases.
@@ -63,5 +67,36 @@ describe('AvailabilityListSchema — rows validate their user_id as UUID', () =>
       { user_id: SUB, group_id: 'g1' },
     ]);
     expect(result.success).toBe(false);
+  });
+});
+
+// 87.4 review PR2-M4 (branch b): the z.uuid() tighten stays OFF the runtime-
+// parsed AvailabilityPatternSchema by design — validatedQueryFn hard-throws on
+// parse failure, so an identity field there would let one bad id drop the whole
+// /userProfile patterns payload (Phase 86-03 never-throw drift rule). These pin
+// that a top-level user_id on a pattern row — UUID *or* legacy sub-shaped — is
+// STRIPPED, never a throw. If this suite starts failing because user_id was
+// added to the schema, re-read the SCOPE comment in availability.ts first.
+describe('AvailabilityPatternSchema — top-level user_id is stripped, never validated (PR2-M4)', () => {
+  const baseRow = {
+    id: 42,
+    type: 'recurring_pattern',
+    pattern_data: { dayOfWeek: 2, startTime: '18:00', endTime: '21:00' },
+  };
+
+  it('parses a pattern row carrying a UUID user_id and STRIPS it (no schema field)', () => {
+    const result = AvailabilityPatternSchema.safeParse({ ...baseRow, user_id: UUID });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty('user_id');
+    }
+  });
+
+  it('does NOT throw on a sub-shaped user_id (soft-tolerant: stripped, not validated)', () => {
+    const result = AvailabilityPatternSchema.safeParse({ ...baseRow, user_id: SUB });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty('user_id');
+    }
   });
 });
