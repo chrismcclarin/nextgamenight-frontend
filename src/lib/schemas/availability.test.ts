@@ -20,8 +20,10 @@
 import { describe, it, expect } from 'vitest';
 import { AvailabilitySchema, AvailabilityListSchema } from './availability';
 
-const UUID = '11111111-1111-1111-1111-111111111111';
-const UUID_B = '22222222-2222-2222-2222-222222222222';
+// Properly-formed UUIDs (valid RFC version+variant nibbles) — z.uuid() enforces
+// both, so all-same-digit placeholders would false-fail the positive cases.
+const UUID = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+const UUID_B = 'a1b2c3d4-1111-42d2-8333-444455556666';
 const SUB = 'auth0|abc123';
 
 describe('AvailabilitySchema.user_id — z.uuid() identity tightening (87.4-10 PR-2)', () => {

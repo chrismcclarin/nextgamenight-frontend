@@ -18,8 +18,15 @@ export const TimeSlotSchema = z.object({
 export type TimeSlot = z.infer<typeof TimeSlotSchema>;
 
 // availabilityAPI (L608) — a user's recurring/submitted availability.
+// 87.4 Plan 10 (PR-2 / D-03): `user_id` is the caller's Users.id UUID post the
+// BE emission flip (Plans 08/09), so it is tightened from a loose `z.string()`
+// to `z.uuid()` — rejecting sub-shaped ids AND null (no `.nullable()`, matching
+// Plan 08's drop-on-map-miss rule: identity fields are valid UUIDs when present
+// and absent otherwise, never null on the wire). `.optional()` still permits a
+// genuinely-omitted field (dropped entry). This tighten lands in PR-2 AFTER the
+// BE flip is live (87.3 D-07 sequencing) so it cannot hard-fail live parsing.
 export const AvailabilitySchema = z.object({
-  user_id: z.string().optional(),
+  user_id: z.uuid().optional(),
   group_id: z.string().optional(),
   time_slots: z.array(TimeSlotSchema).optional(),
   is_unavailable: z.boolean().optional(),
