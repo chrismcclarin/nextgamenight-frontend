@@ -259,7 +259,7 @@ export default function GroupPlanningPage() {
                                 <ResponseDashboard
                                     promptId={heatmapPrompt.id}
                                     isAdmin={isAdmin}
-                                    currentUserId={user?.sub}
+                                    currentUserId={selfUuid}
                                     blindVotingEnabled={heatmapPrompt.blind_voting_enabled}
                                     pollClosed={pollClosed}
                                 />

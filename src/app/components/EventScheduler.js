@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay, differenceInMinutes, setHours, setMinutes, addMinutes, addDays, getHours, getMinutes } from 'date-fns';
 import { enUS } from 'date-fns/locale';
-import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import HeatmapTooltip from './HeatmapTooltip';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
@@ -62,11 +61,9 @@ export default function EventScheduler({
   // Phase 72-02 UAT: identify the viewing user so we can render a self-conflict
   // line ("You have a Google Calendar conflict at this time") in the per-slot
   // tooltip — matches EventHeatmapBackground's content shape.
-  const { user } = Auth();
-  const currentUserSub = user?.sub || null;
-  // 87.4 PR-1 (D-02): tolerate the caller's resolved Users.id UUID alongside the
-  // Auth0 sub at every is-me site, so the BE emission flip (PR-2) is safe in
-  // either deploy order. Plan 10 (PR-2) drops the sub arm.
+  // 87.4 PR-2 (D-02): the sub arm is dropped. The BE emits UUID conflict
+  // user_ids (Plan 08), so the is-me compare is UUID-only against selfUuid (the
+  // caller's resolved Users.id from useSelfIdentity).
   const { selfUuid } = useSelfIdentity();
 
   // Build heatmap lookup: "localDate_localHour" -> slot
@@ -405,10 +402,10 @@ export default function EventScheduler({
       const slot = heatmapLookup.get(key);
       const conflicts = conflictLookup.get(key) || [];
       const hasAvailability = slot && slot.availableCount > 0;
-      // ONE tolerant predicate shared by both the positive "is this conflict
-      // mine" compare and the adjacent negative "other members" filter, so they
-      // cannot drift apart after the PR-2 emission flip (87.4 D-02).
-      const isMe = (id) => id != null && (id === currentUserSub || id === selfUuid);
+      // ONE predicate shared by both the positive "is this conflict mine"
+      // compare and the adjacent negative "other members" filter, so they cannot
+      // drift apart. UUID-only post-PR-2 emission flip (87.4 D-02).
+      const isMe = (id) => id != null && id === selfUuid;
       const userHasConflict = conflicts.some(c => isMe(c.user_id));
       const otherConflicts = conflicts.filter(c => !isMe(c.user_id));
 
@@ -470,7 +467,7 @@ export default function EventScheduler({
         </HeatmapTooltip>
       );
     },
-  }), [heatmapLookup, conflictLookup, totalMembers, currentUserSub, selfUuid]);
+  }), [heatmapLookup, conflictLookup, totalMembers, selfUuid]);
 
   return (
     <div className="space-y-4">
