@@ -46,7 +46,11 @@ export function TimezoneProvider({ children }) {
   // TZ-01 forwarding (detectBrowserTimezone() as getUser's 2nd arg → backend
   // persist/backfill) lives inside the hook's queryFn, so migrating the fetch
   // onto the shared cache preserves the persist/backfill write side-effect.
-  const { self } = useSelfIdentity();
+  // 87.5 Plan 09 (SPEC Req 6): the setTimezone persist below sends the caller's
+  // resolved Users.id UUID (selfUuid) instead of user.sub. selfUuid is flipped
+  // INSIDE the user-action callback only — the mount effect stays read-only per
+  // the locked Phase 62 no-auto-sync policy in this file's header.
+  const { self, selfUuid } = useSelfIdentity();
 
   // Browser TZ is captured once on mount and stays available — used both as
   // fallback for `timezone` when profile TZ is unset, AND exposed to consumers
@@ -68,11 +72,22 @@ export function TimezoneProvider({ children }) {
    * that should ever write to User.timezone.
    */
   const setTimezone = useCallback(async (newTimezone) => {
+    // D-02: persisting the profile TZ requires the resolved caller UUID. Guard
+    // BEFORE the optimistic display-state update — flipping display to a value
+    // we can't persist would silently revert on the next remount. In practice
+    // the picker/nudge CTA only render after `self` (and thus selfUuid) has
+    // resolved, so this is defensive; if it ever trips it fails LOUD (throws)
+    // rather than swallowing the action. Logged-out callers keep the display-only
+    // fallback (no send), matching the pre-existing behavior.
+    if (user?.sub && !selfUuid) {
+      console.error('Cannot update timezone: identity not resolved yet');
+      throw new Error('Your account is still loading — please try again in a moment.');
+    }
     setTimezoneState(newTimezone);
     setIsProfileTimezoneSet(Boolean(newTimezone));
-    if (user?.sub) {
+    if (selfUuid) {
       try {
-        await usersAPI.updateTimezone(user.sub, newTimezone);
+        await usersAPI.updateTimezone(selfUuid, newTimezone);
         // Cache-coherence (SELF_IDENTITY_KEY contract): keep the immortal self
         // cache in sync so a later remount reads the new profile TZ, not the
         // stale pre-mutation one.
@@ -81,7 +96,7 @@ export function TimezoneProvider({ children }) {
         console.error('Failed to update timezone:', err.message);
       }
     }
-  }, [user?.sub, queryClient]);
+  }, [user?.sub, selfUuid, queryClient]);
 
   // On mount / user change / self resolution: read stored profile TZ; never write.
   useEffect(() => {

@@ -51,7 +51,11 @@ export default function TutorialProvider({ children }) {
   const { user, isLoading } = Auth();
   const queryClient = useQueryClient();
   // D-02: read tutorial_version off the shared self row (no duplicate fetch).
-  const { self } = useSelfIdentity();
+  // 87.5 Plan 09 (SPEC Req 6): completeTutorial persists to the caller's resolved
+  // Users.id UUID (selfUuid) instead of user.sub — flipped INSIDE the user-action
+  // callback only. The auto-trigger effect below adds NO send (it would silently
+  // mark the tutorial complete for new users on mount).
+  const { self, selfUuid } = useSelfIdentity();
   const pathname = usePathname();
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialChecked, setTutorialChecked] = useState(false);
@@ -73,11 +77,23 @@ export default function TutorialProvider({ children }) {
 
   // Complete tutorial: dismiss immediately, persist to backend async
   const completeTutorial = useCallback(() => {
+    // D-02: persisting completion requires the resolved caller UUID. Guard BEFORE
+    // the optimistic dismissal — dismissing without persisting would silently
+    // re-show the tutorial on the next remount. In practice the overlay only
+    // renders after `self` (and thus selfUuid) has resolved (the auto-trigger
+    // effect is `self`-gated; replay runs from the self-resolved profile), so
+    // this guard is defensive and fails LOUD rather than silently no-op if it
+    // ever trips. Logged-out callers fall through to the plain local dismissal.
+    if (user?.sub && !selfUuid) {
+      console.error('Cannot complete tutorial: identity not resolved yet');
+      return;
+    }
+
     setShowTutorial(false);
     setTutorialChecked(true);
 
-    if (user?.sub) {
-      usersAPI.completeTutorial(user.sub, CURRENT_TUTORIAL_VERSION)
+    if (selfUuid) {
+      usersAPI.completeTutorial(selfUuid, CURRENT_TUTORIAL_VERSION)
         .then(() => {
           // Cache-coherence (SELF_IDENTITY_KEY contract): persist the new
           // tutorial_version into the immortal self cache so a remount doesn't
@@ -89,7 +105,7 @@ export default function TutorialProvider({ children }) {
           console.error('Failed to persist tutorial completion:', err);
         });
     }
-  }, [user?.sub, queryClient]);
+  }, [user?.sub, selfUuid, queryClient]);
 
   // Replay tutorial: re-show from any page (no pathname gate)
   const replayTutorial = useCallback(() => {
