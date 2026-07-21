@@ -108,3 +108,36 @@ describe('groupHomePage membership gate vs unresolved identity', () => {
     expect(pushSpy).not.toHaveBeenCalled();
   });
 });
+
+// PR2-L11 (SPEC Req 7): getGroup + fetchGroupEvents must NOT re-fire when
+// selfUuid resolves. On a hard load identity resolves asynchronously AFTER the
+// mount effect's first run; if getGroup/getGroupEvents shared the selfUuid-gated
+// effect they would fetch a second, wasted time. Splitting them off the selfUuid
+// dep makes each fire exactly once. getGroupMembers stays selfUuid-gated (it
+// legitimately re-runs to recompute the membership derive once identity lands).
+describe('groupHomePage double-fetch — single-fire per hard load', () => {
+  it('fires getGroup + getGroupEvents exactly once across async identity resolution', async () => {
+    // Hard load: mount with identity still pending (selfUuid undefined)...
+    h.selfUuid = undefined;
+    h.isPending = true;
+    const { rerender } = render(<GroupHomePage />);
+
+    // ...then identity resolves post-mount, triggering a re-render. In the
+    // pre-split code this re-runs the combined effect and double-fetches
+    // getGroup/getGroupEvents; after the split it must not.
+    h.selfUuid = SELF_UUID;
+    h.isPending = false;
+    rerender(<GroupHomePage />);
+
+    // getGroupMembers re-runs once identity resolves (still selfUuid-gated) and
+    // confirms membership, so the games fetch fires — a clean anchor for "the
+    // resolution re-render happened".
+    await waitFor(() => expect(listsAPI.getGroupGames as Mock).toHaveBeenCalled());
+
+    // The load-once fetches must have fired exactly once despite the resolution
+    // re-render — proof the effect split removed the double-fetch.
+    expect(groupsAPI.getGroup as Mock).toHaveBeenCalledTimes(1);
+    expect(eventsAPI.getGroupEvents as Mock).toHaveBeenCalledTimes(1);
+    expect(pushSpy).not.toHaveBeenCalled();
+  });
+});
