@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useUser } from '@auth0/nextjs-auth0/client';
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { promptSettingsAPI } from '../../lib/api';
 import { DAYS_OF_WEEK, TOKEN_EXPIRY_OPTIONS, DEADLINE_DAY_OPTIONS, scheduleSchema } from '../../lib/scheduleFormSchema';
 import { useAppForm } from '../../lib/useAppForm';
@@ -30,7 +30,11 @@ export default function ScheduleForm({
 }) {
   const [serverError, setServerError] = useState(null);
   const isEditMode = !!existingSchedule;
-  const { user: authUser } = useUser();
+  // Identity: send the caller's resolved Users.id UUID to searchAll (via
+  // GameComboInput's userId prop), not the Auth0 sub (87.5 BINT-02). searchAll
+  // fires only on user typing, and GameComboInput's search useCallback already
+  // deps on userId, so the resolved UUID re-binds the moment identity settles.
+  const { selfUuid } = useSelfIdentity();
   // CHKIN-03: once the user focuses/interacts with the template name field,
   // stop auto-overwriting it on day/time/game changes. The ref persists across
   // renders without triggering re-renders itself.
@@ -288,7 +292,7 @@ export default function ScheduleForm({
                 setValue('game_name', game_name || '', { shouldValidate: false });
               }}
               groupId={groupId}
-              userId={authUser?.sub}
+              userId={selfUuid}
               placeholder="Search for a game or type a name (leave blank for Game TBD)"
             />
             <p className="text-xs text-content-muted mt-1">
