@@ -750,20 +750,8 @@ export const listsAPI = {
     return apiFetch(`/lists/games/${group_id}/${encodeURIComponent(user_id)}?${params.toString()}`);
   },
   
-  // Get most played games
-  getMostPlayed: (group_id: string, user_id: string) => 
-    apiFetch(`/lists/most-played/${group_id}/${encodeURIComponent(user_id)}`),
-  
-  // Get least played games
-  getLeastPlayed: (group_id: string, user_id: string) => 
-    apiFetch(`/lists/least-played/${group_id}/${encodeURIComponent(user_id)}`),
-  
-  // Get games alphabetically
-  getAlphabetical: (group_id: string, user_id: string) => 
-    apiFetch(`/lists/alphabetical/${group_id}/${encodeURIComponent(user_id)}`),
-  
   // Get games by theme
-  getByTheme: (group_id: string, theme: string, user_id: string) => 
+  getByTheme: (group_id: string, theme: string, user_id: string) =>
     apiFetch(`/lists/by-theme/${group_id}/${encodeURIComponent(theme)}/${encodeURIComponent(user_id)}`),
 };
 
