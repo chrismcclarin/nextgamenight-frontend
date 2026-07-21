@@ -39,10 +39,13 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     // EventParticipation events (game-only). Re-runs when refreshKey changes
     // (mirrors the existing EventCalendar refresh pattern).
     useEffect(() => {
-        if (!user?.sub) return;
+        // Mount-fire gate: wait for the caller's own Users.id UUID. selfUuid is
+        // in the dep array (async-resolution rule) so the fetch fires once
+        // identity resolves, not only at initial mount.
+        if (!selfUuid) return;
         let cancelled = false;
         setUpcomingLoading(true);
-        eventsAPI.getUserEvents(user.sub).then(evts => {
+        eventsAPI.getUserEvents(selfUuid).then(evts => {
             if (cancelled) return;
             const list = Array.isArray(evts) ? evts : [];
             // UpcomingEventsCard does its own filter+sort; pass the raw list.
@@ -53,7 +56,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
             if (!cancelled) setUpcomingLoading(false);
         });
         return () => { cancelled = true; };
-    }, [user?.sub, refreshKey]);
+    }, [user?.sub, refreshKey, selfUuid]);
 
     const handleGroupSelect = (group) => {
         setSelectedGroup(group);
