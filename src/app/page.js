@@ -7,14 +7,20 @@ import CreateGroup from './components/createGroup';
 import UserHome from './userHome/UserHomePage';
 import LandingPage from './components/LandingPage';
 import { groupsAPI, API_BASE_URL } from '../lib/api';
+import { useSelfIdentity } from '../lib/hooks/useSelfIdentity';
 
 function App(){
 
   // List of groups associated with the logged-in user
   const [GroupList, setGroupList] = useState(null);
-  
+
   // User information from Auth0
   const { user, error, isLoading } = Auth();
+
+  // Resolve the caller's own Users.id UUID via the shared identity primitive.
+  // getGroupList sends this instead of the Auth0 sub; it resolves ASYNC after
+  // mount, so the mount effect keys on it (async-resolution rule).
+  const { selfUuid } = useSelfIdentity();
   
   // Open and close the create group modal
   const [groupModal, setGroupModal] = useState(false);
@@ -24,22 +30,24 @@ function App(){
 
   // Fetch groups for the logged-in user
   const getGroupList = async () => {
-    if (!user?.sub) return;
+    // Mount-fire gate: wait for the caller's own Users.id UUID to resolve.
+    if (!selfUuid) return;
     try {
       // Use groupsAPI.getUserGroups which automatically includes Authorization header
-      const data = await groupsAPI.getUserGroups(user.sub);
+      const data = await groupsAPI.getUserGroups(selfUuid);
       setGroupList(data);
     } catch (error) {
       console.error('Error fetching groups:', error.message || 'Unknown error');
     }
   };
 
-  // Load groups when user is available
+  // Load groups when user is available. selfUuid is in the dependency array per
+  // the async-resolution rule — the fetch re-fires once identity resolves.
   useEffect(() => {
     if (user) {
       getGroupList();
     }
-  }, [user]);
+  }, [user, selfUuid]);
 
   // GROUP-08: post-invite-accept refresh handoff. Two trigger paths land here.
   // (a) sessionStorage flag — set by /invite/group/[token] and /invite/accept

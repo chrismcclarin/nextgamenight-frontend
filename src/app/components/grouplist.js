@@ -32,11 +32,14 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   const [settingsGroup, setSettingsGroup] = useState(null);
   const [userRoles, setUserRoles] = useState({});
 
+  // selfUuid resolves ASYNC after this mount effect's first run, so it is in the
+  // dependency array per the async-resolution rule — the fetch re-fires (and the
+  // list populates) once identity resolves, instead of silently no-oping forever.
   useEffect(() => {
     if (user) {
       fetchGroups();
     }
-  }, [user, refreshTrigger]); // Add refreshTrigger to dependencies
+  }, [user, refreshTrigger, selfUuid]); // selfUuid gates the getUserGroups sender below
 
   // Derive per-group self role reactively off the resolved UUID. Kept separate
   // from the group fetch so an unresolved selfUuid never stores a wrong "no
@@ -58,12 +61,14 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   }, [groups, selfUuid]);
 
   const fetchGroups = async () => {
-    if (!user?.sub) return;
+    // Mount-fire gate: wait for the caller's own Users.id UUID to resolve. This
+    // guard IS the resolution gate (paired with selfUuid in the effect deps).
+    if (!selfUuid) return;
 
     try {
       setLoading(true);
       // Use groupsAPI.getUserGroups which automatically includes Authorization header
-      const groupsData = await groupsAPI.getUserGroups(user.sub);
+      const groupsData = await groupsAPI.getUserGroups(selfUuid);
       setGroups(groupsData || []);
     } catch (error) {
       console.error('Error fetching groups:', error.message || 'Unknown error');

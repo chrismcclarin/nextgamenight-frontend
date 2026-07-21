@@ -75,17 +75,31 @@ function FriendsPage() {
 
     const fetchAllData = async () => {
         // receivedRequests now lives in FriendshipStatusProvider — no local
-        // fetch here.
+        // fetch here. fetchUserGroups is NOT in this list: it sends the caller's
+        // own UUID (selfUuid) and runs in its own selfUuid-gated effect below, so
+        // it never re-fires fetchFriends/fetchSentRequests when identity resolves.
         await Promise.allSettled([
             fetchFriends(),
             fetchSentRequests(),
-            fetchUserGroups(),
         ]);
     };
 
+    // fetchUserGroups is split into its own effect (mirroring the admin-group
+    // derive effect below, keyed [rawGroups, selfUuid]). Its getUserGroups sender
+    // sends selfUuid, which resolves ASYNC after mount, so this effect gates on
+    // it AND keys on it — the fetch fires once identity resolves. Keeping it out
+    // of the [user]-keyed fetchAllData effect avoids re-firing fetchFriends /
+    // fetchSentRequests every time selfUuid resolves (a NEW double-fetch).
+    useEffect(() => {
+        if (!selfUuid) return;
+        fetchUserGroups();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selfUuid]);
+
     const fetchUserGroups = async () => {
+        if (!selfUuid) return;
         try {
-            const groups = await groupsAPI.getUserGroups(user.sub);
+            const groups = await groupsAPI.getUserGroups(selfUuid);
             setRawGroups(Array.isArray(groups) ? groups : []);
         } catch (err) {
             console.error('Error fetching user groups:', err);
