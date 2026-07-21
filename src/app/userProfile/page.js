@@ -54,7 +54,13 @@ function Profile(){
     const searchParams = useSearchParams();
     const queryClient = useQueryClient();
     // D-02: the profile's self row comes from the shared, deduped query.
-    const { self, query: selfQuery } = useSelfIdentity();
+    // 87.5 Plan 09 (SPEC Req 6): the census §3 wire-crossing senders below send
+    // the caller's resolved Users.id UUID (selfUuid) instead of user.sub. The
+    // wire field NAME stays `user_id`; only the VALUE flips. selfUuid is
+    // undefined until the cached self-fetch resolves, so mount-fire senders gate
+    // on it (+ selfUuid in their dep arrays so they re-run once it resolves) and
+    // user-action senders guard-before-optimistic-update, failing loud.
+    const { self, selfUuid, query: selfQuery } = useSelfIdentity();
     const [ownedGames, setOwnedGames] = useState([]);
     const [loadingGames, setLoadingGames] = useState(true);
     const [bggSearchQuery, setBggSearchQuery] = useState('');
@@ -244,9 +250,13 @@ function Profile(){
 
     const handleReplayTutorial = async () => {
         if (!user?.sub) return;
+        if (!selfUuid) {
+            toast.error('Still loading your account — please try again in a moment.');
+            return;
+        }
         try {
             setReplayingTutorial(true);
-            await usersAPI.resetTutorial(user.sub);
+            await usersAPI.resetTutorial(selfUuid);
             replayTutorial();
         } catch (error) {
             console.error('Error replaying tutorial:', error);
@@ -286,10 +296,14 @@ function Profile(){
 
     const handleSaveAndVerify = async () => {
         if (!user?.sub || !phoneValidation.valid) return;
+        if (!selfUuid) {
+            setPhoneError('Still loading your account — please try again in a moment.');
+            return;
+        }
         try {
             setPhoneState('saving');
             setPhoneError(null);
-            await usersAPI.savePhone(user.sub, phoneInput);
+            await usersAPI.savePhone(selfUuid, phoneInput);
             // Persist the (still-unverified) number into the self cache so a
             // remount mid-verification re-hydrates the entered number rather than
             // the stale pre-save row.
@@ -304,9 +318,13 @@ function Profile(){
 
     const handleVerifyCode = async () => {
         if (!user?.sub || !verificationCode) return;
+        if (!selfUuid) {
+            setPhoneError('Still loading your account — please try again in a moment.');
+            return;
+        }
         try {
             setPhoneError(null);
-            await usersAPI.verifyPhone(user.sub, verificationCode);
+            await usersAPI.verifyPhone(selfUuid, verificationCode);
             setPhoneState('verified');
             setVerificationCode('');
             // Reflect the now-verified number locally (enables the SMS toggles,
@@ -329,9 +347,13 @@ function Profile(){
 
     const handleResendCode = async () => {
         if (!user?.sub || resendCooldown > 0) return;
+        if (!selfUuid) {
+            setPhoneError('Still loading your account — please try again in a moment.');
+            return;
+        }
         try {
             setPhoneError(null);
-            await usersAPI.savePhone(user.sub, phoneInput);
+            await usersAPI.savePhone(selfUuid, phoneInput);
             setResendCooldown(60);
             const timer = setInterval(() => {
                 setResendCooldown(prev => {
@@ -364,6 +386,10 @@ function Profile(){
     // the cascaded response and sets phoneJustRemoved so the amber banner fires.
     const handleRemovePhone = async () => {
         if (!user?.sub) return;
+        if (!selfUuid) {
+            setPhoneError('Still loading your account — please try again in a moment.');
+            return;
+        }
         if (!removeArmed) {
             // First tap — arm.
             if (removeArmedTimerRef.current) clearTimeout(removeArmedTimerRef.current);
@@ -379,7 +405,7 @@ function Profile(){
         removeArmedTimerRef.current = null;
         setRemoveArmed(false);
         try {
-            const updatedUser = await usersAPI.removePhone(user.sub);
+            const updatedUser = await usersAPI.removePhone(selfUuid);
             setUserData(updatedUser);
             // Cache-coherence: PATCH only the fields the cascade changed. The
             // DELETE response is a DEFAULT-scope row (no phone/email), while the
@@ -423,6 +449,16 @@ function Profile(){
 
     // Notification preference toggle handler (auto-save with optimistic update)
     const handleToggle = async (notificationType, channel, newValue) => {
+        // 87.5 Plan 09: identity-resolution guard BEFORE any optimistic state
+        // write. The optimistic setPreferences below runs before the send, so a
+        // guard placed just before the await would leave the UI showing an
+        // un-sent change with no rollback (the catch's setPreferences rollback
+        // never runs — no error is thrown). Fail loud via saveStatus 'error'.
+        if (!selfUuid) {
+            setSaveStatus({ type: notificationType, channel, status: 'error' });
+            setTimeout(() => setSaveStatus(null), 3000);
+            return;
+        }
         // Guard: at least one channel must be enabled globally across all notification types
         if (!newValue) {
             const testPrefs = {
@@ -449,7 +485,7 @@ function Profile(){
         setSaveStatus({ type: notificationType, channel, status: 'saving' });
 
         try {
-            await usersAPI.updateNotificationPreferences(user.sub, updatedPrefs);
+            await usersAPI.updateNotificationPreferences(selfUuid, updatedPrefs);
             // Keep the immortal self cache coherent (SELF_IDENTITY_KEY contract).
             patchSelfCache(queryClient, { notification_preferences: updatedPrefs });
             setSaveStatus({ type: notificationType, channel, status: 'saved' });
@@ -464,6 +500,12 @@ function Profile(){
 
     // Reminder timing handler
     const handleReminderWindowChange = async (newWindowHours) => {
+        // 87.5 Plan 09: identity guard BEFORE the optimistic setPreferences below.
+        if (!selfUuid) {
+            setSaveStatus({ type: 'reminder', channel: 'window', status: 'error' });
+            setTimeout(() => setSaveStatus(null), 3000);
+            return;
+        }
         const previousPrefs = { ...preferences };
         const updatedPrefs = {
             ...preferences,
@@ -473,7 +515,7 @@ function Profile(){
         setSaveStatus({ type: 'reminder', channel: 'window', status: 'saving' });
 
         try {
-            await usersAPI.updateNotificationPreferences(user.sub, updatedPrefs);
+            await usersAPI.updateNotificationPreferences(selfUuid, updatedPrefs);
             patchSelfCache(queryClient, { notification_preferences: updatedPrefs });
             setSaveStatus({ type: 'reminder', channel: 'window', status: 'saved' });
             setTimeout(() => setSaveStatus(null), 2000);
@@ -487,12 +529,18 @@ function Profile(){
 
     // Reset to defaults handler
     const handleResetPreferences = async () => {
+        // 87.5 Plan 09: identity guard BEFORE the optimistic setPreferences below.
+        if (!selfUuid) {
+            setSaveStatus({ type: 'all', channel: 'reset', status: 'error' });
+            setTimeout(() => setSaveStatus(null), 3000);
+            return;
+        }
         const previousPrefs = { ...preferences };
         setPreferences(DEFAULT_PREFERENCES);
         setSaveStatus({ type: 'all', channel: 'reset', status: 'saving' });
 
         try {
-            await usersAPI.updateNotificationPreferences(user.sub, DEFAULT_PREFERENCES);
+            await usersAPI.updateNotificationPreferences(selfUuid, DEFAULT_PREFERENCES);
             patchSelfCache(queryClient, { notification_preferences: DEFAULT_PREFERENCES });
             setSaveStatus({ type: 'all', channel: 'reset', status: 'saved' });
             setTimeout(() => setSaveStatus(null), 2000);
@@ -550,10 +598,15 @@ function Profile(){
             toast.error('Username must be 50 characters or less');
             return;
         }
-        
+
+        if (!selfUuid) {
+            toast.error('Still loading your account — please try again in a moment.');
+            return;
+        }
+
         try {
             setSavingUsername(true);
-            const updatedUser = await usersAPI.updateUsername(user.sub, username.trim());
+            const updatedUser = await usersAPI.updateUsername(selfUuid, username.trim());
             setUserData(updatedUser);
             // Cache-coherence: PATCH only the changed field. The PUT response is
             // a DEFAULT-scope row (no phone/email), while the immortal self row
@@ -571,10 +624,14 @@ function Profile(){
     };
 
     const checkGoogleCalendarStatus = useCallback(async () => {
-        if (!user?.sub) return;
+        // 87.5 Plan 09: mount-fire sender — gate on the resolved self UUID (NOT
+        // user?.sub), and depend on selfUuid so this callback is re-created and
+        // the calling mount effect re-runs once identity resolves. A gate with no
+        // matching dep-array entry would make the send a permanent no-op.
+        if (!selfUuid) return;
         try {
             setCheckingCalendarStatus(true);
-            const status = await googleCalendarAPI.getStatus(user.sub);
+            const status = await googleCalendarAPI.getStatus(selfUuid);
             setGoogleCalendarConnected(status.connected || false);
         } catch (error) {
             console.error('Error checking Google Calendar status:', error.message);
@@ -582,7 +639,7 @@ function Profile(){
         } finally {
             setCheckingCalendarStatus(false);
         }
-    }, [user]);
+    }, [selfUuid]);
 
     // Theme mount state for hydration-safe rendering
     useEffect(() => setThemeMounted(true), []);
@@ -628,11 +685,15 @@ function Profile(){
 
     const handleDisconnectGoogleCalendar = async () => {
         if (!user?.sub) return;
+        if (!selfUuid) {
+            toast.error('Still loading your account — please try again in a moment.');
+            return;
+        }
         if (!confirm('Are you sure you want to disconnect Google Calendar? Future events will not be automatically added to your calendar.')) {
             return;
         }
         try {
-            await googleCalendarAPI.disconnect(user.sub);
+            await googleCalendarAPI.disconnect(selfUuid);
             setGoogleCalendarConnected(false);
             toast.success('Google Calendar disconnected successfully');
         } catch (error) {
@@ -642,10 +703,13 @@ function Profile(){
     };
 
     const fetchOwnedGames = useCallback(async () => {
-        if (!user?.sub) return;
+        // 87.5 Plan 09: mount-fire sender — gate on the resolved self UUID (NOT
+        // user?.sub) and depend on selfUuid so the callback re-creates and the
+        // calling mount effect re-runs (firing the send) once identity resolves.
+        if (!selfUuid) return;
         try {
             setLoadingGames(true);
-            const games = await userGamesAPI.getOwnedGames(user.sub);
+            const games = await userGamesAPI.getOwnedGames(selfUuid);
             setOwnedGames(games || []);
         } catch (error) {
             console.error('Error fetching owned games:', error);
@@ -653,7 +717,7 @@ function Profile(){
         } finally {
             setLoadingGames(false);
         }
-    }, [user]);
+    }, [selfUuid]);
 
     const searchBGG = async () => {
         if (!bggSearchQuery.trim()) return;
@@ -680,6 +744,10 @@ function Profile(){
 
     const addGameToCollection = async (game_id) => {
         if (!user?.sub) return;
+        if (!selfUuid) {
+            toast.error('Still loading your account — please try again in a moment.');
+            return;
+        }
         try {
             // If game_id is a BGG ID, import it first
             let gameId = game_id;
@@ -689,7 +757,7 @@ function Profile(){
                 gameId = importedGame.id;
             }
             
-            await userGamesAPI.addOwnedGame(user.sub, gameId);
+            await userGamesAPI.addOwnedGame(selfUuid, gameId);
             await fetchOwnedGames();
             setShowBggSearch(false);
             setBggSearchQuery('');
@@ -702,9 +770,13 @@ function Profile(){
 
     const removeGameFromCollection = async (game_id) => {
         if (!user?.sub) return;
+        if (!selfUuid) {
+            toast.error('Still loading your account — please try again in a moment.');
+            return;
+        }
         if (!confirm('Are you sure you want to remove this game from your collection?')) return;
         try {
-            await userGamesAPI.removeOwnedGame(user.sub, game_id);
+            await userGamesAPI.removeOwnedGame(selfUuid, game_id);
             await fetchOwnedGames();
         } catch (error) {
             console.error('Error removing game from collection:', error);
@@ -813,6 +885,11 @@ function Profile(){
             return;
         }
         
+        if (!selfUuid) {
+            toast.error('Still loading your account — please try again in a moment.');
+            return;
+        }
+
         if (!confirm(`This will import all games from your BoardGameGeek collection (username: ${bggUsername}). This may take a few minutes. Continue?`)) {
             return;
         }
@@ -820,8 +897,8 @@ function Profile(){
         try {
             setImportingCollection(true);
             setImportProgress({ status: 'fetching', message: 'Fetching your BGG collection...' });
-            
-            const result = await userGamesAPI.importBGGCollection(user.sub, bggUsername.trim());
+
+            const result = await userGamesAPI.importBGGCollection(selfUuid, bggUsername.trim());
             
             setImportProgress({
                 status: 'complete',
