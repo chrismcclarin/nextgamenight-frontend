@@ -15,6 +15,12 @@ vi.mock('../../lib/api', () => ({
   },
 }));
 vi.mock('@auth0/nextjs-auth0/client', () => ({ useUser: () => ({ user: null }) }));
+// ScheduleForm consumes useSelfIdentity (87.5-11: feeds selfUuid to GameComboInput's
+// searchAll). That hook calls react-query's useQuery, which needs a QueryClientProvider
+// this focused submit-error test does not mount. Mock it (identity is irrelevant here).
+vi.mock('../../lib/hooks/useSelfIdentity', () => ({
+  useSelfIdentity: () => ({ selfUuid: undefined, self: undefined }),
+}));
 vi.mock('./GameComboInput', () => ({ default: () => <div data-testid="game-combo" /> }));
 vi.mock('./MemberSelector', () => ({ default: () => <div data-testid="member-selector" /> }));
 
