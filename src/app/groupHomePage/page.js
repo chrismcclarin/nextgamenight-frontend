@@ -191,19 +191,33 @@ function GroupHomePage(){
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [Router, user?.sub, selfUuid]);
 
+    // PR2-L11 (SPEC Req 7): getGroup + fetchGroupEvents do NOT depend on selfUuid,
+    // so they live in an effect keyed only on [Router, user?.sub, ...] — they fire
+    // once per hard load and are NOT re-fetched when selfUuid resolves later. Prior
+    // to the split they shared the selfUuid-gated effect below and double-fetched on
+    // every hard load (the async identity resolution re-ran the combined effect).
     useEffect(() => {
         if (Router && user?.sub) {
             getGroup();
-            // getGroupMembers self-gates on selfUuid (see its guard); selfUuid is
-            // in the deps so the membership derive re-runs once identity resolves.
-            getGroupMembers();
             fetchGroupEvents();
         }
         // Auto-open event modal if coming from planning page
         if (shouldCreateEvent && prefillDate && prefillTime) {
             setEventModal(true);
         }
-    }, [Router, user?.sub, selfUuid, shouldCreateEvent, prefillDate, prefillTime]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [Router, user?.sub, shouldCreateEvent, prefillDate, prefillTime]);
+
+    // getGroupMembers self-gates on selfUuid (see its guard); selfUuid is in the
+    // deps so the membership derive re-runs once identity resolves. This is the
+    // legitimate identity-keyed re-run — kept separate so getGroup/fetchGroupEvents
+    // above are not dragged along with it.
+    useEffect(() => {
+        if (Router && user?.sub) {
+            getGroupMembers();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [Router, user?.sub, selfUuid]);
 
     // Defer the games fetch until the membership check has confirmed the
     // user belongs to the group. The games endpoint 403s non-members
