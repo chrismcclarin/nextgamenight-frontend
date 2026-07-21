@@ -61,6 +61,13 @@ function Profile(){
     // on it (+ selfUuid in their dep arrays so they re-run once it resolves) and
     // user-action senders guard-before-optimistic-update, failing loud.
     const { self, selfUuid, query: selfQuery } = useSelfIdentity();
+    // WR-03: the profile header already falls back on selfQuery.isError (init
+    // effect below), but the owned-games + Google-calendar-status zones init
+    // their loading flags to true and clear them only inside selfUuid-gated
+    // fetchers. On a TERMINAL identity failure those fetchers early-return, so
+    // the flags never clear and both zones spin forever. Derive the shared error
+    // state here and render the compact degrade banner in those two zones.
+    const selfIdentityErrorState = useFetchErrorState(selfQuery);
     const [ownedGames, setOwnedGames] = useState([]);
     const [loadingGames, setLoadingGames] = useState(true);
     const [bggSearchQuery, setBggSearchQuery] = useState('');
@@ -568,6 +575,13 @@ function Profile(){
             setUsername(user?.name || user?.email?.split('@')[0] || 'User');
             setPreferences(DEFAULT_PREFERENCES);
             setProfileLoaded(true);
+            // WR-03: the owned-games + calendar-status fetchers never run when
+            // identity fails terminally (they gate on selfUuid), so their loading
+            // flags would stay true forever ("Loading your collection..." /
+            // "Checking..."). Clear them here so those zones render their
+            // degrade banner instead of an indefinite spinner.
+            setLoadingGames(false);
+            setCheckingCalendarStatus(false);
             return;
         }
         if (!self) return;
@@ -1182,7 +1196,12 @@ function Profile(){
                                         : 'Connect your Google Calendar to automatically add future game events'}
                                 </p>
                             </div>
-                            {checkingCalendarStatus ? (
+                            {selfIdentityErrorState.showError ? (
+                                // WR-03: identity failed terminally — the status
+                                // check never ran; show the degrade notice, not a
+                                // stuck "Checking...".
+                                <FetchErrorBanner state={selfIdentityErrorState} compact />
+                            ) : checkingCalendarStatus ? (
                                 <div className="text-sm text-content-muted">Checking...</div>
                             ) : googleCalendarConnected ? (
                                 <button
@@ -1881,7 +1900,12 @@ function Profile(){
                     )}
 
                     {/* Owned Games List */}
-                    {loadingGames ? (
+                    {selfIdentityErrorState.showError ? (
+                        // WR-03: identity failed terminally — the owned-games
+                        // fetch never ran; surface the degrade notice instead of
+                        // a permanent "Loading your collection...".
+                        <FetchErrorBanner state={selfIdentityErrorState} compact />
+                    ) : loadingGames ? (
                         <p className="text-content-secondary">Loading your collection...</p>
                     ) : ownedGames.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
