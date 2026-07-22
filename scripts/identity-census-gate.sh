@@ -16,8 +16,9 @@
 # `|| true` (grep exits nonzero on NO MATCH — an EMPTY result is the PASS case here), filter
 # full-line comments, and `exit 1` only when a non-allowlisted HIT survives.
 #
-# SCOPE — src/app only. This deliberately excludes the two sanctioned/permanent files that live
-# OUTSIDE src/app, so they need no per-line allowlist entry:
+# SCOPE — ALL of src/, excluding by NAME the two sanctioned/permanent files (87.5 review ML-23:
+# a directory-wide src/lib exclusion would let a future sub sender added there — e.g. a default
+# param in an api.ts wrapper — escape this gate entirely; file-specific exclusion does not):
 #   • src/lib/hooks/useSelfIdentity.ts — the ONE sanctioned sub->UUID resolver (census §3). Its
 #     `getUser(user?.sub)` lookup PARAM + `queryKey`/`enabled` sub reads are the by-design
 #     allowlisted sub-as-param site; the resolver is the single place the sub is legitimately read.
@@ -36,13 +37,19 @@
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 2
-SRC_DIR="src/app"
+SRC_DIR="src"
 
 # The prefix-tolerant sender-candidate target (see PATTERN note above).
 SUB='[A-Za-z_]*[uU]ser\??\.sub'
 
 # strip grep's `path:line:` prefix and drop full-line comments (`//`, `*`, `/*`).
 strip_comments() { grep -vE ':[0-9]+:[[:space:]]*(//|\*|/\*)' || true; }
+
+# The two file-NAME-scoped sanctioned exclusions (see SCOPE note above — never a
+# whole directory).
+strip_sanctioned_files() {
+  grep -vE '^src/lib/hooks/useSelfIdentity\.ts:|^src/lib/ci-grep-gate\.fixture\.test\.ts:' || true
+}
 
 FAIL=0
 
@@ -52,7 +59,7 @@ FAIL=0
 # to OMIT the key when unresolved). No allowlist — every product `user_id` wire value must be a
 # resolved Users.id UUID, never the sub.
 # ─────────────────────────────────────────────────────────────────────────────
-C1=$(grep -rnE "user_id:[[:space:]]*${SUB}" "$SRC_DIR" 2>/dev/null | strip_comments || true)
+C1=$(grep -rnE "user_id:[[:space:]]*${SUB}" "$SRC_DIR" 2>/dev/null | strip_comments | strip_sanctioned_files || true)
 if [ -n "$C1" ]; then
   echo "::FE-CENSUS-GATE FAIL:: a \`user_id:\` body value is sub-shaped (send the resolved self UUID instead):"
   echo "$C1"
@@ -65,7 +72,7 @@ fi
 # GameComboInput → gamesAPI.searchAll), now flipped to `userId={selfUuid}`. Matches any
 # `...Id={ ... *User?.sub ... }` JSX expression. No allowlist.
 # ─────────────────────────────────────────────────────────────────────────────
-C2=$(grep -rnE "[A-Za-z]*[Ii]d=\{[^}]*${SUB}" "$SRC_DIR" 2>/dev/null | strip_comments || true)
+C2=$(grep -rnE "[A-Za-z]*[Ii]d=\{[^}]*${SUB}" "$SRC_DIR" 2>/dev/null | strip_comments | strip_sanctioned_files || true)
 if [ -n "$C2" ]; then
   echo "::FE-CENSUS-GATE FAIL:: a JSX identity prop passes the sub down a prop chain (pass the resolved self UUID instead):"
   echo "$C2"
@@ -80,19 +87,31 @@ fi
 # to the resolved self UUID or added to the allowlist with a reason.
 #
 # ALLOWLIST (census §3 — the ~60 harmless truthiness uses that are NOT senders):
-#   (a) presence/truthiness GUARDS — the sub read inside an `if (...)` condition
-#       (`if (!user?.sub) return;`, `if (user?.sub && groupId) {`, …). Enabling-condition reads,
-#       never transmitted. A sender is a STATEMENT on its own line and never shares a line with
-#       `if (`, so filtering `if (`-lines cannot mask a sender in this tree.
+#   (a) presence/truthiness GUARDS — the sub read strictly INSIDE an `if (...)`/`while (...)`
+#       condition, with nothing but the block opener (`{`), a bare `return <literal>;`, or
+#       end-of-line after the closing paren (`if (!user?.sub) return;`,
+#       `if (user?.sub && groupId) {`, …). Enabling-condition reads, never transmitted.
+#       87.5 review ML-08 tighten: the old filter dropped ANY line containing `if (` before
+#       the sub, so a one-line guard+sender (`if (user?.sub) sendX(user.sub)`) was invisibly
+#       forgiven. The end-anchored shape below leaves trailing call code on the line, so that
+#       shape now correctly FAILS the gate.
+#   (a2) pure boolean/ternary RETURNS of the sub with no call wrapping it (`return !!user?.sub;`).
+#       A `return api(user.sub)` sender has a `(` before the sub and survives to FAIL.
 #   (b) DEPENDENCY-ARRAY entries — the sub inside a `[ ... ]` array literal (React effect/memo/
 #       callback deps: `}, [user?.sub, selfUuid]);`). A re-render key, never transmitted; a sender
 #       is never wrapped in `[...]`.
 # The narrowing is by SHAPE (matching ci.yml's "allowlisted by construction"), not by file:line,
 # so it does not silently rot when line numbers shift.
 # ─────────────────────────────────────────────────────────────────────────────
-C3=$(grep -rnE "${SUB}" "$SRC_DIR" 2>/dev/null | strip_comments \
-  `# (a) drop presence/truthiness guards: the sub read on an if(...) condition line` \
-  | grep -vE "\b(if|while|return)[[:space:]]*\(.*${SUB}" \
+C3=$(grep -rnE "${SUB}" "$SRC_DIR" 2>/dev/null | strip_comments | strip_sanctioned_files \
+  `# (a) drop guard-ONLY lines: sub inside the condition parens, nothing but {, a bare` \
+  `#     return-literal, or EOL after the closing paren` \
+  `#     (\)+ tolerates nested call parens INSIDE the condition, e.g.` \
+  `#     \`if (!user?.sub || !username.trim()) {\` — the anchor after the parens still` \
+  `#     rejects trailing statement code)` \
+  | grep -vE "\b(if|while)[[:space:]]*\([^)]*${SUB}[^)]*\)+[[:space:]]*(\{[[:space:]]*$|return[[:space:]]*[A-Za-z0-9_]*;?[[:space:]]*$|;[[:space:]]*$|$)" \
+  `# (a2) drop pure boolean/ternary returns of the sub (no call-paren before the sub)` \
+  | grep -vE "\breturn[^(]*${SUB}[^()]*;?[[:space:]]*$" \
   `# (b) drop dependency-array entries: the sub inside a [ ... ] array literal` \
   | grep -vE "\[[^]]*${SUB}[^]]*\]" \
   || true)
