@@ -735,7 +735,13 @@ export default function GameDetailPage() {
         e.preventDefault();
         // D-02 guard-before-write: the review body sends selfUuid, so fail loud
         // (no send) if identity has not resolved rather than posting a stale sub.
-        if (!user?.sub || !selfUuid || !game_id || !group_id) return;
+        if (!user?.sub || !game_id || !group_id) return;
+        if (!selfUuid) {
+            // ML-02/ML-03 pattern: identity still resolving is user-recoverable —
+            // tell them instead of silently swallowing the submit click.
+            toast.error('Still loading your account — please try again in a moment.');
+            return;
+        }
 
         try {
             // Ensure rating is a number and within valid range (0-5, increments of 0.5)
