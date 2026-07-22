@@ -94,6 +94,24 @@ export default function ScheduleForm({
         },
   });
 
+  // IN-04 (87.5 review, owner-approved): the create-mode all-members default
+  // above captures `members` ONCE at mount. A caller that mounts the form
+  // before its roster fetch resolves would seed [] and never recover — the
+  // schedule would silently scope to nobody. Re-seed exactly once when the
+  // roster transitions empty→populated and nothing is selected (with an empty
+  // roster there was nothing to deselect, so an empty selection here can only
+  // be the stale mount snapshot). Current callers pass a resolved roster; this
+  // guards future eager-mount callers.
+  const mountedWithEmptyRosterRef = useRef(!existingSchedule && members.length === 0);
+  useEffect(() => {
+    if (!mountedWithEmptyRosterRef.current || members.length === 0) return;
+    mountedWithEmptyRosterRef.current = false; // one-shot
+    const current = watch('selected_member_ids') || [];
+    if (current.length === 0) {
+      setValue('selected_member_ids', members.map(m => m.id), { shouldValidate: false });
+    }
+  }, [members, setValue, watch]);
+
   // Watch values for auto-generating template name
   const watchedGameId = watch('game_id');
   const watchedGameName = watch('game_name');

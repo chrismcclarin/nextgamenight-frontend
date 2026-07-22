@@ -22,7 +22,13 @@ vi.mock('../../lib/hooks/useSelfIdentity', () => ({
   useSelfIdentity: () => ({ selfUuid: undefined, self: undefined }),
 }));
 vi.mock('./GameComboInput', () => ({ default: () => <div data-testid="game-combo" /> }));
-vi.mock('./MemberSelector', () => ({ default: () => <div data-testid="member-selector" /> }));
+// Render the received selection so tests can observe what the form actually
+// holds (IN-04 late-roster re-seed) without reaching into form internals.
+vi.mock('./MemberSelector', () => ({
+  default: ({ selectedMemberIds }: { selectedMemberIds?: string[] }) => (
+    <div data-testid="member-selector">{(selectedMemberIds ?? []).join(',')}</div>
+  ),
+}));
 
 import type { ComponentType } from 'react';
 import ScheduleFormDefault from './ScheduleForm';
@@ -31,7 +37,10 @@ import { logger } from '@/lib/logger';
 // ScheduleForm is a JS component; its inferred prop type marks every prop
 // required. Cast to a permissive type so the test can render with only the
 // props it exercises.
-const ScheduleForm = ScheduleFormDefault as unknown as ComponentType<{ groupId?: string }>;
+const ScheduleForm = ScheduleFormDefault as unknown as ComponentType<{
+  groupId?: string;
+  members?: Array<{ id: string; username?: string }>;
+}>;
 
 afterEach(cleanup);
 
@@ -48,5 +57,40 @@ describe('ScheduleForm submit-error path', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/server boom|failed to save/i);
     });
     expect(logger.error).toHaveBeenCalledWith('form submit failed', expect.any(Error));
+  });
+});
+
+// IN-04 (87.5 review): create-mode member defaults are captured at mount. If the
+// form mounts before the roster fetch resolves (members=[]) the all-members
+// default seeded empty and stayed empty forever — a schedule silently scoped to
+// nobody. The fix re-seeds exactly once when the roster transitions
+// empty→populated and nothing is selected.
+describe('ScheduleForm create-mode late-roster re-seed (IN-04)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const ROSTER = [
+    { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', username: 'ada' },
+    { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', username: 'bob' },
+  ];
+
+  it('re-seeds the all-members default when the roster resolves AFTER mount', async () => {
+    const { rerender } = render(<ScheduleForm groupId="g1" members={[]} />);
+    // Pre-resolution: MemberSelector is not even rendered (members.length gate).
+    expect(screen.queryByTestId('member-selector')).toBeNull();
+
+    rerender(<ScheduleForm groupId="g1" members={ROSTER} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('member-selector')).toHaveTextContent(
+        ROSTER.map((m) => m.id).join(',')
+      );
+    });
+  });
+
+  it('does NOT overwrite a roster provided at mount (defaults already correct)', () => {
+    render(<ScheduleForm groupId="g1" members={ROSTER} />);
+    expect(screen.getByTestId('member-selector')).toHaveTextContent(
+      ROSTER.map((m) => m.id).join(',')
+    );
   });
 });
