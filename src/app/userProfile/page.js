@@ -1449,8 +1449,17 @@ function Profile(){
                                                 <option key={w.value} value={w.value}>{w.label}</option>
                                             ))}
                                         </select>
+                                        {saveStatus?.type === 'reminder' && saveStatus.channel === 'window' && saveStatus.status === 'saving' && (
+                                            <span className="text-xs text-content-muted">Saving...</span>
+                                        )}
                                         {saveStatus?.type === 'reminder' && saveStatus.channel === 'window' && saveStatus.status === 'saved' && (
                                             <span className="text-xs text-status-success">Saved</span>
+                                        )}
+                                        {/* ML-16 (87.5 review): the identity-guard and persist-failure
+                                            paths both set status 'error' here — without this branch the
+                                            dropdown silently snapped back with zero feedback. */}
+                                        {saveStatus?.type === 'reminder' && saveStatus.channel === 'window' && saveStatus.status === 'error' && (
+                                            <span className="text-xs text-status-error">Error</span>
                                         )}
                                     </div>
                                 )}
