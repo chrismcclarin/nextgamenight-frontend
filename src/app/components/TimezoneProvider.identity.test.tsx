@@ -28,6 +28,10 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
 
 vi.mock('@/lib/hooks/selfIdentityCache', () => ({ patchSelfCache: vi.fn() }));
 
+// ML-02 (87.5 review): the pre-resolution guard surfaces via toast, not throw —
+// mock sonner so the guard test can assert the user actually gets feedback.
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+
 vi.mock('@auth0/nextjs-auth0/client', () => ({
   useUser: () => ({ user: { sub: 'auth0|self' }, isLoading: false }),
 }));
@@ -46,6 +50,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import { TimezoneProvider, useTimezone } from './TimezoneProvider';
 import { usersAPI } from '@/lib/api';
+import { toast } from 'sonner';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -102,6 +107,21 @@ describe('TimezoneProvider identity flip (Plan 09 Task 2)', () => {
       </TimezoneProvider>
     );
     await new Promise((r) => setTimeout(r, 20));
+    expect(usersAPI.updateTimezone as Mock).not.toHaveBeenCalled();
+  });
+
+  it('ML-02: setTimezone before identity resolves toasts an error and sends nothing (no throw — sole caller is fire-and-forget)', async () => {
+    h.selfUuid = undefined; // logged-in (mocked auth sub) but identity unresolved
+    render(
+      <TimezoneProvider>
+        <TZConsumer />
+      </TimezoneProvider>
+    );
+
+    // Fires the guard; must NOT reject (the click handler does not await).
+    fireEvent.click(screen.getByText('set-tz'));
+
+    await waitFor(() => expect(toast.error as Mock).toHaveBeenCalled());
     expect(usersAPI.updateTimezone as Mock).not.toHaveBeenCalled();
   });
 });

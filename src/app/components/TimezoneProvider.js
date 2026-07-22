@@ -21,6 +21,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { usersAPI } from '../../lib/api';
 // Phase 84 PRIM-05: browser-TZ detection lives in the consolidated datetime
 // layer. The provider owns the policy (profile TZ canonical, browser fallback);
@@ -76,12 +77,15 @@ export function TimezoneProvider({ children }) {
     // BEFORE the optimistic display-state update — flipping display to a value
     // we can't persist would silently revert on the next remount. In practice
     // the picker/nudge CTA only render after `self` (and thus selfUuid) has
-    // resolved, so this is defensive; if it ever trips it fails LOUD (throws)
-    // rather than swallowing the action. Logged-out callers keep the display-only
-    // fallback (no send), matching the pre-existing behavior.
+    // resolved, so this is defensive. Fail loud via toast, not throw (87.5
+    // review ML-02): the only production caller is fire-and-forget, so a throw
+    // here becomes an unhandled rejection the user never sees. Logged-out
+    // callers keep the display-only fallback (no send), matching the
+    // pre-existing behavior.
     if (user?.sub && !selfUuid) {
       console.error('Cannot update timezone: identity not resolved yet');
-      throw new Error('Your account is still loading — please try again in a moment.');
+      toast.error('Your account is still loading — please try again in a moment.');
+      return;
     }
     setTimezoneState(newTimezone);
     setIsProfileTimezoneSet(Boolean(newTimezone));
@@ -93,7 +97,10 @@ export function TimezoneProvider({ children }) {
         // stale pre-mutation one.
         patchSelfCache(queryClient, { timezone: newTimezone });
       } catch (err) {
+        // Same silent-revert class as the guard above: display state already
+        // flipped optimistically, so tell the user the persist failed (ML-02).
         console.error('Failed to update timezone:', err.message);
+        toast.error('Failed to save your timezone — please try again.');
       }
     }
   }, [user?.sub, selfUuid, queryClient]);
