@@ -663,12 +663,10 @@ export const usersAPI = {
  * API functions for Games
  */
 export const gamesAPI = {
-  // Get all games (with optional search)
-  getGames: (params = {}) => {
-    const queryString = new URLSearchParams(params).toString();
-    return apiFetch(`/games${queryString ? `?${queryString}` : ''}`);
-  },
-  
+  // getGames (GET /games) DELETED — 87.5 review SW-02: zero product callers and
+  // the BE route was removed (its ?group_id arm leaked group reviews
+  // unauthenticated). Use searchAll / getGamesForEvent / listsAPI.getGroupGames.
+
   // Get a single game by ID
   getGame: (game_id: string) => 
     apiFetch(`/games/${game_id}`),
