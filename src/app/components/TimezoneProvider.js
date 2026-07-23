@@ -21,6 +21,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { usersAPI } from '../../lib/api';
 // Phase 84 PRIM-05: browser-TZ detection lives in the consolidated datetime
 // layer. The provider owns the policy (profile TZ canonical, browser fallback);
@@ -46,7 +47,11 @@ export function TimezoneProvider({ children }) {
   // TZ-01 forwarding (detectBrowserTimezone() as getUser's 2nd arg → backend
   // persist/backfill) lives inside the hook's queryFn, so migrating the fetch
   // onto the shared cache preserves the persist/backfill write side-effect.
-  const { self } = useSelfIdentity();
+  // 87.5 Plan 09 (SPEC Req 6): the setTimezone persist below sends the caller's
+  // resolved Users.id UUID (selfUuid) instead of user.sub. selfUuid is flipped
+  // INSIDE the user-action callback only — the mount effect stays read-only per
+  // the locked Phase 62 no-auto-sync policy in this file's header.
+  const { self, selfUuid } = useSelfIdentity();
 
   // Browser TZ is captured once on mount and stays available — used both as
   // fallback for `timezone` when profile TZ is unset, AND exposed to consumers
@@ -68,20 +73,37 @@ export function TimezoneProvider({ children }) {
    * that should ever write to User.timezone.
    */
   const setTimezone = useCallback(async (newTimezone) => {
+    // D-02: persisting the profile TZ requires the resolved caller UUID. Guard
+    // BEFORE the optimistic display-state update — flipping display to a value
+    // we can't persist would silently revert on the next remount. In practice
+    // the picker/nudge CTA only render after `self` (and thus selfUuid) has
+    // resolved, so this is defensive. Fail loud via toast, not throw (87.5
+    // review ML-02): the only production caller is fire-and-forget, so a throw
+    // here becomes an unhandled rejection the user never sees. Logged-out
+    // callers keep the display-only fallback (no send), matching the
+    // pre-existing behavior.
+    if (user?.sub && !selfUuid) {
+      console.error('Cannot update timezone: identity not resolved yet');
+      toast.error('Your account is still loading — please try again in a moment.');
+      return;
+    }
     setTimezoneState(newTimezone);
     setIsProfileTimezoneSet(Boolean(newTimezone));
-    if (user?.sub) {
+    if (selfUuid) {
       try {
-        await usersAPI.updateTimezone(user.sub, newTimezone);
+        await usersAPI.updateTimezone(selfUuid, newTimezone);
         // Cache-coherence (SELF_IDENTITY_KEY contract): keep the immortal self
         // cache in sync so a later remount reads the new profile TZ, not the
         // stale pre-mutation one.
         patchSelfCache(queryClient, { timezone: newTimezone });
       } catch (err) {
+        // Same silent-revert class as the guard above: display state already
+        // flipped optimistically, so tell the user the persist failed (ML-02).
         console.error('Failed to update timezone:', err.message);
+        toast.error('Failed to save your timezone — please try again.');
       }
     }
-  }, [user?.sub, queryClient]);
+  }, [user?.sub, selfUuid, queryClient]);
 
   // On mount / user change / self resolution: read stored profile TZ; never write.
   useEffect(() => {

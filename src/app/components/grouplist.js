@@ -32,11 +32,14 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   const [settingsGroup, setSettingsGroup] = useState(null);
   const [userRoles, setUserRoles] = useState({});
 
+  // selfUuid resolves ASYNC after this mount effect's first run, so it is in the
+  // dependency array per the async-resolution rule — the fetch re-fires (and the
+  // list populates) once identity resolves, instead of silently no-oping forever.
   useEffect(() => {
     if (user) {
       fetchGroups();
     }
-  }, [user, refreshTrigger]); // Add refreshTrigger to dependencies
+  }, [user, refreshTrigger, selfUuid]); // selfUuid gates the getUserGroups sender below
 
   // Derive per-group self role reactively off the resolved UUID. Kept separate
   // from the group fetch so an unresolved selfUuid never stores a wrong "no
@@ -58,12 +61,14 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   }, [groups, selfUuid]);
 
   const fetchGroups = async () => {
-    if (!user?.sub) return;
+    // Mount-fire gate: wait for the caller's own Users.id UUID to resolve. This
+    // guard IS the resolution gate (paired with selfUuid in the effect deps).
+    if (!selfUuid) return;
 
     try {
       setLoading(true);
       // Use groupsAPI.getUserGroups which automatically includes Authorization header
-      const groupsData = await groupsAPI.getUserGroups(user.sub);
+      const groupsData = await groupsAPI.getUserGroups(selfUuid);
       setGroups(groupsData || []);
     } catch (error) {
       console.error('Error fetching groups:', error.message || 'Unknown error');
@@ -79,6 +84,36 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     e?.preventDefault();
     router.push(`/groupHomePage?id=${encodeURIComponent(group.id)}`);
   };
+
+  // WR-03: on TERMINAL identity-resolution failure, fetchGroups early-returns on
+  // `!selfUuid` BEFORE its try/finally, so `loading` never clears — the spinner
+  // below would hang forever and the in-list degrade banner further down is
+  // unreachable beneath that loading return. Surface the compact degrade notice
+  // HERE instead (banner where the list would be), mirroring the
+  // groupHomePage/friends identity-error pattern. The header shell is kept so the
+  // error state looks intentional, not a broken half-render.
+  if (selfIdentityErrorState.showError) {
+    return (
+      <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card p-4 flex flex-col overflow-hidden h-full">
+        <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
+          <h2 className="text-xl font-bold text-content-primary">Your Groups</h2>
+          {onCreateGroup && (
+            <button
+              className="btn btn-primary text-sm whitespace-nowrap"
+              onClick={onCreateGroup}
+              aria-label="Create new group"
+              data-tutorial="create-group-btn"
+            >
+              + Create New Group
+            </button>
+          )}
+        </div>
+        <div className="py-8 px-4">
+          <FetchErrorBanner state={selfIdentityErrorState} compact />
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

@@ -10,6 +10,11 @@ import { eventsAPI } from '../../lib/api';
 // Phase 87.3-07 (D-02): the viewer's User.id UUID resolves via the shared
 // ['users','self'] query instead of an ad-hoc getUser self-fetch.
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+// ML-17 (87.5 review): WR-03 identity-failure degrade for the upcoming-events
+// zone — without it, terminal identity failure renders a lying "no upcoming
+// events" empty state (its siblings grouplist/EventCalendar already degrade).
+import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
 // List of all the groups for the logged in User
 function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, groupListRefreshKey, onMemberAdded: onMemberAddedProp }) {
@@ -19,7 +24,8 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     // UpcomingEventsCard to match EventParticipations rows for game-only-event
     // Guest-pill distinction. Phase 87.3-07 (D-02): resolved via the shared
     // ['users','self'] query instead of a per-page getUser self-fetch.
-    const { selfUuid } = useSelfIdentity();
+    const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
+    const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
     const [selectedGroup, setSelectedGroup] = useState(null);
     const [invitePanelOpen, setInvitePanelOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
@@ -39,10 +45,13 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     // EventParticipation events (game-only). Re-runs when refreshKey changes
     // (mirrors the existing EventCalendar refresh pattern).
     useEffect(() => {
-        if (!user?.sub) return;
+        // Mount-fire gate: wait for the caller's own Users.id UUID. selfUuid is
+        // in the dep array (async-resolution rule) so the fetch fires once
+        // identity resolves, not only at initial mount.
+        if (!selfUuid) return;
         let cancelled = false;
         setUpcomingLoading(true);
-        eventsAPI.getUserEvents(user.sub).then(evts => {
+        eventsAPI.getUserEvents(selfUuid).then(evts => {
             if (cancelled) return;
             const list = Array.isArray(evts) ? evts : [];
             // UpcomingEventsCard does its own filter+sort; pass the raw list.
@@ -53,7 +62,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
             if (!cancelled) setUpcomingLoading(false);
         });
         return () => { cancelled = true; };
-    }, [user?.sub, refreshKey]);
+    }, [user?.sub, refreshKey, selfUuid]);
 
     const handleGroupSelect = (group) => {
         setSelectedGroup(group);
@@ -122,12 +131,19 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     game-only events render with a dashed border + Guest pill. */}
                 <div className="hidden md:flex md:flex-col md:flex-1 md:min-w-0 md:gap-4">
                     <EventCalendar refreshKey={refreshKey} />
-                    <UpcomingEventsCard
-                        events={upcomingEvents}
-                        loading={upcomingLoading}
-                        showGroupName={true}
-                        viewerDbUserId={selfUuid ?? null}
-                    />
+                    {/* ML-17: the upcoming-events fetch gates on selfUuid, so on
+                        TERMINAL identity failure it never fires — degrade with the
+                        compact banner instead of the misleading empty state. */}
+                    {selfIdentityErrorState.showError ? (
+                        <FetchErrorBanner state={selfIdentityErrorState} compact />
+                    ) : (
+                        <UpcomingEventsCard
+                            events={upcomingEvents}
+                            loading={upcomingLoading}
+                            showGroupName={true}
+                            viewerDbUserId={selfUuid ?? null}
+                        />
+                    )}
                 </div>
             </div>
 

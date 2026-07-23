@@ -10,14 +10,22 @@
  *         removing/renaming a consumed field FAILS the parse.
  *   "parse does not throw" alone is NOT sufficient.
  *
- * Endpoint: GET /api/games (gamesAPI.getGames) → Game[], rendered as game cards.
- *   UI-consumed fields: id + name (React keys / card titles, REQUIRED),
+ * Schema under contract: GameSchema (Game rows) — consumed today by the
+ *   search-all `local` results (GameComboInput) and the lists/games group game
+ *   cards. UI-consumed fields: id + name (React keys / card titles, REQUIRED),
  *   plus image_url / min_players / max_players / playing_time (rendered when present).
  *
+ * History (87.5 review SW-02): this test's original subject endpoint,
+ *   GET /api/games (gamesAPI.getGames), was DELETED as a dead route — zero product
+ *   callers; the "rendered as game cards" claim had gone stale as consumers moved
+ *   to search-all / for-event / lists-games. The captured payload below remains a
+ *   valid real-BE Game[] shape (the rows other endpoints still serve), so the
+ *   contract assertions keep guarding GameSchema drift unchanged.
+ *
  * Payload: src/lib/__fixtures__/games.captured.json — captured VERBATIM from a live
- *   GET https://api.nextgamenight.app/api/games (first 3 records, unedited). It
- *   carries BE keys absent from GameSchema (weight, is_custom, theme, url,
- *   createdAt, updatedAt) — exercising the `.passthrough()` additive-tolerance case.
+ *   GET https://api.nextgamenight.app/api/games (first 3 records, unedited, pre-
+ *   deletion). It carries BE keys absent from GameSchema (weight, is_custom, theme,
+ *   url, createdAt, updatedAt) — exercising the `.passthrough()` additive-tolerance case.
  */
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
@@ -32,7 +40,7 @@ const GameListSchemaPassthrough = z.array(GameSchemaPassthrough);
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
-describe('GET /api/games contract (real captured payload)', () => {
+describe('GameSchema contract (real captured Game[] payload; original GET /games endpoint deleted in 87.5 SW-02)', () => {
   it('parses the captured real BE payload and pins UI-consumed fields + types', () => {
     const parsed = GameListSchemaPassthrough.parse(capturedGames);
     expect(parsed.length).toBeGreaterThan(0);

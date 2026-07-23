@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useUser as Auth } from '@auth0/nextjs-auth0/client';
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { gamesAPI, eventsAPI, groupsAPI, ballotAPI, availabilityAPI, promptAPI, API_BASE_URL } from '../../lib/api';
 import { format, parseISO, differenceInMinutes, startOfWeek, addWeeks, subWeeks, isSameWeek } from 'date-fns';
 import EventScheduler from './EventScheduler';
@@ -19,7 +19,11 @@ import TimezoneNudgeBanner from './TimezoneNudgeBanner';
 import { toast } from 'sonner';
 
 function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId = null }) {
-  const authUser = user || Auth().user;
+  // Identity: send the caller's resolved Users.id UUID to searchAll (via the two
+  // GameComboInput userId props below), not the Auth0 sub (87.5 BINT-02). searchAll
+  // fires only on user typing, and GameComboInput's search useCallback already
+  // deps on userId, so the resolved UUID re-binds the moment identity settles.
+  const { selfUuid } = useSelfIdentity();
   const { timezone, browserTimezone } = useTimezone();
   const effectiveTz = timezone || browserTimezone || 'UTC';
   const [groupMembers, setGroupMembers] = useState([]);
@@ -653,7 +657,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 setNewEvent(prev => ({ ...prev, game_id: game_id || '', game_name: game_name || '' }));
               }}
               groupId={group_id}
-              userId={authUser?.sub}
+              userId={selfUuid}
               placeholder="Search for a game or type a name"
             />
             <QuickSuggestions
@@ -866,7 +870,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
               setBallotOptions={setBallotOptions}
               ballotError={ballotError}
               groupId={group_id}
-              userId={authUser?.sub}
+              userId={selfUuid}
             />
           )}
 

@@ -641,7 +641,11 @@ export default function GameDetailPage() {
 
                 // Fetch reviews for this game in this group
                 // Use gameReviewsAPI.getGameReviews which automatically includes Authorization header
-                const reviewsData = await gameReviewsAPI.getGameReviews(game_id, group_id, user?.sub || null);
+                // The 3rd arg is the caller's own identity (is-me review marker):
+                // send selfUuid. This runs inside the selfUuid-keyed fetch effect
+                // (deps at L303), so it re-fires with the resolved UUID once
+                // identity lands; before then it sends null (is-me indeterminate).
+                const reviewsData = await gameReviewsAPI.getGameReviews(game_id, group_id, selfUuid || null);
                 setReviews(Array.isArray(reviewsData) ? reviewsData : []);
 
                 // Find current user's review + derive role.
@@ -729,7 +733,15 @@ export default function GameDetailPage() {
 
     const handleReviewSubmit = async (e) => {
         e.preventDefault();
+        // D-02 guard-before-write: the review body sends selfUuid, so fail loud
+        // (no send) if identity has not resolved rather than posting a stale sub.
         if (!user?.sub || !game_id || !group_id) return;
+        if (!selfUuid) {
+            // ML-02/ML-03 pattern: identity still resolving is user-recoverable —
+            // tell them instead of silently swallowing the submit click.
+            toast.error('Still loading your account — please try again in a moment.');
+            return;
+        }
 
         try {
             // Ensure rating is a number and within valid range (0-5, increments of 0.5)
@@ -742,7 +754,7 @@ export default function GameDetailPage() {
             
             // Use gameReviewsAPI.submitReview which automatically includes Authorization header
             const data = await gameReviewsAPI.submitReview({
-                user_id: user.sub,
+                user_id: selfUuid,
                 group_id: group_id,
                 game_id: game_id,
                 rating: roundedRating,

@@ -663,12 +663,10 @@ export const usersAPI = {
  * API functions for Games
  */
 export const gamesAPI = {
-  // Get all games (with optional search)
-  getGames: (params = {}) => {
-    const queryString = new URLSearchParams(params).toString();
-    return apiFetch(`/games${queryString ? `?${queryString}` : ''}`);
-  },
-  
+  // getGames (GET /games) DELETED — 87.5 review SW-02: zero product callers and
+  // the BE route was removed (its ?group_id arm leaked group reviews
+  // unauthenticated). Use searchAll / getGamesForEvent / listsAPI.getGroupGames.
+
   // Get a single game by ID
   getGame: (game_id: string) => 
     apiFetch(`/games/${game_id}`),
@@ -750,20 +748,8 @@ export const listsAPI = {
     return apiFetch(`/lists/games/${group_id}/${encodeURIComponent(user_id)}?${params.toString()}`);
   },
   
-  // Get most played games
-  getMostPlayed: (group_id: string, user_id: string) => 
-    apiFetch(`/lists/most-played/${group_id}/${encodeURIComponent(user_id)}`),
-  
-  // Get least played games
-  getLeastPlayed: (group_id: string, user_id: string) => 
-    apiFetch(`/lists/least-played/${group_id}/${encodeURIComponent(user_id)}`),
-  
-  // Get games alphabetically
-  getAlphabetical: (group_id: string, user_id: string) => 
-    apiFetch(`/lists/alphabetical/${group_id}/${encodeURIComponent(user_id)}`),
-  
   // Get games by theme
-  getByTheme: (group_id: string, theme: string, user_id: string) => 
+  getByTheme: (group_id: string, theme: string, user_id: string) =>
     apiFetch(`/lists/by-theme/${group_id}/${encodeURIComponent(theme)}/${encodeURIComponent(user_id)}`),
 };
 

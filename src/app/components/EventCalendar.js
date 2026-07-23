@@ -10,6 +10,9 @@ import CalendarListView from './CalendarListView';
 import EventDayModal from './EventDayModal';
 import { useTimezone } from './TimezoneProvider';
 import { formatWithTzAbbr } from '../../lib/datetime';
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
 export default function EventCalendar({
   refreshKey = 0,
@@ -24,6 +27,10 @@ export default function EventCalendar({
   const { user } = Auth();
   const { timezone } = useTimezone();
   const router = useRouter();
+  // Resolve the caller's own Users.id UUID; getUserEvents sends it instead of
+  // the Auth0 sub. It resolves ASYNC after mount, so the fetch effect keys on it.
+  const { selfUuid, query: selfIdentityQuery } = useSelfIdentity();
+  const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
   const [internalEvents, setInternalEvents] = useState([]);
   const [loading, setLoading] = useState(externalEvents === null);
   // CAL-03/CAL-07: initial state is hydrated synchronously from localStorage
@@ -42,10 +49,13 @@ export default function EventCalendar({
   const activeEvents = externalEvents !== null ? externalEvents : internalEvents;
 
   useEffect(() => {
-    if (externalEvents === null && user?.sub) {
+    // Mount-fire gate: only fetch once the caller's own UUID resolves. selfUuid
+    // is in the dep array (async-resolution rule) so the fetch fires once
+    // identity resolves, not only at initial mount.
+    if (externalEvents === null && selfUuid) {
       fetchEvents();
     }
-  }, [user, refreshKey]); // Refetch when refreshKey changes
+  }, [user, refreshKey, selfUuid]); // Refetch when refreshKey or identity changes
 
   // CAL-03/CAL-07: persist viewMode + currentDate whenever either changes.
   // Save fires after user interactions (toggle list, navigate month) so
@@ -56,10 +66,10 @@ export default function EventCalendar({
   }, [scope, viewMode, currentDate]);
 
   const fetchEvents = async () => {
-    if (!user?.sub) return;
+    if (!selfUuid) return;
     try {
       setLoading(true);
-      const data = await eventsAPI.getUserEvents(user.sub, { includeRsvpSummary: true });
+      const data = await eventsAPI.getUserEvents(selfUuid, { includeRsvpSummary: true });
       setInternalEvents(data || []);
     } catch (error) {
       console.error('Error fetching events:', error.message || 'Unknown error');
@@ -147,6 +157,26 @@ export default function EventCalendar({
   const chronologicalEvents = [...activeEvents]
     .filter(event => !!event?.start_date)
     .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
+
+  // WR-03: in self-fetch mode (externalEvents === null) the calendar gates its
+  // fetch on selfUuid; fetchEvents early-returns on `!selfUuid` before its
+  // try/finally, so a TERMINAL identity failure leaves `loading` stuck true and
+  // the "Loading calendar..." spinner below hangs forever with no affordance.
+  // Surface the calendar's error banner where the calendar would be (mirrors the
+  // friends-page identity gate). Only applies in self-fetch mode — when
+  // externalEvents is supplied the parent owns loading and never gates on selfUuid.
+  if (externalEvents === null && selfIdentityErrorState.showError) {
+    return (
+      <div className="card p-6">
+        <h2 className="text-2xl font-bold text-content-primary mb-6">{title}</h2>
+        <FetchErrorBanner
+          state={selfIdentityErrorState}
+          title="Couldn't load your calendar"
+          reportContext="event calendar — self-identity resolution"
+        />
+      </div>
+    );
+  }
 
   if (loading) {
     return (

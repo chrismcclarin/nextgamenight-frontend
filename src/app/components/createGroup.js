@@ -6,8 +6,7 @@ import FriendInvitePanel from './FriendInvitePanel';
 function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
 
     const groupForm = {
-        name: "",
-        user_id: user?.sub || ""
+        name: ""
     }
 
     const [newGroup, setNewGroup] = useState(groupForm)
