@@ -12,7 +12,7 @@ import type {
   Ballot,
 } from './schemas/events';
 import type { User } from './schemas/users';
-import type { Availability, AvailabilityList } from './schemas/availability';
+import type { AvailabilityList } from './schemas/availability';
 import type { GameList, UserGameList } from './schemas/shared';
 
 // Absolute backend origin. Used ONLY by PUBLIC/unauthenticated callers that must
@@ -795,17 +795,6 @@ export const availabilityAPI = {
       method: 'DELETE',
     }),
   
-  // Submit weekly availability response
-  submitWeeklyAvailability: (group_id: string, data: Record<string, unknown>) =>
-    apiFetch(`/availability/groups/${group_id}/weekly`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-
-  // Get weekly availability for a group
-  getWeeklyAvailability: (group_id: string, week_start: string) =>
-    apiFetch<Availability>(`/availability/groups/${group_id}/week/${week_start}`),
-
   // Get merged availability heatmap for a group (1-hour bucketed, 12pm-11pm)
   getGroupHeatmap: (group_id: string, weekStart: string, timezone: string = 'UTC') => {
     const params = new URLSearchParams({ timezone });
