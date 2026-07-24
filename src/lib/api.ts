@@ -186,16 +186,17 @@ export async function publicFetch<T = unknown>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${PUBLIC_API_BASE_URL}${endpoint}`;
-  const defaultOptions: RequestInit = {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers as Record<string, string> | undefined),
-    },
+  // Merge headers LAST so a caller's custom headers extend (not replace) the
+  // defaults — `{ ...defaults, ...options }` alone would clobber the merged
+  // headers object with the caller's raw one, silently dropping Content-Type.
+  const mergedHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> | undefined),
   };
 
   let response: Response;
   try {
-    response = await fetch(url, { ...defaultOptions, ...options });
+    response = await fetch(url, { ...options, headers: mergedHeaders });
   } catch (error) {
     const errName = error instanceof Error ? error.name : '';
     const errMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -243,15 +244,15 @@ export async function apiFetch<T = unknown>(
 ): Promise<T> {
   const url = `${BFF_BASE}${endpoint}`;
 
-  const defaultOptions: RequestInit = {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers as Record<string, string> | undefined),
-    },
+  // Merge headers LAST so a caller's custom headers extend (not replace) the
+  // defaults (same rationale as publicFetch).
+  const mergedHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> | undefined),
   };
 
   try {
-    const response = await fetch(url, { ...defaultOptions, ...options });
+    const response = await fetch(url, { ...options, headers: mergedHeaders });
     
     // Read response as text first (can only be read once)
     const responseText = await response.text();
