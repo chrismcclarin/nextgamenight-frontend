@@ -2,7 +2,7 @@
 import { useState, useRef } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
-import { API_BASE_URL } from '../../lib/api';
+import { feedbackAPI } from '../../lib/api';
 
 const MAX_FILE_SIZE_MB = 2;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -99,16 +99,12 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
         feedbackBody.user_id = self.id;
       }
 
-      const response = await fetch(`${API_BASE_URL}/feedback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(feedbackBody),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to submit feedback');
-      }
+      // Routed through the centralized client (87.6 R7). feedbackAPI.submitFeedback
+      // rides publicFetch (direct PUBLIC_API_BASE_URL, logged-out-capable) and
+      // throws ApiError on a non-ok response, so the manual `!response.ok` block
+      // is no longer needed — the catch below surfaces ApiError.message (the
+      // backend's extracted error string) into the toast, preserving its text.
+      await feedbackAPI.submitFeedback(feedbackBody);
 
       setSubmitted(true);
       setTimeout(() => {
