@@ -27,7 +27,6 @@
  */
 import { z } from 'zod';
 import * as Sentry from '@sentry/nextjs';
-import { apiFetch } from '@/lib/api';
 
 // -----------------------------------------------------------------------------
 // prompt-settings (GET /groups/:id/prompt-settings)
@@ -210,19 +209,34 @@ export function parsePromptsSoftFail<T>(
 }
 
 /**
- * Thin soft-fail queryFn factory: fetch via the existing `apiFetch` seam, then
- * soft-fail parse (never throw on ZodError). Mirrors `validatedQueryFn` (84-04)
- * but uses safeParse + fallback instead of strict `.parse()` throw, because the
- * prompt trio must degrade rather than blank on benign backend drift.
+ * Thin soft-fail queryFn factory: fetch via the caller-supplied `fetcher` seam
+ * (a thunk that resolves the raw body — e.g. `() => promptAPI.getOpenPrompts(id)`),
+ * then soft-fail parse (never throw on ZodError). Mirrors `validatedQueryFn`
+ * (84-04) but uses safeParse + fallback instead of strict `.parse()` throw,
+ * because the prompt trio must degrade rather than blank on benign backend drift.
+ *
+ * The `fetcher` param replaced the old `url: string` param (87.6 D-08): call
+ * sites now pass the wrapper thunk directly instead of a raw route path, so the
+ * transport lives in the api.ts wrappers rather than being re-hardcoded here.
  */
 export function softFailPromptQueryFn<T>(
   schema: z.ZodType<T>,
-  url: string,
+  fetcher: () => Promise<unknown>,
   queryKey: ReadonlyArray<unknown>,
   fallback: T
 ) {
+  // Runtime guard (87.6 D-08 / T-87.6-06): the 5 prompt-query call sites live in
+  // `.js` files under `checkJs: false`, so tsc CANNOT catch a call site that still
+  // passes a `url: string` where a `fetcher` thunk is now expected. Throw loudly
+  // and greppably instead of silently invoking a string. Plan 09 Task 2 flips the
+  // 5 sites; until then this guard is the only signal that catches a missed one.
+  if (typeof fetcher !== 'function') {
+    throw new Error(
+      'softFailPromptQueryFn: fetcher must be a function (got string URL — un-migrated call site)'
+    );
+  }
   return async (): Promise<T> => {
-    const raw = await apiFetch<unknown>(url);
+    const raw = await fetcher();
     return parsePromptsSoftFail(schema, raw, queryKey, fallback);
   };
 }

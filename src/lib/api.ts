@@ -736,9 +736,14 @@ export const gameReviewsAPI = {
  * API functions for Feedback
  */
 export const feedbackAPI = {
-  // Submit bug report or suggestion
+  // Submit bug report or suggestion. Uses publicFetch (direct PUBLIC_API_BASE_URL,
+  // not the authenticated BFF) because FeedbackForm mounts in the root layout and
+  // must work logged-out; /api/feedback is a public route and the codebase forbids
+  // public callers going through apiFetch/BFF. publicFetch shares the ApiError /
+  // mapErrorToCode seam, so error/return shape and toast text are preserved for the
+  // route's current {error}-shaped responses.
   submitFeedback: (feedbackData: Record<string, unknown>) =>
-    apiFetch('/feedback', {
+    publicFetch('/feedback', {
       method: 'POST',
       body: JSON.stringify(feedbackData),
     }),
