@@ -347,13 +347,6 @@ export const groupsAPI = {
       body: JSON.stringify(groupData),
     }),
 
-  // Add user to group
-  addUserToGroup: (group_id: string, user_id: string) =>
-    apiFetch(`/groups/${group_id}/users`, {
-      method: 'POST',
-      body: JSON.stringify({ user_id }),
-    }),
-
   // Update user role in group (owner only)
   updateUserRole: (group_id: string, target_user_id: string, role: string) =>
     apiFetch(`/groups/${group_id}/users/${target_user_id}/role`, {
@@ -523,12 +516,6 @@ export const rsvpAPI = {
   // Get all RSVPs for an event (includes summary counts)
   getEventRsvps: (event_id: string) =>
     apiFetch<RsvpList>(`/rsvp/event/${event_id}`),
-  // Get all RSVPs for the current user
-  getUserRsvps: (user_id: string) =>
-    apiFetch<RsvpList>(`/rsvp/user/${encodeURIComponent(user_id)}`),
-  // Remove an RSVP
-  removeRsvp: (rsvp_id: string) =>
-    apiFetch(`/rsvp/${rsvp_id}`, { method: 'DELETE' }),
 };
 
 /**
@@ -553,7 +540,6 @@ export const eventBringsAPI = {
     method: 'PUT',
     body: JSON.stringify({ game_ids }),
   }),
-  removeBring: (bring_id: string) => apiFetch(`/event-brings/${bring_id}`, { method: 'DELETE' }),
 };
 
 /**
@@ -582,17 +568,6 @@ export const usersAPI = {
       body: JSON.stringify({ username }),
     }),
   
-  // Search user by email
-  searchUserByEmail: (email: string) => 
-    apiFetch(`/users/search/email/${encodeURIComponent(email)}`),
-  
-  // Create or update user
-  createOrUpdateUser: (userData: Record<string, unknown>) =>
-    apiFetch('/users', {
-      method: 'POST',
-      body: JSON.stringify(userData),
-    }),
-
   // Mark tutorial as completed (with version tracking)
   completeTutorial: (user_id: string, version = 2) =>
     apiFetch(`/users/${encodeURIComponent(user_id)}/tutorial`, {
@@ -665,18 +640,11 @@ export const usersAPI = {
 export const gamesAPI = {
   // getGames (GET /games) DELETED — 87.5 review SW-02: zero product callers and
   // the BE route was removed (its ?group_id arm leaked group reviews
-  // unauthenticated). Use searchAll / getGamesForEvent / listsAPI.getGroupGames.
+  // unauthenticated). Use searchAll / listsAPI.getGroupGames.
 
   // Get a single game by ID
   getGame: (game_id: string) => 
     apiFetch(`/games/${game_id}`),
-  
-  // Create a custom game
-  createGame: (gameData: Record<string, unknown>) => 
-    apiFetch('/games', {
-      method: 'POST',
-      body: JSON.stringify(gameData),
-    }),
   
   // Search BGG for games
   searchBGG: (query: string) => 
@@ -688,10 +656,6 @@ export const gamesAPI = {
       method: 'POST',
     }),
   
-  // Get games for event form (group played + user owned)
-  getGamesForEvent: (group_id: string, user_id: string) =>
-    apiFetch(`/games/for-event/${group_id}/${encodeURIComponent(user_id)}`),
-
   // Search all games (local custom + BGG) for combo input
   searchAll: (query: string, groupId: string, userId: string) => {
     const params = new URLSearchParams({ query });
@@ -748,9 +712,6 @@ export const listsAPI = {
     return apiFetch(`/lists/games/${group_id}/${encodeURIComponent(user_id)}?${params.toString()}`);
   },
   
-  // Get games by theme
-  getByTheme: (group_id: string, theme: string, user_id: string) =>
-    apiFetch(`/lists/by-theme/${group_id}/${encodeURIComponent(theme)}/${encodeURIComponent(user_id)}`),
 };
 
 /**
@@ -763,29 +724,11 @@ export const gameReviewsAPI = {
     return apiFetch(`/game-reviews/game/${game_id}/group/${group_id}${params}`);
   },
   
-  // Get all reviews by a user in a group
-  getUserReviews: (target_user_id: string, group_id: string) => {
-    return apiFetch(`/game-reviews/user/${encodeURIComponent(target_user_id)}/group/${group_id}`);
-  },
-  
   // Create or update a review
-  submitReview: (reviewData: Record<string, unknown>) => 
+  submitReview: (reviewData: Record<string, unknown>) =>
     apiFetch('/game-reviews', {
       method: 'POST',
       body: JSON.stringify(reviewData),
-    }),
-  
-  // Update a review
-  updateReview: (review_id: string, reviewData: Record<string, unknown>) => 
-    apiFetch(`/game-reviews/${review_id}`, {
-      method: 'PUT',
-      body: JSON.stringify(reviewData),
-    }),
-  
-  // Delete a review
-  deleteReview: (review_id: string) => 
-    apiFetch(`/game-reviews/${review_id}`, {
-      method: 'DELETE',
     }),
 };
 
@@ -828,19 +771,6 @@ export const googleCalendarAPI = {
  * API functions for Availability and Planning
  */
 export const availabilityAPI = {
-  // Get user's availability for a date range
-  getUserAvailability: (
-    user_id: string,
-    startDate: string | null = null,
-    endDate: string | null = null,
-    timezone: string = 'UTC'
-  ) => {
-    const params = new URLSearchParams({ timezone });
-    if (startDate) params.append('start_date', startDate);
-    if (endDate) params.append('end_date', endDate);
-    return apiFetch<AvailabilityList>(`/availability/user/${encodeURIComponent(user_id)}?${params.toString()}`);
-  },
-
   // Get user's availability patterns (for editing/deleting)
   getUserPatterns: (user_id: string) =>
     apiFetch<AvailabilityList>(`/availability/user/${encodeURIComponent(user_id)}/patterns`),
@@ -865,19 +795,6 @@ export const availabilityAPI = {
       method: 'DELETE',
     }),
   
-  // Get overlapping free time for all group members
-  getGroupOverlaps: (
-    group_id: string,
-    startDate: string | null = null,
-    endDate: string | null = null,
-    timezone: string = 'UTC'
-  ) => {
-    const params = new URLSearchParams({ timezone });
-    if (startDate) params.append('start_date', startDate);
-    if (endDate) params.append('end_date', endDate);
-    return apiFetch(`/availability/group/${group_id}/overlaps?${params.toString()}`);
-  },
-
   // Submit weekly availability response
   submitWeeklyAvailability: (group_id: string, data: Record<string, unknown>) =>
     apiFetch(`/availability/groups/${group_id}/weekly`, {
@@ -908,14 +825,6 @@ export const magicAuthAPI = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, formLoadedAt }),
-    }).then(res => res.json()),
-
-  // Request a new magic link (stub - returns 501 currently)
-  requestNew: (promptId: string) =>
-    fetch(`${PUBLIC_API_BASE_URL}/magic-auth/request-new`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt_id: promptId }),
     }).then(res => res.json()),
 };
 
@@ -1060,10 +969,6 @@ export const promptAPI = {
   // Fetch a specific prompt by ID regardless of status (used for closed prompts from email links)
   getPromptById: (promptId: string) =>
     apiFetch(`/prompts/${promptId}`),
-
-  // Fetch heatmap suggestions for a prompt
-  getSuggestions: (promptId: string) =>
-    apiFetch(`/prompts/${promptId}/suggestions`),
 
   // Phase 71.2 / D-UI-02 — list ALL open prompts for a group (manual + auto)
   // with Creator info, GroupPromptSettings.template_name (for "From [schedule name]"),
@@ -1242,13 +1147,6 @@ export const ballotAPI = {
   // Get ballot for an event (options, vote state, winner)
   getBallot: (eventId: string) =>
     apiFetch<Ballot>(`/ballot/${eventId}`),
-
-  // Create/set ballot options (organizer only, requires rsvp_deadline on event)
-  setBallotOptions: (eventId: string, options: unknown[]) =>
-    apiFetch(`/ballot/${eventId}/options`, {
-      method: 'POST',
-      body: JSON.stringify({ options }),
-    }),
 
   // Update ballot options (organizer only, before close)
   updateBallotOptions: (eventId: string, options: unknown[]) =>
