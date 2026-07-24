@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { promptSettingsAPI, promptAPI } from '../../lib/api';
 import { promptKeys } from '../../lib/queryKeys/promptKeys';
 import {
   promptSettingsSchema,
@@ -65,7 +66,7 @@ export default function PromptScheduleSection({
     queryKey: promptKeys.settings(groupId),
     queryFn: softFailPromptQueryFn(
       promptSettingsSchema,
-      `/groups/${groupId}/prompt-settings`,
+      () => promptSettingsAPI.getGroupPromptSettings(groupId),
       promptKeys.settings(groupId),
       EMPTY_PROMPT_SETTINGS,
     ),
@@ -82,7 +83,7 @@ export default function PromptScheduleSection({
     queryKey: promptKeys.openPolls(groupId),
     queryFn: softFailPromptQueryFn(
       openPromptsSchema,
-      `/groups/${groupId}/prompts/open`,
+      () => promptAPI.getOpenPrompts(groupId),
       promptKeys.openPolls(groupId),
       EMPTY_OPEN_PROMPTS,
     ),

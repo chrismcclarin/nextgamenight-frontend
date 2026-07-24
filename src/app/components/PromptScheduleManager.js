@@ -45,7 +45,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
     queryKey: promptKeys.settings(groupId),
     queryFn: softFailPromptQueryFn(
       promptSettingsSchema,
-      `/groups/${groupId}/prompt-settings`,
+      () => promptSettingsAPI.getGroupPromptSettings(groupId),
       promptKeys.settings(groupId),
       EMPTY_PROMPT_SETTINGS,
     ),
