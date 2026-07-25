@@ -1,5 +1,11 @@
 # Fixing Auth0 Login Error on Vercel
 
+> **Stale example URLs (noted 2026-07-25).** Every `gamecalendarfrontend-*.vercel.app` hostname
+> below is an old Vercel preview URL from before the custom domain. The app now serves at
+> **nextgamenight.app** (DNS at Porkbun), and Auth0 is configured against that domain. The
+> *procedure* here is still correct — substitute the real domain for the example hostnames.
+> Moved from the repo root during the 2026-07-25 docs consolidation.
+
 ## Error: "This page isn't working" after clicking Google sign-in
 
 This error typically means Auth0 can't redirect back to your Vercel app after authentication.
