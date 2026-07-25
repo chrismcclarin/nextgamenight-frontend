@@ -1,3 +1,43 @@
+import { parseISO, startOfWeek } from 'date-fns';
+
+/**
+ * Resolve which week the create-event heatmap should FETCH when the modal opens.
+ *
+ * Returns a Monday `Date` to anchor the fetch to, or `null` meaning "use today's
+ * Monday" (the sentinel the fetch effect already understands).
+ *
+ * DECISION 2026-07-25 (bugfix, owner repro): extracted here as a pure function so the
+ * week-anchor rule is unit-testable — the same reason Phase 82 pulled out
+ * `availabilityColor` / `tzUtils` / `datetime`. The bug it fixes was invisible to tests
+ * because nothing exercised the prefill path.
+ *
+ * The bug: `calendarInitialDate` follows `prefillDate` to the TAPPED day's week, but this
+ * anchor used to always be `null`, so the CALENDAR showed the tapped week while the FETCH
+ * asked for today's. `heatmapLookup` is keyed `${dateStr}_${hour}`, so a different week
+ * matched ZERO slots and every cell rendered untinted. `onWeekChange` fires only on user
+ * navigation, never on mount — hence the tint appearing only after clicking Next/Prev.
+ *
+ * @param prefillDate - 'YYYY-MM-DD' of the tapped day, or null
+ * @param promptId - when set, the poll path anchors to the prompt's own weekStart and the
+ *   fetch effect returns early without reading this anchor at all — so always null here
+ * @param minWeek - earliest allowed Monday (todayMonday - 3 weeks)
+ * @param maxWeek - latest allowed Monday (todayMonday + 12 weeks)
+ * @returns Monday Date to fetch, or null for "today's Monday"
+ */
+export const resolveInitialHeatmapWeek = ({ prefillDate, promptId, minWeek, maxWeek }) => {
+  if (promptId || !prefillDate) return null;
+
+  const prefillMonday = startOfWeek(parseISO(prefillDate), { weekStartsOn: 1 });
+
+  // Clamp to the SAME bounds the nav handlers enforce. Load-bearing: an out-of-range tap
+  // must fall back to today rather than send a weekStart the backend rejects. The tint is
+  // a nice-to-have; a 400 is not.
+  if (minWeek && prefillMonday < minWeek) return null;
+  if (maxWeek && prefillMonday > maxWeek) return null;
+
+  return prefillMonday;
+};
+
 // Helper function to create a participant object
 // Note: user_id here is the User.id (UUID), not the Auth0 user_id string.
 // (87.3-10 #16: the old auth0_user_id "reference" field was dead — never read

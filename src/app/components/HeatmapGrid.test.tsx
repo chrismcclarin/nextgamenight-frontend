@@ -1,3 +1,9 @@
+// ⚠️ DEAD-CODE TEST — DELETE AT END OF PHASE 88 alongside HeatmapGrid.js
+// (owner decision 2026-07-25). The component under test is imported by NOTHING,
+// so these pins guard a surface no user can reach. Kept until the end of the
+// phase so a full round of Phase 88 work runs against it first.
+// See 88-SPEC.md "END-OF-PHASE DEAD-CODE GATE" for the full cluster.
+//
 // Convergence pins for HeatmapGrid (PRIM-01 / 84-10).
 //
 // After convergence HeatmapGrid renders the shared ReadCell (intensity variant)

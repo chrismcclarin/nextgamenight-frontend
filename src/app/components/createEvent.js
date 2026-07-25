@@ -9,7 +9,7 @@ import EventHeatmapBackground from './EventHeatmapBackground';
 import GameComboInput from './GameComboInput';
 import QuickSuggestions from './QuickSuggestions';
 import useSwipeNavigation from './useSwipeNavigation';
-import { createParticipant, createEventForm, prepareEventData } from '../../lib/eventFormUtils';
+import { createParticipant, createEventForm, prepareEventData, resolveInitialHeatmapWeek } from '../../lib/eventFormUtils';
 import ParticipantRow from './ParticipantRow';
 import BallotOptionsEditor from './BallotOptionsEditor';
 import EventResultFields from './EventResultFields';
@@ -344,12 +344,6 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     fetchHeatmap();
   }, [modal, group_id, effectiveTz, promptId, currentWeekStart]);
 
-  // Phase 72 HUX-04: reset to current week on modal open / promptId change.
-  // CONTEXT — no localStorage / no URL state; page-load reset semantics.
-  useEffect(() => {
-    setCurrentWeekStart(null);
-  }, [modal, promptId]);
-
   // Phase 72 HUX-04 — week-nav range / handlers for the manual-entry heatmap.
   // Only used when !promptId (poll-restricted path stays anchored).
   // todayMonday is computed from the user's effective TZ so users near
@@ -361,6 +355,43 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   }, [effectiveTz]);
   const minWeek = useMemo(() => subWeeks(todayMonday, 3), [todayMonday]);
   const maxWeek = useMemo(() => addWeeks(todayMonday, 12), [todayMonday]);
+
+  // Phase 72 HUX-04: reset the heatmap week on modal open / promptId change.
+  // CONTEXT — no localStorage / no URL state; page-load reset semantics.
+  //
+  // DECISION 2026-07-25 (bugfix, owner repro): seed from `prefillDate` instead of
+  // resetting unconditionally to null. This effect used to always
+  // `setCurrentWeekStart(null)` — but `calendarInitialDate` (below) follows
+  // `prefillDate` to the TAPPED day's week, so opening create-event from an
+  // empty-day tap on the group calendar left the CALENDAR on the tapped week while
+  // the heatmap FETCH still asked for today's week (null resolves to
+  // `todayMondayLocal` in the fetch effect). `heatmapLookup` is keyed
+  // `${dateStr}_${hour}` (EventScheduler.js), so a different week matched ZERO
+  // slots and every cell rendered untinted. `onWeekChange` only fires on user
+  // navigation, never on mount, so it did not self-correct until the user clicked
+  // Next/Prev — which is why the tint appeared to "come back" after navigating.
+  //
+  // The promptId path already carried the mirror of this fix; see
+  // `calendarInitialDate`'s comment: "otherwise the calendar opens on the current
+  // week and no green tiles appear." The prefillDate path never got it.
+  //
+  // Moved BELOW the todayMonday/minWeek/maxWeek memos on purpose so the clamp can
+  // reuse them rather than recomputing the TZ-safe "today". Clamping to the SAME
+  // -3/+12 bounds the nav handlers enforce is load-bearing: an out-of-range tap
+  // must fall back to today rather than send a weekStart the backend rejects. The
+  // tint is a nice-to-have; a 400 is not.
+  // The rule itself lives in `resolveInitialHeatmapWeek` (lib/eventFormUtils) as a pure
+  // function so it is unit-testable — this bug shipped precisely because nothing
+  // exercised the prefill path.
+  useEffect(() => {
+    if (!modal) {
+      setCurrentWeekStart(null);
+      return;
+    }
+    setCurrentWeekStart(
+      resolveInitialHeatmapWeek({ prefillDate, promptId, minWeek, maxWeek })
+    );
+  }, [modal, promptId, prefillDate, minWeek, maxWeek]);
   const effectiveMondayForUI = currentWeekStart || todayMonday;
   const canGoBack = effectiveMondayForUI > minWeek;
   const canGoForward = effectiveMondayForUI < maxWeek;

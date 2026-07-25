@@ -99,6 +99,12 @@ function resolveColor(props: ReadCellProps): string {
   if (props.variant === 'merged') {
     return mergedCellColor(props.availableCount, props.totalMembers);
   }
+  // ⚠️ DEAD BRANCH — DELETE AT END OF PHASE 88 (owner decision 2026-07-25).
+  // The default (intensity) variant has no live caller: its only consumer is
+  // `HeatmapGrid.js`, which nothing imports. Verified 2026-07-25. When this goes,
+  // remove the `IntensityReadCellProps` arm of the props union above and the
+  // `intensityColor` import — see 88-SPEC.md "END-OF-PHASE DEAD-CODE GATE".
+  // Every LIVE consumer passes variant="merged".
   return intensityColor(props.participantCount, props.preferredCount, props.totalMembers);
 }
 
