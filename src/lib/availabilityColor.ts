@@ -9,6 +9,26 @@
 // job in Phase 84. These are extracted as-is to preserve current behavior bit-for-bit.
 
 /**
+ * ⚠️ DEAD CODE — DELETE AT END OF PHASE 88 (owner decision 2026-07-25).
+ *
+ * This yellow→orange→red ramp has NO live render path. It is reachable only through
+ * `ReadCell`'s DEFAULT variant, and the sole caller of that default is
+ * `app/components/HeatmapGrid.js` — which **nothing imports**. Verified 2026-07-25.
+ *
+ * Origin: it served the OLD tutorial heatmap. The Phase 73 tutorial rewrite replaced that
+ * surface with production-matching greens (green-100..500) and orphaned this ramp.
+ *
+ * It is being left in place rather than removed now, deliberately: a full phase of Phase 88
+ * work runs against it first, so nothing can be silently depending on it. **Delete at the end
+ * of Phase 88** — see 88-SPEC.md "END-OF-PHASE DEAD-CODE GATE". The cluster to remove:
+ *   - this function + its `describe` block in `availabilityColor.test.ts`
+ *   - `app/components/HeatmapGrid.js` + `HeatmapGrid.test.tsx`
+ *   - `ReadCell`'s default/intensity branch + the `IntensityReadCellProps` arm of its union
+ *
+ * DO NOT adopt this ramp for anything new. The canonical availability ramp is
+ * `mergedCellColor` below — 5 steps, green-100 → green-500 (owner decision 2026-07-25).
+ *
+ * ---
  * Calculate color intensity based on participant count and preference weighting.
  * Extracted VERBATIM from HeatmapCell.js `getIntensityColor`.
  *
@@ -35,6 +55,28 @@ export function intensityColor(
 }
 
 /**
+ * ★ CANONICAL AVAILABILITY RAMP — 5 steps, green-100 → green-500 (owner decision 2026-07-25).
+ *
+ * This is THE standard for "how many of the group is available in this slot?". Three surfaces
+ * already agree on it: this function, `EventHeatmapBackground`'s legend swatches (:289-293,
+ * hardcoded), and the tutorial's demo heatmap — matched deliberately in Phase 73 so that moving
+ * from tutorial to product keeps one visual grammar.
+ *
+ * `EventScheduler.js:360-363` is the sole outlier: a 4-step ramp of ONE green at four alpha
+ * levels, applied inline. Phase 88 moves it onto these 5 steps and these values. Note the step
+ * count is a real visual change, not cosmetic — 4 buckets cut at 25/50/75%, 5 at 20/40/60/80%,
+ * so identical data renders a different shade.
+ *
+ * Open question for Phase 88 planning, deliberately NOT decided here: EventScheduler is a
+ * calendar, so availability is a wash BEHIND event blocks and gridlines, which its alpha ramp
+ * lets show through — opaque `bg-green-300` would cover them. Whether the calendar keeps some
+ * transparency is a visual call, and it interacts with Phase 88.3 (light mode), since opaque pale
+ * greens and alpha-over-background behave very differently across themes.
+ *
+ * Also note: these are RAW palette classes, not semantic tokens. Phase 88 Req 2's "semantic
+ * tokens only" rule implicates this function itself, not just EventScheduler's rgba() literals.
+ *
+ * ---
  * Get Tailwind color classes based on availability ratio.
  * Green gradient: darker = more members available.
  * Extracted VERBATIM from MergedHeatmapCell.js `getCellStyle`.

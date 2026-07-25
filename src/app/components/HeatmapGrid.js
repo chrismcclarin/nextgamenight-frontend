@@ -1,5 +1,27 @@
 'use client';
 
+// ============================================================================
+// ⚠️ DEAD CODE — DELETE AT END OF PHASE 88 (owner decision 2026-07-25).
+//
+// NOTHING IMPORTS THIS FILE. Verified 2026-07-25: no `import HeatmapGrid`, no
+// `from './HeatmapGrid'` anywhere in src/ outside this file and its own test.
+// The only other references are prose mentions in comments (createEvent.js:375,
+// HeatmapTooltip.js:32, ReadCell.tsx:76, WeekGrid.tsx:13) — no call sites.
+//
+// It is also the ONLY caller of ReadCell's default (intensity) variant, which makes
+// `intensityColor` — the yellow→orange→red ramp in lib/availabilityColor.ts — dead
+// along with it. Origin: this served the OLD tutorial heatmap; the Phase 73 tutorial
+// rewrite replaced that surface with production-matching greens and orphaned both.
+//
+// Left in place rather than removed now, deliberately: a full phase of Phase 88 work
+// runs against it first so nothing can be silently depending on it. DELETE AT THE END
+// OF PHASE 88 — see 88-SPEC.md "END-OF-PHASE DEAD-CODE GATE" for the full cluster and
+// the pre-delete verification grep.
+//
+// DO NOT build on this file. The live read-side heatmap is MergedHeatmapGrid
+// (ReadCell variant="merged" → mergedCellColor, the canonical 5-step green ramp).
+// ============================================================================
+
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { format, addDays, nextMonday, startOfWeek, addWeeks, subWeeks, isSameWeek } from 'date-fns';
 import ReadCell from './heatmap/ReadCell';
