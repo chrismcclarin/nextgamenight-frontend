@@ -1,7 +1,8 @@
 /**
  * GAP13 + GAP14 integration — the automated analogue of the human Network-tab
- * checkpoint. Mounts the real trio under ONE QueryClientProvider against a mocked
- * `apiFetch` and proves:
+ * checkpoint. Mounts the real trio under ONE QueryClientProvider against
+ * wrapper-level mocks (`promptSettingsAPI.getGroupPromptSettings` /
+ * `promptAPI.getOpenPrompts`) and proves:
  *
  *   GAP14 (dedup): the mounted trio fires each endpoint's fetch EXACTLY ONCE —
  *     prompt-settings 1x despite 3 consumers (Section + Manager + ReadOnly, F-852)
@@ -13,12 +14,23 @@
  *     settings).
  *
  * Deterministic: retries off, mocked network, no real fetch.
+ *
+ * 87.6 D-08 seam migration: the trio now calls the centralized wrappers
+ * (`promptSettingsAPI.getGroupPromptSettings` / `promptAPI.getOpenPrompts`) via
+ * `softFailPromptQueryFn`'s fetcher param rather than passing raw URLs to a
+ * mocked `apiFetch` export. Those wrappers close over api.ts's OWN internal
+ * `apiFetch` binding, so the old `apiFetch`-export mock no longer intercepts
+ * them. The observation seam moved UP to the wrapper level — we mock the two
+ * read wrappers as counting stubs and keep proving the SAME F-852/F-826 dedup
+ * (each endpoint fetched exactly once across all consumers) and the same
+ * post-write invalidation. `@/lib/schemas/prompts` is deliberately NOT mocked,
+ * so Plan 08's runtime guard + parsePromptsSoftFail stay on the executed path.
  */
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { apiFetch } from '@/lib/api';
+import { promptSettingsAPI, promptAPI } from '@/lib/api';
 import { promptKeys } from '../../lib/queryKeys/promptKeys';
 import {
   CAPTURED_PROMPT_SETTINGS_BODY,
@@ -39,21 +51,30 @@ vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>();
   return {
     ...actual,
-    apiFetch: vi.fn(async (url: string) => {
-      if (url.endsWith('/prompt-settings')) {
+    // Wrapper-level read stubs — the seam the flipped components now hit. Each
+    // increments its per-endpoint counter and returns the captured contract body,
+    // so the F-852/F-826 dedup proof (one fetch per endpoint across all consumers)
+    // survives the flip. The wrappers receive the groupId param, asserted below.
+    promptSettingsAPI: {
+      ...actual.promptSettingsAPI,
+      getGroupPromptSettings: vi.fn(async (_groupId: string) => {
         settingsCalls++;
         return structuredClone(CAPTURED_PROMPT_SETTINGS_BODY);
-      }
-      if (url.endsWith('/prompts/open')) {
+      }),
+      // Direct-API write the Manager still calls — resolve so post-write
+      // invalidateQueries runs.
+      toggleSchedule: vi.fn().mockResolvedValue({}),
+    },
+    promptAPI: {
+      ...actual.promptAPI,
+      getOpenPrompts: vi.fn(async (_groupId: string) => {
         openCalls++;
         return structuredClone(openBody);
-      }
-      return {};
-    }),
-    // Direct-API writes the components still call this phase — resolve them so
-    // the post-write invalidateQueries path runs.
-    promptAPI: { ...actual.promptAPI, closePrompt: vi.fn().mockResolvedValue({}) },
-    promptSettingsAPI: { ...actual.promptSettingsAPI, toggleSchedule: vi.fn().mockResolvedValue({}) },
+      }),
+      // Direct-API write OpenPollsList still calls — resolve so post-write
+      // invalidateQueries runs.
+      closePrompt: vi.fn().mockResolvedValue({}),
+    },
   };
 });
 
@@ -88,7 +109,12 @@ describe('prompts trio integration (GAP13/GAP14)', () => {
 
     expect(settingsCalls).toBe(1); // 3 consumers → 1 fetch (F-852)
     expect(openCalls).toBe(1); // 2 consumers → 1 fetch (F-826)
-    expect(apiFetch).toHaveBeenCalledTimes(2);
+    // Params-passed-through proof: each wrapper hit exactly once, with the groupId
+    // the components own (the wrappers build the /groups/:id/... URL internally).
+    expect(promptSettingsAPI.getGroupPromptSettings).toHaveBeenCalledTimes(1);
+    expect(promptSettingsAPI.getGroupPromptSettings).toHaveBeenCalledWith('g1');
+    expect(promptAPI.getOpenPrompts).toHaveBeenCalledTimes(1);
+    expect(promptAPI.getOpenPrompts).toHaveBeenCalledWith('g1');
   });
 
   it('GAP13: closing a poll invalidates openPolls and drops it from the list', async () => {

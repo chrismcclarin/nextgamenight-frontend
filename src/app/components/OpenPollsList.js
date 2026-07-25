@@ -42,7 +42,7 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
     queryKey: promptKeys.openPolls(groupId),
     queryFn: softFailPromptQueryFn(
       openPromptsSchema,
-      `/groups/${groupId}/prompts/open`,
+      () => promptAPI.getOpenPrompts(groupId),
       promptKeys.openPolls(groupId),
       EMPTY_OPEN_PROMPTS,
     ),

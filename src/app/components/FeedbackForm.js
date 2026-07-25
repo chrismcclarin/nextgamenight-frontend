@@ -1,17 +1,13 @@
 'use client';
 import { useState, useRef } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
-import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
-import { API_BASE_URL } from '../../lib/api';
+import { feedbackAPI } from '../../lib/api';
 
 const MAX_FILE_SIZE_MB = 2;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 export default function FeedbackForm({ onClose, initialType = 'bug', initialSubject = '', initialDescription = '' }) {
   const { user } = Auth();
-  // 87.5 BINT-02: identify the submitter by the caller's resolved Users.id UUID
-  // (owner decision — the Feedback.user_id column is unchanged, no migration).
-  const { self } = useSelfIdentity();
   const [type, setType] = useState(initialType);
   const [subject, setSubject] = useState(initialSubject);
   const [description, setDescription] = useState(initialDescription);
@@ -79,14 +75,10 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
         screenshot_filename = screenshot.name;
       }
 
-      // Build the payload with the submitter's resolved UUID when available.
-      // This form renders from the PUBLIC Footer, where the caller may be logged
-      // out entirely or `useSelfIdentity()` may not have resolved yet. In that
-      // case OMIT `user_id` rather than sending `undefined` (which would
-      // serialize as a stray key) — the BE endpoint and the `Feedback.user_id`
-      // column both tolerate a missing/null submitter (sanctioned anonymous
-      // feedback path, Plan 08 accepted-forever). `self?.id` also guards against
-      // `self` being null/undefined before resolution.
+      // Feedback carries no user attribution (owner decision 2026-07-24): this
+      // form rides the public transport, so any user_id would be client-asserted
+      // and unverifiable — the backend ignores it. user_email is the contact
+      // handle for follow-up.
       const feedbackBody = {
         type,
         subject: subject.trim(),
@@ -95,20 +87,13 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
         screenshot_base64,
         screenshot_filename,
       };
-      if (self?.id) {
-        feedbackBody.user_id = self.id;
-      }
 
-      const response = await fetch(`${API_BASE_URL}/feedback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(feedbackBody),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to submit feedback');
-      }
+      // Routed through the centralized client (87.6 R7). feedbackAPI.submitFeedback
+      // rides publicFetch (direct PUBLIC_API_BASE_URL, logged-out-capable) and
+      // throws ApiError on a non-ok response, so the manual `!response.ok` block
+      // is no longer needed — the catch below surfaces ApiError.message (the
+      // backend's extracted error string) into the toast, preserving its text.
+      await feedbackAPI.submitFeedback(feedbackBody);
 
       setSubmitted(true);
       setTimeout(() => {

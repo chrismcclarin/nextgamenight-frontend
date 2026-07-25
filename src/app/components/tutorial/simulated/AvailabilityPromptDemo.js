@@ -56,9 +56,9 @@ export default function AvailabilityPromptDemo({ stage }) {
 
   return (
     <div className="text-center">
-      {/* Page header — mirrors the magic-link respond page (groups/[id]/
-          availability/respond) so users recognize the surface they'll
-          actually land on after tapping a check-in. */}
+      {/* Page header — mirrors the magic-link check-in availability form so
+          users recognize the surface they'll actually land on after tapping a
+          check-in. */}
       <div className="bg-surface-card border border-line rounded-t-card px-4 py-3 inline-block">
         <h3 className="text-sm font-bold text-content-primary mb-0.5">
           When are you available this week?

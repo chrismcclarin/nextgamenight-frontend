@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { promptSettingsAPI } from '../../lib/api';
 import { promptKeys } from '../../lib/queryKeys/promptKeys';
 import {
   promptSettingsSchema,
@@ -27,7 +28,7 @@ export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
     queryKey: promptKeys.settings(groupId),
     queryFn: softFailPromptQueryFn(
       promptSettingsSchema,
-      `/groups/${groupId}/prompt-settings`,
+      () => promptSettingsAPI.getGroupPromptSettings(groupId),
       promptKeys.settings(groupId),
       EMPTY_PROMPT_SETTINGS,
     ),
