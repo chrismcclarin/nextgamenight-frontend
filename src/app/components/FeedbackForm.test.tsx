@@ -2,16 +2,17 @@
  * 87.6 D-08 / T-87.6-03 — logged-out FeedbackForm transport proof.
  *
  * FeedbackForm mounts from the PUBLIC Footer (root layout), so a fully
- * logged-out visitor must be able to submit a bug report / suggestion. Plan 08
- * moved feedbackAPI.submitFeedback onto publicFetch (direct PUBLIC_API_BASE_URL,
- * never the authenticated BFF); Plan 09 flips the component onto that wrapper.
+ * logged-out visitor must be able to submit a bug report / suggestion via
+ * feedbackAPI.submitFeedback on publicFetch (direct PUBLIC_API_BASE_URL,
+ * never the authenticated BFF). Feedback carries NO user attribution (owner
+ * decision 2026-07-24, review WR-01): the body must not include user_id.
  *
  * This test observes the ACTUAL request the component issues by stubbing the
  * GLOBAL fetch (the real network boundary publicFetch hits) — NOT by mocking
  * feedbackAPI / publicFetch / the api.ts module exports (which would only prove
  * a mock was called, or never intercept due to module-internal binding). Auth
- * is mocked to logged-out; the assertion is that the outgoing request targets
- * the public backend origin and carries NO Authorization header.
+ * is mocked to logged-out; the assertions are that the outgoing request targets
+ * the public backend origin, carries NO Authorization header, and omits user_id.
  *
  * This is the FE-TRANSPORT half of the logged-out proof; the BE-source half is
  * cited in the SUMMARY (server.js public prefix '/feedback' + optionalAuth +
@@ -21,11 +22,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-// Logged-out: no Auth0 user, no resolved self identity.
+// Logged-out: no Auth0 user.
 vi.mock('@auth0/nextjs-auth0/client', () => ({ useUser: () => ({ user: null }) }));
-vi.mock('../../lib/hooks/useSelfIdentity', () => ({
-  useSelfIdentity: () => ({ self: undefined, selfUuid: undefined }),
-}));
 
 import FeedbackForm from './FeedbackForm';
 import { PUBLIC_API_BASE_URL } from '../../lib/api';
@@ -76,5 +74,11 @@ describe('FeedbackForm logged-out submission (87.6 D-08)', () => {
     const headers = (calledOptions.headers ?? {}) as Record<string, string>;
     const headerKeys = Object.keys(headers).map((k) => k.toLowerCase());
     expect(headerKeys).not.toContain('authorization');
+
+    // FE half of the no-attribution contract (WR-01): the outgoing body never
+    // carries user_id (the BE half — stored null regardless — is pinned in
+    // periodictabletopbackend_v2/Sonnet/tests/routes/feedback.test.js).
+    const body = JSON.parse(calledOptions.body as string);
+    expect(body).not.toHaveProperty('user_id');
   });
 });
