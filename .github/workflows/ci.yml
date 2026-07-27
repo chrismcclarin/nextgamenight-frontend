@@ -129,9 +129,20 @@ jobs:
         # role promotion (ManageMembers.js) and event delete (gameDetail/page.js).
         # Every one of those is correct as it stands — account deletion really is
         # final. Widening this scope to src/ would red the build forever and the
-        # gate would end up deleted rather than obeyed. When plan 10's restore page
-        # lands, ADD its path to the file list below; do not replace the list with
-        # a broad prefix.
+        # gate would end up deleted rather than obeyed. Plan 10's restore page has
+        # now landed and is the second entry. If another surface needs covering,
+        # add another explicit FILE path; do not replace the list with a broad
+        # prefix.
+        #
+        # The scope is a list of FILES, never a DIRECTORY, and that is load-bearing
+        # rather than stylistic. Each of these surfaces ships alongside a test file
+        # that necessarily NAMES the phrases it asserts are absent — a test for the
+        # absence of a string has to spell the string. Those literals sit on
+        # ordinary code lines, not comment lines, so the filter below does not
+        # exclude them; a directory scope would sweep the test in, match its own
+        # fixture data, and red the build on a correct tree with no way to fix it
+        # short of deleting the assertion. File paths keep the gate pointed at the
+        # rendered copy only.
         #
         # Same inverted-grep idiom as the gate above (Pitfall 2): grep exits
         # nonzero on NO MATCH, so capture with `|| true`, filter full-line comments
@@ -140,9 +151,9 @@ jobs:
         # `src/lib/ci-grep-gate.fixture.test.ts` parses this step's pattern, flags,
         # scope and filter out of THIS file, located by the step name above.
         run: |
-          HITS=$(grep -rniE 'cannot be undone|permanently remove|permanently delete' src/app/components/GroupSettings.js | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|\{/\*)' || true)
+          HITS=$(grep -rniE 'cannot be undone|permanently remove|permanently delete' src/app/components/GroupSettings.js 'src/app/restore/group/[token]/page.tsx' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|\{/\*)' || true)
           if [ -n "$HITS" ]; then
-            echo "::error::Group-delete copy claims permanence, which is false as of Phase 88.2 — the group delete is recoverable for 30 days and members are emailed a link to take the group over. Scope: src/app/components/GroupSettings.js (plan 10 adds the restore page). Fix the copy; do not widen the gate:"
+            echo "::error::Group-delete copy claims permanence, which is false as of Phase 88.2 — the group delete is recoverable for 30 days and members are emailed a link to take the group over. Scope: the group Danger Zone and the emailed restore page. Fix the copy; do not widen the gate:"
             echo "$HITS"
             exit 1
           fi
