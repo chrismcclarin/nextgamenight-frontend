@@ -321,6 +321,25 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
               onGroupSettingsUpdated();
             }
           }}
+          // DECISION Phase 88.2 AF-6: navigate to the group's home page, chosen
+          // OVER mounting a second ManageMembers instance here (that modal is
+          // imported in exactly one place — duplicating 650 lines and its member
+          // refetch lifecycle onto a surface this phase does not otherwise touch),
+          // and OVER leaving the prop absent, which renders BOTH transfer
+          // affordances in GroupSettings permanently greyed out and leaves
+          // SPEC-REQ-5's route-to-transfer unmet on the home page. Cost, weighed
+          // and accepted: one extra tap — the owner lands on the group page and
+          // opens Manage Members there instead of going straight into the modal.
+          // This also revives the pre-existing "Open Manage Members to transfer"
+          // button, dead on this surface since it shipped for the same reason.
+          onOpenManageMembers={() => {
+            // Read the id BEFORE clearing the state — the setter and the push are
+            // in the same handler, and reading settingsGroup.id after it is the
+            // kind of thing that survives review and breaks on a refactor.
+            const id = settingsGroup.id;
+            setSettingsGroup(null);
+            router.push(`/groupHomePage?id=${id}`);
+          }}
         />
       )}
     </div>
