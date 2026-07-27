@@ -52,6 +52,26 @@ const BFF_BASE = '/api';
 //     details.groups) and `account_deleted` (@410 — repeat-DELETE / tombstone
 //     refusal, terminal). Both MUST be in the union or `mapErrorToCode`'s
 //     body.code preference yields a code outside ApiErrorCode.
+//   - group-restore codes (Phase 88.2, registered in the BE ERROR_REGISTRY and
+//     emitted by POST /groups/accept-ownership): `already_restored` (@409 — a
+//     member already took the group back; the raw body carries the live
+//     `group_id` so the caller can be redirected into it), plus three @410
+//     terminal states — `window_expired` (the 30-day recovery window closed and
+//     the data was erased), `already_used` (this nonce was already consumed) and
+//     `invalid_token` (no such restore token). All four MUST be in the union:
+//     `mapErrorToCode` PREFERS `body.code` and casts it verbatim, so omitting
+//     them puts values outside this union onto `ApiError.code` — the exact
+//     condition the note above warns must not happen — and a `err.code ===
+//     'window_expired'` comparison would be TS2367 under strict.
+//
+//     NOTE — `invalid_token` (@410, group restore) is NOT the pre-existing
+//     `token_invalid` (@400, magic-token reject). They are two different codes
+//     with two different statuses, and the BE registry anchors httpStatus per
+//     code, so one key cannot hold both. DO NOT "unify" or rename them: merging
+//     would either break that anchoring or silently re-status the magic-token
+//     path. (The FE never needs to tell `invalid_token` from `already_used` —
+//     both, plus the unattributable case, map to the same weaker message.)
+//     Backend contract: `utils/errors.js` ERROR_REGISTRY, Phase 88.2 plan 07.
 export type ApiErrorCode =
   | 'unknown'
   | 'validation'
@@ -65,6 +85,10 @@ export type ApiErrorCode =
   | 'reminder_cooldown'
   | 'owner_of_active_groups'
   | 'account_deleted'
+  | 'already_restored'
+  | 'window_expired'
+  | 'already_used'
+  | 'invalid_token'
   | 'internal'
   | 'network'
   | 'config';
@@ -127,6 +151,63 @@ export interface DeletionBlockers {
 export interface DeleteAccountBlockedDetails {
   groups?: DeletionBlockerGroup[];
   google_access_revoked?: boolean;
+}
+
+/**
+ * GET /groups/:group_id/deletion-impact (Phase 88.2 / SPEC-REQ-5, D-06). Owner-
+ * only; 404 for a soft-deleted group, 403 for a live group the caller does not
+ * own. Keys are taken VERBATIM from the route's `res.json` (88.2-06-SUMMARY.md)
+ * — the service layer is camelCase internally and only the route converts, so a
+ * hand-written type cannot be typechecked against the wire.
+ *
+ * `member_count` INCLUDES the acting owner (it answers "how many people lose
+ * access"), so it is exactly one greater than the number of ownership-offer
+ * emails sent. That is intended — do not subtract the owner.
+ *
+ * `recovery_window_days` is served so the Danger Zone copy reads the window from
+ * the server instead of hard-coding 30 in a second place.
+ */
+export interface DeletionImpact {
+  member_count: number;
+  event_count: number;
+  recovery_window_days: number;
+}
+
+/**
+ * GET /groups/restore-preview/:token (Phase 88.2 / SPEC-REQ-9, AF-9). PUBLIC.
+ *
+ * A discriminated union on `status`, NOT an optional-field bag: the caller must
+ * narrow before reading. The success arm declares `status?: undefined`
+ * deliberately — the backend's success body carries `group_name` and
+ * `purge_after` and NO `status` key at all, so without the optional-undefined
+ * member TypeScript rejects `payload.status` outright (the property would not
+ * exist on the first member) and the narrowing the restore page depends on is a
+ * compile error instead. The optional-`undefined` tag is the standard idiom for
+ * discriminating a union whose default arm carries no tag.
+ *
+ * Do NOT "fix" this by asking the backend to add `status: 'ok'` — that changes
+ * the wire shape and contradicts plan 07's exact-key-set acceptance criterion
+ * for no gain the frontend cannot get locally.
+ *
+ * `purge_after` serializes as an ISO date string. Every genuine failure (bad
+ * nonce, revoked token, purged group, past deadline) is a byte-identical 404,
+ * so it surfaces as an ApiError, never as a variant here.
+ */
+export type RestorePreview =
+  | { status?: undefined; group_name: string; purge_after: string }
+  | { status: 'already_restored'; group_name: string; group_id: string };
+
+/**
+ * POST /groups/accept-ownership 200 body (Phase 88.2 / SPEC-REQ-9). Exactly
+ * three keys, snake_case, taken verbatim from 88.2-07-SUMMARY.md's wire table.
+ * Failures arrive as ApiError with `code` one of `already_restored` (409, raw
+ * body carries `group_id`), `window_expired` / `already_used` / `invalid_token`
+ * (410) or a bare 403 with no code.
+ */
+export interface AcceptOwnershipResult {
+  success: boolean;
+  group_id: string;
+  group_name: string;
 }
 
 // HTTP-status -> code fallback for routes NOT yet emitting the envelope `code`.
@@ -377,6 +458,13 @@ export const groupsAPI = {
       method: 'DELETE',
     }),
 
+  // Blast radius for the Danger Zone (Phase 88.2 / SPEC-REQ-5, D-06). Owner-only
+  // and AUTHENTICATED — the counts are computed server-side precisely so the
+  // client never states a number that is merely its own guess at the moment a
+  // destructive decision is made.
+  getDeletionImpact: (group_id: string) =>
+    apiFetch<DeletionImpact>(`/groups/${group_id}/deletion-impact`),
+
   // Approve a pending member (owner/admin only)
   approveMember: (group_id: string, target_user_id: string) =>
     apiFetch(`/groups/${group_id}/users/${encodeURIComponent(target_user_id)}/approve`, {
@@ -421,6 +509,34 @@ export const groupsAPI = {
   // check on logged-out invite pages, so it MUST bypass the BFF proxy.
   getInvitePreview: (token: string) =>
     publicFetch<GroupInvitePreview>(`/groups/invite-preview/${token}`),
+
+  // Preview a soft-deleted group from an emailed restore token (Phase 88.2).
+  // PUBLIC, like getInvitePreview directly above: /restore/group/[token] renders
+  // for a logged-out recipient, so it runs BEFORE the auth check and MUST bypass
+  // the BFF proxy. Using apiFetch here is the one mistake that will not surface
+  // in local dev — the authenticated path fails only for the logged-out case.
+  //
+  // DECISION Phase 88.2-09: encodeURIComponent HERE but not in the sibling
+  // getInvitePreview above — a deliberate divergence, not an inconsistency to
+  // "converge". publicFetch targets the backend origin DIRECTLY, so it never
+  // passes through the BFF catch-all where this codebase's path-traversal guard
+  // (isSafePathSegment) lives. The token comes straight off the route params and
+  // is fully caller-controlled, so a bare interpolation lets a crafted value
+  // reshape the request path. Follow getUserGroups/approveMember (which encode),
+  // not getInvitePreview. The two pre-existing unencoded previews are recorded as
+  // a follow-up in 88.2-09-SUMMARY.md rather than changed here.
+  getRestorePreview: (token: string) =>
+    publicFetch<RestorePreview>(`/groups/restore-preview/${encodeURIComponent(token)}`),
+
+  // Accept ownership of a soft-deleted group and restore it (Phase 88.2).
+  // AUTHENTICATED, and the structural twin of joinByToken above: the token rides
+  // in the BODY, not the path. The session identifies the person; the token
+  // identifies the group.
+  acceptGroupOwnership: (token: string) =>
+    apiFetch<AcceptOwnershipResult>('/groups/accept-ownership', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
 
   // Get the group's shared game library (all members' games, deduplicated with owners)
   getGroupLibrary: (group_id: string) =>

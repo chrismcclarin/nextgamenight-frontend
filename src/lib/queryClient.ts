@@ -39,6 +39,18 @@ import { ApiError } from '@/lib/api';
 //     only wastes a request + delays the blocked-state UI. NON-retryable.
 //   account_deleted (410) — terminal tombstone (repeat-DELETE against a gone
 //     account). Maps to the logout->/goodbye path, never a retry. NON-retryable.
+//   already_restored (409) — the group-restore accept gate (Phase 88.2). Another
+//     member already took the group back; the outcome is settled and the FE
+//     redirects into the live group. NON-retryable.
+//   window_expired / already_used / invalid_token (all 410) — the three terminal
+//     group-restore refusals (Phase 88.2). Every one is a settled end state, so a
+//     retry re-issues a STATE-CHANGING POST /groups/accept-ownership against a
+//     group whose restore already resolved. Latent today (the restore page calls
+//     the client directly, not through a mutation) — closed now precisely so it
+//     stays closed when someone later routes it through TanStack and nothing
+//     complains. NON-retryable. Note invalid_token (410, group restore) is a
+//     DIFFERENT code from token_invalid (400, magic-token reject) listed above —
+//     see the ApiErrorCode comment in lib/api.ts; do not merge them.
 // Left RETRYABLE-once (transient): `internal` (500 — may be a blip) and the
 // client-side `network` code, plus `unknown` — shouldRetry allows one retry.
 const NON_RETRYABLE_API_CODES: ReadonlyArray<string> = [
@@ -53,6 +65,10 @@ const NON_RETRYABLE_API_CODES: ReadonlyArray<string> = [
   'token_invalid',
   'owner_of_active_groups',
   'account_deleted',
+  'already_restored',
+  'window_expired',
+  'already_used',
+  'invalid_token',
 ];
 
 /**
