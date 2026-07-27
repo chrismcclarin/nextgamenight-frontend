@@ -93,6 +93,18 @@ jobs:
         # `src/lib/ci-grep-gate.fixture.test.ts` (run by vitest) parses BOTH the
         # pattern and the filter out of THIS file — edits here are exercised
         # there automatically.
+        #
+        # Phase 88.2 (plan 09, MED #8): the self-test used to find this gate
+        # POSITIONALLY — the first grep-gate line in the whole file — which made
+        # step ORDER load-bearing in a way nothing declared. Adding a second gate
+        # above this one would have silently repointed the self-test at the new
+        # gate and left THIS one completely unverified while everything stayed
+        # green. It now locates each gate by its step NAME, so order no longer
+        # matters. Do NOT revert it to a positional lookup, and do not rename this
+        # step without updating the name string in that test (it throws loudly if
+        # the name is missing). The literal shell assignment below is deliberately
+        # not spelled out anywhere in this comment block: the parser scans for it,
+        # and a comment naming it would be found first and fail to parse.
         run: |
           HITS=$(grep -rnE '([!=]=[=]?[[:space:]]*user\??\.sub)|(user\??\.sub[[:space:]]*[!=]=)|\.(find|filter|includes|has|some)\([^)]*user\??\.sub|[A-Za-z0-9_$]\[[[:space:]]*user\??\.sub[[:space:]]*\]' src/app | grep -vE '^[^:]*:[0-9]+:[[:space:]]*//' || true)
           if [ -n "$HITS" ]; then
@@ -101,6 +113,40 @@ jobs:
             exit 1
           fi
           echo "No-sub-compare gate passed — no user.sub vs API-field is-me compares in src/app."
+
+      - name: "Grep gate — group-delete copy must not claim permanence (88.2 / SPEC-REQ-7)"
+        # Phase 88.2 anti-regression backstop. Deleting a group is a SOFT delete
+        # with a 30-day recovery window: every remaining member is emailed a link
+        # to take the group over, and only after the window closes is anything
+        # erased. Copy in the group-delete flow claiming the action is final is
+        # therefore factually WRONG, and wrong in the dangerous direction — it
+        # talks an owner out of a reversible action, or tells them the emailed
+        # offer their members just received cannot exist.
+        #
+        # SCOPED DELIBERATELY to the group-delete flow, NOT to src/. The same
+        # phrases appear seven more times across account deletion
+        # (DangerZoneDeleteAccount.tsx, goodbye/page.tsx), a Modal test fixture,
+        # role promotion (ManageMembers.js) and event delete (gameDetail/page.js).
+        # Every one of those is correct as it stands — account deletion really is
+        # final. Widening this scope to src/ would red the build forever and the
+        # gate would end up deleted rather than obeyed. When plan 10's restore page
+        # lands, ADD its path to the file list below; do not replace the list with
+        # a broad prefix.
+        #
+        # Same inverted-grep idiom as the gate above (Pitfall 2): grep exits
+        # nonzero on NO MATCH, so capture with `|| true`, filter full-line comments
+        # (so a future comment quoting the retired copy cannot self-red the gate),
+        # and `exit 1` only when HITS is non-empty. The lockstep self-test
+        # `src/lib/ci-grep-gate.fixture.test.ts` parses this step's pattern, flags,
+        # scope and filter out of THIS file, located by the step name above.
+        run: |
+          HITS=$(grep -rniE 'cannot be undone|permanently remove|permanently delete' src/app/components/GroupSettings.js | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|\{/\*)' || true)
+          if [ -n "$HITS" ]; then
+            echo "::error::Group-delete copy claims permanence, which is false as of Phase 88.2 — the group delete is recoverable for 30 days and members are emailed a link to take the group over. Scope: src/app/components/GroupSettings.js (plan 10 adds the restore page). Fix the copy; do not widen the gate:"
+            echo "$HITS"
+            exit 1
+          fi
+          echo "Permanence-copy gate passed — the group-delete flow makes no permanence claim."
 
   e2e:
     name: e2e

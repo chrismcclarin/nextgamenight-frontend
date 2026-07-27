@@ -13,10 +13,20 @@
 // `src/app` source — the fixtures live entirely inside this file (which is
 // under src/lib, NOT src/app, so the live gate never scans it).
 //
-// LOCKSTEP BY PARSING, not by copy: both the match pattern and the comment
-// filter are extracted from .github/workflows/ci.yml at test time, so any edit
-// to the gate is exercised here automatically — drift is structurally
-// impossible (the old byte-for-byte duplicate could drift silently).
+// LOCKSTEP BY PARSING, not by copy: the match pattern, its grep FLAGS, the
+// scanned scope and the comment filter are all extracted from
+// .github/workflows/ci.yml at test time, so any edit to a gate is exercised here
+// automatically — drift is structurally impossible (the old byte-for-byte
+// duplicate could drift silently).
+//
+// Phase 88.2 (plan 09, MED #8): this file now covers TWO gates, and each is
+// located by its step NAME. It previously took "the FIRST HITS=$(grep -rnE line
+// in the file", which made ci.yml step ORDER load-bearing in a way nothing
+// declared: adding a second gate ABOVE the sub-compare one would have silently
+// repointed this whole suite at the new gate — every test still green, the gate
+// it was written to protect completely unverified. Do NOT go back to a
+// positional lookup. Renaming a step in ci.yml without updating the name here
+// throws loudly at import, which is the intended failure mode.
 
 import { describe, test, expect } from 'vitest';
 import { execFileSync } from 'child_process';
@@ -28,27 +38,76 @@ const CI_YML = readFileSync(
   'utf8',
 );
 
-// The gate line has the shape:
-//   HITS=$(grep -rnE '<PATTERN>' src/app | grep -vE '<FILTER>' || true)
-const GATE_LINE = CI_YML.split('\n').find((l) => l.includes('HITS=$(grep -rnE'));
-if (!GATE_LINE) throw new Error('ci.yml no-sub-compare gate line not found — was the gate renamed/removed?');
-
-const PATTERN_MATCH = GATE_LINE.match(/grep -rnE '([^']+)' src\/app/);
-const FILTER_MATCH = GATE_LINE.match(/grep -vE '([^']+)'/);
-if (!PATTERN_MATCH || !FILTER_MATCH) {
-  throw new Error('ci.yml gate line did not parse into a pattern + comment filter — keep the HITS=$(grep -rnE ... | grep -vE ...) shape.');
+interface Gate {
+  /** The regex the gate matches with. */
+  pattern: string;
+  /** grep's flags as written in ci.yml, e.g. `rnE` or `rniE`. */
+  flags: string;
+  /** The path(s) the gate scans. */
+  scope: string;
+  /** The comment-line filter applied to the hits. */
+  filter: string;
 }
-const PATTERN = PATTERN_MATCH[1];
-const FILTER = FILTER_MATCH[1];
 
 /**
- * Run the gate's full pipeline against `input` exactly as CI does: `grep -nE
- * <PATTERN>` (so hits carry the `line:` prefix the filter anchors on, matching
- * `grep -rn`'s `path:line:` shape), then `grep -vE <FILTER>`. Returns the
- * surviving lines (empty string === gate passes). grep exits 1 on no-match; we
- * mirror the workflow's `|| true` by swallowing that.
+ * Locate a gate by its ci.yml step NAME and parse it. The search window is
+ * bounded to that step (it stops at the next `- name:`), so a step that has lost
+ * its HITS line fails here instead of silently borrowing the next step's.
+ *
+ * Shape parsed:
+ *   HITS=$(grep -<FLAGS> '<PATTERN>' <SCOPE> | grep -vE '<FILTER>' || true)
  */
-function gateHits(input: string): string {
+function parseGate(stepName: string): Gate {
+  const lines = CI_YML.split('\n');
+  const start = lines.findIndex((l) => l.includes(stepName));
+  if (start === -1) {
+    throw new Error(`ci.yml step "${stepName}" not found — was the gate renamed or removed?`);
+  }
+  const rest = lines.slice(start + 1);
+  const nextStep = rest.findIndex((l) => /^\s*- name:/.test(l));
+  const window = nextStep === -1 ? rest : rest.slice(0, nextStep);
+  // ANCHORED to the start of the shell line, not a substring search: the step's
+  // own comment block explains the idiom, and a loose `includes` would match the
+  // prose before the code (that exact trap fired while this was being written).
+  const line = window.find((l) => /^\s*HITS=\$\(grep -/.test(l));
+  if (!line) {
+    throw new Error(
+      `ci.yml step "${stepName}" has no grep-gate assignment line — keep the HITS=... | grep -vE ... || true shape.`,
+    );
+  }
+  const patternMatch = line.match(/grep -([A-Za-z]+) '([^']+)' (\S+)/);
+  const filterMatch = line.match(/grep -vE '([^']+)'/);
+  if (!patternMatch || !filterMatch) {
+    throw new Error(
+      `ci.yml step "${stepName}" did not parse into flags + pattern + scope + comment filter.`,
+    );
+  }
+  return {
+    flags: patternMatch[1],
+    pattern: patternMatch[2],
+    scope: patternMatch[3],
+    filter: filterMatch[1],
+  };
+}
+
+const SUB_COMPARE_GATE = parseGate('no user.sub compared against an API data field');
+const PERMANENCE_GATE = parseGate('group-delete copy must not claim permanence');
+
+// Retained names so the original suite below reads unchanged.
+const PATTERN = SUB_COMPARE_GATE.pattern;
+const FILTER = SUB_COMPARE_GATE.filter;
+
+/**
+ * Run a gate's full pipeline against `input` exactly as CI does: the same grep
+ * flags and pattern (minus `-r`, since we feed stdin rather than a tree), then
+ * `grep -vE <FILTER>`. Returns the surviving lines (empty string === gate
+ * passes). grep exits 1 on no-match; we mirror the workflow's `|| true` by
+ * swallowing that.
+ *
+ * Flags are taken from ci.yml rather than hard-coded, so dropping the `i` from
+ * the permanence gate (which would let `Cannot Be Undone` through) reds here.
+ */
+function gateHitsFor(gate: Gate, input: string): string {
   const run = (args: string[], stdin: string): string => {
     try {
       return execFileSync('grep', args, { input: stdin, encoding: 'utf8' });
@@ -58,18 +117,24 @@ function gateHits(input: string): string {
       throw err; // exit >= 2 is a real grep error — surface it.
     }
   };
+  // `-r` is meaningless on stdin; drop it and keep everything else verbatim.
+  const stdinFlags = gate.flags.replace('r', '');
+  // The prefixed pass already carries a `line:` of its own, so drop `n` too.
+  const prefixedFlags = stdinFlags.replace('n', '');
   // Prefix a fake `path:line:` so the anchored comment filter sees the same
   // shape it sees in CI (grep -rn output).
   const prefixed = input
     .split('\n')
     .map((l, i) => `src/app/fixture.js:${i + 1}:${l}`)
     .join('\n');
-  const hits = run(['-nE', PATTERN], input);
+  const hits = run([`-${stdinFlags}`, gate.pattern], input);
   if (hits === '') return '';
   // Re-run against the prefixed form to apply the filter exactly as CI does.
-  const prefixedHits = run(['-E', PATTERN], prefixed);
-  return run(['-vE', FILTER], prefixedHits);
+  const prefixedHits = run([`-${prefixedFlags}`, gate.pattern], prefixed);
+  return run(['-vE', gate.filter], prefixedHits);
 }
+
+const gateHits = (input: string): string => gateHitsFor(SUB_COMPARE_GATE, input);
 
 describe('Req-3 no-sub-compare grep gate — lockstep self-test (pattern parsed from ci.yml)', () => {
   test('the gate line parses out of ci.yml (pattern + filter both present)', () => {
@@ -149,6 +214,97 @@ describe('Req-3 no-sub-compare grep gate — lockstep self-test (pattern parsed 
 
     test('a full-line comment quoting the forbidden pattern is filtered out', () => {
       expect(gateHits('// old bug: m.user_id === user.sub (fixed in 87.3)')).toBe('');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.2 / SPEC-REQ-7 — the permanence-copy gate's own self-test.
+//
+// The group delete is a SOFT delete recoverable for 30 days, so copy in that
+// flow claiming the action is final is factually wrong. The gate greps the
+// group-delete flow ONLY; the same phrases are correct (and left alone) in
+// account deletion, a Modal test fixture, role promotion and event delete.
+// ---------------------------------------------------------------------------
+
+// A file that legitimately contains one of the forbidden phrases and is
+// deliberately NOT gated: account deletion really is final. It is the fixture
+// for "the scope, not the pattern, is what keeps those hits green".
+const OUT_OF_SCOPE_FILE = 'src/app/components/DangerZoneDeleteAccount.tsx';
+
+const permanenceHits = (input: string): string => gateHitsFor(PERMANENCE_GATE, input);
+
+describe('SPEC-REQ-7 permanence-copy grep gate — lockstep self-test (parsed from ci.yml by step name)', () => {
+  test('the gate parses out of ci.yml (pattern, flags, scope and filter all present)', () => {
+    expect(PERMANENCE_GATE.pattern.length).toBeGreaterThan(0);
+    expect(PERMANENCE_GATE.filter.length).toBeGreaterThan(0);
+    expect(PERMANENCE_GATE.flags).toContain('i'); // case-insensitive, or `Cannot Be Undone` slips through
+    expect(PERMANENCE_GATE.scope.length).toBeGreaterThan(0);
+  });
+
+  test('the two gates are located independently — neither borrows the other\'s line', () => {
+    expect(PERMANENCE_GATE.pattern).not.toBe(SUB_COMPARE_GATE.pattern);
+    expect(PERMANENCE_GATE.scope).not.toBe(SUB_COMPARE_GATE.scope);
+  });
+
+  describe('permanence claims MATCH (gate would FAIL)', () => {
+    test('the retired copy: This action cannot be undone.', () => {
+      expect(permanenceHits('This action cannot be undone.')).not.toBe('');
+    });
+
+    test('permanently remove', () => {
+      expect(
+        permanenceHits('Deleting a group will permanently remove all events and members.')
+      ).not.toBe('');
+    });
+
+    test('permanently delete', () => {
+      expect(permanenceHits('This will permanently delete the group.')).not.toBe('');
+    });
+
+    test('case-insensitively: Cannot Be Undone', () => {
+      expect(permanenceHits('Warning: This Cannot Be Undone!')).not.toBe('');
+    });
+  });
+
+  describe('non-claims do NOT match (gate stays GREEN)', () => {
+    test('a full-line comment quoting the retired copy is filtered out', () => {
+      expect(
+        permanenceHits('// Phase 88.2 replaced "This action cannot be undone." with the real window')
+      ).toBe('');
+    });
+
+    test('a JSDoc continuation line quoting it is filtered out', () => {
+      expect(permanenceHits(' * was: cannot be undone — now recoverable for 30 days')).toBe('');
+    });
+
+    test('the shipped replacement copy is clean', () => {
+      expect(
+        permanenceHits(
+          'You have 30 days to change your mind. Every other member is emailed a link to take over the group.'
+        )
+      ).toBe('');
+    });
+  });
+
+  describe('scope is what keeps the legitimate hits green — not a toothless pattern', () => {
+    test('the gate scans the group-delete flow, never all of src/', () => {
+      expect(PERMANENCE_GATE.scope).toContain('GroupSettings.js');
+      expect(PERMANENCE_GATE.scope).not.toBe('src/');
+      expect(PERMANENCE_GATE.scope).not.toBe('src');
+      expect(PERMANENCE_GATE.scope).not.toBe('src/app');
+    });
+
+    test('an out-of-scope file is outside the scanned path', () => {
+      const scope = PERMANENCE_GATE.scope.replace(/\/$/, '');
+      const covered = OUT_OF_SCOPE_FILE === scope || OUT_OF_SCOPE_FILE.startsWith(`${scope}/`);
+      expect(covered).toBe(false);
+    });
+
+    test('...and it is excluded by SCOPE alone — the pattern does match its copy', () => {
+      // The account-deletion copy WOULD trip this gate if the scope were widened.
+      // That is the whole reason the scope is a file list rather than `src/`.
+      expect(permanenceHits('This action cannot be undone.')).not.toBe('');
     });
   });
 });
