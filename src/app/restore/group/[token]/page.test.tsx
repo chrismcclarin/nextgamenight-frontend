@@ -10,7 +10,7 @@
 //
 // `.tsx` is mandatory: vitest.config.mts only includes `.ts`/`.tsx`.
 import * as React from 'react';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TOKEN = 'a'.repeat(64);
@@ -56,6 +56,9 @@ vi.mock('@/lib/api', async (importOriginal) => {
     groupsAPI: {
       getRestorePreview: vi.fn(),
       acceptGroupOwnership: vi.fn(),
+      // M-7: the membership-gated fetch the already-restored hand-off routes
+      // through before pushing into /groupHomePage.
+      getGroup: vi.fn(),
     },
   };
 });
@@ -67,6 +70,12 @@ type Mock = ReturnType<typeof vi.fn>;
 
 const getPreview = () => groupsAPI.getRestorePreview as unknown as Mock;
 const accept = () => groupsAPI.acceptGroupOwnership as unknown as Mock;
+const getGroup = () => groupsAPI.getGroup as unknown as Mock;
+
+/** M-3: the explicit consent tap that replaced the auto-accept-on-load. */
+async function tapTakeOver() {
+  fireEvent.click(await screen.findByRole('button', { name: /take over this group/i }));
+}
 
 /** The live-offer preview body, keys verbatim from 88.2-07-SUMMARY.md. */
 const LIVE_PREVIEW = { group_name: GROUP_NAME, purge_after: PURGE_AFTER };
@@ -95,9 +104,9 @@ function conflictError() {
 function goneError(code: 'window_expired' | 'already_used' | 'invalid_token' | null) {
   return new ApiError(
     code === 'window_expired' ? 'This link has expired.' : 'This restore link is no longer valid.',
-    // A 410 with no recognisable code falls back to the status map, which has no
-    // entry for 410 — exactly the unattributable case the copy must survive.
-    code ?? 'unknown',
+    // A 410 with no recognisable code falls back to the status map's `gone`
+    // (M-2) — exactly the unattributable case the copy must survive.
+    code ?? 'gone',
     410,
     code ? { error: 'gone', code } : { error: 'gone' }
   );
@@ -140,6 +149,8 @@ beforeEach(() => {
     group_id: RESTORED_ID,
     group_name: GROUP_NAME,
   });
+  // Default: the signed-in visitor IS a member of the live group (M-7).
+  getGroup().mockResolvedValue({ id: LIVE_ID, name: GROUP_NAME });
 });
 
 afterEach(() => {
@@ -183,11 +194,29 @@ describe('SPEC-REQ-9 — the public preview', () => {
 });
 
 describe('SPEC-REQ-9 — the authenticated acceptance', () => {
+  it('M-3 — a signed-in visitor sees the preview and NOTHING fires on load', async () => {
+    signedIn();
+    renderPage();
+
+    // The preview surface renders with the explicit button; the irreversible
+    // POST must wait for the tap — a curiosity click on the emailed link is not
+    // consent to take over the group.
+    expect(
+      await screen.findByRole('button', { name: /take over this group/i })
+    ).toBeInTheDocument();
+    expect(screen.getByText(GROUP_NAME)).toBeInTheDocument();
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(accept()).not.toHaveBeenCalled();
+  });
+
   it(
-    'accepts, signals the group-list refresh and lands the user in the restored group',
+    'accepts on the explicit tap, signals the group-list refresh and lands the user in the restored group',
     async () => {
       signedIn();
       renderPage();
+
+      await tapTakeOver();
 
       expect(await screen.findByText(/is back/i)).toBeInTheDocument();
       expect(accept()).toHaveBeenCalledWith(TOKEN);
@@ -205,16 +234,22 @@ describe('SPEC-REQ-9 — the authenticated acceptance', () => {
     10000
   );
 
-  it('D-04 / F-450 — fires exactly once across a strict-mode double-invoke and a forced effect re-run', async () => {
+  it('D-04 / F-450 — fires exactly once across a double-tap, a strict-mode double-invoke and a forced effect re-run', async () => {
     signedIn();
     const { rerender } = renderPage(true);
+
+    // Two rapid taps — the ref guard must swallow the second before the status
+    // change disables the surface.
+    const button = await screen.findByRole('button', { name: /take over this group/i });
+    fireEvent.click(button);
+    fireEvent.click(button);
 
     expect(await screen.findByText(/is back/i)).toBeInTheDocument();
     expect(accept()).toHaveBeenCalledTimes(1);
 
-    // Force the accept effect to re-run for real: a NEW user object identity is
+    // Force the resolve effect to re-run for real: a NEW user object identity is
     // a changed dependency, which is exactly what re-fired the effect in F-450.
-    // The ref must swallow it. A second call here means the guard is gone.
+    // The refs must swallow it — the status must NOT be yanked back to preview.
     authState.user = { sub: 'auth0|accepter' };
     rerender(
       <React.StrictMode>
@@ -241,6 +276,7 @@ describe('SPEC-REQ-9 — the authenticated acceptance', () => {
     signedIn();
     accept().mockRejectedValue(forbiddenError());
     renderPage();
+    await tapTakeOver();
 
     expect(await screen.findByText(/you can't take it over/i)).toBeInTheDocument();
     expect(screen.queryByText(/is back/i)).toBeNull();
@@ -252,6 +288,7 @@ describe('SPEC-REQ-9 — the authenticated acceptance', () => {
     signedIn();
     accept().mockRejectedValue(goneError('window_expired'));
     renderPage();
+    await tapTakeOver();
 
     expect(await screen.findByText(/recovery window ended and its data was erased/i)).toBeInTheDocument();
   });
@@ -262,6 +299,7 @@ describe('SPEC-REQ-9 — the authenticated acceptance', () => {
     for (const code of ['already_used', 'invalid_token', null] as const) {
       accept().mockRejectedValue(goneError(code));
       renderPage();
+      await tapTakeOver();
 
       expect(await screen.findByText(/no longer valid/i)).toBeInTheDocument();
       const text = (document.body.textContent ?? '').toLowerCase();
@@ -274,7 +312,34 @@ describe('SPEC-REQ-9 — the authenticated acceptance', () => {
       cleanup();
       vi.clearAllMocks();
       getPreview().mockResolvedValue(LIVE_PREVIEW);
+      getGroup().mockResolvedValue({ id: LIVE_ID, name: GROUP_NAME });
     }
+  });
+});
+
+describe('M-6 — preview failures split rejection from unreachable', () => {
+  it('a 404 rejection stays terminal, with no retry offered', async () => {
+    getPreview().mockRejectedValue(
+      new ApiError('nope', 'not_found', 404, { error: 'nope' })
+    );
+    renderPage();
+
+    expect(await screen.findByText(/no longer valid/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
+  });
+
+  it('a network failure gets retryable copy and a working Try again', async () => {
+    getPreview().mockRejectedValueOnce(new ApiError('down', 'network', 0));
+    renderPage();
+
+    expect(await screen.findByText(/couldn.t check this link/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no longer valid/i)).toBeNull();
+
+    // The once-rejection is consumed; the retry hits the beforeEach default and
+    // must land on the real preview.
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+    expect(await screen.findByText(GROUP_NAME)).toBeInTheDocument();
+    expect(screen.queryByText(/couldn.t check this link/i)).toBeNull();
   });
 });
 
@@ -287,6 +352,7 @@ describe('already-restored — the same event, reached two ways', () => {
       signedIn();
       accept().mockRejectedValue(conflictError());
       renderPage();
+      await tapTakeOver();
 
       expect(await screen.findByText(/already brought this group back/i)).toBeInTheDocument();
       expect(screen.queryByText(/unable to restore/i)).toBeNull();
@@ -302,6 +368,26 @@ describe('already-restored — the same event, reached two ways', () => {
     10000
   );
 
+  it('L-3 — a 409 with NO parseable group_id offers a link, never a promise of a redirect', async () => {
+    signedIn();
+    accept().mockRejectedValue(
+      new ApiError('This group has already been restored.', 'already_restored', 409, {
+        error: 'This group has already been restored.',
+        code: 'already_restored',
+      })
+    );
+    renderPage();
+    await tapTakeOver();
+
+    expect(await screen.findByText(/already brought this group back/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /open your groups/i })).toHaveAttribute('href', '/');
+    expect(screen.queryByText(/taking you to/i)).toBeNull();
+
+    // No destination id, so nothing may ever fire.
+    await new Promise((resolve) => setTimeout(resolve, DWELL_MS + 600));
+    expect(pushMock).not.toHaveBeenCalled();
+  }, 10000);
+
   it(
     'AF-9 via the preview, LOGGED IN — no acceptance is attempted and the user is handed into the group',
     async () => {
@@ -314,6 +400,8 @@ describe('already-restored — the same event, reached two ways', () => {
       // a failure they did not cause.
       expect(accept()).not.toHaveBeenCalled();
 
+      // M-7: the hand-off is membership-gated before it promises the group page.
+      await waitFor(() => expect(getGroup()).toHaveBeenCalledWith(LIVE_ID));
       await waitFor(
         () => expect(pushMock).toHaveBeenCalledWith(`/groupHomePage?id=${LIVE_ID}`),
         { timeout: 4000 }
@@ -321,6 +409,40 @@ describe('already-restored — the same event, reached two ways', () => {
     },
     10000
   );
+
+  it(
+    'M-7 — already restored but NOT a member of the live group: handed to the groups list, never the dead-end page',
+    async () => {
+      // The forwarded-link / different-account case: /groupHomePage gates its
+      // whole render on a membership check, so pushing a non-member there parks
+      // them on a loading state forever. The membership fetch refusing is the
+      // signal to route home instead.
+      signedIn();
+      getPreview().mockResolvedValue(ALREADY_RESTORED_PREVIEW);
+      getGroup().mockRejectedValue(forbiddenError());
+      renderPage();
+
+      expect(await screen.findByText(/taking you to your groups/i)).toBeInTheDocument();
+
+      await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/'), { timeout: 4000 });
+      expect(pushMock).not.toHaveBeenCalledWith(`/groupHomePage?id=${LIVE_ID}`);
+    },
+    10000
+  );
+
+  it('L-3 — navigating away during the dwell cancels the redirect', async () => {
+    signedIn();
+    getPreview().mockResolvedValue(ALREADY_RESTORED_PREVIEW);
+    const { unmount } = renderPage();
+
+    // Wait until the timer is actually scheduled (the membership fetch resolves
+    // and the hand-off copy renders) — unmounting before that proves nothing.
+    expect(await screen.findByText(/taking you to the group/i)).toBeInTheDocument();
+    unmount();
+
+    await new Promise((resolve) => setTimeout(resolve, DWELL_MS + 600));
+    expect(pushMock).not.toHaveBeenCalled();
+  }, 10000);
 
   it('AF-9 via the preview, LOGGED OUT — stays put and offers sign-in, never redirects', async () => {
     // The single most common path through this page: ONE nonce is fanned to every
@@ -354,16 +476,22 @@ describe('already-restored — the same event, reached two ways', () => {
 
 describe('SPEC-REQ-7 — no state on this page claims the group was permanently removed', () => {
   it('every reachable state is clean, including the ones composed at runtime', async () => {
-    const scenarios: Array<{ name: string; setup: () => void; settled: RegExp }> = [
+    const scenarios: Array<{ name: string; setup: () => void; settled: RegExp; tap?: boolean }> = [
       {
         name: 'logged-out preview',
         setup: () => signedOut(),
         settled: new RegExp(GROUP_NAME),
       },
       {
+        name: 'signed-in preview with the take-over button (M-3)',
+        setup: () => signedIn(),
+        settled: /take over this group/i,
+      },
+      {
         name: 'restored',
         setup: () => signedIn(),
         settled: /is back/i,
+        tap: true,
       },
       {
         name: 'already-restored via 409',
@@ -372,6 +500,7 @@ describe('SPEC-REQ-7 — no state on this page claims the group was permanently 
           accept().mockRejectedValue(conflictError());
         },
         settled: /already brought this group back/i,
+        tap: true,
       },
       {
         name: 'already-restored via preview, logged out',
@@ -388,6 +517,7 @@ describe('SPEC-REQ-7 — no state on this page claims the group was permanently 
           accept().mockRejectedValue(forbiddenError());
         },
         settled: /you can't take it over/i,
+        tap: true,
       },
       {
         name: '410 window expired',
@@ -396,6 +526,7 @@ describe('SPEC-REQ-7 — no state on this page claims the group was permanently 
           accept().mockRejectedValue(goneError('window_expired'));
         },
         settled: /data was erased/i,
+        tap: true,
       },
       {
         name: '410 unattributable',
@@ -404,14 +535,23 @@ describe('SPEC-REQ-7 — no state on this page claims the group was permanently 
           accept().mockRejectedValue(goneError(null));
         },
         settled: /no longer valid/i,
+        tap: true,
       },
       {
-        name: 'terminal error from a rejected preview',
+        name: 'terminal error from a 404-rejected preview',
+        setup: () => {
+          signedIn();
+          getPreview().mockRejectedValue(new ApiError('nope', 'not_found', 404, { error: 'nope' }));
+        },
+        settled: /no longer valid/i,
+      },
+      {
+        name: 'retryable error from an unreachable preview (M-6)',
         setup: () => {
           signedIn();
           getPreview().mockRejectedValue(new Error('boom'));
         },
-        settled: /no longer valid/i,
+        settled: /couldn.t check this link/i,
       },
     ];
 
@@ -423,9 +563,11 @@ describe('SPEC-REQ-7 — no state on this page claims the group was permanently 
         group_id: RESTORED_ID,
         group_name: GROUP_NAME,
       });
+      getGroup().mockResolvedValue({ id: LIVE_ID, name: GROUP_NAME });
       scenario.setup();
 
       renderPage();
+      if (scenario.tap) await tapTakeOver();
       await screen.findByText(scenario.settled);
 
       const text = (document.body.textContent ?? '').toLowerCase();
