@@ -120,6 +120,15 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
   // claim still renders when the impact fetch fails.
   const recoveryDays = deletionImpact?.recovery_window_days ?? 30;
 
+  // Code-review M-5 (owner-approved 2026-07-27): the recovery promise must be
+  // attributed to the OTHER members — the deleter is deliberately sent no email
+  // (SPEC-REQ-8), so "you have 30 days to change your mind" was false, and for
+  // a sole-member group flatly so (nobody receives a link at all). Prefer the
+  // server's member count; fall back to the roster fetch; when both are unknown
+  // the multi-member wording renders (accurate for the typical group).
+  const knownMemberCount = deletionImpact?.member_count ?? memberCount;
+  const isSoleMemberDelete = knownMemberCount !== null && knownMemberCount <= 1;
+
   const handleSave = async () => {
     if (!user?.sub) return;
     
@@ -194,8 +203,13 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
     }
     
     // Phase 88.2 / SPEC-REQ-7: the string changed, the gate did not. See the
-    // DECISION marker in the Danger Zone render.
-    if (!confirm(`This hides the group from every member straight away, and emails them a link to take it over. You have ${recoveryDays} days to change your mind before it is erased. Delete this group?`)) {
+    // DECISION marker in the Danger Zone render. M-5: recovery is attributed to
+    // the other members (the deleter gets no email), and a sole-member group is
+    // told plainly the delete is final.
+    const confirmMessage = isSoleMemberDelete
+      ? `You're the only member — nobody is emailed a recovery link, so deleting this group is final. It is hidden straight away and erased after ${recoveryDays} days. Delete this group?`
+      : `This hides the group from every member straight away, and emails them a link to take it over. If nobody brings it back within ${recoveryDays} days, it is erased. Delete this group?`;
+    if (!confirm(confirmMessage)) {
       return;
     }
     
@@ -463,11 +477,20 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                   events, reviews and history — not just you.
                 </p>
               )}
-              <p>
-                You have <strong className="text-content-primary">{recoveryDays} days</strong> to change your
-                mind. Every other member is emailed a link to take over the group and bring it all back. If
-                nobody does, it is erased at the end of that window.
-              </p>
+              {isSoleMemberDelete ? (
+                <p>
+                  You&apos;re the only member, so there is no one to email a recovery link to — deleting this
+                  group is final. Everything is erased at the end of the{' '}
+                  <strong className="text-content-primary">{recoveryDays}-day</strong> window.
+                </p>
+              ) : (
+                <p>
+                  Every other member is emailed a link to take over the group and bring it all back — they
+                  have <strong className="text-content-primary">{recoveryDays} days</strong> before it is
+                  erased. You won&apos;t get one of those emails, so if you change your mind, ask another
+                  member to use theirs.
+                </p>
+              )}
               <p>
                 If you just want to step away, transfer ownership instead — the group keeps running for
                 everyone else.

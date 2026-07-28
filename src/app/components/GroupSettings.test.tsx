@@ -156,6 +156,36 @@ describe('SPEC-REQ-7 — no permanence claim survives', () => {
     for (const phrase of FORBIDDEN) expect(confirmArg).not.toContain(phrase);
   });
 
+  it('M-5 — a sole-member group is told plainly the delete is final, with no false promise', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([ROSTER[0]]);
+    (groupsAPI.getDeletionImpact as Mock).mockResolvedValue({
+      member_count: 1,
+      event_count: 2,
+      recovery_window_days: 30,
+    });
+    renderSettings();
+    await waitFor(() => expect(dangerZone().textContent).toMatch(/only member/i));
+
+    // The member-claim-back promise must NOT render — there are no other
+    // members to claim it back, so "change your mind" would be a lie here.
+    const text = (dangerZone().textContent ?? '').toLowerCase();
+    expect(text).not.toMatch(/change your mind/);
+    expect(text).not.toMatch(/emailed a link to take over/);
+    expect(text).toMatch(/final/);
+    for (const phrase of FORBIDDEN) expect(text).not.toContain(phrase);
+
+    // The confirm() string branches the same way.
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Group' }));
+    fireEvent.change(screen.getByPlaceholderText('Type group name to confirm'), {
+      target: { value: GROUP_NAME },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Group' }));
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
+    const confirmArg = String(confirmSpy.mock.calls[0][0]).toLowerCase();
+    expect(confirmArg).toContain('only member');
+    for (const phrase of FORBIDDEN) expect(confirmArg).not.toContain(phrase);
+  });
+
   it('the DEGRADED path is also clean, and still makes a recoverability claim', async () => {
     (groupsAPI.getDeletionImpact as Mock).mockRejectedValue(new Error('boom'));
     renderSettings();

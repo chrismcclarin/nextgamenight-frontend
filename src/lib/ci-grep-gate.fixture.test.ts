@@ -43,10 +43,26 @@ interface Gate {
   pattern: string;
   /** grep's flags as written in ci.yml, e.g. `rnE` or `rniE`. */
   flags: string;
-  /** The path(s) the gate scans. */
+  /** The FULL scope as written in ci.yml (may be several paths, some quoted). */
   scope: string;
+  /** The scope split into individual paths, quotes stripped (M-8). */
+  scopeFiles: string[];
   /** The comment-line filter applied to the hits. */
   filter: string;
+}
+
+/**
+ * M-8: split a gate's scope string into its individual paths, honouring shell
+ * single-quoting (the restore page's path is quoted for its brackets). The old
+ * parser captured only the FIRST path, so a second scoped file's coverage was
+ * structurally unpinnable — every scope assertion ran against path one.
+ */
+function parseScopeFiles(scope: string): string[] {
+  const files: string[] = [];
+  const piece = /'([^']+)'|(\S+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = piece.exec(scope)) !== null) files.push(m[1] ?? m[2]);
+  return files;
 }
 
 /**
@@ -75,17 +91,22 @@ function parseGate(stepName: string): Gate {
       `ci.yml step "${stepName}" has no grep-gate assignment line — keep the HITS=... | grep -vE ... || true shape.`,
     );
   }
-  const patternMatch = line.match(/grep -([A-Za-z]+) '([^']+)' (\S+)/);
+  // M-8: the scope capture runs to the pipe into the comment filter, NOT to the
+  // first whitespace — a gate scoping several files (the permanence gate scopes
+  // two) must surface ALL of them, or the later entries are unpinnable here.
+  const patternMatch = line.match(/grep -([A-Za-z]+) '([^']+)' (.+?) \| grep -vE/);
   const filterMatch = line.match(/grep -vE '([^']+)'/);
   if (!patternMatch || !filterMatch) {
     throw new Error(
       `ci.yml step "${stepName}" did not parse into flags + pattern + scope + comment filter.`,
     );
   }
+  const scope = patternMatch[3].trim();
   return {
     flags: patternMatch[1],
     pattern: patternMatch[2],
-    scope: patternMatch[3],
+    scope,
+    scopeFiles: parseScopeFiles(scope),
     filter: filterMatch[1],
   };
 }
@@ -278,10 +299,17 @@ describe('SPEC-REQ-7 permanence-copy grep gate — lockstep self-test (parsed fr
       expect(permanenceHits(' * was: cannot be undone — now recoverable for 30 days')).toBe('');
     });
 
-    test('the shipped replacement copy is clean', () => {
+    test('the shipped replacement copy is clean (M-5 wording, both branches)', () => {
       expect(
         permanenceHits(
-          'You have 30 days to change your mind. Every other member is emailed a link to take over the group.'
+          'Every other member is emailed a link to take over the group and bring it all back — they have 30 days before it is erased.'
+        )
+      ).toBe('');
+      // The sole-member branch says "final" — true for that group, and not one
+      // of the three banned phrasings.
+      expect(
+        permanenceHits(
+          "You're the only member, so there is no one to email a recovery link to — deleting this group is final."
         )
       ).toBe('');
     });
@@ -295,9 +323,19 @@ describe('SPEC-REQ-7 permanence-copy grep gate — lockstep self-test (parsed fr
       expect(PERMANENCE_GATE.scope).not.toBe('src/app');
     });
 
-    test('an out-of-scope file is outside the scanned path', () => {
-      const scope = PERMANENCE_GATE.scope.replace(/\/$/, '');
-      const covered = OUT_OF_SCOPE_FILE === scope || OUT_OF_SCOPE_FILE.startsWith(`${scope}/`);
+    test('M-8: BOTH scoped files are pinned — the Danger Zone AND the restore page', () => {
+      // The old single-path parse left the restore page's coverage unpinnable:
+      // dropping it from the gate's scope kept every test here green.
+      expect(PERMANENCE_GATE.scopeFiles).toContain('src/app/components/GroupSettings.js');
+      expect(PERMANENCE_GATE.scopeFiles).toContain('src/app/restore/group/[token]/page.tsx');
+      expect(PERMANENCE_GATE.scopeFiles).toHaveLength(2);
+    });
+
+    test('an out-of-scope file is outside every scanned path', () => {
+      const covered = PERMANENCE_GATE.scopeFiles.some((scoped) => {
+        const clean = scoped.replace(/\/$/, '');
+        return OUT_OF_SCOPE_FILE === clean || OUT_OF_SCOPE_FILE.startsWith(`${clean}/`);
+      });
       expect(covered).toBe(false);
     });
 

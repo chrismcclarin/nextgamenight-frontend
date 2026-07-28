@@ -151,6 +151,16 @@ jobs:
         # `src/lib/ci-grep-gate.fixture.test.ts` parses this step's pattern, flags,
         # scope and filter out of THIS file, located by the step name above.
         run: |
+          # L-12: a renamed or deleted scoped file makes grep exit 2, which the
+          # `|| true` below swallows — the gate would "pass" while scanning fewer
+          # files. Mirror the BE purge-gate's existence guard: a missing scope
+          # entry is a loud failure, never a silent shrink.
+          for f in src/app/components/GroupSettings.js 'src/app/restore/group/[token]/page.tsx'; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Permanence-gate scoped file missing: $f — renamed or deleted; update the gate's scope list (and its fixture self-test) instead of letting the gate shrink silently."
+              exit 1
+            fi
+          done
           HITS=$(grep -rniE 'cannot be undone|permanently remove|permanently delete' src/app/components/GroupSettings.js 'src/app/restore/group/[token]/page.tsx' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|\{/\*)' || true)
           if [ -n "$HITS" ]; then
             echo "::error::Group-delete copy claims permanence, which is false as of Phase 88.2 — the group delete is recoverable for 30 days and members are emailed a link to take the group over. Scope: the group Danger Zone and the emailed restore page. Fix the copy; do not widen the gate:"
