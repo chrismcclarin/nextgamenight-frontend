@@ -51,6 +51,11 @@ import { ApiError } from '@/lib/api';
 //     complains. NON-retryable. Note invalid_token (410, group restore) is a
 //     DIFFERENT code from token_invalid (400, magic-token reject) listed above —
 //     see the ApiErrorCode comment in lib/api.ts; do not merge them.
+//   gone (410, status-mapped) — M-2: the fallback code for CODE-LESS 410 bodies
+//     (88.2's join-by-token + invite accept/decline liveness gates). Gone is
+//     terminal by definition; without this entry those 410s classified as
+//     `unknown` and retried once while their coded siblings above did not.
+//     NON-retryable.
 // Left RETRYABLE-once (transient): `internal` (500 — may be a blip) and the
 // client-side `network` code, plus `unknown` — shouldRetry allows one retry.
 const NON_RETRYABLE_API_CODES: ReadonlyArray<string> = [
@@ -69,6 +74,7 @@ const NON_RETRYABLE_API_CODES: ReadonlyArray<string> = [
   'window_expired',
   'already_used',
   'invalid_token',
+  'gone',
 ];
 
 /**

@@ -7,6 +7,8 @@ import { useUnreadNotificationCount } from './UnreadNotificationProvider';
 function NotificationBell({ user, variant = 'icon', label }) {
   const [isOpen, setIsOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(null);
+  // { text, tone: 'success' | 'muted' } — muted is the L-8 "no longer
+  // available" notice, which must not render in success-green.
   const [confirmation, setConfirmation] = useState(null);
   const dropdownRef = useRef(null);
 
@@ -56,7 +58,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
       // immediately for BOTH the bell badge and the mobile hamburger dot.
       ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
       const groupName = invite.Group?.name || invite.group_name || 'the group';
-      setConfirmation(`Joined ${groupName}!`);
+      setConfirmation({ text: `Joined ${groupName}!`, tone: 'success' });
       // GROUP-08: signal the home page to refresh its groups list. sessionStorage
       // covers a later navigation; window event covers the in-place case where the
       // user is already on / when they click Accept in the bell.
@@ -65,7 +67,16 @@ function NotificationBell({ user, variant = 'icon', label }) {
         window.dispatchEvent(new CustomEvent('nggroups:refresh'));
       }
     } catch (err) {
-      console.error('Failed to accept invite:', err.message);
+      // L-8: 410 = the group was soft-deleted under this invite (88.2 liveness
+      // gate). The row is dead — drop it now instead of leaving a button that
+      // visibly does nothing until the next refetch INNER-JOINs it out.
+      if (err?.status === 410) {
+        ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
+        const groupName = invite.Group?.name || invite.group_name || 'This group';
+        setConfirmation({ text: `${groupName} is no longer available.`, tone: 'muted' });
+      } else {
+        console.error('Failed to accept invite:', err.message);
+      }
     } finally {
       setActionLoading(null);
     }
@@ -77,7 +88,13 @@ function NotificationBell({ user, variant = 'icon', label }) {
       await invitesAPI.declineInvite(invite.id);
       ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
     } catch (err) {
-      console.error('Failed to decline invite:', err.message);
+      // L-8: dead-group 410 — removing the row is exactly what the user asked
+      // for, so no notice needed.
+      if (err?.status === 410) {
+        ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
+      } else {
+        console.error('Failed to decline invite:', err.message);
+      }
     } finally {
       setActionLoading(null);
     }
@@ -91,7 +108,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
       // surface (friends page) — we still show the success confirmation
       // since from the user's POV the action they wanted is done.
       await ctxAcceptFriend(request.id);
-      setConfirmation('Accepted friend request!');
+      setConfirmation({ text: 'Accepted friend request!', tone: 'success' });
     } catch (err) {
       console.error('Failed to accept friend request:', err.message);
     } finally {
@@ -187,10 +204,15 @@ function NotificationBell({ user, variant = 'icon', label }) {
             <h3 className="text-sm font-bold text-content-primary">Notifications</h3>
           </div>
 
-          {/* Confirmation banner */}
+          {/* Confirmation banner — success-green for completed actions, muted
+              for the L-8 "no longer available" notice */}
           {confirmation && (
-            <div className="px-4 py-2 bg-status-success/10 border-b border-line">
-              <p className="text-sm text-status-success font-medium">{confirmation}</p>
+            <div className={`px-4 py-2 border-b border-line ${
+              confirmation.tone === 'success' ? 'bg-status-success/10' : 'bg-surface-card-hover'
+            }`}>
+              <p className={`text-sm font-medium ${
+                confirmation.tone === 'success' ? 'text-status-success' : 'text-content-muted'
+              }`}>{confirmation.text}</p>
             </div>
           )}
 

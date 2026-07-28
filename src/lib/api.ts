@@ -72,6 +72,14 @@ const BFF_BASE = '/api';
 //     path. (The FE never needs to tell `invalid_token` from `already_used` —
 //     both, plus the unattributable case, map to the same weaker message.)
 //     Backend contract: `utils/errors.js` ERROR_REGISTRY, Phase 88.2 plan 07.
+//   - `gone` is CLIENT-SIDE ONLY: the status-mapped fallback for a CODE-LESS
+//     410 body (Phase 88.2 code-review M-2). The phase's soft-delete liveness
+//     gates on join-by-token and invite accept/decline return raw 410s with no
+//     envelope code; without this arm they fell through to `unknown`, which is
+//     retryable-once — while the four CODED 410s above are deliberately
+//     non-retryable. A 410 is Gone: terminal by definition, never retried.
+//     No BE registry entry emits `gone` — if one ever does, pick a real domain
+//     code instead.
 export type ApiErrorCode =
   | 'unknown'
   | 'validation'
@@ -89,6 +97,7 @@ export type ApiErrorCode =
   | 'window_expired'
   | 'already_used'
   | 'invalid_token'
+  | 'gone'
   | 'internal'
   | 'network'
   | 'config';
@@ -220,6 +229,9 @@ function statusToCode(status: number): ApiErrorCode {
   if (status === 401) return 'unauthorized';
   if (status === 403) return 'forbidden';
   if (status === 404) return 'not_found';
+  // M-2: code-less 410s (88.2's join-by-token + invite accept/decline liveness
+  // gates) must classify as terminal, matching the phase's coded 410s.
+  if (status === 410) return 'gone';
   if (status === 429) return 'rate_limited';
   if (status >= 500) return 'internal';
   return 'unknown';

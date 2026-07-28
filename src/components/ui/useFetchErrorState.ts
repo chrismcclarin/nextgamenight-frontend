@@ -64,6 +64,9 @@ const MESSAGE_BY_CODE: Record<FetchErrorCode, string> = {
   window_expired: 'The recovery window for this group has ended.',
   already_used: 'This link is no longer valid.',
   invalid_token: 'This link is no longer valid.',
+  // M-2: status-mapped fallback for a code-less 410 — terminal, so no
+  // "try again" phrasing.
+  gone: 'This is no longer available.',
   internal: "Something went wrong on our end. Please try again shortly.",
   config: "Something's misconfigured on our end. Please try again shortly.",
   unknown: 'Something went wrong. Refresh the page to try again.',
