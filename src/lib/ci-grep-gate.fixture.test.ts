@@ -111,6 +111,38 @@ function parseGate(stepName: string): Gate {
   };
 }
 
+/**
+ * R-9: parse the L-12 existence-guard's `for f in ...; do` file list out of a
+ * gate's step window. That list is by necessity a second copy of the gate's
+ * grep scope (shell can't share them), and a scope edit that skips the guard
+ * re-opens the silent-shrink L-12 closed: the guard keeps passing while the
+ * gate scans fewer files. The lockstep assertion below makes that divergence
+ * red instead of silent.
+ */
+function parseExistenceGuardFiles(stepName: string): string[] {
+  const lines = CI_YML.split('\n');
+  const start = lines.findIndex((l) => l.includes(stepName));
+  if (start === -1) {
+    throw new Error(`ci.yml step "${stepName}" not found — was the gate renamed or removed?`);
+  }
+  const rest = lines.slice(start + 1);
+  const nextStep = rest.findIndex((l) => /^\s*- name:/.test(l));
+  const window = nextStep === -1 ? rest : rest.slice(0, nextStep);
+  const forLine = window.find((l) => /^\s*for f in /.test(l));
+  if (!forLine) {
+    throw new Error(
+      `ci.yml step "${stepName}" has no existence-guard for-loop — keep the L-12 \`for f in <scope files>; do\` guard ahead of the grep.`,
+    );
+  }
+  const listMatch = forLine.match(/^\s*for f in (.+?); do\s*$/);
+  if (!listMatch) {
+    throw new Error(
+      `ci.yml step "${stepName}" existence guard did not parse — keep the single-line \`for f in ...; do\` shape.`,
+    );
+  }
+  return parseScopeFiles(listMatch[1].trim());
+}
+
 const SUB_COMPARE_GATE = parseGate('no user.sub compared against an API data field');
 const PERMANENCE_GATE = parseGate('group-delete copy must not claim permanence');
 
@@ -329,6 +361,17 @@ describe('SPEC-REQ-7 permanence-copy grep gate — lockstep self-test (parsed fr
       expect(PERMANENCE_GATE.scopeFiles).toContain('src/app/components/GroupSettings.js');
       expect(PERMANENCE_GATE.scopeFiles).toContain('src/app/restore/group/[token]/page.tsx');
       expect(PERMANENCE_GATE.scopeFiles).toHaveLength(2);
+    });
+
+    test('R-9: the existence-guard file list IS the grep scope — lockstep, never a drifted hand copy', () => {
+      // The L-12 guard's for-loop and the gate's grep scope are two shell
+      // copies of the same list. If they diverge — a file added to the scope
+      // but not the guard, or vice versa — the guard silently stops covering
+      // what the gate scans. Deep-equal, order included, so the fix is always
+      // "edit both lines together".
+      expect(
+        parseExistenceGuardFiles('group-delete copy must not claim permanence')
+      ).toEqual(PERMANENCE_GATE.scopeFiles);
     });
 
     test('an out-of-scope file is outside every scanned path', () => {
