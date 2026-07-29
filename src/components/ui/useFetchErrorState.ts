@@ -57,6 +57,16 @@ const MESSAGE_BY_CODE: Record<FetchErrorCode, string> = {
   owner_of_active_groups:
     'You still own active groups. Transfer ownership or delete them, then try again.',
   account_deleted: 'This account has already been deleted.',
+  // Phase 88.2 group-restore codes. This map is the GENERIC fallback copy for a
+  // query-driven fetch; the restore page owns its own cause-split copy, which is
+  // richer than anything sensible here.
+  already_restored: 'This group has already been restored.',
+  window_expired: 'The recovery window for this group has ended.',
+  already_used: 'This link is no longer valid.',
+  invalid_token: 'This link is no longer valid.',
+  // M-2: status-mapped fallback for a code-less 410 — terminal, so no
+  // "try again" phrasing.
+  gone: 'This is no longer available.',
   internal: "Something went wrong on our end. Please try again shortly.",
   config: "Something's misconfigured on our end. Please try again shortly.",
   unknown: 'Something went wrong. Refresh the page to try again.',

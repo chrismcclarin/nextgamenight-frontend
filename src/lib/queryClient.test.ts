@@ -115,6 +115,10 @@ describe('GAP6 — retry predicate truth table (D-13, T-84-08)', () => {
     }
   );
 
+  it('never retries a status-mapped code-less 410 (M-2: gone is terminal)', () => {
+    expect(shouldRetry(0, new ApiError('x', 'gone', 410))).toBe(false);
+  });
+
   it('retries a transient failure at most once', () => {
     const networkErr = new ApiError('down', 'network', 0);
     expect(shouldRetry(0, networkErr)).toBe(true);

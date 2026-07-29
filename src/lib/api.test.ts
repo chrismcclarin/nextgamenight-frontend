@@ -38,6 +38,12 @@ describe('mapErrorToCode — status mapping', () => {
     expect(mapErrorToCode({}, 429)).toBe('rate_limited');
   });
 
+  it('maps a code-less 410 → gone (M-2: terminal, matching the coded 410s)', () => {
+    expect(mapErrorToCode({}, 410)).toBe('gone');
+    // A coded 410 still prefers its envelope code — the fallback must not mask it.
+    expect(mapErrorToCode({ code: 'window_expired' }, 410)).toBe('window_expired');
+  });
+
   it('maps 422 → validation', () => {
     expect(mapErrorToCode({}, 422)).toBe('validation');
   });

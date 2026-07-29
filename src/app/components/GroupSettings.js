@@ -76,6 +76,59 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
 
   const isOnlyMember = memberCount !== null && memberCount <= 1;
 
+  // Phase 88.2 / SPEC-REQ-5, D-06: the delete blast radius comes from the
+  // dedicated owner-only endpoint and is fetched WHEN THE DANGER ZONE RENDERS,
+  // not when the owner clicks — so the numbers are already on screen before the
+  // decision is made, with no spinner in the middle of a destructive flow.
+  //
+  // The counts are NEVER derived on the client (not from getGroupMembers, not
+  // from an event list). A client-side count risks stating a number that is
+  // simply false — telling the owner "4 events" while deleting 37 — at the exact
+  // moment accuracy matters most. The server counts; we render what it says.
+  const [deletionImpact, setDeletionImpact] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    // Only the owner ever sees the Danger Zone, so only the owner fetches. A
+    // non-owner request would 403 anyway (the endpoint is owner-gated
+    // server-side) — this keeps us from asking.
+    if (userRole === 'owner' && group?.id) {
+      (async () => {
+        try {
+          const impact = await groupsAPI.getDeletionImpact(group.id);
+          if (!cancelled) setDeletionImpact(impact);
+        } catch (e) {
+          // Degrade to copy WITHOUT the numbers — never to a disabled delete
+          // button. The backend is the authority on whether a delete may
+          // proceed, and SPEC-REQ-6 forbids this phase adding any new gate. The
+          // recoverability sentence still renders unconditionally below.
+          if (!cancelled) setDeletionImpact(null);
+        }
+      })();
+    }
+    return () => { cancelled = true; };
+    // PRIMITIVES ONLY in the dep array, matching the members effect above.
+    // `group` is an object prop: depending on it re-fires this effect on any
+    // parent re-render that rebuilds the object, re-issuing the request over and
+    // over on a destructive-decision surface. `group?.id` is the identity that
+    // actually matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [group?.id, userRole]);
+
+  // The window is a fixed 30 by the phase's constraints and is not per-group
+  // configurable, so this fallback carries no accuracy risk — unlike the counts,
+  // the constant cannot disagree with the server. It exists so the recoverability
+  // claim still renders when the impact fetch fails.
+  const recoveryDays = deletionImpact?.recovery_window_days ?? 30;
+
+  // Code-review M-5 (owner-approved 2026-07-27): the recovery promise must be
+  // attributed to the OTHER members — the deleter is deliberately sent no email
+  // (SPEC-REQ-8), so "you have 30 days to change your mind" was false, and for
+  // a sole-member group flatly so (nobody receives a link at all). Prefer the
+  // server's member count; fall back to the roster fetch; when both are unknown
+  // the multi-member wording renders (accurate for the typical group).
+  const knownMemberCount = deletionImpact?.member_count ?? memberCount;
+  const isSoleMemberDelete = knownMemberCount !== null && knownMemberCount <= 1;
+
   const handleSave = async () => {
     if (!user?.sub) return;
     
@@ -149,7 +202,14 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
       return;
     }
     
-    if (!confirm('This action cannot be undone. Are you absolutely sure you want to delete this group?')) {
+    // Phase 88.2 / SPEC-REQ-7: the string changed, the gate did not. See the
+    // DECISION marker in the Danger Zone render. M-5: recovery is attributed to
+    // the other members (the deleter gets no email), and a sole-member group is
+    // told plainly the delete is final.
+    const confirmMessage = isSoleMemberDelete
+      ? `You're the only member — nobody is emailed a recovery link, so deleting this group is final. It is hidden straight away and erased after ${recoveryDays} days. Delete this group?`
+      : `This hides the group from every member straight away, and emails them a link to take it over. If nobody brings it back within ${recoveryDays} days, it is erased. Delete this group?`;
+    if (!confirm(confirmMessage)) {
       return;
     }
     
@@ -392,13 +452,67 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
         {userRole === 'owner' && (
           <div className="mb-6 pt-6 border-t border-red-200">
             <h3 className="text-lg font-semibold text-red-600 mb-3">Danger Zone</h3>
-            <p className="text-sm text-content-secondary mb-4">
-              Deleting a group will permanently remove all events, members, and reviews associated with it. This action cannot be undone.
-            </p>
+
+            {/* Phase 88.2 / SPEC-REQ-5: three short beats — blast radius,
+                recoverability, the better path — rather than one wall of text,
+                because this reads on a 375px phone first.
+
+                Only the NUMBERS are conditional on the impact fetch. The
+                recoverability sentence and the emailed-offer clause render
+                unconditionally: recovery_window_days arrives in the same response
+                as the counts, so gating the whole block on the fetch would leave a
+                degraded owner told neither that the delete is final nor that it is
+                recoverable — the worst of both, at the moment of decision. */}
+            <div className="space-y-2 mb-4 text-sm text-content-secondary">
+              {deletionImpact ? (
+                <p>
+                  Deleting hides this group from everyone straight away. All{' '}
+                  <strong className="text-content-primary">{deletionImpact.member_count}</strong> members lose
+                  access to its <strong className="text-content-primary">{deletionImpact.event_count}</strong>{' '}
+                  events, reviews and history — not just you.
+                </p>
+              ) : (
+                <p>
+                  Deleting hides this group from everyone straight away. Every member loses access to its
+                  events, reviews and history — not just you.
+                </p>
+              )}
+              {isSoleMemberDelete ? (
+                <p>
+                  You&apos;re the only member, so there is no one to email a recovery link to — deleting this
+                  group is final. Everything is erased at the end of the{' '}
+                  <strong className="text-content-primary">{recoveryDays}-day</strong> window.
+                </p>
+              ) : (
+                <p>
+                  Every other member is emailed a link to take over the group and bring it all back — they
+                  have <strong className="text-content-primary">{recoveryDays} days</strong> before it is
+                  erased. You won&apos;t get one of those emails, so if you change your mind, ask another
+                  member to use theirs.
+                </p>
+              )}
+              <p>
+                If you just want to step away, transfer ownership instead — the group keeps running for
+                everyone else.
+              </p>
+            </div>
+
+            {/* SPEC-REQ-5: the better path gets its own affordance, before the
+                destructive one. Same idiom as the Leave Group transfer button
+                above; both go dark if a call site forgets the prop. */}
+            <button
+              type="button"
+              className="btn btn-secondary w-full sm:w-auto min-h-[44px] mb-4"
+              onClick={() => onOpenManageMembers?.()}
+              disabled={!onOpenManageMembers}
+            >
+              Transfer ownership instead
+            </button>
+
             {!showDeleteConfirm ? (
               <button
                 onClick={() => setShowDeleteConfirm(true)}
-                className="btn btn-danger"
+                className="btn btn-danger w-full sm:w-auto min-h-[44px]"
               >
                 Delete Group
               </button>
@@ -412,22 +526,38 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                   value={deleteConfirmText}
                   onChange={(e) => setDeleteConfirmText(e.target.value)}
                   placeholder="Type group name to confirm"
-                  className="w-full p-2 border border-red-300 rounded text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className="w-full p-2 min-h-[44px] border border-red-300 rounded text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-red-500"
                 />
-                <div className="flex gap-3">
+                {/* Stacked on a phone, inline from sm: up — two side-by-side
+                    targets at 375px are cramped, and one of them is destructive. */}
+                <div className="flex flex-col sm:flex-row gap-3">
                   <button
                     onClick={() => {
                       setShowDeleteConfirm(false);
                       setDeleteConfirmText('');
                     }}
-                    className="btn btn-secondary"
+                    className="btn btn-secondary w-full sm:w-auto min-h-[44px]"
                   >
                     Cancel
                   </button>
+                  {/* DECISION Phase 88.2 SPEC-REQ-6: the type-the-group-name gate
+                      below and the native browser confirmation in handleDeleteGroup
+                      are both PRESERVED, behaviorally unchanged. The owner chose
+                      disclosure over refusal — this phase adds information (the real
+                      counts, the real recovery window) and an alternative (transfer),
+                      and deliberately adds NO friction. Chosen OVER two rejected
+                      alternatives: adding an extra acknowledgement step for
+                      many-member groups, and dropping the browser confirmation now
+                      that the delete is reversible. Phase 88 Req 11 owns the
+                      redesigned dialog component; this phase only corrects the copy
+                      and adds the counts on the existing markup so the app is not
+                      lying in the meantime. Removing either gate, or adding a new
+                      one, re-litigates an accepted-forever decision recorded in
+                      88.2-SPEC.md § Boundaries — that is a decision, not a cleanup. */}
                   <button
                     onClick={handleDeleteGroup}
                     disabled={deleting || deleteConfirmText !== group.name}
-                    className="btn btn-danger"
+                    className="btn btn-danger w-full sm:w-auto min-h-[44px]"
                   >
                     {deleting ? 'Deleting...' : 'Delete Group'}
                   </button>
