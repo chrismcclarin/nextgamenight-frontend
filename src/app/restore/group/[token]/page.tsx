@@ -191,8 +191,10 @@ function RestoreGroupPage() {
    * it. GET /groups/:id is membership-gated (403 for a non-member), so a
    * successful fetch proves /groupHomePage will render rather than park the
    * visitor on its eternal loading state — the forwarded-link /
-   * different-account case. Refused or failed, the hand-off goes to the home
-   * groups list instead (there is no /userHome route — the list renders at /).
+   * different-account case. Only an actual refusal (403/404) sends the
+   * hand-off to the home groups list instead (there is no /userHome route —
+   * the list renders at /); an unreachable check (network drop, 5xx) still
+   * hands off to the group — see the R-2 note below.
    */
   async function routeToLiveGroup(liveGroupId: string) {
     try {
