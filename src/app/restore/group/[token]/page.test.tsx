@@ -282,7 +282,68 @@ describe('SPEC-REQ-9 — the authenticated acceptance', () => {
     expect(screen.queryByText(/is back/i)).toBeNull();
     expect(screen.queryByText(/already brought this group back/i)).toBeNull();
     expect(pushMock).not.toHaveBeenCalled();
+    // R-3: terminal rejections stay terminal — no retry affordance renders.
+    expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
   });
+
+  it('R-4 — an expired session (401) offers sign-in with returnTo, never the generic failure', async () => {
+    signedIn();
+    accept().mockRejectedValue(
+      new ApiError('unauthorized', 'unauthorized', 401, { error: 'unauthorized' })
+    );
+    renderPage();
+    await tapTakeOver();
+
+    expect(await screen.findByText(/session has expired/i)).toBeInTheDocument();
+    expect(screen.queryByText(/something went wrong/i)).toBeNull();
+
+    // The remedy is the login round-trip, landing back on this exact page so
+    // the visitor can tap take-over again with a fresh session.
+    const cta = screen.getByRole('link', { name: /sign in to try again/i });
+    expect(cta).toHaveAttribute(
+      'href',
+      `/api/auth/login?returnTo=${encodeURIComponent(`/restore/group/${TOKEN}`)}`
+    );
+  });
+
+  it('R-3 — a network failure on the acceptance renders a WORKING Try again', async () => {
+    signedIn();
+    accept().mockRejectedValueOnce(new ApiError('down', 'network', 0));
+    renderPage();
+    await tapTakeOver();
+
+    expect(await screen.findByText(/something went wrong/i)).toBeInTheDocument();
+
+    // The latch must have been reset, or this click is swallowed and the copy
+    // "Please try again" is a lie — the exact defect R-3 pins. The
+    // once-rejection is consumed; the retry hits the beforeEach success.
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+    expect(await screen.findByText(/is back/i)).toBeInTheDocument();
+    expect(accept()).toHaveBeenCalledTimes(2);
+  }, 10000);
+
+  it('R-1 — navigating away while the acceptance POST is in flight schedules no redirect', async () => {
+    signedIn();
+    let resolveAccept: (value: unknown) => void = () => {};
+    accept().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveAccept = resolve;
+        })
+    );
+    const { unmount } = renderPage();
+    await tapTakeOver();
+
+    // Unmount BEFORE the POST resolves: the cleanup runs first, then the
+    // continuation — without the unmounted guard it installs a timer nothing
+    // can clear, and the visitor is yanked to the group from wherever they
+    // went. The L-3 unmount test only covers unmount-after-schedule.
+    unmount();
+    resolveAccept({ success: true, group_id: RESTORED_ID, group_name: GROUP_NAME });
+
+    await new Promise((resolve) => setTimeout(resolve, DWELL_MS + 600));
+    expect(pushMock).not.toHaveBeenCalled();
+  }, 10000);
 
   it('410 — an expired window says the data was erased', async () => {
     signedIn();
@@ -430,6 +491,66 @@ describe('already-restored — the same event, reached two ways', () => {
     10000
   );
 
+  it('R-1 — navigating away while the membership probe is in flight schedules no redirect', async () => {
+    signedIn();
+    getPreview().mockResolvedValue(ALREADY_RESTORED_PREVIEW);
+    let resolveGroup: (value: unknown) => void = () => {};
+    getGroup().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveGroup = resolve;
+        })
+    );
+    const { unmount } = renderPage();
+
+    // Wait until the probe is actually in flight, then unmount BEFORE it
+    // resolves — the mid-await window the L-3 cleanup alone cannot cover.
+    await waitFor(() => expect(getGroup()).toHaveBeenCalledWith(LIVE_ID));
+    unmount();
+    resolveGroup({ id: LIVE_ID, name: GROUP_NAME });
+
+    await new Promise((resolve) => setTimeout(resolve, DWELL_MS + 600));
+    expect(pushMock).not.toHaveBeenCalled();
+  }, 10000);
+
+  it('R-2 — a network failure on the membership probe hands off to the GROUP, not the groups list', async () => {
+    // A dropped packet says nothing about membership. Routing home here
+    // strands a genuine member on the page's most common path; the group page
+    // carries its own retry surfaces.
+    signedIn();
+    getPreview().mockResolvedValue(ALREADY_RESTORED_PREVIEW);
+    getGroup().mockRejectedValue(new ApiError('down', 'network', 0));
+    renderPage();
+
+    expect(await screen.findByText(/taking you to the group/i)).toBeInTheDocument();
+    await waitFor(
+      () => expect(pushMock).toHaveBeenCalledWith(`/groupHomePage?id=${LIVE_ID}`),
+      { timeout: 4000 }
+    );
+    expect(pushMock).not.toHaveBeenCalledWith('/');
+  }, 10000);
+
+  it('R-7 — while the membership probe is in flight, the copy promises nothing', async () => {
+    signedIn();
+    getPreview().mockResolvedValue(ALREADY_RESTORED_PREVIEW);
+    let resolveGroup: (value: unknown) => void = () => {};
+    getGroup().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveGroup = resolve;
+        })
+    );
+    renderPage();
+
+    expect(await screen.findByText(/already brought this group back/i)).toBeInTheDocument();
+    // Destination unknown: neutral copy, no promise that could flip mid-read.
+    expect(screen.getByText(/one moment/i)).toBeInTheDocument();
+    expect(screen.queryByText(/taking you to/i)).toBeNull();
+
+    resolveGroup({ id: LIVE_ID, name: GROUP_NAME });
+    expect(await screen.findByText(/taking you to the group/i)).toBeInTheDocument();
+  }, 10000);
+
   it('L-3 — navigating away during the dwell cancels the redirect', async () => {
     signedIn();
     getPreview().mockResolvedValue(ALREADY_RESTORED_PREVIEW);
@@ -552,6 +673,26 @@ describe('SPEC-REQ-7 — no state on this page claims the group was permanently 
           getPreview().mockRejectedValue(new Error('boom'));
         },
         settled: /couldn.t check this link/i,
+      },
+      {
+        name: '401 expired session with the sign-in affordance (R-4)',
+        setup: () => {
+          signedIn();
+          accept().mockRejectedValue(
+            new ApiError('unauthorized', 'unauthorized', 401, { error: 'unauthorized' })
+          );
+        },
+        settled: /session has expired/i,
+        tap: true,
+      },
+      {
+        name: 'retryable acceptance failure (R-3)',
+        setup: () => {
+          signedIn();
+          accept().mockRejectedValue(new ApiError('down', 'network', 0));
+        },
+        settled: /something went wrong/i,
+        tap: true,
       },
     ];
 

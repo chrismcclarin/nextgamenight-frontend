@@ -71,6 +71,14 @@ const NOT_A_MEMBER = "You're not a member of this group, so you can't take it ov
 const GENERIC_FAILURE = 'Something went wrong bringing this group back. Please try again.';
 
 /**
+ * R-4: the acceptance came back 401 — the visitor's Auth0 session expired
+ * between page load and the tap (the take-over button can sit on screen for
+ * hours). The remedy is signing back in, not trying again.
+ */
+const SESSION_EXPIRED =
+  'Your sign-in session has expired. Sign back in and you can pick up right where you left off.';
+
+/**
  * M-6: the RETRYABLE preview failure — network blip, 5xx, misconfig. Distinct
  * from LINK_DEAD on purpose: the backend's byte-identical 404 is the only
  * signal that the token itself was rejected, and telling a member on a flaky
@@ -115,8 +123,14 @@ function RestoreGroupPage() {
   const [status, setStatus] = useState<Status>('loading');
   const [preview, setPreview] = useState<RestorePreview | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // M-6: true only for preview failures that a retry can plausibly fix.
-  const [canRetry, setCanRetry] = useState(false);
+  // M-6 / R-3 / R-4: which affordance the terminal error renders alongside its
+  // copy. 'preview-retry' re-runs the public preview; 'accept-retry' re-fires
+  // the acceptance (the backend contract is retry-safe — a re-POST lands on
+  // 200, 409 or 410, all handled below); 'sign-in' offers the login round-trip
+  // for an expired session. null = a true rejection with no way back.
+  const [recovery, setRecovery] = useState<
+    'preview-retry' | 'accept-retry' | 'sign-in' | null
+  >(null);
   // M-6: bumped by the Try-again button to re-run the preview effect.
   const [attempt, setAttempt] = useState(0);
   // M-7 / L-3: where the already-restored hand-off is going. 'group' = into the
@@ -143,15 +157,30 @@ function RestoreGroupPage() {
   // anyway. Only one redirect ever schedules per page-load (both schedulers are
   // ref-guarded), so a single slot is enough.
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // R-1: both schedulers run AFTER an await, so a visitor can navigate away
+  // while the fetch is still in flight — the unmount cleanup then runs BEFORE
+  // the timer exists, and the continuation would install a timer nothing can
+  // clear. This flag lets scheduleRedirect refuse to schedule at all after
+  // unmount, closing the gap L-3's clearTimeout alone cannot cover.
+  const unmountedRef = useRef(false);
 
   useEffect(() => {
+    // Reset on mount: strict-mode's dev mount-unmount-remount cycle would
+    // otherwise leave the flag stuck true and silently kill every redirect.
+    unmountedRef.current = false;
     return () => {
+      unmountedRef.current = true;
       if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
     };
   }, []);
 
-  /** L-3: every redirect goes through here so the timer is always clearable. */
+  /**
+   * L-3 / R-1: every redirect goes through here, so the timer is always
+   * clearable — and never scheduled in the first place once the page has
+   * unmounted.
+   */
   function scheduleRedirect(path: string) {
+    if (unmountedRef.current) return;
     redirectTimerRef.current = setTimeout(() => {
       router.push(path);
     }, REDIRECT_DELAY_MS);
@@ -170,9 +199,19 @@ function RestoreGroupPage() {
       await groupsAPI.getGroup(liveGroupId);
       setHandoff('group');
       scheduleRedirect(`/groupHomePage?id=${liveGroupId}`);
-    } catch {
-      setHandoff('home');
-      scheduleRedirect('/');
+    } catch (err) {
+      // R-2: only an actual REFUSAL proves the visitor is not a member. A
+      // network drop or a 5xx here says nothing about membership — and this
+      // sits on the page's most common path, on a phone — so those hand off
+      // to the group, which carries its own retry surfaces. Routing them to
+      // the groups list on a dropped packet strands a genuine member.
+      if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
+        setHandoff('home');
+        scheduleRedirect('/');
+        return;
+      }
+      setHandoff('group');
+      scheduleRedirect(`/groupHomePage?id=${liveGroupId}`);
     }
   }
 
@@ -234,7 +273,7 @@ function RestoreGroupPage() {
         }
         setStatus('error');
         setError(PREVIEW_UNAVAILABLE);
-        setCanRetry(true);
+        setRecovery('preview-retry');
       }
     }
 
@@ -243,10 +282,17 @@ function RestoreGroupPage() {
 
   /** M-6: re-run the preview fetch after a retryable failure. */
   function retryPreview() {
-    setCanRetry(false);
+    setRecovery(null);
     setError(null);
     setStatus('loading');
     setAttempt((a) => a + 1);
+  }
+
+  /** R-3: re-fire the acceptance after a retryable failure (unlatched below). */
+  function retryAccept() {
+    setRecovery(null);
+    setError(null);
+    handleTakeOver();
   }
 
   // ---------------------------------------------------------------------------
@@ -329,6 +375,18 @@ function RestoreGroupPage() {
           }
           return;
         }
+        if (err.status === 401) {
+          // R-4: an expired Auth0 session surfaces here as a 401 from the
+          // BFF's tokenless forward. useUser still reports the stale user, so
+          // without this arm the failure reads as generic and the one real
+          // remedy — signing back in, with returnTo landing right back on
+          // this page — is never offered.
+          acceptingRef.current = false;
+          setStatus('error');
+          setError(SESSION_EXPIRED);
+          setRecovery('sign-in');
+          return;
+        }
         if (err.status === 403) {
           setStatus('error');
           setError(NOT_A_MEMBER);
@@ -343,8 +401,15 @@ function RestoreGroupPage() {
           return;
         }
       }
+      // R-3: the single-shot latch guards against DOUBLE-fires, not retries.
+      // Leaving it latched here turned "Please try again" into a lie — the
+      // copy promised a retry the stuck state machine could never deliver.
+      // Unlatch on the retryable failures only (network, 5xx, and the 401
+      // above); the 403/409/410 arms stay terminal and latched.
+      acceptingRef.current = false;
       setStatus('error');
       setError(GENERIC_FAILURE);
+      setRecovery('accept-retry');
     }
   }
 
@@ -479,10 +544,15 @@ function RestoreGroupPage() {
                   Open your groups
                 </Link>
               ) : (
+                // R-7: while the membership probe is still in flight (handoff
+                // null), promise nothing — the copy otherwise says "Taking you
+                // to the group" and then flips mid-read for a non-member.
                 <p className="text-content-secondary">
-                  {handoff === 'home'
-                    ? 'Taking you to your groups...'
-                    : 'Taking you to the group...'}
+                  {handoff === null
+                    ? 'One moment...'
+                    : handoff === 'home'
+                      ? 'Taking you to your groups...'
+                      : 'Taking you to the group...'}
                 </p>
               )
             ) : (
@@ -513,19 +583,29 @@ function RestoreGroupPage() {
               Unable to restore this group
             </h1>
             <p className="text-content-secondary mb-6">{error}</p>
-            {canRetry && (
-              // M-6: a retryable preview failure gets a way back, not a dead end.
+            {(recovery === 'preview-retry' || recovery === 'accept-retry') && (
+              // M-6 / R-3: a retryable failure gets a way back, not a dead end.
               <button
                 type="button"
-                onClick={retryPreview}
+                onClick={recovery === 'preview-retry' ? retryPreview : retryAccept}
                 className="btn btn-primary flex items-center justify-center w-full min-h-[44px] text-center mb-3"
               >
                 Try again
               </button>
             )}
+            {recovery === 'sign-in' && (
+              // R-4: the expired-session 401 — the remedy is the login
+              // round-trip, which lands right back on this page.
+              <a
+                href={returnTo}
+                className="btn btn-primary flex items-center justify-center w-full min-h-[44px] text-center mb-3"
+              >
+                Sign in to try again
+              </a>
+            )}
             <Link
               href="/"
-              className={`btn ${canRetry ? 'btn-secondary' : 'btn-primary'} flex items-center justify-center w-full min-h-[44px] text-center`}
+              className={`btn ${recovery ? 'btn-secondary' : 'btn-primary'} flex items-center justify-center w-full min-h-[44px] text-center`}
             >
               Go Home
             </Link>
