@@ -1,4 +1,22 @@
-@import 'tailwindcss';
+/* DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): the `source(none)` modifier is REQUIRED
+   here and is NOT a stylistic flourish — see the `@source` block below for the full rationale.
+   Read the v4 engine, do not infer: a bare `@import 'tailwindcss'` leaves v4's automatic
+   whole-repo source detection ENABLED, and the `@source` directives below are purely ADDITIVE to
+   it (`tailwindcss/dist/lib.js`: `@source` pushes `{base, pattern}` onto the source list, while
+   only `source(none)` on this line clears the auto-detected root). Deleting `source(none)` while
+   leaving the `@source` lines in place therefore silently re-enables the whole-repo scan and
+   re-ships test-fixture CSS, with no build error and no diff in the `@source` block to hint at
+   why. That is a decision, not a cleanup. */
+@import 'tailwindcss' source(none);
+/* DECISION Phase 87.7 (Plan 07, D-07/R6): `tw-animate-css` REPLACES the `tailwindcss-animate` JS
+   plugin, and this import line sits DIRECTLY after `@import 'tailwindcss'` — the one ordering
+   RESEARCH tested and proved green (Assumption A1; upstream's README does not specify placement).
+   It is what sources the enter/exit keyframes and the `--tw-enter-*` / `--tw-exit-*` custom
+   properties that the shadcn Dialog's animation utilities compile against. Deleting
+   `tailwind.config.js` removed `plugins: [require('tailwindcss-animate')]`, so this line and that
+   deletion HAD to land in the same commit — without it the Dialog's open/close animation utilities
+   emit nothing at all. Removing or reordering this is a decision, not a cleanup. */
+@import 'tw-animate-css';
 
 /* DECISION Phase 87.7 (Plan 03, RESEARCH Pitfall 9): react-big-calendar is imported into
    `layer(base)` OVER the v4 codemod's `layer(utilities)`. Measured, not reasoned — byte offsets
@@ -22,7 +40,46 @@
    which perturbs layer-order declaration; it was rejected as higher-risk. */
 @import 'react-big-calendar/lib/css/react-big-calendar.css' layer(base);
 
-@config '../../tailwind.config.js';
+/* ===== TAILWIND v4: EXPLICIT SOURCE SCOPING =====
+   DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): three explicit `@source` directives,
+   chosen OVER letting v4 fall back to its default whole-repo automatic source detection.
+
+   These replace the `content` array of the deleted `tailwind.config.js`, which listed
+   `./src/pages/**`, `./src/components/**` and `./src/app/**`. Two deliberate differences from
+   that array:
+
+     - `./src/pages/**` is DROPPED. That directory does not exist and never did; the glob was
+       dead weight inherited from a create-next-app template.
+     - `./src/lib/**` is ADDED. This is a REAL v3 gap, not a v4 nicety: `src/lib/availabilityColor.ts`
+       RETURNS Tailwind class strings for the availability heatmap, and the old globs never scanned
+       it. The v3 build was only accidentally correct because every token it returns is also written
+       literally in a component under `src/app`. Remove this line and the heatmap ramp becomes one
+       refactor away from silently losing its colours.
+
+   WHY NOT JUST DELETE THE GLOBS AND LET v4 AUTO-DETECT. Measured, not reasoned (DI-87.7-01): with
+   no explicit source, v4 scans the whole repo and compiles class-name literals out of non-source
+   files into the shipped stylesheet — 14 selectors in the pre-Plan-07 build existed ONLY as
+   negative-control fixture strings inside a shell script under `scripts/`, and shipped to
+   production. Scoping here is what removes them. Widening these globs, or deleting them to "let
+   v4 figure it out", re-ships test-fixture CSS. That is a decision, not a cleanup.
+
+   TRAP: one of those 14 is NOT a fixture artefact any more. Plan 03 rewrote a modal scrim to a
+   slash-opacity black utility, so that token now has a genuine `src/` origin and MUST survive this
+   scoping. If it ever disappears, the modal scrim has gone opaque — that is a Plan 03 regression,
+   not a successful narrowing. (Named in prose rather than spelled as a class literal, per
+   DI-87.7-08's standing rule: this file is now itself inside the scanned tree's neighbourhood and
+   a class literal parked in a comment is a latent way to ship a dead utility.)
+
+   PATHS ARE RELATIVE TO THIS CSS FILE (`src/app/`), NOT to the project root — hence the `../`.
+   This is the single easiest thing to "correct" wrongly: the deleted config's globs were written
+   root-relative (`./src/components/**`) because a JS config is resolved from the project root, and
+   copying that form verbatim to here silently resolves to `src/app/src/components/**`, which does
+   not exist. With `source(none)` above there would then be NO sources at all and the utility layer
+   would come out nearly empty. Verified from the engine (`@source` records `base:
+   D.context.base`, the importing stylesheet's own directory) and proved by build. */
+@source '../components/**/*.{js,ts,jsx,tsx,mdx}';
+@source './**/*.{js,ts,jsx,tsx,mdx}';
+@source '../lib/**/*.{js,ts,jsx,tsx,mdx}';
 
 /* ===== TAILWIND v4: DARK VARIANT =====
    Replaces the JS config's `darkMode: 'class'`. `next-themes` toggles the class on <html>.
