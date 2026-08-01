@@ -191,13 +191,15 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                 }}
               >
                 {bgImage && (
-                  // Phase 73-02 light-mode audit: replaced hardcoded white
-                  // overlay with semantic bg-surface-card so the overlay themes
-                  // with the rest of the card. In dark mode the previous
-                  // overlay dimmed the bg image to near-white while
-                  // text-content-primary stays light, making text invisible.
-                  // surface-card is #fff in light, purple-900 in dark —
-                  // preserves the dim effect AND keeps text readable.
+                  // This overlay currently paints NOTHING — placeholder, kept
+                  // deliberately. Phase 73-02 gave it a semantic surface tint at
+                  // 85% so the bg image dims and text stays readable in both
+                  // themes; that slash-opacity was inert on v3's var()-backed
+                  // tokens and 87.7 D-18 stripped it rather than let v4 start
+                  // rendering it (a new visual). Do NOT re-add a dim here ad
+                  // hoc — Phase 88 owns the real treatment via its opacity
+                  // mechanism (census: 87.7-OPACITY-CENSUS.md). The div stays
+                  // so 88's fix is a class edit, not a structure change.
                   <div className="absolute inset-0 z-0 rounded-card" />
                 )}
                 <div className="relative z-1">

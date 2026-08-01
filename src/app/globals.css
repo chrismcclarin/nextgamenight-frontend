@@ -256,15 +256,14 @@
 
    Placement: after every `@import` line, same constraint as the palette pin above.
 
-   THE JS CONFIG IS STILL LOADED while this block exists (`@config` above), and Plan 07 deletes
-   it. MEASURED, correcting the plan's stated expectation: for a duplicate key THIS BLOCK WINS,
-   not the JS config. 17 utility declarations changed the moment it landed -- all of them the
-   nine collision keys switching from the colliding name to a bridge alias. Every one was proved
+   HISTORY (Plan 06, while the JS config still loaded via a since-deleted `@config` line):
+   MEASURED, correcting the plan's stated expectation: for a duplicate key THIS BLOCK WON, not
+   the JS config. 17 utility declarations changed the moment it landed -- all of them the nine
+   collision keys switching from the colliding name to a bridge alias. Every one was proved
    value-equivalent by resolving both chains to a literal in light AND dark before this shipped,
-   so the RENDERED result is unchanged; it is the declaration TEXT that differs. Do not restate
-   this as "the config wins" -- the practical consequence is that this block, not the config, is
-   already what the app renders from, so Plan 07's deletion should be a near no-op rather than
-   the moment of truth. */
+   so the RENDERED result was unchanged; it was the declaration TEXT that differed. That
+   measured takeover is why Plan 07's deletion of `@config` + tailwind.config.js was a near
+   no-op rather than the moment of truth: this block was already what the app rendered from. */
 @theme inline {
   /* surfaces  (tailwind.config.js:30-40) */
   --color-surface-page: var(--color-bg-page);

@@ -120,7 +120,11 @@ export default function MergedHeatmapGrid({ slots = [], totalMembers, selectedSl
         return (
           <div
             key={dateStr}
-            className={`bg-surface-card p-2 text-center ${isTodayDate ? '' : ''}`}
+            // The today-column header tint (an accent slash-opacity utility from Phase 59-05,
+            // inert on v3's var()-backed tokens) was stripped by 87.7 D-18 — v4 would have
+            // started rendering it, a new visual. Phase 88 owns designing a real tint; census
+            // in 87.7-OPACITY-CENSUS.md. (Utility described, not named — DI-87.7-08 rule.)
+            className="bg-surface-card p-2 text-center"
           >
             <div className="text-xs font-semibold text-content-secondary">
               {DAY_LABELS[idx]}
