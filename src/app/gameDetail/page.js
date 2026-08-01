@@ -1778,8 +1778,22 @@ export default function GameDetailPage() {
                 
                 {displayedEvents.length > 0 ? (
                     <div className="space-y-0">
+                        {/* DECISION Phase 87.7 (Plan 08, R5): the separator below carries NO top
+                            margin, deliberately, and re-adding one is a visual change rather than a
+                            fix. Under Tailwind v3 this className ended in an mt-4 that never
+                            rendered: v3 emitted
+                              .space-y-0>:not([hidden])~:not([hidden]) { margin-top: 0 }
+                            at specificity (0,3,0), unlayered, which beat .mt-4's (0,1,0) and forced
+                            the margin to 0 on every child after the first. v4 emits
+                              :where(.space-y-0>:not(:last-child)) { margin-block: 0 }
+                            — :where() contributes ZERO specificity, so the same .mt-4 now WINS and
+                            each card after the first would gain 16px it never had. The mt-4 was
+                            removed to keep this list rendering exactly as it did on v3 (R2). The
+                            separator's visual weight comes from border-t-2 + pt-4, which is
+                            unchanged and always did the work. Whether these cards SHOULD be spaced
+                            further apart is a design question and belongs to Phase 88. */}
                         {displayedEvents.map((event, index) => (
-                            <div key={event.id} className={`pl-4 py-2 ${index > 0 ? 'border-t-2 border-line-strong pt-4 mt-4' : ''}`} style={{ borderLeft: '4px solid var(--color-btn-primary-bg)' }}>
+                            <div key={event.id} className={`pl-4 py-2 ${index > 0 ? 'border-t-2 border-line-strong pt-4' : ''}`} style={{ borderLeft: '4px solid var(--color-btn-primary-bg)' }}>
                                 <div className="flex justify-between items-start gap-4">
                                     <div className="flex-1">
                                         <div className="flex items-start justify-between gap-4 mb-2">
