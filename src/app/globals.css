@@ -579,13 +579,43 @@
   --color-focus-ring: var(--amber-400);
 }
 
-/* ===== shadcn/ui token bridge (Tailwind v3, mapped onto existing --color-* palette) =====
+/* ===== shadcn/ui token bridge (introduced Phase 84; mapped onto the existing --color-* palette)
+   =====
    shadcn primitives reference these conventional names; each aliases a direct color
    VALUE from the existing semantic palette (NOT hsl() channels — the project tokens
    are full color values), so shadcn components inherit the warm/purple theme and the
    .dark overrides for free (the --color-* targets already flip under .dark). No
-   default neutral/slate palette and no Tailwind-v4 constructs (Tailwind-v3 path,
-   Pitfall 3); animation utilities come from the tailwindcss-animate plugin. */
+   default neutral/slate palette.
+
+   DECISION Phase 87.7 (Plan 07, R7): this block is REWRITTEN IN PLACE, not deleted. Two of its
+   original claims were falsified by this phase and are corrected below; the Phase 84 rationale
+   above them is preserved deliberately, because it is the only surviving record of WHY these
+   aliases hold full colour values rather than hsl() channels — which is what makes them usable
+   as theme sources at all.
+
+   WHAT CHANGED, and what the old text said:
+     - It claimed this file contains "no Tailwind-v4 constructs (Tailwind-v3 path)". FALSE since
+       Plan 02: the file is now v4 throughout.
+     - It claimed "animation utilities come from the tailwindcss-animate plugin". FALSE since
+       Plan 07: that plugin died with the JS config, and the enter/exit keyframes now come from
+       tw-animate-css (see the import marker at the top of this file).
+
+   WHAT THESE ALIASES NOW DO — and why removing one is a decision, not a cleanup. They are no
+   longer a manual stand-in for JS-config entries. They are CONSUMED BY `@theme inline` above as
+   first-class theme sources: every shadcn-conventional key up there resolves through a name
+   declared in this block. THREE OF THEM ARE LOAD-BEARING BEYOND THAT — `--accent`, `--border`
+   and `--ring`, plus the `-foreground` aliases and the three `-hover` aliases added by Plan 06,
+   double as COLLISION-BREAKERS for v4's `--color-*` theme namespace, which overlaps this
+   project's runtime property names on nine keys. Delete or rename one and the corresponding
+   `@theme inline` key collapses back into a literal self-reference (`--color-X: var(--color-X)`),
+   which is invalid at computed-value time. See the DECISION marker at the `-hover` aliases below
+   for the full derivation and the rejected rename alternative.
+
+   `--radius: 12px` STAYS, and is NOT dead code. v4's radius namespace is `--radius-*`, so a bare
+   `--radius` generates no utility, and nothing in src/ currently reads it (verified — no JS
+   `var(--radius)` call site). It is kept as a plain runtime property because shadcn primitives
+   conventionally consume it and Phase 88 installs six more of them. Deleting it as "unused" is a
+   decision that Phase 88 would have to undo. */
 :root {
   --background: var(--color-bg-page);
   --foreground: var(--color-text-primary);
