@@ -493,7 +493,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                 the backdrop closes only this panel; the parent modal's overlay
                 no longer receives the click. */}
             <div
-                className="fixed inset-0 bg-black bg-opacity-50 z-60 transition-opacity"
+                className="fixed inset-0 bg-black/50 z-60 transition-opacity"
                 onClick={onClose}
             />
 
