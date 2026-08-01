@@ -80,6 +80,15 @@
 @source '../components/**/*.{js,ts,jsx,tsx,mdx}';
 @source './**/*.{js,ts,jsx,tsx,mdx}';
 @source '../lib/**/*.{js,ts,jsx,tsx,mdx}';
+/* The lib glob above also matches its 22 vitest files and `__fixtures__/` — the exact
+   DI-87.7-01 hazard (fixture class literals shipping as CSS) re-opened INSIDE the explicit
+   globs. Today the overlap ships zero extra bytes (test literals are a strict subset of source
+   tokens — proved by build), but a future negative-control literal in a test would ship
+   silently. The exclusions below close that structurally; both were negative-control-proven
+   (a planted literal shipped without them, did not ship with them). `@source not` requires
+   the pinned ^4.3.3 (landed 4.1). */
+@source not '../lib/**/*.test.{js,ts,jsx,tsx}';
+@source not '../lib/__fixtures__';
 
 /* ===== TAILWIND v4: DARK VARIANT =====
    Replaces the JS config's `darkMode: 'class'`. `next-themes` toggles the class on <html>.
