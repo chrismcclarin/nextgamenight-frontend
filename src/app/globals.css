@@ -1,5 +1,26 @@
 @import 'tailwindcss';
-@import 'react-big-calendar/lib/css/react-big-calendar.css' layer(utilities);
+
+/* DECISION Phase 87.7 (Plan 03, RESEARCH Pitfall 9): react-big-calendar is imported into
+   `layer(base)` OVER the v4 codemod's `layer(utilities)`. Measured, not reasoned — byte offsets
+   in the emitted stylesheet:
+
+     v3 (bare @import, hoisted by webpack's css-loader): .rbc-calendar @253 vs .text-sm @35,701
+       -> Tailwind utilities win ties.
+     v4 with the codemod's layer(utilities):             .rbc-calendar @62,534 vs .text-sm @35,355
+       -> RBC wins ties. That is a CASCADE INVERSION, i.e. a regression.
+     v4 with layer(base) (this line):                    .rbc-* inside @layer base, utilities after
+       -> Tailwind utilities win ties again, matching v3.
+
+   `globals.css`'s own UNLAYERED `.rbc-*` overrides in the "React Big Calendar Restyle" section
+   below (including the Phase 72-02 pointer-events block) keep winning over both, exactly as today.
+
+   Deliberate, accepted side effect: wrapping RBC in a layer makes its leading `@charset "UTF-8";`
+   illegal in that position, so lightningcss emits one non-fatal build warning
+   ("Unknown at rule: @charset"). `next build` still exits 0. Removing the layer to silence that
+   warning re-inverts the cascade — that is a decision, not a cleanup. The only untested
+   alternative is hoisting this @import above `@import 'tailwindcss'` (RESEARCH Assumption A2),
+   which perturbs layer-order declaration; it was rejected as higher-risk. */
+@import 'react-big-calendar/lib/css/react-big-calendar.css' layer(base);
 
 @config '../../tailwind.config.js';
 
