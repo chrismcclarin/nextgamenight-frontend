@@ -646,7 +646,7 @@ function FriendsPage() {
                                                         checked={isInGroup || selectedFriends.has(friendUserId)}
                                                         disabled={checkboxDisabled}
                                                         onChange={() => toggleFriendSelection(friendUserId)}
-                                                        className={`h-4 w-4 rounded border-line text-btn-primary focus:ring-focus-ring ${
+                                                        className={`h-4 w-4 rounded-sm border-line text-btn-primary focus:ring-focus-ring ${
                                                             checkboxDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                                                         }`}
                                                     />

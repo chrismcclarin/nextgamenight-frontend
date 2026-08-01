@@ -114,7 +114,7 @@ export default function CalendarMonthView({
               onClick={() => {
                 if (date) onDayClick(date, dayEvents);
               }}
-              className={`${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} border border-line rounded p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
+              className={`${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} border border-line rounded-sm p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
                 isAdjacent ? 'opacity-60 ' : ''
               }${
                 !date ? 'bg-surface-page' :

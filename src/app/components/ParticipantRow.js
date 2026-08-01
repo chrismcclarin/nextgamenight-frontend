@@ -113,7 +113,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             type="button"
             onClick={handleInviteToGroup}
             disabled={inviteStatus === 'sending' || inviteStatus === 'sent'}
-            className={`text-xs px-2 py-1 border rounded transition-colors ${
+            className={`text-xs px-2 py-1 border rounded-sm transition-colors ${
               inviteStatus === 'sent'
                 ? 'text-status-success border-status-success/30 bg-status-success/10'
                 : inviteStatus === 'error'

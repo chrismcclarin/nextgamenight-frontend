@@ -296,7 +296,7 @@ export default function AvailabilityForm({
             }
           `}
         >
-          <span className={`w-5 h-5 flex items-center justify-center rounded border-2 ${
+          <span className={`w-5 h-5 flex items-center justify-center rounded-sm border-2 ${
             isUnavailable ? 'bg-status-error border-status-error' : 'border-line-strong'
           }`}>
             {isUnavailable && (

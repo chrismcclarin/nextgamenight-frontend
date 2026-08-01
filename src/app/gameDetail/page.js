@@ -111,7 +111,7 @@ function GuestInviteButton({ groupId, userId }) {
         <button
             onClick={handleInvite}
             disabled={status === 'sending' || status === 'sent' || status === 'already'}
-            className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+            className={`text-xs px-2 py-0.5 rounded-sm border transition-colors ${
                 status === 'sent'
                     ? 'text-status-success border-status-success/30 bg-status-success/10'
                     : status === 'already'
@@ -1355,7 +1355,7 @@ export default function GameDetailPage() {
                                                 <button
                                                     type="button"
                                                     onClick={() => handleRemoveClick(p)}
-                                                    className={`text-xs px-2 py-1 border rounded transition-colors shrink-0 ${
+                                                    className={`text-xs px-2 py-1 border rounded-sm transition-colors shrink-0 ${
                                                         isConfirming
                                                             ? 'bg-status-error/10 border-status-error text-status-error font-semibold'
                                                             : 'border-line text-content-muted hover:bg-surface-card-hover'
