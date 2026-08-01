@@ -356,8 +356,10 @@
                     `::placeholder{color:color-mix(in oklab,currentcolor 50%,transparent)}`, which
                     in dark mode resolves against --color-text-primary (--warm-50, #faf8f5) and
                     renders placeholders near-white.
-     - border:      ~19-20 unpaired bare `border` sites (the codemod's rule, above; Plan 08
-                    dispositions it — do not fold it into this decision).
+     - border:      unpaired border-width-without-border-colour sites (the codemod's rule, above).
+                    Plan 03 estimated ~19-20 from the upstream artifacts and left the disposition to
+                    Plan 08 — see the Plan 08 marker directly below for the measured figure, which is
+                    more than twice that. Do not fold that decision into this one.
 
    Two CSS rules against ~290 template edits, and one place for Phase 88 to drop the block
    deliberately. THIS BLOCK IS A DELIBERATE COMPATIBILITY SURFACE, NOT LEFTOVER SCAFFOLDING:
@@ -371,6 +373,36 @@
    v4/upstream's own preflight guidance uses. Do NOT "restore" the unscoped v3 form to make this
    byte-identical to v3 — the difference is intended. */
 @layer base {
+  /* DECISION Phase 87.7 (Plan 08, R4): the border-colour rule below is KEPT for this phase, chosen
+     OVER giving every unpaired site an explicit border colour and deleting this rule. It reproduces
+     v3's default EXACTLY, so all 43 unpaired sites render byte-identically to v3 and the migration
+     diff stays minimal. Proven, not assumed, from the two built stylesheets:
+
+       v3 preflight (the only e5e7eb in the whole v3 baseline):
+         *,:after,:before { box-sizing:border-box; border:0 solid #e5e7eb }
+       v4 preflight (colour DROPPED — this is the regression this rule repairs):
+         *,::backdrop,:after,:before { box-sizing:border-box; border:0 solid; margin:0; padding:0 }
+
+     THIS RULE'S ONLY DEPENDENCY IS --color-gray-200, AND THAT IS THE INTERESTING PART. In the v4
+     build it is NOT a hex — it is v4's re-derived OKLCH palette value,
+     oklch(92.8% .006 264.531), and v4's OKLCH re-derivation moved other palette entries by as much
+     as 56/255 (RESEARCH Pitfall 3). It was therefore converted rather than eyeballed: it
+     round-trips to rgb(229,231,235) = #e5e7eb, delta 0,0,0 on all three channels, in gamut.
+
+     It is also the ONE raw-palette key this app depends on that Plan 04's pin block does NOT pin —
+     correctly so, since that census scans component class strings and this dependency lives here,
+     in CSS. No pin was added because the value is provably right today; the residual (it stays
+     right only while upstream's OKLCH grey ramp does) is recorded as DI-87.7-20 and named here so
+     it is greppable. If you are about to "tidy" --color-gray-200 out of this line, that is the
+     thing you would be breaking.
+
+     The 43 sites are enumerated with file:line in
+     .planning/phases/87.7-tailwind-v4-migration-inserted-2026-07-25/87.7-STYLE-AUDIT.md
+     (path written un-globbed on purpose — DI-87.7-12).
+
+     GIVING THOSE 43 SITES EXPLICIT COLOURS AND DELETING THIS RULE IS PHASE 88's WORK, scheduled,
+     not accepted-forever. Deleting it before then is a VISUAL CHANGE across 43 sites, not a
+     cleanup. */
   *,
   ::after,
   ::before,
