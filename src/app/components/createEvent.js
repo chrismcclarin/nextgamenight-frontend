@@ -676,7 +676,28 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             so saved start_date is stamped against a stable canonical TZ. */}
         <TimezoneNudgeBanner />
 
-        <form onSubmit={onSubmit} className="space-y-4">
+        {/* Phase 87.7 Plan 10 (this attribute) populates the
+            data-testid="tw4-space-y-exemplar" hook consumed by
+            e2e/tailwind-v4-styles.spec.ts — D-10 layer 2, the computed-style spot check
+            for the two render-only hazards no grep can see. This form is the exemplar
+            because its direct children are five unconditional <div> wrappers (no <p> or
+            heading, whose UA default margins RESEARCH's probe run tripped over), and
+            because e2e/create-event.spec.ts already proves this modal reachable in green
+            CI.
+
+            DECISION Phase 87.7 Plan 10: exactly ONE test id was added here, on a
+            structural form element that has no usable accessible role, so no role locator
+            exists for it. REJECTED: adding a SECOND test id for the bare border-utility
+            exemplar (the start_date input below, site 8 on the border audit's unpaired
+            list). That input is already located by getByLabel(/start date & time/i) inside
+            the green create-event journey — a stronger reachability guarantee than a fresh
+            attribute, and a second hook would imply that label locator was insufficient
+            when it is in fact the better-evidenced of the two. Adding one, or replacing
+            this attribute with a role locator, is a decision and not a cleanup.
+
+            Audit site list:
+            .planning/phases/87.7-tailwind-v4-migration-inserted-2026-07-25/87.7-STYLE-AUDIT.md */}
+        <form onSubmit={onSubmit} data-testid="tw4-space-y-exemplar" className="space-y-4">
           {/* Game Selection */}
           <div>
             <label className="block text-sm font-medium text-content-primary mb-1">
