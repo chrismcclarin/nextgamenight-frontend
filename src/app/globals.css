@@ -32,6 +32,33 @@
   If we ever want to remove these styles, we need to add an explicit border
   color utility to any element that depends on these defaults.
 */
+/* DECISION Phase 87.7 (Plan 03, RESEARCH Pitfalls 2/4/5): this is a THREE-RULE v3-compatibility
+   shim, chosen OVER fixing each affected call site individually. Measured exposure at the time
+   of writing:
+
+     - cursor:      250 `<button` + 6 `role="button"` occurrences in src/, against only
+                    29 `cursor-pointer` utility tokens. v3's preflight emitted
+                    `[role=button],button{cursor:pointer}`; v4's does not.
+     - placeholder: 40 `placeholder=` props in src/, of which exactly ONE carries an explicit
+                    colour utility (createGroup.js). v3 emitted
+                    `input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}`; v4 emits
+                    `::placeholder{color:color-mix(in oklab,currentcolor 50%,transparent)}`, which
+                    in dark mode resolves against --color-text-primary (--warm-50, #faf8f5) and
+                    renders placeholders near-white.
+     - border:      ~19-20 unpaired bare `border` sites (the codemod's rule, above; Plan 08
+                    dispositions it — do not fold it into this decision).
+
+   Two CSS rules against ~290 template edits, and one place for Phase 88 to drop the block
+   deliberately. THIS BLOCK IS A DELIBERATE COMPATIBILITY SURFACE, NOT LEFTOVER SCAFFOLDING:
+   Phase 88 owns removing it as a design act. Deleting a rule from it is a VISUAL CHANGE, not a
+   cleanup. Because these live in @layer base, an explicit utility on an element still wins.
+
+   SEPARATE, DELIBERATE DEVIATION FROM v3 — the cursor rule is scoped `:not(:disabled)`.
+   v3's actual preflight was unscoped (`[role=button],button{cursor:pointer}`), so v3 gave
+   DISABLED buttons a pointer cursor too. That is excluded here on purpose: a pointer cursor on a
+   control that cannot be clicked misleads the user, and the scoped form is also what
+   v4/upstream's own preflight guidance uses. Do NOT "restore" the unscoped v3 form to make this
+   byte-identical to v3 — the difference is intended. */
 @layer base {
   *,
   ::after,
@@ -39,6 +66,17 @@
   ::backdrop,
   ::file-selector-button {
     border-color: var(--color-gray-200, currentcolor);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    opacity: 1;
+    color: #9ca3af;
   }
 }
 
