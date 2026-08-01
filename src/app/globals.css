@@ -24,6 +24,127 @@
 
 @config '../../tailwind.config.js';
 
+/* ===== TAILWIND v4: RAW DEFAULT-PALETTE PIN (v3 sRGB VALUES) ===== */
+@theme {
+  /* DECISION Phase 87.7 (Plan 04, D-17 / RESEARCH Pitfall 3): pin EVERY raw default-palette key
+     the app actually uses back to its Tailwind v3 sRGB hex — chosen OVER two rejected options:
+       (a) pin-the-heatmap-ramp-only — rejected: the shift is not confined to the heatmap. The
+           census below is 55 keys / 303 occurrences / 38 files, landing on status banners,
+           role/RSVP pills and notification badges as well as the availability ramp.
+       (b) accept-the-shift — rejected: this phase's constraint is ZERO visual change (dark mode
+           especially), and v4's OKLCH re-derivation of the default palette is not a rounding
+           error. Measured v3-vs-v4 deltas run up to 56/255 on a single channel (`orange-400`);
+           `red-600` moves 38. That is a visible recolour of the app's signature surface, and it
+           would arrive disguised as a build-tool upgrade.
+
+     Values are transcribed MECHANICALLY from `.planning/phases/87.7-.../87.7-BASELINE.md` §2a,
+     the pre-codemod capture of `tailwindcss@3.3.5`'s palette. None is derived, guessed, or
+     converted back from OKLCH — after Plan 02 replaced node_modules, that capture is the ONLY
+     surviving source of the v3 values.
+
+     THIS BLOCK IS DELIBERATELY REVERSIBLE AND PHASE 88 OWNS DROPPING IT. It is a migration
+     compatibility surface, not a design decision about what colour anything should be — Phase 88's
+     colour redesign deletes it in one block as an intentional act. Removing it earlier, or
+     trimming "unused-looking" keys out of it, is a VISUAL CHANGE, not a cleanup.
+
+     TRAP FOR FUTURE PHASES — the one thing you would not otherwise infer: this block pins only the
+     keys censused at the time of writing. A NEW raw-palette class introduced later — an unlisted
+     family, or an unlisted shade of a family that IS listed — will SILENTLY render at v4's OKLCH
+     value, because nothing fails when a key is absent: v4 simply falls back to its own default.
+     If you add a raw-palette utility while this block still exists, add its v3 pin here too, or
+     accept the shift knowingly. Note this is deliberately NOT a full-palette pin — only USED keys
+     are listed, so the `gray` family is absent on purpose (D-03: the two safelist-forced gray
+     classes have zero `src/` usages, and pinning must not resurrect them).
+
+     Deliberate authoring constraint, and the reason no utility class is spelled out literally
+     anywhere in this comment: Tailwind v4's automatic source detection scans far more than the old
+     `content` globs (DI-87.7-01 — it compiled fixture strings out of a shell script into the
+     shipped stylesheet). Measured at the time of writing, `globals.css` is NOT itself a scanned
+     source — a `bg-`-prefixed teal literal placed in this comment produced no rule in the build —
+     but Plan 07 rewrites that scoping, so a class literal parked in a CSS comment is a latent way
+     to ship a dead utility. Describe utilities; do not name them here.
+
+     Placement is load-bearing: this block sits AFTER every `@import` line. `@import` must be the
+     first statement in a stylesheet, so moving this above the react-big-calendar import would
+     silently invalidate that import. It is also a plain `@theme`, NOT `@theme inline` — this one
+     declares literal build-time VALUES for v4's own palette keys; Plan 06's `@theme inline` block
+     maps semantic names onto runtime `var()`s so `.dark` keeps flipping. Merging the two breaks
+     one of the two mechanisms. */
+
+  /* amber (11) */
+  --color-amber-50: #fffbeb;
+  --color-amber-100: #fef3c7;
+  --color-amber-200: #fde68a;
+  --color-amber-300: #fcd34d;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+  --color-amber-700: #b45309;
+  --color-amber-800: #92400e;
+  --color-amber-900: #78350f;
+  --color-amber-950: #451a03;
+
+  /* blue (7) */
+  --color-blue-100: #dbeafe;
+  --color-blue-200: #bfdbfe;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
+  --color-blue-900: #1e3a8a;
+
+  /* emerald (4) */
+  --color-emerald-100: #d1fae5;
+  --color-emerald-200: #a7f3d0;
+  --color-emerald-800: #065f46;
+  --color-emerald-900: #064e3b;
+
+  /* green (8) */
+  --color-green-100: #dcfce7;
+  --color-green-200: #bbf7d0;
+  --color-green-300: #86efac;
+  --color-green-400: #4ade80;
+  --color-green-500: #22c55e;
+  --color-green-600: #16a34a;
+  --color-green-800: #166534;
+  --color-green-900: #14532d;
+
+  /* indigo (2) */
+  --color-indigo-600: #4f46e5;
+  --color-indigo-700: #4338ca;
+
+  /* orange (4) */
+  --color-orange-100: #ffedd5;
+  --color-orange-400: #fb923c;
+  --color-orange-500: #f97316;
+  --color-orange-800: #9a3412;
+
+  /* purple (5) */
+  --color-purple-100: #f3e8ff;
+  --color-purple-300: #d8b4fe;
+  --color-purple-700: #7e22ce;
+  --color-purple-800: #6b21a8;
+  --color-purple-900: #581c87;
+
+  /* red (7) */
+  --color-red-50: #fef2f2;
+  --color-red-200: #fecaca;
+  --color-red-300: #fca5a5;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+  --color-red-800: #991b1b;
+
+  /* yellow (7) */
+  --color-yellow-100: #fef9c3;
+  --color-yellow-200: #fef08a;
+  --color-yellow-300: #fde047;
+  --color-yellow-400: #facc15;
+  --color-yellow-500: #eab308;
+  --color-yellow-600: #ca8a04;
+  --color-yellow-800: #854d0e;
+}
+
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
   so we've added these compatibility styles to make sure everything still
