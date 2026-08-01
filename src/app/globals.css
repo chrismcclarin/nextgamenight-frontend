@@ -366,12 +366,24 @@
    Phase 88 owns removing it as a design act. Deleting a rule from it is a VISUAL CHANGE, not a
    cleanup. Because these live in @layer base, an explicit utility on an element still wins.
 
-   SEPARATE, DELIBERATE DEVIATION FROM v3 — the cursor rule is scoped `:not(:disabled)`.
-   v3's actual preflight was unscoped (`[role=button],button{cursor:pointer}`), so v3 gave
-   DISABLED buttons a pointer cursor too. That is excluded here on purpose: a pointer cursor on a
-   control that cannot be clicked misleads the user, and the scoped form is also what
-   v4/upstream's own preflight guidance uses. Do NOT "restore" the unscoped v3 form to make this
-   byte-identical to v3 — the difference is intended. */
+   THE CURSOR RULE IS SCOPED `:not(:disabled)`, AND — CORRECTED BY PLAN 08 — THAT REPRODUCES v3
+   RATHER THAN DEVIATING FROM IT. This block previously recorded the scoping as a "separate,
+   deliberate deviation", on the reasoning that v3's preflight was unscoped
+   (`[role=button],button{cursor:pointer}`) and therefore gave disabled buttons a pointer cursor.
+   Measured against the actual v3 stylesheet, that is FALSE. v3's preflight also carried
+
+     :disabled{cursor:default}
+
+   at byte offset 12941, i.e. AFTER `[role=button],button{cursor:pointer}` at 12905. For a
+   `<button disabled>` it wins on specificity ((0,1,0) vs `button`'s (0,0,1)); for
+   `[role=button]` it ties at (0,1,0) and wins on source order. So **v3 already rendered
+   `cursor:default` on disabled controls.** v4 dropped `:disabled{cursor:default}` from its
+   preflight entirely (confirmed absent from the v4 build), so the `:not(:disabled)` scoping here
+   is what PUTS v3's behaviour BACK, not what departs from it.
+
+   The practical conclusion is unchanged and now better supported: keep the scoping. "Restoring"
+   the unscoped v3 form would give disabled controls a pointer cursor that v3 never showed. The
+   reasoning is corrected rather than deleted so a reader who remembers the old text can find it. */
 @layer base {
   /* DECISION Phase 87.7 (Plan 08, R4): the border-colour rule below is KEPT for this phase, chosen
      OVER giving every unpaired site an explicit border colour and deleting this rule. It reproduces
