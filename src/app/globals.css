@@ -24,6 +24,20 @@
 
 @config '../../tailwind.config.js';
 
+/* ===== TAILWIND v4: DARK VARIANT =====
+   Replaces the JS config's `darkMode: 'class'`. `next-themes` toggles the class on <html>.
+
+   Placement is load-bearing and identical to the constraint the palette-pin block below
+   documents: `@import` must be the first statement in a stylesheet, so this line sits AFTER
+   every `@import`. Moving it above the react-big-calendar import would silently invalidate
+   that import.
+
+   Recorded, no action: v4 emits this variant as `:where(.dark, .dark *)`, which drops the
+   variant's specificity from (0,2,0) to (0,1,0) relative to v3's `.dark &`. Harmless here --
+   this file's own `.dark ...` rules are UNLAYERED and win regardless of specificity, and
+   Tailwind still orders variants last within the utilities layer. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ===== TAILWIND v4: RAW DEFAULT-PALETTE PIN (v3 sRGB VALUES) ===== */
 @theme {
   /* DECISION Phase 87.7 (Plan 04, D-17 / RESEARCH Pitfall 3): pin EVERY raw default-palette key
@@ -143,6 +157,125 @@
   --color-yellow-500: #eab308;
   --color-yellow-600: #ca8a04;
   --color-yellow-800: #854d0e;
+}
+
+/* ===== TAILWIND v4: PROJECT TOKEN MAP (ported from tailwind.config.js theme.extend) ===== */
+
+/* DECISION Phase 87.7 (Plan 06, D-01/D-02, RESEARCH Pattern 2/3): this block is `@theme inline`,
+   chosen OVER a plain `@theme`.
+
+   WHAT `inline` DOES. With `inline`, the generated utility points DIRECTLY at the runtime
+   property named on the right-hand side -- the surface/card utility resolves through
+   `var(--color-bg-card)` itself. With a plain `@theme`, Tailwind would emit a theme-local copy
+   into its own layer and the utility would resolve through THAT instead. The 140 runtime
+   properties in the `:root` / `.dark` blocks further down are what `next-themes` flips; `inline`
+   is what keeps the flip reaching every utility.
+
+   THE HONEST NUANCE, recorded deliberately so nobody "simplifies" this after testing that both
+   forms render the same: `next-themes` puts the dark class on <html>, which IS the `:root`
+   element, so a plain `@theme` would ALSO have resolved correctly here -- by luck of both
+   selectors matching the same element, not by design. The decision stands anyway. `inline` is
+   the shadcn-standard form, it stays correct if the dark class is ever applied to a nested
+   element instead of the document root, and it avoids emitting ~55 redundant `:root`
+   declarations that duplicate values this file already owns. Switching to a plain `@theme` is a
+   DECISION, not a cleanup.
+
+   THE NINE COLLISION KEYS point at Phase 84 bridge aliases rather than at themselves -- see the
+   DECISION marker in the shadcn bridge block below for why that is structural and not cosmetic.
+   They are flagged inline. Every other value is the exact `var()` target the JS config used.
+
+   NOT PORTED, deliberately (D-05, verified unused): the two `backgroundImage` gradient entries
+   (tailwind.config.js:24-28) and the one literal-hex cream colour (:108). All three produce no
+   rule in the current build. Adding them back would ship dead CSS.
+
+   Placement: after every `@import` line, same constraint as the palette pin above.
+
+   THE JS CONFIG IS STILL LOADED while this block exists (`@config` above), and Plan 07 deletes
+   it. MEASURED, correcting the plan's stated expectation: for a duplicate key THIS BLOCK WINS,
+   not the JS config. 17 utility declarations changed the moment it landed -- all of them the
+   nine collision keys switching from the colliding name to a bridge alias. Every one was proved
+   value-equivalent by resolving both chains to a literal in light AND dark before this shipped,
+   so the RENDERED result is unchanged; it is the declaration TEXT that differs. Do not restate
+   this as "the config wins" -- the practical consequence is that this block, not the config, is
+   already what the app renders from, so Plan 07's deletion should be a near no-op rather than
+   the moment of truth. */
+@theme inline {
+  /* surfaces  (tailwind.config.js:30-40) */
+  --color-surface-page: var(--color-bg-page);
+  --color-surface-card: var(--color-bg-card);
+  --color-surface-card-hover: var(--color-bg-card-hover);
+  --color-surface-elevated: var(--color-bg-elevated);
+  --color-surface-input: var(--color-bg-input);
+  --color-surface-nav: var(--color-bg-nav);
+  --color-surface-nav-hover: var(--color-bg-nav-hover);
+  --color-surface-header: var(--color-bg-header);
+  --color-surface-header-hover: var(--color-bg-header-hover);
+
+  /* content   (tailwind.config.js:41-48) */
+  --color-content-primary: var(--color-text-primary);
+  --color-content-secondary: var(--color-text-secondary);
+  --color-content-muted: var(--color-text-muted);
+  --color-content-inverse: var(--color-text-inverse);
+  --color-content-link: var(--color-text-link);
+  --color-content-link-hover: var(--color-text-link-hover);
+
+  /* accent    (tailwind.config.js:49-54) -- 3 collision keys, aliased */
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-text: var(--accent-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+
+  /* shadcn bridge (tailwind.config.js:55-85) -- 1 collision key, already aliased in the config */
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  /* line      (tailwind.config.js:86-91) */
+  --color-line: var(--color-border);
+  --color-line-strong: var(--color-border-strong);
+  --color-line-accent: var(--color-border-accent);
+  --color-line-header: var(--color-border-header);
+
+  /* btn       (tailwind.config.js:92-99) -- 4 collision keys, aliased */
+  --color-btn-primary: var(--color-btn-primary-bg);
+  --color-btn-primary-hover: var(--primary-hover);
+  --color-btn-primary-text: var(--primary-foreground);
+  --color-btn-secondary: var(--color-btn-secondary-bg);
+  --color-btn-secondary-hover: var(--secondary-hover);
+  --color-btn-secondary-text: var(--secondary-foreground);
+
+  /* status    (tailwind.config.js:100-104) */
+  --color-status-success: var(--color-success);
+  --color-status-error: var(--color-error);
+  --color-status-warning: var(--color-warning);
+
+  /* focus     (tailwind.config.js:105-107) -- 1 collision key, aliased */
+  --color-focus-ring: var(--ring);
+
+  /* radii     (tailwind.config.js:110-113) -- literal values, no collision with v4 built-ins */
+  --radius-card: 12px;
+  --radius-btn: 8px;
+
+  /* shadows   (tailwind.config.js:114-118) -- no collision with v4 built-ins.
+     NOTE the asymmetry with the three project shadow properties these reference: those STAY in
+     plain `:root`. See the guardrail marker at their declaration site below. */
+  --shadow-theme-sm: var(--shadow-sm);
+  --shadow-theme-md: var(--shadow-md);
+  --shadow-theme-lg: var(--shadow-lg);
 }
 
 /*
@@ -272,6 +405,21 @@
   --color-border-accent: var(--amber-600);
 
   /* Shadows */
+  /* DECISION Phase 87.7 (Plan 06, RESEARCH Pitfall 2): these three STAY in plain `:root`. They
+     are deliberately NOT in the `@theme inline` block above, even though the theme block's
+     `--shadow-theme-*` keys reference them and every other token in this file was ported.
+
+     WHY. `--shadow-sm` / `--shadow-md` / `--shadow-lg` are the NAMES of Tailwind v4's own
+     built-in shadow scale. Here in plain `:root` they are harmless: v4 INLINES the literal
+     values of its built-in scale into the built-in utilities rather than referencing the theme
+     variable, so redefining the property cannot corrupt the built-in scale -- while the
+     project's own `--shadow-theme-*` keys, which reference these properties through `var()`,
+     correctly follow the project's values (including the dark-mode `none` override in the
+     `.dark` block below).
+
+     Moving them into any `@theme` block turns them into THEME KEYS carrying built-in names, at
+     which point they hijack the built-in scale for the whole app -- silently, since nothing
+     fails. Moving them is a DECISION, not a cleanup. */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
   --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
