@@ -402,6 +402,44 @@
   --input: var(--color-border);
   --ring: var(--color-focus-ring);
   --radius: 12px;
+
+  /* DECISION Phase 87.7 (Plan 06, D-01/D-02, RESEARCH Pitfall 1): the three aliases below exist
+     to BREAK A NAME COLLISION, not to add tokens. Chosen OVER renaming the colliding runtime
+     properties themselves.
+
+     The collision, measured: Tailwind v4's colour theme namespace is `--color-*`, and this
+     project's runtime semantic properties are ALSO named `--color-*`. Nine names match exactly
+     (`--color-accent`, `--color-accent-hover`, `--color-accent-text`, `--color-border`,
+     `--color-btn-primary-hover`, `--color-btn-primary-text`, `--color-btn-secondary-hover`,
+     `--color-btn-secondary-text`, `--color-focus-ring`). Eight of those nine are declared in the
+     JS config as `var(<their own name>)`, so a direct port into `@theme inline` writes a literal
+     self-reference such as `--color-accent: var(--color-accent)`. Six of the nine already had a
+     differently-named alias in this Phase 84 bridge block above; `--color-border` was already
+     written against `--border` in the config; only these three had nothing to point at.
+
+     WHY THIS IS NOT COSMETIC. A self-referential custom property is invalid at computed-value
+     time. Today it still renders, but only because this file's `:root` blocks are UNLAYERED and
+     unlayered declarations beat anything Tailwind emits inside `@layer theme`. That is cascade-
+     layer luck, not correctness: it holds only as long as nothing moves these declarations into
+     a layer. Pointing each colliding theme key at a DIFFERENT name removes the literal
+     self-reference, which is the form that is guaranteed-invalid and greppable. Collapsing one
+     of these aliases back into a self-reference is a DECISION, not a cleanup.
+
+     REJECTED ALTERNATIVE — rename the runtime properties (e.g. `--color-accent` to `--sem-accent`)
+     so the namespaces cannot overlap at all. Rejected on cost and blast radius: this file carries
+     140 custom-property declarations that would all need re-checking, and there are six JS call
+     sites reading these properties through `var()` at runtime, which no CSS-only rename would
+     touch and no build step would catch (SafeImage.js:31, DieLogo.js:12, EventScheduler.js:459
+     and :517 and :518, gameDetail/page.js:1782 — enumerated exhaustively by RESEARCH). A rename
+     is still the structurally cleaner end state; if Phase 88 wants it, it is a deliberate
+     follow-up, and these three lines are what it deletes.
+
+     These live in `:root` ONLY, deliberately. They resolve dynamically because their targets are
+     the ones that flip under `.dark` (the same reason stated in this block's own banner above).
+     Adding `.dark` copies would be redundant and would create a second place to keep in sync. */
+  --accent-hover: var(--color-accent-hover);
+  --primary-hover: var(--color-btn-primary-hover);
+  --secondary-hover: var(--color-btn-secondary-hover);
 }
 
 /* ===== DESIGN SYSTEM: Theme Transition ===== */
