@@ -605,10 +605,10 @@ function FriendsPage() {
                                         {bulkInviteResult && (
                                             <div className={`mt-3 p-3 rounded-lg text-sm font-medium ${
                                                 bulkInviteResult.failCount === 0
-                                                    ? 'bg-status-success/10 text-status-success border border-status-success/20'
+                                                    ? 'text-status-success border'
                                                     : bulkInviteResult.successCount > 0
-                                                        ? 'bg-status-warning/10 text-status-warning border border-status-warning/20'
-                                                        : 'bg-status-error/10 text-status-error border border-status-error/20'
+                                                        ? 'text-status-warning border'
+                                                        : 'text-status-error border'
                                             }`}>
                                                 {bulkInviteResult.failCount === 0
                                                     ? `Invited ${bulkInviteResult.successCount} friend(s) to ${getSelectedGroupName()}!`
@@ -665,7 +665,7 @@ function FriendsPage() {
                                                 <button
                                                     onClick={() => handleRemove(friendship.id)}
                                                     disabled={actionLoading[friendship.id] === 'remove'}
-                                                    className="text-status-error hover:text-status-error/80 text-sm font-medium transition-colors disabled:opacity-50"
+                                                    className="text-status-error text-sm font-medium transition-colors disabled:opacity-50"
                                                 >
                                                     {actionLoading[friendship.id] === 'remove' ? 'Removing...' : 'Remove'}
                                                 </button>
@@ -775,7 +775,7 @@ function FriendsPage() {
                                                     <p className="text-sm text-content-muted mt-0.5">{addressee.email}</p>
                                                 )}
                                             </div>
-                                            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-status-warning/10 text-status-warning border border-status-warning/30">
+                                            <span className="px-3 py-1 rounded-full text-xs font-semibold text-status-warning border">
                                                 Pending
                                             </span>
                                         </div>

@@ -208,7 +208,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
               for the L-8 "no longer available" notice */}
           {confirmation && (
             <div className={`px-4 py-2 border-b border-line ${
-              confirmation.tone === 'success' ? 'bg-status-success/10' : 'bg-surface-card-hover'
+              confirmation.tone === 'success' ? '' : 'bg-surface-card-hover'
             }`}>
               <p className={`text-sm font-medium ${
                 confirmation.tone === 'success' ? 'text-status-success' : 'text-content-muted'

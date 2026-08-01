@@ -376,7 +376,7 @@ const TodayDivider = forwardRef(function TodayDivider({ label }, ref) {
       aria-label={label}
       className="relative flex items-center justify-center py-2"
     >
-      <div className="absolute inset-x-0 top-1/2 border-t-2 border-content-link/40" aria-hidden="true" />
+      <div className="absolute inset-x-0 top-1/2 border-t-2" aria-hidden="true" />
       <span className="relative z-10 inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-content-link text-white shadow-theme-sm">
         {label}
       </span>

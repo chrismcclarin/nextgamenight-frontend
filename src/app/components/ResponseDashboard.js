@@ -134,7 +134,7 @@ export default function ResponseDashboard({
   // Error state
   if (error) {
     return (
-      <div className="bg-surface-card rounded-card border border-status-error/30 p-4">
+      <div className="bg-surface-card rounded-card border p-4">
         <div className="flex items-center gap-2 text-status-error">
           <ExclamationIcon className="w-5 h-5" />
           <span>{error}</span>
@@ -157,14 +157,14 @@ export default function ResponseDashboard({
 
       {/* Reminder error message */}
       {reminderError && (
-        <div className="mb-3 p-2 bg-status-error/10 border border-status-error/30 rounded-sm text-sm text-status-error">
+        <div className="mb-3 p-2 border rounded-sm text-sm text-status-error">
           {reminderError}
         </div>
       )}
 
       {/* Blind voting notice */}
       {blindVotingEnabled && !pollClosed && !userHasResponded && !isAdmin && (
-        <div className="mb-3 p-2 bg-status-warning/10 border border-status-warning/30 rounded-sm text-sm text-status-warning">
+        <div className="mb-3 p-2 border rounded-sm text-sm text-status-warning">
           Slot counts are hidden until you submit your response or the poll closes.
         </div>
       )}
@@ -269,7 +269,7 @@ function RemindButton({ userId, lastRemindedAt, isReminding, onRemind }) {
     <button
       onClick={() => onRemind(userId)}
       disabled={isReminding}
-      className="px-3 py-1 text-sm text-content-link hover:bg-accent/10 rounded-sm disabled:opacity-50 shrink-0 transition-colors"
+      className="px-3 py-1 text-sm text-content-link rounded-sm disabled:opacity-50 shrink-0 transition-colors"
     >
       {isReminding ? 'Sending...' : 'Remind'}
     </button>

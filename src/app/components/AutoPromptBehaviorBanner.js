@@ -40,7 +40,7 @@ export default function AutoPromptBehaviorBanner() {
   if (dismissed) return null;
 
   return (
-    <div className="bg-status-info/10 border border-status-info/30 rounded-card p-3 mb-4 flex justify-between gap-3">
+    <div className="border rounded-card p-3 mb-4 flex justify-between gap-3">
       <div className="text-sm text-content-secondary">
         <p className="font-semibold text-content-primary mb-1">
           Heads up &mdash; recurring poll behavior changed.

@@ -121,7 +121,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
     <>
       {/* Error message */}
       {error && (
-        <div className="mb-4 p-3 bg-status-error/10 border border-status-error/30 rounded-btn">
+        <div className="mb-4 p-3 border rounded-btn">
           <p className="text-status-error text-sm">{error}</p>
         </div>
       )}

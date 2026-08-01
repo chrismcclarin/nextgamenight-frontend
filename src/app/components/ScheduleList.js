@@ -73,11 +73,11 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
                   <h3 className="text-lg font-semibold text-content-primary">{scheduleName}</h3>
                   {/* Status badge */}
                   {isActive ? (
-                    <span className="px-2 py-1 text-xs font-medium bg-status-success/10 text-status-success rounded-full">
+                    <span className="px-2 py-1 text-xs font-medium text-status-success rounded-full">
                       Active
                     </span>
                   ) : (
-                    <span className="px-2 py-1 text-xs font-medium bg-status-warning/10 text-status-warning rounded-full">
+                    <span className="px-2 py-1 text-xs font-medium text-status-warning rounded-full">
                       Paused
                     </span>
                   )}
@@ -123,8 +123,8 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
                   onClick={() => onToggle?.(schedule.id)}
                   className={`px-3 py-1.5 text-sm rounded-btn transition-colors ${
                     isActive
-                      ? 'bg-status-warning/10 text-status-warning hover:bg-status-warning/20'
-                      : 'bg-status-success/10 text-status-success hover:bg-status-success/20'
+                      ? 'text-status-warning'
+                      : 'text-status-success'
                   }`}
                   title={isActive ? 'Pause schedule' : 'Resume schedule'}
                 >
@@ -170,7 +170,7 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
 
             {/* Delete Confirmation Dialog */}
             {deleteConfirm === schedule.id && (
-              <div className="mt-4 p-4 bg-status-error/10 border border-status-error/30 rounded-card">
+              <div className="mt-4 p-4 border rounded-card">
                 <p className="text-status-error font-medium mb-3">
                   Delete {scheduleName}? This will stop sending prompts.
                 </p>

@@ -480,7 +480,7 @@ export default function EventScheduler({
       >
         {dragHighlight && (
           <div
-            className="absolute pointer-events-none bg-btn-primary/20 border-2 border-btn-primary rounded-sm z-10"
+            className="absolute pointer-events-none border-2 border-btn-primary rounded-sm z-10"
             style={{
               top: dragHighlight.top,
               left: dragHighlight.left,

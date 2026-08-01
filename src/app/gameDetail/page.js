@@ -28,7 +28,7 @@ import { toast } from 'sonner';
 // status is one of 'yes' | 'maybe' | 'no' | null/undefined (no response).
 function RsvpStatusPill({ status }) {
     const map = {
-        yes: { label: 'Going', cls: 'bg-status-success/15 text-status-success' },
+        yes: { label: 'Going', cls: 'text-status-success' },
         maybe: { label: 'Maybe', cls: 'bg-amber-100 text-amber-700' },
         no: { label: 'No', cls: 'bg-surface-card-hover text-content-muted' },
     };
@@ -113,12 +113,12 @@ function GuestInviteButton({ groupId, userId }) {
             disabled={status === 'sending' || status === 'sent' || status === 'already'}
             className={`text-xs px-2 py-0.5 rounded-sm border transition-colors ${
                 status === 'sent'
-                    ? 'text-status-success border-status-success/30 bg-status-success/10'
+                    ? 'text-status-success'
                     : status === 'already'
                         ? 'text-content-muted border-line bg-surface-page'
                         : status === 'error'
-                            ? 'text-status-error border-status-error/30 bg-status-error/10 hover:bg-status-error/20'
-                            : 'text-content-link border-content-link/30 hover:bg-content-link/10'
+                            ? 'text-status-error'
+                            : 'text-content-link'
             }`}
             title={
                 status === 'sent'
@@ -1357,7 +1357,7 @@ export default function GameDetailPage() {
                                                     onClick={() => handleRemoveClick(p)}
                                                     className={`text-xs px-2 py-1 border rounded-sm transition-colors shrink-0 ${
                                                         isConfirming
-                                                            ? 'bg-status-error/10 border-status-error text-status-error font-semibold'
+                                                            ? 'border-status-error text-status-error font-semibold'
                                                             : 'border-line text-content-muted hover:bg-surface-card-hover'
                                                     }`}
                                                 >

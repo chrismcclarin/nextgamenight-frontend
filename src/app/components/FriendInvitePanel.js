@@ -344,7 +344,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                 {inviteResult && (
                                     <div className={`mt-2 p-3 rounded-lg text-sm font-medium ${
                                         inviteResult.failCount === 0
-                                            ? 'bg-status-success/10 text-status-success border border-line'
+                                            ? 'text-status-success border border-line'
                                             : inviteResult.successCount > 0
                                                 ? 'bg-amber-50 text-amber-700 border border-amber-200'
                                                 : 'bg-red-50 text-red-700 border border-red-200'

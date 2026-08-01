@@ -1665,7 +1665,7 @@ function Profile(){
                                                 </div>
                                                 <button
                                                     onClick={() => handleDeletePattern(pattern.id)}
-                                                    className="text-status-error hover:text-status-error/80 text-sm"
+                                                    className="text-status-error text-sm"
                                                 >
                                                     Delete
                                                 </button>
@@ -1777,7 +1777,7 @@ function Profile(){
                                                 </div>
                                                 <button
                                                     onClick={() => handleDeletePattern(pattern.id)}
-                                                    className="text-status-error hover:text-status-error/80 text-sm"
+                                                    className="text-status-error text-sm"
                                                 >
                                                     Delete
                                                 </button>
@@ -1846,8 +1846,8 @@ function Profile(){
                         </div>
                         {importProgress && (
                             <div className={`mt-3 p-3 rounded-btn ${
-                                importProgress.status === 'error' ? 'bg-status-error/10 text-status-error' :
-                                importProgress.status === 'complete' ? 'bg-status-success/10 text-status-success' :
+                                importProgress.status === 'error' ? 'text-status-error' :
+                                importProgress.status === 'complete' ? 'text-status-success' :
                                 'bg-surface-card-hover text-content-link'
                             }`}>
                                 <p className="font-medium">{importProgress.message}</p>

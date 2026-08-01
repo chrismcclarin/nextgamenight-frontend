@@ -120,7 +120,7 @@ export default function MergedHeatmapGrid({ slots = [], totalMembers, selectedSl
         return (
           <div
             key={dateStr}
-            className={`bg-surface-card p-2 text-center ${isTodayDate ? 'bg-accent/10' : ''}`}
+            className={`bg-surface-card p-2 text-center ${isTodayDate ? '' : ''}`}
           >
             <div className="text-xs font-semibold text-content-secondary">
               {DAY_LABELS[idx]}
