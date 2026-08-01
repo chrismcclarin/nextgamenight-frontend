@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test';
 
 /**
  * Playwright E2E config — TEST-02 / TEST-03 (D-05 storageState pattern).
@@ -49,6 +49,47 @@ export default defineConfig({
         // therefore outranks `defaultTheme` regardless of what the config emulates, so Plan 10's
         // computed-style spec asserts `<html class="dark">` at RUNTIME as the other half.
         // Removing EITHER half is a decision, not a cleanup.
+      },
+    },
+    // MOB-03 (Phase 87.7, D-13/D-14) — the phone-viewport project. Until this landed the
+    // suite had NEVER run at phone width: this config declared only setup + journeys, with no
+    // `devices` import and no viewport anywhere, so every spec ran at Playwright's 1280x720
+    // default — while the project's phone-forward tenet makes the phone the PRIMARY surface.
+    //
+    // DECISION Phase 87.7 D-13: this project is CONFIG-ONLY this phase, chosen OVER arming it
+    // as a blocking PR gate now. The CI PR lane excludes it by pinning
+    // `--project=setup --project=journeys` (see .github/workflows/ci.yml); Phase 87.8 wires it
+    // in and OWNS the resulting fixes. Mobile failures found here are reported, not fixed —
+    // a migration phase is not blocked by known-broken mobile. Trade-off on the record: the
+    // phone surface is unwatched on PRs until 87.8. Adding `--project=phone` to ci.yml is
+    // Phase 87.8's, and it is a decision, not a cleanup.
+    //
+    // Viewport is MEASURED at 390 x 664 (D-20 — a standalone probe read `page.viewportSize()`
+    // live). The 390 x 844 written into D-14 and the original SPEC R9 draft is the device
+    // SCREEN height, not the viewport; the SPEC as amended carries the corrected 390 x 664.
+    //
+    // Pitfall 7 interacts with this project and is expected, not a bug: v4 wraps every `hover:`
+    // utility in `@media (hover: hover)`, which v3 never did, and the iPhone 13 preset sets
+    // `isMobile: true, hasTouch: true` — the probe measured `matchMedia('(hover: hover)')` as
+    // false. All 222 `hover:` occurrences are therefore INERT here. Some of what looks like a
+    // mobile-only layout failure will be that instead.
+    {
+      name: 'phone',
+      testMatch: /.*\.spec\.ts/,
+      dependencies: ['setup'], // same login/setup producer as journeys
+      use: {
+        ...devices['iPhone 13'], // 390 x 664 viewport, isMobile + hasTouch (D-20, measured)
+        browserName: 'chromium', // DECISION Phase 87.7 D-14: the explicit chromium override is
+        // MANDATORY and MUST stay below the spread above. `devices['iPhone 13']` carries
+        // `defaultBrowserType: 'webkit'`, and ci.yml installs chromium ONLY
+        // (`npx playwright install --with-deps chromium`). Chosen OVER the preset's webkit
+        // default; also chosen OVER widening the browser install to make webkit work, because
+        // the override IS the fix and the narrow install is deliberate. Deleting this line, or
+        // moving it above the spread, is a HARD LAUNCH FAILURE — not a cleanup.
+        storageState: '.auth/user.json', // the SAME state journeys reuses — deliberately not a
+        // second path: ci.yml's failure-artifact upload excludes `.auth/` (T-82-12), and a
+        // second storageState path would force that exclusion to be re-audited for no benefit.
+        colorScheme: 'dark', // same D-11 reasoning as journeys, above
       },
     },
   ],
