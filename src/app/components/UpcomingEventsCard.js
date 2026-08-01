@@ -162,7 +162,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
               <div
                 key={event.id}
                 onClick={() => handleEventClick(event)}
-                className={`hover:bg-surface-card-hover rounded py-1.5 px-2 cursor-pointer ${isGuestEvent ? 'border-l-2 border-dashed border-amber-400 dark:border-amber-500/70 pl-3' : ''}`}
+                className={`hover:bg-surface-card-hover rounded-sm py-1.5 px-2 cursor-pointer ${isGuestEvent ? 'border-l-2 border-dashed border-amber-400 dark:border-amber-500/70 pl-3' : ''}`}
               >
                 <span className="text-sm text-content-secondary">{gameName}</span>
                 <span className="text-sm text-content-muted"> · </span>
@@ -175,7 +175,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                 )}
                 {isGuestEvent && (
                   <span
-                    className="inline-flex items-center px-1.5 py-0.5 ml-2 text-[10px] uppercase tracking-wide rounded bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
+                    className="inline-flex items-center px-1.5 py-0.5 ml-2 text-[10px] uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
                     title="You joined this event as a guest (not a group member)"
                   >
                     Guest

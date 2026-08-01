@@ -178,7 +178,7 @@ export default function TutorialOverlay({ onComplete }) {
   const isHandoff = phase === 'handoff';
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/85 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
       <div className="bg-surface-page rounded-card shadow-theme-lg max-w-3xl w-full max-h-[92vh] flex flex-col border border-line">
         {/* Header — step indicator */}
         <div className="px-6 pt-5 pb-3 flex items-center justify-between">
@@ -296,7 +296,7 @@ export default function TutorialOverlay({ onComplete }) {
             disabled={isWelcome}
             className={`px-4 py-1.5 text-sm font-medium border rounded-btn transition-colors ${
               isWelcome
-                ? 'text-content-muted/40 bg-surface-elevated/40 border-line/40 cursor-not-allowed'
+                ? 'cursor-not-allowed'
                 : 'text-content-primary bg-surface-elevated hover:bg-surface-card-hover border-line'
             }`}
           >

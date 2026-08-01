@@ -321,7 +321,7 @@ export default function HeatmapGrid({
         <button
           onClick={handlePrevWeek}
           disabled={!canGoBack}
-          className="px-3 py-2 rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
+          className="px-3 py-2 rounded-sm bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
           aria-label="Previous week"
         >
           &lt;
@@ -333,7 +333,7 @@ export default function HeatmapGrid({
           <button
             onClick={handleToday}
             disabled={isOnTodayMonday}
-            className="px-3 py-1 text-sm rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
+            className="px-3 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
             aria-label="Jump to current week"
           >
             Today
@@ -342,7 +342,7 @@ export default function HeatmapGrid({
         <button
           onClick={handleNextWeek}
           disabled={!canGoForward}
-          className="px-3 py-2 rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
+          className="px-3 py-2 rounded-sm bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
           aria-label="Next week"
         >
           &gt;
@@ -369,11 +369,11 @@ export default function HeatmapGrid({
       <div className="flex items-center gap-4 mb-4 text-sm">
         <span className="text-content-secondary">Fewer available</span>
         <div className="flex gap-1">
-          <div className="w-6 h-4 bg-surface-elevated border border-line rounded-sm" />
-          <div className="w-6 h-4 bg-yellow-200 border border-yellow-400 rounded-sm" />
-          <div className="w-6 h-4 bg-yellow-400 border border-yellow-500 rounded-sm" />
-          <div className="w-6 h-4 bg-orange-400 border border-orange-500 rounded-sm" />
-          <div className="w-6 h-4 bg-red-500 border border-red-600 rounded-sm" />
+          <div className="w-6 h-4 bg-surface-elevated border border-line rounded-xs" />
+          <div className="w-6 h-4 bg-yellow-200 border border-yellow-400 rounded-xs" />
+          <div className="w-6 h-4 bg-yellow-400 border border-yellow-500 rounded-xs" />
+          <div className="w-6 h-4 bg-orange-400 border border-orange-500 rounded-xs" />
+          <div className="w-6 h-4 bg-red-500 border border-red-600 rounded-xs" />
         </div>
         <span className="text-content-secondary">More available</span>
       </div>
@@ -398,13 +398,13 @@ export default function HeatmapGrid({
           {/* Day headers */}
           <div className="flex" role="row">
             {/* Spacer for time labels column */}
-            <div className="w-16 sm:w-20 flex-shrink-0" role="columnheader" />
+            <div className="w-16 sm:w-20 shrink-0" role="columnheader" />
 
             {/* Day headers */}
             {days.map((day) => (
               <div
                 key={day.toISOString()}
-                className="w-24 sm:w-28 flex-shrink-0 text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
+                className="w-24 sm:w-28 shrink-0 text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
                 role="columnheader"
               >
                 {formatDayHeader(day)}
@@ -420,7 +420,7 @@ export default function HeatmapGrid({
             return (
               <div key={`row-${rowIndex}`} className="flex" role="row">
                 {/* Time label column */}
-                <div className="w-16 sm:w-20 flex-shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium">
+                <div className="w-16 sm:w-20 shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium">
                   {timeLabel}
                 </div>
 
@@ -449,7 +449,7 @@ export default function HeatmapGrid({
                   return (
                     <div
                       key={slotId}
-                      className="w-24 sm:w-28 flex-shrink-0"
+                      className="w-24 sm:w-28 shrink-0"
                       onClick={() => handleSlotClick(slotId, suggestion)}
                       onFocus={() => setFocusedCoord({ row: rowIndex, col: colIndex })}
                     >

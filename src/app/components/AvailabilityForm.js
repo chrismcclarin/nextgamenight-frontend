@@ -291,12 +291,12 @@ export default function AvailabilityForm({
             w-full flex items-center justify-center gap-3 px-4 py-3 rounded-btn font-medium
             transition-colors duration-200
             ${isUnavailable
-              ? 'bg-status-error/10 border-2 border-status-error text-status-error'
+              ? 'border-2 border-status-error text-status-error'
               : 'bg-surface-card border-2 border-line text-content-secondary hover:border-line-strong'
             }
           `}
         >
-          <span className={`w-5 h-5 flex items-center justify-center rounded border-2 ${
+          <span className={`w-5 h-5 flex items-center justify-center rounded-sm border-2 ${
             isUnavailable ? 'bg-status-error border-status-error' : 'border-line-strong'
           }`}>
             {isUnavailable && (
@@ -333,7 +333,7 @@ export default function AvailabilityForm({
 
       {/* Validation Error Display */}
       {errors.time_slots && (
-        <div className="bg-status-error/10 border border-status-error/30 rounded-btn p-3">
+        <div className="border rounded-btn p-3">
           <p className="text-sm text-status-error">
             {errors.time_slots.message}
           </p>
@@ -342,7 +342,7 @@ export default function AvailabilityForm({
 
       {/* Submission Error Display (inline submit-error UI) */}
       {submitError && (
-        <div className="bg-status-error/10 border border-status-error/30 rounded-btn p-3">
+        <div className="border rounded-btn p-3">
           <p role="alert" className="text-sm text-status-error">
             {submitError}
           </p>

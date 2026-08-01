@@ -150,7 +150,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
   );
 
   const countBadge = totalCount > 0 ? (
-    <span className="bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-[1.25rem] px-1 flex items-center justify-center">
+    <span className="bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-5 px-1 flex items-center justify-center">
       {totalCount > 9 ? '9+' : totalCount}
     </span>
   ) : null;
@@ -208,7 +208,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
               for the L-8 "no longer available" notice */}
           {confirmation && (
             <div className={`px-4 py-2 border-b border-line ${
-              confirmation.tone === 'success' ? 'bg-status-success/10' : 'bg-surface-card-hover'
+              confirmation.tone === 'success' ? '' : 'bg-surface-card-hover'
             }`}>
               <p className={`text-sm font-medium ${
                 confirmation.tone === 'success' ? 'text-status-success' : 'text-content-muted'

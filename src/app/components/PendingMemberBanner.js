@@ -19,13 +19,13 @@ export default function PendingMemberBanner({ groupId }) {
     };
 
     return (
-        <div className="bg-accent/10 border border-accent/30 rounded-card p-4 mb-4 flex items-center justify-between">
+        <div className="border rounded-card p-4 mb-4 flex items-center justify-between">
             <p className="text-content-secondary text-sm">
                 Welcome! You&apos;re a pending member &mdash; an admin will approve you shortly. Feel free to look around in the meantime.
             </p>
             <button
                 onClick={handleDismiss}
-                className="text-content-muted hover:text-content-secondary ml-4 flex-shrink-0 text-lg leading-none"
+                className="text-content-muted hover:text-content-secondary ml-4 shrink-0 text-lg leading-none"
                 aria-label="Dismiss banner"
             >
                 &times;

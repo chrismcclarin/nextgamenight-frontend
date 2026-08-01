@@ -146,7 +146,7 @@ function ModalHeader({ children, className }: ModalHeaderProps) {
       </DialogTitle>
       <DialogClose
         aria-label="Close"
-        className="text-2xl leading-none text-content-muted transition-colors hover:text-content-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="text-2xl leading-none text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
       >
         &times;
       </DialogClose>

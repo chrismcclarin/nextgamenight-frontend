@@ -208,7 +208,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         };
         
         return (
-            <span className={`px-2 py-1 rounded text-xs font-semibold border ${roleStyles[role] || roleStyles.member}`}>
+            <span className={`px-2 py-1 rounded-sm text-xs font-semibold border ${roleStyles[role] || roleStyles.member}`}>
                 {role?.charAt(0).toUpperCase() + role?.slice(1) || 'Member'}
             </span>
         );
@@ -360,7 +360,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                         renders the role pill on the right; this inline badge is
                                                         the canonical "this is the owner" indicator per CONTEXT. */}
                                                     {isOwner ? (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-accent/10 text-accent border border-accent/20">
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-accent border">
                                                             Owner
                                                         </span>
                                                     ) : (
@@ -386,7 +386,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                             <select
                                                                 value={memberRole}
                                                                 onChange={(e) => handleRoleChange(member.id, e.target.value)}
-                                                                className="px-3 py-2 border border-line rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
+                                                                className="px-3 py-2 border border-line rounded-md text-sm focus:outline-hidden focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
                                                             >
                                                                 <option value="member">Member</option>
                                                                 <option value="admin">Admin</option>
@@ -504,7 +504,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                 <p className="font-semibold text-content-primary">
                                                     {invite.invited_email}
                                                 </p>
-                                                <span className="px-2 py-1 rounded text-xs font-semibold border bg-amber-100 text-amber-800 border-amber-300">
+                                                <span className="px-2 py-1 rounded-sm text-xs font-semibold border bg-amber-100 text-amber-800 border-amber-300">
                                                     Pending
                                                 </span>
                                             </div>

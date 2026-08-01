@@ -514,15 +514,15 @@ export default function AvailabilityGrid({
       {/* Legend */}
       <div className="flex items-center gap-4 mb-3 text-sm">
         <div className="flex items-center gap-1.5">
-          <div className="w-4 h-4 bg-green-300 border border-line rounded-sm" />
+          <div className="w-4 h-4 bg-green-300 border border-line rounded-xs" />
           <span className="text-content-secondary">Preferred</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-4 h-4 bg-yellow-300 border border-line rounded-sm" />
+          <div className="w-4 h-4 bg-yellow-300 border border-line rounded-xs" />
           <span className="text-content-secondary">If Need Be</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-4 h-4 bg-surface-elevated border border-line rounded-sm" />
+          <div className="w-4 h-4 bg-surface-elevated border border-line rounded-xs" />
           <span className="text-content-secondary">Not Available</span>
         </div>
       </div>
@@ -541,13 +541,13 @@ export default function AvailabilityGrid({
           {/* Day headers */}
           <div className="flex">
             {/* Spacer for time labels column */}
-            <div className="w-16 sm:w-20 flex-shrink-0" />
+            <div className="w-16 sm:w-20 shrink-0" />
 
             {/* Day headers */}
             {days.map((day, index) => (
               <div
                 key={day.toISOString()}
-                className="w-24 sm:w-28 flex-shrink-0 text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
+                className="w-24 sm:w-28 shrink-0 text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
               >
                 {formatDayHeader(day)}
               </div>
@@ -557,7 +557,7 @@ export default function AvailabilityGrid({
           {/* Day checkboxes row */}
           <div className="flex">
             {/* Select All toggle in the time-label spacer */}
-            <div className="w-16 sm:w-20 flex-shrink-0 flex items-center justify-end pr-2">
+            <div className="w-16 sm:w-20 shrink-0 flex items-center justify-end pr-2">
               <label className="flex items-center gap-1 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -574,7 +574,7 @@ export default function AvailabilityGrid({
             {days.map((day, index) => (
               <div
                 key={`cb-${day.toISOString()}`}
-                className="w-24 sm:w-28 flex-shrink-0 flex items-center justify-center py-1"
+                className="w-24 sm:w-28 shrink-0 flex items-center justify-center py-1"
               >
                 <input
                   type="checkbox"
@@ -591,7 +591,7 @@ export default function AvailabilityGrid({
           {timeSlots.map((timeSlot, rowIndex) => (
             <div key={`row-${rowIndex}`} className="flex">
               {/* Time label column — mirrors the header spacer width */}
-              <div className="w-16 sm:w-20 flex-shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium">
+              <div className="w-16 sm:w-20 shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium">
                 {formatTimeLabel(timeSlot)}
               </div>
 
@@ -609,7 +609,7 @@ export default function AvailabilityGrid({
                 return (
                   <div
                     key={slotId}
-                    className="w-24 sm:w-28 flex-shrink-0 h-12 sm:h-14 border border-line"
+                    className="w-24 sm:w-28 shrink-0 h-12 sm:h-14 border border-line"
                     onFocus={() => setFocusedCoord({ row: rowIndex, col: colIndex })}
                   >
                     <WriteCell

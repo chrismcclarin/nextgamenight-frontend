@@ -67,7 +67,7 @@ export default function SafeImage({
     const bgColor = getColorFromText(alt);
     return (
       <div
-        className={`flex items-center justify-center rounded ${className}`}
+        className={`flex items-center justify-center rounded-sm ${className}`}
         style={{ backgroundColor: bgColor }}
         role="img"
         aria-label={alt || 'Image placeholder'}

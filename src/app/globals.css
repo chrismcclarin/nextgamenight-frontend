@@ -1,7 +1,447 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-@import 'react-big-calendar/lib/css/react-big-calendar.css';
+/* DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): the `source(none)` modifier is REQUIRED
+   here and is NOT a stylistic flourish — see the `@source` block below for the full rationale.
+   Read the v4 engine, do not infer: a bare `@import 'tailwindcss'` leaves v4's automatic
+   whole-repo source detection ENABLED, and the `@source` directives below are purely ADDITIVE to
+   it (`tailwindcss/dist/lib.js`: `@source` pushes `{base, pattern}` onto the source list, while
+   only `source(none)` on this line clears the auto-detected root). Deleting `source(none)` while
+   leaving the `@source` lines in place therefore silently re-enables the whole-repo scan and
+   re-ships test-fixture CSS, with no build error and no diff in the `@source` block to hint at
+   why. That is a decision, not a cleanup. */
+@import 'tailwindcss' source(none);
+/* DECISION Phase 87.7 (Plan 07, D-07/R6): `tw-animate-css` REPLACES the `tailwindcss-animate` JS
+   plugin, and this import line sits DIRECTLY after `@import 'tailwindcss'` — the one ordering
+   RESEARCH tested and proved green (Assumption A1; upstream's README does not specify placement).
+   It is what sources the enter/exit keyframes and the `--tw-enter-*` / `--tw-exit-*` custom
+   properties that the shadcn Dialog's animation utilities compile against. Deleting
+   `tailwind.config.js` removed `plugins: [require('tailwindcss-animate')]`, so this line and that
+   deletion HAD to land in the same commit — without it the Dialog's open/close animation utilities
+   emit nothing at all. Removing or reordering this is a decision, not a cleanup. */
+@import 'tw-animate-css';
+
+/* DECISION Phase 87.7 (Plan 03, RESEARCH Pitfall 9): react-big-calendar is imported into
+   `layer(base)` OVER the v4 codemod's `layer(utilities)`. Measured, not reasoned — byte offsets
+   in the emitted stylesheet:
+
+     v3 (bare @import, hoisted by webpack's css-loader): .rbc-calendar @253 vs .text-sm @35,701
+       -> Tailwind utilities win ties.
+     v4 with the codemod's layer(utilities):             .rbc-calendar @62,534 vs .text-sm @35,355
+       -> RBC wins ties. That is a CASCADE INVERSION, i.e. a regression.
+     v4 with layer(base) (this line):                    .rbc-* inside @layer base, utilities after
+       -> Tailwind utilities win ties again, matching v3.
+
+   `globals.css`'s own UNLAYERED `.rbc-*` overrides in the "React Big Calendar Restyle" section
+   below (including the Phase 72-02 pointer-events block) keep winning over both, exactly as today.
+
+   Deliberate, accepted side effect: wrapping RBC in a layer makes its leading `@charset "UTF-8";`
+   illegal in that position, so lightningcss emits one non-fatal build warning
+   ("Unknown at rule: @charset"). `next build` still exits 0. Removing the layer to silence that
+   warning re-inverts the cascade — that is a decision, not a cleanup. The only untested
+   alternative is hoisting this @import above `@import 'tailwindcss'` (RESEARCH Assumption A2),
+   which perturbs layer-order declaration; it was rejected as higher-risk. */
+@import 'react-big-calendar/lib/css/react-big-calendar.css' layer(base);
+
+/* ===== TAILWIND v4: EXPLICIT SOURCE SCOPING =====
+   DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): three explicit `@source` directives,
+   chosen OVER letting v4 fall back to its default whole-repo automatic source detection.
+
+   These replace the `content` array of the deleted `tailwind.config.js`, which listed
+   `./src/pages/**`, `./src/components/**` and `./src/app/**`. Two deliberate differences from
+   that array:
+
+     - `./src/pages/**` is DROPPED. That directory does not exist and never did; the glob was
+       dead weight inherited from a create-next-app template.
+     - `./src/lib/**` is ADDED. This is a REAL v3 gap, not a v4 nicety: `src/lib/availabilityColor.ts`
+       RETURNS Tailwind class strings for the availability heatmap, and the old globs never scanned
+       it. The v3 build was only accidentally correct because every token it returns is also written
+       literally in a component under `src/app`. Remove this line and the heatmap ramp becomes one
+       refactor away from silently losing its colours.
+
+   WHY NOT JUST DELETE THE GLOBS AND LET v4 AUTO-DETECT. Measured, not reasoned (DI-87.7-01): with
+   no explicit source, v4 scans the whole repo and compiles class-name literals out of non-source
+   files into the shipped stylesheet — 14 selectors in the pre-Plan-07 build existed ONLY as
+   negative-control fixture strings inside a shell script under `scripts/`, and shipped to
+   production. Scoping here is what removes them. Widening these globs, or deleting them to "let
+   v4 figure it out", re-ships test-fixture CSS. That is a decision, not a cleanup.
+
+   TRAP: one of those 14 is NOT a fixture artefact any more. Plan 03 rewrote a modal scrim to a
+   slash-opacity black utility, so that token now has a genuine `src/` origin and MUST survive this
+   scoping. If it ever disappears, the modal scrim has gone opaque — that is a Plan 03 regression,
+   not a successful narrowing. (Named in prose rather than spelled as a class literal, per
+   DI-87.7-08's standing rule: this file is now itself inside the scanned tree's neighbourhood and
+   a class literal parked in a comment is a latent way to ship a dead utility.)
+
+   PATHS ARE RELATIVE TO THIS CSS FILE (`src/app/`), NOT to the project root — hence the `../`.
+   This is the single easiest thing to "correct" wrongly: the deleted config's globs were written
+   root-relative (`./src/components/**`) because a JS config is resolved from the project root, and
+   copying that form verbatim to here silently resolves to `src/app/src/components/**`, which does
+   not exist. With `source(none)` above there would then be NO sources at all and the utility layer
+   would come out nearly empty. Verified from the engine (`@source` records `base:
+   D.context.base`, the importing stylesheet's own directory) and proved by build. */
+@source '../components/**/*.{js,ts,jsx,tsx,mdx}';
+@source './**/*.{js,ts,jsx,tsx,mdx}';
+@source '../lib/**/*.{js,ts,jsx,tsx,mdx}';
+/* The lib glob above also matches its 22 vitest files and `__fixtures__/` — the exact
+   DI-87.7-01 hazard (fixture class literals shipping as CSS) re-opened INSIDE the explicit
+   globs. Today the overlap ships zero extra bytes (test literals are a strict subset of source
+   tokens — proved by build), but a future negative-control literal in a test would ship
+   silently. The exclusions below close that structurally; both were negative-control-proven
+   (a planted literal shipped without them, did not ship with them). `@source not` requires
+   the pinned ^4.3.3 (landed 4.1). */
+@source not '../lib/**/*.test.{js,ts,jsx,tsx}';
+@source not '../lib/__fixtures__';
+
+/* ===== TAILWIND v4: DARK VARIANT =====
+   Replaces the JS config's `darkMode: 'class'`. `next-themes` toggles the class on <html>.
+
+   Placement is load-bearing and identical to the constraint the palette-pin block below
+   documents: `@import` must be the first statement in a stylesheet, so this line sits AFTER
+   every `@import`. Moving it above the react-big-calendar import would silently invalidate
+   that import.
+
+   Recorded, no action: v4 emits this variant as `:where(.dark, .dark *)`, which drops the
+   variant's specificity from (0,2,0) to (0,1,0) relative to v3's `.dark &`. Harmless here --
+   this file's own `.dark ...` rules are UNLAYERED and win regardless of specificity, and
+   Tailwind still orders variants last within the utilities layer. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ===== TAILWIND v4: RAW DEFAULT-PALETTE PIN (v3 sRGB VALUES) ===== */
+@theme {
+  /* DECISION Phase 87.7 (Plan 04, D-17 / RESEARCH Pitfall 3): pin EVERY raw default-palette key
+     the app actually uses back to its Tailwind v3 sRGB hex — chosen OVER two rejected options:
+       (a) pin-the-heatmap-ramp-only — rejected: the shift is not confined to the heatmap. The
+           census below is 55 keys / 303 occurrences / 38 files, landing on status banners,
+           role/RSVP pills and notification badges as well as the availability ramp.
+       (b) accept-the-shift — rejected: this phase's constraint is ZERO visual change (dark mode
+           especially), and v4's OKLCH re-derivation of the default palette is not a rounding
+           error. Measured v3-vs-v4 deltas run up to 56/255 on a single channel (`orange-400`);
+           `red-600` moves 38. That is a visible recolour of the app's signature surface, and it
+           would arrive disguised as a build-tool upgrade.
+
+     Values are transcribed MECHANICALLY from `.planning/phases/87.7-.../87.7-BASELINE.md` §2a,
+     the pre-codemod capture of `tailwindcss@3.3.5`'s palette. None is derived, guessed, or
+     converted back from OKLCH — after Plan 02 replaced node_modules, that capture is the ONLY
+     surviving source of the v3 values.
+
+     THIS BLOCK IS DELIBERATELY REVERSIBLE AND PHASE 88 OWNS DROPPING IT. It is a migration
+     compatibility surface, not a design decision about what colour anything should be — Phase 88's
+     colour redesign deletes it in one block as an intentional act. Removing it earlier, or
+     trimming "unused-looking" keys out of it, is a VISUAL CHANGE, not a cleanup.
+
+     TRAP FOR FUTURE PHASES — the one thing you would not otherwise infer: this block pins only the
+     keys censused at the time of writing. A NEW raw-palette class introduced later — an unlisted
+     family, or an unlisted shade of a family that IS listed — will SILENTLY render at v4's OKLCH
+     value, because nothing fails when a key is absent: v4 simply falls back to its own default.
+     If you add a raw-palette utility while this block still exists, add its v3 pin here too, or
+     accept the shift knowingly. Note this is deliberately NOT a full-palette pin — only USED keys
+     are listed, so the `gray` family is absent on purpose (D-03: the two safelist-forced gray
+     classes have zero `src/` usages, and pinning must not resurrect them).
+
+     Deliberate authoring constraint, and the reason no utility class is spelled out literally
+     anywhere in this comment: Tailwind v4's automatic source detection scans far more than the old
+     `content` globs (DI-87.7-01 — it compiled fixture strings out of a shell script into the
+     shipped stylesheet). Measured at the time of writing, `globals.css` is NOT itself a scanned
+     source — a `bg-`-prefixed teal literal placed in this comment produced no rule in the build —
+     but Plan 07 rewrites that scoping, so a class literal parked in a CSS comment is a latent way
+     to ship a dead utility. Describe utilities; do not name them here.
+
+     Placement is load-bearing: this block sits AFTER every `@import` line. `@import` must be the
+     first statement in a stylesheet, so moving this above the react-big-calendar import would
+     silently invalidate that import. It is also a plain `@theme`, NOT `@theme inline` — this one
+     declares literal build-time VALUES for v4's own palette keys; Plan 06's `@theme inline` block
+     maps semantic names onto runtime `var()`s so `.dark` keeps flipping. Merging the two breaks
+     one of the two mechanisms. */
+
+  /* amber (11) */
+  --color-amber-50: #fffbeb;
+  --color-amber-100: #fef3c7;
+  --color-amber-200: #fde68a;
+  --color-amber-300: #fcd34d;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+  --color-amber-700: #b45309;
+  --color-amber-800: #92400e;
+  --color-amber-900: #78350f;
+  --color-amber-950: #451a03;
+
+  /* blue (7) */
+  --color-blue-100: #dbeafe;
+  --color-blue-200: #bfdbfe;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
+  --color-blue-900: #1e3a8a;
+
+  /* emerald (4) */
+  --color-emerald-100: #d1fae5;
+  --color-emerald-200: #a7f3d0;
+  --color-emerald-800: #065f46;
+  --color-emerald-900: #064e3b;
+
+  /* green (8) */
+  --color-green-100: #dcfce7;
+  --color-green-200: #bbf7d0;
+  --color-green-300: #86efac;
+  --color-green-400: #4ade80;
+  --color-green-500: #22c55e;
+  --color-green-600: #16a34a;
+  --color-green-800: #166534;
+  --color-green-900: #14532d;
+
+  /* indigo (2) */
+  --color-indigo-600: #4f46e5;
+  --color-indigo-700: #4338ca;
+
+  /* orange (4) */
+  --color-orange-100: #ffedd5;
+  --color-orange-400: #fb923c;
+  --color-orange-500: #f97316;
+  --color-orange-800: #9a3412;
+
+  /* purple (5) */
+  --color-purple-100: #f3e8ff;
+  --color-purple-300: #d8b4fe;
+  --color-purple-700: #7e22ce;
+  --color-purple-800: #6b21a8;
+  --color-purple-900: #581c87;
+
+  /* red (7) */
+  --color-red-50: #fef2f2;
+  --color-red-200: #fecaca;
+  --color-red-300: #fca5a5;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+  --color-red-800: #991b1b;
+
+  /* yellow (7) */
+  --color-yellow-100: #fef9c3;
+  --color-yellow-200: #fef08a;
+  --color-yellow-300: #fde047;
+  --color-yellow-400: #facc15;
+  --color-yellow-500: #eab308;
+  --color-yellow-600: #ca8a04;
+  --color-yellow-800: #854d0e;
+}
+
+/* ===== TAILWIND v4: PROJECT TOKEN MAP (ported from tailwind.config.js theme.extend) ===== */
+
+/* DECISION Phase 87.7 (Plan 06, D-01/D-02, RESEARCH Pattern 2/3): this block is `@theme inline`,
+   chosen OVER a plain `@theme`.
+
+   WHAT `inline` DOES. With `inline`, the generated utility points DIRECTLY at the runtime
+   property named on the right-hand side -- the surface/card utility resolves through
+   `var(--color-bg-card)` itself. With a plain `@theme`, Tailwind would emit a theme-local copy
+   into its own layer and the utility would resolve through THAT instead. The 140 runtime
+   properties in the `:root` / `.dark` blocks further down are what `next-themes` flips; `inline`
+   is what keeps the flip reaching every utility.
+
+   THE HONEST NUANCE, recorded deliberately so nobody "simplifies" this after testing that both
+   forms render the same: `next-themes` puts the dark class on <html>, which IS the `:root`
+   element, so a plain `@theme` would ALSO have resolved correctly here -- by luck of both
+   selectors matching the same element, not by design. The decision stands anyway. `inline` is
+   the shadcn-standard form, it stays correct if the dark class is ever applied to a nested
+   element instead of the document root, and it avoids emitting ~55 redundant `:root`
+   declarations that duplicate values this file already owns. Switching to a plain `@theme` is a
+   DECISION, not a cleanup.
+
+   THE NINE COLLISION KEYS point at Phase 84 bridge aliases rather than at themselves -- see the
+   DECISION marker in the shadcn bridge block below for why that is structural and not cosmetic.
+   They are flagged inline. Every other value is the exact `var()` target the JS config used.
+
+   NOT PORTED, deliberately (D-05, verified unused): the two `backgroundImage` gradient entries
+   (tailwind.config.js:24-28) and the one literal-hex cream colour (:108). All three produce no
+   rule in the current build. Adding them back would ship dead CSS.
+
+   Placement: after every `@import` line, same constraint as the palette pin above.
+
+   HISTORY (Plan 06, while the JS config still loaded via a since-deleted `@config` line):
+   MEASURED, correcting the plan's stated expectation: for a duplicate key THIS BLOCK WON, not
+   the JS config. 17 utility declarations changed the moment it landed -- all of them the nine
+   collision keys switching from the colliding name to a bridge alias. Every one was proved
+   value-equivalent by resolving both chains to a literal in light AND dark before this shipped,
+   so the RENDERED result was unchanged; it was the declaration TEXT that differed. That
+   measured takeover is why Plan 07's deletion of `@config` + tailwind.config.js was a near
+   no-op rather than the moment of truth: this block was already what the app rendered from. */
+@theme inline {
+  /* surfaces  (tailwind.config.js:30-40) */
+  --color-surface-page: var(--color-bg-page);
+  --color-surface-card: var(--color-bg-card);
+  --color-surface-card-hover: var(--color-bg-card-hover);
+  --color-surface-elevated: var(--color-bg-elevated);
+  --color-surface-input: var(--color-bg-input);
+  --color-surface-nav: var(--color-bg-nav);
+  --color-surface-nav-hover: var(--color-bg-nav-hover);
+  --color-surface-header: var(--color-bg-header);
+  --color-surface-header-hover: var(--color-bg-header-hover);
+
+  /* content   (tailwind.config.js:41-48) */
+  --color-content-primary: var(--color-text-primary);
+  --color-content-secondary: var(--color-text-secondary);
+  --color-content-muted: var(--color-text-muted);
+  --color-content-inverse: var(--color-text-inverse);
+  --color-content-link: var(--color-text-link);
+  --color-content-link-hover: var(--color-text-link-hover);
+
+  /* accent    (tailwind.config.js:49-54) -- 3 collision keys, aliased */
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-text: var(--accent-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+
+  /* shadcn bridge (tailwind.config.js:55-85) -- 1 collision key, already aliased in the config */
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  /* line      (tailwind.config.js:86-91) */
+  --color-line: var(--color-border);
+  --color-line-strong: var(--color-border-strong);
+  --color-line-accent: var(--color-border-accent);
+  --color-line-header: var(--color-border-header);
+
+  /* btn       (tailwind.config.js:92-99) -- 4 collision keys, aliased */
+  --color-btn-primary: var(--color-btn-primary-bg);
+  --color-btn-primary-hover: var(--primary-hover);
+  --color-btn-primary-text: var(--primary-foreground);
+  --color-btn-secondary: var(--color-btn-secondary-bg);
+  --color-btn-secondary-hover: var(--secondary-hover);
+  --color-btn-secondary-text: var(--secondary-foreground);
+
+  /* status    (tailwind.config.js:100-104) */
+  --color-status-success: var(--color-success);
+  --color-status-error: var(--color-error);
+  --color-status-warning: var(--color-warning);
+
+  /* focus     (tailwind.config.js:105-107) -- 1 collision key, aliased */
+  --color-focus-ring: var(--ring);
+
+  /* radii     (tailwind.config.js:110-113) -- literal values, no collision with v4 built-ins */
+  --radius-card: 12px;
+  --radius-btn: 8px;
+
+  /* shadows   (tailwind.config.js:114-118) -- no collision with v4 built-ins.
+     NOTE the asymmetry with the three project shadow properties these reference: those STAY in
+     plain `:root`. See the guardrail marker at their declaration site below. */
+  --shadow-theme-sm: var(--shadow-sm);
+  --shadow-theme-md: var(--shadow-md);
+  --shadow-theme-lg: var(--shadow-lg);
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+/* DECISION Phase 87.7 (Plan 03, RESEARCH Pitfalls 2/4/5): this is a THREE-RULE v3-compatibility
+   shim, chosen OVER fixing each affected call site individually. Measured exposure at the time
+   of writing:
+
+     - cursor:      250 `<button` + 6 `role="button"` occurrences in src/, against only
+                    29 `cursor-pointer` utility tokens. v3's preflight emitted
+                    `[role=button],button{cursor:pointer}`; v4's does not.
+     - placeholder: 40 `placeholder=` props in src/, of which exactly ONE carries an explicit
+                    colour utility (createGroup.js). v3 emitted
+                    `input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}`; v4 emits
+                    `::placeholder{color:color-mix(in oklab,currentcolor 50%,transparent)}`, which
+                    in dark mode resolves against --color-text-primary (--warm-50, #faf8f5) and
+                    renders placeholders near-white.
+     - border:      unpaired border-width-without-border-colour sites (the codemod's rule, above).
+                    Plan 03 estimated ~19-20 from the upstream artifacts and left the disposition to
+                    Plan 08 — see the Plan 08 marker directly below for the measured figure, which is
+                    more than twice that. Do not fold that decision into this one.
+
+   Two CSS rules against ~290 template edits, and one place for Phase 88 to drop the block
+   deliberately. THIS BLOCK IS A DELIBERATE COMPATIBILITY SURFACE, NOT LEFTOVER SCAFFOLDING:
+   Phase 88 owns removing it as a design act. Deleting a rule from it is a VISUAL CHANGE, not a
+   cleanup. Because these live in @layer base, an explicit utility on an element still wins.
+
+   THE CURSOR RULE IS SCOPED `:not(:disabled)`, AND — CORRECTED BY PLAN 08 — THAT REPRODUCES v3
+   RATHER THAN DEVIATING FROM IT. This block previously recorded the scoping as a "separate,
+   deliberate deviation", on the reasoning that v3's preflight was unscoped
+   (`[role=button],button{cursor:pointer}`) and therefore gave disabled buttons a pointer cursor.
+   Measured against the actual v3 stylesheet, that is FALSE. v3's preflight also carried
+
+     :disabled{cursor:default}
+
+   at byte offset 12941, i.e. AFTER `[role=button],button{cursor:pointer}` at 12905. For a
+   `<button disabled>` it wins on specificity ((0,1,0) vs `button`'s (0,0,1)); for
+   `[role=button]` it ties at (0,1,0) and wins on source order. So **v3 already rendered
+   `cursor:default` on disabled controls.** v4 dropped `:disabled{cursor:default}` from its
+   preflight entirely (confirmed absent from the v4 build), so the `:not(:disabled)` scoping here
+   is what PUTS v3's behaviour BACK, not what departs from it.
+
+   The practical conclusion is unchanged and now better supported: keep the scoping. "Restoring"
+   the unscoped v3 form would give disabled controls a pointer cursor that v3 never showed. The
+   reasoning is corrected rather than deleted so a reader who remembers the old text can find it. */
+@layer base {
+  /* DECISION Phase 87.7 (Plan 08, R4): the border-colour rule below is KEPT for this phase, chosen
+     OVER giving every unpaired site an explicit border colour and deleting this rule. It reproduces
+     v3's default EXACTLY, so all 43 unpaired sites render byte-identically to v3 and the migration
+     diff stays minimal. Proven, not assumed, from the two built stylesheets:
+
+       v3 preflight (the only e5e7eb in the whole v3 baseline):
+         *,:after,:before { box-sizing:border-box; border:0 solid #e5e7eb }
+       v4 preflight (colour DROPPED — this is the regression this rule repairs):
+         *,::backdrop,:after,:before { box-sizing:border-box; border:0 solid; margin:0; padding:0 }
+
+     THIS RULE'S ONLY DEPENDENCY IS --color-gray-200, AND THAT IS THE INTERESTING PART. In the v4
+     build it is NOT a hex — it is v4's re-derived OKLCH palette value,
+     oklch(92.8% .006 264.531), and v4's OKLCH re-derivation moved other palette entries by as much
+     as 56/255 (RESEARCH Pitfall 3). It was therefore converted rather than eyeballed: it
+     round-trips to rgb(229,231,235) = #e5e7eb, delta 0,0,0 on all three channels, in gamut.
+
+     It is also the ONE raw-palette key this app depends on that Plan 04's pin block does NOT pin —
+     correctly so, since that census scans component class strings and this dependency lives here,
+     in CSS. No pin was added because the value is provably right today; the residual (it stays
+     right only while upstream's OKLCH grey ramp does) is recorded as DI-87.7-20 and named here so
+     it is greppable. If you are about to "tidy" --color-gray-200 out of this line, that is the
+     thing you would be breaking.
+
+     The 43 sites are enumerated with file:line in
+     .planning/phases/87.7-tailwind-v4-migration-inserted-2026-07-25/87.7-STYLE-AUDIT.md
+     (path written un-globbed on purpose — DI-87.7-12).
+
+     GIVING THOSE 43 SITES EXPLICIT COLOURS AND DELETING THIS RULE IS PHASE 88's WORK, scheduled,
+     not accepted-forever. Deleting it before then is a VISUAL CHANGE across 43 sites, not a
+     cleanup. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    opacity: 1;
+    color: #9ca3af;
+  }
+}
 
 /* ===== DESIGN SYSTEM: Palette Primitives ===== */
 :root {
@@ -74,6 +514,21 @@
   --color-border-accent: var(--amber-600);
 
   /* Shadows */
+  /* DECISION Phase 87.7 (Plan 06, RESEARCH Pitfall 2): these three STAY in plain `:root`. They
+     are deliberately NOT in the `@theme inline` block above, even though the theme block's
+     `--shadow-theme-*` keys reference them and every other token in this file was ported.
+
+     WHY. `--shadow-sm` / `--shadow-md` / `--shadow-lg` are the NAMES of Tailwind v4's own
+     built-in shadow scale. Here in plain `:root` they are harmless: v4 INLINES the literal
+     values of its built-in scale into the built-in utilities rather than referencing the theme
+     variable, so redefining the property cannot corrupt the built-in scale -- while the
+     project's own `--shadow-theme-*` keys, which reference these properties through `var()`,
+     correctly follow the project's values (including the dark-mode `none` override in the
+     `.dark` block below).
+
+     Moving them into any `@theme` block turns them into THEME KEYS carrying built-in names, at
+     which point they hijack the built-in scale for the whole app -- silently, since nothing
+     fails. Moving them is a DECISION, not a cleanup. */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
   --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
@@ -176,13 +631,43 @@
   --color-focus-ring: var(--amber-400);
 }
 
-/* ===== shadcn/ui token bridge (Tailwind v3, mapped onto existing --color-* palette) =====
+/* ===== shadcn/ui token bridge (introduced Phase 84; mapped onto the existing --color-* palette)
+   =====
    shadcn primitives reference these conventional names; each aliases a direct color
    VALUE from the existing semantic palette (NOT hsl() channels — the project tokens
    are full color values), so shadcn components inherit the warm/purple theme and the
    .dark overrides for free (the --color-* targets already flip under .dark). No
-   default neutral/slate palette and no Tailwind-v4 constructs (Tailwind-v3 path,
-   Pitfall 3); animation utilities come from the tailwindcss-animate plugin. */
+   default neutral/slate palette.
+
+   DECISION Phase 87.7 (Plan 07, R7): this block is REWRITTEN IN PLACE, not deleted. Two of its
+   original claims were falsified by this phase and are corrected below; the Phase 84 rationale
+   above them is preserved deliberately, because it is the only surviving record of WHY these
+   aliases hold full colour values rather than hsl() channels — which is what makes them usable
+   as theme sources at all.
+
+   WHAT CHANGED, and what the old text said:
+     - It claimed this file contains "no Tailwind-v4 constructs (Tailwind-v3 path)". FALSE since
+       Plan 02: the file is now v4 throughout.
+     - It claimed "animation utilities come from the tailwindcss-animate plugin". FALSE since
+       Plan 07: that plugin died with the JS config, and the enter/exit keyframes now come from
+       tw-animate-css (see the import marker at the top of this file).
+
+   WHAT THESE ALIASES NOW DO — and why removing one is a decision, not a cleanup. They are no
+   longer a manual stand-in for JS-config entries. They are CONSUMED BY `@theme inline` above as
+   first-class theme sources: every shadcn-conventional key up there resolves through a name
+   declared in this block. THREE OF THEM ARE LOAD-BEARING BEYOND THAT — `--accent`, `--border`
+   and `--ring`, plus the `-foreground` aliases and the three `-hover` aliases added by Plan 06,
+   double as COLLISION-BREAKERS for v4's `--color-*` theme namespace, which overlaps this
+   project's runtime property names on nine keys. Delete or rename one and the corresponding
+   `@theme inline` key collapses back into a literal self-reference (`--color-X: var(--color-X)`),
+   which is invalid at computed-value time. See the DECISION marker at the `-hover` aliases below
+   for the full derivation and the rejected rename alternative.
+
+   `--radius: 12px` STAYS, and is NOT dead code. v4's radius namespace is `--radius-*`, so a bare
+   `--radius` generates no utility, and nothing in src/ currently reads it (verified — no JS
+   `var(--radius)` call site). It is kept as a plain runtime property because shadcn primitives
+   conventionally consume it and Phase 88 installs six more of them. Deleting it as "unused" is a
+   decision that Phase 88 would have to undo. */
 :root {
   --background: var(--color-bg-page);
   --foreground: var(--color-text-primary);
@@ -204,6 +689,44 @@
   --input: var(--color-border);
   --ring: var(--color-focus-ring);
   --radius: 12px;
+
+  /* DECISION Phase 87.7 (Plan 06, D-01/D-02, RESEARCH Pitfall 1): the three aliases below exist
+     to BREAK A NAME COLLISION, not to add tokens. Chosen OVER renaming the colliding runtime
+     properties themselves.
+
+     The collision, measured: Tailwind v4's colour theme namespace is `--color-*`, and this
+     project's runtime semantic properties are ALSO named `--color-*`. Nine names match exactly
+     (`--color-accent`, `--color-accent-hover`, `--color-accent-text`, `--color-border`,
+     `--color-btn-primary-hover`, `--color-btn-primary-text`, `--color-btn-secondary-hover`,
+     `--color-btn-secondary-text`, `--color-focus-ring`). Eight of those nine are declared in the
+     JS config as `var(<their own name>)`, so a direct port into `@theme inline` writes a literal
+     self-reference such as `--color-accent: var(--color-accent)`. Six of the nine already had a
+     differently-named alias in this Phase 84 bridge block above; `--color-border` was already
+     written against `--border` in the config; only these three had nothing to point at.
+
+     WHY THIS IS NOT COSMETIC. A self-referential custom property is invalid at computed-value
+     time. Today it still renders, but only because this file's `:root` blocks are UNLAYERED and
+     unlayered declarations beat anything Tailwind emits inside `@layer theme`. That is cascade-
+     layer luck, not correctness: it holds only as long as nothing moves these declarations into
+     a layer. Pointing each colliding theme key at a DIFFERENT name removes the literal
+     self-reference, which is the form that is guaranteed-invalid and greppable. Collapsing one
+     of these aliases back into a self-reference is a DECISION, not a cleanup.
+
+     REJECTED ALTERNATIVE — rename the runtime properties (e.g. `--color-accent` to `--sem-accent`)
+     so the namespaces cannot overlap at all. Rejected on cost and blast radius: this file carries
+     140 custom-property declarations that would all need re-checking, and there are six JS call
+     sites reading these properties through `var()` at runtime, which no CSS-only rename would
+     touch and no build step would catch (SafeImage.js:31, DieLogo.js:12, EventScheduler.js:459
+     and :517 and :518, gameDetail/page.js:1782 — enumerated exhaustively by RESEARCH). A rename
+     is still the structurally cleaner end state; if Phase 88 wants it, it is a deliberate
+     follow-up, and these three lines are what it deletes.
+
+     These live in `:root` ONLY, deliberately. They resolve dynamically because their targets are
+     the ones that flip under `.dark` (the same reason stated in this block's own banner above).
+     Adding `.dark` copies would be redundant and would create a second place to keep in sync. */
+  --accent-hover: var(--color-accent-hover);
+  --primary-hover: var(--color-btn-primary-hover);
+  --secondary-hover: var(--color-btn-secondary-hover);
 }
 
 /* ===== DESIGN SYSTEM: Theme Transition ===== */

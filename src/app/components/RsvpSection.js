@@ -101,22 +101,35 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
     no: rsvps.filter(r => r.status === 'no'),
   };
 
+  // DECISION Phase 87.7 D-18 (object-literal shape): `activeBg` and `hoverBg` are EMPTY STRINGS
+  // on purpose, not by accident. They held `bg-status-*/10` / `hover:bg-status-*/10`, which on
+  // Tailwind v3 generated no class at all (a `/N` modifier on a `var()`-backed colour), so these
+  // rows have always rendered untinted. The tokens were REMOVED rather than: (a) dropped to their
+  // base class, which paints a SOLID status-coloured block — the exact regression being avoided; or
+  // (b) reimplemented via `color-mix`, a deliberate visual change this phase forbids. The KEYS are
+  // kept with '' rather than deleted so consumers reading `cfg.activeBg` / `cfg.hoverBg` still get a
+  // string. Class strings living in an object literal — not a className attribute — is why the
+  // census sweep is whole-file; a className-scoped matcher finds none of these five sites.
+  // Designing the real tints is PHASE 88's; full site list in
+  // `.planning/phases/87.7-*/87.7-OPACITY-CENSUS.md`. One of exactly two markers for this strip
+  // (see ParticipantRow.js for the className shape). Filling these back in is a decision, not a
+  // cleanup.
   const statusConfig = {
     yes: {
       label: "You're going!",
       textColor: 'text-status-success',
-      activeBg: 'bg-status-success/10',
+      activeBg: '',
       activeBorder: 'border-status-success',
-      hoverBg: 'hover:bg-status-success/10',
+      hoverBg: '',
       buttonText: 'Yes',
       sectionTitle: 'Going',
     },
     maybe: {
       label: "You're a maybe",
       textColor: 'text-status-warning',
-      activeBg: 'bg-status-warning/10',
+      activeBg: '',
       activeBorder: 'border-status-warning',
-      hoverBg: 'hover:bg-status-warning/10',
+      hoverBg: '',
       buttonText: 'Maybe',
       sectionTitle: 'Maybe',
     },
@@ -125,7 +138,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
       textColor: 'text-content-secondary',
       activeBg: 'bg-surface-elevated',
       activeBorder: 'border-line-strong',
-      hoverBg: 'hover:bg-status-error/10',
+      hoverBg: '',
       buttonText: 'No',
       sectionTitle: "Can't Make It",
     },
@@ -219,7 +232,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
               }}
               placeholder="Add a note (optional)"
               rows={2}
-              className="w-full border border-line rounded-card px-3 py-2 text-sm bg-surface-input text-content-primary focus:outline-none focus:ring-2 ring-focus-ring resize-none"
+              className="w-full border border-line rounded-card px-3 py-2 text-sm bg-surface-input text-content-primary focus:outline-hidden focus:ring-2 ring-focus-ring resize-none"
             />
             <div className="flex items-center justify-between">
               <span className="text-xs text-content-muted">{note.length}/500</span>

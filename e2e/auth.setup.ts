@@ -5,14 +5,21 @@ import { test as setup, expect } from '@playwright/test';
  *
  * Runs ONCE as the `setup` project (see playwright.config.ts). It drives the real
  * Auth0 Universal Login hosted page via the @auth0/nextjs-auth0 `/api/auth/login`
- * route, then persists the resulting `appSession` cookie to `.auth/user.json`. The
- * four journey specs declare `dependencies: ['setup']` + `storageState` and reuse
- * this cookie, so they never re-authenticate.
+ * route, then persists the resulting `appSession` cookie to `.auth/user.json`.
+ * The consuming projects declare `dependencies: ['setup']` + `storageState`, and
+ * their testMatch globs cover ALL of e2e/*.spec.ts (the 5 user journeys plus the
+ * tailwind-v4-styles spot-check), so every spec reuses this cookie and none
+ * re-authenticate — across TWO consuming projects, `journeys` (desktop) and
+ * `phone` (Phase 87.7 MOB-03), which share this one state.
  *
  * Credentials are read ONLY from env (GitHub secrets in CI; absent locally). They
  * are NEVER logged — leaking them would defeat the secret. (Threat T-82-08.)
  *
- * This is also the 5th critical journey (login). Requires a test user with MFA off
+ * This is also the 6th critical journey (login) — it was the 5th when 82-04 wrote
+ * this header alongside four specs; 82-05 (36c68b2) added invite.spec.ts and left
+ * all three journey-count comments behind. Phase 87.7 D-16 named the two in
+ * playwright.config.ts and ci.yml; this file was the third and is corrected here.
+ * Requires a test user with MFA off
  * (Plan 05 human checkpoint / Open Q1) — there is no code fallback for MFA.
  */
 const AUTH_FILE = '.auth/user.json';

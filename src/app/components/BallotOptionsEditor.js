@@ -35,7 +35,7 @@ export default function BallotOptionsEditor({ ballotOptions, setBallotOptions, b
               onClick={() => {
                 setBallotOptions(ballotOptions.filter((_, i) => i !== index));
               }}
-              className="text-status-error hover:text-status-error text-lg px-2 py-1 flex-shrink-0"
+              className="text-status-error hover:text-status-error text-lg px-2 py-1 shrink-0"
               title="Remove option"
             >
               &times;

@@ -36,7 +36,7 @@ export interface SelectFieldProps<T extends FieldValues> {
 }
 
 const DEFAULT_SELECT_CLASS =
-  'w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring';
+  'w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring';
 
 export function SelectField<T extends FieldValues>({
   control,

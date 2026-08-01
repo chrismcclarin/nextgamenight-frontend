@@ -114,7 +114,7 @@ export default function CalendarMonthView({
               onClick={() => {
                 if (date) onDayClick(date, dayEvents);
               }}
-              className={`${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} border border-line rounded p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
+              className={`${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} border border-line rounded-sm p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
                 isAdjacent ? 'opacity-60 ' : ''
               }${
                 !date ? 'bg-surface-page' :
@@ -144,7 +144,7 @@ export default function CalendarMonthView({
                           return (
                             <div
                               key={event.id}
-                              className="text-xs p-0.5 bg-surface-card-hover text-accent rounded font-medium cursor-pointer hover:bg-surface-elevated transition-colors"
+                              className="text-xs p-0.5 bg-surface-card-hover text-accent rounded-sm font-medium cursor-pointer hover:bg-surface-elevated transition-colors"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onEventClick(event);
@@ -169,7 +169,7 @@ export default function CalendarMonthView({
                               e.stopPropagation();
                               onEventClick(event);
                             }}
-                            className={`text-xs p-1 rounded truncate hover:opacity-90 transition-opacity flex items-center gap-1 font-medium cursor-pointer`}
+                            className={`text-xs p-1 rounded-sm truncate hover:opacity-90 transition-opacity flex items-center gap-1 font-medium cursor-pointer`}
                             style={{
                               backgroundColor: groupBgColor,
                               ...safeBgImageStyle(groupBgImage),
@@ -196,7 +196,7 @@ export default function CalendarMonthView({
                             )}
                             <div className="flex items-center gap-1 relative z-10 flex-1 min-w-0">
                               {groupProfilePic && (
-                                <span className="flex-shrink-0 text-xs leading-none">
+                                <span className="shrink-0 text-xs leading-none">
                                   {groupProfilePic.startsWith('http') || groupProfilePic.startsWith('/') ? (
                                     <SafeImage
                                       src={groupProfilePic}

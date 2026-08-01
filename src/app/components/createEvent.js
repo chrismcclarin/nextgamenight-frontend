@@ -676,7 +676,28 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             so saved start_date is stamped against a stable canonical TZ. */}
         <TimezoneNudgeBanner />
 
-        <form onSubmit={onSubmit} className="space-y-4">
+        {/* Phase 87.7 Plan 10 (this attribute) populates the
+            data-testid="tw4-space-y-exemplar" hook consumed by
+            e2e/tailwind-v4-styles.spec.ts — D-10 layer 2, the computed-style spot check
+            for the two render-only hazards no grep can see. This form is the exemplar
+            because its direct children are five unconditional <div> wrappers (no <p> or
+            heading, whose UA default margins RESEARCH's probe run tripped over), and
+            because e2e/create-event.spec.ts already proves this modal reachable in green
+            CI.
+
+            DECISION Phase 87.7 Plan 10: exactly ONE test id was added here, on a
+            structural form element that has no usable accessible role, so no role locator
+            exists for it. REJECTED: adding a SECOND test id for the bare border-utility
+            exemplar (the start_date input below, site 8 on the border audit's unpaired
+            list). That input is already located by getByLabel(/start date & time/i) inside
+            the green create-event journey — a stronger reachability guarantee than a fresh
+            attribute, and a second hook would imply that label locator was insufficient
+            when it is in fact the better-evidenced of the two. Adding one, or replacing
+            this attribute with a role locator, is a decision and not a cleanup.
+
+            Audit site list:
+            .planning/phases/87.7-tailwind-v4-migration-inserted-2026-07-25/87.7-STYLE-AUDIT.md */}
+        <form onSubmit={onSubmit} data-testid="tw4-space-y-exemplar" className="space-y-4">
           {/* Game Selection */}
           <div>
             <label className="block text-sm font-medium text-content-primary mb-1">
@@ -778,7 +799,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                           onClick={handlePrevWeek}
                           disabled={!canGoBack}
                           aria-label="Previous week"
-                          className="px-2 py-1 text-sm rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
+                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
                         >
                           &lt;
                         </button>
@@ -791,7 +812,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                             onClick={handleToday}
                             disabled={isOnTodayMonday}
                             aria-label="Jump to current week"
-                            className="px-2 py-1 text-xs rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
+                            className="px-2 py-1 text-xs rounded-sm bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
                           >
                             Today
                           </button>
@@ -801,7 +822,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                           onClick={handleNextWeek}
                           disabled={!canGoForward}
                           aria-label="Next week"
-                          className="px-2 py-1 text-sm rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
+                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
                         >
                           &gt;
                         </button>
@@ -836,7 +857,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                     value={newEvent.start_date}
                     onChange={handleChange}
                     required={!editingEvent}
-                    className="w-full p-2 border rounded text-content-primary bg-surface-input"
+                    className="w-full p-2 border rounded-sm text-content-primary bg-surface-input"
                     max="9999-12-31T23:59"
                   />
                 </div>
@@ -859,7 +880,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                           id="duration_minutes"
                           value={newEvent.duration_minutes || ''}
                           onChange={handleChange}
-                          className={`w-full p-2 border rounded text-content-primary bg-surface-input ${durationOverMax ? 'border-status-error' : ''}`}
+                          className={`w-full p-2 border rounded-sm text-content-primary bg-surface-input ${durationOverMax ? 'border-status-error' : ''}`}
                           placeholder="Enter duration in minutes"
                           required={!editingEvent}
                           min="1"
@@ -888,7 +909,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 id="rsvp_deadline"
                 value={newEvent.rsvp_deadline || ''}
                 onChange={handleChange}
-                className="w-full p-2 border rounded text-content-primary bg-surface-input"
+                className="w-full p-2 border rounded-sm text-content-primary bg-surface-input"
                 max={newEvent.start_date && newEvent.start_date < '9999-12-31T23:59' ? newEvent.start_date : '9999-12-31T23:59'}
               />
             </div>
@@ -910,7 +931,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             <label className="block text-sm font-medium mb-2 text-content-primary">
               Participants <span className="text-red-500">*</span>
             </label>
-            <div className="space-y-2 max-h-60 overflow-y-auto border border-line p-2 rounded bg-surface-input">
+            <div className="space-y-2 max-h-60 overflow-y-auto border border-line p-2 rounded-sm bg-surface-input">
               {newEvent.participants.map((participant, index) => (
                 <ParticipantRow
                   key={index}
@@ -946,7 +967,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
               value={newEvent.comments}
               onChange={handleChange}
               rows="3"
-              className="w-full p-2 border rounded text-content-primary bg-surface-input"
+              className="w-full p-2 border rounded-sm text-content-primary bg-surface-input"
               placeholder="Optional notes about this game session"
             />
           </div>

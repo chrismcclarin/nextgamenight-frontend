@@ -121,7 +121,7 @@ export default function EventDayModal({
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           {groupProfilePic && (
-                            <div className="w-10 h-10 rounded-full bg-surface-card flex items-center justify-center text-xl flex-shrink-0 overflow-hidden border-2 border-line shadow-sm">
+                            <div className="w-10 h-10 rounded-full bg-surface-card flex items-center justify-center text-xl shrink-0 overflow-hidden border-2 border-line shadow-xs">
                               {groupProfilePic.startsWith('http') || groupProfilePic.startsWith('/') ? (
                                 <SafeImage
                                   src={groupProfilePic}
@@ -177,7 +177,7 @@ export default function EventDayModal({
                             </p>
                           </div>
                           {!isPastEvent && (
-                            <span className="px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded ml-auto">
+                            <span className="px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded-sm ml-auto">
                               Upcoming
                             </span>
                           )}
@@ -206,7 +206,7 @@ export default function EventDayModal({
                       <SafeImage
                         src={event.Game?.image_url}
                         alt={event.Game?.name}
-                        className="w-16 h-16 object-cover rounded"
+                        className="w-16 h-16 object-cover rounded-sm"
                       />
                     </div>
                   </div>

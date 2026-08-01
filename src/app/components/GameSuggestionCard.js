@@ -25,7 +25,7 @@ export default function GameSuggestionCard({ game, onClick }) {
       <SafeImage
         src={game.thumbnail_url}
         alt={game.name}
-        className="w-16 h-16 rounded object-cover flex-shrink-0"
+        className="w-16 h-16 rounded-sm object-cover shrink-0"
       />
 
       {/* Details */}

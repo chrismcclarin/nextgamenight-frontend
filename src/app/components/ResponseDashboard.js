@@ -120,11 +120,11 @@ export default function ResponseDashboard({
     return (
       <div className="bg-surface-card rounded-card border border-line p-4">
         <div className="animate-pulse">
-          <div className="h-6 bg-surface-elevated rounded w-1/3 mb-4"></div>
+          <div className="h-6 bg-surface-elevated rounded-sm w-1/3 mb-4"></div>
           <div className="space-y-3">
-            <div className="h-10 bg-surface-elevated rounded"></div>
-            <div className="h-10 bg-surface-elevated rounded"></div>
-            <div className="h-10 bg-surface-elevated rounded"></div>
+            <div className="h-10 bg-surface-elevated rounded-sm"></div>
+            <div className="h-10 bg-surface-elevated rounded-sm"></div>
+            <div className="h-10 bg-surface-elevated rounded-sm"></div>
           </div>
         </div>
       </div>
@@ -134,7 +134,7 @@ export default function ResponseDashboard({
   // Error state
   if (error) {
     return (
-      <div className="bg-surface-card rounded-card border border-status-error/30 p-4">
+      <div className="bg-surface-card rounded-card border p-4">
         <div className="flex items-center gap-2 text-status-error">
           <ExclamationIcon className="w-5 h-5" />
           <span>{error}</span>
@@ -157,14 +157,14 @@ export default function ResponseDashboard({
 
       {/* Reminder error message */}
       {reminderError && (
-        <div className="mb-3 p-2 bg-status-error/10 border border-status-error/30 rounded text-sm text-status-error">
+        <div className="mb-3 p-2 border rounded-sm text-sm text-status-error">
           {reminderError}
         </div>
       )}
 
       {/* Blind voting notice */}
       {blindVotingEnabled && !pollClosed && !userHasResponded && !isAdmin && (
-        <div className="mb-3 p-2 bg-status-warning/10 border border-status-warning/30 rounded text-sm text-status-warning">
+        <div className="mb-3 p-2 border rounded-sm text-sm text-status-warning">
           Slot counts are hidden until you submit your response or the poll closes.
         </div>
       )}
@@ -178,13 +178,13 @@ export default function ResponseDashboard({
           {respondents.map(r => (
             <li
               key={r.user_id}
-              className="flex items-center justify-between py-2 px-2 rounded hover:bg-surface-card-hover border-b border-line last:border-b-0"
+              className="flex items-center justify-between py-2 px-2 rounded-sm hover:bg-surface-card-hover border-b border-line last:border-b-0"
             >
               <div className="flex items-center gap-2 min-w-0">
                 {r.has_responded ? (
-                  <CheckIcon className="w-5 h-5 text-status-success flex-shrink-0" />
+                  <CheckIcon className="w-5 h-5 text-status-success shrink-0" />
                 ) : (
-                  <ClockIcon className="w-5 h-5 text-content-muted flex-shrink-0" />
+                  <ClockIcon className="w-5 h-5 text-content-muted shrink-0" />
                 )}
 
                 <span className="text-content-primary truncate">
@@ -195,19 +195,19 @@ export default function ResponseDashboard({
                 </span>
 
                 {r.has_responded && showSlotCounts && r.slot_count !== null && (
-                  <span className="text-sm text-content-muted flex-shrink-0">
+                  <span className="text-sm text-content-muted shrink-0">
                     - {r.slot_count} slot{r.slot_count !== 1 ? 's' : ''} available
                   </span>
                 )}
 
                 {r.has_responded && (!showSlotCounts || r.slot_count === null) && (
-                  <span className="text-sm text-content-muted flex-shrink-0">
+                  <span className="text-sm text-content-muted shrink-0">
                     - responded
                   </span>
                 )}
 
                 {!r.has_responded && (
-                  <span className="text-sm text-content-muted flex-shrink-0">
+                  <span className="text-sm text-content-muted shrink-0">
                     - pending
                   </span>
                 )}
@@ -258,7 +258,7 @@ function RemindButton({ userId, lastRemindedAt, isReminding, onRemind }) {
       }
 
       return (
-        <span className="text-sm text-content-muted flex-shrink-0">
+        <span className="text-sm text-content-muted shrink-0">
           Reminded {timeAgo}
         </span>
       );
@@ -269,7 +269,7 @@ function RemindButton({ userId, lastRemindedAt, isReminding, onRemind }) {
     <button
       onClick={() => onRemind(userId)}
       disabled={isReminding}
-      className="px-3 py-1 text-sm text-content-link hover:bg-accent/10 rounded disabled:opacity-50 flex-shrink-0 transition-colors"
+      className="px-3 py-1 text-sm text-content-link rounded-sm disabled:opacity-50 shrink-0 transition-colors"
     >
       {isReminding ? 'Sending...' : 'Remind'}
     </button>

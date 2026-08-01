@@ -51,11 +51,11 @@ export default function CheckInDemo({ stage }) {
         {/* Tiny grid hint — three colored cells suggest the paint UI without
             re-rendering the full grid (that's Step 3). */}
         <div className="px-4 py-2 flex items-center gap-1.5">
-          <div className="w-6 h-3 rounded-sm bg-green-300 border border-green-400" />
-          <div className="w-6 h-3 rounded-sm bg-green-300 border border-green-400" />
-          <div className="w-6 h-3 rounded-sm bg-green-300 border border-green-400" />
-          <div className="w-6 h-3 rounded-sm bg-surface-elevated border border-line" />
-          <div className="w-6 h-3 rounded-sm bg-surface-elevated border border-line" />
+          <div className="w-6 h-3 rounded-xs bg-green-300 border border-green-400" />
+          <div className="w-6 h-3 rounded-xs bg-green-300 border border-green-400" />
+          <div className="w-6 h-3 rounded-xs bg-green-300 border border-green-400" />
+          <div className="w-6 h-3 rounded-xs bg-surface-elevated border border-line" />
+          <div className="w-6 h-3 rounded-xs bg-surface-elevated border border-line" />
           <span className="text-xs text-content-muted ml-2">in the app, anytime</span>
         </div>
       </div>
@@ -78,7 +78,7 @@ export default function CheckInDemo({ stage }) {
             Or send them a check-in
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-btn-primary text-btn-primary-content flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+            <div className="w-7 h-7 rounded-full bg-btn-primary text-btn-primary-content flex items-center justify-center text-[10px] font-bold shrink-0">
               NG
             </div>
             <div className="flex-1 min-w-0">
@@ -89,7 +89,7 @@ export default function CheckInDemo({ stage }) {
                 Wingspan — When are you available?
               </div>
             </div>
-            <span className="text-xs text-content-muted flex-shrink-0">now</span>
+            <span className="text-xs text-content-muted shrink-0">now</span>
           </div>
         </div>
         <div className="px-4 py-3">
@@ -120,7 +120,7 @@ export default function CheckInDemo({ stage }) {
         }}
       >
         <div className="bg-surface-card border border-line rounded-card max-w-md mx-auto p-3 inline-flex items-center gap-3">
-          <div className="w-9 h-9 rounded-btn bg-surface-elevated border border-line flex items-center justify-center flex-shrink-0">
+          <div className="w-9 h-9 rounded-btn bg-surface-elevated border border-line flex items-center justify-center shrink-0">
             <svg
               className="w-5 h-5 text-content-secondary"
               fill="none"

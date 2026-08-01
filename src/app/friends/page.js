@@ -425,7 +425,7 @@ function FriendsPage() {
                             value={searchEmail}
                             onChange={(e) => setSearchEmail(e.target.value)}
                             placeholder="Enter friend's email address"
-                            className="flex-1 px-4 py-2 border border-line rounded-btn focus:outline-none focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
+                            className="flex-1 px-4 py-2 border border-line rounded-btn focus:outline-hidden focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
                             required
                         />
                         <button
@@ -570,7 +570,7 @@ function FriendsPage() {
                                                 aria-label="Invite to group"
                                                 value={selectedGroupId}
                                                 onChange={(e) => setSelectedGroupId(e.target.value)}
-                                                className="flex-1 min-w-[180px] max-w-xs px-3 py-2 border border-line rounded-btn text-sm text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+                                                className="flex-1 min-w-[180px] max-w-xs px-3 py-2 border border-line rounded-btn text-sm text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
                                             >
                                                 <option value="" disabled>Select a group...</option>
                                                 {userGroups.map(group => (
@@ -605,10 +605,10 @@ function FriendsPage() {
                                         {bulkInviteResult && (
                                             <div className={`mt-3 p-3 rounded-lg text-sm font-medium ${
                                                 bulkInviteResult.failCount === 0
-                                                    ? 'bg-status-success/10 text-status-success border border-status-success/20'
+                                                    ? 'text-status-success border'
                                                     : bulkInviteResult.successCount > 0
-                                                        ? 'bg-status-warning/10 text-status-warning border border-status-warning/20'
-                                                        : 'bg-status-error/10 text-status-error border border-status-error/20'
+                                                        ? 'text-status-warning border'
+                                                        : 'text-status-error border'
                                             }`}>
                                                 {bulkInviteResult.failCount === 0
                                                     ? `Invited ${bulkInviteResult.successCount} friend(s) to ${getSelectedGroupName()}!`
@@ -646,7 +646,7 @@ function FriendsPage() {
                                                         checked={isInGroup || selectedFriends.has(friendUserId)}
                                                         disabled={checkboxDisabled}
                                                         onChange={() => toggleFriendSelection(friendUserId)}
-                                                        className={`h-4 w-4 rounded border-line text-btn-primary focus:ring-focus-ring ${
+                                                        className={`h-4 w-4 rounded-sm border-line text-btn-primary focus:ring-focus-ring ${
                                                             checkboxDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                                                         }`}
                                                     />
@@ -665,7 +665,7 @@ function FriendsPage() {
                                                 <button
                                                     onClick={() => handleRemove(friendship.id)}
                                                     disabled={actionLoading[friendship.id] === 'remove'}
-                                                    className="text-status-error hover:text-status-error/80 text-sm font-medium transition-colors disabled:opacity-50"
+                                                    className="text-status-error text-sm font-medium transition-colors disabled:opacity-50"
                                                 >
                                                     {actionLoading[friendship.id] === 'remove' ? 'Removing...' : 'Remove'}
                                                 </button>
@@ -775,7 +775,7 @@ function FriendsPage() {
                                                     <p className="text-sm text-content-muted mt-0.5">{addressee.email}</p>
                                                 )}
                                             </div>
-                                            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-status-warning/10 text-status-warning border border-status-warning/30">
+                                            <span className="px-3 py-1 rounded-full text-xs font-semibold text-status-warning border">
                                                 Pending
                                             </span>
                                         </div>

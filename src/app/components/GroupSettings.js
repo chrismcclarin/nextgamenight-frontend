@@ -301,7 +301,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                 value={customPictureUrl}
                 onChange={(e) => setCustomPictureUrl(e.target.value)}
                 placeholder="https://example.com/image.jpg"
-                className="flex-1 p-2 border border-line rounded text-content-primary bg-surface-input"
+                className="flex-1 p-2 border border-line rounded-sm text-content-primary bg-surface-input"
               />
               <button
                 onClick={handleUseCustomPicture}
@@ -355,7 +355,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                 value={customBackgroundUrl}
                 onChange={(e) => setCustomBackgroundUrl(e.target.value)}
                 placeholder="https://example.com/background.jpg"
-                className="flex-1 p-2 border border-line rounded text-content-primary bg-surface-input"
+                className="flex-1 p-2 border border-line rounded-sm text-content-primary bg-surface-input"
               />
               <button
                 onClick={handleUseCustomBackground}
@@ -526,7 +526,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                   value={deleteConfirmText}
                   onChange={(e) => setDeleteConfirmText(e.target.value)}
                   placeholder="Type group name to confirm"
-                  className="w-full p-2 min-h-[44px] border border-red-300 rounded text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className="w-full p-2 min-h-[44px] border border-red-300 rounded-sm text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-red-500"
                 />
                 {/* Stacked on a phone, inline from sm: up — two side-by-side
                     targets at 375px are cramped, and one of them is destructive. */}

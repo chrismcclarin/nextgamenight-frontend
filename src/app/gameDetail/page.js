@@ -28,20 +28,20 @@ import { toast } from 'sonner';
 // status is one of 'yes' | 'maybe' | 'no' | null/undefined (no response).
 function RsvpStatusPill({ status }) {
     const map = {
-        yes: { label: 'Going', cls: 'bg-status-success/15 text-status-success' },
+        yes: { label: 'Going', cls: 'text-status-success' },
         maybe: { label: 'Maybe', cls: 'bg-amber-100 text-amber-700' },
         no: { label: 'No', cls: 'bg-surface-card-hover text-content-muted' },
     };
     if (!status) {
         return (
-            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-surface-card-hover text-content-muted">
+            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-sm bg-surface-card-hover text-content-muted">
                 No reply
             </span>
         );
     }
     const m = map[status] || map.no;
     return (
-        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${m.cls}`}>
+        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-sm ${m.cls}`}>
             {m.label}
         </span>
     );
@@ -60,7 +60,7 @@ function RsvpStatusPill({ status }) {
 function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScope }) {
     const isCustom = !!participant.is_custom;
     return (
-        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded border border-line bg-surface-card text-xs max-w-full">
+        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line bg-surface-card text-xs max-w-full">
             <span className="font-medium text-content-primary truncate">
                 {isCustom ? (
                     <>{participant.username || 'Guest'}<span className="text-content-muted ml-1">(Guest)</span></>
@@ -70,14 +70,14 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
             </span>
             <RsvpStatusPill status={rsvpStatus} />
             {role === 'owner' && (
-                <span className="text-[10px] uppercase tracking-wide bg-purple-100 text-purple-700 px-1 rounded font-semibold">Owner</span>
+                <span className="text-[10px] uppercase tracking-wide bg-purple-100 text-purple-700 px-1 rounded-sm font-semibold">Owner</span>
             )}
             {role === 'admin' && (
-                <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 px-1 rounded font-semibold">Admin</span>
+                <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 px-1 rounded-sm font-semibold">Admin</span>
             )}
             {participant.is_guest && viewerScope === 'group-member' && (
                 <span
-                    className="text-[10px] uppercase tracking-wide rounded bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50 px-1 py-0.5"
+                    className="text-[10px] uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50 px-1 py-0.5"
                     title="Joined via game-invite QR (not a group member)"
                 >
                     Guest
@@ -111,14 +111,14 @@ function GuestInviteButton({ groupId, userId }) {
         <button
             onClick={handleInvite}
             disabled={status === 'sending' || status === 'sent' || status === 'already'}
-            className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+            className={`text-xs px-2 py-0.5 rounded-sm border transition-colors ${
                 status === 'sent'
-                    ? 'text-status-success border-status-success/30 bg-status-success/10'
+                    ? 'text-status-success'
                     : status === 'already'
                         ? 'text-content-muted border-line bg-surface-page'
                         : status === 'error'
-                            ? 'text-status-error border-status-error/30 bg-status-error/10 hover:bg-status-error/20'
-                            : 'text-content-link border-content-link/30 hover:bg-content-link/10'
+                            ? 'text-status-error'
+                            : 'text-content-link'
             }`}
             title={
                 status === 'sent'
@@ -982,11 +982,11 @@ export default function GameDetailPage() {
                     <div className="flex justify-between items-start gap-3 mb-2">
                         <h1 className="text-3xl font-bold text-content-primary">{singleEvent.title || 'Game Night'}</h1>
                         {((userScope === 'group-member' && (userRole === 'owner' || userRole === 'admin')) || userScope === 'game-only') && (
-                            <div className="relative flex-shrink-0" ref={actionsMenuRef}>
+                            <div className="relative shrink-0" ref={actionsMenuRef}>
                                 <button
                                     type="button"
                                     onClick={() => setShowActionsMenu(prev => !prev)}
-                                    className="text-2xl text-content-muted hover:text-content-primary px-2 py-1 leading-none rounded hover:bg-surface-card-hover transition-colors"
+                                    className="text-2xl text-content-muted hover:text-content-primary px-2 py-1 leading-none rounded-sm hover:bg-surface-card-hover transition-colors"
                                     aria-haspopup="menu"
                                     aria-expanded={showActionsMenu}
                                     aria-label="Event actions"
@@ -1065,7 +1065,7 @@ export default function GameDetailPage() {
                                     type="button"
                                     onClick={handleShowGameQR}
                                     disabled={qrLoading}
-                                    className="btn btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5 flex-shrink-0"
+                                    className="btn btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5 shrink-0"
                                     title="Share Game QR"
                                 >
                                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
@@ -1276,7 +1276,7 @@ export default function GameDetailPage() {
                                     return (
                                         <div
                                             key={p.user_id || `custom-${p.username}`}
-                                            className="flex items-center justify-between gap-3 px-3 py-2 rounded border border-line bg-surface-card"
+                                            className="flex items-center justify-between gap-3 px-3 py-2 rounded-sm border border-line bg-surface-card"
                                         >
                                             <div className="flex items-center gap-2 flex-wrap min-w-0">
                                                 <span className="font-medium text-content-primary truncate">
@@ -1311,7 +1311,7 @@ export default function GameDetailPage() {
                                                     // (Owner=purple, Admin=blue) while staying distinguishable from
                                                     // Owner's purple. Self is a viewer-perspective indicator, not a
                                                     // role, but the visual family is the closest existing pattern.
-                                                    <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded font-semibold">
+                                                    <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-semibold">
                                                         You
                                                     </span>
                                                 )}
@@ -1323,15 +1323,15 @@ export default function GameDetailPage() {
                                                     // through ClickableMemberName above. Emerald color echoes the
                                                     // text-status-success used by that mobile inline indicator for
                                                     // visual continuity across viewports.
-                                                    <span className="hidden md:inline-flex items-center text-[10px] uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded font-semibold">
+                                                    <span className="hidden md:inline-flex items-center text-[10px] uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-semibold">
                                                         Friend
                                                     </span>
                                                 )}
                                                 {role === 'owner' && (
-                                                    <span className="text-[10px] uppercase tracking-wide bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-semibold">Owner</span>
+                                                    <span className="text-[10px] uppercase tracking-wide bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm font-semibold">Owner</span>
                                                 )}
                                                 {role === 'admin' && (
-                                                    <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold">Admin</span>
+                                                    <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-semibold">Admin</span>
                                                 )}
                                                 {/* Phase 71.1 GAMP-12: render Guest badge for is_guest=true rows
                                                     when viewer is a full group member. Skips render for game-only
@@ -1341,7 +1341,7 @@ export default function GameDetailPage() {
                                                     can decide who to onboard via admin-initiated invite. */}
                                                 {p.is_guest && userScope === 'group-member' && (
                                                     <span
-                                                        className="inline-flex items-center px-1.5 py-0.5 text-[10px] uppercase tracking-wide rounded bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
+                                                        className="inline-flex items-center px-1.5 py-0.5 text-[10px] uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
                                                         title="Joined via game-invite QR (not a group member)"
                                                     >
                                                         Guest
@@ -1355,9 +1355,9 @@ export default function GameDetailPage() {
                                                 <button
                                                     type="button"
                                                     onClick={() => handleRemoveClick(p)}
-                                                    className={`text-xs px-2 py-1 border rounded transition-colors flex-shrink-0 ${
+                                                    className={`text-xs px-2 py-1 border rounded-sm transition-colors shrink-0 ${
                                                         isConfirming
-                                                            ? 'bg-status-error/10 border-status-error text-status-error font-semibold'
+                                                            ? 'border-status-error text-status-error font-semibold'
                                                             : 'border-line text-content-muted hover:bg-surface-card-hover'
                                                     }`}
                                                 >
@@ -1778,8 +1778,22 @@ export default function GameDetailPage() {
                 
                 {displayedEvents.length > 0 ? (
                     <div className="space-y-0">
+                        {/* DECISION Phase 87.7 (Plan 08, R5): the separator below carries NO top
+                            margin, deliberately, and re-adding one is a visual change rather than a
+                            fix. Under Tailwind v3 this className ended in an mt-4 that never
+                            rendered: v3 emitted
+                              .space-y-0>:not([hidden])~:not([hidden]) { margin-top: 0 }
+                            at specificity (0,3,0), unlayered, which beat .mt-4's (0,1,0) and forced
+                            the margin to 0 on every child after the first. v4 emits
+                              :where(.space-y-0>:not(:last-child)) { margin-block: 0 }
+                            — :where() contributes ZERO specificity, so the same .mt-4 now WINS and
+                            each card after the first would gain 16px it never had. The mt-4 was
+                            removed to keep this list rendering exactly as it did on v3 (R2). The
+                            separator's visual weight comes from border-t-2 + pt-4, which is
+                            unchanged and always did the work. Whether these cards SHOULD be spaced
+                            further apart is a design question and belongs to Phase 88. */}
                         {displayedEvents.map((event, index) => (
-                            <div key={event.id} className={`pl-4 py-2 ${index > 0 ? 'border-t-2 border-line-strong pt-4 mt-4' : ''}`} style={{ borderLeft: '4px solid var(--color-btn-primary-bg)' }}>
+                            <div key={event.id} className={`pl-4 py-2 ${index > 0 ? 'border-t-2 border-line-strong pt-4' : ''}`} style={{ borderLeft: '4px solid var(--color-btn-primary-bg)' }}>
                                 <div className="flex justify-between items-start gap-4">
                                     <div className="flex-1">
                                         <div className="flex items-start justify-between gap-4 mb-2">
@@ -1814,7 +1828,7 @@ export default function GameDetailPage() {
                                                 )}
                                             </div>
                                             {(userRole === 'owner' || userRole === 'admin') && (
-                                                <div className="flex gap-2 flex-shrink-0">
+                                                <div className="flex gap-2 shrink-0">
                                                     <button
                                                         onClick={() => handleEditEvent(event)}
                                                         className="btn btn-primary px-3 py-1 text-sm"
@@ -1838,7 +1852,7 @@ export default function GameDetailPage() {
                                                 <div className="space-y-2">
                                                     {event.EventParticipations.map((participation, idx) => (
                                                         <div key={idx} className="flex items-center gap-2 flex-wrap">
-                                                            <span className="bg-surface-card-hover text-content-primary px-3 py-1 rounded border border-line inline-flex items-center gap-2">
+                                                            <span className="bg-surface-card-hover text-content-primary px-3 py-1 rounded-sm border border-line inline-flex items-center gap-2">
                                                                 <span className="font-medium">
                                                                     {participation.is_custom ? (
                                                                         <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
@@ -1860,12 +1874,12 @@ export default function GameDetailPage() {
                                                                     </span>
                                                                 )}
                                                                 {participation.is_new_player && (
-                                                                    <span className="text-xs bg-surface-card-hover text-content-link px-1.5 py-0.5 rounded font-semibold">
+                                                                    <span className="text-xs bg-surface-card-hover text-content-link px-1.5 py-0.5 rounded-sm font-semibold">
                                                                         New Player
                                                                     </span>
                                                                 )}
                                                                 {participation.faction && (
-                                                                    <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
+                                                                    <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm">
                                                                         {participation.faction}
                                                                     </span>
                                                                 )}
@@ -2028,7 +2042,7 @@ export default function GameDetailPage() {
                                                         )}
                                                     </p>
                                                     {isUserReview && (
-                                                        <span className="text-xs bg-surface-card-hover text-content-link px-2 py-1 rounded">
+                                                        <span className="text-xs bg-surface-card-hover text-content-link px-2 py-1 rounded-sm">
                                                             You
                                                         </span>
                                                     )}

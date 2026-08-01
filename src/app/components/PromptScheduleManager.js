@@ -121,7 +121,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
     <>
       {/* Error message */}
       {error && (
-        <div className="mb-4 p-3 bg-status-error/10 border border-status-error/30 rounded-btn">
+        <div className="mb-4 p-3 border rounded-btn">
           <p className="text-status-error text-sm">{error}</p>
         </div>
       )}
@@ -200,7 +200,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* Header - pinned above scrollable content */}
-        <div className="modal-header p-6 pb-4 border-b border-line flex-shrink-0">
+        <div className="modal-header p-6 pb-4 border-b border-line shrink-0">
           <h2 className="text-2xl font-bold text-content-primary">Recurring Check-ins</h2>
 
           {/* Close button */}

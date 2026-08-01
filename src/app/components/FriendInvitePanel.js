@@ -304,7 +304,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                                 checked={isInGroup || selectedFriends.has(friend.id)}
                                                 disabled={isInGroup}
                                                 onChange={() => toggleFriend(friend.id)}
-                                                className="h-4 w-4 rounded border-line text-accent focus:ring-focus-ring disabled:opacity-40"
+                                                className="h-4 w-4 rounded-sm border-line text-accent focus:ring-focus-ring disabled:opacity-40"
                                             />
                                             <div className="flex-1 min-w-0">
                                                 <p className={`font-medium truncate ${isInGroup ? 'text-content-muted' : 'text-content-primary'}`}>
@@ -313,7 +313,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                                 {/* Friend email is no longer exposed in the friends payload (Phase 83-06 PII default-deny); invites resolve it server-side by user_id. */}
                                             </div>
                                             {isInGroup && (
-                                                <span className="text-xs text-content-muted italic flex-shrink-0">
+                                                <span className="text-xs text-content-muted italic shrink-0">
                                                     In group
                                                 </span>
                                             )}
@@ -344,7 +344,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                 {inviteResult && (
                                     <div className={`mt-2 p-3 rounded-lg text-sm font-medium ${
                                         inviteResult.failCount === 0
-                                            ? 'bg-status-success/10 text-status-success border border-line'
+                                            ? 'text-status-success border border-line'
                                             : inviteResult.successCount > 0
                                                 ? 'bg-amber-50 text-amber-700 border border-amber-200'
                                                 : 'bg-red-50 text-red-700 border border-red-200'
@@ -386,12 +386,12 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                 placeholder="user@example.com"
                                 required
                                 disabled={emailLoading}
-                                className="flex-1 px-3 py-2.5 border border-line rounded-lg text-sm text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring focus:border-accent disabled:opacity-50"
+                                className="flex-1 px-3 py-2.5 border border-line rounded-lg text-sm text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring focus:border-accent disabled:opacity-50"
                             />
                             <button
                                 type="submit"
                                 disabled={emailLoading || !email.trim()}
-                                className="btn btn-primary text-sm py-2.5 flex-shrink-0"
+                                className="btn btn-primary text-sm py-2.5 shrink-0"
                             >
                                 {emailLoading ? 'Sending...' : 'Send'}
                             </button>
@@ -416,7 +416,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                 <button
                                     onClick={handleAddFriend}
                                     disabled={addingFriend}
-                                    className="btn btn-primary text-xs px-3 py-1.5 flex-shrink-0"
+                                    className="btn btn-primary text-xs px-3 py-1.5 shrink-0"
                                 >
                                     {addingFriend ? 'Sending...' : 'Add Friend'}
                                 </button>
@@ -488,17 +488,17 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
 
     return (
         <>
-            {/* Backdrop — z-[60] so it stacks above .modal-overlay (z-50) when
+            {/* Backdrop — z-60 so it stacks above .modal-overlay (z-50) when
                 opened from inside another modal (e.g. ManageMembers). Clicking
                 the backdrop closes only this panel; the parent modal's overlay
                 no longer receives the click. */}
             <div
-                className="fixed inset-0 bg-black bg-opacity-50 z-[60] transition-opacity"
+                className="fixed inset-0 bg-black/50 z-60 transition-opacity"
                 onClick={onClose}
             />
 
-            {/* Sliding panel — z-[70] above its own backdrop. */}
-            <div className="fixed inset-y-0 right-0 w-full max-w-md bg-surface-card shadow-xl z-[70] flex flex-col animate-slide-in-right">
+            {/* Sliding panel — z-70 above its own backdrop. */}
+            <div className="fixed inset-y-0 right-0 w-full max-w-md bg-surface-card shadow-xl z-70 flex flex-col animate-slide-in-right">
                 {/* Header */}
                 <div className="flex items-center justify-between p-5 border-b border-line">
                     <div>

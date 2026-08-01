@@ -76,7 +76,7 @@ export interface WriteWeekGridProps extends WeekGridBaseProps {
 
 export type WeekGridProps = ReadWeekGridProps | WriteWeekGridProps;
 
-const DEFAULT_CELL_CLASS = 'w-24 sm:w-28 h-12 sm:h-14 flex-shrink-0 border border-line';
+const DEFAULT_CELL_CLASS = 'w-24 sm:w-28 h-12 sm:h-14 shrink-0 border border-line';
 
 export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
   const { days, slots, dayLabels, slotLabels, ariaLabel, disabled = false, cellClassName } = props;
@@ -228,12 +228,12 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
       >
         {/* Day header row */}
         <div className="flex" role="row">
-          <div className="w-16 sm:w-20 flex-shrink-0" role="columnheader" />
+          <div className="w-16 sm:w-20 shrink-0" role="columnheader" />
           {Array.from({ length: days }, (_, col) => (
             <div
               key={`h-${col}`}
               role="columnheader"
-              className="w-24 sm:w-28 flex-shrink-0 text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
+              className="w-24 sm:w-28 shrink-0 text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
             >
               {dayLabels?.[col] ?? ''}
             </div>
@@ -243,7 +243,7 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
         {/* Time-slot rows */}
         {Array.from({ length: slots }, (_, row) => (
           <div key={`r-${row}`} className="flex" role="row">
-            <div className="w-16 sm:w-20 flex-shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium">
+            <div className="w-16 sm:w-20 shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium">
               {slotLabels?.[row] ?? ''}
             </div>
             {Array.from({ length: days }, (_, col) => (

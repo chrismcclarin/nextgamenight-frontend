@@ -25,7 +25,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
         <label className="text-xs text-content-secondary mb-1 block">Participant Name</label>
         {participant.isFromGroup ? (
           // Read-only display for group members
-          <div className="p-2 border border-line rounded bg-surface-elevated text-content-primary text-sm flex items-center gap-2">
+          <div className="p-2 border border-line rounded-sm bg-surface-elevated text-content-primary text-sm flex items-center gap-2">
             {participant.username || `Participant ${index + 1}`}
             {participant.is_guest && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
@@ -62,10 +62,10 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
                 }
               }}
               placeholder="Type name (group member or custom)"
-              className="w-full p-2 border border-line rounded text-content-primary bg-surface-input text-sm"
+              className="w-full p-2 border border-line rounded-sm text-content-primary bg-surface-input text-sm"
             />
             {participant.is_guest && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 flex-shrink-0">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 shrink-0">
                 Guest
               </span>
             )}
@@ -81,7 +81,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             step="0.01"
             value={participant.score || ''}
             onChange={(e) => onParticipantChange(index, 'score', e.target.value)}
-            className="w-20 p-1 border border-line rounded text-content-primary bg-surface-input"
+            className="w-20 p-1 border border-line rounded-sm text-content-primary bg-surface-input"
             placeholder="0"
           />
         </div>
@@ -92,7 +92,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             type="text"
             value={participant.faction || ''}
             onChange={(e) => onParticipantChange(index, 'faction', e.target.value)}
-            className="w-24 p-1 border border-line rounded text-content-primary bg-surface-input"
+            className="w-24 p-1 border border-line rounded-sm text-content-primary bg-surface-input"
             placeholder="Optional"
           />
         </div>
@@ -108,17 +108,33 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
         </div>
 
         {/* Invite to group button - shown for guest participants when current user is admin/owner */}
+        {/*
+          DECISION Phase 87.7 D-18 (className-string shape): the branches below used to also carry
+          `border-status-*` and `bg-status-*` opacity-modifier tokens. Those were REMOVED, not
+          rewritten. On Tailwind v3 a `/N` modifier on a `var()`-backed colour generated no class at
+          all, so these branches have always rendered with no tint and no coloured border — removal is
+          what reproduces today's rendering. Rejected: (a) dropping the `/N` to keep the base class,
+          which paints a SOLID status-coloured block — the exact regression being avoided; (b) making
+          the tints work via `color-mix`, which is a deliberate visual change and this phase forbids
+          those. The `text-status-*` tokens survive and carry the semantics. Designing the real tints
+          is PHASE 88's (it owns the design system); the full 136-site list, with the sites
+          deliberately left alone, is in the phase-87.7 planning directory, file
+          `87.7-OPACITY-CENSUS.md`. (Path written without a glob on purpose: a `star-slash` inside a
+          JSX block comment terminates it.)
+          One of exactly two markers for this ~91-line strip — see RsvpSection.js for the
+          object-literal shape. Re-adding a tint here is a decision, not a cleanup.
+        */}
         {participant.is_guest && isAdmin && group_id && (
           <button
             type="button"
             onClick={handleInviteToGroup}
             disabled={inviteStatus === 'sending' || inviteStatus === 'sent'}
-            className={`text-xs px-2 py-1 border rounded transition-colors ${
+            className={`text-xs px-2 py-1 border rounded-sm transition-colors ${
               inviteStatus === 'sent'
-                ? 'text-status-success border-status-success/30 bg-status-success/10'
+                ? 'text-status-success'
                 : inviteStatus === 'error'
-                  ? 'text-status-error border-status-error/30 bg-status-error/10 hover:bg-status-error/20'
-                  : 'text-content-link border-accent/30 hover:bg-accent/10'
+                  ? 'text-status-error'
+                  : 'text-content-link'
             }`}
             title={inviteStatus === 'sent' ? 'Invite sent!' : 'Invite this guest to join the group'}
           >
@@ -132,7 +148,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
         <button
           type="button"
           onClick={() => onToggleParticipant(index)}
-          className="text-status-error hover:text-status-error text-sm px-2 py-1 border border-status-error/30 rounded hover:bg-status-error/10"
+          className="text-status-error hover:text-status-error text-sm px-2 py-1 border rounded-sm"
           title="Remove participant"
         >
           Remove

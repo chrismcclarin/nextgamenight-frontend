@@ -959,7 +959,7 @@ function Profile(){
                         <button
                             type="button"
                             onClick={() => setSmsDisabledBannerDismissed(true)}
-                            className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 text-lg leading-none flex-shrink-0"
+                            className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 text-lg leading-none shrink-0"
                             aria-label="Dismiss"
                         >
                             ×
@@ -982,7 +982,7 @@ function Profile(){
                     {profileLoaded ? (
                         <div className="flex items-center gap-3 md:gap-4">
                             {user.picture && (
-                                <img src={user.picture} alt={userData?.username || user.name} className="w-16 h-16 md:w-20 md:h-20 rounded-full flex-shrink-0" />
+                                <img src={user.picture} alt={userData?.username || user.name} className="w-16 h-16 md:w-20 md:h-20 rounded-full shrink-0" />
                             )}
                             <div className="min-w-0 flex-1">
                                 {editingUsername ? (
@@ -1043,10 +1043,10 @@ function Profile(){
                         // Skeleton placeholder — shimmer bars sized to typical username + email.
                         // Uses bg-surface-card-hover token so it auto-themes.
                         <div className="flex items-center gap-3 md:gap-4 w-full">
-                            <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-card-hover animate-pulse flex-shrink-0" />
+                            <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-card-hover animate-pulse shrink-0" />
                             <div className="flex-1 space-y-2">
-                                <div className="h-7 w-40 bg-surface-card-hover rounded animate-pulse" />
-                                <div className="h-4 w-56 bg-surface-card-hover rounded animate-pulse" />
+                                <div className="h-7 w-40 bg-surface-card-hover rounded-sm animate-pulse" />
+                                <div className="h-4 w-56 bg-surface-card-hover rounded-sm animate-pulse" />
                             </div>
                         </div>
                     )}
@@ -1292,7 +1292,7 @@ function Profile(){
                                         value={tzSearch}
                                         onChange={(e) => setTzSearch(e.target.value)}
                                         placeholder="Search timezones..."
-                                        className="w-full px-3 py-2 border border-line rounded-btn text-sm text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+                                        className="w-full px-3 py-2 border border-line rounded-btn text-sm text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
                                         autoFocus
                                     />
                                 </div>
@@ -1665,7 +1665,7 @@ function Profile(){
                                                 </div>
                                                 <button
                                                     onClick={() => handleDeletePattern(pattern.id)}
-                                                    className="text-status-error hover:text-status-error/80 text-sm"
+                                                    className="text-status-error text-sm"
                                                 >
                                                     Delete
                                                 </button>
@@ -1736,7 +1736,7 @@ function Profile(){
                                                     type="checkbox"
                                                     checked={specificForm.isAvailable}
                                                     onChange={(e) => setSpecificForm({ ...specificForm, isAvailable: e.target.checked })}
-                                                    className="rounded"
+                                                    className="rounded-sm"
                                                 />
                                                 <span className="text-sm text-content-secondary">Mark as available (uncheck to mark as busy)</span>
                                             </label>
@@ -1777,7 +1777,7 @@ function Profile(){
                                                 </div>
                                                 <button
                                                     onClick={() => handleDeletePattern(pattern.id)}
-                                                    className="text-status-error hover:text-status-error/80 text-sm"
+                                                    className="text-status-error text-sm"
                                                 >
                                                     Delete
                                                 </button>
@@ -1846,8 +1846,8 @@ function Profile(){
                         </div>
                         {importProgress && (
                             <div className={`mt-3 p-3 rounded-btn ${
-                                importProgress.status === 'error' ? 'bg-status-error/10 text-status-error' :
-                                importProgress.status === 'complete' ? 'bg-status-success/10 text-status-success' :
+                                importProgress.status === 'error' ? 'text-status-error' :
+                                importProgress.status === 'complete' ? 'text-status-success' :
                                 'bg-surface-card-hover text-content-link'
                             }`}>
                                 <p className="font-medium">{importProgress.message}</p>
@@ -1864,7 +1864,7 @@ function Profile(){
 
                     {/* BGG Search */}
                     {showBggSearch && (
-                        <div className="mb-6 p-3 md:p-4 border rounded bg-surface-page">
+                        <div className="mb-6 p-3 md:p-4 border rounded-sm bg-surface-page">
                             <div className="flex flex-col sm:flex-row gap-2 mb-3">
                                 <input
                                     type="text"
@@ -1889,14 +1889,14 @@ function Profile(){
                                         const isAlreadyOwned = ownedGames.some(g => g.bgg_id === result.bgg_id);
                                         return (
                                             <div key={result.bgg_id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-surface-card border border-line rounded-btn">
-                                                <span className="text-sm text-content-primary break-words flex-1 min-w-0">
+                                                <span className="text-sm text-content-primary wrap-break-word flex-1 min-w-0">
                                                     {result.name} {result.year_published ? `(${result.year_published})` : ''}
                                                 </span>
                                                 <button
                                                     type="button"
                                                     onClick={() => addGameToCollection(result.bgg_id)}
                                                     disabled={isAlreadyOwned}
-                                                    className="btn btn-primary text-xs px-3 py-1 disabled:opacity-50 whitespace-nowrap flex-shrink-0"
+                                                    className="btn btn-primary text-xs px-3 py-1 disabled:opacity-50 whitespace-nowrap shrink-0"
                                                 >
                                                     {isAlreadyOwned ? 'Already Owned' : 'Add to Collection'}
                                                 </button>
@@ -1938,7 +1938,7 @@ function Profile(){
                                     <SafeImage
                                         src={game.image_url}
                                         alt={game.name}
-                                        className="w-full h-32 object-cover rounded mb-2"
+                                        className="w-full h-32 object-cover rounded-sm mb-2"
                                     />
                                 </div>
                             ))}

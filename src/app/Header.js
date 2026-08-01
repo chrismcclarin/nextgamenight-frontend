@@ -71,7 +71,7 @@ function Header(){
                 class-toggle so the fade animation plays on both directions.
                 pointer-events-none on closed state ensures it never eats clicks. */}
             <div
-                className={`md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity duration-200 ease-out ${
+                className={`md:hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-40 transition-opacity duration-200 ease-out ${
                     mobileMenuOpen
                         ? 'opacity-100'
                         : 'opacity-0 pointer-events-none'

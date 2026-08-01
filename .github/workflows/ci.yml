@@ -306,12 +306,34 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Run Playwright journeys (setup logs in once; 4 journeys reuse storageState)
+      # DECISION Phase 87.7 D-13/D-15: the PR lane is pinned with `--project`, chosen OVER a
+      # separate report-only / continue-on-error mobile job. The rejected pattern is the exact
+      # one Phase 88.4 structurally BANNED in the backend repo (`verify-gate-armed.js` fails CI
+      # on that key) — it must not be reintroduced in this repo in any future wiring, INCLUDING
+      # by Phase 87.8 when it arms the phone project. A gate that cannot fail is not a gate.
+      #
+      # `--project` is a positive ALLOWLIST and that is the load-bearing property: adding a
+      # project to playwright.config.ts can never silently opt it into the PR lane. The `phone`
+      # project (MOB-03) therefore exists in config but does not run here — D-13, config-only
+      # this phase. **Phase 87.8 owns adding `--project=phone` to this line** and owns the
+      # mobile fixes it surfaces.
+      #
+      # Also deliberately NOT done (D-19): no workflow_dispatch input for project selection. A
+      # permanent input defaulting to the pinned set is a config surface that can silently
+      # disarm this pinning — the same failure class Phase 88.4 spent a plan closing. The one
+      # exploratory all-projects run uses a throwaway branch instead. FULL MECHANISM — the
+      # push alone is NOT enough: the `push: branches-ignore: [main]` trigger above picks the
+      # branch up, but this pinned `--project` list applies to EVERY trigger, so the throwaway
+      # branch must ALSO edit the run line below (e.g. append `--project=phone`, or drop the
+      # pin entirely for all-projects). Both edits die with the branch; nothing permanent
+      # changes. Plan 12 (the phone-lane exploratory run) is the direct consumer of this
+      # instruction.
+      - name: Run Playwright journeys (setup logs in once; all specs in the journeys project reuse storageState)
         env:
           # Auth credentials cross into the runner ONLY via env — never echoed (T-82-11).
           E2E_AUTH0_USER: ${{ secrets.E2E_AUTH0_USER }}
           E2E_AUTH0_PASS: ${{ secrets.E2E_AUTH0_PASS }}
-        run: npx playwright test
+        run: npx playwright test --project=setup --project=journeys
 
       - name: Upload Playwright failure evidence (excludes .auth/ — T-82-12)
         if: failure()

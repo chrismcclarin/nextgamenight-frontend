@@ -171,7 +171,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
         </p>
 
         {error && (
-          <div className="mb-4 p-3 bg-status-error/10 border border-status-error/30 rounded-btn">
+          <div className="mb-4 p-3 border rounded-btn">
             <p className="text-status-error text-sm">{error}</p>
           </div>
         )}
@@ -186,7 +186,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
               type="datetime-local"
               value={deadlineLocal}
               onChange={(e) => setDeadlineLocal(e.target.value)}
-              className="w-full px-3 py-2 bg-surface-card border border-line rounded-btn text-content-primary focus:outline-none focus:border-line-accent"
+              className="w-full px-3 py-2 bg-surface-card border border-line rounded-btn text-content-primary focus:outline-hidden focus:border-line-accent"
               required
             />
             <p className="text-xs text-content-muted mt-1">
@@ -219,7 +219,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
                 id="poll-game"
                 value={gameId}
                 onChange={(e) => setGameId(e.target.value)}
-                className="w-full px-3 py-2 bg-surface-card border border-line rounded-btn text-content-primary focus:outline-none focus:border-line-accent"
+                className="w-full px-3 py-2 bg-surface-card border border-line rounded-btn text-content-primary focus:outline-hidden focus:border-line-accent"
               >
                 <option value="">No specific game</option>
                 {availableGames.map((g) => (
@@ -242,7 +242,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
               maxLength={280}
               rows={3}
               placeholder="e.g. Let's try to lock in a date for the campaign next session."
-              className="w-full px-3 py-2 bg-surface-card border border-line rounded-btn text-content-primary focus:outline-none focus:border-line-accent resize-none"
+              className="w-full px-3 py-2 bg-surface-card border border-line rounded-btn text-content-primary focus:outline-hidden focus:border-line-accent resize-none"
             />
             <p className="text-xs text-content-muted mt-1">
               {customMessage.length}/280 characters

@@ -40,7 +40,7 @@ export default function AutoPromptBehaviorBanner() {
   if (dismissed) return null;
 
   return (
-    <div className="bg-status-info/10 border border-status-info/30 rounded-card p-3 mb-4 flex justify-between gap-3">
+    <div className="border rounded-card p-3 mb-4 flex justify-between gap-3">
       <div className="text-sm text-content-secondary">
         <p className="font-semibold text-content-primary mb-1">
           Heads up &mdash; recurring poll behavior changed.
@@ -55,7 +55,7 @@ export default function AutoPromptBehaviorBanner() {
       <button
         type="button"
         onClick={handleDismiss}
-        className="text-status-info hover:text-content-primary text-xs font-semibold flex-shrink-0 self-start px-2 py-1 rounded hover:bg-surface-card-hover transition-colors"
+        className="text-status-info hover:text-content-primary text-xs font-semibold shrink-0 self-start px-2 py-1 rounded-sm hover:bg-surface-card-hover transition-colors"
         aria-label="Dismiss banner"
       >
         Got it

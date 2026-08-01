@@ -69,7 +69,7 @@ export default function AvailabilityPromptDemo({ stage }) {
       {/* Toolbar row — paint mode toggle (matches real AvailabilityGrid) */}
       <div className="bg-surface-card border-x border-line px-3 py-1.5 inline-block">
         <div className="flex items-center justify-end">
-          <span className="px-2 py-0.5 bg-green-100 border border-green-400 text-green-800 rounded text-[10px] font-medium">
+          <span className="px-2 py-0.5 bg-green-100 border border-green-400 text-green-800 rounded-sm text-[10px] font-medium">
             Adding: Preferred
           </span>
         </div>

@@ -285,8 +285,8 @@ export default function CalendarListView({
           <div className="space-y-3">
             {[0, 1, 2].map((i) => (
               <div key={i} className="border rounded-lg p-4 animate-pulse">
-                <div className="h-4 w-1/3 bg-surface-elevated rounded mb-2" />
-                <div className="h-3 w-1/4 bg-surface-elevated rounded" />
+                <div className="h-4 w-1/3 bg-surface-elevated rounded-sm mb-2" />
+                <div className="h-3 w-1/4 bg-surface-elevated rounded-sm" />
               </div>
             ))}
           </div>
@@ -376,7 +376,7 @@ const TodayDivider = forwardRef(function TodayDivider({ label }, ref) {
       aria-label={label}
       className="relative flex items-center justify-center py-2"
     >
-      <div className="absolute inset-x-0 top-1/2 border-t-2 border-content-link/40" aria-hidden="true" />
+      <div className="absolute inset-x-0 top-1/2 border-t-2" aria-hidden="true" />
       <span className="relative z-10 inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-content-link text-white shadow-theme-sm">
         {label}
       </span>
@@ -472,7 +472,7 @@ const EventRow = forwardRef(function EventRow({ event, timezone, onClick }, ref)
       }}
       role="button"
       tabIndex={0}
-      className="p-3 sm:p-4 border rounded-lg transition-all hover:shadow-md cursor-pointer focus:outline-none focus:ring-2 focus:ring-content-link"
+      className="p-3 sm:p-4 border rounded-lg transition-all hover:shadow-md cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-content-link"
       style={{
         backgroundColor: groupBgColor,
         ...safeBgImageStyle(groupBgImage),
@@ -494,7 +494,7 @@ const EventRow = forwardRef(function EventRow({ event, timezone, onClick }, ref)
       />
       <div className="relative z-10 flex items-center gap-3">
         {groupProfilePic && (
-          <div className="w-10 h-10 rounded-full bg-surface-card flex items-center justify-center text-xl flex-shrink-0 overflow-hidden border-2 border-line shadow-theme-sm">
+          <div className="w-10 h-10 rounded-full bg-surface-card flex items-center justify-center text-xl shrink-0 overflow-hidden border-2 border-line shadow-theme-sm">
             {groupProfilePic.startsWith('http') || groupProfilePic.startsWith('/') ? (
               <SafeImage
                 src={groupProfilePic}
@@ -546,7 +546,7 @@ const EventRow = forwardRef(function EventRow({ event, timezone, onClick }, ref)
           <SafeImage
             src={event.Game.image_url}
             alt={event.Game?.name}
-            className="hidden sm:block w-12 h-12 md:w-14 md:h-14 object-cover rounded flex-shrink-0"
+            className="hidden sm:block w-12 h-12 md:w-14 md:h-14 object-cover rounded-sm shrink-0"
           />
         )}
       </div>

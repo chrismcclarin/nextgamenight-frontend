@@ -26,7 +26,7 @@ export default function MemberSelector({
             type="checkbox"
             checked={allMembersSelected}
             onChange={(e) => onSelectAllMembers(e.target.checked)}
-            className="mr-2 h-4 w-4 rounded border-line"
+            className="mr-2 h-4 w-4 rounded-sm border-line"
           />
           <span className="font-medium text-content-secondary">Select All</span>
         </label>
@@ -53,7 +53,7 @@ export default function MemberSelector({
                       : (field.value || []).filter(id => id !== member.id);
                     field.onChange(newValue);
                   }}
-                  className="mr-2 h-4 w-4 rounded border-line"
+                  className="mr-2 h-4 w-4 rounded-sm border-line"
                 />
                 <span className="text-content-secondary">
                   {/* 87.4 review PR2-L5: never render a raw identifier as a label —

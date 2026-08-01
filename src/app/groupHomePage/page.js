@@ -288,7 +288,7 @@ function GroupHomePage(){
             <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
                 <span className="text-content-muted mx-2">{'>'}</span>
-                <span className="text-content-primary font-semibold break-words">{Group?.name || 'Group'}</span>
+                <span className="text-content-primary font-semibold wrap-break-word">{Group?.name || 'Group'}</span>
             </nav>
 
             {/* Header — Phase 69-04 layout: ALWAYS stack title row above
@@ -317,7 +317,7 @@ function GroupHomePage(){
                 }} />
                 <div className="flex items-center gap-3 md:gap-4 relative z-10 flex-1 min-w-0">
                     {Group?.profile_picture_url && (
-                        <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-card flex items-center justify-center text-2xl md:text-4xl flex-shrink-0 overflow-hidden border-2 md:border-4 border-surface-card shadow-theme-lg">
+                        <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-card flex items-center justify-center text-2xl md:text-4xl shrink-0 overflow-hidden border-2 md:border-4 border-surface-card shadow-theme-lg">
                             {Group.profile_picture_url.startsWith('http') || Group.profile_picture_url.startsWith('/') ? (
                                 <SafeImage
                                     src={Group.profile_picture_url}
@@ -332,7 +332,7 @@ function GroupHomePage(){
                     )}
                     <div className="flex-1 min-w-0">
                         <h1
-                            className="text-2xl md:text-3xl font-bold break-words"
+                            className="text-2xl md:text-3xl font-bold wrap-break-word"
                             style={getTextStyle(!!Group?.background_image_url, Group?.background_color || '#1f2937')}
                         >
                             {Group?.name || 'Group'}
@@ -351,7 +351,7 @@ function GroupHomePage(){
                         sits beside the group name (CONTEXT D-LEAVE-01 entry to
                         GroupSettings). Active members only. */}
                     {userRole && userRole !== 'pending' && (
-                        <div className="flex-shrink-0 relative z-20">
+                        <div className="shrink-0 relative z-20">
                             <KebabMenu
                                 ariaLabel="Group actions"
                                 items={[
@@ -361,11 +361,11 @@ function GroupHomePage(){
                         </div>
                     )}
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 relative z-20 w-full flex-shrink-0 items-stretch sm:items-center md:justify-end">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 relative z-20 w-full shrink-0 items-stretch sm:items-center md:justify-end">
                     {userRole && userRole !== 'pending' && (
                         <button
                             onClick={() => setMemberModal(true)}
-                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap text-white border-2 border-white/30 rounded-btn backdrop-blur-sm hover:bg-white/20 transition-all"
+                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap text-white border-2 border-white/30 rounded-btn backdrop-blur-xs hover:bg-white/20 transition-all"
                             style={{
                                 backgroundColor: 'rgba(255, 255, 255, 0.1)',
                                 boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',

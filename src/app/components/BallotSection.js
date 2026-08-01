@@ -109,7 +109,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
             <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
           </div>
           <div className="p-4">
-            <div className="bg-status-success/10 border border-status-success/30 rounded-card p-4 mb-3">
+            <div className="border rounded-card p-4 mb-3">
               <div className="flex items-center gap-2">
                 <span className="text-lg font-bold text-status-success">Winner</span>
               </div>
@@ -120,7 +120,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                 {options
                   .filter(o => o.game_id !== winner.game_id || o.game_name !== winner.game_name)
                   .map(opt => (
-                    <div key={opt.id} className="px-3 py-2 text-sm text-content-muted bg-surface-elevated rounded">
+                    <div key={opt.id} className="px-3 py-2 text-sm text-content-muted bg-surface-elevated rounded-sm">
                       {opt.game_name}
                     </div>
                   ))}
@@ -134,7 +134,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
     if (needs_tie_break && isOrganizer) {
       return (
         <div className="mt-4 border border-status-warning rounded-card overflow-hidden">
-          <div className="bg-status-warning/10 px-4 py-3 border-b border-status-warning/30">
+          <div className="px-4 py-3 border-b">
             <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
           </div>
           <div className="p-4">
@@ -148,7 +148,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   key={opt.id}
                   type="button"
                   onClick={() => handleResolveTie(opt.id)}
-                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning/30 bg-status-warning/10 hover:bg-status-warning/20 transition-colors text-sm font-medium text-content-primary cursor-pointer"
+                  className="w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm font-medium text-content-primary cursor-pointer"
                 >
                   {opt.game_name}
                 </button>
@@ -177,7 +177,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
     if (needs_fallback_pick && isOrganizer) {
       return (
         <div className="mt-4 border border-status-warning rounded-card overflow-hidden">
-          <div className="bg-status-warning/10 px-4 py-3 border-b border-status-warning/30">
+          <div className="px-4 py-3 border-b">
             <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
           </div>
           <div className="p-4">
@@ -191,7 +191,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   key={opt.id}
                   type="button"
                   onClick={() => handleResolveTie(opt.id)}
-                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning/30 bg-status-warning/10 hover:bg-status-warning/20 transition-colors text-sm font-medium text-content-primary cursor-pointer"
+                  className="w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm font-medium text-content-primary cursor-pointer"
                 >
                   {opt.game_name}
                 </button>
@@ -244,7 +244,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   disabled={!!votingOptionId}
                   className={`w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm font-medium cursor-pointer
                     ${isVoted
-                      ? 'border-accent bg-accent/10 text-content-primary'
+                      ? 'border-accent text-content-primary'
                       : 'border-line bg-surface-card text-content-primary hover:bg-surface-card-hover hover:border-line-strong'
                     }
                     ${isToggling ? 'opacity-70' : ''}

@@ -112,10 +112,10 @@ export default function GroupLibrary({ groupId }) {
       <div className="mt-4 space-y-3">
         {[...Array(5)].map((_, i) => (
           <div key={i} className="flex items-center gap-3 p-3 bg-surface-page rounded-card animate-pulse">
-            <div className="w-10 h-10 bg-surface-card-hover rounded" />
+            <div className="w-10 h-10 bg-surface-card-hover rounded-sm" />
             <div className="flex-1 space-y-2">
-              <div className="h-4 bg-surface-card-hover rounded w-1/3" />
-              <div className="h-3 bg-surface-card-hover rounded w-1/2" />
+              <div className="h-4 bg-surface-card-hover rounded-sm w-1/3" />
+              <div className="h-3 bg-surface-card-hover rounded-sm w-1/2" />
             </div>
           </div>
         ))}
@@ -146,7 +146,7 @@ export default function GroupLibrary({ groupId }) {
           placeholder="Search games..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full px-4 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-none focus:ring-2 focus:ring-focus-ring focus:border-transparent"
+          className="w-full px-4 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-hidden focus:ring-2 focus:ring-focus-ring focus:border-transparent"
         />
       </div>
 
@@ -157,7 +157,7 @@ export default function GroupLibrary({ groupId }) {
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            className="px-3 py-1.5 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-none focus:ring-2 focus:ring-focus-ring"
+            className="px-3 py-1.5 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
           >
             <option value="name">Name (A-Z)</option>
             <option value="players">Player Count</option>
@@ -174,7 +174,7 @@ export default function GroupLibrary({ groupId }) {
       <div className="mb-4 overflow-x-auto flex gap-2 pb-1 -mx-1 px-1">
         <button
           onClick={() => setSelectedOwner(null)}
-          className={`flex-shrink-0 px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+          className={`shrink-0 px-3 py-1 rounded-full text-sm font-medium transition-colors ${
             selectedOwner === null
               ? 'bg-btn-primary text-btn-primary-text'
               : 'bg-surface-card-hover text-content-secondary hover:text-content-primary'
@@ -186,7 +186,7 @@ export default function GroupLibrary({ groupId }) {
           <button
             key={member.user_id}
             onClick={() => setSelectedOwner(member.user_id === selectedOwner ? null : member.user_id)}
-            className={`flex-shrink-0 px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+            className={`shrink-0 px-3 py-1 rounded-full text-sm font-medium transition-colors ${
               selectedOwner === member.user_id
                 ? 'bg-btn-primary text-btn-primary-text'
                 : 'bg-surface-card-hover text-content-secondary hover:text-content-primary'
@@ -245,7 +245,7 @@ export default function GroupLibrary({ groupId }) {
                 <SafeImage
                   src={game.thumbnail_url || game.image_url}
                   alt={game.name}
-                  className="w-10 h-10 rounded object-cover flex-shrink-0"
+                  className="w-10 h-10 rounded-sm object-cover shrink-0"
                 />
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-content-primary truncate text-sm">{game.name}</p>
@@ -253,7 +253,7 @@ export default function GroupLibrary({ groupId }) {
                     <p className="text-xs text-content-muted truncate">{metaParts.join(' \u00B7 ')}</p>
                   )}
                 </div>
-                <span className="text-xs text-content-muted flex-shrink-0 whitespace-nowrap">
+                <span className="text-xs text-content-muted shrink-0 whitespace-nowrap">
                   {ownerCount} {ownerCount === 1 ? 'owner' : 'owners'}
                 </span>
               </button>

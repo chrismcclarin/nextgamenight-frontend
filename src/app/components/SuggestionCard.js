@@ -66,9 +66,9 @@ export default function SuggestionCard({
   const getScoreColor = () => {
     if (!suggestion.meets_minimum) return 'bg-surface-card-hover border-line';
     if (suggestion.preferred_count === suggestion.participant_count) {
-      return 'bg-status-success/10 border-status-success/30'; // All preferred
+      return ''; // All preferred
     }
-    return 'bg-status-warning/10 border-status-warning/30'; // Mix of preferred and if-need-be
+    return ''; // Mix of preferred and if-need-be
   };
 
   return (

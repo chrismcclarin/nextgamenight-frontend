@@ -72,7 +72,7 @@ export default function StarRatingPicker({ value = 0, onChange, ariaLabel = 'Rat
             {/* Hit zones — absolutely-positioned buttons spanning each half of the star */}
             <button
               type="button"
-              className="absolute left-0 top-0 w-1/2 h-full bg-transparent border-0 p-0 m-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 rounded-l"
+              className="absolute left-0 top-0 w-1/2 h-full bg-transparent border-0 p-0 m-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400 rounded-l"
               onMouseEnter={() => handleHalfHover(starIndex, 'left')}
               onClick={() => handleHalfClick(starIndex, 'left')}
               aria-label={`${starIndex - 0.5} stars`}
@@ -81,7 +81,7 @@ export default function StarRatingPicker({ value = 0, onChange, ariaLabel = 'Rat
             />
             <button
               type="button"
-              className="absolute right-0 top-0 w-1/2 h-full bg-transparent border-0 p-0 m-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 rounded-r"
+              className="absolute right-0 top-0 w-1/2 h-full bg-transparent border-0 p-0 m-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400 rounded-r"
               onMouseEnter={() => handleHalfHover(starIndex, 'right')}
               onClick={() => handleHalfClick(starIndex, 'right')}
               aria-label={`${starIndex} stars`}
