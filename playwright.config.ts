@@ -34,7 +34,22 @@ export default defineConfig({
       name: 'journeys',
       testMatch: /.*\.spec\.ts/,
       dependencies: ['setup'], // runs after the login/setup project
-      use: { storageState: '.auth/user.json' }, // reuse the cached appSession cookie
+      use: {
+        storageState: '.auth/user.json', // reuse the cached appSession cookie
+        colorScheme: 'dark', // DECISION Phase 87.7 D-11: pin dark, chosen OVER leaving
+        // Playwright's default. The premise is MEASURED, not assumed: Playwright emulates
+        // `colorScheme: 'light'` and this config previously set none (the shared `use` block
+        // still does not), so the suite has most likely been exercising LIGHT mode all along —
+        // while dark is the theme the app is designed for (ThemeProvider `defaultTheme="dark"`)
+        // and is this phase's only visual gate.
+        //
+        // Pinning here is only HALF the mechanism and must not be read as sufficient:
+        // `e2e/auth.setup.ts` calls `storageState({ path: AUTH_FILE })`, which bakes
+        // localStorage into the reused `.auth/user.json`. A stored next-themes `theme` key
+        // therefore outranks `defaultTheme` regardless of what the config emulates, so Plan 10's
+        // computed-style spec asserts `<html class="dark">` at RUNTIME as the other half.
+        // Removing EITHER half is a decision, not a cleanup.
+      },
     },
   ],
 });
