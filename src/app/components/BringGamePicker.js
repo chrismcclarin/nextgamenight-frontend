@@ -147,7 +147,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
             placeholder="Search your games..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-3 py-2 border border-line rounded-lg text-sm text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring focus:border-transparent"
+            className="w-full px-3 py-2 border border-line rounded-lg text-sm text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring focus:border-transparent"
           />
         </div>
 
@@ -185,17 +185,17 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
                     }`}
                   >
                     {/* Thumbnail */}
-                    <div className="w-8 h-8 rounded flex-shrink-0 overflow-hidden bg-surface-card-hover">
+                    <div className="w-8 h-8 rounded-sm shrink-0 overflow-hidden bg-surface-card-hover">
                       {thumbnail ? (
                         <SafeImage
                           src={thumbnail}
                           alt={gameName}
                           width={32}
                           height={32}
-                          className="w-8 h-8 object-cover rounded"
+                          className="w-8 h-8 object-cover rounded-sm"
                         />
                       ) : (
-                        <div className="w-8 h-8 bg-surface-card-hover rounded flex items-center justify-center">
+                        <div className="w-8 h-8 bg-surface-card-hover rounded-sm flex items-center justify-center">
                           <span className="text-content-muted text-xs">?</span>
                         </div>
                       )}
@@ -212,7 +212,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
                     </div>
 
                     {/* Checkbox */}
-                    <div className={`w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                    <div className={`w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-colors ${
                       isSelected ? 'bg-accent border-accent' : 'border-line'
                     }`}>
                       {isSelected && (

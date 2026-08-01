@@ -178,7 +178,7 @@ export default function TutorialOverlay({ onComplete }) {
   const isHandoff = phase === 'handoff';
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/85 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-60 bg-black/85 flex items-center justify-center p-4">
       <div className="bg-surface-page rounded-card shadow-theme-lg max-w-3xl w-full max-h-[92vh] flex flex-col border border-line">
         {/* Header — step indicator */}
         <div className="px-6 pt-5 pb-3 flex items-center justify-between">

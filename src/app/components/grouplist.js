@@ -174,7 +174,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             return (
               <div
                 key={group.id}
-                className="bg-surface-card rounded-card p-4 pl-5 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover hover:bg-surface-card-hover focus:outline-none focus:border-focus-ring"
+                className="bg-surface-card rounded-card p-4 pl-5 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover hover:bg-surface-card-hover focus:outline-hidden focus:border-focus-ring"
                 onClick={(e) => handleGroupClick(group, e)}
                 role="button"
                 tabIndex={0}
@@ -200,11 +200,11 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   // preserves the dim effect AND keeps text readable.
                   <div className="absolute inset-0 bg-surface-card/85 z-0 rounded-card" />
                 )}
-                <div className="relative z-[1]">
+                <div className="relative z-1">
                   <div className="flex justify-between items-center mb-3 max-[480px]:flex-col max-[480px]:items-start max-[480px]:gap-2">
                     <div className="flex items-center gap-2 min-w-0 flex-1 max-[480px]:w-full">
                       {profilePic && (
-                        <div className="w-10 h-10 rounded-full bg-surface-card-hover flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden">
+                        <div className="w-10 h-10 rounded-full bg-surface-card-hover flex items-center justify-center text-2xl shrink-0 overflow-hidden">
                           {profilePic.startsWith('http') || profilePic.startsWith('/') ? (
                             <SafeImage
                               src={profilePic}
@@ -218,14 +218,14 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         </div>
                       )}
                       <h3
-                        className="text-[1.1rem] font-semibold text-content-primary flex-1 min-w-0 break-words max-md:text-base"
+                        className="text-[1.1rem] font-semibold text-content-primary flex-1 min-w-0 wrap-break-word max-md:text-base"
                         style={getTextStyle(bgImage, bgColor)}
                       >
                         {group.name}
                       </h3>
                     </div>
                     <span
-                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-semibold ml-2 flex-shrink-0 max-[480px]:self-end max-[480px]:ml-0"
+                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-semibold ml-2 shrink-0 max-[480px]:self-end max-[480px]:ml-0"
                       style={getTextStyle(bgImage, bgColor)}
                     >
                       {groupUsers.length} {groupUsers.length === 1 ? 'player' : 'players'}
@@ -258,7 +258,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                 </div>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-2 mt-3 relative z-[2]">
+                  <div className="flex gap-2 mt-3 relative z-2">
                     {/* Phase 69 CONTEXT D-INV-03: any active member can invite
                         (FriendInvitePanel exposes QR + link to all roles); only
                         the Reset invite link button inside FriendInvitePanel is
@@ -280,7 +280,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                     )}
                     {canEdit && (
                       <button
-                        className="px-3 py-1 bg-surface-elevated text-content-primary rounded-btn hover:bg-surface-card-hover text-sm flex-shrink-0"
+                        className="px-3 py-1 bg-surface-elevated text-content-primary rounded-btn hover:bg-surface-card-hover text-sm shrink-0"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSettingsGroup(group);

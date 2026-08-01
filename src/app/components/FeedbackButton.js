@@ -182,7 +182,7 @@ export default function FeedbackButton() {
                     <select
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
-                      className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+                      className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
                     >
                       {CATEGORIES.map((cat) => (
                         <option key={cat} value={cat}>
@@ -202,7 +202,7 @@ export default function FeedbackButton() {
                       onChange={(e) => setText(e.target.value)}
                       placeholder="Tell us what's on your mind..."
                       rows={5}
-                      className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring resize-none"
+                      className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring resize-none"
                     />
                     <p className="text-xs text-content-muted mt-1">
                       {text.trim().length} characters (10 minimum)
@@ -211,7 +211,7 @@ export default function FeedbackButton() {
 
                   {/* Error */}
                   {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded text-sm">
+                    <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-sm text-sm">
                       {error}
                     </div>
                   )}

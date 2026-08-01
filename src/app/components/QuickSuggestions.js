@@ -79,23 +79,23 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
               key={game.id}
               type="button"
               onClick={() => onSelectGame({ id: game.id, name: game.name })}
-              className="flex items-center gap-1.5 px-2 py-1 border border-line rounded-full bg-surface-card hover:bg-surface-card-hover transition-colors cursor-pointer flex-shrink-0"
+              className="flex items-center gap-1.5 px-2 py-1 border border-line rounded-full bg-surface-card hover:bg-surface-card-hover transition-colors cursor-pointer shrink-0"
               title={game.name}
             >
               {game.thumbnail_url ? (
                 <img
                   src={game.thumbnail_url}
                   alt=""
-                  className="w-6 h-6 rounded object-cover flex-shrink-0"
+                  className="w-6 h-6 rounded-sm object-cover shrink-0"
                 />
               ) : (
-                <div className="w-6 h-6 rounded bg-surface-card-hover flex-shrink-0" />
+                <div className="w-6 h-6 rounded-sm bg-surface-card-hover shrink-0" />
               )}
               <span className="text-sm text-content-primary truncate max-w-[120px]">
                 {game.name}
               </span>
               {(game.min_players || game.max_players) && (
-                <span className="text-xs text-content-muted flex-shrink-0">
+                <span className="text-xs text-content-muted shrink-0">
                   {game.min_players === game.max_players
                     ? `${game.min_players}p`
                     : `${game.min_players || '?'}-${game.max_players || '?'}p`}
@@ -107,7 +107,7 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
         <button
           type="button"
           onClick={() => setBrowseModalOpen(true)}
-          className="text-xs text-content-link hover:underline whitespace-nowrap flex-shrink-0 px-1"
+          className="text-xs text-content-link hover:underline whitespace-nowrap shrink-0 px-1"
         >
           Browse more
         </button>

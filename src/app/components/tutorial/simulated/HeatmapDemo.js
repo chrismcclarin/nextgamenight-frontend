@@ -72,12 +72,12 @@ export default function HeatmapDemo({ stage }) {
       {/* Legend — matches MergedHeatmap LEGEND_ITEMS */}
       <div className="mt-2 flex items-center justify-center gap-1 text-[10px] text-content-muted">
         <span>0</span>
-        <div className="w-3 h-3 bg-surface-elevated border border-line rounded-sm" />
-        <div className="w-3 h-3 bg-green-100 rounded-sm" />
-        <div className="w-3 h-3 bg-green-200 rounded-sm" />
-        <div className="w-3 h-3 bg-green-300 rounded-sm" />
-        <div className="w-3 h-3 bg-green-400 rounded-sm" />
-        <div className="w-3 h-3 bg-green-500 rounded-sm" />
+        <div className="w-3 h-3 bg-surface-elevated border border-line rounded-xs" />
+        <div className="w-3 h-3 bg-green-100 rounded-xs" />
+        <div className="w-3 h-3 bg-green-200 rounded-xs" />
+        <div className="w-3 h-3 bg-green-300 rounded-xs" />
+        <div className="w-3 h-3 bg-green-400 rounded-xs" />
+        <div className="w-3 h-3 bg-green-500 rounded-xs" />
         <span>5</span>
       </div>
     </div>

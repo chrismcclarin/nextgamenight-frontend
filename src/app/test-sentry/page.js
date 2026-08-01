@@ -119,7 +119,7 @@ export default function TestSentryPage() {
 
         <div className="mt-4 p-4 bg-status-warning/10 border border-status-warning/30 rounded-card">
           <p className="text-sm text-status-warning">
-            <strong>Note:</strong> Make sure <code className="bg-surface-elevated px-1 rounded">NEXT_PUBLIC_SENTRY_DSN</code> is set in your <code className="bg-surface-elevated px-1 rounded">.env.local</code> file.
+            <strong>Note:</strong> Make sure <code className="bg-surface-elevated px-1 rounded-sm">NEXT_PUBLIC_SENTRY_DSN</code> is set in your <code className="bg-surface-elevated px-1 rounded-sm">.env.local</code> file.
           </p>
         </div>
       </div>

@@ -86,7 +86,7 @@ export default function ScheduleDemo({ stage }) {
       >
         <div className="bg-surface-card border border-green-400 rounded-card p-3 inline-block shadow-theme-md">
           <div className="flex items-center gap-3 text-left">
-            <div className="w-2 h-10 bg-green-500 rounded-full flex-shrink-0" />
+            <div className="w-2 h-10 bg-green-500 rounded-full shrink-0" />
             <div>
               <div className="text-sm font-semibold text-content-primary">
                 Game Night

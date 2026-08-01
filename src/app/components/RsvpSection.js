@@ -219,7 +219,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
               }}
               placeholder="Add a note (optional)"
               rows={2}
-              className="w-full border border-line rounded-card px-3 py-2 text-sm bg-surface-input text-content-primary focus:outline-none focus:ring-2 ring-focus-ring resize-none"
+              className="w-full border border-line rounded-card px-3 py-2 text-sm bg-surface-input text-content-primary focus:outline-hidden focus:ring-2 ring-focus-ring resize-none"
             />
             <div className="flex items-center justify-between">
               <span className="text-xs text-content-muted">{note.length}/500</span>

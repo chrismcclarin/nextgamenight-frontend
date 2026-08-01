@@ -25,7 +25,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
         <label className="text-xs text-content-secondary mb-1 block">Participant Name</label>
         {participant.isFromGroup ? (
           // Read-only display for group members
-          <div className="p-2 border border-line rounded bg-surface-elevated text-content-primary text-sm flex items-center gap-2">
+          <div className="p-2 border border-line rounded-sm bg-surface-elevated text-content-primary text-sm flex items-center gap-2">
             {participant.username || `Participant ${index + 1}`}
             {participant.is_guest && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
@@ -62,10 +62,10 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
                 }
               }}
               placeholder="Type name (group member or custom)"
-              className="w-full p-2 border border-line rounded text-content-primary bg-surface-input text-sm"
+              className="w-full p-2 border border-line rounded-sm text-content-primary bg-surface-input text-sm"
             />
             {participant.is_guest && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 flex-shrink-0">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 shrink-0">
                 Guest
               </span>
             )}
@@ -81,7 +81,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             step="0.01"
             value={participant.score || ''}
             onChange={(e) => onParticipantChange(index, 'score', e.target.value)}
-            className="w-20 p-1 border border-line rounded text-content-primary bg-surface-input"
+            className="w-20 p-1 border border-line rounded-sm text-content-primary bg-surface-input"
             placeholder="0"
           />
         </div>
@@ -92,7 +92,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             type="text"
             value={participant.faction || ''}
             onChange={(e) => onParticipantChange(index, 'faction', e.target.value)}
-            className="w-24 p-1 border border-line rounded text-content-primary bg-surface-input"
+            className="w-24 p-1 border border-line rounded-sm text-content-primary bg-surface-input"
             placeholder="Optional"
           />
         </div>
@@ -132,7 +132,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
         <button
           type="button"
           onClick={() => onToggleParticipant(index)}
-          className="text-status-error hover:text-status-error text-sm px-2 py-1 border border-status-error/30 rounded hover:bg-status-error/10"
+          className="text-status-error hover:text-status-error text-sm px-2 py-1 border border-status-error/30 rounded-sm hover:bg-status-error/10"
           title="Remove participant"
         >
           Remove

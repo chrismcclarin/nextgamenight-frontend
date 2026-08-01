@@ -309,7 +309,7 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
                   disabled={preflightPending || deleting}
                   placeholder={CONFIRM_PHRASE}
                   autoComplete="off"
-                  className="w-full rounded border border-red-300 bg-surface-input p-2 text-content-primary focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
+                  className="w-full rounded-sm border border-red-300 bg-surface-input p-2 text-content-primary focus:outline-hidden focus:ring-2 focus:ring-red-500 disabled:opacity-50"
                 />
               </div>
               {failureMessage && (

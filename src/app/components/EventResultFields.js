@@ -12,7 +12,7 @@ export default function EventResultFields({ newEvent, handleChange }) {
           id="winner_id"
           value={newEvent.winner_id || ''}
           onChange={handleChange}
-          className="w-full p-2 border border-line rounded text-content-primary bg-surface-input"
+          className="w-full p-2 border border-line rounded-sm text-content-primary bg-surface-input"
         >
           <option value="">Select winner (optional)</option>
           {newEvent.participants
@@ -38,7 +38,7 @@ export default function EventResultFields({ newEvent, handleChange }) {
           id="picked_by_id"
           value={newEvent.picked_by_id || ''}
           onChange={handleChange}
-          className="w-full p-2 border border-line rounded text-content-primary bg-surface-input"
+          className="w-full p-2 border border-line rounded-sm text-content-primary bg-surface-input"
         >
           <option value="">Select who picked the game (optional)</option>
           {newEvent.participants

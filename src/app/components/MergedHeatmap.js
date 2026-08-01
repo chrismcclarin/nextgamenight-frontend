@@ -134,7 +134,7 @@ export default function MergedHeatmap({
         <button
           onClick={handlePrevWeek}
           disabled={!canGoBack}
-          className="px-3 py-2 rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
+          className="px-3 py-2 rounded-sm bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
           aria-label="Previous week"
         >
           &lt;
@@ -146,7 +146,7 @@ export default function MergedHeatmap({
           <button
             onClick={handleToday}
             disabled={isOnCurrentWeek}
-            className="px-3 py-1 text-sm rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
+            className="px-3 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
             aria-label="Jump to current week"
           >
             Today
@@ -155,7 +155,7 @@ export default function MergedHeatmap({
         <button
           onClick={handleNextWeek}
           disabled={!canGoForward}
-          className="px-3 py-2 rounded bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
+          className="px-3 py-2 rounded-sm bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary font-medium"
           aria-label="Next week"
         >
           &gt;
@@ -166,7 +166,7 @@ export default function MergedHeatmap({
       {membersWithoutData.length > 0 && !showSkeleton && (
         <div className="bg-accent/10 border border-accent/30 rounded-card p-3 text-sm text-content-secondary mb-4 flex items-start gap-2">
           <svg
-            className="w-4 h-4 mt-0.5 flex-shrink-0 text-accent"
+            className="w-4 h-4 mt-0.5 shrink-0 text-accent"
             fill="currentColor"
             viewBox="0 0 20 20"
           >
@@ -193,19 +193,19 @@ export default function MergedHeatmap({
           <div className="bg-surface-card p-2 h-12" />
           {Array.from({ length: 7 }).map((_, i) => (
             <div key={`skel-h-${i}`} className="bg-surface-card p-2 h-12">
-              <div className="h-4 w-8 mx-auto bg-surface-elevated rounded animate-pulse mb-1" />
-              <div className="h-4 w-6 mx-auto bg-surface-elevated rounded animate-pulse" />
+              <div className="h-4 w-8 mx-auto bg-surface-elevated rounded-sm animate-pulse mb-1" />
+              <div className="h-4 w-6 mx-auto bg-surface-elevated rounded-sm animate-pulse" />
             </div>
           ))}
           {/* Skeleton body rows */}
           {Array.from({ length: 11 }).map((_, row) => (
             <React.Fragment key={`skel-row-${row}`}>
               <div className="bg-surface-card p-2 h-12">
-                <div className="h-4 w-10 ml-auto bg-surface-elevated rounded animate-pulse" />
+                <div className="h-4 w-10 ml-auto bg-surface-elevated rounded-sm animate-pulse" />
               </div>
               {Array.from({ length: 7 }).map((_, col) => (
                 <div key={`skel-${row}-${col}`} className="bg-surface-card p-1">
-                  <div className="h-[44px] w-full bg-surface-page rounded animate-pulse" />
+                  <div className="h-[44px] w-full bg-surface-page rounded-sm animate-pulse" />
                 </div>
               ))}
             </React.Fragment>
@@ -260,7 +260,7 @@ export default function MergedHeatmap({
           {LEGEND_ITEMS.map((item, i) => (
             <div
               key={i}
-              className={`w-4 h-4 rounded-sm ${item.className}`}
+              className={`w-4 h-4 rounded-xs ${item.className}`}
               title={item.label || undefined}
             />
           ))}

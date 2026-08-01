@@ -214,7 +214,7 @@ export default function ScheduleForm({
           <FormField label="Day of Week" error={errors.schedule_day_of_week?.message} className="mb-4">
             <select
               {...register('schedule_day_of_week', { valueAsNumber: true })}
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
             >
               {DAYS_OF_WEEK.map((day) => (
                 <option key={day.value} value={day.value}>
@@ -229,7 +229,7 @@ export default function ScheduleForm({
             <input
               type="time"
               {...register('schedule_time')}
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
             />
           </FormField>
 
@@ -248,7 +248,7 @@ export default function ScheduleForm({
               type="text"
               {...register('schedule_timezone')}
               placeholder="America/New_York"
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
             />
           </FormField>
 
@@ -265,7 +265,7 @@ export default function ScheduleForm({
           >
             <select
               {...register('default_deadline_hours', { valueAsNumber: true })}
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
             >
               {DEADLINE_DAY_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -288,7 +288,7 @@ export default function ScheduleForm({
           >
             <select
               {...register('default_token_expiry_hours', { valueAsNumber: true })}
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
             >
               {TOKEN_EXPIRY_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -340,7 +340,7 @@ export default function ScheduleForm({
               })}
               min={1}
               placeholder="Leave blank to use game minimum"
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
             />
           </FormField>
 
@@ -360,7 +360,7 @@ export default function ScheduleForm({
               {...register('template_name')}
               onFocus={() => { templateNameDirtyRef.current = true; }}
               placeholder="Auto-generated from settings"
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
             />
           </FormField>
 

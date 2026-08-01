@@ -480,7 +480,7 @@ export default function EventScheduler({
       >
         {dragHighlight && (
           <div
-            className="absolute pointer-events-none bg-btn-primary/20 border-2 border-btn-primary rounded z-10"
+            className="absolute pointer-events-none bg-btn-primary/20 border-2 border-btn-primary rounded-sm z-10"
             style={{
               top: dragHighlight.top,
               left: dragHighlight.left,
@@ -533,10 +533,10 @@ export default function EventScheduler({
         <div className="flex items-center gap-2 text-xs text-content-muted">
           <span>Availability:</span>
           <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'rgba(34, 197, 94, 0.15)' }} />
-            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'rgba(34, 197, 94, 0.25)' }} />
-            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'rgba(34, 197, 94, 0.4)' }} />
-            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'rgba(34, 197, 94, 0.55)' }} />
+            <div className="w-3 h-3 rounded-xs" style={{ backgroundColor: 'rgba(34, 197, 94, 0.15)' }} />
+            <div className="w-3 h-3 rounded-xs" style={{ backgroundColor: 'rgba(34, 197, 94, 0.25)' }} />
+            <div className="w-3 h-3 rounded-xs" style={{ backgroundColor: 'rgba(34, 197, 94, 0.4)' }} />
+            <div className="w-3 h-3 rounded-xs" style={{ backgroundColor: 'rgba(34, 197, 94, 0.55)' }} />
           </div>
           <span>More available</span>
         </div>

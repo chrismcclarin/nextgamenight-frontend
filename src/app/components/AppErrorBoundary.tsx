@@ -57,7 +57,7 @@ export default function AppErrorBoundary({
                     setResetAttempts((n) => n + 1);
                     resetError();
                   }}
-                  className="inline-flex items-center justify-center rounded-btn bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="inline-flex items-center justify-center rounded-btn bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:opacity-90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                   Try again
                 </button>
@@ -65,7 +65,7 @@ export default function AppErrorBoundary({
               <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="inline-flex items-center justify-center rounded-btn border border-strong bg-surface-card px-5 py-2.5 text-sm font-medium text-content-primary transition-colors hover:bg-surface-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="inline-flex items-center justify-center rounded-btn border border-strong bg-surface-card px-5 py-2.5 text-sm font-medium text-content-primary transition-colors hover:bg-surface-card-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 Reload page
               </button>

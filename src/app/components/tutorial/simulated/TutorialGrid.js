@@ -21,11 +21,11 @@ export default function TutorialGrid({ renderCell }) {
       <div className="min-w-max">
         {/* Day headers — match production AvailabilityGrid layout */}
         <div className="flex">
-          <div className="w-14 flex-shrink-0" />
+          <div className="w-14 shrink-0" />
           {TUTORIAL_DAYS.map((day) => (
             <div
               key={day}
-              className="w-12 flex-shrink-0 text-center text-xs font-medium text-content-secondary pb-1"
+              className="w-12 shrink-0 text-center text-xs font-medium text-content-secondary pb-1"
             >
               {day}
             </div>
@@ -35,7 +35,7 @@ export default function TutorialGrid({ renderCell }) {
         {/* Time-slot rows */}
         {TUTORIAL_TIME_SLOTS.map((time, rowIdx) => (
           <div key={time} className="flex">
-            <div className="w-14 flex-shrink-0 text-[10px] text-content-muted py-1 pr-1.5 text-right">
+            <div className="w-14 shrink-0 text-[10px] text-content-muted py-1 pr-1.5 text-right">
               {time}
             </div>
             {TUTORIAL_DAYS.map((_, colIdx) => {
@@ -43,7 +43,7 @@ export default function TutorialGrid({ renderCell }) {
               return (
                 <div
                   key={`${rowIdx}-${colIdx}`}
-                  className={`w-12 h-7 flex-shrink-0 flex items-center justify-center text-[10px] font-medium rounded-sm m-0.5 border transition-all duration-300 ${className}`}
+                  className={`w-12 h-7 shrink-0 flex items-center justify-center text-[10px] font-medium rounded-xs m-0.5 border transition-all duration-300 ${className}`}
                 >
                   {content}
                 </div>

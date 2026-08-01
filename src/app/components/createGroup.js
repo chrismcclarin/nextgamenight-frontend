@@ -102,7 +102,7 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                             required
                                             maxLength={40}
                                             autoComplete="off"
-                                            className="px-3 py-3 placeholder-content-muted text-content-primary relative bg-surface-input rounded text-sm border border-line shadow outline-none focus:outline-none focus:ring focus:ring-focus-ring w-full pr-16"
+                                            className="px-3 py-3 placeholder-content-muted text-content-primary relative bg-surface-input rounded-sm text-sm border border-line shadow-sm outline-hidden focus:outline-hidden focus:ring-3 focus:ring-focus-ring w-full pr-16"
                                         />
                                         <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-content-muted pointer-events-none">
                                             {newGroup.name.length}/40
@@ -114,7 +114,7 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                 </div>
                                 <div className="modal-footer">
                                     <button
-                                        className="btn btn-primary font-bold uppercase text-sm px-6 py-3 shadow hover:shadow-lg mr-1 mb-1"
+                                        className="btn btn-primary font-bold uppercase text-sm px-6 py-3 shadow-sm hover:shadow-lg mr-1 mb-1"
                                         type="submit"
                                     >
                                         Create Group
@@ -122,7 +122,7 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                 </div>
                             </form>
                                 <button
-                                    className="text-status-error background-transparent font-bold uppercase px-6 py-2 text-sm outline-none focus:outline-none mr-1 mb-1 ease-linear transition-all duration-150"
+                                    className="text-status-error background-transparent font-bold uppercase px-6 py-2 text-sm outline-hidden focus:outline-hidden mr-1 mb-1 ease-linear transition-all duration-150"
                                     type="button"
                                     onClick={modaltoggle}
                                 >

@@ -452,7 +452,7 @@ function RestoreGroupPage() {
             </div>
 
             <p className="text-sm text-content-muted mb-1">Bring this group back</p>
-            <h1 className="text-2xl font-bold text-content-primary mb-3 break-words">
+            <h1 className="text-2xl font-bold text-content-primary mb-3 wrap-break-word">
               {preview.group_name}
             </h1>
 
@@ -510,7 +510,7 @@ function RestoreGroupPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold text-content-primary mb-2 break-words">
+            <h1 className="text-xl font-bold text-content-primary mb-2 wrap-break-word">
               {groupName} is back
             </h1>
             <p className="text-content-secondary">

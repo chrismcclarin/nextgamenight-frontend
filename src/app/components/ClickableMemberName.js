@@ -112,7 +112,7 @@ export default function ClickableMemberName({ userId, username, children }) {
     // Self → blue "You" pill. Informational only, no action.
     if (status === 'self') {
       return (
-        <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded font-semibold">
+        <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-semibold">
           You
         </span>
       );
@@ -121,7 +121,7 @@ export default function ClickableMemberName({ userId, username, children }) {
     // Accepted → green "Friend" pill. Informational only, no action.
     if (status === 'accepted') {
       return (
-        <span className="text-[10px] uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded font-semibold">
+        <span className="text-[10px] uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-semibold">
           Friend
         </span>
       );
@@ -150,7 +150,7 @@ export default function ClickableMemberName({ userId, username, children }) {
       return (
         <button
           disabled
-          className="text-sm text-content-muted cursor-not-allowed px-2 py-1 rounded bg-surface-elevated border border-line"
+          className="text-sm text-content-muted cursor-not-allowed px-2 py-1 rounded-sm bg-surface-elevated border border-line"
         >
           Request pending
         </button>
@@ -229,7 +229,7 @@ export default function ClickableMemberName({ userId, username, children }) {
             ref={refs.setFloating}
             style={floatingStyles}
             {...getFloatingProps()}
-            className="bg-surface-card rounded-card shadow-theme-lg border border-line px-3 py-2 z-[60]"
+            className="bg-surface-card rounded-card shadow-theme-lg border border-line px-3 py-2 z-60"
           >
             {renderTooltipContent()}
           </div>

@@ -105,7 +105,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     </span>
                     <button
                         onClick={() => setRemovedBannerVisible(false)}
-                        className="text-amber-700 dark:text-amber-200 hover:underline text-xs flex-shrink-0"
+                        className="text-amber-700 dark:text-amber-200 hover:underline text-xs shrink-0"
                         aria-label="Dismiss"
                     >
                         Dismiss
@@ -113,7 +113,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 </div>
             )}
             <div className="flex flex-col md:flex-row gap-4 md:gap-6">
-                <div className="w-full md:w-auto md:flex-shrink-0 md:flex-[0_0_400px] md:relative">
+                <div className="w-full md:w-auto md:shrink-0 md:flex-[0_0_400px] md:relative">
                     <div className="md:absolute md:inset-0">
                     <GroupList
                         onGroupSelect={handleGroupSelect}

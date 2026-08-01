@@ -425,7 +425,7 @@ function FriendsPage() {
                             value={searchEmail}
                             onChange={(e) => setSearchEmail(e.target.value)}
                             placeholder="Enter friend's email address"
-                            className="flex-1 px-4 py-2 border border-line rounded-btn focus:outline-none focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
+                            className="flex-1 px-4 py-2 border border-line rounded-btn focus:outline-hidden focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
                             required
                         />
                         <button
@@ -570,7 +570,7 @@ function FriendsPage() {
                                                 aria-label="Invite to group"
                                                 value={selectedGroupId}
                                                 onChange={(e) => setSelectedGroupId(e.target.value)}
-                                                className="flex-1 min-w-[180px] max-w-xs px-3 py-2 border border-line rounded-btn text-sm text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+                                                className="flex-1 min-w-[180px] max-w-xs px-3 py-2 border border-line rounded-btn text-sm text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
                                             >
                                                 <option value="" disabled>Select a group...</option>
                                                 {userGroups.map(group => (

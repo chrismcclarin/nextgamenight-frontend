@@ -50,15 +50,15 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
           {/* Header row skeleton */}
           <div />
           {Array.from({ length: 7 }).map((_, i) => (
-            <div key={`hdr-${i}`} className="h-6 bg-surface-elevated rounded animate-pulse" />
+            <div key={`hdr-${i}`} className="h-6 bg-surface-elevated rounded-sm animate-pulse" />
           ))}
           {/* Grid skeleton rows — Phase 66-01: 28 rows (14 hours × 2 half-hour slots)
               to match EventScheduler's step={30} density. */}
           {Array.from({ length: 28 }).map((_, row) => (
             <div key={`row-${row}`} className="contents">
-              <div className="h-5 w-8 bg-surface-elevated rounded animate-pulse" />
+              <div className="h-5 w-8 bg-surface-elevated rounded-sm animate-pulse" />
               {Array.from({ length: 7 }).map((_, col) => (
-                <div key={`cell-${row}-${col}`} className="h-5 bg-surface-page rounded animate-pulse" />
+                <div key={`cell-${row}-${col}`} className="h-5 bg-surface-page rounded-sm animate-pulse" />
               ))}
             </div>
           ))}
@@ -270,7 +270,7 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
                   tooltipContent={tooltipContent}
                   fill={false}
                   style={{ minHeight: '28px' }}
-                  className="rounded-sm flex items-center justify-center cursor-default"
+                  className="rounded-xs flex items-center justify-center cursor-default"
                 >
                   {count > 0 && (
                     <span className="text-[11px] text-green-900 font-semibold">{count}</span>
@@ -285,12 +285,12 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
       {/* Legend strip */}
       <div className="flex items-center justify-center gap-1 mt-2">
         <span className="text-[9px] text-content-muted">Less</span>
-        <div className="w-3 h-3 bg-surface-elevated rounded-sm" />
-        <div className="w-3 h-3 bg-green-100 rounded-sm" />
-        <div className="w-3 h-3 bg-green-200 rounded-sm" />
-        <div className="w-3 h-3 bg-green-300 rounded-sm" />
-        <div className="w-3 h-3 bg-green-400 rounded-sm" />
-        <div className="w-3 h-3 bg-green-500 rounded-sm" />
+        <div className="w-3 h-3 bg-surface-elevated rounded-xs" />
+        <div className="w-3 h-3 bg-green-100 rounded-xs" />
+        <div className="w-3 h-3 bg-green-200 rounded-xs" />
+        <div className="w-3 h-3 bg-green-300 rounded-xs" />
+        <div className="w-3 h-3 bg-green-400 rounded-xs" />
+        <div className="w-3 h-3 bg-green-500 rounded-xs" />
         <span className="text-[9px] text-content-muted">More available</span>
         {/* Plan 72-02: dropped the "(hover for names)" hint — interaction is no
             longer hover-only (touch + keyboard now reach the tooltip via the
@@ -317,7 +317,7 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
 
       {/* gcal conflict warning */}
       {conflictNames.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded text-xs text-amber-700 px-2 py-1 mt-2">
+        <div className="bg-amber-50 border border-amber-200 rounded-sm text-xs text-amber-700 px-2 py-1 mt-2">
           Heads up: {conflictNames.join(' and ')} may have Google Calendar conflicts
         </div>
       )}

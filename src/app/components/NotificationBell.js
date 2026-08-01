@@ -150,7 +150,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
   );
 
   const countBadge = totalCount > 0 ? (
-    <span className="bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-[1.25rem] px-1 flex items-center justify-center">
+    <span className="bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-5 px-1 flex items-center justify-center">
       {totalCount > 9 ? '9+' : totalCount}
     </span>
   ) : null;

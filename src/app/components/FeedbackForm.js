@@ -147,7 +147,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
             <select
               value={type}
               onChange={(e) => setType(e.target.value)}
-              className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+              className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
               required
             >
               <option value="bug">Bug Report</option>
@@ -166,7 +166,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               placeholder="Brief description of the issue or suggestion"
-              className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring"
+              className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
               required
               maxLength={200}
             />
@@ -182,7 +182,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Please provide as much detail as possible..."
               rows={6}
-              className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-none focus:ring-2 focus:ring-focus-ring resize-none"
+              className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring resize-none"
               required
               maxLength={2000}
             />
@@ -196,17 +196,17 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
             </label>
             {screenshot ? (
               <div className="flex items-center gap-3 p-3 bg-surface-page border border-line rounded-md">
-                <svg className="w-5 h-5 text-content-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-content-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
                 <span className="text-sm text-content-secondary flex-1 truncate">{screenshot.name}</span>
-                <span className="text-xs text-content-muted flex-shrink-0">
+                <span className="text-xs text-content-muted shrink-0">
                   {(screenshot.size / 1024 / 1024).toFixed(1)} MB
                 </span>
                 <button
                   type="button"
                   onClick={removeScreenshot}
-                  className="text-content-muted hover:text-status-error transition-colors flex-shrink-0"
+                  className="text-content-muted hover:text-status-error transition-colors shrink-0"
                   aria-label="Remove screenshot"
                 >
                   ×
@@ -235,7 +235,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
 
           {/* Error */}
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded">
+            <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-sm">
               {error}
             </div>
           )}

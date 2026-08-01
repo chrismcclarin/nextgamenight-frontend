@@ -161,14 +161,14 @@ export default function GameComboInput({ value, onChange, groupId, userId, place
           }}
           onKeyDown={handleKeyDown}
           placeholder={placeholder || 'Search for a game or type a name'}
-          className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input pr-8 focus:outline-none focus:ring-2 focus:ring-focus-ring"
+          className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input pr-8 focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
           maxLength={255}
         />
         {inputValue && (
           <button
             type="button"
             onClick={handleClear}
-            className="absolute right-2 text-content-muted hover:text-content-secondary text-lg leading-none focus:outline-none"
+            className="absolute right-2 text-content-muted hover:text-content-secondary text-lg leading-none focus:outline-hidden"
             title="Clear game selection"
           >
             &times;

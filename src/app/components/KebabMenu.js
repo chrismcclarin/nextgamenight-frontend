@@ -99,11 +99,11 @@ export default function KebabMenu({
   };
 
   return (
-    <div className="relative flex-shrink-0" ref={containerRef}>
+    <div className="relative shrink-0" ref={containerRef}>
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="text-2xl text-content-muted hover:text-content-primary px-2 py-1 leading-none rounded hover:bg-surface-card-hover transition-colors"
+        className="text-2xl text-content-muted hover:text-content-primary px-2 py-1 leading-none rounded-sm hover:bg-surface-card-hover transition-colors"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={ariaLabel}

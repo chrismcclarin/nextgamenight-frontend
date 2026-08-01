@@ -120,7 +120,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                 {options
                   .filter(o => o.game_id !== winner.game_id || o.game_name !== winner.game_name)
                   .map(opt => (
-                    <div key={opt.id} className="px-3 py-2 text-sm text-content-muted bg-surface-elevated rounded">
+                    <div key={opt.id} className="px-3 py-2 text-sm text-content-muted bg-surface-elevated rounded-sm">
                       {opt.game_name}
                     </div>
                   ))}

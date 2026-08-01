@@ -15,7 +15,7 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
                 <SafeImage
                     src={game.image_url}
                     alt={game.name}
-                    className="w-16 h-16 object-cover rounded"
+                    className="w-16 h-16 object-cover rounded-sm"
                 />
                 <div className="flex-1 min-w-0">
                     <h3 className="text-lg font-semibold text-content-primary mb-1 truncate">
@@ -265,7 +265,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                         <select
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value)}
-                            className="px-3 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-none focus:ring-2 focus:ring-focus-ring"
+                            className="px-3 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
                         >
                             <option value="name">Name</option>
                             <option value="theme">Theme</option>
@@ -274,7 +274,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                     </label>
                     <button
                         onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                        className="px-3 py-2 border border-line rounded-btn text-sm text-content-primary hover:bg-surface-card-hover focus:outline-none focus:ring-2 focus:ring-focus-ring transition-colors"
+                        className="px-3 py-2 border border-line rounded-btn text-sm text-content-primary hover:bg-surface-card-hover focus:outline-hidden focus:ring-2 focus:ring-focus-ring transition-colors"
                         title={sortOrder === 'asc' ? 'Ascending (click to reverse)' : 'Descending (click to reverse)'}
                     >
                         {sortOrder === 'asc' ? '\u2191' : '\u2193'}
@@ -282,7 +282,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                 </div>
                 <button
                     onClick={() => setFilterOpen(prev => !prev)}
-                    className={`px-3 py-2 border rounded-btn text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-focus-ring ${
+                    className={`px-3 py-2 border rounded-btn text-sm transition-colors focus:outline-hidden focus:ring-2 focus:ring-focus-ring ${
                         (filterWinner || filterPicker)
                             ? 'border-line-accent bg-surface-card-hover text-accent hover:bg-surface-elevated'
                             : 'border-line text-content-secondary hover:bg-surface-card-hover'
@@ -300,7 +300,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                             <select
                                 value={filterWinner}
                                 onChange={(e) => setFilterWinner(e.target.value)}
-                                className="w-full px-3 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-none focus:ring-2 focus:ring-focus-ring"
+                                className="w-full px-3 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
                             >
                                 <option value="">All</option>
                                 {winnerOptions.map(opt => (
@@ -315,7 +315,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                             <select
                                 value={filterPicker}
                                 onChange={(e) => setFilterPicker(e.target.value)}
-                                className="w-full px-3 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-none focus:ring-2 focus:ring-focus-ring"
+                                className="w-full px-3 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
                             >
                                 <option value="">All</option>
                                 {pickerOptions.map(opt => (
