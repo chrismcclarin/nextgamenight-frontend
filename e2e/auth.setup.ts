@@ -5,10 +5,12 @@ import { test as setup, expect } from '@playwright/test';
  *
  * Runs ONCE as the `setup` project (see playwright.config.ts). It drives the real
  * Auth0 Universal Login hosted page via the @auth0/nextjs-auth0 `/api/auth/login`
- * route, then persists the resulting `appSession` cookie to `.auth/user.json`. The
- * five journey specs declare `dependencies: ['setup']` + `storageState` and reuse
- * this cookie, so they never re-authenticate — now across TWO consuming projects,
- * `journeys` (desktop) and `phone` (Phase 87.7 MOB-03), which share this one state.
+ * route, then persists the resulting `appSession` cookie to `.auth/user.json`.
+ * The consuming projects declare `dependencies: ['setup']` + `storageState`, and
+ * their testMatch globs cover ALL of e2e/*.spec.ts (the 5 user journeys plus the
+ * tailwind-v4-styles spot-check), so every spec reuses this cookie and none
+ * re-authenticate — across TWO consuming projects, `journeys` (desktop) and
+ * `phone` (Phase 87.7 MOB-03), which share this one state.
  *
  * Credentials are read ONLY from env (GitHub secrets in CI; absent locally). They
  * are NEVER logged — leaking them would defeat the secret. (Threat T-82-08.)

@@ -321,10 +321,14 @@ jobs:
       # Also deliberately NOT done (D-19): no workflow_dispatch input for project selection. A
       # permanent input defaulting to the pinned set is a config surface that can silently
       # disarm this pinning — the same failure class Phase 88.4 spent a plan closing. The one
-      # exploratory all-projects run uses a throwaway branch instead, which the
-      # `push: branches-ignore: [main]` trigger above already picks up with zero permanent
-      # surface.
-      - name: Run Playwright journeys (setup logs in once; 5 journeys reuse storageState)
+      # exploratory all-projects run uses a throwaway branch instead. FULL MECHANISM — the
+      # push alone is NOT enough: the `push: branches-ignore: [main]` trigger above picks the
+      # branch up, but this pinned `--project` list applies to EVERY trigger, so the throwaway
+      # branch must ALSO edit the run line below (e.g. append `--project=phone`, or drop the
+      # pin entirely for all-projects). Both edits die with the branch; nothing permanent
+      # changes. Plan 12 (the phone-lane exploratory run) is the direct consumer of this
+      # instruction.
+      - name: Run Playwright journeys (setup logs in once; all specs in the journeys project reuse storageState)
         env:
           # Auth credentials cross into the runner ONLY via env — never echoed (T-82-11).
           E2E_AUTH0_USER: ${{ secrets.E2E_AUTH0_USER }}

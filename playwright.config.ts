@@ -5,9 +5,11 @@ import { defineConfig, devices } from '@playwright/test';
  *
  * The `setup` project drives Auth0 Universal Login ONCE (e2e/auth.setup.ts) and
  * writes the appSession cookie to `.auth/user.json`. The `journeys` project depends
- * on `setup` and reuses that storageState, so the five journey specs run auth-free
- * (availability-submit, create-event, create-group, invite, rsvp — corrected in
- * Phase 87.7 D-16; this header and ci.yml both said "four" while e2e/ held five).
+ * on `setup` and reuses that storageState. Its testMatch is a glob over EVERY
+ * e2e/*.spec.ts — currently the 5 user journeys (availability-submit, create-event,
+ * create-group, invite, rsvp) plus the tailwind-v4-styles spot-check (Plan 10) —
+ * so specs added to e2e/ join it automatically; don't restate a count here (that
+ * count went stale twice: Phase 87.7 D-16, then again when Plan 10 added its spec).
  *
  * THREE projects as of Phase 87.7: `setup`, `journeys` (desktop) and `phone`
  * (MOB-03, iPhone 13). The `phone` project does NOT run on pull requests — ci.yml
