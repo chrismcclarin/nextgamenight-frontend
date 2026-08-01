@@ -5,7 +5,14 @@ import { defineConfig, devices } from '@playwright/test';
  *
  * The `setup` project drives Auth0 Universal Login ONCE (e2e/auth.setup.ts) and
  * writes the appSession cookie to `.auth/user.json`. The `journeys` project depends
- * on `setup` and reuses that storageState, so the four journey specs run auth-free.
+ * on `setup` and reuses that storageState, so the five journey specs run auth-free
+ * (availability-submit, create-event, create-group, invite, rsvp — corrected in
+ * Phase 87.7 D-16; this header and ci.yml both said "four" while e2e/ held five).
+ *
+ * THREE projects as of Phase 87.7: `setup`, `journeys` (desktop) and `phone`
+ * (MOB-03, iPhone 13). The `phone` project does NOT run on pull requests — ci.yml
+ * pins the PR lane to `--project=setup --project=journeys` (D-13/D-15). Phase 87.8
+ * wires it in. See the marker on the project itself.
  *
  * Credentials come from CI env (`E2E_AUTH0_USER`/`E2E_AUTH0_PASS`, GitHub secrets
  * wired in Plan 05). They are intentionally absent locally — this suite is designed
