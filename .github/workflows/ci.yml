@@ -286,11 +286,14 @@ jobs:
               || { echo "::error::fixture key rsvp_path_phone missing or null in E2E_FIXTURES_JSON" >&2; exit 1; }
             E2E_RESTORE_PATH=$(echo "$JSON" | jq -e -r '.restore_path') \
               || { echo "::error::fixture key restore_path missing or null in E2E_FIXTURES_JSON" >&2; exit 1; }
+            E2E_EVENT_DETAIL_PATH=$(echo "$JSON" | jq -e -r '.event_detail_path') \
+              || { echo "::error::fixture key event_detail_path missing or null in E2E_FIXTURES_JSON" >&2; exit 1; }
             echo "E2E_INVITE_FRIEND_NAME_PHONE=$E2E_INVITE_FRIEND_NAME_PHONE"
             echo "E2E_RSVP_PATH_PHONE=$E2E_RSVP_PATH_PHONE"
             echo "E2E_RESTORE_PATH=$E2E_RESTORE_PATH"
+            echo "E2E_EVENT_DETAIL_PATH=$E2E_EVENT_DETAIL_PATH"
           } >> "$GITHUB_ENV"
-          echo "Fixtures minted (group id, availability token, rsvp path + phone rsvp path, invite group + friend, phone invite friend, restore path)."
+          echo "Fixtures minted (group id, availability token, rsvp path + phone rsvp path, invite group + friend, phone invite friend, restore path, event detail path)."
 
       - name: Backend — boot (server.js, :4000) and smoke-wait /health
         working-directory: backend/Sonnet

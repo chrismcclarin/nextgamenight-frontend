@@ -93,15 +93,16 @@ async function assertMin44(locator: Locator, label: string): Promise<void> {
  *  into a click (no navigations / submits / side effects from this probe). */
 async function assertPressedOpacity(page: Page, locator: Locator, label: string): Promise<void> {
   const target = locator.first();
-  // boundingBox() is viewport-relative (getBoundingClientRect semantics) and raw
-  // mouse events do NOT auto-scroll the way locator.click() does — for a below-fold
-  // element the press lands outside the 667px viewport and :active never fires
-  // (availability submit, first armed run 30833214370: pressed opacity read 1).
-  await target.scrollIntoViewIfNeeded();
-  const box = await target.boundingBox();
-  expect(box, `${label}: boundingBox() null — cannot drive :active`).not.toBeNull();
-  if (!box) return;
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  // Deliver the press through hover()'s actionability pipeline — auto-scroll,
+  // stability (element in the same position for two consecutive frames), and a
+  // hit-target check that the element actually receives the pointer — then press
+  // where the pointer already is. Manually captured boundingBox() coordinates
+  // went stale under CI load twice: the below-fold availability submit was
+  // "pressed" outside the 667px viewport (run 30833214370), and a mid-page
+  // layout shift on groupPlanning moved the CTA between capture and press (run
+  // 30836863411) — both times the press became a page-wide text drag and the
+  // probe read opacity 1 on an element it never touched.
+  await target.hover();
   await page.mouse.down();
   try {
     const opacity = await target.evaluate((el) => getComputedStyle(el).opacity);
