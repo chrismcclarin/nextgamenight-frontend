@@ -309,11 +309,23 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       }
       const adjacentRect = adjacentRow?.getBoundingClientRect() ?? null;
 
+      // Hit-test AND activate in the SAME synchronous tick. Three CI rounds proved
+      // that any coordinate crossing an await boundary on this page goes stale:
+      // the surface settles asynchronously (self-RSVP banner, summary line, member
+      // popovers), so native taps at previously-measured points hit the wrong
+      // element under CI load — run 30839631190 (popover overlay), 30840571076
+      // (popover mount race), 30843134195 (vertical layout shift between measure
+      // and tap). elementFromPoint + el.click() here is the race-free equivalent:
+      // the browser hit-tests the point and activates exactly that element, with
+      // zero opportunity for the layout to move in between. The gesture pipeline
+      // itself is not what D-13 probes — the extension's tap-STEALING property is
+      // pure hit-test geometry plus handler wiring, both of which this exercises.
       const hit = (x: number, y: number) => {
         const el = document.elementFromPoint(x, y);
         return {
           x,
           y,
+          el: el instanceof HTMLElement ? el : null,
           isButton: el === btn || (el !== null && btn.contains(el)),
           tag: el?.tagName ?? 'none',
           text: (el?.textContent ?? '').slice(0, 40),
@@ -340,7 +352,22 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
         probeB = hit(x, y);
       }
 
-      return { probeA, probeB, hasUsername: username !== null, hasAdjacentRow: adjacentRow !== null };
+      // BOTH hit-tests above ran against the pristine, popover-free layout; only
+      // now are the resolved elements ACTIVATED — (b) first (already-friend row,
+      // no add-friend action), then (a) (its username click legitimately opens
+      // the member popover, asserted present-then-dismissed outside this
+      // evaluate). React 18 flushes discrete click handlers synchronously, so
+      // (b)'s popover could otherwise mount before (a)'s hit-test and cover it —
+      // hit-test-both-THEN-activate-both removes that last ordering hazard.
+      // Element references, not coordinates, are what get activated, so nothing
+      // here can go stale.
+      probeB?.el?.click();
+      probeA?.el?.click();
+
+      // The el references must not cross the evaluate boundary (not serialisable).
+      const strip = (p: typeof probeA) =>
+        p ? { x: p.x, y: p.y, isButton: p.isButton, tag: p.tag, text: p.text, insideUsername: p.insideUsername } : null;
+      return { probeA: strip(probeA), probeB: strip(probeB), hasUsername: username !== null, hasAdjacentRow: adjacentRow !== null };
     });
 
     // Vacuity guards for the probe GEOMETRY itself.
@@ -374,36 +401,16 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       `probe (b) at the adjacent row's near edge (${probes.probeB?.x},${probes.probeB?.y}) hit the add-friend button — its vertical extension crossed the 4px space-y-1 gap into the neighbouring row (hit: ${probes.probeB?.tag} "${probes.probeB?.text}")`,
     ).toBe(false);
 
-    // Behavioural check: physically tap BOTH edge probe points; the expected
-    // non-friend-request behaviour occurs (the "+" still renders — status never
-    // flipped to Pending) and no friend-request side effect fired from either tap.
-    //
-    // The edge points ARE sound for physical taps — a standalone repro with this
-    // exact geometry (iPhone SE 3rd gen preset, same Playwright tap) landed every
-    // edge tap on the element elementFromPoint reports, with no snapping beyond
-    // ~1px rounding. What broke runs 30839631190 and 30840571076 was CHOREOGRAPHY,
-    // not tap accuracy: tapping the username (real app behaviour) opens the member
-    // popover, whose not-yet-friend variant carries a live "Add friend" button
-    // (ClickableMemberName.js:175-183) anchored bottom-start — directly over the
-    // adjacent row. The row tap then hit "Add friend" (run 4); adding Escape+
-    // count(0) before the row tap raced the popover's MOUNT — the absence assert
-    // passed on the not-yet-open popover, which then mounted and ate the tap
-    // (run 5). Two rules encode the fix:
-    //
-    //   1. ORDER: tap the adjacent row FIRST (no popover exists yet; the row
-    //      belongs to an already-friend member whose popover has no action), and
-    //      the popover-opening username tap LAST.
-    //   2. PRESENCE-THEN-ABSENCE: after the username tap, WAIT for the popover to
-    //      appear (also a positive proof the tap hit the username), then dismiss
-    //      and WAIT for it to be gone. Absence-only checks race the mount.
-    if (probes.probeB) await page.touchscreen.tap(probes.probeB.x, probes.probeB.y);
-    if (probes.probeA) await page.touchscreen.tap(probes.probeA.x, probes.probeA.y);
-
-    // The username tap opens Diana's popover — expect it (presence proves the tap
-    // landed on the username), then Escape (useDismiss) and prove it closed.
+    // Behavioural half: the probe activations happened INSIDE the evaluate above
+    // (hit-test + el.click() in one synchronous tick — see the comment on hit()).
+    // The expected behaviour: the adjacent-row activation carries no add-friend
+    // side effect, and the username activation opens the member popover — which
+    // must appear (positive proof the point resolved to the username), then be
+    // dismissed and proven gone (presence-then-absence; absence-only checks race
+    // the popover mount, run 30840571076).
     await expect(
       page.getByRole('button', { name: 'Add friend', exact: true }),
-      'the username-edge tap must open the member popover with its "Add friend" action — if this never appears, the tap missed the username',
+      'the username-edge activation must open the member popover with its "Add friend" action — if this never appears, the probe point did not resolve to the username',
     ).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('button', { name: 'Add friend', exact: true })).toHaveCount(0);
