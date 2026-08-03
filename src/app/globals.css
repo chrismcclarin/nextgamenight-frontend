@@ -1052,3 +1052,75 @@ body {
 .rbc-timeslot-group {
   border-bottom-color: var(--color-border);
 }
+
+/* ===== PHASE 87.8: PHONE-WIDTH FLATTEN UTILITIES ===== */
+
+/* DECISION Phase 87.8 (D-03): two explicit OPT-IN flatten marker classes for nested
+   containers at phone width. Three choices recorded:
+
+   (1) An explicit opt-in marker class chosen OVER `:where(.rounded-card ...)` — a
+       `:where()` rule silently reaches every current and future rounded-card site,
+       which is a second invisible-action-at-a-distance mechanism in the same file
+       this phase is removing one from (D-01); and OVER keying on `.card .card`,
+       which is impossible because inner nesting levels never use the card class
+       (verified: ScheduleList.js:67, PromptScheduleManager.js:185,
+       groupPlanning/page.js:241 and AvailabilityForm.js:286 are all ad-hoc
+       `bg-* border rounded-* p-*` divs, zero of them cards).
+   (2) The DOUBLED-class selector (specificity 0,2,0) chosen OVER a single class —
+       within the utilities layer a single class ties with `bg-surface-card`/`p-4`
+       and is decided by emission order, which is an implementation detail of the
+       Tailwind engine and not a property to build a layout rule on. Doubling wins
+       deterministically.
+   (3) The utilities layer chosen OVER an unlayered rule — an unlayered flatten rule
+       would be un-overridable by any call site and would recreate the exact bug
+       D-01 removes (the guardrail comment near the `:root` palette states the
+       mechanism).
+
+   The media bound is 48rem — Tailwind v4's default `md` breakpoint; no
+   `--breakpoint-*` override exists in this file — so both utilities are inert at
+   >=768px and desktop rendering is untouched.
+
+   ORDERING HAZARD (cross-selector, called out on purpose): the divided base block
+   declares `border-width: 0` and the hairline lives ONLY in the `:not(:first-child)`
+   companion selector below it. A future edit that merges the two blocks must
+   re-apply the `:not(:first-child)` scoping or the first-row exception is lost and
+   every divided list paints a hairline directly under its section heading.
+
+   This nested-padding flatten rule is an ORIGINAL project decision — no published
+   design system has one (confirmed negative) — so a padding-less, chrome-less inner
+   surface at phone width is intentional, and removing the marker class from a site
+   is a decision, not a cleanup. */
+@layer utilities {
+  @media (width < 48rem) {
+    .surface-flat-phone.surface-flat-phone {
+      padding-inline: 0;
+      background-color: transparent;
+      background-image: none;
+      border-width: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+  }
+
+  @media (width < 48rem) {
+    .surface-flat-phone-divided.surface-flat-phone-divided {
+      padding-inline: 0;
+      background-color: transparent;
+      background-image: none;
+      border-width: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    /* ML#10: hairline BETWEEN rows only — never above the first row. The
+       chrome-removal above stays unconditional on every row; only rows after the
+       first get the top border + 16px vertical rhythm. */
+    .surface-flat-phone-divided.surface-flat-phone-divided:not(:first-child) {
+      border-block-start-width: 1px;
+      border-block-start-style: solid;
+      border-block-start-color: var(--color-border);
+      padding-block-start: 1rem;
+      margin-block-start: 1rem;
+    }
+  }
+}
