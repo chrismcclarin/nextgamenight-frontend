@@ -502,7 +502,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                 above; both go dark if a call site forgets the prop. */}
             <button
               type="button"
-              className="btn btn-secondary w-full sm:w-auto min-h-[44px] mb-4"
+              className="btn btn-secondary w-full sm:w-auto min-h-11 mb-4"
               onClick={() => onOpenManageMembers?.()}
               disabled={!onOpenManageMembers}
             >
@@ -512,7 +512,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
             {!showDeleteConfirm ? (
               <button
                 onClick={() => setShowDeleteConfirm(true)}
-                className="btn btn-danger w-full sm:w-auto min-h-[44px]"
+                className="btn btn-danger w-full sm:w-auto min-h-11"
               >
                 Delete Group
               </button>
@@ -526,7 +526,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                   value={deleteConfirmText}
                   onChange={(e) => setDeleteConfirmText(e.target.value)}
                   placeholder="Type group name to confirm"
-                  className="w-full p-2 min-h-[44px] border border-red-300 rounded-sm text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-red-500"
+                  className="w-full p-2 min-h-11 border border-red-300 rounded-sm text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-red-500"
                 />
                 {/* Stacked on a phone, inline from sm: up — two side-by-side
                     targets at 375px are cramped, and one of them is destructive. */}
@@ -536,7 +536,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                       setShowDeleteConfirm(false);
                       setDeleteConfirmText('');
                     }}
-                    className="btn btn-secondary w-full sm:w-auto min-h-[44px]"
+                    className="btn btn-secondary w-full sm:w-auto min-h-11"
                   >
                     Cancel
                   </button>
@@ -557,7 +557,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                   <button
                     onClick={handleDeleteGroup}
                     disabled={deleting || deleteConfirmText !== group.name}
-                    className="btn btn-danger w-full sm:w-auto min-h-[44px]"
+                    className="btn btn-danger w-full sm:w-auto min-h-11"
                   >
                     {deleting ? 'Deleting...' : 'Delete Group'}
                   </button>
