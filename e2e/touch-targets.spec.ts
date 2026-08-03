@@ -340,7 +340,23 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
         probeB = hit(x, y);
       }
 
-      return { probeA, probeB, hasUsername: username !== null, hasAdjacentRow: adjacentRow !== null };
+      // Centre points for the PHYSICAL taps (edge points stay the exact
+      // elementFromPoint oracle above — see the supersede comment below).
+      const usernameRectCenter = usernameRect
+        ? { x: usernameRect.left + usernameRect.width / 2, y: usernameRect.top + usernameRect.height / 2 }
+        : null;
+      const adjacentRowCenter = adjacentRect
+        ? { x: adjacentRect.left + adjacentRect.width / 2, y: adjacentRect.top + adjacentRect.height / 2 }
+        : null;
+
+      return {
+        probeA,
+        probeB,
+        usernameRectCenter,
+        adjacentRowCenter,
+        hasUsername: username !== null,
+        hasAdjacentRow: adjacentRow !== null,
+      };
     });
 
     // Vacuity guards for the probe GEOMETRY itself.
@@ -374,24 +390,39 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       `probe (b) at the adjacent row's near edge (${probes.probeB?.x},${probes.probeB?.y}) hit the add-friend button — its vertical extension crossed the 4px space-y-1 gap into the neighbouring row (hit: ${probes.probeB?.tag} "${probes.probeB?.text}")`,
     ).toBe(false);
 
-    // Behavioural check: physically tap BOTH probe points; the expected non-friend-
-    // request behaviour occurs (the "+" still renders — status never flipped to
-    // Pending) and no friend-request side effect fired from either tap.
-    if (probes.probeA) await page.touchscreen.tap(probes.probeA.x, probes.probeA.y);
+    // Behavioural check: physically tap near BOTH probe axes; the expected
+    // non-friend-request behaviour occurs (the "+" still renders — status never
+    // flipped to Pending) and no friend-request side effect fired from either tap.
+    //
+    // SUPERSEDED KNOWINGLY (run 30840571076, after 30839631190): the original
+    // D-13 design tapped the exact EDGE probe points ("edges, never centres").
+    // That oracle is unsound for PHYSICAL taps in emulated-touch Chromium:
+    // elementFromPoint at the edge points resolved to non-button elements
+    // (asserted above — pseudo-element hit boxes resolve to their origin button,
+    // so the points are provably OUTSIDE the 44x32 extension), yet the tap at
+    // the same coordinates activated the "+" anyway — browser touch-target
+    // adjustment snaps a tap to a nearby interactive target. That is fat-finger
+    // browser behaviour the app cannot prevent, not an extension overreach. The
+    // PRECISE geometry oracle is the elementFromPoint probe set above (exact,
+    // adjustment-immune); the physical taps below verify the behavioural half
+    // from points far enough inward that adjustment cannot bridge to the
+    // extension.
+    if (probes.usernameRectCenter) {
+      await page.touchscreen.tap(probes.usernameRectCenter.x, probes.usernameRectCenter.y);
+    }
 
     // Tapping the username is REAL app behaviour that opens the member popover
     // (ClickableMemberName FloatingPortal), and for a not-yet-friend that popover
-    // contains a genuine "Add friend" action (ClickableMemberName.js:177-183). It
-    // anchors to the username — directly over the adjacent row probe (b) taps next.
-    // Run 30839631190: probe (b) tapped the popover's "Add friend"; both absence
-    // asserts below sampled before the async token+POST round-trip fired, so the
-    // test passed while Diana went ⏳ Pending server-side and the NEXT test found
-    // no "+". Dismiss the popover (useDismiss handles Escape) and PROVE it closed
-    // before probe (b) — otherwise probe (b) measures the popover, not the row.
+    // contains a genuine "Add friend" action (ClickableMemberName.js:177-183),
+    // anchored over the adjacent row. Dismiss it (useDismiss handles Escape) and
+    // PROVE it closed before the next tap — run 30839631190 red: the second tap
+    // hit the popover's "Add friend" instead of the row.
     await page.keyboard.press('Escape');
     await expect(page.getByRole('button', { name: 'Add friend', exact: true })).toHaveCount(0);
 
-    if (probes.probeB) await page.touchscreen.tap(probes.probeB.x, probes.probeB.y);
+    if (probes.adjacentRowCenter) {
+      await page.touchscreen.tap(probes.adjacentRowCenter.x, probes.adjacentRowCenter.y);
+    }
 
     // Absence over a window, not an instant: the request pipeline is async (an
     // access-token fetch precedes POST /friendships/request), so a same-tick
