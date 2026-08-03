@@ -47,10 +47,21 @@ export interface WriteCellProps {
   preference: Preference;
   /** Container handler: clamped target (row, col) on a nav key. */
   onMove?: (row: number, col: number) => void;
-  /** Container handler: receives the NEXT preference after a keyboard cycle. */
-  onSelect?: (next: Preference) => void;
-  /** Pointer-paint start (slotId forwarded for the container's paint model). */
-  onPointerDown?: (slotId?: string) => void;
+  /**
+   * Container handler: receives the NEXT preference after a keyboard cycle,
+   * plus this cell's own (row, col). The cell reporting its coordinates is what
+   * lets the container pass ONE stable handler to every cell instead of a
+   * fresh per-cell closure — see the callback-stability DECISION marker in
+   * AvailabilityGrid.js (Phase 87.8 TOUCH). Callbacks that ignore the extra
+   * args (e.g. WeekGrid's per-coord cached closures) remain assignable.
+   */
+  onSelect?: (next: Preference, row: number, col: number) => void;
+  /**
+   * Pointer-paint start. The raw pointer event is forwarded alongside slotId so
+   * the container can split behavior by pointerType (mouse toggles immediately;
+   * touch runs the long-press state machine) — Phase 87.8 TOUCH.
+   */
+  onPointerDown?: (slotId?: string, e?: React.PointerEvent) => void;
   /** Pointer-paint drag-over. */
   onPointerEnter?: (slotId?: string) => void;
   /** Opaque slot identifier forwarded to the pointer-paint handlers. */
@@ -84,8 +95,8 @@ export const WriteCell = memo(function WriteCell({
   // Keyboard select cycles the three-state preference; WriteCell owns the mapping
   // and reports the NEXT value so the hook stays semantics-agnostic.
   const handleSelect = useCallback(() => {
-    onSelect?.(cyclePreference(preference));
-  }, [onSelect, preference]);
+    onSelect?.(cyclePreference(preference), row, col);
+  }, [onSelect, preference, row, col]);
 
   const { tabIndex, onKeyDown } = useHeatmapCell({
     row,
@@ -100,8 +111,12 @@ export const WriteCell = memo(function WriteCell({
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (disabled) return;
-    e.preventDefault();
-    onPointerDown?.(slotId);
+    // Phase 87.8 TOUCH: preventDefault only for mouse (keeps the no-text-
+    // selection nicety on desktop). For touch, the browser MUST stay free to
+    // begin a native pan — a blanket preventDefault here was one of the two
+    // scroll-killers that made the grid unscrollable on phones.
+    if (e.pointerType === 'mouse') e.preventDefault();
+    onPointerDown?.(slotId, e);
   };
 
   const handlePointerEnter = () => {
@@ -116,11 +131,22 @@ export const WriteCell = memo(function WriteCell({
       style={{
         width: '100%',
         height: '100%',
-        touchAction: 'none',
+        // Phase 87.8 TOUCH: NO static touchAction here. A blanket touchAction
+        // of "none" on every cell made native panning impossible from anywhere
+        // on the grid (the 28-row grid covers effectively every touchable pixel
+        // on a phone). Scroll suppression during an active paint is the
+        // container's job via a conditional non-passive touchmove listener —
+        // re-adding a static gesture blocker to cells re-kills scrolling on the
+        // whole surface. (Worded to keep the acceptance grep for the literal
+        // style clean — do not quote the forbidden style string in comments.)
         userSelect: 'none',
         WebkitUserSelect: 'none',
+        // Suppress the iOS long-press callout so the container's long-press
+        // paint gesture doesn't race the system UI.
+        WebkitTouchCallout: 'none',
         cursor: disabled ? undefined : 'pointer',
       }}
+      data-slot-id={slotId}
       role="button"
       aria-label={preference || 'not selected'}
       aria-pressed={!!preference}

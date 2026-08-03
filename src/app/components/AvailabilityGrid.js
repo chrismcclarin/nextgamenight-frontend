@@ -295,40 +295,190 @@ export default function AvailabilityGrid({
     }
   }, []);
 
-  // Handle slot toggle (click). Strictly single-cell: a tap on an empty cell
-  // adds that one slot with the current paint mode; a tap on a painted cell
-  // removes that one slot. (The cross-day ADD branch that used to live here
-  // left with the broadcast — see the DECISION marker above.)
-  const handleToggleSlot = useCallback(
-    (slotId) => {
-      if (slotMap.get(slotId)) {
-        onChange?.(value.filter((s) => s.slotId !== slotId));
-      } else {
-        onChange?.([...value, { slotId, preference: paintMode }]);
-      }
-    },
-    [value, onChange, slotMap, paintMode]
-  );
+  // CALLBACK STABILITY (Phase 87.8 TOUCH — see the DECISION marker below):
+  // every handler passed to the memoized WriteCells reads CURRENT state off
+  // this ref instead of closing over it, so the handlers keep empty dependency
+  // arrays and never change identity mid-drag. Without this, `value` changes on
+  // every paint tick -> handleToggleSlot/handlePaintSlot recreate -> every
+  // cell's props go referentially unstable together -> React.memo on WriteCell
+  // never short-circuits and all 196-392 cells re-render per painted cell —
+  // exactly where a phone's frame budget is tightest. Assigned during render
+  // (idempotent) so any handler firing after commit reads this render's state.
+  const modelRef = useRef(null);
+  modelRef.current = { value, slotMap, paintMode, onChange, days, timeSlots, slotIdGrid };
+
+  // Handle slot toggle (click / tap-commit / long-press start). Strictly
+  // single-cell: a tap on an empty cell adds that one slot with the current
+  // paint mode; a tap on a painted cell removes that one slot. (The cross-day
+  // ADD branch that used to live here left with the broadcast — see the
+  // DECISION marker above.) Reads state via modelRef — identity is stable.
+  const handleToggleSlot = useCallback((slotId) => {
+    const { value, slotMap, paintMode, onChange } = modelRef.current;
+    if (slotMap.get(slotId)) {
+      onChange?.(value.filter((s) => s.slotId !== slotId));
+    } else {
+      onChange?.([...value, { slotId, preference: paintMode }]);
+    }
+  }, []);
 
   // Handle slot paint (drag — add only). Strictly single-cell, like toggle.
-  const handlePaintSlot = useCallback(
-    (slotId) => {
-      if (!slotMap.has(slotId)) {
-        onChange?.([...value, { slotId, preference: paintMode }]);
-      }
+  const handlePaintSlot = useCallback((slotId) => {
+    const { value, slotMap, paintMode, onChange } = modelRef.current;
+    if (!slotMap.has(slotId)) {
+      onChange?.([...value, { slotId, preference: paintMode }]);
+    }
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // DECISION Phase 87.8 (TOUCH): touch gets a LONG-PRESS (~300ms) paint model —
+  // plain drag scrolls natively (both axes), tap commits ONE slot on finger-UP,
+  // hold-then-drag paints — chosen OVER (b) plain-drag-paints with gutter-only
+  // scrolling (the shipped defect: scroll was only reachable from the 16px px-4
+  // page gutters, which the owner found by feel) and OVER (c) a paint/scroll
+  // mode-toggle button (extra chrome; a mode the user must remember). Matches
+  // the Google/Apple Calendar convention. Owner ruling 2026-08-02 (model a).
+  //
+  // Mechanism notes a future editor must not "clean up":
+  // - NO static `touch-action: none` anywhere on the grid or its cells. Native
+  //   scroll is suppressed ONLY while paint mode is active, via the NON-PASSIVE
+  //   touchmove listener below (static CSS touch-action is evaluated at gesture
+  //   start and cannot be conditional). Re-adding a static touch-action: none
+  //   to any cell re-kills scrolling on the whole surface.
+  // - Painting resolves cells with document.elementFromPoint, NOT pointerenter:
+  //   touch implicitly captures the pointer to the first cell touched, so enter
+  //   events never fire on neighbours. elementFromPoint is the standard
+  //   workaround; a non-cell resolution is a no-op, never a throw.
+  // - EDGE AUTO-SCROLL: while painting, a finger held in the viewport's
+  //   top/bottom (or the grid's left/right) ~48px edge band auto-scrolls slowly
+  //   AND KEEPS PAINTING (owner requirement 2026-08-02: paint 10am-to-7pm in
+  //   one gesture on a screen that shows 10-to-5). THE TRAP: a stationary
+  //   finger fires NO pointermove events while content scrolls beneath it — so
+  //   the rAF loop below drives BOTH the scroll and the elementFromPoint paint
+  //   step at the last-known finger coords. Painting driven only from the
+  //   pointermove handler would scroll without painting.
+  // - CALLBACK STABILITY: every prop WriteCell receives from this component is
+  //   referentially stable across a paint drag (state is read via modelRef, and
+  //   WriteCell reports its own row/col to the shared onSelect). Reintroducing
+  //   per-render closures on these props silently regresses React.memo on all
+  //   196-392 cells — that memo working is the smooth/janky boundary on a
+  //   phone, not a micro-optimization.
+  // ---------------------------------------------------------------------------
+  const LONG_PRESS_MS = 300;
+  const SLOP_PX = 8;
+  const EDGE_BAND_PX = 48;
+  const EDGE_MAX_STEP_PX = 6; // max px per frame at full band depth — slow by design
+
+  // Active touch gesture state. Null when no touch gesture is in flight.
+  // { pointerId, slotId, startX, startY, lastX, lastY, timer, painting }
+  const touchRef = useRef(null);
+  // requestAnimationFrame id for the edge auto-scroll loop (null = not running).
+  const edgeLoopRef = useRef(null);
+
+  const stopEdgeLoop = useCallback(() => {
+    if (edgeLoopRef.current != null) {
+      cancelAnimationFrame(edgeLoopRef.current);
+      edgeLoopRef.current = null;
+    }
+  }, []);
+
+  // Resolve the cell under (x, y) to its slotId and paint it. Non-cell targets
+  // (labels, gaps, elements outside the grid) resolve to null — a no-op.
+  const paintAtPoint = useCallback(
+    (x, y) => {
+      const el = document.elementFromPoint?.(x, y);
+      const cell = el?.closest?.('[data-slot-id]');
+      const slotId = cell?.getAttribute('data-slot-id');
+      if (slotId) handlePaintSlot(slotId);
     },
-    [value, onChange, slotMap, paintMode]
+    [handlePaintSlot]
   );
 
-  // Pointer event handlers
+  // Edge auto-scroll loop: runs only while paint mode is active AND the finger
+  // sits inside an edge band. Each tick scrolls a few px (scaled with depth
+  // into the band) and re-paints at the last-known finger coords — the finger
+  // is stationary, so no pointermove will do it for us.
+  const maybeRunEdgeLoop = useCallback(() => {
+    if (edgeLoopRef.current != null) return; // already running
+    const step = (depth) =>
+      Math.max(1, Math.round((Math.min(depth, EDGE_BAND_PX) / EDGE_BAND_PX) * EDGE_MAX_STEP_PX));
+    const tick = () => {
+      const st = touchRef.current;
+      if (!st || !st.painting) {
+        edgeLoopRef.current = null;
+        return;
+      }
+      const vh = window.innerHeight;
+      const vw = window.innerWidth;
+      let dy = 0;
+      let dx = 0;
+      if (st.lastY < EDGE_BAND_PX) dy = -step(EDGE_BAND_PX - st.lastY);
+      else if (st.lastY > vh - EDGE_BAND_PX) dy = step(st.lastY - (vh - EDGE_BAND_PX));
+      if (st.lastX < EDGE_BAND_PX) dx = -step(EDGE_BAND_PX - st.lastX);
+      else if (st.lastX > vw - EDGE_BAND_PX) dx = step(st.lastX - (vw - EDGE_BAND_PX));
+      if (dx === 0 && dy === 0) {
+        // Finger left the band — stop the loop; pointermove restarts it.
+        edgeLoopRef.current = null;
+        return;
+      }
+      if (dy !== 0) window.scrollBy(0, dy);
+      if (dx !== 0 && gridRef.current) gridRef.current.scrollLeft += dx;
+      paintAtPoint(st.lastX, st.lastY);
+      edgeLoopRef.current = requestAnimationFrame(tick);
+    };
+    edgeLoopRef.current = requestAnimationFrame(tick);
+  }, [paintAtPoint]);
+
+  // Tear down the in-flight touch gesture (timer, paint mode, edge loop).
+  const clearTouchGesture = useCallback(() => {
+    const st = touchRef.current;
+    if (st?.timer) clearTimeout(st.timer);
+    touchRef.current = null;
+    stopEdgeLoop();
+  }, [stopEdgeLoop]);
+
+  // Long-press timer fired within slop: enter PAINT MODE. Haptic tick where
+  // supported, and toggle the pressed slot immediately for visual feedback
+  // (mirrors the mouse path, where down toggles).
+  const enterPaintMode = useCallback(() => {
+    const st = touchRef.current;
+    if (!st) return;
+    st.timer = null;
+    st.painting = true;
+    if (typeof navigator !== 'undefined') navigator.vibrate?.(10);
+    handleToggleSlot(st.slotId);
+  }, [handleToggleSlot]);
+
+  // Pointer down, split by pointerType (Phase 87.8 TOUCH):
+  // - TOUCH: no toggle yet — record the slot + coords and start the long-press
+  //   timer. A tap (up before the timer) commits on finger-UP; movement past
+  //   slop cancels and hands the gesture to the browser (native scroll).
+  // - MOUSE (and synthetic test events with no pointerType): exactly the
+  //   pre-87.8-14 behavior — down toggles immediately, drag paints via enter.
   const handlePointerDown = useCallback(
-    (slotId) => {
+    (slotId, e) => {
+      if (e && e.pointerType === 'touch') {
+        if (touchRef.current) clearTouchGesture(); // stale-gesture safety
+        touchRef.current = {
+          pointerId: e.pointerId,
+          slotId,
+          startX: e.clientX,
+          startY: e.clientY,
+          lastX: e.clientX,
+          lastY: e.clientY,
+          timer: setTimeout(enterPaintMode, LONG_PRESS_MS),
+          painting: false,
+        };
+        return;
+      }
       isDraggingRef.current = true;
       handleToggleSlot(slotId);
     },
-    [handleToggleSlot]
+    [clearTouchGesture, enterPaintMode, handleToggleSlot]
   );
 
+  // Mouse drag-paint via enter events (touch never reaches here: the pointer is
+  // implicitly captured to the first cell, so enter doesn't fire on neighbours
+  // — and isDraggingRef is only set on the mouse path anyway).
   const handlePointerEnter = useCallback(
     (slotId) => {
       if (isDraggingRef.current) {
@@ -342,37 +492,97 @@ export default function AvailabilityGrid({
     isDraggingRef.current = false;
   }, []);
 
-  // Keyboard select-cycle (WriteCell reports the NEXT preference after Enter/
-  // Space). Single-cell edit, like every other gesture: arrow+select keyboard
-  // nav operates on the focused cell only (bulk fill/clear is the checkboxes'
-  // job). next === null removes the slot.
-  const handleKeyboardSelect = useCallback(
-    (row, col, next) => {
-      const day = days[col];
-      const ts = timeSlots[row];
-      if (!day || !ts) return;
-      const slotId = slotIdForCoord(col, row);
-      if (!slotId) return;
-      const without = value.filter((s) => s.slotId !== slotId);
-      onChange?.(next === null ? without : [...without, { slotId, preference: next }]);
+  // Container-level pointermove: drives the touch state machine. Before the
+  // timer fires, movement past slop cancels the gesture (browser owns the pan —
+  // expect a pointercancel when scroll takes over). While painting, resolve the
+  // cell under the finger and keep the edge auto-scroll loop fed.
+  const handleGridPointerMove = useCallback(
+    (e) => {
+      const st = touchRef.current;
+      if (!st || e.pointerType !== 'touch' || e.pointerId !== st.pointerId) return;
+      st.lastX = e.clientX;
+      st.lastY = e.clientY;
+      if (!st.painting) {
+        if (
+          st.timer &&
+          Math.hypot(e.clientX - st.startX, e.clientY - st.startY) > SLOP_PX
+        ) {
+          clearTouchGesture();
+        }
+        return;
+      }
+      paintAtPoint(e.clientX, e.clientY);
+      maybeRunEdgeLoop();
     },
-    [days, timeSlots, slotIdForCoord, value, onChange]
+    [clearTouchGesture, paintAtPoint, maybeRunEdgeLoop]
   );
 
-  // Global pointer up listener for catching release outside grid
+  // Keyboard select-cycle (WriteCell reports the NEXT preference after Enter/
+  // Space plus its own row/col — the cell resolving its coords is what keeps
+  // this ONE stable handler shared by every cell). Single-cell edit, like every
+  // other gesture. next === null removes the slot.
+  const handleCellSelect = useCallback((next, row, col) => {
+    const { days, timeSlots, slotIdGrid, value, onChange } = modelRef.current;
+    if (!days[col] || !timeSlots[row]) return;
+    const slotId = slotIdGrid.byCoord.get(`${col}:${row}`);
+    if (!slotId) return;
+    const without = value.filter((s) => s.slotId !== slotId);
+    onChange?.(next === null ? without : [...without, { slotId, preference: next }]);
+  }, []);
+
+  // Global pointer up/cancel listeners: end the mouse drag, and settle the
+  // touch gesture wherever the finger lands (inside or outside the grid).
+  // pointerup with the timer still pending = a TAP — commit the recorded slot
+  // on finger-up (how every native list behaves; required to distinguish tap
+  // from scroll). pointercancel = the browser took the gesture (native scroll)
+  // — tear down with NO commit.
   useEffect(() => {
-    const handleGlobalPointerUp = () => {
+    const handleGlobalPointerUp = (e) => {
       isDraggingRef.current = false;
+      const st = touchRef.current;
+      if (st && e.pointerId === st.pointerId) {
+        if (!st.painting && st.timer) {
+          clearTimeout(st.timer);
+          st.timer = null;
+          handleToggleSlot(st.slotId);
+        }
+        clearTouchGesture();
+      }
+    };
+    const handleGlobalPointerCancel = (e) => {
+      isDraggingRef.current = false;
+      const st = touchRef.current;
+      if (st && e.pointerId === st.pointerId) {
+        clearTouchGesture();
+      }
     };
 
     document.addEventListener('pointerup', handleGlobalPointerUp);
-    document.addEventListener('pointercancel', handleGlobalPointerUp);
+    document.addEventListener('pointercancel', handleGlobalPointerCancel);
 
     return () => {
       document.removeEventListener('pointerup', handleGlobalPointerUp);
-      document.removeEventListener('pointercancel', handleGlobalPointerUp);
+      document.removeEventListener('pointercancel', handleGlobalPointerCancel);
     };
+  }, [clearTouchGesture, handleToggleSlot]);
+
+  // NON-PASSIVE touchmove listener — the conditional scroll suppressor. While
+  // paint mode is active (and ONLY then) preventDefault stops the native pan so
+  // the drag paints instead of scrolling. Registered once with
+  // { passive: false }; React's synthetic listeners are passive for touchmove,
+  // and static CSS touch-action cannot express "none only while painting".
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const onTouchMove = (e) => {
+      if (touchRef.current?.painting) e.preventDefault();
+    };
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => el.removeEventListener('touchmove', onTouchMove);
   }, []);
+
+  // Unmount safety: never leave a live timer or rAF loop behind.
+  useEffect(() => () => clearTouchGesture(), [clearTouchGesture]);
 
   // Toggle paint mode
   const togglePaintMode = useCallback(() => {
@@ -451,21 +661,23 @@ export default function AvailabilityGrid({
         </div>
       </div>
 
-      {/* Grid container with horizontal scroll for mobile */}
+      {/* Grid container with horizontal scroll for mobile. touchAction stays
+          'pan-x pan-y' (it PERMITS panning); scroll suppression during a paint
+          is the non-passive touchmove listener's job — never static CSS. */}
       <div
         ref={gridRef}
         className="overflow-x-auto pb-2"
         style={{ touchAction: 'pan-x pan-y' }}
         onPointerUp={handlePointerUp}
+        onPointerMove={handleGridPointerMove}
       >
-        <div
-          className="min-w-max"
-          style={{ touchAction: 'none' }}
-        >
+        <div className="min-w-max">
           {/* Day headers */}
           <div className="flex">
-            {/* Spacer for time labels column */}
-            <div className="w-16 sm:w-20 shrink-0" />
+            {/* Spacer for time labels column — sticky with the label column so
+                the time axis stays pinned while the grid scrolls horizontally.
+                Opaque bg (the form's card surface) so cells slide UNDER it. */}
+            <div className="w-16 sm:w-20 shrink-0 sticky left-0 z-10 bg-surface-card" />
 
             {/* Day headers */}
             {days.map((day, index) => (
@@ -480,8 +692,9 @@ export default function AvailabilityGrid({
 
           {/* Day checkboxes row */}
           <div className="flex">
-            {/* Select All toggle in the time-label spacer */}
-            <div className="w-16 sm:w-20 shrink-0 flex items-center justify-end pr-2">
+            {/* Select All toggle in the time-label spacer — same sticky
+                treatment as the label column so "All" never scrolls away. */}
+            <div className="w-16 sm:w-20 shrink-0 flex items-center justify-end pr-2 sticky left-0 z-10 bg-surface-card">
               <label className="flex items-center gap-1 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -514,8 +727,11 @@ export default function AvailabilityGrid({
           {/* Time slot rows */}
           {timeSlots.map((timeSlot, rowIndex) => (
             <div key={`row-${rowIndex}`} className="flex">
-              {/* Time label column — mirrors the header spacer width */}
-              <div className="w-16 sm:w-20 shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium">
+              {/* Time label column — mirrors the header spacer width. Sticky
+                  left-0 pins the time axis while the grid scrolls horizontally
+                  (Phase 87.8 TOUCH); the opaque bg is required — sticky labels
+                  over painted cells are unreadable without one. */}
+              <div className="w-16 sm:w-20 shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium sticky left-0 z-10 bg-surface-card">
                 {formatTimeLabel(timeSlot)}
               </div>
 
@@ -546,7 +762,7 @@ export default function AvailabilityGrid({
                       preference={preference}
                       slotId={slotId}
                       onMove={handleCellMove}
-                      onSelect={(next) => handleKeyboardSelect(rowIndex, colIndex, next)}
+                      onSelect={handleCellSelect}
                       onPointerDown={handlePointerDown}
                       onPointerEnter={handlePointerEnter}
                       cellRef={getCellRef(key)}
