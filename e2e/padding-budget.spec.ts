@@ -200,13 +200,22 @@ test.describe('SPEC R2 — horizontal padding budget on the five walked surfaces
     // logged-out; RESEARCH C-3 notes).
     await page.goto(`/availability-form/${E2E_AVAILABILITY_TOKEN}`);
 
-    // Anchor: the "Start with:" body text (AvailabilityForm.js:241) — a plain
-    // <p> directly inside a p-4 section card, sitting on the same
-    // page.js:234 → page.js:256 → p-4 chain RESEARCH C-3 traced (112px).
-    // Deliberately NOT the "I'm unavailable this week" text inside :286's
-    // section: that text lives inside a px-4 <button>, whose control padding
-    // would inflate a body-text measurement by 32px.
-    const anchor = page.getByText('Start with:');
+    // DECISION Phase 87.8 plan 12 (R2 anchor): anchor on GRID body text
+    // ("Times shown in:", AvailabilityGrid.js:605-606 — a plain zero-padding
+    // <div> whose ancestors up to the form card all carry zero horizontal
+    // padding), chosen OVER the original "Start with:" anchor and OVER
+    // shrinking the sibling card or excepting the ceiling. The old anchor
+    // (AvailabilityForm.js:241) sits inside the :240 pre-fill card — a p-4
+    // SIBLING of the grid section, not a grid ancestor — so post-plan-07 it
+    // measured 88px (gutter 16 + form card 12 + sibling card 16 per side)
+    // while the surface this spec claims to measure, the availability GRID,
+    // sums 56px. Rejected fixes: reducing the sibling's p-4 (a design change
+    // to a card plan 07 deliberately left boxed) and raising the ceiling for
+    // this anchor (breaks the one-budget property). Recorded in the phase's
+    // deferred-items.md (plan 07 → plan 12). Still NOT the "I'm unavailable
+    // this week" text inside :286: that lives in a px-4 <button>, whose
+    // control padding would inflate a body-text measurement by 32px.
+    const anchor = page.getByText('Times shown in:');
     await expect(anchor).toBeVisible({ timeout: 15_000 });
 
     const chain = await measurePaddingChain(anchor);
