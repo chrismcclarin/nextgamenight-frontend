@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { feedbackAPI } from '../../lib/api';
+import { scrubFeedbackPageUrl } from '../../lib/scrubFeedbackPageUrl';
 import { useFeedbackModal, CATEGORIES, getCategoryLabel } from './FeedbackModalProvider';
 
 /**
@@ -128,7 +129,12 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
       await feedbackAPI.submitGitHubFeedback({
         category,
         text: text.trim(),
-        pageUrl: window.location.href,
+        // Plan 87.8-05 Task 4 (round-3 security): NEVER the full href — the
+        // five token-bearing routes carry a live credential in the PATH
+        // segment, and the RSVP query string carries an Auth0 sub. The
+        // pathname is scrubbed at the source (and again server-side as
+        // defence-in-depth); window.location.search is never appended.
+        pageUrl: scrubFeedbackPageUrl(pathname),
         userName: user.name || user.nickname || 'Unknown',
         userEmail: user.email || '',
         label: getCategoryLabel(category),
