@@ -64,7 +64,7 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
         return (
           <div
             key={schedule.id}
-            className="border border-line rounded-card p-4 hover:shadow-theme-md transition-shadow bg-surface-card"
+            className="border border-line rounded-card surface-flat-phone-divided md:p-4 hover:shadow-theme-md transition-shadow bg-surface-card"
           >
             <div className="flex items-start justify-between">
               {/* Left: Schedule info */}
@@ -170,7 +170,7 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
 
             {/* Delete Confirmation Dialog */}
             {deleteConfirm === schedule.id && (
-              <div className="mt-4 p-4 border rounded-card">
+              <div className="mt-4 p-3 md:p-4 border rounded-card">
                 <p className="text-status-error font-medium mb-3">
                   Delete {scheduleName}? This will stop sending prompts.
                 </p>
