@@ -231,10 +231,10 @@ export default function AvailabilityFormPage() {
 
   // Render ready state (form)
   return (
-    <div className="min-h-screen bg-surface-page py-8 px-4">
+    <div className="min-h-screen bg-surface-page py-8 px-4 md:px-6">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
-        <div className="bg-surface-card rounded-card shadow-theme-lg p-6 mb-6">
+        <div className="bg-surface-card rounded-card shadow-theme-lg p-3 md:p-6 mb-6">
           <h1 className="text-2xl font-bold text-content-primary mb-2">
             Submit Your Availability
           </h1>
@@ -244,7 +244,7 @@ export default function AvailabilityFormPage() {
 
           {/* Token expiry warning */}
           {isExpiryWarning() && (
-            <div className="mt-4 border rounded-btn p-3">
+            <div className="mt-4 border rounded-btn p-2 md:p-3">
               <p className="text-sm text-status-warning">
                 <span className="font-medium">Heads up:</span> This link expires in {getTimeRemaining()}. Please submit your availability soon.
               </p>
@@ -253,7 +253,7 @@ export default function AvailabilityFormPage() {
         </div>
 
         {/* Form Container */}
-        <div className="bg-surface-card rounded-card shadow-theme-lg p-6">
+        <div className="bg-surface-card rounded-card shadow-theme-lg p-3 md:p-6">
           <AvailabilityForm
             magicToken={token}
             userName={tokenData?.userName}
