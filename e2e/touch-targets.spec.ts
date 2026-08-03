@@ -340,23 +340,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
         probeB = hit(x, y);
       }
 
-      // Centre points for the PHYSICAL taps (edge points stay the exact
-      // elementFromPoint oracle above — see the supersede comment below).
-      const usernameRectCenter = usernameRect
-        ? { x: usernameRect.left + usernameRect.width / 2, y: usernameRect.top + usernameRect.height / 2 }
-        : null;
-      const adjacentRowCenter = adjacentRect
-        ? { x: adjacentRect.left + adjacentRect.width / 2, y: adjacentRect.top + adjacentRect.height / 2 }
-        : null;
-
-      return {
-        probeA,
-        probeB,
-        usernameRectCenter,
-        adjacentRowCenter,
-        hasUsername: username !== null,
-        hasAdjacentRow: adjacentRow !== null,
-      };
+      return { probeA, probeB, hasUsername: username !== null, hasAdjacentRow: adjacentRow !== null };
     });
 
     // Vacuity guards for the probe GEOMETRY itself.
@@ -390,39 +374,39 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       `probe (b) at the adjacent row's near edge (${probes.probeB?.x},${probes.probeB?.y}) hit the add-friend button — its vertical extension crossed the 4px space-y-1 gap into the neighbouring row (hit: ${probes.probeB?.tag} "${probes.probeB?.text}")`,
     ).toBe(false);
 
-    // Behavioural check: physically tap near BOTH probe axes; the expected
+    // Behavioural check: physically tap BOTH edge probe points; the expected
     // non-friend-request behaviour occurs (the "+" still renders — status never
     // flipped to Pending) and no friend-request side effect fired from either tap.
     //
-    // SUPERSEDED KNOWINGLY (run 30840571076, after 30839631190): the original
-    // D-13 design tapped the exact EDGE probe points ("edges, never centres").
-    // That oracle is unsound for PHYSICAL taps in emulated-touch Chromium:
-    // elementFromPoint at the edge points resolved to non-button elements
-    // (asserted above — pseudo-element hit boxes resolve to their origin button,
-    // so the points are provably OUTSIDE the 44x32 extension), yet the tap at
-    // the same coordinates activated the "+" anyway — browser touch-target
-    // adjustment snaps a tap to a nearby interactive target. That is fat-finger
-    // browser behaviour the app cannot prevent, not an extension overreach. The
-    // PRECISE geometry oracle is the elementFromPoint probe set above (exact,
-    // adjustment-immune); the physical taps below verify the behavioural half
-    // from points far enough inward that adjustment cannot bridge to the
-    // extension.
-    if (probes.usernameRectCenter) {
-      await page.touchscreen.tap(probes.usernameRectCenter.x, probes.usernameRectCenter.y);
-    }
+    // The edge points ARE sound for physical taps — a standalone repro with this
+    // exact geometry (iPhone SE 3rd gen preset, same Playwright tap) landed every
+    // edge tap on the element elementFromPoint reports, with no snapping beyond
+    // ~1px rounding. What broke runs 30839631190 and 30840571076 was CHOREOGRAPHY,
+    // not tap accuracy: tapping the username (real app behaviour) opens the member
+    // popover, whose not-yet-friend variant carries a live "Add friend" button
+    // (ClickableMemberName.js:175-183) anchored bottom-start — directly over the
+    // adjacent row. The row tap then hit "Add friend" (run 4); adding Escape+
+    // count(0) before the row tap raced the popover's MOUNT — the absence assert
+    // passed on the not-yet-open popover, which then mounted and ate the tap
+    // (run 5). Two rules encode the fix:
+    //
+    //   1. ORDER: tap the adjacent row FIRST (no popover exists yet; the row
+    //      belongs to an already-friend member whose popover has no action), and
+    //      the popover-opening username tap LAST.
+    //   2. PRESENCE-THEN-ABSENCE: after the username tap, WAIT for the popover to
+    //      appear (also a positive proof the tap hit the username), then dismiss
+    //      and WAIT for it to be gone. Absence-only checks race the mount.
+    if (probes.probeB) await page.touchscreen.tap(probes.probeB.x, probes.probeB.y);
+    if (probes.probeA) await page.touchscreen.tap(probes.probeA.x, probes.probeA.y);
 
-    // Tapping the username is REAL app behaviour that opens the member popover
-    // (ClickableMemberName FloatingPortal), and for a not-yet-friend that popover
-    // contains a genuine "Add friend" action (ClickableMemberName.js:177-183),
-    // anchored over the adjacent row. Dismiss it (useDismiss handles Escape) and
-    // PROVE it closed before the next tap — run 30839631190 red: the second tap
-    // hit the popover's "Add friend" instead of the row.
+    // The username tap opens Diana's popover — expect it (presence proves the tap
+    // landed on the username), then Escape (useDismiss) and prove it closed.
+    await expect(
+      page.getByRole('button', { name: 'Add friend', exact: true }),
+      'the username-edge tap must open the member popover with its "Add friend" action — if this never appears, the tap missed the username',
+    ).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('button', { name: 'Add friend', exact: true })).toHaveCount(0);
-
-    if (probes.adjacentRowCenter) {
-      await page.touchscreen.tap(probes.adjacentRowCenter.x, probes.adjacentRowCenter.y);
-    }
 
     // Absence over a window, not an instant: the request pipeline is async (an
     // access-token fetch precedes POST /friendships/request), so a same-tick
