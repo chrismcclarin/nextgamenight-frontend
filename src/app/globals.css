@@ -864,6 +864,24 @@ body {
   padding: 1rem;
 }
 
+/* DECISION Phase 87.8 DEC-3: phone-scoped `.modal-overlay` padding (12px < 48rem, 16px
+   desktop via the base rule above), applied GLOBALLY to all 16 overlay call sites across
+   12 components — chosen OVER a per-instance Tailwind utility on the Create Event overlay
+   div. The per-instance utility was REJECTED because it silently does nothing: this block
+   is UNLAYERED (deliberately — see the guardrail note above `@utility card`), and unlayered
+   author styles beat every `@layer utilities` rule regardless of specificity — the exact
+   cascade defect DEC-2 fixed for `.btn`/the feedback button. BringGamePicker.js's
+   `modal-overlay p-4` is live proof: its `p-4` has always been dead against this rule.
+   The global blast radius was justified by a full call-site census + computed-padding
+   spot-check, recorded in 87.8-MODAL-CENSUS.md (planning repo, phase 87.8 dir) — a 12px
+   overlay gutter at phone width is uniform across all modals by design. Scoping a regressed site
+   individually is fine; reverting the global rule is a decision, not a cleanup. */
+@media (width < 48rem) {
+  .modal-overlay {
+    padding: 0.75rem;
+  }
+}
+
 .modal-content {
   background-color: var(--color-bg-card);
   border-radius: 12px;

@@ -661,7 +661,14 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   return (
     <div className="modal-overlay" onClick={modaltoggle}>
       <div className="modal-content max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="p-6">
+        {/* DECISION Phase 87.8 DEC-3: p-3 at phone / p-6 at desktop on the modal BODY
+            wrapper — paired with the phone-scoped `.modal-overlay` 12px rule in
+            globals.css, this brings the Create Event chain under the SPEC R2 75px
+            budget (12+12 = 24/side = 48px; the nested heatmap p-3 box adds 12/side
+            → 72px, still under). The padding lives HERE (a layered utility on a
+            plain div) and NOT on the overlay div, where it would lose to the
+            unlayered `.modal-overlay` block. */}
+        <div className="p-3 md:p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold text-content-primary">{editingEvent ? 'Edit Event' : 'Create Event'}</h2>
           <button
