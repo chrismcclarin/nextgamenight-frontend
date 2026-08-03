@@ -174,13 +174,19 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await page.goto(`/groupPlanning?group_id=${E2E_GROUP_ID}`);
     await assertDarkTheme(page);
 
-    // Both census CTAs live inside the collapsible "Check-ins" section
-    // (PromptScheduleSection.js) — expand it first. Both are permission-gated
-    // (canCreate / canManageSchedules); the fixture user OWNS the seeded group, so
-    // both must render — the guard asserts that, with no silent skip path: a
+    // Both census CTAs live inside the "Check-ins" section (PromptScheduleSection.js),
+    // which groupPlanning mounts ALREADY EXPANDED (defaultExpanded={true},
+    // groupPlanning/page.js:247) once userRole resolves — do NOT click the header
+    // "to expand": the header is a TOGGLE, so that click collapses the section.
+    // The body hides via max-h-0 with a 200ms transition, so a sample taken
+    // mid-transition still reads visible — that made the collapse land between
+    // this test's guard and its press in two different ways (phantom press in run
+    // 30836863411, hover timeout in run 30838155400). The guards below auto-wait
+    // through the section's mount and data load; if the default ever flips to
+    // collapsed, they fail loudly and the fixer adds a STATE-AWARE expand here.
+    // Both CTAs are permission-gated (canCreate / canManageSchedules); the fixture
+    // user OWNS the seeded group, so both must render — no silent skip path: a
     // non-rendering CTA must read as a fixture/locator failure, never as a pass.
-    await page.getByText('Check-ins', { exact: true }).click();
-
     const startCheckin = page.getByRole('button', { name: /start a check-in/i });
     await guardResolved(startCheckin, 'the "+ Start a check-in" CTA (OpenPollsList.js census row 1)');
     await assertMin44(startCheckin, '"+ Start a check-in"');
@@ -274,6 +280,13 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     // is unconditional: the surface this control renders on (RsvpSection.js) stacks
     // member rows via space-y-1, so the vertical failure mode is always reachable.
     const probes = await addFriend.first().evaluate((btn) => {
+      // elementFromPoint only resolves points INSIDE the viewport — the RSVP
+      // section sits below the fold at 375x667 and nothing in this test scrolls
+      // (assertions don't auto-scroll, only actions do), so unscrolled probes
+      // returned null ("hit: none", run 30838155400). Centre the row first;
+      // block:'center' also keeps the probe points clear of the sticky header.
+      // scrollIntoView is synchronous, so the rects read below are post-scroll.
+      btn.scrollIntoView({ block: 'center', inline: 'nearest' });
       const btnRect = btn.getBoundingClientRect();
 
       // The adjacent username span is the button's previous sibling inside the same
