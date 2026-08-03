@@ -245,7 +245,7 @@ export default function AvailabilityForm({
               type="button"
               onClick={handleImportGcal}
               disabled={isPrefilling || isUnavailable}
-              className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong font-medium transition-colors disabled:opacity-50"
+              className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 font-medium transition-colors disabled:opacity-50"
             >
               {isPrefilling && prefillStatus?.source !== 'saved' ? 'Importing…' : 'Import from Google Calendar'}
             </button>
@@ -255,7 +255,7 @@ export default function AvailabilityForm({
             onClick={handleUseSaved}
             disabled={!hasSavedAvailability || isPrefilling || isUnavailable}
             title={!hasSavedAvailability ? 'No saved availability for these dates' : undefined}
-            className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-line"
+            className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-line"
           >
             {isPrefilling && prefillStatus?.source !== 'gcal' ? 'Loading…' : 'Use my saved availability'}
           </button>
@@ -289,7 +289,7 @@ export default function AvailabilityForm({
           onClick={handleUnavailableToggle}
           className={`
             w-full flex items-center justify-center gap-3 px-4 py-3 rounded-btn font-medium
-            transition-colors duration-200
+            active:opacity-75 transition-colors duration-200
             ${isUnavailable
               ? 'border-2 border-status-error text-status-error'
               : 'bg-surface-card border-2 border-line text-content-secondary hover:border-line-strong'

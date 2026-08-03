@@ -209,7 +209,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
           {onClose && (
             <button
               onClick={onClose}
-              className="text-content-muted hover:text-content-primary text-2xl"
+              className="text-content-muted hover:text-content-primary active:opacity-75 text-2xl"
               type="button"
             >
               &times;

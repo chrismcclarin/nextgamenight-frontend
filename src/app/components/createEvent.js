@@ -673,7 +673,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           <h2 className="text-2xl font-bold text-content-primary">{editingEvent ? 'Edit Event' : 'Create Event'}</h2>
           <button
             onClick={modaltoggle}
-            className="text-content-muted hover:text-content-primary text-2xl"
+            className="text-content-muted hover:text-content-primary active:opacity-75 text-2xl"
           >
             ×
           </button>
@@ -739,7 +739,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 <button
                   type="button"
                   onClick={() => setUseVisualCalendar(!useVisualCalendar)}
-                  className="text-xs text-content-link hover:text-content-link-hover underline"
+                  className="text-xs text-content-link hover:text-content-link-hover active:opacity-75 underline"
                 >
                   {useVisualCalendar ? 'Switch to Manual Entry' : 'Switch to Visual Calendar'}
                 </button>
@@ -806,7 +806,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                           onClick={handlePrevWeek}
                           disabled={!canGoBack}
                           aria-label="Previous week"
-                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
+                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-card-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
                         >
                           &lt;
                         </button>
@@ -819,7 +819,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                             onClick={handleToday}
                             disabled={isOnTodayMonday}
                             aria-label="Jump to current week"
-                            className="px-2 py-1 text-xs rounded-sm bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
+                            className="px-2 py-1 text-xs rounded-sm bg-surface-elevated hover:bg-surface-card-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
                           >
                             Today
                           </button>
@@ -829,7 +829,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                           onClick={handleNextWeek}
                           disabled={!canGoForward}
                           aria-label="Next week"
-                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
+                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-card-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
                         >
                           &gt;
                         </button>

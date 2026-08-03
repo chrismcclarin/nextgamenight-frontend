@@ -80,9 +80,9 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
           if (onOpen) onOpen();
         }}
         // Class string copied from ThemeToggle.js:32 with ONE change:
-        // active:opacity-75 (the Plan 87.8-01 press idiom) instead of
-        // active:bg-surface-card-hover — plan 08 converges the two remaining
-        // token-swap sites; do not ship a third instance of the old idiom.
+        // active:opacity-75 (the Plan 87.8-01 press idiom) instead of the
+        // old bg-surface-card-hover token-swap press state — plan 08 converged
+        // the two remaining token-swap sites; do not reintroduce the old idiom.
         // Focus ring matches the FAB this row replaces (same tokens), so
         // keyboard/switch users get the same visible affordance from either
         // entry point; inset (no ring-offset) because the row is a full-bleed

@@ -122,7 +122,7 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                 </div>
                             </form>
                                 <button
-                                    className="text-status-error background-transparent font-bold uppercase px-6 py-2 text-sm outline-hidden focus:outline-hidden mr-1 mb-1 ease-linear transition-all duration-150"
+                                    className="text-status-error background-transparent font-bold uppercase px-6 py-2 text-sm outline-hidden focus:outline-hidden active:opacity-75 mr-1 mb-1 ease-linear transition-all duration-150"
                                     type="button"
                                     onClick={modaltoggle}
                                 >
