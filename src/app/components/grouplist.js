@@ -98,8 +98,9 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
           <h2 className="text-xl font-bold text-content-primary">Your Groups</h2>
           {onCreateGroup && (
+            /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA (error-state render branch of the same CTA below). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button. */
             <button
-              className="btn btn-primary text-sm whitespace-nowrap"
+              className="btn btn-primary text-sm whitespace-nowrap min-h-11"
               onClick={onCreateGroup}
               aria-label="Create new group"
               data-tutorial="create-group-btn"
@@ -131,8 +132,9 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
         <h2 className="text-xl font-bold text-content-primary">Your Groups</h2>
         {onCreateGroup && (
+          /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button. */
           <button
-            className="btn btn-primary text-sm whitespace-nowrap"
+            className="btn btn-primary text-sm whitespace-nowrap min-h-11"
             onClick={onCreateGroup}
             aria-label="Create new group"
             data-tutorial="create-group-btn"
@@ -267,8 +269,9 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         admin-only (D-INV-02). The settings cog below stays
                         admin-gated via `canEdit`. */}
                     {userRole && userRole !== 'pending' && (
+                      /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census — per-card primary CTA on the walked home surface. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `flex-1` full-row width. */
                       <button
-                        className="btn btn-primary text-sm flex-1 shadow-md hover:shadow-lg hover:-translate-y-px active:translate-y-0 transition-all"
+                        className="btn btn-primary text-sm flex-1 shadow-md hover:shadow-lg hover:-translate-y-px active:translate-y-0 transition-all min-h-11"
                         onClick={(e) => {
                           e.stopPropagation();
                           if (onGroupSelect) {

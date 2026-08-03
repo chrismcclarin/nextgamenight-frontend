@@ -806,6 +806,26 @@ body {
   cursor: not-allowed;
 }
 
+/* DECISION Phase 87.8 (D-12): pressed state is an INSTANT OPACITY DIM, chosen OVER a
+   background-colour swap and OVER a scale/translate press.
+   - Background swap loses, MEASURED: `--theme-transition` (declared above — background-color,
+     color, border-color, box-shadow @ 0.25s) does not list opacity, so a background swap is
+     swallowed by the 250ms transition on an ~80ms tap while an untransitioned opacity change
+     fires instantly.
+   - Scale/translate loses: contradicts the recorded no-scale rule
+     (DESIGN-SYSTEM-REFERENCE-2026.md:197).
+   - 0.75 chosen inside the owner's 70-85% band: 0.9 is already `.btn-danger:hover` (below)
+     and would make press indistinguishable from hover on the one element that has both;
+     0.7 reads as disabled against `.btn:disabled` opacity 0.5 (above). 0.75 sits clear of both.
+   Zero new colour values, deliberately — a slash-opacity tint would collide with the D-18
+   token strip and Phase 88's tint boundary. D-12 covers ONLY this press rule; the 44px
+   touch-floor decision lives per-CTA at the SPEC R4 call sites (D-13/D-14/AF-2), NOT here —
+   `.btn` deliberately carries no global min-height (that question is Phase 88's, DEF-1).
+   Removing or retuning this is a decision, not a cleanup. */
+.btn:active:not(:disabled) {
+  opacity: 0.75;
+}
+
 .btn-primary {
   background-color: var(--color-btn-primary-bg);
   color: var(--color-btn-primary-text);

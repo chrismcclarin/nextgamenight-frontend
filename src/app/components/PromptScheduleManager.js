@@ -128,9 +128,10 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
 
       {/* Create button (owner/admin only) */}
       {canManageSchedules && !showForm && !loading && (
+        /* DECISION Phase 87.8 (D-13/D-14/AF-2): per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor — rejected because it would silently distort ~15 shipped compact/icon `.btn` sites (AF-2); 44px chosen OVER Material's 48dp, consciously declined (D-14). Global `.btn` sizing stays with Phase 88 (DEF-1) — a decision, not an oversight. No `min-w-11`: wide text button, 141px measured. */
         <button
           onClick={handleCreate}
-          className="mb-4 btn btn-primary"
+          className="mb-4 btn btn-primary min-h-11"
         >
           + New Schedule
         </button>

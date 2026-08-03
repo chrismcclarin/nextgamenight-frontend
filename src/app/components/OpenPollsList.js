@@ -81,10 +81,11 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
   return (
     <div>
       {canCreate && (
+        /* DECISION Phase 87.8 (D-13/D-14/AF-2): per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor — the global floor was considered and REJECTED because it would silently distort ~15 shipped compact/icon `.btn` sites (AF-2, e.g. BrowseMoreModal's 32x32 squares); 44px chosen OVER Material's 48dp, surfaced and consciously declined (D-14). The global `.btn` sizing question (all 210 sites) stays with Phase 88 (DEF-1) — this is a decision, not an oversight. No `min-w-11`: this wide text button already exceeds 44px rendered width (151px measured). */
         <button
           type="button"
           onClick={() => setShowStartPoll(true)}
-          className="btn btn-primary mb-4"
+          className="btn btn-primary mb-4 min-h-11"
         >
           + Start a check-in
         </button>

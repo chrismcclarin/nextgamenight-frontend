@@ -981,10 +981,11 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             >
               Cancel
             </button>
+            {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the Create Event surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button. */}
             <button
               type="submit"
               data-testid="create-event-submit"
-              className="btn btn-primary"
+              className="btn btn-primary min-h-11"
             >
               {editingEvent ? 'Update Event' : 'Create Event'}
             </button>
