@@ -167,7 +167,7 @@ export default function EventCalendar({
   // externalEvents is supplied the parent owns loading and never gates on selfUuid.
   if (externalEvents === null && selfIdentityErrorState.showError) {
     return (
-      <div className="card p-6">
+      <div className="card p-3 md:p-6">
         <h2 className="text-2xl font-bold text-content-primary mb-6">{title}</h2>
         <FetchErrorBanner
           state={selfIdentityErrorState}
@@ -180,14 +180,14 @@ export default function EventCalendar({
 
   if (loading) {
     return (
-      <div className="card p-6">
+      <div className="card p-3 md:p-6">
         <p className="text-content-secondary">Loading calendar...</p>
       </div>
     );
   }
 
   return (
-    <div className="card p-6">
+    <div className="card p-3 md:p-6">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-content-primary">{title}</h2>
         {showListView && (

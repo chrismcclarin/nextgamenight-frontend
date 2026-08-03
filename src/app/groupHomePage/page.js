@@ -283,7 +283,7 @@ function GroupHomePage(){
         // POLL-02: FriendshipStatusProvider lifted to root layout — see
         // src/app/layout.js. Nested mount removed so NotificationBell +
         // friends/page consume the same receivedRequests state.
-        <div className="p-3 md:p-6">
+        <div className="p-4 md:p-6">
             {/* Breadcrumbs */}
             <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
@@ -295,8 +295,17 @@ function GroupHomePage(){
                 button row (no md:flex-row). Kebab moves into the title row
                 so it sits beside the group name at every breakpoint instead
                 of wrapping awkwardly under the buttons at narrow widths. */}
+            {/* DECISION Phase 87.8 (D-03): the identity header is EXEMPT from the
+                phone flatten rule — it keeps its chrome (background colour/cover
+                image, rounded-lg) at phone width, chosen OVER applying the flatten
+                rule uniformly. This is the one surface where the group's own colour
+                rather than the token palette carries identity (UI-SPEC focal-point
+                contract): its background IS its depth cue and the surface's anchor,
+                and full-bleeding it deletes that anchor. Padding is depth-2
+                (12px phone / 24px desktop) only. Removing this exemption is a decision, not a
+                cleanup. */}
             <div
-                className="mb-6 flex flex-col gap-4 p-4 md:p-6 rounded-lg relative overflow-visible"
+                className="mb-6 flex flex-col gap-4 p-3 md:p-6 rounded-lg relative overflow-visible"
                 style={{
                     backgroundColor: Group?.background_color || '#111418',
                     ...safeBgImageStyle(Group?.background_image_url),
