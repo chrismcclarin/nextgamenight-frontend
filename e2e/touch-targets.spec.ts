@@ -378,8 +378,26 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     // request behaviour occurs (the "+" still renders — status never flipped to
     // Pending) and no friend-request side effect fired from either tap.
     if (probes.probeA) await page.touchscreen.tap(probes.probeA.x, probes.probeA.y);
+
+    // Tapping the username is REAL app behaviour that opens the member popover
+    // (ClickableMemberName FloatingPortal), and for a not-yet-friend that popover
+    // contains a genuine "Add friend" action (ClickableMemberName.js:177-183). It
+    // anchors to the username — directly over the adjacent row probe (b) taps next.
+    // Run 30839631190: probe (b) tapped the popover's "Add friend"; both absence
+    // asserts below sampled before the async token+POST round-trip fired, so the
+    // test passed while Diana went ⏳ Pending server-side and the NEXT test found
+    // no "+". Dismiss the popover (useDismiss handles Escape) and PROVE it closed
+    // before probe (b) — otherwise probe (b) measures the popover, not the row.
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Add friend', exact: true })).toHaveCount(0);
+
     if (probes.probeB) await page.touchscreen.tap(probes.probeB.x, probes.probeB.y);
 
+    // Absence over a window, not an instant: the request pipeline is async (an
+    // access-token fetch precedes POST /friendships/request), so a same-tick
+    // sample reads 0 vacuously even when a tap DID activate the control. Give the
+    // pipeline a bounded settle, then assert nothing fired and nothing swapped.
+    await page.waitForTimeout(750);
     expect(
       friendRequests,
       `taps at the probe points fired ${friendRequests.length} friend-request call(s) — the hit extension is stealing adjacent taps`,
@@ -387,6 +405,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     // The control still renders as "+" (aria-label intact, no swap to "⏳ Pending"),
     // proving neither tap activated it.
     await expect(addFriend.first()).toBeVisible();
+    await expect(page.getByText('⏳ Pending')).toHaveCount(0);
   });
 
   test('R6: add-friend "+" press-dims via its per-site active:opacity-75', async ({ page }) => {
