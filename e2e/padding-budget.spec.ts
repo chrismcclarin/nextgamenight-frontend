@@ -84,6 +84,17 @@ async function measurePaddingChain(anchor: Locator): Promise<PaddingChain> {
         paddingRight: parseFloat(style.paddingRight) || 0,
       });
       if (node === document.body) break;
+      // DECISION Phase 87.8-12: the chain STOPS at a position:fixed boundary
+      // (after counting the fixed element's own padding, which does constrain
+      // its children) — chosen OVER summing straight to <body>. A fixed
+      // element's containing block is the viewport, so in-flow ancestor
+      // padding underneath it (e.g. the page's p-4 under .modal-overlay,
+      // globals.css:856-858) never constrains the measured text; counting it
+      // failed the Create Event modal at a phantom 80px when its real chain
+      // is 48px (first armed run 30833214370). Same principle as the R2
+      // availability re-anchor: measure what the spec claims to measure.
+      // Removing this break is a regression to that phantom, not a cleanup.
+      if (style.position === 'fixed') break;
       node = node.parentElement;
     }
     const total = levels.reduce((sum, level) => sum + level.paddingLeft + level.paddingRight, 0);
