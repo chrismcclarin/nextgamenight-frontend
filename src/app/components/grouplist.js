@@ -94,7 +94,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   // error state looks intentional, not a broken half-render.
   if (selfIdentityErrorState.showError) {
     return (
-      <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card p-4 flex flex-col overflow-hidden h-full">
+      <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
           <h2 className="text-xl font-bold text-content-primary">Your Groups</h2>
           {onCreateGroup && (
@@ -118,7 +118,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
 
   if (loading) {
     return (
-      <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card p-4 flex flex-col overflow-hidden h-full">
+      <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
         <div className="text-center py-8 px-4 text-content-muted">Loading groups...</div>
       </div>
     );
@@ -128,7 +128,17 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     // POLL-02: FriendshipStatusProvider lifted to root layout — no longer
     // mounted here, since the nested instance was shadowing root state and
     // breaking friend-state sync between NotificationBell and friends page.
-    <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card p-4 flex flex-col overflow-hidden h-full">
+    //
+    // DECISION Phase 87.8 (D-02/D-03): level assignment for the home chain — this
+    // wrapper and the scrolling list div below are STRUCTURAL WRAPPERS (scroll
+    // plumbing), flattened at phone via surface-flat-phone; the group card inside
+    // is the depth-2 surface and the only element the user perceives as a surface.
+    // Chosen OVER giving each nesting level its own ladder value, which would have
+    // kept the chain at 44px per side and defeated the 75px budget. The same
+    // flatten is applied to the loading/error-state renders of this wrapper so the
+    // surface does not jump 16px when it transitions states. That is a decision,
+    // not a cleanup.
+    <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
         <h2 className="text-xl font-bold text-content-primary">Your Groups</h2>
         {onCreateGroup && (
@@ -149,7 +159,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
           non-blocking degrade notice instead of failing silently (D-11). */}
       <FetchErrorBanner state={selfIdentityErrorState} compact />
 
-      <div className="flex-1 overflow-y-auto p-4 pb-8 flex flex-col gap-4 max-md:max-h-[60vh] max-md:p-3">
+      <div className="flex-1 overflow-y-auto surface-flat-phone md:p-4 pb-8 flex flex-col gap-4 max-md:max-h-[60vh]">
         {groups.length === 0 ? (
           <div className="text-center py-8 px-4 text-content-muted">
             <p className="my-2">No groups yet!</p>
@@ -176,7 +186,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             return (
               <div
                 key={group.id}
-                className="bg-surface-card rounded-card p-4 pl-5 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover hover:bg-surface-card-hover focus:outline-hidden focus:border-focus-ring"
+                className="bg-surface-card rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover hover:bg-surface-card-hover focus:outline-hidden focus:border-focus-ring"
                 onClick={(e) => handleGroupClick(group, e)}
                 role="button"
                 tabIndex={0}
@@ -271,7 +281,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                     {userRole && userRole !== 'pending' && (
                       /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census — per-card primary CTA on the walked home surface. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `flex-1` full-row width. */
                       <button
-                        className="btn btn-primary text-sm flex-1 shadow-md hover:shadow-lg hover:-translate-y-px active:translate-y-0 transition-all min-h-11"
+                        className="btn btn-primary text-sm flex-1 shadow-md hover:shadow-lg transition-all min-h-11"
                         onClick={(e) => {
                           e.stopPropagation();
                           if (onGroupSelect) {
