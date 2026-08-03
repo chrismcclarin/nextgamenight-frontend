@@ -8,7 +8,8 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
  * `phone` share `testMatch: /.*\.spec\.ts/` (playwright.config.ts:44 and :87). This
  * file inverts the guard tailwind-v4-styles.spec.ts:57 uses: it SKIPS the desktop
  * `journeys` project and runs only at phone width, because R4/R6 are phone-tenet
- * requirements measured at the phone viewport (iPhone 13, 390x664 measured).
+ * requirements measured at the phone viewport (iPhone SE (3rd gen), 375x667 — D-06;
+ * was iPhone 13 390x664 when this spec was written under plan 08).
  *
  * CLASSIFY BEFORE DEBUGGING — hover inertness is expected, not a defect.
  * Tailwind v4 wraps every `hover:` utility in `@media (hover: hover)`, which is FALSE
