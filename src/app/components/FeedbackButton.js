@@ -82,7 +82,11 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
         // active:opacity-75 (the Plan 87.8-01 press idiom) instead of
         // active:bg-surface-card-hover — plan 08 converges the two remaining
         // token-swap sites; do not ship a third instance of the old idiom.
-        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:opacity-75 transition-colors"
+        // Focus ring matches the FAB this row replaces (same tokens), so
+        // keyboard/switch users get the same visible affordance from either
+        // entry point; inset (no ring-offset) because the row is a full-bleed
+        // menu row where an offset ring would clip against siblings.
+        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:opacity-75 transition-colors focus:ring-2 focus:ring-focus-ring focus:ring-inset"
         aria-label="Send feedback"
       >
         <svg
@@ -147,25 +151,57 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
 
   return (
     <>
-      {/* Floating feedback button */}
-      <button
-        onClick={(e) => open(e.currentTarget)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 btn btn-primary rounded-full shadow-lg flex items-center justify-center focus:ring-2 focus:ring-focus-ring focus:ring-offset-2"
-        aria-label="Send feedback"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="w-6 h-6"
+      {/* DECISION Phase 87.8 DEC-2: the below-`md` visibility toggle lives on
+          this bare, unstyled wrapper div — chosen OVER converting `.btn` to
+          `@utility` (that changes cascade behaviour across ~210 call sites
+          mid-phase; deferred to Phase 88 via DEF-1) and OVER a
+          useMediaQuery-gated conditional mount (Next.js hydration-mismatch
+          risk on first client render). `.btn` is UNLAYERED in globals.css and
+          an unlayered declaration beats any layered Tailwind utility, so
+          `hidden`/`md:flex` placed directly on the `btn btn-primary` button
+          element would be INERT (the button would keep computing
+          display: inline-flex). A wrapper with no `btn` class carries no
+          unlayered declaration for the layered `hidden` utility to fight, so
+          the toggle behaves as written with no new one-off unlayered rule.
+          The wrapper encloses ONLY the button — the modal below stays an
+          independently-toggleable sibling, mounted at every viewport, or the
+          phone nav row would open a display:none modal. */}
+      <div className="hidden md:block">
+        {/* Floating feedback button.
+            DECISION Phase 87.8 (D-09/D-10): `z-30` chosen OVER raising the
+            overlays — the FAB is the element in the wrong tier, and one value
+            drops it below BOTH the nav backdrop tier (z-index: 40, Header.js)
+            and the z-index: 50 tier (header shell + `.modal-overlay` in
+            globals.css) in a single step; all four sit in the root stacking
+            context, so the FAB's old z-index of 50 was a tie broken by DOM
+            order (FeedbackButton mounts after Footer in layout.js), which is
+            why the FAB painted above BOTH the open nav overlay and the Footer
+            "Report bug" modal. Below-`md` non-render (the wrapper above)
+            chosen OVER a per-surface inset sweep: occlusion becomes
+            impossible by construction and there is nothing for Phase 88 to
+            re-break when it rewrites surfaces. The FAB-above-Footer-modal
+            instance was found by source analysis (z-tier + DOM order); the
+            live-browser confirmation attempt is recorded in the plan summary
+            (A5). */}
+        <button
+          onClick={(e) => open(e.currentTarget)}
+          className="fixed bottom-6 right-6 z-30 w-14 h-14 btn btn-primary rounded-full shadow-lg flex items-center justify-center focus:ring-2 focus:ring-focus-ring focus:ring-offset-2"
+          aria-label="Send feedback"
         >
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
-      </button>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="w-6 h-6"
+          >
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+        </button>
+      </div>
 
       {/* Modal overlay — stays mounted on THIS (layout-root) instance at every
           viewport, including below `md` where the FAB itself is hidden; the

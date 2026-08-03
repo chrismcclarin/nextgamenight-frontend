@@ -6,6 +6,7 @@ import DieLogo from './components/DieLogo';
 import NotificationBell from './components/NotificationBell';
 import ThemeToggle from './components/ThemeToggle';
 import { useUnreadNotificationCount } from './components/UnreadNotificationProvider';
+import FeedbackButton from './components/FeedbackButton';
 
 function Header(){
     const { user, error, isLoading } = useUser();
@@ -212,6 +213,25 @@ function Header(){
                         <div className="border-t border-line-header">
                             <ThemeToggle variant="row" label="Theme" />
                         </div>
+                        {/* Mobile feedback entry point (Phase 87.8 D-09) — full-row
+                            tap surface for parity with Invites/Theme. Only the
+                            TRIGGER lives here: the modal deliberately does NOT
+                            render in this dropdown (its computed `translate` would
+                            capture a fixed-position overlay as its containing
+                            block) — the row drives the modal instance mounted at
+                            the layout root via FeedbackModalProvider. onOpen closes
+                            this menu in the SAME transition that opens the modal,
+                            the close-on-tap idiom the nav links above use. Gated on
+                            user like the Invites row — feedback is auth-only. */}
+                        {user && (
+                            <div className="border-t border-line-header">
+                                <FeedbackButton
+                                    variant="row"
+                                    label="Send feedback"
+                                    onOpen={() => setMobileMenuOpen(false)}
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
