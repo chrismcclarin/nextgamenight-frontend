@@ -741,16 +741,50 @@ body {
 
 /* ===== DESIGN SYSTEM: Component Classes ===== */
 
-.card {
+/* DECISION Phase 87.8 (D-01): `.card` moved from UNLAYERED to `@utility` so that a
+   consumer's own padding utility WINS. Chosen OVER editing the padding value here in
+   place, and OVER `!important` at call sites. The premise is MEASURED, not reasoned:
+   while this rule was unlayered it beat every layered utility, so ALL 28 `.card` call
+   sites carried a `p-*` utility and ALL 28 were dead.
+
+   Emission order verified by compiling this file's own tailwindcss@4.3.3: `@utility`
+   lands inside `@layer utilities` sorted BEFORE `.p-4`/`.p-6`/`.md\:p-6`, so equal
+   specificity is broken by source order in the consumer's favour, and `md:p-6` still
+   wins at >=768px. `&:hover` nesting survives compilation unchanged.
+
+   Intended visual diff (CORRECTED 2026-08-02, round-3 review — the earlier claim that
+   the diff was phone-only was WRONG), review against this:
+   (i)   `p-4` sites that ALSO author `md:p-6` change at phone only;
+   (ii)  the five BARE-`p-4` sites (BringSummary.js:95, UpcomingEventsCard.js:137,
+         GroupGamesList.js:12, GameSuggestionCard.js:20, friends/page.js:563) would
+         have silently dropped desktop padding 24px -> 16px — Task 1b of plan 87.8-01
+         adds `md:p-6` to each so desktop is preserved;
+   (iii) the 13 sites authoring `p-6` are a no-op;
+   (iv)  previously-inert `hover:shadow-theme-*` comes alive on DESKTOP ONLY, because
+         Tailwind v4 wraps `hover:` in `@media (hover: hover)` which is false on the
+         phone lane — LandingPage.js:52,60,68, GroupGamesList.js:12,
+         GameSuggestionCard.js:20;
+   (v)   the `transition-*` utilities at those same sites stop losing to `.card`'s own
+         `transition` now that `.card` is layered — a second un-inert flip; do not
+         mistake it for a regression.
+
+   `border-radius` is now `var(--radius-card)` (declared at its token site above,
+   value 12px) — a token substitution with no rendered change (D-04).
+
+   The neighbouring UNLAYERED blocks — the `.rbc-*` overrides, the `:root` palette
+   blocks (guardrail comment above), `.btn`, `.btn-*` and `.modal-overlay` — MUST STAY
+   unlayered; their cascade position is a measured 87.7 decision and nothing needs to
+   override them. Only `.card` moves. Moving it back is a decision, not a cleanup. */
+@utility card {
   background-color: var(--color-bg-card);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-md);
   padding: 1.5rem;
   transition: var(--theme-transition);
-}
 
-.card:hover {
-  background-color: var(--color-bg-card-hover);
+  &:hover {
+    background-color: var(--color-bg-card-hover);
+  }
 }
 
 .btn {
