@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'; // useState kept for paintMode
 import { format, addDays, addMinutes, startOfWeek, nextMonday, parseISO } from 'date-fns';
-// BUG-01 / F-810: slot instants are generated AND parsed against the PROFILE
-// timezone via the Phase 84 date-fns-tz layer (v2-pinned, test-pinned). Relative
-// (not `@/`) import so this `.js` component resolves under vitest — mirrors
-// AvailabilityForm's `../../lib/api` note.
-import { wallClockToUtc, utcToWallClock } from '../../lib/datetime';
+// BUG-01 / F-810: slot instants are generated against the PROFILE timezone via
+// the Phase 84 date-fns-tz layer (v2-pinned, test-pinned); the test suite
+// asserts the reverse parse (utcToWallClock) lands on the same wall-clock
+// hour/day. Relative (not `@/`) import so this `.js` component resolves under
+// vitest — mirrors AvailabilityForm's `../../lib/api` note.
+import { wallClockToUtc } from '../../lib/datetime';
 import WriteCell from './heatmap/WriteCell';
 
 // Zero-pad an hour/minute to two digits for the "yyyy-MM-ddTHH:mm" wall-clock
@@ -41,7 +42,6 @@ export default function AvailabilityGrid({
   // latest value synchronously without waiting for a re-render
   const isDraggingRef = useRef(false);
   const [paintMode, setPaintMode] = useState('preferred'); // 'preferred' | 'if-need-be'
-  const [checkedDays, setCheckedDays] = useState([]); // array of day indices (0-6)
   const gridRef = useRef(null);
 
   // ARIA grid roving tabindex (84-10 / F-803/809): AvailabilityGrid is one of
@@ -68,10 +68,6 @@ export default function AvailabilityGrid({
     setFocusedCoord({ row, col });
     cellRefs.current.get(coordKey(row, col))?.focus();
   }, []);
-
-  // Derived: are all days checked? Sized to numDays so the Plan 71-05 polls
-  // (1-14 day windows) compute "All" correctly for any window length.
-  const allChecked = checkedDays.length === numDays;
 
   // Calculate the week start date (next Monday if not provided)
   const weekStart = useMemo(() => {
@@ -139,25 +135,21 @@ export default function AvailabilityGrid({
   // Precompute the whole grid's slot-id mapping ONCE per [days, timeSlots,
   // timezone] change. The heavy TZ conversion (wallClockToUtc) runs O(cells)
   // here — never inline on the per-cell render loop or the paint/pointermove
-  // handlers, which instead READ from this structure:
-  //   - byCoord: "dayIndex:timeSlotIndex" -> slotId  (forward, render + paint)
-  //   - byId:    slotId -> { dayIndex, timeSlotIndex, hour, minute }
-  //             (reverse, so the cross-day handlers parse a slotId in the SAME
-  //              profile TZ that generateSlotId emitted — symmetric by
-  //              construction, closing the BUG-01 write/parse asymmetry)
-  // `timezone` is a transitive dependency via generateSlotId, so the precomputed
-  // ids invalidate and regenerate when the profile TZ changes.
+  // handlers, which instead READ from this map ("dayIndex:timeSlotIndex" ->
+  // slotId). `timezone` is a transitive dependency via generateSlotId, so the
+  // precomputed ids invalidate and regenerate when the profile TZ changes.
+  // (The reverse byId map that once fed the cross-day handlers' slot-id parsing
+  // left with the broadcast — see the DECISION marker below. The F-810
+  // write-side guarantee lives entirely in generateSlotId, and the test suite
+  // pins the reverse parse externally via utcToWallClock.)
   const slotIdGrid = useMemo(() => {
     const byCoord = new Map();
-    const byId = new Map();
     days.forEach((day, dayIndex) => {
       timeSlots.forEach((ts, timeSlotIndex) => {
-        const slotId = generateSlotId(day, ts);
-        byCoord.set(`${dayIndex}:${timeSlotIndex}`, slotId);
-        byId.set(slotId, { dayIndex, timeSlotIndex, hour: ts.hour, minute: ts.minute });
+        byCoord.set(`${dayIndex}:${timeSlotIndex}`, generateSlotId(day, ts));
       });
     });
-    return { byCoord, byId };
+    return { byCoord };
   }, [days, timeSlots, generateSlotId]);
 
   // O(1) forward lookup: the render loop and paint/toggle/clear handlers read
@@ -167,40 +159,71 @@ export default function AvailabilityGrid({
     [slotIdGrid]
   );
 
-  // Toggle a single per-day "All" column checkbox. Plan 71-05 manual-checkpoint
-  // Bug 1 (round 2) fix: previously this only flipped `checkedDays` state,
-  // which made subsequent CLICKS broadcast across days but did NOT paint
-  // anything in the day column on its own. Users clicking the per-day "All"
-  // header expected every slot in that column to fill — and got an empty
-  // submit + "You haven't selected a timeframe" error.
+  // DECISION Phase 87.8 (SPEC R9): day checkboxes are DERIVED two-way mirrors of
+  // the painted grid (checked ⟺ every slot in the day's column is painted, any
+  // preference tier) plus a bulk fill/clear affordance — with NO cross-day
+  // linkage of any kind. Chosen OVER (a) the stateful checked-day-driver design
+  // this plan originally specified (rejected by owner ruling 2026-08-02: the
+  // cross-day "checked days edit together" broadcast it preserved was a
+  // misrouted feature — two similarly-named features, profile *availability* vs
+  // weekly *check-in*, were historically conflated, and the multi-day request
+  // behind the broadcast belongs to PROFILE availability, where Phase 48-01
+  // already shipped day-pill multi-select — userProfile/page.js:826) and OVER
+  // (b) any future "re-add linked days here". Derived state cannot desync: the
+  // 2026-05-16 "checkbox stays checked after Clear All" bug is impossible by
+  // construction. Re-adding a broadcast here is a product decision, not a
+  // restoration.
+  const dayFull = useMemo(
+    () =>
+      days.map((_, dayIndex) =>
+        timeSlots.every((_, timeSlotIndex) => {
+          const id = slotIdForCoord(dayIndex, timeSlotIndex);
+          return !!id && slotMap.has(id);
+        })
+      ),
+    [days, timeSlots, slotIdForCoord, slotMap]
+  );
+
+  // Derived: are all days checked? Sized to numDays so the Plan 71-05 polls
+  // (1-14 day windows) compute "All" correctly for any window length.
+  const allChecked = dayFull.length === numDays && dayFull.every(Boolean);
+
+  // Per-day "All" column checkbox — bulk fill/clear for that day only.
   //
-  // New behavior: toggling a per-day "All" ON paints every slot in THAT day's
-  // column with the current paintMode. Toggling OFF clears every slot in that
-  // day's column. The cross-day broadcast for subsequent clicks still works
-  // because we keep `checkedDays` in sync.
+  // HISTORY (re-authored 2026-08-02): the Plan 71-05 manual-checkpoint Bug 1
+  // (round 2) fix made this handler paint/clear the day column (previously it
+  // only flipped the checked-day state array, producing an empty submit + "You
+  // haven't selected a timeframe" error) AND kept that state in sync so
+  // subsequent clicks broadcast across checked days. The owner ruling of
+  // 2026-08-02 SUPERSEDED that paint/check-driver semantics: the cross-day
+  // broadcast was a misrouted feature belonging to profile availability
+  // (shipped there by Phase 48-01), so the state array is deleted entirely
+  // — no trace of it remains in code. The paint-on-check
+  // expectation 71-05 established still stands.
+  //
+  // CURRENT RULE: checked state is DERIVED (`dayFull`) — this handler only
+  // edits the selection. Day not full -> paint its empty slots with the current
+  // paintMode; day full -> remove all of its slots. The mirror updates itself
+  // on the next render; no gesture here (or anywhere) writes to another day.
   //
   // Declared AFTER days/timeSlots/generateSlotId because the callback closes
   // over them; declaring earlier triggers a TDZ ReferenceError at render.
   const toggleDayCheck = useCallback((dayIndex) => {
     const day = days[dayIndex];
     if (!day) return;
-    const isCurrentlyChecked = checkedDays.includes(dayIndex);
-    if (isCurrentlyChecked) {
-      // Uncheck: remove from checkedDays AND clear every slot in this day column.
-      setCheckedDays((prev) => prev.filter((d) => d !== dayIndex));
+    if (dayFull[dayIndex]) {
+      // Full (checkbox reads checked): remove every slot in this day column.
       const dayKeys = new Set(timeSlots.map((_, ti) => slotIdForCoord(dayIndex, ti)));
       const filtered = value.filter((s) => !dayKeys.has(s.slotId));
       if (filtered.length !== value.length) {
         onChange?.(filtered);
       }
     } else {
-      // Check: add to checkedDays AND paint every empty slot in this day column.
-      setCheckedDays((prev) => [...prev, dayIndex]);
-      const existing = new Set(value.map((s) => s.slotId));
+      // Not full: paint every empty slot in this day column.
       const additions = [];
       timeSlots.forEach((_, ti) => {
         const id = slotIdForCoord(dayIndex, ti);
-        if (id && !existing.has(id)) {
+        if (id && !slotMap.has(id)) {
           additions.push({ slotId: id, preference: paintMode });
         }
       });
@@ -208,26 +231,31 @@ export default function AvailabilityGrid({
         onChange?.([...value, ...additions]);
       }
     }
-  }, [checkedDays, days, timeSlots, slotIdForCoord, value, paintMode, onChange]);
+  }, [days, dayFull, timeSlots, slotIdForCoord, slotMap, value, paintMode, onChange]);
 
   // Toggle Select All: when toggled ON, paint every visible slot with the
   // current paint mode (matches user expectation "All = I'm available for
   // everything in this window"). When toggled OFF, clear every painted slot.
-  // Also keeps `checkedDays` in sync so subsequent per-day clicks still get
-  // the cross-day broadcast behavior. Plan 71-05 manual-checkpoint Bug 1 fix:
-  // previously this only set checkedDays without painting, so submitting after
-  // toggling "All" failed validation with "Pick at least one time slot".
+  //
+  // HISTORY (re-authored 2026-08-02): the Plan 71-05 manual-checkpoint Bug 1
+  // fix made this paint on toggle (previously it only set the checked-day state
+  // array without painting, so submitting after "All" failed validation with
+  // "Pick at least one time slot") and kept that state in sync for the
+  // cross-day broadcast.
+  // The owner ruling of 2026-08-02 superseded the driver semantics — the
+  // broadcast is removed and `allChecked` is now DERIVED from the painted grid
+  // — but the paint-on-toggle expectation 71-05 established still stands.
   const toggleSelectAll = useCallback(() => {
-    const willCheckAll = checkedDays.length !== numDays;
-    if (willCheckAll) {
-      setCheckedDays(Array.from({ length: numDays }, (_, i) => i));
+    if (allChecked) {
+      // Uncheck All clears every painted slot — symmetric with the check path.
+      onChange?.([]);
+    } else {
       // Paint every slot in the grid that isn't already painted.
-      const existing = new Set(value.map((s) => s.slotId));
       const additions = [];
       days.forEach((day, di) => {
         timeSlots.forEach((ts, ti) => {
           const id = slotIdForCoord(di, ti);
-          if (id && !existing.has(id)) {
+          if (id && !slotMap.has(id)) {
             additions.push({ slotId: id, preference: paintMode });
           }
         });
@@ -235,12 +263,8 @@ export default function AvailabilityGrid({
       if (additions.length > 0) {
         onChange?.([...value, ...additions]);
       }
-    } else {
-      setCheckedDays([]);
-      // Uncheck All clears every painted slot — symmetric with the check path.
-      onChange?.([]);
     }
-  }, [checkedDays.length, numDays, days, timeSlots, slotIdForCoord, value, paintMode, onChange]);
+  }, [allChecked, days, timeSlots, slotIdForCoord, slotMap, value, paintMode, onChange]);
 
   // Format time label for the row. Pure hour/minute -> "h:mm a" (byte-identical
   // to the prior `format(date, 'h:mm a')` output) with no `setHours` — the label
@@ -271,122 +295,29 @@ export default function AvailabilityGrid({
     }
   }, []);
 
-  // Reverse slot-id parsers — BUG-01 / F-810.
-  //
-  // These interpret a slotId in the SAME profile timezone that generateSlotId
-  // emitted (via the precomputed byId map, or utcToWallClock as the symmetric
-  // fallback), NOT the old browser-local `getFullYear`/`getDate`/`getHours`.
-  // Generation and parsing now share one TZ basis, so the cross-day branches of
-  // handleToggleSlot / handlePaintSlot / handleClearAll stay correct when the
-  // profile TZ differs from the browser TZ. They run once per handler call
-  // (discrete pointer/clear events) — never per cell per render.
-
-  // Helper: get the day index from a slotId.
-  const getDayIndexFromSlotId = useCallback(
-    (slotId) => {
-      const meta = slotIdGrid.byId.get(slotId);
-      if (meta) return meta.dayIndex;
-      // Fallback: interpret in the profile TZ and match against the grid's days.
-      const wc = utcToWallClock(slotId, timezone);
-      if (!wc) return -1;
-      return days.findIndex((d) => {
-        const [dy, dm, dd] = format(d, 'yyyy-MM-dd').split('-').map(Number);
-        return dy === wc.year && dm === wc.month && dd === wc.day;
-      });
-    },
-    [slotIdGrid, days, timezone]
-  );
-
-  // Helper: extract { hour, minute } from a slotId in the profile TZ.
-  const getTimeSlotFromSlotId = useCallback(
-    (slotId) => {
-      const meta = slotIdGrid.byId.get(slotId);
-      if (meta) return { hour: meta.hour, minute: meta.minute };
-      const wc = utcToWallClock(slotId, timezone);
-      return wc ? { hour: wc.hours, minute: wc.minutes } : { hour: 0, minute: 0 };
-    },
-    [slotIdGrid, timezone]
-  );
-
-  // Helper: get the time-slot index from a slotId (used by the cross-day
-  // handlers to re-derive the same time on every checked day).
-  const getTimeSlotIndexFromSlotId = useCallback(
-    (slotId) => {
-      const meta = slotIdGrid.byId.get(slotId);
-      if (meta) return meta.timeSlotIndex;
-      const { hour, minute } = getTimeSlotFromSlotId(slotId);
-      return timeSlots.findIndex((ts) => ts.hour === hour && ts.minute === minute);
-    },
-    [slotIdGrid, getTimeSlotFromSlotId, timeSlots]
-  );
-
-  // Handle slot toggle (click)
+  // Handle slot toggle (click). Strictly single-cell: a tap on an empty cell
+  // adds that one slot with the current paint mode; a tap on a painted cell
+  // removes that one slot. (The cross-day ADD branch that used to live here
+  // left with the broadcast — see the DECISION marker above.)
   const handleToggleSlot = useCallback(
     (slotId) => {
-      const currentPreference = slotMap.get(slotId);
-
-      if (currentPreference) {
-        // Remove: always per-day only (remove just this one slot)
-        const newValue = value.filter((s) => s.slotId !== slotId);
-        onChange?.(newValue);
+      if (slotMap.get(slotId)) {
+        onChange?.(value.filter((s) => s.slotId !== slotId));
       } else {
-        // Add slot with current paint mode
-        if (checkedDays.length === 0) {
-          // No checkboxes checked — single-day behavior
-          const newValue = [...value, { slotId, preference: paintMode }];
-          onChange?.(newValue);
-        } else {
-          // Cross-day: add matching time on all checked days
-          const clickedDayIndex = getDayIndexFromSlotId(slotId);
-          const timeSlotIndex = getTimeSlotIndexFromSlotId(slotId);
-          const daysToFill = checkedDays.includes(clickedDayIndex)
-            ? checkedDays
-            : [clickedDayIndex]; // unchecked day = single slot only
-          const newSlots = [];
-          daysToFill.forEach((di) => {
-            const id = slotIdForCoord(di, timeSlotIndex);
-            if (id && !slotMap.has(id)) {
-              newSlots.push({ slotId: id, preference: paintMode });
-            }
-          });
-          if (newSlots.length > 0) {
-            onChange?.([...value, ...newSlots]);
-          }
-        }
+        onChange?.([...value, { slotId, preference: paintMode }]);
       }
     },
-    [value, onChange, slotMap, paintMode, checkedDays, slotIdForCoord, getDayIndexFromSlotId, getTimeSlotIndexFromSlotId]
+    [value, onChange, slotMap, paintMode]
   );
 
-  // Handle slot paint (drag - add only, additive across checked days)
+  // Handle slot paint (drag — add only). Strictly single-cell, like toggle.
   const handlePaintSlot = useCallback(
     (slotId) => {
-      if (checkedDays.length === 0) {
-        // No checkboxes — single slot paint (original behavior)
-        if (!slotMap.has(slotId)) {
-          const newValue = [...value, { slotId, preference: paintMode }];
-          onChange?.(newValue);
-        }
-      } else {
-        // Cross-day paint: add matching time on all checked days
-        const paintedDayIndex = getDayIndexFromSlotId(slotId);
-        const timeSlotIndex = getTimeSlotIndexFromSlotId(slotId);
-        const daysToFill = checkedDays.includes(paintedDayIndex)
-          ? checkedDays
-          : [paintedDayIndex]; // unchecked day = single cell only
-        const newSlots = [];
-        daysToFill.forEach((di) => {
-          const id = slotIdForCoord(di, timeSlotIndex);
-          if (id && !slotMap.has(id)) {
-            newSlots.push({ slotId: id, preference: paintMode });
-          }
-        });
-        if (newSlots.length > 0) {
-          onChange?.([...value, ...newSlots]);
-        }
+      if (!slotMap.has(slotId)) {
+        onChange?.([...value, { slotId, preference: paintMode }]);
       }
     },
-    [value, onChange, slotMap, paintMode, checkedDays, slotIdForCoord, getDayIndexFromSlotId, getTimeSlotIndexFromSlotId]
+    [value, onChange, slotMap, paintMode]
   );
 
   // Pointer event handlers
@@ -412,9 +343,9 @@ export default function AvailabilityGrid({
   }, []);
 
   // Keyboard select-cycle (WriteCell reports the NEXT preference after Enter/
-  // Space). Single-cell edit by design: arrow+select keyboard nav operates on
-  // the focused cell only (the cross-day "All"/checkbox broadcast stays a
-  // pointer-paint affordance). next === null removes the slot.
+  // Space). Single-cell edit, like every other gesture: arrow+select keyboard
+  // nav operates on the focused cell only (bulk fill/clear is the checkboxes'
+  // job). next === null removes the slot.
   const handleKeyboardSelect = useCallback(
     (row, col, next) => {
       const day = days[col];
@@ -448,20 +379,13 @@ export default function AvailabilityGrid({
     setPaintMode((prev) => (prev === 'preferred' ? 'if-need-be' : 'preferred'));
   }, []);
 
-  // Clear all selections (checkbox-aware)
+  // Clear all selections — unconditionally, matching the button's label. (The
+  // "only clear checked days" branch left with the broadcast; every checkbox
+  // derives to unchecked from the emptied selection, so the 2026-05-16
+  // stranded-checkbox bug cannot recur.)
   const handleClearAll = useCallback(() => {
-    if (checkedDays.length === 0) {
-      // No checkboxes — clear everything
-      onChange?.([]);
-    } else {
-      // Only clear slots belonging to checked days
-      const filtered = value.filter((s) => {
-        const dayIdx = getDayIndexFromSlotId(s.slotId);
-        return !checkedDays.includes(dayIdx);
-      });
-      onChange?.(filtered);
-    }
-  }, [onChange, value, checkedDays, getDayIndexFromSlotId]);
+    onChange?.([]);
+  }, [onChange]);
 
   return (
     <div className="w-full">
@@ -578,7 +502,7 @@ export default function AvailabilityGrid({
               >
                 <input
                   type="checkbox"
-                  checked={checkedDays.includes(index)}
+                  checked={!!dayFull[index]}
                   onChange={() => toggleDayCheck(index)}
                   disabled={disabled}
                   className="w-4 h-4 accent-blue-600 cursor-pointer disabled:cursor-not-allowed"
