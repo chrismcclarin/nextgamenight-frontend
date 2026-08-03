@@ -53,12 +53,19 @@ const E2E_EVENT_DETAIL_PATH =
  *  that is a failure of the LOCATOR (or of fixture seeding), not of the touch-target
  *  work. Assert loudly instead of silently passing. */
 async function guardResolved(locator: Locator, what: string, atLeast = 1): Promise<void> {
+  // toBeVisible FIRST: it auto-waits, so the count sample below runs against a
+  // settled page. locator.count() has NO auto-wait — sampling it first raced the
+  // post-fetch render and failed 5 of these guards on the first armed CI run
+  // (30833214370) while the CTAs and fixture rows were in fact all present.
+  await expect(
+    locator.first(),
+    `locator for ${what} resolved no visible element — a zero-count locator makes the geometry assertion vacuous; this is a failure of the LOCATOR or the fixture state, not of the touch-target work`,
+  ).toBeVisible();
   const count = await locator.count();
   expect(
     count,
     `locator for ${what} resolved ${count} elements (expected >= ${atLeast}) — a zero-count locator makes the geometry assertion vacuous; this is a failure of the LOCATOR or the fixture state, not of the touch-target work`,
   ).toBeGreaterThanOrEqual(atLeast);
-  await expect(locator.first()).toBeVisible();
 }
 
 /** R4 geometry: BOTH dimensions >= 44. Height-only would reproduce the exact gap R4
@@ -86,6 +93,11 @@ async function assertMin44(locator: Locator, label: string): Promise<void> {
  *  into a click (no navigations / submits / side effects from this probe). */
 async function assertPressedOpacity(page: Page, locator: Locator, label: string): Promise<void> {
   const target = locator.first();
+  // boundingBox() is viewport-relative (getBoundingClientRect semantics) and raw
+  // mouse events do NOT auto-scroll the way locator.click() does — for a below-fold
+  // element the press lands outside the 667px viewport and :active never fires
+  // (availability submit, first armed run 30833214370: pressed opacity read 1).
+  await target.scrollIntoViewIfNeeded();
   const box = await target.boundingBox();
   expect(box, `${label}: boundingBox() null — cannot drive :active`).not.toBeNull();
   if (!box) return;
