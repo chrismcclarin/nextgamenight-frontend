@@ -237,21 +237,34 @@ test.describe('desktop: FAB present but below every overlay (R3, D-10)', () => {
   });
 });
 
-// Logged-out coverage (runs in BOTH projects — it builds its own context, so
-// the project's storageState is irrelevant): a real render assertion replacing
+// Logged-out coverage (runs in BOTH projects): a real render assertion replacing
 // the previous grep-for-auth-guard check. Feedback entry points are
 // deliberately auth-only (Footer.js:11-12, T-87.8-16 / ASVS V2) — a logged-out
 // visitor must see NEITHER the FAB nor the nav row.
 test('logged-out visitor gets neither feedback entry point (fresh context, no storageState)', async ({ browser, baseURL }) => {
-  // Fresh context with NO storageState — a genuinely unauthenticated visitor.
-  const context = await browser.newContext();
+  // DECISION Phase 87.8-12: explicit EMPTY storageState over bare newContext().
+  // A bare browser.newContext() is NOT cookie-less under @playwright/test — the
+  // harness injects every config `use` option the call didn't name, including
+  // this project's storageState: '.auth/user.json' (playwright/lib/index.js
+  // runBeforeCreateBrowserContext), so the "fresh" context arrived carrying the
+  // CI user's appSession and this test observed a LOGGED-IN /about (dispatch-run
+  // 30833214370 trace evidence). Removing the empty object is a regression to
+  // that bug, not a cleanup.
+  const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
   try {
     const page = await context.newPage();
     // Public, unauthenticated route (Footer's PublicFooter renders here).
     await page.goto(`${baseURL}/about`);
-    // Anchor the page actually rendered before asserting absence, so a failed
-    // navigation cannot make the zero-counts pass vacuously.
-    await expect(page.getByRole('link', { name: 'Privacy' })).toBeVisible();
+    // Anchor: the FOOTER's exact-"Privacy" link, so absence-assertions below can
+    // only run after the auth state resolved and the real footer replaced the
+    // isLoading placeholder (Footer.js renders <div h-12/> until useUser settles).
+    // DECISION Phase 87.8-12: exact:true over default substring matching — the
+    // about-page BODY contains a "Privacy Policy" link (about/page.js:59) that
+    // substring-matches 'Privacy' and satisfied this anchor DURING isLoading,
+    // letting both zero-counts pass vacuously before the FAB could mount (the
+    // pre-arming green was exactly that false pass). exact:true cannot match
+    // 'Privacy Policy', so the anchor waits for the footer itself.
+    await expect(page.getByRole('link', { name: 'Privacy', exact: true })).toBeVisible();
 
     // Zero-COUNT assertions on the same scoped locators the logged-in tests
     // prove resolve to exactly one element each — includeHidden so even a
