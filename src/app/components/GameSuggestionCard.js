@@ -17,7 +17,7 @@ export default function GameSuggestionCard({ game, onClick }) {
   return (
     <div
       onClick={onClick ? () => onClick(game) : undefined}
-      className={`card p-4 flex gap-4 hover:shadow-theme-md transition-shadow ${
+      className={`card p-4 md:p-6 flex gap-4 hover:shadow-theme-md transition-shadow ${
         onClick ? 'cursor-pointer' : ''
       }`}
     >

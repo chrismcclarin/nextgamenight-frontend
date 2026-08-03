@@ -560,7 +560,7 @@ function FriendsPage() {
                             <div>
                                 {/* Group Invite Bulk Action Bar */}
                                 {userGroups.length > 0 && (
-                                    <div className="mb-4 p-4 card">
+                                    <div className="mb-4 p-4 md:p-6 card">
                                         <div className="flex flex-wrap items-center gap-3">
                                             <label htmlFor="group-invite-select" className="text-sm font-medium text-content-secondary">
                                                 Invite to Group:

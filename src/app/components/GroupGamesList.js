@@ -9,7 +9,7 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
     return (
         <Link
             href={`/gameDetail?game_id=${encodeURIComponent(game.id)}&group_id=${encodeURIComponent(groupId)}`}
-            className="block card p-4 hover:shadow-theme-lg transition-shadow hover:border-line-accent"
+            className="block card p-4 md:p-6 hover:shadow-theme-lg transition-shadow hover:border-line-accent"
         >
             <div className="flex items-start gap-4">
                 <SafeImage

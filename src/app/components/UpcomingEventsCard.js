@@ -134,7 +134,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
   };
 
   return (
-    <div className="card p-4 mb-4">
+    <div className="card p-4 md:p-6 mb-4">
       <h3 className="font-medium text-content-primary">Upcoming Events</h3>
 
       {loading ? (
