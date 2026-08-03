@@ -369,16 +369,20 @@ jobs:
       # exploratory all-projects run uses a throwaway branch instead. FULL MECHANISM — the
       # push alone is NOT enough: the `push: branches-ignore: [main]` trigger above picks the
       # branch up, but this pinned `--project` list applies to EVERY trigger, so the throwaway
-      # branch must ALSO edit the run line below (e.g. append `--project=phone`, or drop the
-      # pin entirely for all-projects). Both edits die with the branch; nothing permanent
-      # changes. Plan 12 (the phone-lane exploratory run) is the direct consumer of this
-      # instruction.
+      # branch must ALSO edit the run line below (append a project, or drop the pin entirely
+      # for all-projects). Both edits die with the branch; nothing permanent changes.
+      #
+      # ARMED Phase 87.8 plan 12 step (c): `--project=phone` joined the pinned set AFTER the
+      # required evidence pair — green combined run 30844453508 (44 passed, 0 failed) and
+      # negative control 30844455459 (red on exactly the five planted padding assertions).
+      # Removing `--project=phone` from the run line DISARMS the phone-forward gate (MOB-03) —
+      # that is a decision, not a cleanup.
       - name: Run Playwright journeys (setup logs in once; all specs in the journeys project reuse storageState)
         env:
           # Auth credentials cross into the runner ONLY via env — never echoed (T-82-11).
           E2E_AUTH0_USER: ${{ secrets.E2E_AUTH0_USER }}
           E2E_AUTH0_PASS: ${{ secrets.E2E_AUTH0_PASS }}
-        run: npx playwright test --project=setup --project=journeys
+        run: npx playwright test --project=setup --project=journeys --project=phone
 
       - name: Upload Playwright failure evidence (excludes .auth/ — T-82-12)
         if: failure()
