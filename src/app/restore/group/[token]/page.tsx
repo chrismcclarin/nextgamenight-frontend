@@ -469,7 +469,7 @@ function RestoreGroupPage() {
               <button
                 type="button"
                 onClick={handleTakeOver}
-                className="btn btn-primary flex items-center justify-center w-full min-h-[44px] text-center"
+                className="btn btn-primary flex items-center justify-center w-full min-h-11 text-center"
               >
                 Take over this group
               </button>
@@ -477,7 +477,7 @@ function RestoreGroupPage() {
               <>
                 <a
                   href={returnTo}
-                  className="btn btn-primary flex items-center justify-center w-full min-h-[44px] text-center"
+                  className="btn btn-primary flex items-center justify-center w-full min-h-11 text-center"
                 >
                   Sign in to bring it back
                 </a>
@@ -541,7 +541,7 @@ function RestoreGroupPage() {
                 // scheduled -- offer the way forward instead of implying one.
                 <Link
                   href="/"
-                  className="btn btn-primary flex items-center justify-center w-full min-h-[44px] text-center"
+                  className="btn btn-primary flex items-center justify-center w-full min-h-11 text-center"
                 >
                   Open your groups
                 </Link>
@@ -561,7 +561,7 @@ function RestoreGroupPage() {
               <>
                 <a
                   href={returnTo}
-                  className="btn btn-primary flex items-center justify-center w-full min-h-[44px] text-center"
+                  className="btn btn-primary flex items-center justify-center w-full min-h-11 text-center"
                 >
                   Sign in to open it
                 </a>
@@ -590,7 +590,7 @@ function RestoreGroupPage() {
               <button
                 type="button"
                 onClick={recovery === 'preview-retry' ? retryPreview : retryAccept}
-                className="btn btn-primary flex items-center justify-center w-full min-h-[44px] text-center mb-3"
+                className="btn btn-primary flex items-center justify-center w-full min-h-11 text-center mb-3"
               >
                 Try again
               </button>
@@ -600,14 +600,14 @@ function RestoreGroupPage() {
               // round-trip, which lands right back on this page.
               <a
                 href={returnTo}
-                className="btn btn-primary flex items-center justify-center w-full min-h-[44px] text-center mb-3"
+                className="btn btn-primary flex items-center justify-center w-full min-h-11 text-center mb-3"
               >
                 Sign in to try again
               </a>
             )}
             <Link
               href="/"
-              className={`btn ${recovery ? 'btn-secondary' : 'btn-primary'} flex items-center justify-center w-full min-h-[44px] text-center`}
+              className={`btn ${recovery ? 'btn-secondary' : 'btn-primary'} flex items-center justify-center w-full min-h-11 text-center`}
             >
               Go Home
             </Link>
