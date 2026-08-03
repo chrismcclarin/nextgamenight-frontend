@@ -12,6 +12,7 @@ import TimezoneProvider from './components/TimezoneProvider'
 import ThemeProvider from './components/ThemeProvider'
 import FriendshipStatusProvider from './components/FriendshipStatusProvider'
 import UnreadNotificationProvider from './components/UnreadNotificationProvider'
+import FeedbackModalProvider from './components/FeedbackModalProvider'
 
 const plusJakartaSans = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -56,12 +57,23 @@ export default function RootLayout({ children }) {
                       INSIDE FriendshipStatusProvider since the unread
                       count includes received friend requests. */}
                   <UnreadNotificationProvider>
-                    <Header />
-                    <main className="min-h-screen">
-                      {children}
-                    </main>
-                    <Footer />
-                    <FeedbackButton />
+                    {/* MOB-04 (Plan 87.8-05, D-09): feedback modal open/close
+                        transition owner. Wraps BOTH Header and FeedbackButton
+                        so the phone nav "Send feedback" row (in Header) and
+                        the desktop FAB drive the SAME modal instance. The
+                        modal itself stays mounted HERE at the layout root
+                        (the <FeedbackButton /> below) — never inside the
+                        header dropdown, whose computed `translate` would
+                        capture a position:fixed .modal-overlay as its
+                        containing block. */}
+                    <FeedbackModalProvider>
+                      <Header />
+                      <main className="min-h-screen">
+                        {children}
+                      </main>
+                      <Footer />
+                      <FeedbackButton />
+                    </FeedbackModalProvider>
                   </UnreadNotificationProvider>
                 </FriendshipStatusProvider>
               </TutorialProvider>

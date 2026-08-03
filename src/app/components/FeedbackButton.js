@@ -3,71 +3,109 @@ import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { feedbackAPI } from '../../lib/api';
+import { useFeedbackModal, CATEGORIES, getCategoryLabel } from './FeedbackModalProvider';
 
-const CATEGORY_MAP = [
-  { pattern: /^\/groups/,        category: 'Groups',       label: 'feedback:groups' },
-  { pattern: /^\/groupHomePage/, category: 'Groups',       label: 'feedback:groups' },
-  { pattern: /^\/friends/,       category: 'Friends List', label: 'feedback:friends-list' },
-  { pattern: /^\/groupPlanning/, category: 'Scheduling',   label: 'feedback:scheduling' },
-  { pattern: /^\/userHome/,      category: 'Home',         label: 'feedback:home' },
-  { pattern: /^\/gameDetail/,    category: 'Games',        label: 'feedback:games' },
-  { pattern: /^\/userProfile/,   category: 'Profile',      label: 'feedback:profile' },
-];
-
-const CATEGORIES = ['General', 'Groups', 'Friends List', 'Scheduling', 'Home', 'Games', 'Profile'];
-
-function getCategoryLabel(category) {
-  const match = CATEGORY_MAP.find((entry) => entry.category === category);
-  return match ? match.label : 'feedback:general';
-}
-
-function mapPathnameToCategory(pathname) {
-  if (!pathname) return 'General';
-  const match = CATEGORY_MAP.find((entry) => entry.pattern.test(pathname));
-  return match ? match.category : 'General';
-}
-
-export default function FeedbackButton() {
+/**
+ * Feedback entry points + modal (MOB-04, Plan 87.8-05, D-09).
+ *
+ * Two variants of the SAME component, sharing one FeedbackModalProvider:
+ *   - `floating` (default, mounted at layout.js): the desktop FAB trigger AND
+ *     the single modal instance. The modal renders here — at the layout root —
+ *     at every viewport, even when the FAB itself is hidden below `md`.
+ *   - `row` (mounted in Header's mobile dropdown): renders ONLY a full-width
+ *     trigger row. No modal, no fixed positioning — a fixed-position overlay
+ *     inside the translate-carrying dropdown would resolve `inset: 0` against
+ *     the dropdown, not the viewport (RESEARCH Pitfall 1).
+ *
+ * The open/close transition (isOpen, pathname-derived category, focus
+ * restoration) lives in FeedbackModalProvider; `text`/`error`/`submitted`
+ * stay LOCAL here so keystrokes never re-render context consumers.
+ */
+export default function FeedbackButton({ variant = 'floating', label, onOpen }) {
   const { user } = useUser();
   const pathname = usePathname();
+  const { isOpen, category, open, close, setCategory } = useFeedbackModal();
 
-  const [isOpen, setIsOpen] = useState(false);
-  const [category, setCategory] = useState('General');
+  // Form state stays LOCAL to the modal-owning instance (never in context) so
+  // typing in the textarea re-renders only this instance, not Header.
   const [text, setText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState(null);
 
-  // Close modal on Escape key
+  // Close modal on Escape key — only the modal-owning (floating) instance
+  // listens; the row instance renders no modal, so a second listener would
+  // just double-fire close().
   useEffect(() => {
-    if (!isOpen) return;
+    if (variant === 'row' || !isOpen) return;
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        setIsOpen(false);
+        close();
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
+  }, [variant, isOpen, close]);
 
-  // Auth guard: invisible when not logged in
-  if (!user) return null;
-
-  const handleOpen = () => {
-    setCategory(mapPathnameToCategory(pathname));
+  // Reset local form state on the provider's open TRANSITION (isOpen becoming
+  // true). Both entry points (FAB and nav row) call the same provider open(),
+  // so both produce the identical reset — same pathname-derived category (set
+  // by the provider in the same transition), empty text, no error, not
+  // submitted. Neither entry point performs its own ad hoc reset.
+  useEffect(() => {
+    if (variant === 'row' || !isOpen) return;
     setText('');
     setError(null);
     setSubmitted(false);
-    setIsOpen(true);
-  };
+  }, [variant, isOpen]);
 
-  const handleClose = () => {
-    setIsOpen(false);
-  };
+  // Auth guard: invisible when not logged in. Precedes the variant switch so
+  // the row branch is unreachable for a logged-out visitor — Footer.js:11-12
+  // records the deliberate auth-only scoping of the sibling entry point, and
+  // exposing a "Send feedback" row to anonymous visitors would be an exposure
+  // change, not a layout change (T-87.8-16, ASVS V2).
+  if (!user) return null;
+
+  // Row variant (D-09): the mobile nav menu trigger. Renders ONLY the row —
+  // the modal deliberately does NOT render here (see module comment).
+  if (variant === 'row') {
+    return (
+      <button
+        onClick={(e) => {
+          open(e.currentTarget);
+          // Close the mobile dropdown in the SAME transition (Header passes
+          // its setMobileMenuOpen(false) here, the same close-on-tap idiom
+          // the nav links use at Header.js:185,193).
+          if (onOpen) onOpen();
+        }}
+        // Class string copied from ThemeToggle.js:32 with ONE change:
+        // active:opacity-75 (the Plan 87.8-01 press idiom) instead of
+        // active:bg-surface-card-hover — plan 08 converges the two remaining
+        // token-swap sites; do not ship a third instance of the old idiom.
+        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:opacity-75 transition-colors"
+        aria-label="Send feedback"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="w-5 h-5"
+          aria-hidden="true"
+        >
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+        <span className="text-content-muted flex-1">{label || 'Send feedback'}</span>
+      </button>
+    );
+  }
 
   const handleOverlayClick = (e) => {
     if (e.target === e.currentTarget) {
-      handleClose();
+      close();
     }
   };
 
@@ -97,8 +135,7 @@ export default function FeedbackButton() {
       setTimeout(() => {
         setSubmitted(false);
         setText('');
-        setCategory('General');
-        setIsOpen(false);
+        close();
       }, 2000);
     } catch (err) {
       console.error('Error submitting feedback:', err);
@@ -112,7 +149,7 @@ export default function FeedbackButton() {
     <>
       {/* Floating feedback button */}
       <button
-        onClick={handleOpen}
+        onClick={(e) => open(e.currentTarget)}
         className="fixed bottom-6 right-6 z-50 w-14 h-14 btn btn-primary rounded-full shadow-lg flex items-center justify-center focus:ring-2 focus:ring-focus-ring focus:ring-offset-2"
         aria-label="Send feedback"
       >
@@ -130,7 +167,9 @@ export default function FeedbackButton() {
         </svg>
       </button>
 
-      {/* Modal overlay */}
+      {/* Modal overlay — stays mounted on THIS (layout-root) instance at every
+          viewport, including below `md` where the FAB itself is hidden; the
+          phone nav row opens this same modal via the shared provider. */}
       {isOpen && (
         <div
           className="modal-overlay"
@@ -165,7 +204,7 @@ export default function FeedbackButton() {
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-xl font-bold text-content-primary">Send Feedback</h2>
                   <button
-                    onClick={handleClose}
+                    onClick={close}
                     className="text-content-muted hover:text-content-primary text-2xl leading-none"
                     aria-label="Close"
                   >
