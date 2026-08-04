@@ -185,7 +185,7 @@ test.describe('Phase 87.8 MOB-04 — check-in grid touch model (phone project)',
     await expect(paintedCells(page)).toHaveCount(0);
   });
 
-  test('(2) horizontal plain drag scrolls the grid — Sunday becomes reachable', async ({ page }) => {
+  test('(2) horizontal plain drag scrolls the grid — the last day becomes reachable', async ({ page }) => {
     await gotoCleanGrid(page);
     const { xDay0, yTenAm } = await positionTenAmNearTop(page);
     const cdp = await page.context().newCDPSession(page);
@@ -194,15 +194,31 @@ test.describe('Phase 87.8 MOB-04 — check-in grid touch model (phone project)',
     await guardResolved(headers, 'the day header row', 7);
     expect(await headers.count(), 'the check-in grid renders a 7-day window').toBe(7);
     const lastHeader = headers.nth(6);
-    await expect(
-      lastHeader,
-      'the last day header must start with Sun — the check-in window is Monday-anchored; if this fails the FIXTURE window changed, and the Sunday-reachability assertion below needs re-anchoring, not deleting',
-    ).toHaveText(/^Sun /);
+    // 87.8-13 re-anchor (the prior /^Sun /assertion's own message called for this):
+    // window_start is a ROLLING anchor — "the calendar day the prompt email was
+    // sent" (magicAuth.js Phase 81), and the CI fixture mints prompt_date = now,
+    // so the window starts on MINT DAY, not Monday. /^Sun / only ever passed
+    // because the first armed runs minted on a Monday (2026-08-03); the first
+    // Tuesday run broke it. Weekday-agnostic window check: 7 consecutive days,
+    // last = first + 6.
+    const firstText = (await headers.nth(0).textContent()) ?? '';
+    const lastText = (await lastHeader.textContent()) ?? '';
+    const parseHeader = (t: string) => {
+      const m = t.match(/(\d{1,2})\/(\d{1,2})$/);
+      expect(m, `day header "${t}" must end M/d`).not.toBeNull();
+      return new Date(2000, Number(m![1]) - 1, Number(m![2])); // year irrelevant for a 6-day delta
+    };
+    const spanDays =
+      (parseHeader(lastText).getTime() - parseHeader(firstText).getTime()) / 86_400_000;
+    expect(
+      (spanDays + 366) % 366, // tolerate a year/month wrap in the fake year
+      `the 7-day window must span first+6 (got "${firstText}" .. "${lastText}") — if this fails the FIXTURE window changed and this fence needs re-anchoring, not deleting`,
+    ).toBe(6);
 
-    // Precondition (vacuity guard for the symptom): Sunday starts OFF-screen.
+    // Precondition (vacuity guard for the symptom): the last day starts OFF-screen.
     await expect(
       lastHeader,
-      'Sunday is already in the viewport before any swipe — the grid no longer overflows at 375px and this regression fence needs re-examining, not deleting',
+      'the last day is already in the viewport before any swipe — the grid no longer overflows at 375px and this regression fence needs re-examining, not deleting',
     ).not.toBeInViewport();
 
     // The horizontal scroll container: nearest ancestor of the header row that
@@ -219,7 +235,7 @@ test.describe('Phase 87.8 MOB-04 — check-in grid touch model (phone project)',
     const scrollLeftBefore = await scrollLeftOf();
     expect(scrollLeftBefore, 'no horizontally overflowing ancestor found for the grid').toBeGreaterThanOrEqual(0);
 
-    // Two leftward swipes on the grid body (day widths total ~672px vs 375px viewport).
+    // Two leftward swipes on the grid body (48px gutter + 7×76px days = 580px vs 375px viewport).
     await swipe(cdp, page, { x: 340, y: yTenAm }, { x: 40, y: yTenAm });
     await swipe(cdp, page, { x: 340, y: yTenAm }, { x: 40, y: yTenAm });
 
@@ -231,7 +247,7 @@ test.describe('Phase 87.8 MOB-04 — check-in grid touch model (phone project)',
       .toBeGreaterThan(scrollLeftBefore);
     await expect(
       lastHeader,
-      'Sunday never entered the viewport after two full-width leftward swipes — the "cannot reach Sunday" owner symptom has regressed',
+      'the last day never entered the viewport after two full-width leftward swipes — the "cannot reach the last day" owner symptom (originally reported as Sunday) has regressed',
     ).toBeInViewport();
     await expect(paintedCells(page)).toHaveCount(0);
   });
