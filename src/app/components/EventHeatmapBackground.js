@@ -46,7 +46,7 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
   if (loading) {
     return (
       <div className="select-none">
-        <div className="grid gap-px" style={{ gridTemplateColumns: '40px repeat(7, 1fr)' }}>
+        <div className="grid gap-px" style={{ gridTemplateColumns: '24px repeat(7, 1fr)' }}>
           {/* Header row skeleton */}
           <div />
           {Array.from({ length: 7 }).map((_, i) => (
@@ -56,7 +56,7 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
               to match EventScheduler's step={30} density. */}
           {Array.from({ length: 28 }).map((_, row) => (
             <div key={`row-${row}`} className="contents">
-              <div className="h-5 w-8 bg-surface-elevated rounded-sm animate-pulse" />
+              <div className="h-5 w-5 bg-surface-elevated rounded-sm animate-pulse" />
               {Array.from({ length: 7 }).map((_, col) => (
                 <div key={`cell-${row}-${col}`} className="h-5 bg-surface-page rounded-sm animate-pulse" />
               ))}
@@ -203,10 +203,11 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
 
   return (
     <div className="select-none">
-      {/* Grid */}
+      {/* Grid. 87.8-13 walkthrough F-2: 24px label gutter fits the widest compact
+          label ("12p" at 10px mono) — the old 40px read as dead left padding at 375px. */}
       <div
         className="grid gap-px"
-        style={{ gridTemplateColumns: '40px repeat(7, 1fr)' }}
+        style={{ gridTemplateColumns: '24px repeat(7, 1fr)' }}
       >
         {/* Header row: day labels with date numbers */}
         <div />

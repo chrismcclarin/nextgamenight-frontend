@@ -215,8 +215,12 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   <div className="absolute inset-0 z-0 rounded-card" />
                 )}
                 <div className="relative z-1">
-                  <div className="flex justify-between items-center mb-3 max-[480px]:flex-col max-[480px]:items-start max-[480px]:gap-2">
-                    <div className="flex items-center gap-2 min-w-0 flex-1 max-[480px]:w-full">
+                  {/* 87.8-13 walkthrough F-8: single row at ALL widths — the old
+                      max-[480px] column-stack dropped the players pill to its own
+                      right-justified line under a left-aligned card (owner call).
+                      Long names still coexist with the pill: min-w-0 + wrap. */}
+                  <div className="flex justify-between items-center mb-3">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       {profilePic && (
                         <div className="w-10 h-10 rounded-full bg-surface-card-hover flex items-center justify-center text-2xl shrink-0 overflow-hidden">
                           {profilePic.startsWith('http') || profilePic.startsWith('/') ? (
@@ -239,7 +243,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       </h3>
                     </div>
                     <span
-                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-semibold ml-2 shrink-0 max-[480px]:self-end max-[480px]:ml-0"
+                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-semibold ml-2 shrink-0"
                       style={getTextStyle(bgImage, bgColor)}
                     >
                       {groupUsers.length} {groupUsers.length === 1 ? 'player' : 'players'}
@@ -262,12 +266,15 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   )}
                 </div>
 
+                {/* 87.8-13 walkthrough F-9: name + date on ONE line (owner call —
+                    the stacked date read as a stray row). flex-wrap keeps long
+                    game names graceful: the date wraps as a unit, never mid-text. */}
                 <div className="border-t border-line pt-3" style={getTextStyle(bgImage, bgColor)}>
-                  <div className="text-content-secondary text-sm mb-1">
-                    <strong className="text-content-primary">Last Game:</strong> {lastGame?.name || 'None'}
-                  </div>
-                  <div className="text-content-muted text-xs">
-                    {formatDate(lastEvent?.start_date || lastEvent?.createdAt, timezone)}
+                  <div className="flex flex-wrap items-baseline gap-x-2 text-content-secondary text-sm">
+                    <span><strong className="text-content-primary">Last Game:</strong> {lastGame?.name || 'None'}</span>
+                    <span className="text-content-muted text-xs">
+                      {formatDate(lastEvent?.start_date || lastEvent?.createdAt, timezone)}
+                    </span>
                   </div>
                 </div>
 

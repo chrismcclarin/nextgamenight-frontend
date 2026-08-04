@@ -253,7 +253,10 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
           {/* Current Selection Preview */}
           <div className="mb-4 p-4 border border-line rounded-lg bg-surface-page">
             <div className="text-center">
-              <div className="inline-block w-20 h-20 rounded-full bg-surface-card-hover flex items-center justify-center text-4xl mb-2">
+              {/* 87.8-13 walkthrough F-4: inline-flex (was inline-block + flex — two
+                  competing display utilities; the centering never applied) and
+                  overflow-hidden so nothing can spill the circle. */}
+              <div className="inline-flex w-20 h-20 rounded-full bg-surface-card-hover items-center justify-center text-4xl mb-2 overflow-hidden">
                 {profilePictureUrl ? (
                   profilePictureUrl.startsWith('http') || profilePictureUrl.startsWith('/') ? (
                     <SafeImage
@@ -266,7 +269,9 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                     <span>{profilePictureUrl}</span>
                   )
                 ) : (
-                  <span className="text-content-muted">No picture</span>
+                  // text-xs: the container's text-4xl is for emoji icons — the
+                  // fallback label must not inherit it (F-4).
+                  <span className="text-content-muted text-xs">No picture</span>
                 )}
               </div>
               <p className="text-sm text-content-secondary">Current selection</p>

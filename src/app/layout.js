@@ -67,11 +67,23 @@ export default function RootLayout({ children }) {
                         capture a position:fixed .modal-overlay as its
                         containing block. */}
                     <FeedbackModalProvider>
-                      <Header />
-                      <main className="min-h-screen">
-                        {children}
-                      </main>
-                      <Footer />
+                      {/* 87.8-13 walkthrough F-10: classic sticky footer — the
+                          WRAPPER is viewport-tall and main grows to fill, so on
+                          sparse pages (one group, empty states) the footer sits at
+                          the bottom edge of the first screen instead of a full
+                          scroll below it. The old shape (min-h-screen on main
+                          alone) forced total height to 100vh + header + footer on
+                          EVERY page. Tall pages render identically. The wrapper is
+                          a plain div with no transform/filter, so it does NOT
+                          become a containing block for the fixed-position modal
+                          overlay or FAB (the D-09 constraint above). */}
+                      <div className="min-h-screen flex flex-col">
+                        <Header />
+                        <main className="flex-1">
+                          {children}
+                        </main>
+                        <Footer />
+                      </div>
                       <FeedbackButton />
                     </FeedbackModalProvider>
                   </UnreadNotificationProvider>

@@ -20,8 +20,12 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
   };
 
   return (
-    <div className="flex items-center gap-4 p-2 border-b">
-      <div className="flex-1">
+    // 87.8-13 walkthrough F-3: stacked at phone width (name line + wrapping
+    // controls line) — the single-row layout's ~350px fixed control cluster
+    // forced the whole participant list into horizontal scroll at 375px.
+    // sm:+ is the original one-line layout, unchanged.
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 p-2 border-b">
+      <div className="sm:flex-1">
         <label className="text-xs text-content-secondary mb-1 block">Participant Name</label>
         {participant.isFromGroup ? (
           // Read-only display for group members
@@ -73,7 +77,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
         )}
       </div>
 
-      <div className="flex gap-2 items-center">
+      <div className="flex flex-wrap gap-2 items-center">
         <div>
           <label className="text-xs text-content-primary">Score</label>
           <input

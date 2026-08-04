@@ -324,7 +324,11 @@ function GroupHomePage(){
                     zIndex: 0,
                     borderRadius: 'inherit',
                 }} />
-                <div className="flex items-center gap-3 md:gap-4 relative z-10 flex-1 min-w-0">
+                {/* z-30, not z-10: this row hosts the kebab dropdown, and its z-index
+                    is a STACKING CONTEXT for everything inside — the sibling CTA row
+                    below is z-20, so at z-10 the open dropdown painted underneath
+                    "Manage Members" at phone width (87.8-13 walkthrough F-5). */}
+                <div className="flex items-center gap-3 md:gap-4 relative z-30 flex-1 min-w-0">
                     {Group?.profile_picture_url && (
                         <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-card flex items-center justify-center text-2xl md:text-4xl shrink-0 overflow-hidden border-2 md:border-4 border-surface-card shadow-theme-lg">
                             {Group.profile_picture_url.startsWith('http') || Group.profile_picture_url.startsWith('/') ? (

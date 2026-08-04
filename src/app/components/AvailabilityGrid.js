@@ -275,6 +275,15 @@ export default function AvailabilityGrid({
     return `${h12}:${pad2(timeSlot.minute)} ${ampm}`;
   }, []);
 
+  // 87.8-13 walkthrough F-7: compact phone-width label ("10:30p", the
+  // EventHeatmapBackground idiom) — rendered sm:hidden beside the full label so
+  // desktop output stays byte-identical while the phone gutter drops to w-12.
+  const formatTimeLabelCompact = useCallback((timeSlot) => {
+    const h12 = timeSlot.hour % 12 || 12;
+    const ampm = timeSlot.hour >= 12 ? 'p' : 'a';
+    return `${h12}:${pad2(timeSlot.minute)}${ampm}`;
+  }, []);
+
   // Format day header
   const formatDayHeader = useCallback((day) => {
     return format(day, 'EEE M/d');
@@ -677,13 +686,18 @@ export default function AvailabilityGrid({
             {/* Spacer for time labels column — sticky with the label column so
                 the time axis stays pinned while the grid scrolls horizontally.
                 Opaque bg (the form's card surface) so cells slide UNDER it. */}
-            <div className="w-16 sm:w-20 shrink-0 sticky left-0 z-10 bg-surface-card" />
+            <div className="w-12 sm:w-20 shrink-0 sticky left-0 z-10 bg-surface-card" />
 
-            {/* Day headers */}
+            {/* Day headers. 87.8-13 walkthrough F-7: 76px phone columns + the w-12
+                gutter put 4 full days in a 375px viewport (48 + 4x76 = 352) vs 3
+                before; cells stay 76x48 — above the 44px touch floor. The SAME
+                phone width must be carried by all six aligned sites (header
+                spacer, headers, checkbox spacer, checkboxes, labels, cells) or
+                the columns shear. sm:+ widths unchanged. */}
             {days.map((day, index) => (
               <div
                 key={day.toISOString()}
-                className="w-24 sm:w-28 shrink-0 text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
+                className="w-[76px] sm:w-28 shrink-0 text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
               >
                 {formatDayHeader(day)}
               </div>
@@ -694,7 +708,7 @@ export default function AvailabilityGrid({
           <div className="flex">
             {/* Select All toggle in the time-label spacer — same sticky
                 treatment as the label column so "All" never scrolls away. */}
-            <div className="w-16 sm:w-20 shrink-0 flex items-center justify-end pr-2 sticky left-0 z-10 bg-surface-card">
+            <div className="w-12 sm:w-20 shrink-0 flex items-center justify-end pr-2 sticky left-0 z-10 bg-surface-card">
               <label className="flex items-center gap-1 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -711,7 +725,7 @@ export default function AvailabilityGrid({
             {days.map((day, index) => (
               <div
                 key={`cb-${day.toISOString()}`}
-                className="w-24 sm:w-28 shrink-0 flex items-center justify-center py-1"
+                className="w-[76px] sm:w-28 shrink-0 flex items-center justify-center py-1"
               >
                 <input
                   type="checkbox"
@@ -731,8 +745,9 @@ export default function AvailabilityGrid({
                   left-0 pins the time axis while the grid scrolls horizontally
                   (Phase 87.8 TOUCH); the opaque bg is required — sticky labels
                   over painted cells are unreadable without one. */}
-              <div className="w-16 sm:w-20 shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium sticky left-0 z-10 bg-surface-card">
-                {formatTimeLabel(timeSlot)}
+              <div className="w-12 sm:w-20 shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium sticky left-0 z-10 bg-surface-card">
+                <span className="sm:hidden">{formatTimeLabelCompact(timeSlot)}</span>
+                <span className="hidden sm:inline">{formatTimeLabel(timeSlot)}</span>
               </div>
 
               {/* Day columns. The wrapper carries the cell dims + border; the
@@ -749,7 +764,7 @@ export default function AvailabilityGrid({
                 return (
                   <div
                     key={slotId}
-                    className="w-24 sm:w-28 shrink-0 h-12 sm:h-14 border border-line"
+                    className="w-[76px] sm:w-28 shrink-0 h-12 sm:h-14 border border-line"
                     onFocus={() => setFocusedCoord({ row: rowIndex, col: colIndex })}
                   >
                     <WriteCell
