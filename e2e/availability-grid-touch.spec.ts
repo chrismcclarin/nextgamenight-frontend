@@ -85,11 +85,14 @@ async function gotoCleanGrid(page: Page): Promise<void> {
  *  top edge band), leaving the drag corridor below it band-free. Returns the
  *  day-0 column center x and the y of the 10:00 AM row center. */
 async function positionTenAmNearTop(page: Page): Promise<{ xDay0: number; yTenAm: number }> {
-  const tenAm = page.getByText('10:00 AM', { exact: true });
-  await guardResolved(tenAm, 'the 10:00 AM time label');
+  // 87.8-13 F-7: at phone width the label column renders the COMPACT '10:00a'
+  // span (sm:hidden); the full '10:00 AM' span exists but is hidden sm:inline,
+  // so its boundingBox is null in this phone-project spec. Target the visible one.
+  const tenAm = page.getByText('10:00a', { exact: true });
+  await guardResolved(tenAm, 'the 10:00a time label');
   await tenAm.scrollIntoViewIfNeeded();
   const before = await tenAm.boundingBox();
-  expect(before, '10:00 AM label has no boundingBox').not.toBeNull();
+  expect(before, '10:00a label has no boundingBox').not.toBeNull();
   // Nudge so the row center lands ~120px from the top (inside the viewport,
   // clear of the 48px top band).
   await page.evaluate((dy) => window.scrollBy(0, dy), before!.y + before!.height / 2 - 120);
