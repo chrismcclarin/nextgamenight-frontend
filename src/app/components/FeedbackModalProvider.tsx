@@ -1,5 +1,15 @@
 'use client';
-import { createContext, useContext, useState, useRef, useCallback, useMemo } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  useRef,
+  useCallback,
+  useMemo,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from 'react';
 import { usePathname } from 'next/navigation';
 
 /**
@@ -22,10 +32,25 @@ import { usePathname } from 'next/navigation';
  * (T-87.8-20).
  */
 
+export type FeedbackCategory =
+  | 'General'
+  | 'Groups'
+  | 'Friends List'
+  | 'Scheduling'
+  | 'Home'
+  | 'Games'
+  | 'Profile';
+
+interface CategoryMapEntry {
+  pattern: RegExp;
+  category: FeedbackCategory;
+  label: string;
+}
+
 // Category mapping moved here from FeedbackButton.js (Plan 87.8-05): the
 // pathname → category seed is part of the open transition this provider owns.
 // FeedbackButton imports CATEGORIES / getCategoryLabel back for its form.
-const CATEGORY_MAP = [
+const CATEGORY_MAP: CategoryMapEntry[] = [
   { pattern: /^\/groups/,        category: 'Groups',       label: 'feedback:groups' },
   { pattern: /^\/groupHomePage/, category: 'Groups',       label: 'feedback:groups' },
   { pattern: /^\/friends/,       category: 'Friends List', label: 'feedback:friends-list' },
@@ -35,20 +60,28 @@ const CATEGORY_MAP = [
   { pattern: /^\/userProfile/,   category: 'Profile',      label: 'feedback:profile' },
 ];
 
-export const CATEGORIES = ['General', 'Groups', 'Friends List', 'Scheduling', 'Home', 'Games', 'Profile'];
+export const CATEGORIES: FeedbackCategory[] = ['General', 'Groups', 'Friends List', 'Scheduling', 'Home', 'Games', 'Profile'];
 
-export function getCategoryLabel(category) {
+export function getCategoryLabel(category: string): string {
   const match = CATEGORY_MAP.find((entry) => entry.category === category);
   return match ? match.label : 'feedback:general';
 }
 
-export function mapPathnameToCategory(pathname) {
+export function mapPathnameToCategory(pathname: string | null | undefined): FeedbackCategory {
   if (!pathname) return 'General';
   const match = CATEGORY_MAP.find((entry) => entry.pattern.test(pathname));
   return match ? match.category : 'General';
 }
 
-const FeedbackModalContext = createContext({
+interface FeedbackModalContextValue {
+  isOpen: boolean;
+  category: FeedbackCategory;
+  open: (invoker?: HTMLElement | null) => void;
+  close: () => void;
+  setCategory: Dispatch<SetStateAction<FeedbackCategory>>;
+}
+
+const FeedbackModalContext = createContext<FeedbackModalContextValue>({
   isOpen: false,
   category: 'General',
   open: () => {},
@@ -56,22 +89,22 @@ const FeedbackModalContext = createContext({
   setCategory: () => {},
 });
 
-export function useFeedbackModal() {
+export function useFeedbackModal(): FeedbackModalContextValue {
   return useContext(FeedbackModalContext);
 }
 
-export function FeedbackModalProvider({ children }) {
+export function FeedbackModalProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
-  const [category, setCategory] = useState('General');
+  const [category, setCategory] = useState<FeedbackCategory>('General');
 
   // The control (FAB or nav row) that invoked open(); close() returns focus to
   // it (T-87.8-22). Callers pass the element explicitly (e.currentTarget)
   // rather than this reading document.activeElement, because Safari does not
   // focus buttons on click — activeElement would be <body> there.
-  const invokerRef = useRef(null);
+  const invokerRef = useRef<HTMLElement | null>(null);
 
-  const open = useCallback((invoker) => {
+  const open = useCallback((invoker?: HTMLElement | null) => {
     invokerRef.current = invoker ?? null;
     // ONE transition, both halves together: isOpen AND the pathname-derived
     // category seed. Lifting isOpen alone would open the modal with whatever
@@ -92,7 +125,7 @@ export function FeedbackModalProvider({ children }) {
   // renders that don't change the transition state — consumers (Header, both
   // FeedbackButton instances) only re-render on an actual open/close/category
   // change, never on unrelated parent renders.
-  const value = useMemo(
+  const value = useMemo<FeedbackModalContextValue>(
     () => ({ isOpen, category, open, close, setCategory }),
     [isOpen, category, open, close],
   );
