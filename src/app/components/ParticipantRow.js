@@ -99,7 +99,10 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
           longer strands alone below. sm:+ keeps the original centered flow. */}
       <div className="flex flex-wrap gap-2 items-end sm:items-center">
         <div>
-          <label className="text-xs text-content-primary">Score</label>
+          {/* block at phone: label ABOVE the box (owner round 3) — inline-left
+              labels were also silently eating Faction's stretch room. sm:+ keeps
+              the original inline-left look. */}
+          <label className="text-xs text-content-primary block sm:inline">Score</label>
           <input
             type="number"
             step="0.01"
@@ -111,7 +114,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
         </div>
 
         <div className="flex-1 min-w-24 sm:flex-none">
-          <label className="text-xs text-content-primary">Faction</label>
+          <label className="text-xs text-content-primary block sm:inline">Faction</label>
           <input
             type="text"
             value={participant.faction || ''}
