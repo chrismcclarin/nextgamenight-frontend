@@ -26,7 +26,21 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
     // sm:+ is the original one-line layout, unchanged.
     <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 p-2 border-b">
       <div className="sm:flex-1">
-        <label className="text-xs text-content-secondary mb-1 block">Participant Name</label>
+        {/* Owner refinement 2026-08-04 (on F-3): at phone width "New Player"
+            rides the title line (right-aligned) instead of the controls row —
+            phone-only twin of the sm:+ checkbox below; same state, so the two
+            never disagree. */}
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-xs text-content-secondary block">Participant Name</label>
+          <label className="flex items-center gap-1 sm:hidden">
+            <input
+              type="checkbox"
+              checked={participant.is_new_player || false}
+              onChange={(e) => onParticipantChange(index, 'is_new_player', e.target.checked)}
+            />
+            <span className="text-xs text-content-primary">New Player</span>
+          </label>
+        </div>
         {participant.isFromGroup ? (
           // Read-only display for group members
           <div className="p-2 border border-line rounded-sm bg-surface-elevated text-content-primary text-sm flex items-center gap-2">
@@ -77,7 +91,13 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2 items-center">
+      {/* Owner refinement round 2 (2026-08-04): score trimmed to 4-digit width;
+          Faction flexes at phone (absorbs the leftover line width — factions
+          range from absent to long names, so it gets whatever room exists);
+          items-end aligns the buttons with the input line at phone. Net effect:
+          Score + Faction + Remove share ONE line on normal rows — Remove no
+          longer strands alone below. sm:+ keeps the original centered flow. */}
+      <div className="flex flex-wrap gap-2 items-end sm:items-center">
         <div>
           <label className="text-xs text-content-primary">Score</label>
           <input
@@ -85,23 +105,24 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             step="0.01"
             value={participant.score || ''}
             onChange={(e) => onParticipantChange(index, 'score', e.target.value)}
-            className="w-20 p-1 border border-line rounded-sm text-content-primary bg-surface-input"
+            className="w-16 p-1 border border-line rounded-sm text-content-primary bg-surface-input"
             placeholder="0"
           />
         </div>
 
-        <div>
+        <div className="flex-1 min-w-24 sm:flex-none">
           <label className="text-xs text-content-primary">Faction</label>
           <input
             type="text"
             value={participant.faction || ''}
             onChange={(e) => onParticipantChange(index, 'faction', e.target.value)}
-            className="w-24 p-1 border border-line rounded-sm text-content-primary bg-surface-input"
+            className="w-full sm:w-24 p-1 border border-line rounded-sm text-content-primary bg-surface-input"
             placeholder="Optional"
           />
         </div>
 
-        <div className="flex items-center">
+        {/* sm:+ only — the phone twin lives on the title line above. */}
+        <div className="hidden sm:flex items-center">
           <input
             type="checkbox"
             checked={participant.is_new_player || false}
@@ -128,35 +149,41 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
           One of exactly two markers for this ~91-line strip — see RsvpSection.js for the
           object-literal shape. Re-adding a tint here is a decision, not a cleanup.
         */}
-        {participant.is_guest && isAdmin && group_id && (
+        {/* ml-auto cluster: [Invite] + Remove wrap TOGETHER as one right-aligned
+            unit at phone width (owner refinement round 2 — a guest row's tight
+            line was stranding Remove alone below). Remove stays outermost right:
+            destructive control at the end of the row, matching the session-row
+            Edit/Delete side (owner call 2026-08-04). sm:+ keeps the original flow. */}
+        <div className="flex gap-2 ml-auto sm:ml-0">
+          {participant.is_guest && isAdmin && group_id && (
+            <button
+              type="button"
+              onClick={handleInviteToGroup}
+              disabled={inviteStatus === 'sending' || inviteStatus === 'sent'}
+              className={`text-xs px-2 py-1 border rounded-sm transition-colors ${
+                inviteStatus === 'sent'
+                  ? 'text-status-success'
+                  : inviteStatus === 'error'
+                    ? 'text-status-error'
+                    : 'text-content-link'
+              }`}
+              title={inviteStatus === 'sent' ? 'Invite sent!' : 'Invite this guest to join the group'}
+            >
+              {inviteStatus === 'sending' && 'Sending...'}
+              {inviteStatus === 'sent' && 'Invite sent!'}
+              {inviteStatus === 'error' && 'Retry'}
+              {!inviteStatus && 'Invite to group'}
+            </button>
+          )}
           <button
             type="button"
-            onClick={handleInviteToGroup}
-            disabled={inviteStatus === 'sending' || inviteStatus === 'sent'}
-            className={`text-xs px-2 py-1 border rounded-sm transition-colors ${
-              inviteStatus === 'sent'
-                ? 'text-status-success'
-                : inviteStatus === 'error'
-                  ? 'text-status-error'
-                  : 'text-content-link'
-            }`}
-            title={inviteStatus === 'sent' ? 'Invite sent!' : 'Invite this guest to join the group'}
+            onClick={() => onToggleParticipant(index)}
+            className="text-status-error hover:text-status-error text-sm px-2 py-1 border rounded-sm"
+            title="Remove participant"
           >
-            {inviteStatus === 'sending' && 'Sending...'}
-            {inviteStatus === 'sent' && 'Invite sent!'}
-            {inviteStatus === 'error' && 'Retry'}
-            {!inviteStatus && 'Invite to group'}
+            Remove
           </button>
-        )}
-
-        <button
-          type="button"
-          onClick={() => onToggleParticipant(index)}
-          className="text-status-error hover:text-status-error text-sm px-2 py-1 border rounded-sm"
-          title="Remove participant"
-        >
-          Remove
-        </button>
+        </div>
       </div>
     </div>
   );
