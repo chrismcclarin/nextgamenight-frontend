@@ -245,6 +245,17 @@ export default function CalendarMonthView({
                       )}
                     </div>
                   ) : (isEmpty && showEmptyDayHint) ? (
+                    /* DECISION Phase 87.8-12 R10 (owner, 2026-08-03): the empty-day "+" hint
+                       stays HOVER-ONLY, which means invisible on touch — v4 wraps group-hover
+                       in @media (hover: hover), false on phones. ACCEPTED over an always-visible
+                       low-opacity hint (rejected: adds a "+" to every empty cell of an already
+                       dense 375px grid the design reference records as unusable below 480px —
+                       DESIGN-SYSTEM-REFERENCE-2026.md:216), over an empty-state prompt (fails
+                       partially-filled months) and over first-use coaching here (v2.1 tutorial
+                       phase owns coaching). The cell itself STAYS tappable (cellClickable above)
+                       and the v2.1 tutorial is expected to teach tap-to-create (todo:
+                       2026-08-03-tutorial-teach-empty-day-tap-to-create). Making this hint
+                       touch-visible is a decision, not a cleanup. */
                     <div className="flex items-center justify-center flex-1 opacity-0 group-hover:opacity-40 transition-opacity">
                       <span className="text-2xl text-content-muted select-none">+</span>
                     </div>

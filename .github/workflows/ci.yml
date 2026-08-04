@@ -272,8 +272,28 @@ jobs:
             echo "E2E_RSVP_PATH=$(echo "$JSON" | jq -r .rsvp_path)"
             echo "E2E_INVITE_GROUP_NAME=$(echo "$JSON" | jq -r .invite_group_name)"
             echo "E2E_INVITE_FRIEND_NAME=$(echo "$JSON" | jq -r .invite_friend_name)"
+            # Phase 87.8 plan 09 (D-08 prep, ML-18/ML-22): the three keys plan 02 added are
+            # extracted with `jq -e`, which exits non-zero when a key is absent or null. Bare
+            # `jq -r` would emit the LITERAL STRING "null" — truthy and non-empty, so it
+            # satisfies the specs' `?? fallback` idiom exactly when the guard is needed and
+            # silently drives a spec to /null instead of failing this step loudly. Error
+            # lines go to stderr (>&2): stdout inside this brace group is redirected into
+            # GITHUB_ENV, not the job log. This guard doubles as the PRE-ARM GATE assertion —
+            # see the decision block above the Playwright run step below.
+            E2E_INVITE_FRIEND_NAME_PHONE=$(echo "$JSON" | jq -e -r '.invite_friend_name_phone') \
+              || { echo "::error::fixture key invite_friend_name_phone missing or null in E2E_FIXTURES_JSON" >&2; exit 1; }
+            E2E_RSVP_PATH_PHONE=$(echo "$JSON" | jq -e -r '.rsvp_path_phone') \
+              || { echo "::error::fixture key rsvp_path_phone missing or null in E2E_FIXTURES_JSON" >&2; exit 1; }
+            E2E_RESTORE_PATH=$(echo "$JSON" | jq -e -r '.restore_path') \
+              || { echo "::error::fixture key restore_path missing or null in E2E_FIXTURES_JSON" >&2; exit 1; }
+            E2E_EVENT_DETAIL_PATH=$(echo "$JSON" | jq -e -r '.event_detail_path') \
+              || { echo "::error::fixture key event_detail_path missing or null in E2E_FIXTURES_JSON" >&2; exit 1; }
+            echo "E2E_INVITE_FRIEND_NAME_PHONE=$E2E_INVITE_FRIEND_NAME_PHONE"
+            echo "E2E_RSVP_PATH_PHONE=$E2E_RSVP_PATH_PHONE"
+            echo "E2E_RESTORE_PATH=$E2E_RESTORE_PATH"
+            echo "E2E_EVENT_DETAIL_PATH=$E2E_EVENT_DETAIL_PATH"
           } >> "$GITHUB_ENV"
-          echo "Fixtures minted (group id, availability token, rsvp path, invite group + friend)."
+          echo "Fixtures minted (group id, availability token, rsvp path + phone rsvp path, invite group + friend, phone invite friend, restore path, event detail path)."
 
       - name: Backend — boot (server.js, :4000) and smoke-wait /health
         working-directory: backend/Sonnet
@@ -314,9 +334,34 @@ jobs:
       #
       # `--project` is a positive ALLOWLIST and that is the load-bearing property: adding a
       # project to playwright.config.ts can never silently opt it into the PR lane. The `phone`
-      # project (MOB-03) therefore exists in config but does not run here — D-13, config-only
-      # this phase. **Phase 87.8 owns adding `--project=phone` to this line** and owns the
-      # mobile fixes it surfaces.
+      # project (MOB-03) therefore exists in config but does not run here yet.
+      #
+      # DECISION Phase 87.8 plan 09 (ML-26): this plan wires the phone fixture keys (the
+      # guarded `jq -e` extraction in the fixture step above) and the pre-arm gate below, and
+      # deliberately does NOT arm the lane — arming before the combined-run evidence exists
+      # would fail PRs for a reason unrelated to mobile. Plan 12 ALONE performs the arming
+      # edit (appending the phone project to the run line below), immediately after its green
+      # combined run and negative control. The D-13 accepted window — the phone surface
+      # unwatched on PRs — is still OPEN until plan 12 lands that edit; this plan is the last
+      # preparatory step before it closes.
+      #
+      # PRE-ARM GATE (plan 09, ML-20/ML-23) — plan 12 MUST NOT arm until this is green:
+      # dispatch THIS workflow (workflow_dispatch, from a ref carrying the guarded `jq -e`
+      # extraction above) with `backend-ref` pointing at the backend commit that put plan 02's
+      # fixture keys on backend main. The guarded extraction hard-fails the fixture step on
+      # any missing/null key, so a green fixture step in that dispatched run IS the mechanical
+      # proof that the CI backend checkout emits every key non-null — replacing the
+      # prose-only merge-order promise. Same workflow_dispatch backend-ref pattern as Phase
+      # 87.1 (run 28946718108), reused in 87.3.
+      #
+      # ML-16 OWNER RULING (severity LOW, 2026-08-02, 87.8-PLAN-REVIEW.md): plan 12's
+      # deliberately-red negative control uploads Playwright traces carrying fixture URLs and
+      # the encrypted appSession cookie — a trace is a different container from the `.auth/`
+      # exclusion in the artifact step below. Accepted CONDITIONAL on three invariants; if
+      # ANY flips, this returns to at least MEDIUM and must be re-ruled, not inherited:
+      # (1) MAGIC_TOKEN_SECRET stays a published throwaway paired with an ephemeral CI
+      # database; (2) AUTH0_SECRET stays CI-only and un-reused anywhere durable;
+      # (3) FRONTEND_URL stays localhost in CI.
       #
       # Also deliberately NOT done (D-19): no workflow_dispatch input for project selection. A
       # permanent input defaulting to the pinned set is a config surface that can silently
@@ -324,16 +369,20 @@ jobs:
       # exploratory all-projects run uses a throwaway branch instead. FULL MECHANISM — the
       # push alone is NOT enough: the `push: branches-ignore: [main]` trigger above picks the
       # branch up, but this pinned `--project` list applies to EVERY trigger, so the throwaway
-      # branch must ALSO edit the run line below (e.g. append `--project=phone`, or drop the
-      # pin entirely for all-projects). Both edits die with the branch; nothing permanent
-      # changes. Plan 12 (the phone-lane exploratory run) is the direct consumer of this
-      # instruction.
+      # branch must ALSO edit the run line below (append a project, or drop the pin entirely
+      # for all-projects). Both edits die with the branch; nothing permanent changes.
+      #
+      # ARMED Phase 87.8 plan 12 step (c): `--project=phone` joined the pinned set AFTER the
+      # required evidence pair — green combined run 30844453508 (44 passed, 0 failed) and
+      # negative control 30844455459 (red on exactly the five planted padding assertions).
+      # Removing `--project=phone` from the run line DISARMS the phone-forward gate (MOB-03) —
+      # that is a decision, not a cleanup.
       - name: Run Playwright journeys (setup logs in once; all specs in the journeys project reuse storageState)
         env:
           # Auth credentials cross into the runner ONLY via env — never echoed (T-82-11).
           E2E_AUTH0_USER: ${{ secrets.E2E_AUTH0_USER }}
           E2E_AUTH0_PASS: ${{ secrets.E2E_AUTH0_PASS }}
-        run: npx playwright test --project=setup --project=journeys
+        run: npx playwright test --project=setup --project=journeys --project=phone
 
       - name: Upload Playwright failure evidence (excludes .auth/ — T-82-12)
         if: failure()

@@ -29,7 +29,7 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
     return (
       <button
         onClick={() => setTheme(isDark ? 'light' : 'dark')}
-        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:bg-surface-card-hover transition-colors"
+        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:opacity-75 transition-colors"
         aria-label={ariaLabel}
       >
         {icon}

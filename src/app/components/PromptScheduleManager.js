@@ -128,9 +128,10 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
 
       {/* Create button (owner/admin only) */}
       {canManageSchedules && !showForm && !loading && (
+        /* DECISION Phase 87.8 (D-13/D-14/AF-2): per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor — rejected because it would silently distort ~15 shipped compact/icon `.btn` sites (AF-2); 44px chosen OVER Material's 48dp, consciously declined (D-14). Global `.btn` sizing stays with Phase 88 (DEF-1) — a decision, not an oversight. No `min-w-11`: wide text button, 141px measured. */
         <button
           onClick={handleCreate}
-          className="mb-4 btn btn-primary"
+          className="mb-4 btn btn-primary min-h-11"
         >
           + New Schedule
         </button>
@@ -182,13 +183,14 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
   // Inline variant: no modal backdrop, rendered directly in page flow
   if (variant === 'inline') {
     return (
-      <div className="bg-surface-card rounded-card border border-line">
+      <div className="bg-surface-card rounded-card border border-line surface-flat-phone">
         {/* Header without close button */}
         <div className="flex justify-between items-center p-4 pb-3 border-b border-line">
           <h3 className="text-lg font-semibold text-content-primary">Recurring Check-ins</h3>
         </div>
         {/* Content */}
-        <div className="p-4 pt-3">
+        {/* DECISION Phase 87.8 (D-02/D-03): this `p-4 pt-3` was the FIFTH unconditional padding level of the groupPlanning chain — invisible to every upstream artifact (CONTEXT and UI-SPEC both missed it; only RESEARCH C-2's JSX trace found it), because PromptScheduleSection.js is a zero-padding intermediary that made the chain longer than it looked. Do not "restore" a bare `p-4` here as an obvious oversight. Padding is `pt-3 md:px-4 md:pb-4` — NOT `md:p-4` — chosen deliberately: today's `p-4 pt-3` computes desktop padding-top 12px (same-layer `pt-3` wins over the shorthand), and `md:p-4` would sort AFTER the unprefixed `pt-3` at >=768px and silently bump padding-top to 16px; leaving padding-top out of the md layer preserves 12px at every width by construction, not by emission order. */}
+        <div className="pt-3 md:px-4 md:pb-4">
           {renderContent()}
         </div>
       </div>
@@ -207,7 +209,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
           {onClose && (
             <button
               onClick={onClose}
-              className="text-content-muted hover:text-content-primary text-2xl"
+              className="text-content-muted hover:text-content-primary active:opacity-75 text-2xl"
               type="button"
             >
               &times;

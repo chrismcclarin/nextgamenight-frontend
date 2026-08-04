@@ -50,11 +50,13 @@ const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
 
 test.describe('Tailwind v4 migration — computed-style spot checks (D-10 layer 2)', () => {
   // Excluded from the `phone` project. `testMatch: /.*\.spec\.ts/` would otherwise pick
-  // this file up in BOTH projects (playwright.config.ts:42,85). D-19 / RESEARCH Open
-  // Question 3: phone-width computed-style assertions add noise to Plan 12's exploratory
-  // run without adding signal — the two hazards are viewport-independent. Phase 87.8 can
-  // opt this in when it arms the phone project.
-  test.skip(({ isMobile }) => isMobile, 'D-19: viewport-independent hazards; excluded from the phone project this phase (Phase 87.8 may opt in)');
+  // this file up in BOTH projects. CLOSED DECISION — 87.8-SPEC.md R5 (owner, round 1):
+  // these three tests stay desktop-only, permanently, because both hazards they guard
+  // are viewport-independent by construction (an @layer base rule with no media query,
+  // and stylesheet text) — phone-width duplicates would add noise to the phone lane
+  // without adding signal. This is no longer an open opt-in question; re-opening it is
+  // a decision, not a cleanup.
+  test.skip(({ isMobile }) => isMobile, 'SPEC R5 (Phase 87.8, closed): viewport-independent hazards — desktop-only by owner decision');
 
   test.beforeEach(async ({ page }) => {
     // The same four-step journey e2e/create-event.spec.ts:20-33 already runs green in CI.

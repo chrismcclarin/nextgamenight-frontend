@@ -283,7 +283,7 @@ function GroupHomePage(){
         // POLL-02: FriendshipStatusProvider lifted to root layout — see
         // src/app/layout.js. Nested mount removed so NotificationBell +
         // friends/page consume the same receivedRequests state.
-        <div className="p-3 md:p-6">
+        <div className="p-4 md:p-6">
             {/* Breadcrumbs */}
             <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
@@ -295,8 +295,17 @@ function GroupHomePage(){
                 button row (no md:flex-row). Kebab moves into the title row
                 so it sits beside the group name at every breakpoint instead
                 of wrapping awkwardly under the buttons at narrow widths. */}
+            {/* DECISION Phase 87.8 (D-03): the identity header is EXEMPT from the
+                phone flatten rule — it keeps its chrome (background colour/cover
+                image, rounded-lg) at phone width, chosen OVER applying the flatten
+                rule uniformly. This is the one surface where the group's own colour
+                rather than the token palette carries identity (UI-SPEC focal-point
+                contract): its background IS its depth cue and the surface's anchor,
+                and full-bleeding it deletes that anchor. Padding is depth-2
+                (12px phone / 24px desktop) only. Removing this exemption is a decision, not a
+                cleanup. */}
             <div
-                className="mb-6 flex flex-col gap-4 p-4 md:p-6 rounded-lg relative overflow-visible"
+                className="mb-6 flex flex-col gap-4 p-3 md:p-6 rounded-lg relative overflow-visible"
                 style={{
                     backgroundColor: Group?.background_color || '#111418',
                     ...safeBgImageStyle(Group?.background_image_url),
@@ -315,7 +324,11 @@ function GroupHomePage(){
                     zIndex: 0,
                     borderRadius: 'inherit',
                 }} />
-                <div className="flex items-center gap-3 md:gap-4 relative z-10 flex-1 min-w-0">
+                {/* z-30, not z-10: this row hosts the kebab dropdown, and its z-index
+                    is a STACKING CONTEXT for everything inside — the sibling CTA row
+                    below is z-20, so at z-10 the open dropdown painted underneath
+                    "Manage Members" at phone width (87.8-13 walkthrough F-5). */}
+                <div className="flex items-center gap-3 md:gap-4 relative z-30 flex-1 min-w-0">
                     {Group?.profile_picture_url && (
                         <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-card flex items-center justify-center text-2xl md:text-4xl shrink-0 overflow-hidden border-2 md:border-4 border-surface-card shadow-theme-lg">
                             {Group.profile_picture_url.startsWith('http') || Group.profile_picture_url.startsWith('/') ? (
@@ -374,9 +387,10 @@ function GroupHomePage(){
                             Manage Members
                         </button>
                     )}
+                    {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the groupHomePage primary CTA (~37px: the px/py utilities here are DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text link. */}
                     <Link
                         href={`/groupPlanning?group_id=${Router}`}
-                        className="btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white/20 text-center"
+                        className="btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white/20 text-center min-h-11"
                         style={{
                             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.15)',
                         }}
@@ -405,7 +419,7 @@ function GroupHomePage(){
             <div className="flex border-b border-line mb-4">
                 <button
                     onClick={() => setActiveTab('home')}
-                    className={`px-4 py-2 text-sm font-medium transition-colors ${
+                    className={`px-4 py-2 text-sm font-medium active:opacity-75 transition-colors ${
                         activeTab === 'home'
                             ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
                             : 'text-content-secondary hover:text-content-primary'
@@ -415,7 +429,7 @@ function GroupHomePage(){
                 </button>
                 <button
                     onClick={() => setActiveTab('library')}
-                    className={`px-4 py-2 text-sm font-medium transition-colors ${
+                    className={`px-4 py-2 text-sm font-medium active:opacity-75 transition-colors ${
                         activeTab === 'library'
                             ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
                             : 'text-content-secondary hover:text-content-primary'

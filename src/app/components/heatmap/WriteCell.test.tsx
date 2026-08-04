@@ -60,27 +60,30 @@ describe('WriteCell — verbatim preferenceColor className (byte-identical)', ()
 });
 
 describe('WriteCell — keyboard three-state cycle', () => {
-  it('Enter/Space advances null -> preferred -> if-need-be -> null', () => {
+  it('Enter/Space advances null -> preferred -> if-need-be -> null, reporting the cell\'s own (row, col)', () => {
+    // Phase 87.8 plan 14: onSelect reports (next, row, col) — the cell resolving
+    // its own coordinates is what lets a container share ONE stable handler
+    // across every cell instead of allocating per-cell closures each render.
     const onSelect = vi.fn();
     const { rerender } = render(
-      <WriteCell row={0} col={0} rows={1} cols={1} focused preference={null} onSelect={onSelect} />
+      <WriteCell row={2} col={3} rows={4} cols={5} focused preference={null} onSelect={onSelect} />
     );
     const btn = screen.getByRole('button');
 
     fireEvent.keyDown(btn, { key: 'Enter' });
-    expect(onSelect).toHaveBeenLastCalledWith('preferred');
+    expect(onSelect).toHaveBeenLastCalledWith('preferred', 2, 3);
 
     rerender(
-      <WriteCell row={0} col={0} rows={1} cols={1} focused preference="preferred" onSelect={onSelect} />
+      <WriteCell row={2} col={3} rows={4} cols={5} focused preference="preferred" onSelect={onSelect} />
     );
     fireEvent.keyDown(btn, { key: ' ' });
-    expect(onSelect).toHaveBeenLastCalledWith('if-need-be');
+    expect(onSelect).toHaveBeenLastCalledWith('if-need-be', 2, 3);
 
     rerender(
-      <WriteCell row={0} col={0} rows={1} cols={1} focused preference="if-need-be" onSelect={onSelect} />
+      <WriteCell row={2} col={3} rows={4} cols={5} focused preference="if-need-be" onSelect={onSelect} />
     );
     fireEvent.keyDown(btn, { key: 'Enter' });
-    expect(onSelect).toHaveBeenLastCalledWith(null);
+    expect(onSelect).toHaveBeenLastCalledWith(null, 2, 3);
   });
 });
 

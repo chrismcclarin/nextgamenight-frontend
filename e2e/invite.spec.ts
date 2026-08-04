@@ -17,9 +17,24 @@ import { test, expect } from '@playwright/test';
  *
  * Selectors are role/label/text only (PATTERNS.md) — never Tailwind classes.
  */
-test('user can invite a friend to a group', async ({ page }) => {
+test('user can invite a friend to a group', async ({ page }, testInfo) => {
   const groupName = process.env.E2E_INVITE_GROUP_NAME ?? 'E2E Invite Group';
-  const friendName = process.env.E2E_INVITE_FRIEND_NAME ?? 'Bob';
+
+  // DECISION Phase 87.8 (D-07): the phone project invites a DIFFERENT friend
+  // (E2E_INVITE_FRIEND_NAME_PHONE, minted by the backend fixture script) than the
+  // desktop journeys project — chosen OVER narrowing the phone project's testMatch to
+  // exclude this spec (which would silently shrink the MOB-03 gate below "all journeys
+  // at phone width"), and OVER making the journey re-entrant with a backend delete or
+  // re-invite endpoint (no public route a spec can drive exists; that would mean new
+  // endpoints for a test's convenience). WHY a shared target fails: with both projects
+  // armed this spec runs twice per CI job, and routes/invites.js:381-383 returns 409
+  // for a duplicate pending invite to the same friend — the frontend renders "Failed
+  // to send invites" (friends/page.js:617) and the "Invited 1 friend" assertion below
+  // fails. Per-project targets keep both runs first-use.
+  const friendName =
+    testInfo.project.name === 'phone'
+      ? process.env.E2E_INVITE_FRIEND_NAME_PHONE ?? 'Charlie'
+      : process.env.E2E_INVITE_FRIEND_NAME ?? 'Bob';
 
   await page.goto('/friends');
 

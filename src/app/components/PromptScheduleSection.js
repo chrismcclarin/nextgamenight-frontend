@@ -144,7 +144,7 @@ export default function PromptScheduleSection({
     <div>
       <div
         onClick={() => setIsExpanded(!isExpanded)}
-        className="p-3 cursor-pointer hover:bg-surface-card-hover rounded-card transition-colors"
+        className="p-3 cursor-pointer hover:bg-surface-card-hover active:opacity-75 rounded-card transition-colors"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

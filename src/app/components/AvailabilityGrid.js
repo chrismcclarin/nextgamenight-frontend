@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'; // useState kept for paintMode
 import { format, addDays, addMinutes, startOfWeek, nextMonday, parseISO } from 'date-fns';
-// BUG-01 / F-810: slot instants are generated AND parsed against the PROFILE
-// timezone via the Phase 84 date-fns-tz layer (v2-pinned, test-pinned). Relative
-// (not `@/`) import so this `.js` component resolves under vitest — mirrors
-// AvailabilityForm's `../../lib/api` note.
-import { wallClockToUtc, utcToWallClock } from '../../lib/datetime';
+// BUG-01 / F-810: slot instants are generated against the PROFILE timezone via
+// the Phase 84 date-fns-tz layer (v2-pinned, test-pinned); the test suite
+// asserts the reverse parse (utcToWallClock) lands on the same wall-clock
+// hour/day. Relative (not `@/`) import so this `.js` component resolves under
+// vitest — mirrors AvailabilityForm's `../../lib/api` note.
+import { wallClockToUtc } from '../../lib/datetime';
 import WriteCell from './heatmap/WriteCell';
 
 // Zero-pad an hour/minute to two digits for the "yyyy-MM-ddTHH:mm" wall-clock
@@ -41,7 +42,6 @@ export default function AvailabilityGrid({
   // latest value synchronously without waiting for a re-render
   const isDraggingRef = useRef(false);
   const [paintMode, setPaintMode] = useState('preferred'); // 'preferred' | 'if-need-be'
-  const [checkedDays, setCheckedDays] = useState([]); // array of day indices (0-6)
   const gridRef = useRef(null);
 
   // ARIA grid roving tabindex (84-10 / F-803/809): AvailabilityGrid is one of
@@ -68,10 +68,6 @@ export default function AvailabilityGrid({
     setFocusedCoord({ row, col });
     cellRefs.current.get(coordKey(row, col))?.focus();
   }, []);
-
-  // Derived: are all days checked? Sized to numDays so the Plan 71-05 polls
-  // (1-14 day windows) compute "All" correctly for any window length.
-  const allChecked = checkedDays.length === numDays;
 
   // Calculate the week start date (next Monday if not provided)
   const weekStart = useMemo(() => {
@@ -139,25 +135,21 @@ export default function AvailabilityGrid({
   // Precompute the whole grid's slot-id mapping ONCE per [days, timeSlots,
   // timezone] change. The heavy TZ conversion (wallClockToUtc) runs O(cells)
   // here — never inline on the per-cell render loop or the paint/pointermove
-  // handlers, which instead READ from this structure:
-  //   - byCoord: "dayIndex:timeSlotIndex" -> slotId  (forward, render + paint)
-  //   - byId:    slotId -> { dayIndex, timeSlotIndex, hour, minute }
-  //             (reverse, so the cross-day handlers parse a slotId in the SAME
-  //              profile TZ that generateSlotId emitted — symmetric by
-  //              construction, closing the BUG-01 write/parse asymmetry)
-  // `timezone` is a transitive dependency via generateSlotId, so the precomputed
-  // ids invalidate and regenerate when the profile TZ changes.
+  // handlers, which instead READ from this map ("dayIndex:timeSlotIndex" ->
+  // slotId). `timezone` is a transitive dependency via generateSlotId, so the
+  // precomputed ids invalidate and regenerate when the profile TZ changes.
+  // (The reverse byId map that once fed the cross-day handlers' slot-id parsing
+  // left with the broadcast — see the DECISION marker below. The F-810
+  // write-side guarantee lives entirely in generateSlotId, and the test suite
+  // pins the reverse parse externally via utcToWallClock.)
   const slotIdGrid = useMemo(() => {
     const byCoord = new Map();
-    const byId = new Map();
     days.forEach((day, dayIndex) => {
       timeSlots.forEach((ts, timeSlotIndex) => {
-        const slotId = generateSlotId(day, ts);
-        byCoord.set(`${dayIndex}:${timeSlotIndex}`, slotId);
-        byId.set(slotId, { dayIndex, timeSlotIndex, hour: ts.hour, minute: ts.minute });
+        byCoord.set(`${dayIndex}:${timeSlotIndex}`, generateSlotId(day, ts));
       });
     });
-    return { byCoord, byId };
+    return { byCoord };
   }, [days, timeSlots, generateSlotId]);
 
   // O(1) forward lookup: the render loop and paint/toggle/clear handlers read
@@ -167,40 +159,71 @@ export default function AvailabilityGrid({
     [slotIdGrid]
   );
 
-  // Toggle a single per-day "All" column checkbox. Plan 71-05 manual-checkpoint
-  // Bug 1 (round 2) fix: previously this only flipped `checkedDays` state,
-  // which made subsequent CLICKS broadcast across days but did NOT paint
-  // anything in the day column on its own. Users clicking the per-day "All"
-  // header expected every slot in that column to fill — and got an empty
-  // submit + "You haven't selected a timeframe" error.
+  // DECISION Phase 87.8 (SPEC R9): day checkboxes are DERIVED two-way mirrors of
+  // the painted grid (checked ⟺ every slot in the day's column is painted, any
+  // preference tier) plus a bulk fill/clear affordance — with NO cross-day
+  // linkage of any kind. Chosen OVER (a) the stateful checked-day-driver design
+  // this plan originally specified (rejected by owner ruling 2026-08-02: the
+  // cross-day "checked days edit together" broadcast it preserved was a
+  // misrouted feature — two similarly-named features, profile *availability* vs
+  // weekly *check-in*, were historically conflated, and the multi-day request
+  // behind the broadcast belongs to PROFILE availability, where Phase 48-01
+  // already shipped day-pill multi-select — userProfile/page.js:826) and OVER
+  // (b) any future "re-add linked days here". Derived state cannot desync: the
+  // 2026-05-16 "checkbox stays checked after Clear All" bug is impossible by
+  // construction. Re-adding a broadcast here is a product decision, not a
+  // restoration.
+  const dayFull = useMemo(
+    () =>
+      days.map((_, dayIndex) =>
+        timeSlots.every((_, timeSlotIndex) => {
+          const id = slotIdForCoord(dayIndex, timeSlotIndex);
+          return !!id && slotMap.has(id);
+        })
+      ),
+    [days, timeSlots, slotIdForCoord, slotMap]
+  );
+
+  // Derived: are all days checked? Sized to numDays so the Plan 71-05 polls
+  // (1-14 day windows) compute "All" correctly for any window length.
+  const allChecked = dayFull.length === numDays && dayFull.every(Boolean);
+
+  // Per-day "All" column checkbox — bulk fill/clear for that day only.
   //
-  // New behavior: toggling a per-day "All" ON paints every slot in THAT day's
-  // column with the current paintMode. Toggling OFF clears every slot in that
-  // day's column. The cross-day broadcast for subsequent clicks still works
-  // because we keep `checkedDays` in sync.
+  // HISTORY (re-authored 2026-08-02): the Plan 71-05 manual-checkpoint Bug 1
+  // (round 2) fix made this handler paint/clear the day column (previously it
+  // only flipped the checked-day state array, producing an empty submit + "You
+  // haven't selected a timeframe" error) AND kept that state in sync so
+  // subsequent clicks broadcast across checked days. The owner ruling of
+  // 2026-08-02 SUPERSEDED that paint/check-driver semantics: the cross-day
+  // broadcast was a misrouted feature belonging to profile availability
+  // (shipped there by Phase 48-01), so the state array is deleted entirely
+  // — no trace of it remains in code. The paint-on-check
+  // expectation 71-05 established still stands.
+  //
+  // CURRENT RULE: checked state is DERIVED (`dayFull`) — this handler only
+  // edits the selection. Day not full -> paint its empty slots with the current
+  // paintMode; day full -> remove all of its slots. The mirror updates itself
+  // on the next render; no gesture here (or anywhere) writes to another day.
   //
   // Declared AFTER days/timeSlots/generateSlotId because the callback closes
   // over them; declaring earlier triggers a TDZ ReferenceError at render.
   const toggleDayCheck = useCallback((dayIndex) => {
     const day = days[dayIndex];
     if (!day) return;
-    const isCurrentlyChecked = checkedDays.includes(dayIndex);
-    if (isCurrentlyChecked) {
-      // Uncheck: remove from checkedDays AND clear every slot in this day column.
-      setCheckedDays((prev) => prev.filter((d) => d !== dayIndex));
+    if (dayFull[dayIndex]) {
+      // Full (checkbox reads checked): remove every slot in this day column.
       const dayKeys = new Set(timeSlots.map((_, ti) => slotIdForCoord(dayIndex, ti)));
       const filtered = value.filter((s) => !dayKeys.has(s.slotId));
       if (filtered.length !== value.length) {
         onChange?.(filtered);
       }
     } else {
-      // Check: add to checkedDays AND paint every empty slot in this day column.
-      setCheckedDays((prev) => [...prev, dayIndex]);
-      const existing = new Set(value.map((s) => s.slotId));
+      // Not full: paint every empty slot in this day column.
       const additions = [];
       timeSlots.forEach((_, ti) => {
         const id = slotIdForCoord(dayIndex, ti);
-        if (id && !existing.has(id)) {
+        if (id && !slotMap.has(id)) {
           additions.push({ slotId: id, preference: paintMode });
         }
       });
@@ -208,26 +231,31 @@ export default function AvailabilityGrid({
         onChange?.([...value, ...additions]);
       }
     }
-  }, [checkedDays, days, timeSlots, slotIdForCoord, value, paintMode, onChange]);
+  }, [days, dayFull, timeSlots, slotIdForCoord, slotMap, value, paintMode, onChange]);
 
   // Toggle Select All: when toggled ON, paint every visible slot with the
   // current paint mode (matches user expectation "All = I'm available for
   // everything in this window"). When toggled OFF, clear every painted slot.
-  // Also keeps `checkedDays` in sync so subsequent per-day clicks still get
-  // the cross-day broadcast behavior. Plan 71-05 manual-checkpoint Bug 1 fix:
-  // previously this only set checkedDays without painting, so submitting after
-  // toggling "All" failed validation with "Pick at least one time slot".
+  //
+  // HISTORY (re-authored 2026-08-02): the Plan 71-05 manual-checkpoint Bug 1
+  // fix made this paint on toggle (previously it only set the checked-day state
+  // array without painting, so submitting after "All" failed validation with
+  // "Pick at least one time slot") and kept that state in sync for the
+  // cross-day broadcast.
+  // The owner ruling of 2026-08-02 superseded the driver semantics — the
+  // broadcast is removed and `allChecked` is now DERIVED from the painted grid
+  // — but the paint-on-toggle expectation 71-05 established still stands.
   const toggleSelectAll = useCallback(() => {
-    const willCheckAll = checkedDays.length !== numDays;
-    if (willCheckAll) {
-      setCheckedDays(Array.from({ length: numDays }, (_, i) => i));
+    if (allChecked) {
+      // Uncheck All clears every painted slot — symmetric with the check path.
+      onChange?.([]);
+    } else {
       // Paint every slot in the grid that isn't already painted.
-      const existing = new Set(value.map((s) => s.slotId));
       const additions = [];
       days.forEach((day, di) => {
         timeSlots.forEach((ts, ti) => {
           const id = slotIdForCoord(di, ti);
-          if (id && !existing.has(id)) {
+          if (id && !slotMap.has(id)) {
             additions.push({ slotId: id, preference: paintMode });
           }
         });
@@ -235,12 +263,8 @@ export default function AvailabilityGrid({
       if (additions.length > 0) {
         onChange?.([...value, ...additions]);
       }
-    } else {
-      setCheckedDays([]);
-      // Uncheck All clears every painted slot — symmetric with the check path.
-      onChange?.([]);
     }
-  }, [checkedDays.length, numDays, days, timeSlots, slotIdForCoord, value, paintMode, onChange]);
+  }, [allChecked, days, timeSlots, slotIdForCoord, slotMap, value, paintMode, onChange]);
 
   // Format time label for the row. Pure hour/minute -> "h:mm a" (byte-identical
   // to the prior `format(date, 'h:mm a')` output) with no `setHours` — the label
@@ -249,6 +273,15 @@ export default function AvailabilityGrid({
     const h12 = timeSlot.hour % 12 || 12;
     const ampm = timeSlot.hour >= 12 ? 'PM' : 'AM';
     return `${h12}:${pad2(timeSlot.minute)} ${ampm}`;
+  }, []);
+
+  // 87.8-13 walkthrough F-7: compact phone-width label ("10:30p", the
+  // EventHeatmapBackground idiom) — rendered sm:hidden beside the full label so
+  // desktop output stays byte-identical while the phone gutter drops to w-12.
+  const formatTimeLabelCompact = useCallback((timeSlot) => {
+    const h12 = timeSlot.hour % 12 || 12;
+    const ampm = timeSlot.hour >= 12 ? 'p' : 'a';
+    return `${h12}:${pad2(timeSlot.minute)}${ampm}`;
   }, []);
 
   // Format day header
@@ -271,133 +304,190 @@ export default function AvailabilityGrid({
     }
   }, []);
 
-  // Reverse slot-id parsers — BUG-01 / F-810.
+  // CALLBACK STABILITY (Phase 87.8 TOUCH — see the DECISION marker below):
+  // every handler passed to the memoized WriteCells reads CURRENT state off
+  // this ref instead of closing over it, so the handlers keep empty dependency
+  // arrays and never change identity mid-drag. Without this, `value` changes on
+  // every paint tick -> handleToggleSlot/handlePaintSlot recreate -> every
+  // cell's props go referentially unstable together -> React.memo on WriteCell
+  // never short-circuits and all 196-392 cells re-render per painted cell —
+  // exactly where a phone's frame budget is tightest. Assigned during render
+  // (idempotent) so any handler firing after commit reads this render's state.
+  const modelRef = useRef(null);
+  modelRef.current = { value, slotMap, paintMode, onChange, days, timeSlots, slotIdGrid };
+
+  // Handle slot toggle (click / tap-commit / long-press start). Strictly
+  // single-cell: a tap on an empty cell adds that one slot with the current
+  // paint mode; a tap on a painted cell removes that one slot. (The cross-day
+  // ADD branch that used to live here left with the broadcast — see the
+  // DECISION marker above.) Reads state via modelRef — identity is stable.
+  const handleToggleSlot = useCallback((slotId) => {
+    const { value, slotMap, paintMode, onChange } = modelRef.current;
+    if (slotMap.get(slotId)) {
+      onChange?.(value.filter((s) => s.slotId !== slotId));
+    } else {
+      onChange?.([...value, { slotId, preference: paintMode }]);
+    }
+  }, []);
+
+  // Handle slot paint (drag — add only). Strictly single-cell, like toggle.
+  const handlePaintSlot = useCallback((slotId) => {
+    const { value, slotMap, paintMode, onChange } = modelRef.current;
+    if (!slotMap.has(slotId)) {
+      onChange?.([...value, { slotId, preference: paintMode }]);
+    }
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // DECISION Phase 87.8 (TOUCH): touch gets a LONG-PRESS (~300ms) paint model —
+  // plain drag scrolls natively (both axes), tap commits ONE slot on finger-UP,
+  // hold-then-drag paints — chosen OVER (b) plain-drag-paints with gutter-only
+  // scrolling (the shipped defect: scroll was only reachable from the 16px px-4
+  // page gutters, which the owner found by feel) and OVER (c) a paint/scroll
+  // mode-toggle button (extra chrome; a mode the user must remember). Matches
+  // the Google/Apple Calendar convention. Owner ruling 2026-08-02 (model a).
   //
-  // These interpret a slotId in the SAME profile timezone that generateSlotId
-  // emitted (via the precomputed byId map, or utcToWallClock as the symmetric
-  // fallback), NOT the old browser-local `getFullYear`/`getDate`/`getHours`.
-  // Generation and parsing now share one TZ basis, so the cross-day branches of
-  // handleToggleSlot / handlePaintSlot / handleClearAll stay correct when the
-  // profile TZ differs from the browser TZ. They run once per handler call
-  // (discrete pointer/clear events) — never per cell per render.
+  // Mechanism notes a future editor must not "clean up":
+  // - NO static `touch-action: none` anywhere on the grid or its cells. Native
+  //   scroll is suppressed ONLY while paint mode is active, via the NON-PASSIVE
+  //   touchmove listener below (static CSS touch-action is evaluated at gesture
+  //   start and cannot be conditional). Re-adding a static touch-action: none
+  //   to any cell re-kills scrolling on the whole surface.
+  // - Painting resolves cells with document.elementFromPoint, NOT pointerenter:
+  //   touch implicitly captures the pointer to the first cell touched, so enter
+  //   events never fire on neighbours. elementFromPoint is the standard
+  //   workaround; a non-cell resolution is a no-op, never a throw.
+  // - EDGE AUTO-SCROLL: while painting, a finger held in the viewport's
+  //   top/bottom (or the grid's left/right) ~48px edge band auto-scrolls slowly
+  //   AND KEEPS PAINTING (owner requirement 2026-08-02: paint 10am-to-7pm in
+  //   one gesture on a screen that shows 10-to-5). THE TRAP: a stationary
+  //   finger fires NO pointermove events while content scrolls beneath it — so
+  //   the rAF loop below drives BOTH the scroll and the elementFromPoint paint
+  //   step at the last-known finger coords. Painting driven only from the
+  //   pointermove handler would scroll without painting.
+  // - CALLBACK STABILITY: every prop WriteCell receives from this component is
+  //   referentially stable across a paint drag (state is read via modelRef, and
+  //   WriteCell reports its own row/col to the shared onSelect). Reintroducing
+  //   per-render closures on these props silently regresses React.memo on all
+  //   196-392 cells — that memo working is the smooth/janky boundary on a
+  //   phone, not a micro-optimization.
+  // ---------------------------------------------------------------------------
+  const LONG_PRESS_MS = 300;
+  const SLOP_PX = 8;
+  const EDGE_BAND_PX = 48;
+  const EDGE_MAX_STEP_PX = 6; // max px per frame at full band depth — slow by design
 
-  // Helper: get the day index from a slotId.
-  const getDayIndexFromSlotId = useCallback(
-    (slotId) => {
-      const meta = slotIdGrid.byId.get(slotId);
-      if (meta) return meta.dayIndex;
-      // Fallback: interpret in the profile TZ and match against the grid's days.
-      const wc = utcToWallClock(slotId, timezone);
-      if (!wc) return -1;
-      return days.findIndex((d) => {
-        const [dy, dm, dd] = format(d, 'yyyy-MM-dd').split('-').map(Number);
-        return dy === wc.year && dm === wc.month && dd === wc.day;
-      });
+  // Active touch gesture state. Null when no touch gesture is in flight.
+  // { pointerId, slotId, startX, startY, lastX, lastY, timer, painting }
+  const touchRef = useRef(null);
+  // requestAnimationFrame id for the edge auto-scroll loop (null = not running).
+  const edgeLoopRef = useRef(null);
+
+  const stopEdgeLoop = useCallback(() => {
+    if (edgeLoopRef.current != null) {
+      cancelAnimationFrame(edgeLoopRef.current);
+      edgeLoopRef.current = null;
+    }
+  }, []);
+
+  // Resolve the cell under (x, y) to its slotId and paint it. Non-cell targets
+  // (labels, gaps, elements outside the grid) resolve to null — a no-op.
+  const paintAtPoint = useCallback(
+    (x, y) => {
+      const el = document.elementFromPoint?.(x, y);
+      const cell = el?.closest?.('[data-slot-id]');
+      const slotId = cell?.getAttribute('data-slot-id');
+      if (slotId) handlePaintSlot(slotId);
     },
-    [slotIdGrid, days, timezone]
+    [handlePaintSlot]
   );
 
-  // Helper: extract { hour, minute } from a slotId in the profile TZ.
-  const getTimeSlotFromSlotId = useCallback(
-    (slotId) => {
-      const meta = slotIdGrid.byId.get(slotId);
-      if (meta) return { hour: meta.hour, minute: meta.minute };
-      const wc = utcToWallClock(slotId, timezone);
-      return wc ? { hour: wc.hours, minute: wc.minutes } : { hour: 0, minute: 0 };
-    },
-    [slotIdGrid, timezone]
-  );
-
-  // Helper: get the time-slot index from a slotId (used by the cross-day
-  // handlers to re-derive the same time on every checked day).
-  const getTimeSlotIndexFromSlotId = useCallback(
-    (slotId) => {
-      const meta = slotIdGrid.byId.get(slotId);
-      if (meta) return meta.timeSlotIndex;
-      const { hour, minute } = getTimeSlotFromSlotId(slotId);
-      return timeSlots.findIndex((ts) => ts.hour === hour && ts.minute === minute);
-    },
-    [slotIdGrid, getTimeSlotFromSlotId, timeSlots]
-  );
-
-  // Handle slot toggle (click)
-  const handleToggleSlot = useCallback(
-    (slotId) => {
-      const currentPreference = slotMap.get(slotId);
-
-      if (currentPreference) {
-        // Remove: always per-day only (remove just this one slot)
-        const newValue = value.filter((s) => s.slotId !== slotId);
-        onChange?.(newValue);
-      } else {
-        // Add slot with current paint mode
-        if (checkedDays.length === 0) {
-          // No checkboxes checked — single-day behavior
-          const newValue = [...value, { slotId, preference: paintMode }];
-          onChange?.(newValue);
-        } else {
-          // Cross-day: add matching time on all checked days
-          const clickedDayIndex = getDayIndexFromSlotId(slotId);
-          const timeSlotIndex = getTimeSlotIndexFromSlotId(slotId);
-          const daysToFill = checkedDays.includes(clickedDayIndex)
-            ? checkedDays
-            : [clickedDayIndex]; // unchecked day = single slot only
-          const newSlots = [];
-          daysToFill.forEach((di) => {
-            const id = slotIdForCoord(di, timeSlotIndex);
-            if (id && !slotMap.has(id)) {
-              newSlots.push({ slotId: id, preference: paintMode });
-            }
-          });
-          if (newSlots.length > 0) {
-            onChange?.([...value, ...newSlots]);
-          }
-        }
+  // Edge auto-scroll loop: runs only while paint mode is active AND the finger
+  // sits inside an edge band. Each tick scrolls a few px (scaled with depth
+  // into the band) and re-paints at the last-known finger coords — the finger
+  // is stationary, so no pointermove will do it for us.
+  const maybeRunEdgeLoop = useCallback(() => {
+    if (edgeLoopRef.current != null) return; // already running
+    const step = (depth) =>
+      Math.max(1, Math.round((Math.min(depth, EDGE_BAND_PX) / EDGE_BAND_PX) * EDGE_MAX_STEP_PX));
+    const tick = () => {
+      const st = touchRef.current;
+      if (!st || !st.painting) {
+        edgeLoopRef.current = null;
+        return;
       }
-    },
-    [value, onChange, slotMap, paintMode, checkedDays, slotIdForCoord, getDayIndexFromSlotId, getTimeSlotIndexFromSlotId]
-  );
-
-  // Handle slot paint (drag - add only, additive across checked days)
-  const handlePaintSlot = useCallback(
-    (slotId) => {
-      if (checkedDays.length === 0) {
-        // No checkboxes — single slot paint (original behavior)
-        if (!slotMap.has(slotId)) {
-          const newValue = [...value, { slotId, preference: paintMode }];
-          onChange?.(newValue);
-        }
-      } else {
-        // Cross-day paint: add matching time on all checked days
-        const paintedDayIndex = getDayIndexFromSlotId(slotId);
-        const timeSlotIndex = getTimeSlotIndexFromSlotId(slotId);
-        const daysToFill = checkedDays.includes(paintedDayIndex)
-          ? checkedDays
-          : [paintedDayIndex]; // unchecked day = single cell only
-        const newSlots = [];
-        daysToFill.forEach((di) => {
-          const id = slotIdForCoord(di, timeSlotIndex);
-          if (id && !slotMap.has(id)) {
-            newSlots.push({ slotId: id, preference: paintMode });
-          }
-        });
-        if (newSlots.length > 0) {
-          onChange?.([...value, ...newSlots]);
-        }
+      const vh = window.innerHeight;
+      const vw = window.innerWidth;
+      let dy = 0;
+      let dx = 0;
+      if (st.lastY < EDGE_BAND_PX) dy = -step(EDGE_BAND_PX - st.lastY);
+      else if (st.lastY > vh - EDGE_BAND_PX) dy = step(st.lastY - (vh - EDGE_BAND_PX));
+      if (st.lastX < EDGE_BAND_PX) dx = -step(EDGE_BAND_PX - st.lastX);
+      else if (st.lastX > vw - EDGE_BAND_PX) dx = step(st.lastX - (vw - EDGE_BAND_PX));
+      if (dx === 0 && dy === 0) {
+        // Finger left the band — stop the loop; pointermove restarts it.
+        edgeLoopRef.current = null;
+        return;
       }
-    },
-    [value, onChange, slotMap, paintMode, checkedDays, slotIdForCoord, getDayIndexFromSlotId, getTimeSlotIndexFromSlotId]
-  );
+      if (dy !== 0) window.scrollBy(0, dy);
+      if (dx !== 0 && gridRef.current) gridRef.current.scrollLeft += dx;
+      paintAtPoint(st.lastX, st.lastY);
+      edgeLoopRef.current = requestAnimationFrame(tick);
+    };
+    edgeLoopRef.current = requestAnimationFrame(tick);
+  }, [paintAtPoint]);
 
-  // Pointer event handlers
+  // Tear down the in-flight touch gesture (timer, paint mode, edge loop).
+  const clearTouchGesture = useCallback(() => {
+    const st = touchRef.current;
+    if (st?.timer) clearTimeout(st.timer);
+    touchRef.current = null;
+    stopEdgeLoop();
+  }, [stopEdgeLoop]);
+
+  // Long-press timer fired within slop: enter PAINT MODE. Haptic tick where
+  // supported, and toggle the pressed slot immediately for visual feedback
+  // (mirrors the mouse path, where down toggles).
+  const enterPaintMode = useCallback(() => {
+    const st = touchRef.current;
+    if (!st) return;
+    st.timer = null;
+    st.painting = true;
+    if (typeof navigator !== 'undefined') navigator.vibrate?.(10);
+    handleToggleSlot(st.slotId);
+  }, [handleToggleSlot]);
+
+  // Pointer down, split by pointerType (Phase 87.8 TOUCH):
+  // - TOUCH: no toggle yet — record the slot + coords and start the long-press
+  //   timer. A tap (up before the timer) commits on finger-UP; movement past
+  //   slop cancels and hands the gesture to the browser (native scroll).
+  // - MOUSE (and synthetic test events with no pointerType): exactly the
+  //   pre-87.8-14 behavior — down toggles immediately, drag paints via enter.
   const handlePointerDown = useCallback(
-    (slotId) => {
+    (slotId, e) => {
+      if (e && e.pointerType === 'touch') {
+        if (touchRef.current) clearTouchGesture(); // stale-gesture safety
+        touchRef.current = {
+          pointerId: e.pointerId,
+          slotId,
+          startX: e.clientX,
+          startY: e.clientY,
+          lastX: e.clientX,
+          lastY: e.clientY,
+          timer: setTimeout(enterPaintMode, LONG_PRESS_MS),
+          painting: false,
+        };
+        return;
+      }
       isDraggingRef.current = true;
       handleToggleSlot(slotId);
     },
-    [handleToggleSlot]
+    [clearTouchGesture, enterPaintMode, handleToggleSlot]
   );
 
+  // Mouse drag-paint via enter events (touch never reaches here: the pointer is
+  // implicitly captured to the first cell, so enter doesn't fire on neighbours
+  // — and isDraggingRef is only set on the mouse path anyway).
   const handlePointerEnter = useCallback(
     (slotId) => {
       if (isDraggingRef.current) {
@@ -411,57 +501,110 @@ export default function AvailabilityGrid({
     isDraggingRef.current = false;
   }, []);
 
-  // Keyboard select-cycle (WriteCell reports the NEXT preference after Enter/
-  // Space). Single-cell edit by design: arrow+select keyboard nav operates on
-  // the focused cell only (the cross-day "All"/checkbox broadcast stays a
-  // pointer-paint affordance). next === null removes the slot.
-  const handleKeyboardSelect = useCallback(
-    (row, col, next) => {
-      const day = days[col];
-      const ts = timeSlots[row];
-      if (!day || !ts) return;
-      const slotId = slotIdForCoord(col, row);
-      if (!slotId) return;
-      const without = value.filter((s) => s.slotId !== slotId);
-      onChange?.(next === null ? without : [...without, { slotId, preference: next }]);
+  // Container-level pointermove: drives the touch state machine. Before the
+  // timer fires, movement past slop cancels the gesture (browser owns the pan —
+  // expect a pointercancel when scroll takes over). While painting, resolve the
+  // cell under the finger and keep the edge auto-scroll loop fed.
+  const handleGridPointerMove = useCallback(
+    (e) => {
+      const st = touchRef.current;
+      if (!st || e.pointerType !== 'touch' || e.pointerId !== st.pointerId) return;
+      st.lastX = e.clientX;
+      st.lastY = e.clientY;
+      if (!st.painting) {
+        if (
+          st.timer &&
+          Math.hypot(e.clientX - st.startX, e.clientY - st.startY) > SLOP_PX
+        ) {
+          clearTouchGesture();
+        }
+        return;
+      }
+      paintAtPoint(e.clientX, e.clientY);
+      maybeRunEdgeLoop();
     },
-    [days, timeSlots, slotIdForCoord, value, onChange]
+    [clearTouchGesture, paintAtPoint, maybeRunEdgeLoop]
   );
 
-  // Global pointer up listener for catching release outside grid
+  // Keyboard select-cycle (WriteCell reports the NEXT preference after Enter/
+  // Space plus its own row/col — the cell resolving its coords is what keeps
+  // this ONE stable handler shared by every cell). Single-cell edit, like every
+  // other gesture. next === null removes the slot.
+  const handleCellSelect = useCallback((next, row, col) => {
+    const { days, timeSlots, slotIdGrid, value, onChange } = modelRef.current;
+    if (!days[col] || !timeSlots[row]) return;
+    const slotId = slotIdGrid.byCoord.get(`${col}:${row}`);
+    if (!slotId) return;
+    const without = value.filter((s) => s.slotId !== slotId);
+    onChange?.(next === null ? without : [...without, { slotId, preference: next }]);
+  }, []);
+
+  // Global pointer up/cancel listeners: end the mouse drag, and settle the
+  // touch gesture wherever the finger lands (inside or outside the grid).
+  // pointerup with the timer still pending = a TAP — commit the recorded slot
+  // on finger-up (how every native list behaves; required to distinguish tap
+  // from scroll). pointercancel = the browser took the gesture (native scroll)
+  // — tear down with NO commit.
   useEffect(() => {
-    const handleGlobalPointerUp = () => {
+    const handleGlobalPointerUp = (e) => {
       isDraggingRef.current = false;
+      const st = touchRef.current;
+      if (st && e.pointerId === st.pointerId) {
+        if (!st.painting && st.timer) {
+          clearTimeout(st.timer);
+          st.timer = null;
+          handleToggleSlot(st.slotId);
+        }
+        clearTouchGesture();
+      }
+    };
+    const handleGlobalPointerCancel = (e) => {
+      isDraggingRef.current = false;
+      const st = touchRef.current;
+      if (st && e.pointerId === st.pointerId) {
+        clearTouchGesture();
+      }
     };
 
     document.addEventListener('pointerup', handleGlobalPointerUp);
-    document.addEventListener('pointercancel', handleGlobalPointerUp);
+    document.addEventListener('pointercancel', handleGlobalPointerCancel);
 
     return () => {
       document.removeEventListener('pointerup', handleGlobalPointerUp);
-      document.removeEventListener('pointercancel', handleGlobalPointerUp);
+      document.removeEventListener('pointercancel', handleGlobalPointerCancel);
     };
+  }, [clearTouchGesture, handleToggleSlot]);
+
+  // NON-PASSIVE touchmove listener — the conditional scroll suppressor. While
+  // paint mode is active (and ONLY then) preventDefault stops the native pan so
+  // the drag paints instead of scrolling. Registered once with
+  // { passive: false }; React's synthetic listeners are passive for touchmove,
+  // and static CSS touch-action cannot express "none only while painting".
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const onTouchMove = (e) => {
+      if (touchRef.current?.painting) e.preventDefault();
+    };
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => el.removeEventListener('touchmove', onTouchMove);
   }, []);
+
+  // Unmount safety: never leave a live timer or rAF loop behind.
+  useEffect(() => () => clearTouchGesture(), [clearTouchGesture]);
 
   // Toggle paint mode
   const togglePaintMode = useCallback(() => {
     setPaintMode((prev) => (prev === 'preferred' ? 'if-need-be' : 'preferred'));
   }, []);
 
-  // Clear all selections (checkbox-aware)
+  // Clear all selections — unconditionally, matching the button's label. (The
+  // "only clear checked days" branch left with the broadcast; every checkbox
+  // derives to unchecked from the emptied selection, so the 2026-05-16
+  // stranded-checkbox bug cannot recur.)
   const handleClearAll = useCallback(() => {
-    if (checkedDays.length === 0) {
-      // No checkboxes — clear everything
-      onChange?.([]);
-    } else {
-      // Only clear slots belonging to checked days
-      const filtered = value.filter((s) => {
-        const dayIdx = getDayIndexFromSlotId(s.slotId);
-        return !checkedDays.includes(dayIdx);
-      });
-      onChange?.(filtered);
-    }
-  }, [onChange, value, checkedDays, getDayIndexFromSlotId]);
+    onChange?.([]);
+  }, [onChange]);
 
   return (
     <div className="w-full">
@@ -482,7 +625,7 @@ export default function AvailabilityGrid({
             className={`
               px-3 py-1.5 text-sm font-medium rounded-md border
               transition-colors
-              ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}
+              ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80 active:opacity-75'}
               ${
                 paintMode === 'preferred'
                   ? 'bg-green-100 border-green-400 text-green-800'
@@ -502,7 +645,7 @@ export default function AvailabilityGrid({
               className={`
                 px-3 py-1.5 text-sm font-medium rounded-btn border border-line
                 text-content-secondary bg-surface-card
-                ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-surface-card-hover'}
+                ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-surface-card-hover active:opacity-75'}
               `}
             >
               Clear All
@@ -527,27 +670,34 @@ export default function AvailabilityGrid({
         </div>
       </div>
 
-      {/* Grid container with horizontal scroll for mobile */}
+      {/* Grid container with horizontal scroll for mobile. touchAction stays
+          'pan-x pan-y' (it PERMITS panning); scroll suppression during a paint
+          is the non-passive touchmove listener's job — never static CSS. */}
       <div
         ref={gridRef}
         className="overflow-x-auto pb-2"
         style={{ touchAction: 'pan-x pan-y' }}
         onPointerUp={handlePointerUp}
+        onPointerMove={handleGridPointerMove}
       >
-        <div
-          className="min-w-max"
-          style={{ touchAction: 'none' }}
-        >
+        <div className="min-w-max">
           {/* Day headers */}
           <div className="flex">
-            {/* Spacer for time labels column */}
-            <div className="w-16 sm:w-20 shrink-0" />
+            {/* Spacer for time labels column — sticky with the label column so
+                the time axis stays pinned while the grid scrolls horizontally.
+                Opaque bg (the form's card surface) so cells slide UNDER it. */}
+            <div className="w-12 sm:w-20 shrink-0 sticky left-0 z-10 bg-surface-card" />
 
-            {/* Day headers */}
+            {/* Day headers. 87.8-13 walkthrough F-7: 76px phone columns + the w-12
+                gutter put 4 full days in a 375px viewport (48 + 4x76 = 352) vs 3
+                before; cells stay 76x48 — above the 44px touch floor. The SAME
+                phone width must be carried by all six aligned sites (header
+                spacer, headers, checkbox spacer, checkboxes, labels, cells) or
+                the columns shear. sm:+ widths unchanged. */}
             {days.map((day, index) => (
               <div
                 key={day.toISOString()}
-                className="w-24 sm:w-28 shrink-0 text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
+                className="w-[76px] sm:w-28 shrink-0 text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
               >
                 {formatDayHeader(day)}
               </div>
@@ -556,8 +706,9 @@ export default function AvailabilityGrid({
 
           {/* Day checkboxes row */}
           <div className="flex">
-            {/* Select All toggle in the time-label spacer */}
-            <div className="w-16 sm:w-20 shrink-0 flex items-center justify-end pr-2">
+            {/* Select All toggle in the time-label spacer — same sticky
+                treatment as the label column so "All" never scrolls away. */}
+            <div className="w-12 sm:w-20 shrink-0 flex items-center justify-end pr-2 sticky left-0 z-10 bg-surface-card">
               <label className="flex items-center gap-1 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -574,11 +725,11 @@ export default function AvailabilityGrid({
             {days.map((day, index) => (
               <div
                 key={`cb-${day.toISOString()}`}
-                className="w-24 sm:w-28 shrink-0 flex items-center justify-center py-1"
+                className="w-[76px] sm:w-28 shrink-0 flex items-center justify-center py-1"
               >
                 <input
                   type="checkbox"
-                  checked={checkedDays.includes(index)}
+                  checked={!!dayFull[index]}
                   onChange={() => toggleDayCheck(index)}
                   disabled={disabled}
                   className="w-4 h-4 accent-blue-600 cursor-pointer disabled:cursor-not-allowed"
@@ -590,9 +741,13 @@ export default function AvailabilityGrid({
           {/* Time slot rows */}
           {timeSlots.map((timeSlot, rowIndex) => (
             <div key={`row-${rowIndex}`} className="flex">
-              {/* Time label column — mirrors the header spacer width */}
-              <div className="w-16 sm:w-20 shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium">
-                {formatTimeLabel(timeSlot)}
+              {/* Time label column — mirrors the header spacer width. Sticky
+                  left-0 pins the time axis while the grid scrolls horizontally
+                  (Phase 87.8 TOUCH); the opaque bg is required — sticky labels
+                  over painted cells are unreadable without one. */}
+              <div className="w-12 sm:w-20 shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium sticky left-0 z-10 bg-surface-card">
+                <span className="sm:hidden">{formatTimeLabelCompact(timeSlot)}</span>
+                <span className="hidden sm:inline">{formatTimeLabel(timeSlot)}</span>
               </div>
 
               {/* Day columns. The wrapper carries the cell dims + border; the
@@ -609,7 +764,7 @@ export default function AvailabilityGrid({
                 return (
                   <div
                     key={slotId}
-                    className="w-24 sm:w-28 shrink-0 h-12 sm:h-14 border border-line"
+                    className="w-[76px] sm:w-28 shrink-0 h-12 sm:h-14 border border-line"
                     onFocus={() => setFocusedCoord({ row: rowIndex, col: colIndex })}
                   >
                     <WriteCell
@@ -622,7 +777,7 @@ export default function AvailabilityGrid({
                       preference={preference}
                       slotId={slotId}
                       onMove={handleCellMove}
-                      onSelect={(next) => handleKeyboardSelect(rowIndex, colIndex, next)}
+                      onSelect={handleCellSelect}
                       onPointerDown={handlePointerDown}
                       onPointerEnter={handlePointerEnter}
                       cellRef={getCellRef(key)}

@@ -92,7 +92,7 @@ export default function BringSummary({ eventId, groupId, self, refreshKey, onEdi
   const currentUserHasBrings = self?.id && bringsByUser[self.id];
 
   return (
-    <div className="card p-4">
+    <div className="card p-4 md:p-6">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-content-primary">Bringing</h3>
         {currentUserHasBrings && onEditClick && (

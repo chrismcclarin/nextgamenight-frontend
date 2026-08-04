@@ -200,7 +200,7 @@ export default function GroupPlanningPage() {
         (heatmapPrompt.deadline && new Date(heatmapPrompt.deadline) < new Date());
 
     return (
-        <div className="p-3 md:p-6 max-w-7xl mx-auto">
+        <div className="p-4 md:p-6 max-w-7xl mx-auto">
             {/* Breadcrumbs */}
             <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
@@ -217,7 +217,7 @@ export default function GroupPlanningPage() {
             </nav>
 
             {/* Header */}
-            <div className="card p-4 md:p-6 mb-6">
+            <div className="card p-3 md:p-6 mb-6">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div className="min-w-0">
                         <h1 className="text-2xl md:text-3xl font-bold text-content-primary truncate">
@@ -236,9 +236,9 @@ export default function GroupPlanningPage() {
             <FetchErrorBanner state={selfIdentityErrorState} compact />
 
             {/* Availability Polls + Response Dashboard in one card */}
-            <div className="card p-4 md:p-6 mb-6">
+            <div className="card p-3 md:p-6 mb-6">
                 <h2 className="text-xl font-bold text-content-primary mb-4">Availability Polls</h2>
-                <div className="bg-surface-page rounded-lg p-4">
+                <div className="bg-surface-page rounded-lg surface-flat-phone md:p-4">
                     <PromptScheduleSection
                         groupId={groupId}
                         group={group}

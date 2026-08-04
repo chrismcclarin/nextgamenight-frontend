@@ -158,13 +158,18 @@ function NotificationBell({ user, variant = 'icon', label }) {
   return (
     <div className="relative" ref={dropdownRef}>
       {variant === 'row' ? (
-        // Full-width row hit area — entire surface is one tap target.
-        // hover:bg-surface-card-hover + active:bg-surface-card-hover for
-        // desktop hover + mobile tap-down feedback (subtle press-state per
-        // CONTEXT D-02). text-left so the label aligns with surrounding rows.
+        // Full-width row hit area — entire surface is one tap target;
+        // text-left so the label aligns with surrounding rows.
+        // DECISION Phase 87.8 (D-12): pressed state is now an instant opacity dim.
+        // DECISION Phase 87.8 — this supersedes the CONTEXT D-02 token-swap idiom (active:bg-surface-card-hover)
+        // previously recorded here: --theme-transition (globals.css:569) transitions
+        // background-color at 0.25s and does not list opacity, so a background swap
+        // is swallowed on an ~80ms tap while an untransitioned opacity change fires
+        // instantly. hover:bg-surface-card-hover stays — correct on desktop, inert
+        // on touch (Tailwind v4 hover media query), and inertness is not a defect.
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:bg-surface-card-hover transition-colors"
+          className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:opacity-75 transition-colors"
           aria-label={label ? `${label} notifications` : 'Notifications'}
         >
           {bellIcon}

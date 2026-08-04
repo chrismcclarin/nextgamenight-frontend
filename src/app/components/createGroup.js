@@ -112,9 +112,14 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                         <p className="mt-2 text-sm text-red-600">{errorMessage}</p>
                                     )}
                                 </div>
-                                <div className="modal-footer">
+                                {/* Owner report 2026-08-04: button sat off-center under the input.
+                                    Plain utilities instead of .modal-footer — the unlayered global
+                                    (flex-end + its own 1.5rem padding inside the padded body) can
+                                    never line up with the input, and layered utilities lose to it,
+                                    so the class comes off rather than fighting it. */}
+                                <div className="flex justify-center pt-1">
                                     <button
-                                        className="btn btn-primary font-bold uppercase text-sm px-6 py-3 shadow-sm hover:shadow-lg mr-1 mb-1"
+                                        className="btn btn-primary font-bold uppercase text-sm px-6 py-3 shadow-sm hover:shadow-lg min-h-11"
                                         type="submit"
                                     >
                                         Create Group
@@ -122,7 +127,7 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                 </div>
                             </form>
                                 <button
-                                    className="text-status-error background-transparent font-bold uppercase px-6 py-2 text-sm outline-hidden focus:outline-hidden mr-1 mb-1 ease-linear transition-all duration-150"
+                                    className="text-status-error background-transparent font-bold uppercase px-6 py-2 text-sm outline-hidden focus:outline-hidden active:opacity-75 mr-1 mb-1 ease-linear transition-all duration-150"
                                     type="button"
                                     onClick={modaltoggle}
                                 >

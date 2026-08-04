@@ -12,6 +12,7 @@ import TimezoneProvider from './components/TimezoneProvider'
 import ThemeProvider from './components/ThemeProvider'
 import FriendshipStatusProvider from './components/FriendshipStatusProvider'
 import UnreadNotificationProvider from './components/UnreadNotificationProvider'
+import FeedbackModalProvider from './components/FeedbackModalProvider'
 
 const plusJakartaSans = Plus_Jakarta_Sans({ subsets: ['latin'] })
 
@@ -56,12 +57,35 @@ export default function RootLayout({ children }) {
                       INSIDE FriendshipStatusProvider since the unread
                       count includes received friend requests. */}
                   <UnreadNotificationProvider>
-                    <Header />
-                    <main className="min-h-screen">
-                      {children}
-                    </main>
-                    <Footer />
-                    <FeedbackButton />
+                    {/* MOB-04 (Plan 87.8-05, D-09): feedback modal open/close
+                        transition owner. Wraps BOTH Header and FeedbackButton
+                        so the phone nav "Send feedback" row (in Header) and
+                        the desktop FAB drive the SAME modal instance. The
+                        modal itself stays mounted HERE at the layout root
+                        (the <FeedbackButton /> below) — never inside the
+                        header dropdown, whose computed `translate` would
+                        capture a position:fixed .modal-overlay as its
+                        containing block. */}
+                    <FeedbackModalProvider>
+                      {/* 87.8-13 walkthrough F-10: classic sticky footer — the
+                          WRAPPER is viewport-tall and main grows to fill, so on
+                          sparse pages (one group, empty states) the footer sits at
+                          the bottom edge of the first screen instead of a full
+                          scroll below it. The old shape (min-h-screen on main
+                          alone) forced total height to 100vh + header + footer on
+                          EVERY page. Tall pages render identically. The wrapper is
+                          a plain div with no transform/filter, so it does NOT
+                          become a containing block for the fixed-position modal
+                          overlay or FAB (the D-09 constraint above). */}
+                      <div className="min-h-screen flex flex-col">
+                        <Header />
+                        <main className="flex-1">
+                          {children}
+                        </main>
+                        <Footer />
+                      </div>
+                      <FeedbackButton />
+                    </FeedbackModalProvider>
                   </UnreadNotificationProvider>
                 </FriendshipStatusProvider>
               </TutorialProvider>

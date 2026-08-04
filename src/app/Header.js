@@ -6,6 +6,7 @@ import DieLogo from './components/DieLogo';
 import NotificationBell from './components/NotificationBell';
 import ThemeToggle from './components/ThemeToggle';
 import { useUnreadNotificationCount } from './components/UnreadNotificationProvider';
+import FeedbackButton from './components/FeedbackButton';
 
 function Header(){
     const { user, error, isLoading } = useUser();
@@ -124,7 +125,7 @@ function Header(){
                             over the hamburger icon's top-right corner. */}
                         <button
                             ref={triggerRef}
-                            className="relative md:hidden text-white p-2 hover:text-accent transition-colors"
+                            className="relative md:hidden text-white p-2 hover:text-accent active:opacity-75 transition-colors"
                             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                             aria-label="Toggle menu"
                             aria-expanded={mobileMenuOpen}
@@ -181,7 +182,7 @@ function Header(){
                                     {isLink ? (
                                         <Link
                                             href={href}
-                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover transition-colors"
+                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover active:opacity-75 transition-colors"
                                             onClick={() => setMobileMenuOpen(false)}
                                         >
                                             {label}
@@ -189,7 +190,7 @@ function Header(){
                                     ) : (
                                         <a
                                             href={href}
-                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover transition-colors"
+                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover active:opacity-75 transition-colors"
                                             onClick={() => setMobileMenuOpen(false)}
                                         >
                                             {label}
@@ -200,7 +201,8 @@ function Header(){
                         </ul>
                         {/* Mobile notification bell — full-row tap surface (MOB-02 + MOB-03).
                             variant="row" makes the entire button the hit target with
-                            press-state via bg-surface-card-hover. Outer div is just a
+                            press-state via an instant opacity dim (Phase 87.8 D-12
+                            converged idiom). Outer div is just a
                             non-interactive border container; the inner <button> is the
                             actual tap surface. */}
                         {user && (
@@ -212,6 +214,25 @@ function Header(){
                         <div className="border-t border-line-header">
                             <ThemeToggle variant="row" label="Theme" />
                         </div>
+                        {/* Mobile feedback entry point (Phase 87.8 D-09) — full-row
+                            tap surface for parity with Invites/Theme. Only the
+                            TRIGGER lives here: the modal deliberately does NOT
+                            render in this dropdown (its computed `translate` would
+                            capture a fixed-position overlay as its containing
+                            block) — the row drives the modal instance mounted at
+                            the layout root via FeedbackModalProvider. onOpen closes
+                            this menu in the SAME transition that opens the modal,
+                            the close-on-tap idiom the nav links above use. Gated on
+                            user like the Invites row — feedback is auth-only. */}
+                        {user && (
+                            <div className="border-t border-line-header">
+                                <FeedbackButton
+                                    variant="row"
+                                    label="Send feedback"
+                                    onOpen={() => setMobileMenuOpen(false)}
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

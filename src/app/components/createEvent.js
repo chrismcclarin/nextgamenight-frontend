@@ -661,12 +661,19 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   return (
     <div className="modal-overlay" onClick={modaltoggle}>
       <div className="modal-content max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="p-6">
+        {/* DECISION Phase 87.8 DEC-3: p-3 at phone / p-6 at desktop on the modal BODY
+            wrapper — paired with the phone-scoped `.modal-overlay` 12px rule in
+            globals.css, this brings the Create Event chain under the SPEC R2 75px
+            budget (12+12 = 24/side = 48px; the nested heatmap p-3 box adds 12/side
+            → 72px, still under). The padding lives HERE (a layered utility on a
+            plain div) and NOT on the overlay div, where it would lose to the
+            unlayered `.modal-overlay` block. */}
+        <div className="p-3 md:p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold text-content-primary">{editingEvent ? 'Edit Event' : 'Create Event'}</h2>
           <button
             onClick={modaltoggle}
-            className="text-content-muted hover:text-content-primary text-2xl"
+            className="text-content-muted hover:text-content-primary active:opacity-75 text-2xl"
           >
             ×
           </button>
@@ -732,7 +739,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 <button
                   type="button"
                   onClick={() => setUseVisualCalendar(!useVisualCalendar)}
-                  className="text-xs text-content-link hover:text-content-link-hover underline"
+                  className="text-xs text-content-link hover:text-content-link-hover active:opacity-75 underline"
                 >
                   {useVisualCalendar ? 'Switch to Manual Entry' : 'Switch to Visual Calendar'}
                 </button>
@@ -799,7 +806,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                           onClick={handlePrevWeek}
                           disabled={!canGoBack}
                           aria-label="Previous week"
-                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
+                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-card-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
                         >
                           &lt;
                         </button>
@@ -812,7 +819,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                             onClick={handleToday}
                             disabled={isOnTodayMonday}
                             aria-label="Jump to current week"
-                            className="px-2 py-1 text-xs rounded-sm bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
+                            className="px-2 py-1 text-xs rounded-sm bg-surface-elevated hover:bg-surface-card-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
                           >
                             Today
                           </button>
@@ -822,7 +829,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                           onClick={handleNextWeek}
                           disabled={!canGoForward}
                           aria-label="Next week"
-                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
+                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-card-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
                         >
                           &gt;
                         </button>
@@ -981,10 +988,11 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             >
               Cancel
             </button>
+            {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the Create Event surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button. */}
             <button
               type="submit"
               data-testid="create-event-submit"
-              className="btn btn-primary"
+              className="btn btn-primary min-h-11"
             >
               {editingEvent ? 'Update Event' : 'Create Event'}
             </button>

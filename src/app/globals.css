@@ -741,16 +741,50 @@ body {
 
 /* ===== DESIGN SYSTEM: Component Classes ===== */
 
-.card {
+/* DECISION Phase 87.8 (D-01): `.card` moved from UNLAYERED to `@utility` so that a
+   consumer's own padding utility WINS. Chosen OVER editing the padding value here in
+   place, and OVER `!important` at call sites. The premise is MEASURED, not reasoned:
+   while this rule was unlayered it beat every layered utility, so ALL 28 `.card` call
+   sites carried a `p-*` utility and ALL 28 were dead.
+
+   Emission order verified by compiling this file's own tailwindcss@4.3.3: `@utility`
+   lands inside `@layer utilities` sorted BEFORE `.p-4`/`.p-6`/`.md\:p-6`, so equal
+   specificity is broken by source order in the consumer's favour, and `md:p-6` still
+   wins at >=768px. `&:hover` nesting survives compilation unchanged.
+
+   Intended visual diff (CORRECTED 2026-08-02, round-3 review — the earlier claim that
+   the diff was phone-only was WRONG), review against this:
+   (i)   `p-4` sites that ALSO author `md:p-6` change at phone only;
+   (ii)  the five BARE-`p-4` sites (BringSummary.js:95, UpcomingEventsCard.js:137,
+         GroupGamesList.js:12, GameSuggestionCard.js:20, friends/page.js:563) would
+         have silently dropped desktop padding 24px -> 16px — Task 1b of plan 87.8-01
+         adds `md:p-6` to each so desktop is preserved;
+   (iii) the 13 sites authoring `p-6` are a no-op;
+   (iv)  previously-inert `hover:shadow-theme-*` comes alive on DESKTOP ONLY, because
+         Tailwind v4 wraps `hover:` in `@media (hover: hover)` which is false on the
+         phone lane — LandingPage.js:52,60,68, GroupGamesList.js:12,
+         GameSuggestionCard.js:20;
+   (v)   the `transition-*` utilities at those same sites stop losing to `.card`'s own
+         `transition` now that `.card` is layered — a second un-inert flip; do not
+         mistake it for a regression.
+
+   `border-radius` is now `var(--radius-card)` (declared at its token site above,
+   value 12px) — a token substitution with no rendered change (D-04).
+
+   The neighbouring UNLAYERED blocks — the `.rbc-*` overrides, the `:root` palette
+   blocks (guardrail comment above), `.btn`, `.btn-*` and `.modal-overlay` — MUST STAY
+   unlayered; their cascade position is a measured 87.7 decision and nothing needs to
+   override them. Only `.card` moves. Moving it back is a decision, not a cleanup. */
+@utility card {
   background-color: var(--color-bg-card);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-md);
   padding: 1.5rem;
   transition: var(--theme-transition);
-}
 
-.card:hover {
-  background-color: var(--color-bg-card-hover);
+  &:hover {
+    background-color: var(--color-bg-card-hover);
+  }
 }
 
 .btn {
@@ -770,6 +804,26 @@ body {
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* DECISION Phase 87.8 (D-12): pressed state is an INSTANT OPACITY DIM, chosen OVER a
+   background-colour swap and OVER a scale/translate press.
+   - Background swap loses, MEASURED: `--theme-transition` (declared above — background-color,
+     color, border-color, box-shadow @ 0.25s) does not list opacity, so a background swap is
+     swallowed by the 250ms transition on an ~80ms tap while an untransitioned opacity change
+     fires instantly.
+   - Scale/translate loses: contradicts the recorded no-scale rule
+     (DESIGN-SYSTEM-REFERENCE-2026.md:197).
+   - 0.75 chosen inside the owner's 70-85% band: 0.9 is already `.btn-danger:hover` (below)
+     and would make press indistinguishable from hover on the one element that has both;
+     0.7 reads as disabled against `.btn:disabled` opacity 0.5 (above). 0.75 sits clear of both.
+   Zero new colour values, deliberately — a slash-opacity tint would collide with the D-18
+   token strip and Phase 88's tint boundary. D-12 covers ONLY this press rule; the 44px
+   touch-floor decision lives per-CTA at the SPEC R4 call sites (D-13/D-14/AF-2), NOT here —
+   `.btn` deliberately carries no global min-height (that question is Phase 88's, DEF-1).
+   Removing or retuning this is a decision, not a cleanup. */
+.btn:active:not(:disabled) {
+  opacity: 0.75;
 }
 
 .btn-primary {
@@ -808,6 +862,24 @@ body {
   justify-content: center;
   background-color: var(--color-bg-overlay);
   padding: 1rem;
+}
+
+/* DECISION Phase 87.8 DEC-3: phone-scoped `.modal-overlay` padding (12px < 48rem, 16px
+   desktop via the base rule above), applied GLOBALLY to all 16 overlay call sites across
+   12 components — chosen OVER a per-instance Tailwind utility on the Create Event overlay
+   div. The per-instance utility was REJECTED because it silently does nothing: this block
+   is UNLAYERED (deliberately — see the guardrail note above `@utility card`), and unlayered
+   author styles beat every `@layer utilities` rule regardless of specificity — the exact
+   cascade defect DEC-2 fixed for `.btn`/the feedback button. BringGamePicker.js's
+   `modal-overlay p-4` is live proof: its `p-4` has always been dead against this rule.
+   The global blast radius was justified by a full call-site census + computed-padding
+   spot-check, recorded in 87.8-MODAL-CENSUS.md (planning repo, phase 87.8 dir) — a 12px
+   overlay gutter at phone width is uniform across all modals by design. Scoping a regressed site
+   individually is fine; reverting the global rule is a decision, not a cleanup. */
+@media (width < 48rem) {
+  .modal-overlay {
+    padding: 0.75rem;
+  }
 }
 
 .modal-content {
@@ -997,4 +1069,76 @@ body {
 
 .rbc-timeslot-group {
   border-bottom-color: var(--color-border);
+}
+
+/* ===== PHASE 87.8: PHONE-WIDTH FLATTEN UTILITIES ===== */
+
+/* DECISION Phase 87.8 (D-03): two explicit OPT-IN flatten marker classes for nested
+   containers at phone width. Three choices recorded:
+
+   (1) An explicit opt-in marker class chosen OVER `:where(.rounded-card ...)` — a
+       `:where()` rule silently reaches every current and future rounded-card site,
+       which is a second invisible-action-at-a-distance mechanism in the same file
+       this phase is removing one from (D-01); and OVER keying on `.card .card`,
+       which is impossible because inner nesting levels never use the card class
+       (verified: ScheduleList.js:67, PromptScheduleManager.js:185,
+       groupPlanning/page.js:241 and AvailabilityForm.js:286 are all ad-hoc
+       `bg-* border rounded-* p-*` divs, zero of them cards).
+   (2) The DOUBLED-class selector (specificity 0,2,0) chosen OVER a single class —
+       within the utilities layer a single class ties with `bg-surface-card`/`p-4`
+       and is decided by emission order, which is an implementation detail of the
+       Tailwind engine and not a property to build a layout rule on. Doubling wins
+       deterministically.
+   (3) The utilities layer chosen OVER an unlayered rule — an unlayered flatten rule
+       would be un-overridable by any call site and would recreate the exact bug
+       D-01 removes (the guardrail comment near the `:root` palette states the
+       mechanism).
+
+   The media bound is 48rem — Tailwind v4's default `md` breakpoint; no
+   `--breakpoint-*` override exists in this file — so both utilities are inert at
+   >=768px and desktop rendering is untouched.
+
+   ORDERING HAZARD (cross-selector, called out on purpose): the divided base block
+   declares `border-width: 0` and the hairline lives ONLY in the `:not(:first-child)`
+   companion selector below it. A future edit that merges the two blocks must
+   re-apply the `:not(:first-child)` scoping or the first-row exception is lost and
+   every divided list paints a hairline directly under its section heading.
+
+   This nested-padding flatten rule is an ORIGINAL project decision — no published
+   design system has one (confirmed negative) — so a padding-less, chrome-less inner
+   surface at phone width is intentional, and removing the marker class from a site
+   is a decision, not a cleanup. */
+@layer utilities {
+  @media (width < 48rem) {
+    .surface-flat-phone.surface-flat-phone {
+      padding-inline: 0;
+      background-color: transparent;
+      background-image: none;
+      border-width: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+  }
+
+  @media (width < 48rem) {
+    .surface-flat-phone-divided.surface-flat-phone-divided {
+      padding-inline: 0;
+      background-color: transparent;
+      background-image: none;
+      border-width: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    /* ML#10: hairline BETWEEN rows only — never above the first row. The
+       chrome-removal above stays unconditional on every row; only rows after the
+       first get the top border + 16px vertical rhythm. */
+    .surface-flat-phone-divided.surface-flat-phone-divided:not(:first-child) {
+      border-block-start-width: 1px;
+      border-block-start-style: solid;
+      border-block-start-color: var(--color-border);
+      padding-block-start: 1rem;
+      margin-block-start: 1rem;
+    }
+  }
 }

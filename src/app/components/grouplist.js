@@ -94,12 +94,13 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   // error state looks intentional, not a broken half-render.
   if (selfIdentityErrorState.showError) {
     return (
-      <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card p-4 flex flex-col overflow-hidden h-full">
+      <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
           <h2 className="text-xl font-bold text-content-primary">Your Groups</h2>
           {onCreateGroup && (
+            /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA (error-state render branch of the same CTA below). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button. */
             <button
-              className="btn btn-primary text-sm whitespace-nowrap"
+              className="btn btn-primary text-sm whitespace-nowrap min-h-11"
               onClick={onCreateGroup}
               aria-label="Create new group"
               data-tutorial="create-group-btn"
@@ -117,7 +118,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
 
   if (loading) {
     return (
-      <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card p-4 flex flex-col overflow-hidden h-full">
+      <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
         <div className="text-center py-8 px-4 text-content-muted">Loading groups...</div>
       </div>
     );
@@ -127,12 +128,23 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     // POLL-02: FriendshipStatusProvider lifted to root layout — no longer
     // mounted here, since the nested instance was shadowing root state and
     // breaking friend-state sync between NotificationBell and friends page.
-    <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card p-4 flex flex-col overflow-hidden h-full">
+    //
+    // DECISION Phase 87.8 (D-02/D-03): level assignment for the home chain — this
+    // wrapper and the scrolling list div below are STRUCTURAL WRAPPERS (scroll
+    // plumbing), flattened at phone via surface-flat-phone; the group card inside
+    // is the depth-2 surface and the only element the user perceives as a surface.
+    // Chosen OVER giving each nesting level its own ladder value, which would have
+    // kept the chain at 44px per side and defeated the 75px budget. The same
+    // flatten is applied to the loading/error-state renders of this wrapper so the
+    // surface does not jump 16px when it transitions states. That is a decision,
+    // not a cleanup.
+    <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
         <h2 className="text-xl font-bold text-content-primary">Your Groups</h2>
         {onCreateGroup && (
+          /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button. */
           <button
-            className="btn btn-primary text-sm whitespace-nowrap"
+            className="btn btn-primary text-sm whitespace-nowrap min-h-11"
             onClick={onCreateGroup}
             aria-label="Create new group"
             data-tutorial="create-group-btn"
@@ -147,7 +159,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
           non-blocking degrade notice instead of failing silently (D-11). */}
       <FetchErrorBanner state={selfIdentityErrorState} compact />
 
-      <div className="flex-1 overflow-y-auto p-4 pb-8 flex flex-col gap-4 max-md:max-h-[60vh] max-md:p-3">
+      <div className="flex-1 overflow-y-auto surface-flat-phone md:p-4 pb-8 flex flex-col gap-4 max-md:max-h-[60vh]">
         {groups.length === 0 ? (
           <div className="text-center py-8 px-4 text-content-muted">
             <p className="my-2">No groups yet!</p>
@@ -174,7 +186,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             return (
               <div
                 key={group.id}
-                className="bg-surface-card rounded-card p-4 pl-5 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover hover:bg-surface-card-hover focus:outline-hidden focus:border-focus-ring"
+                className="bg-surface-card rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover hover:bg-surface-card-hover active:opacity-75 focus:outline-hidden focus:border-focus-ring"
                 onClick={(e) => handleGroupClick(group, e)}
                 role="button"
                 tabIndex={0}
@@ -203,8 +215,12 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   <div className="absolute inset-0 z-0 rounded-card" />
                 )}
                 <div className="relative z-1">
-                  <div className="flex justify-between items-center mb-3 max-[480px]:flex-col max-[480px]:items-start max-[480px]:gap-2">
-                    <div className="flex items-center gap-2 min-w-0 flex-1 max-[480px]:w-full">
+                  {/* 87.8-13 walkthrough F-8: single row at ALL widths — the old
+                      max-[480px] column-stack dropped the players pill to its own
+                      right-justified line under a left-aligned card (owner call).
+                      Long names still coexist with the pill: min-w-0 + wrap. */}
+                  <div className="flex justify-between items-center mb-3">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       {profilePic && (
                         <div className="w-10 h-10 rounded-full bg-surface-card-hover flex items-center justify-center text-2xl shrink-0 overflow-hidden">
                           {profilePic.startsWith('http') || profilePic.startsWith('/') ? (
@@ -227,7 +243,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       </h3>
                     </div>
                     <span
-                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-semibold ml-2 shrink-0 max-[480px]:self-end max-[480px]:ml-0"
+                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-semibold ml-2 shrink-0"
                       style={getTextStyle(bgImage, bgColor)}
                     >
                       {groupUsers.length} {groupUsers.length === 1 ? 'player' : 'players'}
@@ -250,12 +266,15 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   )}
                 </div>
 
+                {/* 87.8-13 walkthrough F-9: name + date on ONE line (owner call —
+                    the stacked date read as a stray row). flex-wrap keeps long
+                    game names graceful: the date wraps as a unit, never mid-text. */}
                 <div className="border-t border-line pt-3" style={getTextStyle(bgImage, bgColor)}>
-                  <div className="text-content-secondary text-sm mb-1">
-                    <strong className="text-content-primary">Last Game:</strong> {lastGame?.name || 'None'}
-                  </div>
-                  <div className="text-content-muted text-xs">
-                    {formatDate(lastEvent?.start_date || lastEvent?.createdAt, timezone)}
+                  <div className="flex flex-wrap items-baseline gap-x-2 text-content-secondary text-sm">
+                    <span><strong className="text-content-primary">Last Game:</strong> {lastGame?.name || 'None'}</span>
+                    <span className="text-content-muted text-xs">
+                      {formatDate(lastEvent?.start_date || lastEvent?.createdAt, timezone)}
+                    </span>
                   </div>
                 </div>
 
@@ -267,8 +286,9 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         admin-only (D-INV-02). The settings cog below stays
                         admin-gated via `canEdit`. */}
                     {userRole && userRole !== 'pending' && (
+                      /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census — per-card primary CTA on the walked home surface. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `flex-1` full-row width. */
                       <button
-                        className="btn btn-primary text-sm flex-1 shadow-md hover:shadow-lg hover:-translate-y-px active:translate-y-0 transition-all"
+                        className="btn btn-primary text-sm flex-1 shadow-md hover:shadow-lg transition-all min-h-11"
                         onClick={(e) => {
                           e.stopPropagation();
                           if (onGroupSelect) {
@@ -282,7 +302,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                     )}
                     {canEdit && (
                       <button
-                        className="px-3 py-1 bg-surface-elevated text-content-primary rounded-btn hover:bg-surface-card-hover text-sm shrink-0"
+                        className="px-3 py-1 bg-surface-elevated text-content-primary rounded-btn hover:bg-surface-card-hover active:opacity-75 text-sm shrink-0"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSettingsGroup(group);
