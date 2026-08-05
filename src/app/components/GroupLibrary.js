@@ -1,10 +1,14 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { groupsAPI } from '../../lib/api';
 import SafeImage from './SafeImage';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Button } from '../../components/ui/Button';
+import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
 export default function GroupLibrary({ groupId }) {
   const router = useRouter();
@@ -16,31 +20,61 @@ export default function GroupLibrary({ groupId }) {
   const [selectedOwner, setSelectedOwner] = useState(null);
   const [sortBy, setSortBy] = useState('name');
   const [showAllOwners, setShowAllOwners] = useState(false);
+  /* DECISION Phase 88-18 (Req 6 / T-88-18-01): the library fetch failure is tracked as its own
+     state instead of being swallowed by the `console.error` it used to be. Before this, a failed
+     `getGroupLibrary` left `games` at [] and fell straight through to the empty-library copy —
+     the surface told the group its shelf was bare when the request had failed. Empty and failed
+     are different facts on different surfaces (UI-SPEC 9.2). Do not collapse them back. */
+  const [libraryError, setLibraryError] = useState(null);
   const loaded = useRef(false);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  // Hoisted out of the mount effect so the error banner's Retry can re-run the
+  // very same fetch (the hook needs a stable callable, not an effect body).
+  const fetchLibrary = useCallback(async () => {
+    if (!groupId) return;
+    try {
+      setLoading(true);
+      setLibraryError(null);
+      const data = await groupsAPI.getGroupLibrary(groupId);
+      if (!mounted.current) return;
+      setGames(data.games || []);
+      setMembers(data.members || []);
+      loaded.current = true;
+    } catch (error) {
+      console.error('Error fetching group library:', error);
+      if (!mounted.current) return;
+      // Keep the ERROR object, not a flattened string: useFetchErrorState reads
+      // `ApiError.code` off it to pick the right user-facing copy.
+      setLibraryError(
+        error instanceof Error ? error : new Error("The group library request didn't complete.")
+      );
+    } finally {
+      if (mounted.current) setLoading(false);
+    }
+  }, [groupId]);
 
   useEffect(() => {
     if (!groupId || loaded.current) return;
-    let cancelled = false;
-
-    async function fetchLibrary() {
-      try {
-        setLoading(true);
-        const data = await groupsAPI.getGroupLibrary(groupId);
-        if (!cancelled) {
-          setGames(data.games || []);
-          setMembers(data.members || []);
-          loaded.current = true;
-        }
-      } catch (error) {
-        console.error('Error fetching group library:', error);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
     fetchLibrary();
-    return () => { cancelled = true; };
-  }, [groupId]);
+  }, [groupId, fetchLibrary]);
+
+  // Retry must clear the once-only guard, or the refetch silently no-ops.
+  const retryLibrary = useCallback(() => {
+    loaded.current = false;
+    return fetchLibrary();
+  }, [fetchLibrary]);
+
+  const libraryErrorState = useFetchErrorState({
+    isError: Boolean(libraryError),
+    error: libraryError,
+    refetch: retryLibrary,
+  });
 
   // Filtering + sorting (derived, not modifying source data)
   const filteredGames = useMemo(() => {
@@ -123,16 +157,34 @@ export default function GroupLibrary({ groupId }) {
     );
   }
 
-  // Empty library (no games at all)
+  // The library FAILED to load — a different fact from an empty library, and it
+  // is checked first so the empty copy can never stand in for a failure.
+  if (libraryErrorState.showError) {
+    return (
+      <div className="mt-4">
+        <FetchErrorBanner
+          state={libraryErrorState}
+          title="We couldn't load this library"
+          reportContext="Group library (group home page)"
+        />
+      </div>
+    );
+  }
+
+  // Empty library (no games at all) — Req 6 / UI-SPEC 9.2.
   if (games.length === 0) {
     return (
-      <div className="mt-4 text-center py-12 bg-surface-page rounded-card border-2 border-dashed border-line">
-        <p className="text-content-secondary text-lg mb-2">No games in this group&apos;s library yet.</p>
-        <p className="text-content-muted">
-          Add games to your collection on{' '}
-          <Link href="/userProfile" className="text-accent hover:underline font-medium">your profile</Link>{' '}
-          and they&apos;ll appear here.
-        </p>
+      <div className="mt-4 bg-surface-page rounded-card">
+        <EmptyState
+          icon="Library"
+          heading="This library is empty"
+          body="Games your group owns show up here. Add a few from your profile to get started."
+          action={
+            <Button asChild variant="primary" className="min-h-11">
+              <Link href="/userProfile">Add games</Link>
+            </Button>
+          }
+        />
       </div>
     );
   }

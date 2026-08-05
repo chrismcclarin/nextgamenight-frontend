@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { formatTime } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
 import KebabMenu from './KebabMenu';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Button } from '../../components/ui/Button';
 
 // Day of week helper
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -17,8 +19,11 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
  * @param {Function} props.onToggle - Callback when pause/resume clicked (passes schedule_id)
  * @param {Function} props.onDelete - Callback when delete clicked (passes schedule_id)
  * @param {Array} props.games - Array of games for displaying game names
+ * @param {Function} [props.onCreate] - Callback for the empty state's "Create a
+ *   schedule" CTA (Req 6). Null/absent for anyone who cannot manage schedules —
+ *   the gating stays at the call site, exactly like onEdit/onToggle/onDelete.
  */
-export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelete, games = [] }) {
+export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelete, games = [], onCreate }) {
   const { timezone } = useTimezone();
   const [deleteConfirm, setDeleteConfirm] = useState(null); // schedule_id to confirm deletion
 
@@ -35,12 +40,25 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
     setDeleteConfirm(null);
   };
 
-  // Empty state
+  // Empty state (Req 6 / UI-SPEC 9.2). This branch is "nothing here yet" ONLY —
+  // a failed settings fetch renders the shared error treatment in the parent
+  // (PromptScheduleManager) and never reaches this component.
   if (!schedules || schedules.length === 0) {
     return (
-      <div className="text-center py-12 text-content-muted">
-        <p className="text-lg">No schedules yet. Create one to start sending automated prompts.</p>
-      </div>
+      <EmptyState
+        icon="CalendarClock"
+        heading="No schedules yet"
+        body="Set one up and we'll ask the group when they're free, so you don't have to."
+        action={
+          onCreate ? (
+            /* 44px carried per-CTA, matching the 87.8 D-13/D-14 marker on the parent's
+               "+ New Schedule" button — same action, so the same touch target. */
+            <Button variant="primary" className="min-h-11" onClick={onCreate}>
+              Create a schedule
+            </Button>
+          ) : undefined
+        }
+      />
     );
   }
 

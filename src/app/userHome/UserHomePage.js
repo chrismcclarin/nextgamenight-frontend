@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import GroupList from '../components/grouplist';
@@ -31,6 +31,14 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     const [refreshKey, setRefreshKey] = useState(0);
     const [upcomingEvents, setUpcomingEvents] = useState([]);
     const [upcomingLoading, setUpcomingLoading] = useState(false);
+    /* DECISION Phase 88-18 (Req 6 / T-88-18-01): the getUserEvents failure is tracked instead of
+       being left in the `console.error` it used to stop at. The unhandled rejection left
+       `upcomingEvents` at [], so UpcomingEventsCard rendered its empty state — telling someone
+       their calendar was clear when the request had failed. This is NOT the same as
+       `selfIdentityErrorState` a few lines up (ML-17), which covers the case where the fetch never
+       fires at all; both are needed and they are checked in that order at the render site. */
+    const [upcomingError, setUpcomingError] = useState(null);
+    const [upcomingRetryKey, setUpcomingRetryKey] = useState(0);
 
     // GROUP-05 (display half): show soft acknowledgment banner when arriving from
     // a 403 redirect set by Plan 69-04 (router.push('/?removedFrom=...')).
@@ -51,18 +59,42 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
         if (!selfUuid) return;
         let cancelled = false;
         setUpcomingLoading(true);
+        setUpcomingError(null);
         eventsAPI.getUserEvents(selfUuid).then(evts => {
             if (cancelled) return;
             const list = Array.isArray(evts) ? evts : [];
             // UpcomingEventsCard does its own filter+sort; pass the raw list.
             setUpcomingEvents(list);
         }).catch(err => {
-            console.error('[UserHomePage] Failed to fetch upcoming events:', err);
+            console.error('[UserHomePage] The upcoming-events request did not complete:', err);
+            if (cancelled) return;
+            // Keep the ERROR object: useFetchErrorState reads `ApiError.code` off
+            // it to pick the right user-facing copy.
+            setUpcomingError(
+                err instanceof Error ? err : new Error("The upcoming-events request didn't complete.")
+            );
         }).finally(() => {
             if (!cancelled) setUpcomingLoading(false);
         });
         return () => { cancelled = true; };
-    }, [user?.sub, refreshKey, selfUuid]);
+    }, [user?.sub, refreshKey, selfUuid, upcomingRetryKey]);
+
+    // Adapter onto the shared fetch-error pair (88-14 friends pattern): the hook
+    // documents that it reads ONLY isError/error/refetch (useFetchErrorState.ts:89),
+    // and `retry` must be stable — it sits in a useCallback dep AND in the hook's
+    // refocus-recovery effect deps. Bumping the key re-runs the effect above rather
+    // than duplicating the fetch body.
+    const upcomingRetryRef = useRef(null);
+    upcomingRetryRef.current = () => setUpcomingRetryKey(k => k + 1);
+    const retryUpcoming = useCallback(() => {
+        upcomingRetryRef.current?.();
+        return Promise.resolve();
+    }, []);
+    const upcomingErrorState = useFetchErrorState({
+        isError: Boolean(upcomingError),
+        error: upcomingError,
+        refetch: retryUpcoming,
+    });
 
     const handleGroupSelect = (group) => {
         setSelectedGroup(group);
@@ -137,11 +169,25 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     {selfIdentityErrorState.showError ? (
                         <FetchErrorBanner state={selfIdentityErrorState} compact />
                     ) : (
+                        /* DECISION Phase 88-18 (Req 6, UI-SPEC 9.2): NO `action` is passed, so this
+                           card's empty state ships without the contract row's "Plan Game Session"
+                           CTA. That omission is deliberate, not an oversight. Every planning route
+                           needs a group: `groupPlanning/page.js:61-66` gates fetchGroup /
+                           fetchGroupEvents / fetchHeatmapData / fetchUserRole on `groupId`, and the
+                           two shipped "Plan Game Session" entry points
+                           (`groupHomePage/page.js:409` and the groupPlanning breadcrumb) both carry
+                           `?group_id=`. UserHome has no group in scope — the group list to the left
+                           fetches its own — so a CTA here could only link to a group-less
+                           groupPlanning page that renders empty sections. The body copy carries the
+                           next step instead. If a group picker ever lands on this surface, pass the
+                           CTA in as `action` — do NOT wire a bare /groupPlanning link. Raised with
+                           the owner at 88-18's checkpoint. */
                         <UpcomingEventsCard
                             events={upcomingEvents}
                             loading={upcomingLoading}
                             showGroupName={true}
                             viewerDbUserId={selfUuid ?? null}
+                            errorState={upcomingErrorState}
                         />
                     )}
                 </div>

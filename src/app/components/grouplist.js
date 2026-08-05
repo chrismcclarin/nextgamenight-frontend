@@ -1,6 +1,6 @@
 // src/components/GroupList.js
 'use client'
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import GroupSettings from './GroupSettings';
@@ -15,6 +15,8 @@ import ClickableMemberName from './ClickableMemberName';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Button } from '../../components/ui/Button';
 
 const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
   const router = useRouter();
@@ -31,6 +33,14 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   const [loading, setLoading] = useState(true);
   const [settingsGroup, setSettingsGroup] = useState(null);
   const [userRoles, setUserRoles] = useState({});
+  /* DECISION Phase 88-18 (Req 6 / T-88-18-01): the getUserGroups failure is tracked as its own
+     state rather than being flattened into `setGroups([])`. That flatten is what made a failed
+     request render "No groups yet" — telling someone who may well own several groups that they
+     have none, on the app's landing surface. Empty and failed are different facts on different
+     surfaces (UI-SPEC 9.2). This is separate from `selfIdentityErrorState` above: that one is
+     the identity-resolution degrade (D-08/D-11), this one is the groups request itself. Do not
+     merge them, and do not go back to `setGroups([])` on catch. */
+  const [groupsError, setGroupsError] = useState(null);
 
   // selfUuid resolves ASYNC after this mount effect's first run, so it is in the
   // dependency array per the async-resolution rule — the fetch re-fires (and the
@@ -67,16 +77,36 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
 
     try {
       setLoading(true);
+      setGroupsError(null);
       // Use groupsAPI.getUserGroups which automatically includes Authorization header
       const groupsData = await groupsAPI.getUserGroups(selfUuid);
       setGroups(groupsData || []);
     } catch (error) {
       console.error('Error fetching groups:', error.message || 'Unknown error');
-      setGroups([]);
+      // Keep the ERROR object, not a flattened string: useFetchErrorState reads
+      // `ApiError.code` off it to pick the right user-facing copy.
+      setGroupsError(
+        error instanceof Error ? error : new Error("The groups request didn't complete.")
+      );
     } finally {
       setLoading(false);
     }
   };
+
+  // Adapter onto the shared fetch-error pair, matching the 88-14 friends-page
+  // pattern: the hook documents that it reads ONLY isError/error/refetch
+  // (useFetchErrorState.ts:89). `retry` must be stable — the hook puts it in a
+  // useCallback dep AND in its refocus-recovery effect deps.
+  const fetchGroupsRef = useRef(null);
+  useEffect(() => {
+    fetchGroupsRef.current = fetchGroups;
+  });
+  const retryGroups = useCallback(() => fetchGroupsRef.current?.(), []);
+  const groupsErrorState = useFetchErrorState({
+    isError: Boolean(groupsError),
+    error: groupsError,
+    refetch: retryGroups,
+  });
 
 
   const handleGroupClick = (group, e) => {
@@ -160,11 +190,39 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
       <FetchErrorBanner state={selfIdentityErrorState} compact />
 
       <div className="flex-1 overflow-y-auto surface-flat-phone md:p-4 pb-8 flex flex-col gap-4 max-md:max-h-[60vh]">
-        {groups.length === 0 ? (
-          <div className="text-center py-8 px-4 text-content-muted">
-            <p className="my-2">No groups yet!</p>
-            <p className="my-2">Create your first group to get started.</p>
-          </div>
+        {groupsErrorState.showError ? (
+          <FetchErrorBanner
+            state={groupsErrorState}
+            title="We couldn't load your groups"
+            reportContext="Your groups list (home page)"
+          />
+        ) : groups.length === 0 ? (
+          /* DECISION Phase 88-18 (Req 6): this EmptyState's CTA is rendered IN ADDITION to the
+             identical header button above, not instead of it — the opposite call to
+             OpenPollsList/PromptScheduleManager, which suppress theirs. The difference is where
+             the button lives: those two sit directly above the list body and read as a duplicate
+             a finger-width away, whereas this one is persistent panel chrome in the bordered
+             "Your Groups" header and is present in every state, including the error state.
+             Removing the header button when empty would make the panel header change shape.
+             The `data-tutorial="create-group-btn"` hook is DELIBERATELY not copied here — that
+             selector must resolve to one element. */
+          <EmptyState
+            icon="Users"
+            heading="No groups yet"
+            body="A group is your people plus the games you play. Make one and invite them."
+            action={
+              onCreateGroup ? (
+                <Button
+                  variant="primary"
+                  className="min-h-11"
+                  onClick={onCreateGroup}
+                  aria-label="Create new group"
+                >
+                  + Create New Group
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           groups.map((group) => {
             // Get users from the group (Users array from backend)

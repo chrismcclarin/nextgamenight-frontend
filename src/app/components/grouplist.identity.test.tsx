@@ -41,9 +41,15 @@ vi.mock('@/components/ui/useFetchErrorState', () => ({
     retry: vi.fn(),
   }),
 }));
+// 88-18: GroupList now mounts TWO of these — the D-08 identity degrade AND the
+// groups-fetch failure (which used to be flattened into `setGroups([])` and shown
+// as "No groups yet"). The stub renders the `title` so the two are tellable apart;
+// the testid is kept for the pre-existing WR-03 assertions.
 vi.mock('@/components/ui/FetchErrorBanner', () => ({
-  FetchErrorBanner: ({ state }: { state: { showError: boolean } }) =>
-    state.showError ? <div data-testid="identity-degrade-banner">degraded</div> : null,
+  FetchErrorBanner: ({ state, title }: { state: { showError: boolean }; title?: string }) =>
+    state.showError ? (
+      <div data-testid="identity-degrade-banner">{title ?? 'degraded'}</div>
+    ) : null,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -113,5 +119,67 @@ describe('GroupList terminal identity failure (WR-03)', () => {
     // Normal pre-resolution loading path is untouched.
     expect(await screen.findByText('Loading groups...')).toBeInTheDocument();
     expect(screen.queryByTestId('identity-degrade-banner')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Req 6 / UI-SPEC §9.2 + threat T-88-18-01 (plan 88-18).
+ *
+ * The groups fetch used to `setGroups([])` on catch, so a FAILED request rendered
+ * "No groups yet!" — telling someone who may well own several groups that they had
+ * none, on the app's landing surface. Identity failure (WR-03 above) and groups-fetch
+ * failure are different causes and both must beat the empty copy.
+ */
+describe('GroupList empty vs failed groups fetch (Req 6 / T-88-18-01)', () => {
+  it('renders the shared EmptyState with the §9.2 copy when the caller has no groups', async () => {
+    h.selfUuid = SELF_UUID;
+    (groupsAPI.getUserGroups as Mock).mockResolvedValue([]);
+
+    render(<GroupList {...listProps} onCreateGroup={vi.fn()} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'No groups yet' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'A group is your people plus the games you play. Make one and invite them.'
+      )
+    ).toBeInTheDocument();
+    // the hand-rolled two-line block is gone
+    expect(screen.queryByText('No groups yet!')).toBeNull();
+    expect(
+      screen.queryByText('Create your first group to get started.')
+    ).toBeNull();
+  });
+
+  it('keeps the header CTA AND offers one in the empty state (deliberate, unlike OpenPollsList)', async () => {
+    h.selfUuid = SELF_UUID;
+    (groupsAPI.getUserGroups as Mock).mockResolvedValue([]);
+
+    render(<GroupList {...listProps} onCreateGroup={vi.fn()} />);
+    await screen.findByRole('heading', { name: 'No groups yet' });
+
+    // The header button is persistent panel chrome; the empty state's is the
+    // in-body next step. Both, on purpose — see the DECISION marker in grouplist.js.
+    expect(
+      screen.getAllByRole('button', { name: 'Create new group' })
+    ).toHaveLength(2);
+    // ...but the tutorial hook must still resolve to exactly ONE element.
+    expect(
+      document.querySelectorAll('[data-tutorial="create-group-btn"]')
+    ).toHaveLength(1);
+  });
+
+  it('renders the error treatment and NOT the empty copy when the groups fetch rejects', async () => {
+    h.selfUuid = SELF_UUID;
+    (groupsAPI.getUserGroups as Mock).mockRejectedValue(new Error('boom'));
+
+    render(<GroupList {...listProps} onCreateGroup={vi.fn()} />);
+
+    expect(
+      await screen.findByText("We couldn't load your groups")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'No groups yet' })).toBeNull();
+    expect(screen.queryByText('No groups yet!')).toBeNull();
   });
 });

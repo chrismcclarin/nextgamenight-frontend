@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTimezone } from '../components/TimezoneProvider';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
 /**
  * Format event date/time in relative + compact format with timezone support.
@@ -102,8 +104,15 @@ function formatRelativeDateTime(dateStr, timezone) {
  *   Resolved at the parent via the shared useSelfIdentity() query (selfUuid);
  *   Phase 87.3-07 (D-02). When null/missing, no event is marked as guest
  *   (graceful default).
+ * @param {Object} [props.errorState=null] - Phase 88-18 (Req 6 / T-88-18-01):
+ *   the OWNER of the events fetch passes its `useFetchErrorState` result here so
+ *   a failed load renders the shared error treatment INSIDE this card instead of
+ *   falling through to "nothing on the calendar". The card does not fetch, so it
+ *   cannot derive this itself.
+ * @param {React.ReactNode} [props.action=null] - Optional caller-owned CTA for
+ *   the empty state, so any gating stays at the call site.
  */
-export default function UpcomingEventsCard({ events, showGroupName = false, loading = false, viewerDbUserId = null }) {
+export default function UpcomingEventsCard({ events, showGroupName = false, loading = false, viewerDbUserId = null, errorState = null, action = null }) {
   const router = useRouter();
   const { timezone } = useTimezone();
   const [expanded, setExpanded] = useState(false);
@@ -139,8 +148,27 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
 
       {loading ? (
         <p className="text-sm text-content-muted mt-2">Loading...</p>
+      ) : errorState?.showError ? (
+        /* DECISION Phase 88-18 (Req 6 / T-88-18-01): a failed events fetch renders the shared
+           error treatment here, checked BEFORE the empty branch. The parent used to swallow the
+           failure in a `console.error` and hand this card an empty array, so the card printed
+           "No upcoming events" at someone whose calendar had simply failed to load. Empty and
+           failed are different facts (UI-SPEC 9.2). Ordering is load-bearing: an errored fetch
+           also has zero events, so flipping these two branches silently restores the bug. */
+        <div className="mt-2">
+          <FetchErrorBanner
+            state={errorState}
+            title="We couldn't load your upcoming events"
+            reportContext="Upcoming events card (home page)"
+          />
+        </div>
       ) : upcomingEvents.length === 0 ? (
-        <p className="text-sm text-content-muted mt-2">No upcoming events</p>
+        <EmptyState
+          icon="CalendarDays"
+          heading="Nothing on the calendar"
+          body="Plan a game night and it'll show up here."
+          action={action ?? undefined}
+        />
       ) : (
         <div className="mt-2">
           {displayEvents.map(event => {

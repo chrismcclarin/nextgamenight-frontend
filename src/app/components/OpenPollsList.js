@@ -11,6 +11,10 @@ import {
 } from '../../lib/schemas/prompts';
 import KebabMenu from './KebabMenu';
 import StartPollModal from './StartPollModal';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Button } from '../../components/ui/Button';
+import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
 /**
  * OpenPollsList — Phase 71.2 (POLL-01 / D-UI-01..04)
@@ -38,7 +42,7 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
   // (F-826: 2x → 1x). Role gate mirrors the parent's pending exclusion (the
   // backend GET /prompts/open requires active membership) and is Boolean-wrapped
   // so `enabled` is never undefined.
-  const { data, isPending } = useQuery({
+  const openPollsQuery = useQuery({
     queryKey: promptKeys.openPolls(groupId),
     queryFn: softFailPromptQueryFn(
       openPromptsSchema,
@@ -49,8 +53,17 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
     enabled: Boolean(groupId) && Boolean(userRole) && userRole !== 'pending',
   });
 
+  const { data, isPending } = openPollsQuery;
   const loading = isPending;
   const prompts = data?.prompts || [];
+
+  /* DECISION Phase 88-18 (Req 6 / T-88-18-01, UI-SPEC 9.2): a HARD fetch failure now renders the
+     shared fetch-error treatment instead of falling through to the empty state. `softFailPromptQueryFn`
+     only soft-fails a PARSE failure to EMPTY_OPEN_PROMPTS — a network/4xx/5xx rejection still rejects,
+     leaving `data` undefined and `prompts` at [], which used to print "no active check-ins" at someone
+     whose request had failed. Empty and failed are different facts and get different surfaces; do not
+     re-merge these two branches. */
+  const pollsErrorState = useFetchErrorState(openPollsQuery);
 
   // Post-write cache invalidation replaces the old loadPrompts() refetch — keeps
   // the open-polls list fresh after a direct-API write (A1/A4).
@@ -78,9 +91,18 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
     }
   };
 
+  const showEmptyState = !loading && !pollsErrorState.showError && prompts.length === 0;
+
   return (
     <div>
-      {canCreate && (
+      {/* DECISION Phase 88-18 (Req 6): this header CTA is SUPPRESSED while the empty state is
+          showing, chosen OVER rendering both — the EmptyState carries the very same
+          "+ Start a check-in" action six lines below it, and two identical primary buttons a
+          finger-width apart is noise on a 375px phone. It is NOT suppressed while loading or
+          erroring, so the action never disappears from under someone mid-render. grouplist.js
+          deliberately keeps BOTH, because its button lives in a persistent panel header rather
+          than directly above the list body. Restoring the unconditional render is a decision. */}
+      {canCreate && !showEmptyState && (
         /* DECISION Phase 87.8 (D-13/D-14/AF-2): per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor — the global floor was considered and REJECTED because it would silently distort ~15 shipped compact/icon `.btn` sites (AF-2, e.g. BrowseMoreModal's 32x32 squares); 44px chosen OVER Material's 48dp, surfaced and consciously declined (D-14). The global `.btn` sizing question (all 210 sites) stays with Phase 88 (DEF-1) — this is a decision, not an oversight. No `min-w-11`: this wide text button already exceeds 44px rendered width (151px measured). */
         <button
           type="button"
@@ -93,11 +115,33 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
 
       {loading ? (
         <p className="text-content-muted text-sm py-4 text-center">Loading check-ins...</p>
+      ) : pollsErrorState.showError ? (
+        <FetchErrorBanner
+          state={pollsErrorState}
+          title="We couldn't load the check-ins"
+          reportContext="Open availability check-ins list (group page)"
+        />
       ) : prompts.length === 0 ? (
-        // D-UI-03: unified empty-state copy for ALL roles (admin/member alike).
-        <p className="text-content-muted text-sm py-8 text-center">
-          No active check-ins. Start one to find a time that works for everyone.
-        </p>
+        // D-UI-03: unified empty-state COPY for ALL roles (admin/member alike);
+        // only the CTA is role-gated, and that gate stays here at the call site.
+        <EmptyState
+          icon="Vote"
+          heading="No check-ins running"
+          body="Start one and everyone picks the nights that work — you'll see the overlap."
+          action={
+            canCreate ? (
+              /* 44px floor carried per-CTA, matching the 87.8 D-13/D-14 marker on the
+                 header button above — same action, same touch target. */
+              <Button
+                variant="primary"
+                className="min-h-11"
+                onClick={() => setShowStartPoll(true)}
+              >
+                + Start a check-in
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <ul className="space-y-2">
           {prompts.map((p) => (

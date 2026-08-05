@@ -12,6 +12,8 @@ import {
 import ScheduleForm from './ScheduleForm';
 import ScheduleList from './ScheduleList';
 import { Modal } from './Modal';
+import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
 /**
  * PromptScheduleManager - Main container for schedule management
@@ -42,7 +44,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
   // The API only requires active membership (backend isActiveMember gate); the
   // Boolean(isAdmin) gate below is a deliberate FE/product choice (admin-only
   // manager surface), NOT an API constraint.
-  const { data, isPending } = useQuery({
+  const settingsQuery = useQuery({
     queryKey: promptKeys.settings(groupId),
     queryFn: softFailPromptQueryFn(
       promptSettingsSchema,
@@ -52,6 +54,15 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
     ),
     enabled: Boolean(groupId) && Boolean(isAdmin),
   });
+
+  const { data, isPending } = settingsQuery;
+  /* DECISION Phase 88-18 (Req 6 / T-88-18-01): a HARD settings-fetch failure renders the shared
+     fetch-error treatment here rather than being handed to ScheduleList as an empty array.
+     `softFailPromptQueryFn` soft-fails only a PARSE failure to EMPTY_PROMPT_SETTINGS; a network
+     or 4xx/5xx rejection leaves `data` undefined, and `schedules` fell through to ScheduleList's
+     "No schedules yet" — telling an admin their group had no schedules when the request had
+     simply failed. Do not re-merge the two branches. */
+  const settingsErrorState = useFetchErrorState(settingsQuery);
 
   const loading = isPending;
   const schedules = data?.schedules || [];
@@ -127,8 +138,13 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
         </div>
       )}
 
-      {/* Create button (owner/admin only) */}
-      {canManageSchedules && !showForm && !loading && (
+      {/* Create button (owner/admin only).
+          DECISION Phase 88-18 (Req 6): SUPPRESSED while the empty state is showing, chosen OVER
+          rendering both — ScheduleList's EmptyState carries the same create action a few lines
+          below, and two identical primary buttons a finger-width apart is noise on a phone. It
+          stays visible while loading and while erroring, so the action never vanishes mid-render.
+          Restoring the unconditional render is a decision, not a cleanup. */}
+      {canManageSchedules && !showForm && !loading && !settingsErrorState.showError && schedules.length > 0 && (
         /* DECISION Phase 87.8 (D-13/D-14/AF-2): per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor — rejected because it would silently distort ~15 shipped compact/icon `.btn` sites (AF-2); 44px chosen OVER Material's 48dp, consciously declined (D-14). Global `.btn` sizing stays with Phase 88 (DEF-1) — a decision, not an oversight. No `min-w-11`: wide text button, 141px measured. */
         <button
           onClick={handleCreate}
@@ -159,6 +175,12 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
         <div className="text-center py-12">
           <p className="text-content-muted">Loading schedules...</p>
         </div>
+      ) : settingsErrorState.showError ? (
+        <FetchErrorBanner
+          state={settingsErrorState}
+          title="We couldn't load your schedules"
+          reportContext="Recurring availability schedules (group planning)"
+        />
       ) : (
         // List view (the only view as of Phase 81 CHKIN-04)
         <ScheduleList
@@ -167,6 +189,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
           onEdit={canManageSchedules ? handleEdit : null}
           onToggle={canManageSchedules ? handleToggle : null}
           onDelete={canManageSchedules ? handleDelete : null}
+          onCreate={canManageSchedules ? handleCreate : null}
         />
       )}
 
