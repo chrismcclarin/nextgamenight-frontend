@@ -4,6 +4,8 @@ import Link from 'next/link';
 import SafeImage from './SafeImage';
 import { formatDate } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Button } from '../../components/ui/Button';
 
 function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, timezone }) {
     return (
@@ -238,18 +240,51 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
 
     if (!games || games.length === 0) {
         return (
-            <div className="text-center py-12 bg-surface-page rounded-card border-2 border-dashed border-line">
-                <p className="text-content-secondary text-lg mb-2">No games played yet</p>
-                <p className="text-content-muted mb-4">Start tracking your game sessions!</p>
-                {userRole && userRole !== 'pending' && (
-                    <button
-                        onClick={onAddEvent}
-                        className="btn btn-primary px-6 py-2 font-semibold"
-                    >
-                        Add Your First Game Event
-                    </button>
-                )}
-            </div>
+            /* DECISION Phase 88-18 (E-25): this copy is play-SESSION-HISTORY copy ("No game nights
+               logged yet"), chosen by the OWNER over UI-SPEC 9.2's originally-approved row for this
+               surface — "No games on the shelf yet" / "Add what the group actually owns — it's what we
+               suggest from on game night." / CTA "Add a game". That row described an owned-games
+               SHELF, which is not this surface: `GroupGamesList` renders games the group has PLAYED
+               (play_count, last_played, winners, pickers), and its CTA `onAddEvent` opens the
+               create-EVENT modal (groupHomePage/page.js passes `onAddEvent={toggleEventModal}`).
+               `GroupLibrary` is the shelf and carries its own 9.2 row and its own "This library is
+               empty" copy. The contract row had been written from this component's NAME, and shipping
+               it verbatim would have advertised a feature this surface does not have.
+
+               The owner ruled option-a at the plan's Task 1 checkpoint and approved these exact
+               strings; 9.2's row was amended to match, so contract and code now agree. A later phase
+               reconciling code against the contract will therefore find no discrepancy — but if an
+               older copy of that row surfaces, do NOT "restore" the shelf wording here. That is a
+               regression, not a cleanup.
+
+               The `userRole && userRole !== 'pending'` gate is unchanged and stays HERE at the call
+               site: `EmptyState.action` is a ReactNode precisely so the primitive never learns about
+               roles.
+
+               Not done here, on purpose: this surface does not fetch — `games` arrives as a prop and
+               the parent's catch does `setGamesList([])` (groupHomePage/page.js), so a failed request
+               still lands in this branch. Plan 88-25 (Req 14) owns `groupHomePage/page.js` and is
+               where that split belongs; the shape to copy is `UpcomingEventsCard`, which takes an
+               `errorState` prop checked BEFORE its empty branch. */
+            <EmptyState
+                icon="Dices"
+                heading="No game nights logged yet"
+                body="Log a night you played and the group's history builds up here."
+                action={
+                    userRole && userRole !== 'pending' ? (
+                        /* 44px floor carried per-CTA, matching the other 88-18 adopters
+                           (87.8 D-13/D-14): no global `.btn` min-height, which would distort
+                           the shipped compact/icon buttons. */
+                        <Button
+                            variant="primary"
+                            className="min-h-11"
+                            onClick={onAddEvent}
+                        >
+                            Log a game night
+                        </Button>
+                    ) : undefined
+                }
+            />
         );
     }
 
