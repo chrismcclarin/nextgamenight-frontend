@@ -287,6 +287,10 @@
   --color-surface-nav-hover: var(--color-bg-nav-hover);
   --color-surface-header: var(--color-bg-header);
   --color-surface-header-hover: var(--color-bg-header-hover);
+  /* Phase 88-04 (D-15 / UI-SPEC §9.1): the EmptyState glyph circle's accent tint. Bridged like
+     every other surface — theme key here, runtime property `--color-bg-accent-subtle` in the
+     :root/.dark blocks, so the two names never collide. */
+  --color-surface-accent-subtle: var(--color-bg-accent-subtle);
 
   /* content   (tailwind.config.js:41-48) */
   --color-content-primary: var(--color-text-primary);
@@ -513,6 +517,14 @@
   --color-bg-elevated: #ffffff;
   --color-bg-overlay: rgba(0, 0, 0, 0.5);
   --color-bg-input: #ffffff;
+  /* DECISION Phase 88-04 (D-15 / UI-SPEC §9.1): the EmptyState glyph circle gets its OWN accent
+     tint token rather than reusing `--color-status-warning-subtle` (#f9ebda light / #423e36 dark,
+     88-01 D-33). Rejected alternative — and it is the near-miss a future reader would "simplify"
+     into — because the warning tint is a STATUS colour: reusing it would say "something is wrong"
+     on a surface whose whole message is "nothing here yet" (§9.2 forbids conflating empty with
+     error). The values are UI-SPEC §9.1's: light amber-100, dark a warm amber-over-purple-900
+     literal with no palette step to point at. */
+  --color-bg-accent-subtle: var(--amber-100);
 
   /* Brand / Navigation */
   --color-bg-nav: var(--purple-900);
@@ -680,6 +692,10 @@
   --color-bg-elevated: var(--purple-800);
   --color-bg-overlay: rgba(0, 0, 0, 0.7);
   --color-bg-input: var(--purple-800);
+  /* Phase 88-04 (D-15 / UI-SPEC §9.1) — OPAQUE literal, matching 88-01's D-32/D-33 treatment of
+     the status tints: an `rgba()` amber over the card would shift with whatever sits behind it.
+     See the full DECISION marker at the light declaration above. */
+  --color-bg-accent-subtle: #3a3320;
 
   --color-bg-nav: var(--purple-950);
   --color-bg-nav-hover: var(--purple-900);
