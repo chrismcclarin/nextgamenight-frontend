@@ -172,10 +172,11 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                         /* DECISION Phase 88-18 (Req 6, UI-SPEC 9.2): NO `action` is passed, so this
                            card's empty state ships without the contract row's "Plan Game Session"
                            CTA. That omission is deliberate, not an oversight. Every planning route
-                           needs a group: `groupPlanning/page.js:61-66` gates fetchGroup /
-                           fetchGroupEvents / fetchHeatmapData / fetchUserRole on `groupId`, and the
+                           needs a group: `groupPlanning/page.js:59-68` gates fetchGroup /
+                           fetchGroupEvents / fetchHeatmapData / fetchUserRole on `groupId` (guard at
+                           :60, and each of those four self-gates on `!groupId` as well), and the
                            two shipped "Plan Game Session" entry points
-                           (`groupHomePage/page.js:409` and the groupPlanning breadcrumb) both carry
+                           (`groupHomePage/page.js:420` and the groupPlanning breadcrumb) both carry
                            `?group_id=`. UserHome has no group in scope — the group list to the left
                            fetches its own — so a CTA here could only link to a group-less
                            groupPlanning page that renders empty sections. The body copy carries the
