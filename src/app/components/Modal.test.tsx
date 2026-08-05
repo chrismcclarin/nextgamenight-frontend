@@ -63,6 +63,21 @@ describe('Modal', () => {
     expect(screen.getByRole('dialog')).toHaveClass('max-w-4xl');
   });
 
+  // DEF-88-17-01 (closed by 88-16). The 87.8 DEC-3 12px phone gutter used to be
+  // written ONLY in a `@media (width < 48rem)` rule keyed to the legacy overlay
+  // class, so it evaporated for each surface as it migrated onto this primitive.
+  // It now lives on the content surface itself. jsdom computes no layout, so the
+  // pin is on the class contract — which is also the thing a future "tidy" would
+  // delete. Both halves matter: the phone inset AND its `md:` neutraliser.
+  it('carries the 12px-per-side phone gutter and drops it at md (DEF-88-17-01)', () => {
+    renderModal();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveClass('w-[calc(100%-1.5rem)]');
+    expect(dialog).toHaveClass('md:w-full');
+    // A bare `w-full` at the phone tier is the regression this closes.
+    expect(dialog.className.split(/\s+/)).not.toContain('w-full');
+  });
+
   it('renders a single Close affordance with an accessible name that fires onClose', async () => {
     const user = userEvent.setup();
     const { onClose } = renderModal();

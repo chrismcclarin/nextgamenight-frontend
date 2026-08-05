@@ -153,7 +153,27 @@ function ModalRoot({
           // Reset shadcn Dialog defaults (grid/gap-4/p-6/bg-background/max-w-lg)
           // to the `.modal-content` chrome: card surface, 12px radius, 90vh cap,
           // flex column with the Body owning the scroll.
-          'flex max-h-[90vh] w-full flex-col gap-0 overflow-hidden rounded-[12px] bg-card p-0',
+          //
+          /* DECISION Phase 88-16 (DEF-88-17-01): `w-[calc(100%-1.5rem)] md:w-full`
+             — NOT a bare `w-full`. This is the 87.8 DEC-3 phone gutter, restored
+             at the primitive. DEC-3 wrote 12px-per-side into a `@media (width <
+             48rem)` rule keyed to the LEGACY overlay class (globals.css), so
+             every surface this phase migrates off that class silently loses the
+             gutter and goes edge-to-edge at 375px — a Phone-Forward regression
+             the whole fleet inherits one migration at a time, which is why no
+             single adoption plan could see it. 1.5rem total = 0.75rem/side =
+             exactly DEC-3's value; `md:w-full` makes it inert at >=48rem, the
+             same breakpoint DEC-3 used, so desktop geometry is untouched.
+             Chosen OVER: (a) a horizontal margin/padding, which would either
+             fight `translate-x-[-50%]` centering or eat into the content box
+             the Body already pads; (b) leaving it to 88-30/88-31 per the
+             original deferral, which would ship the regression through UAT.
+             A Tailwind utility IS safe here specifically because nothing
+             unlayered targets the Radix dialog (`grep -n "radix\|data-\[state\|
+             dialog" globals.css` -> no matches) — unlike the `.btn` case DEC-2
+             fixed. Reverting to `w-full` re-opens DEF-88-17-01; that is a
+             decision, not a cleanup. Pinned by Modal.test.tsx. */
+          'flex max-h-[90vh] w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden rounded-[12px] bg-card p-0 md:w-full',
           SIZE_CLASS[size],
           className
         )}
