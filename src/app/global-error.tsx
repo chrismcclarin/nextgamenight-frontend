@@ -10,6 +10,31 @@
  * file is intentionally minimal. It still reports the error to Sentry.
  */
 
+/* DECISION Phase 88-09 (D-20): this file stays DELIBERATELY inline-styled and deliberately
+   OFF the shared error-look primitive in `src/components/ui/` — the one the eleven route
+   `error.tsx` files added in 88-09 all render. Routing this file through it too is the
+   REJECTED alternative, and it is exactly the "one error look, converge everything" cleanup a
+   later reader will reach for, because every other boundary in the app now renders that
+   primitive. (The identifier is spelled out nowhere below on purpose: this file must never
+   import it, and 88-09's own gate asserts that by name-grepping the whole file.)
+
+   WHY THE CONVERGENCE LOSES: `global-error.tsx` REPLACES `<html>`/`<body>`, so it is the one
+   boundary that renders with no guarantee that the app's stylesheet, theme variables or fonts
+   ever loaded — a throw inside the root layout is precisely the case where they did not. The
+   shared primitive is built entirely on Tailwind utilities and semantic tokens
+   (`bg-surface-page`, `border-line-strong`, `text-content-primary`), so importing it here would
+   trade a plain-but-readable last-resort screen for an unstyled one at the exact moment the app
+   is already broken. Inline styles are the point, not an oversight.
+
+   CONSEQUENCE FOR REQ 2's RAW-HEX GREP GATE: the 6 raw hex values below (`#555`, `#111` x2,
+   `#fff` x2, `#ccc`) are a PERMANENT, justified exemption from that gate, on the same
+   scoped-rationale footing as D-27's `lib/colorUtils.js` entry — never a bare allowlist line.
+   They cannot be tokenized for the reason above: a CSS custom property resolves to nothing if
+   the stylesheet that declares it never loaded, which would leave this screen with no colours
+   at all. The gate added in plan 88-29 MUST name `src/app/global-error.tsx` in its exemption
+   list and carry this rationale with it. If a future pass "fixes" these hexes, it has broken
+   the last-resort net without any test noticing — that is a decision, not a cleanup. */
+
 import * as Sentry from '@sentry/nextjs';
 import { useEffect } from 'react';
 
