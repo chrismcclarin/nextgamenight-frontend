@@ -6,6 +6,7 @@ import { promptSettingsAPI } from '../../lib/api';
 import { DAYS_OF_WEEK, TOKEN_EXPIRY_OPTIONS, DEADLINE_DAY_OPTIONS, scheduleSchema } from '../../lib/scheduleFormSchema';
 import { useAppForm } from '../../lib/useAppForm';
 import { FormField } from './form/FormField';
+import { Input, SelectControl } from '@/components/ui/Input';
 import MemberSelector from './MemberSelector';
 import GameComboInput from './GameComboInput';
 import { Modal } from './Modal';
@@ -237,25 +238,18 @@ export default function ScheduleForm({
         <form onSubmit={handleAppSubmit(onSubmit)}>
           {/* Day of Week */}
           <FormField label="Day of Week" error={errors.schedule_day_of_week?.message} className="mb-4">
-            <select
-              {...register('schedule_day_of_week', { valueAsNumber: true })}
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
-            >
+            <SelectControl {...register('schedule_day_of_week', { valueAsNumber: true })}>
               {DAYS_OF_WEEK.map((day) => (
                 <option key={day.value} value={day.value}>
                   {day.label}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </FormField>
 
           {/* Time */}
           <FormField label="Time" error={errors.schedule_time?.message} className="mb-4">
-            <input
-              type="time"
-              {...register('schedule_time')}
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
-            />
+            <Input type="time" {...register('schedule_time')} />
           </FormField>
 
           {/* Timezone */}
@@ -269,11 +263,10 @@ export default function ScheduleForm({
               </p>
             }
           >
-            <input
+            <Input
               type="text"
               {...register('schedule_timezone')}
               placeholder="America/New_York"
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
             />
           </FormField>
 
@@ -288,16 +281,13 @@ export default function ScheduleForm({
               </p>
             }
           >
-            <select
-              {...register('default_deadline_hours', { valueAsNumber: true })}
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
-            >
+            <SelectControl {...register('default_deadline_hours', { valueAsNumber: true })}>
               {DEADLINE_DAY_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </FormField>
 
           {/* Token Expiry */}
@@ -311,16 +301,13 @@ export default function ScheduleForm({
               </p>
             }
           >
-            <select
-              {...register('default_token_expiry_hours', { valueAsNumber: true })}
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
-            >
+            <SelectControl {...register('default_token_expiry_hours', { valueAsNumber: true })}>
               {TOKEN_EXPIRY_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </FormField>
 
           {/* Game Selection */}
@@ -357,7 +344,7 @@ export default function ScheduleForm({
               </p>
             }
           >
-            <input
+            <Input
               type="number"
               {...register('min_participants', {
                 valueAsNumber: true,
@@ -365,7 +352,6 @@ export default function ScheduleForm({
               })}
               min={1}
               placeholder="Leave blank to use game minimum"
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
             />
           </FormField>
 
@@ -380,12 +366,11 @@ export default function ScheduleForm({
               </p>
             }
           >
-            <input
+            <Input
               type="text"
               {...register('template_name')}
               onFocus={() => { templateNameDirtyRef.current = true; }}
               placeholder="Auto-generated from settings"
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
             />
           </FormField>
 

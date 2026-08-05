@@ -4,6 +4,7 @@ import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { feedbackAPI } from '../../lib/api';
 import { DialogTitle } from '../../components/ui/dialog';
 import { Modal } from './Modal';
+import { Input, Textarea, SelectControl } from '@/components/ui/Input';
 
 const MAX_FILE_SIZE_MB = 2;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -157,17 +158,16 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
               name cannot drift apart. */}
           <div>
             <label htmlFor="feedback-form-type" className="block text-sm font-medium text-content-secondary mb-2">Type</label>
-            <select
+            <SelectControl
               id="feedback-form-type"
               value={type}
               onChange={(e) => setType(e.target.value)}
-              className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
               required
             >
               <option value="bug">Bug Report</option>
               <option value="suggestion">Suggestion</option>
               <option value="feature">Feature Request</option>
-            </select>
+            </SelectControl>
           </div>
 
           {/* Subject */}
@@ -175,13 +175,12 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
             <label htmlFor="feedback-form-subject" className="block text-sm font-medium text-content-secondary mb-2">
               Subject <span className="text-red-500">*</span>
             </label>
-            <input
+            <Input
               id="feedback-form-subject"
               type="text"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               placeholder="Brief description of the issue or suggestion"
-              className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
               required
               maxLength={200}
             />
@@ -192,13 +191,13 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
             <label htmlFor="feedback-form-description" className="block text-sm font-medium text-content-secondary mb-2">
               Description <span className="text-red-500">*</span>
             </label>
-            <textarea
+            <Textarea
               id="feedback-form-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Please provide as much detail as possible..."
               rows={6}
-              className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring resize-none"
+              className="resize-none"
               required
               maxLength={2000}
             />

@@ -18,6 +18,7 @@ import { utcToWallClock, wallClockToUtc } from '../../lib/tzUtils';
 import TimezoneNudgeBanner from './TimezoneNudgeBanner';
 import { Modal } from './Modal';
 import { toast } from 'sonner';
+import { Input, Textarea } from '@/components/ui/Input';
 
 function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId = null }) {
   // Identity: send the caller's resolved Users.id UUID to searchAll (via the two
@@ -890,13 +891,12 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   <label htmlFor="start_date" className="block text-sm font-medium mb-1 text-content-primary">
                     Start Date & Time {!editingEvent && <span className="text-red-500">*</span>}
                   </label>
-                  <input
+                  <Input
                     type="datetime-local"
                     id="start_date"
                     value={newEvent.start_date}
                     onChange={handleChange}
                     required={!editingEvent}
-                    className="w-full p-2 border rounded-sm text-content-primary bg-surface-input"
                     max="9999-12-31T23:59"
                   />
                 </div>
@@ -914,12 +914,12 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                     const durationOverMax = newEvent.duration_minutes && Number(newEvent.duration_minutes) > 720;
                     return (
                       <>
-                        <input
+                        <Input
                           type="number"
                           id="duration_minutes"
                           value={newEvent.duration_minutes || ''}
                           onChange={handleChange}
-                          className={`w-full p-2 border rounded-sm text-content-primary bg-surface-input ${durationOverMax ? 'border-status-error' : ''}`}
+                          className={durationOverMax ? 'border-status-error' : ''}
                           placeholder="Enter duration in minutes"
                           required={!editingEvent}
                           min="1"
@@ -943,12 +943,11 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 RSVP Deadline
               </label>
               <p className="text-xs text-content-muted mb-1">Required for game voting ballot</p>
-              <input
+              <Input
                 type="datetime-local"
                 id="rsvp_deadline"
                 value={newEvent.rsvp_deadline || ''}
                 onChange={handleChange}
-                className="w-full p-2 border rounded-sm text-content-primary bg-surface-input"
                 max={newEvent.start_date && newEvent.start_date < '9999-12-31T23:59' ? newEvent.start_date : '9999-12-31T23:59'}
               />
             </div>
@@ -967,10 +966,25 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
           {/* Participants Section */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-content-primary">
+            {/* DECISION Phase 88-21 (DEF-88-10-01, site 3 of 3): this became a `<span id>` +
+                `role="group" aria-labelledby`, NOT a `<label htmlFor>` like the other two sites
+                this plan closed in `ParticipantRow.js`. It names a SECTION of participant rows —
+                each row carries three controls of its own — so `htmlFor` would have had to point
+                at exactly one of them and would have announced "Participants" over (say) the
+                first row's Score box while leaving the section itself unnamed. Same treatment
+                88-10 gave "Days of Week" in `userProfile/page.js`. Converting this to `htmlFor`
+                to "match the other two" is a decision, not a cleanup. */}
+            <span
+              id="participants-section-label"
+              className="block text-sm font-medium mb-2 text-content-primary"
+            >
               Participants <span className="text-red-500">*</span>
-            </label>
-            <div className="space-y-2 max-h-60 overflow-y-auto border border-line p-2 rounded-sm bg-surface-input">
+            </span>
+            <div
+              role="group"
+              aria-labelledby="participants-section-label"
+              className="space-y-2 max-h-60 overflow-y-auto border border-line p-2 rounded-sm bg-surface-input"
+            >
               {newEvent.participants.map((participant, index) => (
                 <ParticipantRow
                   key={index}
@@ -1001,12 +1015,11 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             <label htmlFor="comments" className="block text-sm font-medium mb-1 text-content-primary">
               Comments
             </label>
-            <textarea
+            <Textarea
               id="comments"
               value={newEvent.comments}
               onChange={handleChange}
               rows="3"
-              className="w-full p-2 border rounded-sm text-content-primary bg-surface-input"
               placeholder="Optional notes about this game session"
             />
           </div>

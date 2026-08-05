@@ -1,10 +1,22 @@
 'use client';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { invitesAPI } from '../../lib/api';
+import { Input } from '@/components/ui/Input';
 
 export default function ParticipantRow({ participant, index, groupMembers, onParticipantChange, onToggleParticipant, isAdmin = false, group_id = null }) {
   const [inviteStatus, setInviteStatus] = useState(null); // null | 'sending' | 'sent' | 'error'
   const [inviteError, setInviteError] = useState(null);
+  /* DECISION Phase 88-21 (DEF-88-10-01): control ids come from `useId`, NOT from the `index`
+     prop. Chosen OVER `participant-${index}-score`, which is the obvious shape and is what the
+     surrounding code already has in hand. Index-derived ids are only unique WITHIN one list, and
+     this row renders in more than one place; two participant lists on a page would mint duplicate
+     ids and `htmlFor` would then resolve to whichever control the browser saw first — silently
+     mislabelling the second list. Re-deriving these from `index` is a decision, not a cleanup. */
+  const rowId = useId();
+  const nameId = `${rowId}-name`;
+  const scoreId = `${rowId}-score`;
+  const factionId = `${rowId}-faction`;
+  const newPlayerId = `${rowId}-new-player`;
 
   const handleInviteToGroup = async () => {
     if (!participant.email || !group_id) return;
@@ -31,7 +43,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             phone-only twin of the sm:+ checkbox below; same state, so the two
             never disagree. */}
         <div className="flex items-center justify-between mb-1">
-          <label className="text-xs text-content-secondary block">Participant Name</label>
+          <label htmlFor={nameId} className="text-xs text-content-secondary block">Participant Name</label>
           <label className="flex items-center gap-1 sm:hidden">
             <input
               type="checkbox"
@@ -54,7 +66,8 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
         ) : (
           // Editable input for custom participants
           <div className="flex items-center gap-2">
-            <input
+            <Input
+              id={nameId}
               type="text"
               value={participant.username || ''}
               onChange={(e) => {
@@ -80,7 +93,6 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
                 }
               }}
               placeholder="Type name (group member or custom)"
-              className="w-full p-2 border border-line rounded-sm text-content-primary bg-surface-input text-sm"
             />
             {participant.is_guest && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 shrink-0">
@@ -102,37 +114,54 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
           {/* block at phone: label ABOVE the box (owner round 3) — inline-left
               labels were also silently eating Faction's stretch room. sm:+ keeps
               the original inline-left look. */}
-          <label className="text-xs text-content-primary block sm:inline">Score</label>
-          <input
+          <label htmlFor={scoreId} className="text-xs text-content-primary block sm:inline">Score</label>
+          {/* DECISION Phase 88-21 (Req 1): adopts `Input` for the 16px floor but KEEPS `w-16 p-1`
+              as an override, OVER taking the primitive's default `w-full p-2`. Those two values
+              are the owner's 2026-08-04 round-2/round-3 phone tuning (score trimmed to 4-digit
+              width so Score + Faction + Remove share ONE line at 375px instead of stranding
+              Remove below) — see the block comment above this row. Widening them back to the
+              primitive default re-breaks that layout; it is a decision, not a cleanup. The
+              primitive's `max-md:min-h-11` touch floor IS taken, because that grows the row
+              vertically, which the tuning never constrained. */}
+          <Input
+            id={scoreId}
             type="number"
             step="0.01"
             value={participant.score || ''}
             onChange={(e) => onParticipantChange(index, 'score', e.target.value)}
-            className="w-16 p-1 border border-line rounded-sm text-content-primary bg-surface-input"
+            className="w-16 p-1"
             placeholder="0"
           />
         </div>
 
         <div className="flex-1 min-w-24 sm:flex-none">
-          <label className="text-xs text-content-primary block sm:inline">Faction</label>
-          <input
+          <label htmlFor={factionId} className="text-xs text-content-primary block sm:inline">Faction</label>
+          <Input
+            id={factionId}
             type="text"
             value={participant.faction || ''}
             onChange={(e) => onParticipantChange(index, 'faction', e.target.value)}
-            className="w-full sm:w-24 p-1 border border-line rounded-sm text-content-primary bg-surface-input"
+            className="w-full sm:w-24 p-1"
             placeholder="Optional"
           />
         </div>
 
         {/* sm:+ only — the phone twin lives on the title line above. */}
         <div className="hidden sm:flex items-center">
+          {/* [Rule 2 - a11y] This label followed the checkbox with no `htmlFor` and did not wrap
+              it, so the control shipped with NO accessible name (axe `label`, WCAG 4.1.2 A) — a
+              screen reader announced "checkbox, not checked" with no indication of what it does.
+              Its phone twin ~90 lines above was always fine because that one WRAPS its input.
+              DEF-88-10-01's sweep regex only matches label-BEFORE-control, which is why this
+              site is not on its list of 14. */}
           <input
+            id={newPlayerId}
             type="checkbox"
             checked={participant.is_new_player || false}
             onChange={(e) => onParticipantChange(index, 'is_new_player', e.target.checked)}
             className="mr-1"
           />
-          <label className="text-xs text-content-primary">New Player</label>
+          <label htmlFor={newPlayerId} className="text-xs text-content-primary">New Player</label>
         </div>
 
         {/* Invite to group button - shown for guest participants when current user is admin/owner */}
