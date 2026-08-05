@@ -584,10 +584,12 @@ describe('ConfirmDialog — typed tier', () => {
 
   it('renders a programmatically labelled type-to-confirm input', () => {
     renderConfirmDialog({ ...typedProps, confirmDisabled: () => true });
-    const input = screen.getByLabelText(/Tuesday Crew/i);
+    const input = screen.getByLabelText(/To confirm, type/i);
     expect(input).toBeInTheDocument();
     expect(input.tagName).toBe('INPUT');
     expect(input).toHaveAttribute('id');
+    // The name must say WHAT to type, not just that something must be typed.
+    expect(input).toHaveAccessibleName(/Tuesday Crew/);
   });
 
   it('keeps the confirm disabled until the typed value matches exactly', async () => {
@@ -600,7 +602,7 @@ describe('ConfirmDialog — typed tier', () => {
     const confirmButton = screen.getByRole('button', { name: 'Delete group' });
     expect(confirmButton).toBeDisabled();
 
-    const input = screen.getByLabelText(/Tuesday Crew/i);
+    const input = screen.getByLabelText(/To confirm, type/i);
     await user.type(input, 'Tuesday Cre');
     expect(confirmButton).toBeDisabled();
 
@@ -619,7 +621,7 @@ describe('ConfirmDialog — typed tier', () => {
     });
 
     const panel = screen.getByText('You still own 2 groups with other members.');
-    const input = screen.getByLabelText(/Tuesday Crew/i);
+    const input = screen.getByLabelText(/To confirm, type/i);
     expect(panel).toBeInTheDocument();
     // DOCUMENT_POSITION_FOLLOWING === 4: the input comes after the panel.
     expect(panel.compareDocumentPosition(input) & 4).toBeTruthy();
@@ -673,8 +675,8 @@ describe('ConfirmDialog — typed tier', () => {
       confirmDisabled: () => true,
     });
 
-    await user.type(screen.getByLabelText(/Tuesday Crew/i), 'Tuesday Crew');
-    expect(screen.getByLabelText(/Tuesday Crew/i)).toHaveValue('Tuesday Crew');
+    await user.type(screen.getByLabelText(/To confirm, type/i), 'Tuesday Crew');
+    expect(screen.getByLabelText(/To confirm, type/i)).toHaveValue('Tuesday Crew');
 
     const shared = {
       ...typedProps,
@@ -685,7 +687,7 @@ describe('ConfirmDialog — typed tier', () => {
     rerender(<ConfirmDialog {...shared} open={false} />);
     rerender(<ConfirmDialog {...shared} open />);
 
-    expect(screen.getByLabelText(/Tuesday Crew/i)).toHaveValue('');
+    expect(screen.getByLabelText(/To confirm, type/i)).toHaveValue('');
   });
 });
 

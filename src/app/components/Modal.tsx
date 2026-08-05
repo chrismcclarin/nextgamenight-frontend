@@ -57,6 +57,28 @@ export function preventNonDismissableClose(
   if (!dismissable) event.preventDefault();
 }
 
+/**
+ * Initial-focus override (88-05, UI-SPEC §8.7). Radix's default auto-focus takes
+ * the first focusable node in the content — which here is the header's close
+ * `×`. A destructive confirmation must open with CANCEL focused, so consumers
+ * pass the element that should receive focus and this cancels Radix's default.
+ *
+ * With no ref supplied, Radix's default is left completely alone.
+ *
+ * Exported so the decision is unit-pinned deterministically, matching the
+ * {@link preventNonDismissableClose} idiom directly above.
+ */
+export function applyInitialFocus(
+  ref: React.RefObject<HTMLElement | null> | undefined,
+  event: Pick<Event, 'preventDefault'>
+): boolean {
+  const node = ref?.current;
+  if (!node) return false;
+  event.preventDefault();
+  node.focus();
+  return true;
+}
+
 export interface ModalProps {
   /** Controlled open state. */
   open: boolean;
@@ -71,6 +93,13 @@ export interface ModalProps {
    * @default true
    */
   dismissable?: boolean;
+  /**
+   * Element focused when the dialog opens, instead of Radix's default (the
+   * first focusable node, i.e. the header close `×`). `ConfirmDialog` uses it to
+   * put opening focus on Cancel — the safe choice on a destructive gate.
+   * Omit for the default behaviour.
+   */
+  initialFocusRef?: React.RefObject<HTMLElement | null>;
   /** Extra classes merged onto the dialog content surface. */
   className?: string;
   children?: React.ReactNode;
@@ -81,6 +110,7 @@ function ModalRoot({
   onClose,
   size = 'default',
   dismissable = true,
+  initialFocusRef,
   className,
   children,
 }: ModalProps) {
@@ -99,10 +129,18 @@ function ModalRoot({
     [dismissable]
   );
 
+  const handleOpenAutoFocus = React.useCallback(
+    (event: Event) => {
+      applyInitialFocus(initialFocusRef, event);
+    },
+    [initialFocusRef]
+  );
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         hideCloseButton
+        onOpenAutoFocus={handleOpenAutoFocus}
         // This Radix build does not emit aria-modal on Content; set it
         // explicitly so the dialog advertises modality to assistive tech.
         aria-modal="true"
