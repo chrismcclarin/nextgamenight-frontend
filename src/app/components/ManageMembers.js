@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { Modal } from './Modal';
 
 function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, group_name }) {
     const router = useRouter();
@@ -221,20 +222,28 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
 
     return (
         <>
-        <div className="modal-overlay" onClick={modaltoggle}>
-            <div className="modal-content max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto relative" onClick={(e) => e.stopPropagation()}>
-                <button
-                    onClick={modaltoggle}
-                    className="absolute top-3 right-3 text-content-muted hover:text-content-primary text-2xl"
-                    aria-label="Close"
-                >
-                    &times;
-                </button>
+        {/* DECISION Phase 88-12 (SPEC Req 9): all three of this file's overlays are hosted
+            on the shared <Modal>, and their old hand-rolled `zIndex: 110` tiers are NOT
+            re-created as bespoke z-index classes on the Radix content.
 
-                <h2 className="text-2xl font-bold text-content-primary mb-4">
-                    {canManageMembers ? 'Manage Group Members' : 'Members'}
-                </h2>
+            RESOLVED STACKING (verified, not assumed — same reasoning 88-15 recorded on
+            FriendInvitePanel): Radix portals every dialog to the END of <body>, so a
+            later-opened dialog paints above an earlier one purely by DOM order. The
+            transfer/leave confirms and the invite panel all open FROM this modal, so they
+            mount after it and stack above it without any z-index of their own. The rejected
+            alternative was porting `zIndex: 110` onto <Modal> via className — it
+            re-introduces a bespoke tier the rest of the fleet does not have, for an
+            ordering the portal already guarantees.
 
+            The old sibling-overlay + stopPropagation dance is likewise gone rather than
+            ported: it existed only so the parent's backdrop onClick could not fire through
+            a child overlay, and Radix's outside-interaction handling makes it moot.
+            Re-adding either is a decision, not a cleanup. */}
+        <Modal open={modal} onClose={modaltoggle} className="max-w-2xl">
+            <Modal.Header>
+                {canManageMembers ? 'Manage Group Members' : 'Members'}
+            </Modal.Header>
+            <Modal.Body>
                 {userRole && userRole !== 'pending' && (
                     <div className="mb-4 pb-4 border-b border-line flex flex-wrap gap-2">
                         <button
@@ -383,7 +392,14 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                         {/* Desktop (≥768px) — role-select + Remove + window.confirm() */}
                                                         <div className="hidden md:flex items-center gap-2">
                                                             {/* Role Dropdown */}
+                                                            {/* [Rule 2 - a11y] The role <select> shipped with no
+                                                                accessible name — surfaced by the composed axe audit
+                                                                added in 88-12 (axe `select-name`), which the
+                                                                primitive's own suite could not see. The visible
+                                                                member name is the only thing that distinguishes one
+                                                                row's select from the next. */}
                                                             <select
+                                                                aria-label={`Role for ${member.username || member.email}`}
                                                                 value={memberRole}
                                                                 onChange={(e) => handleRoleChange(member.id, e.target.value)}
                                                                 className="px-3 py-2 border border-line rounded-md text-sm focus:outline-hidden focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
@@ -530,115 +546,110 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                     </div>
                 )}
 
-                <div className="mt-6 flex justify-end">
-                    <button
-                        onClick={modaltoggle}
-                        className="btn btn-secondary px-6"
-                    >
-                        Close
-                    </button>
-                </div>
-            </div>
-        </div>
+            </Modal.Body>
+            <Modal.Footer>
+                <Modal.Action variant="secondary" onClick={modaltoggle} className="px-6">
+                    Close
+                </Modal.Action>
+            </Modal.Footer>
+        </Modal>
 
-        {/* Transfer Ownership confirmation — Phase 69 GROUP-06 frontend.
-            Sibling overlay to ManageMembers (NOT nested inside it) so the
-            parent's backdrop onClick={modaltoggle} cannot fire when the
-            user clicks anywhere on the transfer confirm. zIndex: 110 stacks
-            above the parent modal (default ~100). Copy verbatim from CONTEXT
-            D-XFER-02. Backdrop click cancels (only when not in-flight). */}
-        {transferTarget && (
-            <div
-                className="modal-overlay"
-                style={{ zIndex: 110 }}
-                onClick={() => !transferring && setTransferTarget(null)}
-            >
-                <div
-                    className="modal-content max-w-md w-full mx-4 p-6"
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <h3 className="text-lg font-bold text-content-primary mb-3">
-                        Transfer ownership to {transferTarget.name}?
-                    </h3>
-                    <p className="text-content-secondary mb-6">
-                        You will become an admin. This cannot be undone.
-                    </p>
-                    <div className="flex justify-end gap-3">
-                        <button
-                            className="btn btn-secondary"
-                            disabled={transferring}
-                            onClick={() => setTransferTarget(null)}
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            className="btn btn-primary"
-                            disabled={transferring}
-                            onClick={async () => {
-                                setTransferring(true);
-                                try {
-                                    await groupsAPI.transferOwnership(group_id, transferTarget.id);
-                                    setTransferTarget(null);
-                                    if (onMembersUpdated) onMembersUpdated();
-                                    if (modaltoggle) modaltoggle(); // close ManageMembers — caller refetches role
-                                } catch (err) {
-                                    console.error('Transfer ownership failed:', err);
-                                    toast.error(err.message || 'Failed to transfer ownership. Please try again.');
-                                } finally {
-                                    setTransferring(false);
-                                }
-                            }}
-                        >
-                            {transferring ? 'Transferring…' : 'Transfer ownership'}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        )}
+        {/* Transfer Ownership confirmation — Phase 69 GROUP-06 frontend, migrated onto the
+            shared <Modal> in Phase 88-12. Copy verbatim from CONTEXT D-XFER-02.
 
-        {/* Leave Group confirmation — Phase 69-04 mirror.
-            Sibling overlay (NOT nested inside ManageMembers' modal-content) so
-            the parent's backdrop onClick={modaltoggle} cannot fire when the
-            user clicks anywhere on this confirm. zIndex 110 stacks above the
-            parent modal. Copy verbatim from CONTEXT D-LEAVE-04 / Plan 69-04. */}
-        {showLeaveConfirm && (
-            <div
-                className="modal-overlay"
-                style={{ zIndex: 110 }}
-                onClick={() => !leaving && setShowLeaveConfirm(false)}
-            >
-                <div
-                    className="modal-content max-w-md w-full mx-4 p-6"
-                    onClick={(e) => e.stopPropagation()}
+            DECISION Phase 88-12 (AR R2-M11): the shipped in-flight dismissal guard survives
+            as `dismissable={!transferring}` — the primitive's OWN expression of "an
+            accidental outside click must not discard this", which is exactly what the old
+            `onClick={() => !transferring && ...}` backdrop guard bought. Esc and the header
+            close affordance stay live while pending, per Modal.tsx's recorded contract
+            ("the keyboard close path is never trapped" — WCAG 2.1.2). The rejected
+            alternative was suppressing those too so the dialog is un-exitable in flight:
+            that reopens a shipped a11y call to defend against an EXPLICIT close, where the
+            guard was only ever about an accidental one. Changing this is a decision. */}
+        <Modal
+            open={!!transferTarget}
+            onClose={() => setTransferTarget(null)}
+            dismissable={!transferring}
+            className="max-w-md"
+        >
+            <Modal.Header>
+                Transfer ownership to {transferTarget?.name}?
+            </Modal.Header>
+            <Modal.Body>
+                <p className="text-content-secondary">
+                    You will become an admin. This cannot be undone.
+                </p>
+            </Modal.Body>
+            <Modal.Footer>
+                <Modal.Action
+                    variant="secondary"
+                    disabled={transferring}
+                    onClick={() => setTransferTarget(null)}
                 >
-                    <h3 className="text-lg font-bold text-content-primary mb-3">
-                        Leave <span className="text-accent">{group_name}</span>?
-                    </h3>
-                    <p className="text-content-secondary mb-4">
-                        You will lose access to events, library, and member-only content.
-                    </p>
-                    {leaveError && (
-                        <p className="text-status-error text-sm mb-4">{leaveError}</p>
-                    )}
-                    <div className="flex justify-end gap-3">
-                        <button
-                            className="btn btn-secondary"
-                            disabled={leaving}
-                            onClick={() => { setShowLeaveConfirm(false); setLeaveError(''); }}
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            className="btn btn-danger"
-                            disabled={leaving}
-                            onClick={handleLeaveGroupConfirmed}
-                        >
-                            {leaving ? 'Leaving…' : 'Confirm Leave'}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        )}
+                    Cancel
+                </Modal.Action>
+                <Modal.Action
+                    variant="primary"
+                    disabled={transferring}
+                    onClick={async () => {
+                        if (!transferTarget) return;
+                        setTransferring(true);
+                        try {
+                            await groupsAPI.transferOwnership(group_id, transferTarget.id);
+                            setTransferTarget(null);
+                            if (onMembersUpdated) onMembersUpdated();
+                            if (modaltoggle) modaltoggle(); // close ManageMembers — caller refetches role
+                        } catch (err) {
+                            console.error('Transfer ownership failed:', err);
+                            toast.error(err.message || 'Failed to transfer ownership. Please try again.');
+                        } finally {
+                            setTransferring(false);
+                        }
+                    }}
+                >
+                    {transferring ? 'Transferring…' : 'Transfer ownership'}
+                </Modal.Action>
+            </Modal.Footer>
+        </Modal>
+
+        {/* Leave Group confirmation — Phase 69-04 mirror, migrated onto the shared <Modal>
+            in Phase 88-12. Copy verbatim from CONTEXT D-LEAVE-04 / Plan 69-04.
+            `dismissable={!leaving}` carries the same in-flight guard as the transfer
+            confirm above — see the marker there for why Esc stays live. */}
+        <Modal
+            open={showLeaveConfirm}
+            onClose={() => { setShowLeaveConfirm(false); setLeaveError(''); }}
+            dismissable={!leaving}
+            className="max-w-md"
+        >
+            <Modal.Header>
+                Leave <span className="text-accent">{group_name}</span>?
+            </Modal.Header>
+            <Modal.Body>
+                <p className="text-content-secondary">
+                    You will lose access to events, library, and member-only content.
+                </p>
+                {leaveError && (
+                    <p className="text-status-error text-sm mt-4">{leaveError}</p>
+                )}
+            </Modal.Body>
+            <Modal.Footer>
+                <Modal.Action
+                    variant="secondary"
+                    disabled={leaving}
+                    onClick={() => { setShowLeaveConfirm(false); setLeaveError(''); }}
+                >
+                    Cancel
+                </Modal.Action>
+                <Modal.Action
+                    variant="danger"
+                    disabled={leaving}
+                    onClick={handleLeaveGroupConfirmed}
+                >
+                    {leaving ? 'Leaving…' : 'Confirm Leave'}
+                </Modal.Action>
+            </Modal.Footer>
+        </Modal>
 
         {/* Invite members modal — sibling overlay so it stacks above ManageMembers
             and clicking inside it doesn't trigger the parent's backdrop close. */}
