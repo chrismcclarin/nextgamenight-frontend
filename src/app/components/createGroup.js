@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { groupsAPI } from '../../lib/api';
 import FriendInvitePanel from './FriendInvitePanel';
 import { Modal } from './Modal';
+import { Input } from '../../components/ui/Input';
 
 function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
 
@@ -111,7 +112,7 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                     <form onSubmit={onSubmit} autoComplete="off" className="p-6">
                         <div className="mb-3 pt-0">
                             <div className="relative">
-                                <input
+                                <Input
                                     id="name"
                                     name="group-name-create"
                                     onChange={handleChange}
@@ -121,7 +122,7 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                     required
                                     maxLength={40}
                                     autoComplete="off"
-                                    className="px-3 py-3 placeholder-content-muted text-content-primary relative bg-surface-input rounded-sm text-sm border border-line shadow-sm outline-hidden focus:outline-hidden focus:ring-3 focus:ring-focus-ring w-full pr-16"
+                                    className="relative pr-16 shadow-sm"
                                 />
                                 <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-content-muted pointer-events-none">
                                     {newGroup.name.length}/40

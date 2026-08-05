@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { rsvpAPI } from '../../lib/api';
 import ClickableMemberName from './ClickableMemberName';
+import { Textarea } from '../../components/ui/Input';
 
 /**
  * RsvpSection - RSVP interface for a single event
@@ -223,7 +224,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
         {/* Note field */}
         {!isPastEvent && selectedStatus && (
           <div className="space-y-2">
-            <textarea
+            <Textarea
               value={note}
               onChange={(e) => {
                 if (e.target.value.length <= 500) {
@@ -232,7 +233,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
               }}
               placeholder="Add a note (optional)"
               rows={2}
-              className="w-full border border-line rounded-card px-3 py-2 text-sm bg-surface-input text-content-primary focus:outline-hidden focus:ring-2 ring-focus-ring resize-none"
+              className="resize-none"
             />
             <div className="flex items-center justify-between">
               <span className="text-xs text-content-muted">{note.length}/500</span>

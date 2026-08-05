@@ -247,7 +247,18 @@ export default function BrowseMoreModal({
                   const v = parseInt(raw, 10);
                   setPlayerCount(Number.isNaN(v) ? '' : Math.max(1, v));
                 }}
-                className="w-16 text-center p-1 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
+                /* DECISION Phase 88-21 (Req 1): `text-base` is added IN PLACE here rather than
+                   adopting the `Input` primitive — the one deliberate non-adoption in this
+                   sweep, and it applies to both controls in this toolbar. The primitive carries
+                   `max-md:min-h-11`, and THESE ARE THE EXACT CONTROLS 87.8 CITED when it rejected
+                   a blanket height floor: this box sits between two `w-8 h-8` (32px) stepper
+                   buttons, so growing it to 44px at phone leaves a square-button/tall-box row
+                   that reads as broken. 88-SPEC.md:111 requires the height floor be decided
+                   against a call-site census, "never a blanket rule with no census", and that
+                   census is DEF-88-20-01's, not this plan's. Req 1 is the 16px TEXT floor, which
+                   is what changes here; the touch-target question stays with its owner.
+                   Swapping this for the bare primitive is a decision, not a cleanup. */
+                className="w-16 text-center p-1 border border-line rounded-btn text-content-primary bg-surface-input text-base"
                 aria-label="Player count"
               />
               <button
@@ -301,7 +312,9 @@ export default function BrowseMoreModal({
                 id="bm-sort"
                 value={sortKey}
                 onChange={handleSortKeyChange}
-                className="p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
+                /* `text-base` in place, not the primitive — same reason as the player-count
+                   box above: this select's row-mates are `px-2 py-1` toggles. See that marker. */
+                className="p-2 border border-line rounded-btn text-content-primary bg-surface-input text-base"
               >
                 <option value="rating">Best fit</option>
                 <option value="complexity">Complexity</option>

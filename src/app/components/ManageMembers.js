@@ -12,6 +12,7 @@ import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { Modal } from './Modal';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
+import { SelectControl } from '../../components/ui/Input';
 
 function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, group_name }) {
     const router = useRouter();
@@ -534,7 +535,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                                 The trap the AR named (select stuck showing "Admin" while the
                                                                 backend still says "Member") is closed structurally here.
                                                                 Collapsing this back to the bare `memberRole` is a decision. */}
-                                                            <select
+                                                            <SelectControl
                                                                 aria-label={`Role for ${member.username || member.email}`}
                                                                 value={promoteTarget?.id === member.id ? promoteTarget.priorRole : memberRole}
                                                                 onChange={(e) => handleRoleChange(
@@ -543,11 +544,11 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                                     member.username || member.email,
                                                                     memberRole
                                                                 )}
-                                                                className="px-3 py-2 border border-line rounded-md text-sm focus:outline-hidden focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
+                                                                className="w-auto"
                                                             >
                                                                 <option value="member">Member</option>
                                                                 <option value="admin">Admin</option>
-                                                            </select>
+                                                            </SelectControl>
 
                                                             {/* Remove Button — desktop entry point opens the dialog-tier
                                                                 gate inside handleRemoveMember (Req 11, UI-SPEC §11.2). */}

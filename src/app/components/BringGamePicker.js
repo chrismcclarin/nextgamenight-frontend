@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { userGamesAPI, eventBringsAPI } from '../../lib/api';
 import SafeImage from './SafeImage';
 import { Modal } from './Modal';
+import { Input } from '../../components/ui/Input';
 
 /**
  * BringGamePicker - Modal overlay for selecting games to bring to an event
@@ -138,12 +139,11 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
       <Modal.Body className="flex flex-col p-0">
         {/* Search */}
         <div className="shrink-0 p-4 pb-2">
-          <input
+          <Input
             type="text"
             placeholder="Search your games..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-3 py-2 border border-line rounded-lg text-sm text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring focus:border-transparent"
           />
         </div>
 

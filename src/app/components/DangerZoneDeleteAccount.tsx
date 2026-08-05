@@ -48,6 +48,7 @@
 import * as React from 'react';
 
 import { Modal } from './Modal';
+import { Input } from '@/components/ui/Input';
 import {
   ApiError,
   getEnvelopeDetails,
@@ -301,7 +302,24 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
                   </span>{' '}
                   below:
                 </label>
-                <input
+                {/* DECISION Phase 88-21 (Req 1 + the phase's token/focus contracts): this is the
+                    Tier-1 destructive-confirm reference implementation, and it was the last raw
+                    palette left on a form control — it carried a raw Tailwind red border shade
+                    and a raw red focus-ring shade, neither of which is a token, plus a
+                    non-keyboard-scoped focus variant that fired on programmatic and pointer
+                    focus too. (Those class names are described here rather than written out, so
+                    that 88-29's raw-palette and focus-variant gates cannot match this comment
+                    and report a violation that no longer exists — the idiom 88-19 established.)
+
+                    The red BORDER is kept, re-authored onto `border-status-error`: it is not
+                    decoration, it is the only persistent signal that this field belongs to a
+                    destructive gate, and dropping it to "just adopt the primitive cleanly" would
+                    make the delete-my-account box look identical to the group-name box. The RING
+                    is NOT re-authored to a red token — it goes to the primitive's
+                    `focus-visible:ring-focus-ring`, because focus indication is a system-wide
+                    affordance and a per-surface focus colour is exactly the drift this phase's
+                    §7.2 contract exists to stop. Behaviour is unchanged either way. */}
+                <Input
                   id="delete-account-confirm"
                   type="text"
                   value={confirmText}
@@ -309,7 +327,7 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
                   disabled={preflightPending || deleting}
                   placeholder={CONFIRM_PHRASE}
                   autoComplete="off"
-                  className="w-full rounded-sm border border-red-300 bg-surface-input p-2 text-content-primary focus:outline-hidden focus:ring-2 focus:ring-red-500 disabled:opacity-50"
+                  className="border-status-error disabled:opacity-50"
                 />
               </div>
               {failureMessage && (
