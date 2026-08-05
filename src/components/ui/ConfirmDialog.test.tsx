@@ -12,9 +12,19 @@
 //   5. Pending: a slow `onConfirm` cannot be double-fired
 //   6. Typed tier compares with `!==` string equality, never a built pattern
 import * as React from 'react';
-import { render, screen, cleanup, fireEvent, act } from '@testing-library/react';
+import {
+  render,
+  screen,
+  cleanup,
+  fireEvent,
+  act,
+  waitFor,
+} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { axe } from 'vitest-axe';
 
+import { ConfirmDialog, isDismissableTier } from './ConfirmDialog';
 import {
   useConfirmAction,
   TWO_TAP_WINDOW_MS,
@@ -483,5 +493,210 @@ describe('useConfirmAction — Label-in-Name (WCAG 2.5.3) and aria-pressed', () 
     fireEvent.click(screen.getByTestId('trigger'));
     expect(screen.getByTestId('trigger')).not.toHaveAttribute('aria-label');
     expect(screen.getByTestId('trigger')).toHaveTextContent(DEFAULT_ARMED_LABEL);
+  });
+});
+
+/* ================================================================== *
+ * ConfirmDialog — the rendered blocking surface (Task 2)
+ * ================================================================== */
+
+function renderConfirmDialog(
+  props: Partial<React.ComponentProps<typeof ConfirmDialog>> = {}
+) {
+  const onCancel = vi.fn();
+  const onConfirm = vi.fn();
+  const utils = render(
+    <ConfirmDialog
+      tier="dialog"
+      open
+      title="Delete this session?"
+      body="The play record, scores and who was there are deleted for everyone."
+      confirmLabel="Delete"
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+      confirmDisabled={() => false}
+      {...props}
+    />
+  );
+  return { onCancel, onConfirm, ...utils };
+}
+
+describe('ConfirmDialog — dialog tier', () => {
+  it('renders nothing while closed', () => {
+    renderConfirmDialog({ open: false });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('renders the title and the concrete-consequence body', () => {
+    renderConfirmDialog();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Delete this session?')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The play record, scores and who was there are deleted for everyone.'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('labels the confirm button with the verb alone, on the danger variant', () => {
+    renderConfirmDialog();
+    const confirmButton = screen.getByRole('button', { name: 'Delete' });
+    expect(confirmButton).toHaveClass('btn', 'btn-danger');
+    expect(screen.queryByRole('button', { name: /^(OK|Yes)$/ })).not.toBeInTheDocument();
+  });
+
+  it('focuses Cancel on open, not the confirm or the close affordance', async () => {
+    renderConfirmDialog();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+    );
+  });
+
+  it('cancel aborts — onCancel fires and onConfirm never does', async () => {
+    const user = userEvent.setup();
+    const { onCancel, onConfirm } = renderConfirmDialog();
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('disables the confirm control while a commit is pending', () => {
+    renderConfirmDialog({ pending: true, confirmDisabled: () => true });
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+  });
+
+  it('passes an axe audit on the OPEN dialog', async () => {
+    renderConfirmDialog();
+    expect(await axe(screen.getByRole('dialog'))).toHaveNoViolations();
+  });
+});
+
+describe('ConfirmDialog — typed tier', () => {
+  const typedProps = {
+    tier: 'typed' as const,
+    title: 'Delete Tuesday Crew?',
+    body: 'The group is hidden immediately and its 4 members are emailed a takeover link.',
+    confirmLabel: 'Delete group',
+    expectedPhrase: 'Tuesday Crew',
+  };
+
+  it('renders a programmatically labelled type-to-confirm input', () => {
+    renderConfirmDialog({ ...typedProps, confirmDisabled: () => true });
+    const input = screen.getByLabelText(/Tuesday Crew/i);
+    expect(input).toBeInTheDocument();
+    expect(input.tagName).toBe('INPUT');
+    expect(input).toHaveAttribute('id');
+  });
+
+  it('keeps the confirm disabled until the typed value matches exactly', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderConfirmDialog({
+      ...typedProps,
+      confirmDisabled: (value?: string) => value !== 'Tuesday Crew',
+    });
+
+    const confirmButton = screen.getByRole('button', { name: 'Delete group' });
+    expect(confirmButton).toBeDisabled();
+
+    const input = screen.getByLabelText(/Tuesday Crew/i);
+    await user.type(input, 'Tuesday Cre');
+    expect(confirmButton).toBeDisabled();
+
+    await user.type(input, 'w');
+    expect(confirmButton).toBeEnabled();
+
+    await user.click(confirmButton);
+    expect(onConfirm).toHaveBeenCalledWith('Tuesday Crew');
+  });
+
+  it('renders the caller-supplied pre-flight blocker panel above the input', () => {
+    renderConfirmDialog({
+      ...typedProps,
+      confirmDisabled: () => true,
+      blockerPanel: <p>You still own 2 groups with other members.</p>,
+    });
+
+    const panel = screen.getByText('You still own 2 groups with other members.');
+    const input = screen.getByLabelText(/Tuesday Crew/i);
+    expect(panel).toBeInTheDocument();
+    // DOCUMENT_POSITION_FOLLOWING === 4: the input comes after the panel.
+    expect(panel.compareDocumentPosition(input) & 4).toBeTruthy();
+  });
+
+  it('withholds the confirm control entirely while blocked (D-06)', () => {
+    renderConfirmDialog({
+      ...typedProps,
+      confirmDisabled: () => true,
+      blocked: true,
+      blockerPanel: <p>Transfer ownership first.</p>,
+    });
+
+    expect(
+      screen.queryByRole('button', { name: 'Delete group' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+  });
+
+  // Outside-pointer dismissal is defeated for the typed tier (D-08). Radix's
+  // own outside detection needs a real browser, so the DECISION seam is pinned
+  // here the way `Modal.test.tsx:89-105` pins its escape hatch.
+  it('marks the typed tier non-dismissable and the other tiers dismissable', () => {
+    expect(isDismissableTier('typed')).toBe(false);
+    expect(isDismissableTier('dialog')).toBe(true);
+    expect(isDismissableTier('two-tap')).toBe(true);
+  });
+
+  it('Escape ABORTS — it routes to onCancel and never to onConfirm', async () => {
+    const user = userEvent.setup();
+    const { onCancel, onConfirm } = renderConfirmDialog({
+      ...typedProps,
+      confirmDisabled: () => true,
+    });
+
+    await user.keyboard('{Escape}');
+
+    expect(onCancel).toHaveBeenCalled();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('passes an axe audit on the OPEN typed dialog', async () => {
+    renderConfirmDialog({ ...typedProps, confirmDisabled: () => true });
+    expect(await axe(screen.getByRole('dialog'))).toHaveNoViolations();
+  });
+
+  it('resets the typed value when the gate is reopened', async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderConfirmDialog({
+      ...typedProps,
+      confirmDisabled: () => true,
+    });
+
+    await user.type(screen.getByLabelText(/Tuesday Crew/i), 'Tuesday Crew');
+    expect(screen.getByLabelText(/Tuesday Crew/i)).toHaveValue('Tuesday Crew');
+
+    const shared = {
+      ...typedProps,
+      onCancel: vi.fn(),
+      onConfirm: vi.fn(),
+      confirmDisabled: () => true,
+    };
+    rerender(<ConfirmDialog {...shared} open={false} />);
+    rerender(<ConfirmDialog {...shared} open />);
+
+    expect(screen.getByLabelText(/Tuesday Crew/i)).toHaveValue('');
+  });
+});
+
+describe('ConfirmDialog — two-tap tier', () => {
+  it('renders no dialog surface at all, so a tier switch is a one-word edit', () => {
+    renderConfirmDialog({ tier: 'two-tap', open: false });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('renders no dialog surface even if a caller leaves `open` true', () => {
+    renderConfirmDialog({ tier: 'two-tap', open: true });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
