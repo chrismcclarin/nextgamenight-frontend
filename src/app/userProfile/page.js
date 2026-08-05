@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
@@ -32,6 +32,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Ta
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { Modal } from '../components/Modal';
+import { Combobox } from '../../components/ui/Combobox';
 
 const NOTIFICATION_TYPES = [
     { key: 'event_created', label: 'New Event', description: 'When a game session is scheduled' },
@@ -230,24 +231,39 @@ function Profile(){
         });
     }, [getTimezoneList, tzSearch]);
 
-    // Group timezones by region prefix
-    const groupedTimezones = useCallback(() => {
-        const zones = filteredTimezones();
-        const groups = {};
-        zones.forEach(tz => {
-            const slashIndex = tz.value.indexOf('/');
-            const region = slashIndex > -1 ? tz.value.substring(0, slashIndex) : 'Other';
-            if (!groups[region]) groups[region] = [];
-            groups[region].push(tz);
-        });
-        return groups;
-    }, [filteredTimezones]);
-
-    const handleTimezoneSelect = (tz) => {
+    const handleTimezoneSelect = useCallback((tz) => {
         setTimezone(tz);
         setTzPickerOpen(false);
         setTzSearch('');
-    };
+    }, [setTimezone]);
+
+    /* DECISION Phase 88-10 (F-359): the option list is built ONLY while the picker is
+       open, chosen OVER the obvious `useMemo` keyed on the search text alone. Building
+       it runs two `Intl.DateTimeFormat` constructions per zone across the full IANA
+       set (~400+), so an ungated memo pays that on the first render of a page whose
+       picker most visits never touch. The gate is invisible — the list is only ever
+       READ while open. Dropping `tzPickerOpen` from the inputs below is a decision
+       about page-load cost, not a simplification. */
+    const timezoneItems = useMemo(() => {
+        if (!tzPickerOpen) return [];
+        return filteredTimezones().map(tz => {
+            const slashIndex = tz.value.indexOf('/');
+            return {
+                key: tz.value,
+                // Region heading — consecutive items sharing a `group` render under one
+                // labelled group, which is how the primitive reproduces the region
+                // sections the hand-rolled panel drew by hand.
+                group: slashIndex > -1 ? tz.value.substring(0, slashIndex) : 'Other',
+                label: (
+                    <span className={tz.value === timezone ? 'font-medium text-content-link' : undefined}>
+                        {tz.value.replace(/_/g, ' ')}
+                        {tz.abbr && <span className="text-content-muted ml-1">({tz.abbr}, {tz.offset})</span>}
+                    </span>
+                ),
+                onSelect: () => handleTimezoneSelect(tz.value),
+            };
+        });
+    }, [tzPickerOpen, filteredTimezones, timezone, handleTimezoneSelect]);
 
     // Get current timezone abbreviation for display
     const currentTzAbbr = useCallback(() => {
@@ -262,6 +278,36 @@ function Profile(){
             return '';
         }
     }, [timezone]);
+
+    /* DECISION Phase 88-10 (F-359): the closed field shows the SELECTED timezone as its
+       VALUE, and the search text takes over only while the picker is open — chosen OVER
+       showing the selection as a placeholder, which is what a text-field-shaped control
+       invites. A placeholder renders muted and reads as "nothing chosen yet"; this is a
+       setting with a real current value, and the control it replaces displayed that
+       value in full-contrast text. Swapping this to a placeholder is a decision that
+       changes what the field claims, not a cleanup. */
+    const currentTimezoneLabel = useCallback(() => {
+        if (!timezone) return '';
+        const abbr = currentTzAbbr();
+        return abbr
+            ? `${timezone.replace(/_/g, ' ')} (${abbr})`
+            : timezone.replace(/_/g, ' ');
+    }, [timezone, currentTzAbbr]);
+
+    // Opening resets the search so the full list is offered; guarded so a click that
+    // merely re-focuses an ALREADY-open field does not wipe what was typed.
+    const openTimezonePicker = useCallback(() => {
+        if (tzPickerOpen) return;
+        setTzSearch('');
+        setTzPickerOpen(true);
+    }, [tzPickerOpen]);
+
+    // Closing (Esc, outside press, selection) drops the search text so the field falls
+    // back to displaying the current selection rather than a stale query.
+    const handleTimezonePickerOpenChange = useCallback((next) => {
+        setTzPickerOpen(next);
+        if (!next) setTzSearch('');
+    }, []);
 
     const handleReplayTutorial = async () => {
         if (!user?.sub) return;
@@ -1378,59 +1424,27 @@ function Profile(){
                 <div className="card p-4 md:p-6 mb-6">
                     <h2 className="text-lg font-bold text-content-primary mb-1">Timezone</h2>
                     <p className="text-sm text-content-secondary mb-3">All event times and schedules use this timezone</p>
-                    <div className="relative">
-                        <button
-                            onClick={() => setTzPickerOpen(!tzPickerOpen)}
-                            className="w-full flex items-center justify-between px-3 py-2 border border-line rounded-btn text-sm text-content-primary bg-surface-input hover:border-line-accent transition-colors"
-                        >
-                            <span>
-                                {timezone ? timezone.replace(/_/g, ' ') : 'Select timezone'}
-                                {currentTzAbbr() && <span className="text-content-muted ml-2">({currentTzAbbr()})</span>}
-                            </span>
-                            <svg className={`w-4 h-4 text-content-muted transition-transform ${tzPickerOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
-                        </button>
-
-                        {tzPickerOpen && (
-                            <div className="absolute z-50 mt-1 w-full bg-surface-card border border-line rounded-card shadow-theme-lg">
-                                <div className="p-2 border-b border-line">
-                                    <input
-                                        type="text"
-                                        value={tzSearch}
-                                        onChange={(e) => setTzSearch(e.target.value)}
-                                        placeholder="Search timezones..."
-                                        className="w-full px-3 py-2 border border-line rounded-btn text-sm text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
-                                        autoFocus
-                                    />
-                                </div>
-                                <div className="max-h-64 overflow-y-auto">
-                                    {Object.entries(groupedTimezones()).map(([region, zones]) => (
-                                        <div key={region}>
-                                            <div className="px-3 py-1.5 text-xs font-semibold text-content-muted bg-surface-page sticky top-0">
-                                                {region}
-                                            </div>
-                                            {zones.map(tz => (
-                                                <button
-                                                    key={tz.value}
-                                                    onClick={() => handleTimezoneSelect(tz.value)}
-                                                    className={`w-full text-left px-3 py-2 text-sm hover:bg-surface-card-hover transition-colors ${
-                                                        tz.value === timezone ? 'bg-surface-card-hover text-content-link font-medium' : 'text-content-primary'
-                                                    }`}
-                                                >
-                                                    <span>{tz.value.replace(/_/g, ' ')}</span>
-                                                    {tz.abbr && <span className="text-content-muted ml-1">({tz.abbr}, {tz.offset})</span>}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    ))}
-                                    {filteredTimezones().length === 0 && (
-                                        <div className="px-3 py-4 text-sm text-content-muted text-center">No timezones match your search</div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                    {/* F-359: the picker is the `Combobox` primitive (88-08). Keyboard
+                        operation, Esc AND click-outside close, and focus restore all come
+                        from the primitive — the hand-rolled panel this replaces had none of
+                        them: it opened on click, closed only on a second click, and its
+                        option list was unreachable from the keyboard. Nothing here re-rolls
+                        any of that. */}
+                    <Combobox
+                        aria-label="Timezone"
+                        value={tzPickerOpen ? tzSearch : currentTimezoneLabel()}
+                        onValueChange={(next) => {
+                            setTzSearch(next);
+                            if (!tzPickerOpen) setTzPickerOpen(true);
+                        }}
+                        open={tzPickerOpen}
+                        onOpenChange={handleTimezonePickerOpenChange}
+                        onFocus={openTimezonePicker}
+                        onClick={openTimezonePicker}
+                        items={timezoneItems}
+                        listLabel="Timezones"
+                        emptyLabel="No timezones match your search"
+                    />
                 </div>
 
                 {/* Notification Preferences Section */}

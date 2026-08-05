@@ -35,7 +35,7 @@
 // then wrote the real assertions, which is why the literals now appear in the
 // test bodies below. Do not "restore" the prose form over a live assertion.
 import * as React from 'react';
-import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
@@ -81,6 +81,7 @@ const h = vi.hoisted(() => ({
     email: 'self@example.com',
     picture: null,
   } as Record<string, unknown>,
+  setTimezone: vi.fn(),
 }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
@@ -140,8 +141,10 @@ vi.mock('sonner', () => {
 vi.mock('@/app/components/tutorial/TutorialProvider', () => ({
   useTutorial: () => ({ replayTutorial: vi.fn() }),
 }));
+// `setTimezone` is hoisted (not built per call) so the timezone-picker pins can
+// assert what the Combobox committed.
 vi.mock('@/app/components/TimezoneProvider', () => ({
-  useTimezone: () => ({ timezone: 'America/New_York', setTimezone: vi.fn() }),
+  useTimezone: () => ({ timezone: 'America/New_York', setTimezone: h.setTimezone }),
 }));
 
 // Heavy / self-fetching children stubbed. NOTE the deliberate omissions:
@@ -646,6 +649,111 @@ describe('userProfile destructive gates (Req 11)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// The G6 residue — F-359 / F-357 (plan 88-10 Task 4)
+// ---------------------------------------------------------------------------
+// The picker this replaces opened on click, closed only on a second click, and
+// its options were plain <button>s unreachable by keyboard from the field. Every
+// pin below is on behaviour the PRIMITIVE owns, so a regression to a hand-rolled
+// panel fails here even if it looks identical.
+
+describe('userProfile timezone picker (F-359)', () => {
+  it('shows the current selection in the field and opens on focus', async () => {
+    renderProfile();
+    const field = await screen.findByRole('combobox', { name: 'Timezone' });
+
+    expect(field).toHaveValue('America/New York (EDT)');
+    expect(field).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.focus(field);
+    expect(field).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+  });
+
+  it('closes on Escape and leaves focus on the field', async () => {
+    const user = userEvent.setup();
+    renderProfile();
+    const field = await screen.findByRole('combobox', { name: 'Timezone' });
+
+    await user.click(field);
+    await user.keyboard('Chicago');
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(field).toHaveFocus();
+    expect(field).toHaveAttribute('aria-expanded', 'false');
+    // The field falls back to the selection, not the abandoned query.
+    expect(field).toHaveValue('America/New York (EDT)');
+    expect(h.setTimezone).not.toHaveBeenCalled();
+  });
+
+  it('selects with arrow keys and Enter', async () => {
+    const user = userEvent.setup();
+    renderProfile();
+    const field = await screen.findByRole('combobox', { name: 'Timezone' });
+
+    await user.click(field);
+    await user.keyboard('America/Chicago');
+
+    await user.keyboard('{ArrowDown}');
+    expect(field).toHaveAttribute('aria-activedescendant');
+
+    await user.keyboard('{Enter}');
+    expect(h.setTimezone).toHaveBeenCalledWith('America/Chicago');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+
+  it('groups the options by region', async () => {
+    const user = userEvent.setup();
+    renderProfile();
+
+    await user.click(await screen.findByRole('combobox', { name: 'Timezone' }));
+    await user.keyboard('America/Chicago');
+
+    const listbox = screen.getByRole('listbox');
+    expect(within(listbox).getByRole('group')).toHaveAccessibleName('America');
+  });
+});
+
+describe('userProfile two-tap armed state (F-357)', () => {
+  // The armed disposition must CLEAR when the window lapses, not just when the
+  // action commits — an aria-pressed left true on a reverted trigger tells a screen
+  // reader the control is still armed when it is not.
+  it('drops aria-pressed when the arm window lapses', async () => {
+    vi.useFakeTimers();
+    try {
+      const { userGamesAPI } = await import('@/lib/api');
+      (userGamesAPI.getOwnedGames as ReturnType<typeof vi.fn>).mockResolvedValue(
+        OWNED_GAMES
+      );
+
+      renderProfile();
+      await vi.waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Remove Catan' })).toBeInTheDocument()
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Remove Catan' }));
+      expect(screen.getByRole('button', { name: 'Tap again to confirm' })).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(3000);
+      });
+
+      const reverted = screen.getByRole('button', { name: 'Remove Catan' });
+      expect(reverted).not.toHaveAttribute('aria-pressed');
+      expect(userGamesAPI.removeOwnedGame).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Req 12 / OI-5 — one register for this surface's receipts (plan 88-10 Task 3)
 // ---------------------------------------------------------------------------
 // §6.2's contract is `{Object} {past-tense verb}`: no "successfully", no
@@ -745,6 +853,20 @@ describe('userProfile a11y audit', () => {
   it('passes an axe audit on the default surface', async () => {
     const { container } = renderProfile();
     await screen.findByRole('switch', { name: 'New Event email notifications' });
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  // The closed picker is trivially clean and proves nothing; the open listbox is
+  // where the combobox pattern's wiring can actually be wrong. Filtered first so
+  // the audit runs over a handful of options, not the whole IANA set.
+  it('passes an axe audit with the timezone listbox open', async () => {
+    const user = userEvent.setup();
+    const { container } = renderProfile();
+
+    await user.click(await screen.findByRole('combobox', { name: 'Timezone' }));
+    await user.keyboard('America/Chicago');
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+
     expect(await axe(container)).toHaveNoViolations();
   });
 
