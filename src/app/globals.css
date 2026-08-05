@@ -509,8 +509,31 @@
   --color-accent-text: var(--purple-950);
 
   /* Borders */
+  /* DECISION Phase 88-01 (D-34 / UI-SPEC §5.5 FINDING-1, §10.2): the HAIRLINE contrast fix is
+     applied to `--color-border-strong` ONLY — light darkened warm-300 -> warm-500 (#8c7a6a), dark
+     darkened purple-600 -> purple-500 (#6b7fa3) at its own declaration in the `.dark` block below.
+     Measured (WCAG 2.x relative luminance, sRGB, from the literal hex): dark 4.18:1 vs page /
+     3.42:1 vs card; light 3.88:1 vs page / 4.11:1 vs white card. Both clear the 1.4.11 3:1 floor
+     that the shipped values missed (light 1.51:1, dark 2.99:1 — dark missed by 0.01).
+
+     TWO ALTERNATIVES WERE REJECTED, and the rejection is the load-bearing part:
+       (a) darken `--color-line` / `--color-border` globally — REJECTED as a re-theme. That token
+           is consumed at 280 sites across 65 files, and the warm palette has no adjacent passing
+           step, so "fixing" it recolours every decorative and paired separator in the app.
+       (b) mint a third `line-contrast` token — REJECTED as idiom proliferation. `border-strong`
+           already exists for exactly this job and 11 JSX sites already point at it; a third
+           hairline name would leave three overlapping ways to draw the same 1px line.
+     `--color-border` and `--color-line` are therefore deliberately UNCHANGED here. Sole-separator
+     hairlines get pointed at `border-strong` by the wave-2+ surface plans; that is the migration,
+     not a token edit.
+
+     THE LIGHT VALUE IS PROVISIONAL, owned by Phase 88.3 (light-mode design). Phase 88 is a
+     dark-first pass; 88.3 re-derives the light ramp wholesale and may move this. Re-measure
+     in-browser per the 87.8-01 method before treating either number as final.
+     Changing either value, or "simplifying" this back onto `--color-line`, is a decision, not a
+     cleanup. */
   --color-border: var(--warm-200);
-  --color-border-strong: var(--warm-300);
+  --color-border-strong: var(--warm-500);
   --color-border-accent: var(--amber-600);
 
   /* Shadows */
@@ -529,9 +552,24 @@
      Moving them into any `@theme` block turns them into THEME KEYS carrying built-in names, at
      which point they hijack the built-in scale for the whole app -- silently, since nothing
      fails. Moving them is a DECISION, not a cleanup. */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+
+  /* DECISION Phase 88-01 (OI-1 / UI-SPEC §2.4): the three LIGHT shadow tokens are re-tinted from
+     cold black to the design reference's WARM hue (rgb 120/80/40), keeping the SHIPPED GEOMETRY
+     byte-for-byte (1px/2px, 4px/6px, 10px/15px). Chosen OVER two alternatives:
+       (a) adopt the reference's geometry too (4px/8px, 12px/24px) — REJECTED: a blur/offset change
+           is a re-theme, which this phase's SPEC forbids at `:212`. Hue-only is the consistency
+           fix; geometry is a redesign.
+       (b) leave the tokens cold and let Req 3 move inline shadows onto them anyway — REJECTED, and
+           this is the reason the change is here at all: `88-SPEC.md:86` tells the adoption plans to
+           move inline shadows onto "the warm-tinted tokens". They were not warm-tinted. Executing
+           that literally turns a grep gate green while the reference's rule stays violated.
+     THE THREE DARK OVERRIDES BELOW ARE DELIBERATELY UNCHANGED. Dark mode signals elevation with
+     rings (dark `--shadow-sm` is `none`; `-md`/`-lg` are 1px rings), a shipped choice from the original
+     design system — warming a shadow that does not render is a no-op at best. Re-tinting dark, or
+     "finishing the job" by re-tinting it for symmetry, is a decision, not a cleanup. */
+  --shadow-sm: 0 1px 2px rgba(120, 80, 40, 0.06);
+  --shadow-md: 0 4px 6px rgba(120, 80, 40, 0.08);
+  --shadow-lg: 0 10px 15px rgba(120, 80, 40, 0.10);
 
   /* Status / Role Badges */
   --color-badge-owner-bg: var(--purple-100);
@@ -563,6 +601,13 @@
   --color-border-header: var(--warm-600);
 
   /* Focus ring */
+  /* DEFERRED, not overlooked — Phase 88.3 / OI-2 (UI-SPEC §5.5 FINDING-2, recorded in
+     `.planning/deferred/phase-88.3.md`): this LIGHT value measures 2.65:1 vs the page and 2.81:1
+     vs the white card, under WCAG 2.4.11's 3:1 floor. Dark (amber-400, below) passes at 10.13:1,
+     which is why a dark-first app never caught it. Phase 88 deliberately did NOT repair it while
+     repairing `--color-border-strong` above: 88.3 owns the light ramp wholesale and the measured
+     one-line candidate (purple-600, 5.34:1 vs page / 5.66:1 vs white card) is recorded there.
+     Leaving this at purple-400 is a scheduled deferral, not an oversight. */
   --color-focus-ring: var(--purple-400);
 
   /* Transitions */
@@ -593,7 +638,10 @@
   --color-accent-text: var(--purple-950);
 
   --color-border: var(--purple-700);
-  --color-border-strong: var(--purple-600);
+  /* DECISION Phase 88-01 (D-34): darkened one step for the 1.4.11 hairline floor — see the full
+     marker (and the two rejected alternatives) at the light declaration above. `--color-border`
+     directly above stays put on purpose. */
+  --color-border-strong: var(--purple-500);
   --color-border-accent: var(--amber-500);
 
   /* Dark mode: minimal shadows, replaced by borders/glow */
