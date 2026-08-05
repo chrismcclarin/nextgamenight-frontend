@@ -62,16 +62,17 @@ export function intensityColor(
  * hardcoded), and the tutorial's demo heatmap — matched deliberately in Phase 73 so that moving
  * from tutorial to product keeps one visual grammar.
  *
- * `EventScheduler.js:360-363` is the sole outlier: a 4-step ramp of ONE green at four alpha
- * levels, applied inline. Phase 88 moves it onto these 5 steps and these values. Note the step
- * count is a real visual change, not cosmetic — 4 buckets cut at 25/50/75%, 5 at 20/40/60/80%,
- * so identical data renders a different shade.
+ * `EventScheduler.js` used to be a fourth ramp: 4 steps of ONE green at four alpha levels, cut at
+ * 25/50/75%, applied inline. Plan 88-23 moved it onto these 5 steps, these thresholds and this hue
+ * — as the `calendarWashColor` VARIANT below, which keeps transparency (owner ruling 2026-08-05;
+ * the wash sits behind gridlines and event blocks). The step count was a real visual change, not
+ * cosmetic — 4 buckets cut at 25/50/75%, 5 at 20/40/60/80%, so identical data renders a different
+ * shade than it did before Phase 88.
  *
- * Open question for Phase 88 planning, deliberately NOT decided here: EventScheduler is a
- * calendar, so availability is a wash BEHIND event blocks and gridlines, which its alpha ramp
- * lets show through — opaque `bg-green-300` would cover them. Whether the calendar keeps some
- * transparency is a visual call, and it interacts with Phase 88.3 (light mode), since opaque pale
- * greens and alpha-over-background behave very differently across themes.
+ * The transparency question that used to be flagged open here is now CLOSED — see the
+ * `DECISION Phase 88-23` block on `calendarWashColor`. Its interaction with Phase 88.3 (light
+ * mode) still stands as a thing to re-test there: opaque pale greens and alpha-over-background
+ * behave very differently across themes, and the calendar is now the alpha case.
  *
  * Also note: these are RAW palette classes, not semantic tokens. Phase 88 Req 2's "semantic
  * tokens only" rule implicates this function itself, not just EventScheduler's rgba() literals.
@@ -93,6 +94,107 @@ export function mergedCellColor(availableCount: number, totalMembers: number): s
   if (ratio <= 0.6) return 'bg-green-300 text-green-900';
   if (ratio <= 0.8) return 'bg-green-400 text-green-900';
   return 'bg-green-500 text-white';
+}
+
+/**
+ * DECISION Phase 88-23 DES-02: the calendar keeps a TRANSLUCENT wash, derived from the canonical
+ * ramp — rejected alternative: consuming `mergedCellColor` directly (fully opaque `bg-green-100..500`).
+ *
+ * WHY the rejected option was rejected: in `EventScheduler` the availability shading is a wash
+ * painted BEHIND react-big-calendar's gridlines and event blocks. Opaque pale greens cover both at
+ * the darker steps, turning a background signal into a fill that hides the very events the user is
+ * scheduling around. Transparency is a deliberate property of a calendar surface here, not drift.
+ * Owner ruling 2026-08-05 (Task 1 of plan 88-23), option-a.
+ *
+ * This is therefore a recorded VARIANT of the canonical ramp, not a fourth ramp: it converges on
+ * the two things Req 2 (DES-02) is actually about — the HUE and the STEP COUNT/THRESHOLDS. What it
+ * does NOT converge on is opacity. **Do not "unify" this onto `mergedCellColor` as a cleanup.**
+ *
+ * Derivation (so the five alphas are reproducible, not hand-picked):
+ *   1. Take the canonical ramp's own RGB values, green-100 → green-500, as `CANONICAL_GREEN_RAMP_RGB`
+ *      below. The wash hue is the LAST entry of that same array (green-500), so the wash cannot
+ *      drift to a different green than the one `mergedCellColor` ends on.
+ *   2. Measure each step's darkness against white as `255 - luma`, using Rec. 709 luma coefficients.
+ *      This is the ramp's own perceptual spacing — green-100 → green-200 is a small step, green-300
+ *      → green-400 a large one, and the wash inherits that shape rather than a flat linear ladder.
+ *   3. Normalize so green-100 → 0 and green-500 → 1.
+ *   4. Map that onto the SHIPPED alpha window [0.15, 0.55]. Both endpoints are retained on purpose:
+ *      0.15 is the shipped lightest and is known to be visible over the calendar background, and
+ *      0.55 is the shipped darkest and is known to still let an event block read through it. A
+ *      naive "green-500 = alpha 1.0" derivation would have made the top step fully opaque, which
+ *      is exactly the outcome the owner rejected.
+ *
+ * Yields: 0.15, 0.21, 0.29, 0.42, 0.55 (deltas 0.06 / 0.08 / 0.13 / 0.13 — monotonic, and tighter
+ * at the low end than the old 4-step ladder because five steps now share the same alpha window).
+ *
+ * Replaces (plan 88-23, Task 2) EventScheduler's private inline 4-step ladder of green-500 at
+ * alpha .15/.25/.4/.55 cut at 25/50/75%. Identical data therefore renders a different shade than
+ * it did before — that is the intended, recorded consequence of moving 4 buckets to 5.
+ *
+ * Exact output strings are pinned by tests — do NOT reformat the `rgba(...)` spacing.
+ */
+const CANONICAL_GREEN_RAMP_RGB = [
+  [220, 252, 231], // green-100 #dcfce7
+  [187, 247, 208], // green-200 #bbf7d0
+  [134, 239, 172], // green-300 #86efac
+  [74, 222, 128], // green-400 #4ade80
+  [34, 197, 94], // green-500 #22c55e — also the wash hue
+] as const;
+
+const WASH_ALPHA_FLOOR = 0.15;
+const WASH_ALPHA_CEILING = 0.55;
+
+/** Rec. 709 luma of an sRGB triple, 0-255. */
+function luma([r, g, b]: readonly [number, number, number]): number {
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/**
+ * The five wash colours, lightest → darkest, derived from `CANONICAL_GREEN_RAMP_RGB`.
+ *
+ * Exported so the EventScheduler legend can render its swatches FROM the same array the ramp
+ * indexes into. A legend built from hand-copied literals is free to desync from the ramp it
+ * claims to describe, and no grep gate can see that — the previous 4-swatch legend was correct
+ * only by coincidence of maintenance.
+ */
+export const CALENDAR_WASH_RAMP: readonly string[] = (() => {
+  const darkness = CANONICAL_GREEN_RAMP_RGB.map((rgb) => 255 - luma(rgb));
+  const lightest = darkness[0];
+  const darkest = darkness[darkness.length - 1];
+  const [hueR, hueG, hueB] = CANONICAL_GREEN_RAMP_RGB[CANONICAL_GREEN_RAMP_RGB.length - 1];
+
+  return darkness.map((d) => {
+    const normalized = (d - lightest) / (darkest - lightest);
+    const alpha = WASH_ALPHA_FLOOR + (WASH_ALPHA_CEILING - WASH_ALPHA_FLOOR) * normalized;
+    return `rgba(${hueR}, ${hueG}, ${hueB}, ${Math.round(alpha * 100) / 100})`;
+  });
+})();
+
+/**
+ * Get the calendar wash background for an availability ratio — the translucent sibling of
+ * `mergedCellColor`, same 5 steps and same 20/40/60/80% thresholds.
+ *
+ * Returns a CSS colour string rather than Tailwind classes because the consumer is
+ * react-big-calendar's `slotPropGetter`, which takes an inline `style` object; and returns
+ * `undefined` (not a colour) for the empty case, preserving EventScheduler's existing behaviour
+ * of applying NO `backgroundColor` at all when nobody is available — an explicit transparent
+ * fill would still stack a paint layer over the gridlines.
+ *
+ * @param availableCount - Number of available members
+ * @param totalMembers - Total group members
+ * @returns an `rgba()` string, or `undefined` when there is nothing to shade
+ */
+export function calendarWashColor(
+  availableCount: number,
+  totalMembers: number
+): string | undefined {
+  if (totalMembers <= 0 || availableCount <= 0) return undefined;
+  const ratio = availableCount / totalMembers;
+  if (ratio <= 0.2) return CALENDAR_WASH_RAMP[0];
+  if (ratio <= 0.4) return CALENDAR_WASH_RAMP[1];
+  if (ratio <= 0.6) return CALENDAR_WASH_RAMP[2];
+  if (ratio <= 0.8) return CALENDAR_WASH_RAMP[3];
+  return CALENDAR_WASH_RAMP[4];
 }
 
 /**
