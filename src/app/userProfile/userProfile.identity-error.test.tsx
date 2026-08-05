@@ -2,7 +2,7 @@
 // init their loading flags to true and clear them ONLY inside selfUuid-gated
 // fetchers. On a TERMINAL self-identity failure those fetchers early-return, so
 // the flags never clear and both zones spin forever ("Loading your
-// collection..." / "Checking..."). The profile header already falls back via
+// collection..." / "Checking your calendar..."). The profile header already falls back via
 // selfQuery.isError — these two zones did not. This test proves both zones now
 // render the degrade banner instead of an indefinite spinner on terminal failure.
 //
@@ -109,7 +109,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('userProfile terminal identity failure (WR-03)', () => {
-  it('renders degrade banners instead of stuck "Loading your collection..." / "Checking..."', async () => {
+  it('renders degrade banners instead of stuck "Loading your collection..." / "Checking your calendar..."', async () => {
     render(<Profile />);
 
     // Both selfUuid-gated fetchers never fire (identity never resolves).
@@ -119,7 +119,7 @@ describe('userProfile terminal identity failure (WR-03)', () => {
 
     // Neither zone is stuck on its loading text...
     expect(screen.queryByText('Loading your collection...')).not.toBeInTheDocument();
-    expect(screen.queryByText('Checking...')).not.toBeInTheDocument();
+    expect(screen.queryByText('Checking your calendar...')).not.toBeInTheDocument();
 
     // ...both surface the degrade banner instead (collection zone + calendar zone).
     const banners = await screen.findAllByTestId('identity-degrade-banner');

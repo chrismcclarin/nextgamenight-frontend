@@ -83,6 +83,12 @@ const h = vi.hoisted(() => ({
     email: 'self@example.com',
     picture: null,
   } as Record<string, unknown>,
+  /**
+   * Auth0 session error. Plan 88-19 needs a NON-null value to reach the page's
+   * error branch, which no earlier suite exercised — that branch used to render
+   * the raw upstream message and nothing else.
+   */
+  authError: null as null | Error,
   setTimezone: vi.fn(),
 }));
 
@@ -101,7 +107,7 @@ vi.mock('@/lib/hooks/selfIdentityCache', () => ({ patchSelfCache: vi.fn() }));
 vi.mock('@auth0/nextjs-auth0/client', () => ({
   useUser: () => ({
     user: h.authUser,
-    error: null,
+    error: h.authError,
     isLoading: false,
   }),
 }));
@@ -248,6 +254,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.self = undefined;
   h.patterns = [];
+  h.authError = null;
 });
 
 afterEach(cleanup);
@@ -1083,6 +1090,64 @@ describe('userProfile type scale (Req 2)', () => {
       .filter((line) => /#[0-9a-fA-F]{3,6}\b/.test(line))
       .filter((line) => !line.includes('TODO(88-29)'));
     expect(untagged).toEqual([]);
+  });
+});
+
+
+// ===========================================================================
+// Plan 88-19 — Req 7 (microcopy, UI-SPEC §6.1/§6.3)
+// ===========================================================================
+
+describe('userProfile microcopy (Req 7)', () => {
+  it('names what is loading in every loading string', async () => {
+    const source = await pageSource();
+    // Anything that renders a bare progressive verb with no object.
+    expect(source).not.toMatch(/>\s*(Loading|Checking)\.\.\.\s*</);
+    expect(source).not.toMatch(/loading data/i);
+  });
+
+  // T-88-19-02 / ASVS V7: the page's error branch used to render the raw
+  // upstream message as its entire body, with no action offered. Asserted at
+  // RUNTIME rather than by grepping the source — a source grep for the
+  // interpolation also matches the marker that explains why it was removed.
+  it('renders designed copy, not the raw error, when the session errors', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      h.authError = new Error('ECONNREFUSED 10.0.0.4:5432 — pool exhausted');
+      renderProfile();
+
+      expect(
+        await screen.findByText("We couldn't load your profile")
+      ).toBeInTheDocument();
+      // The upstream text reaches the developer, never the person.
+      expect(screen.queryByText(/ECONNREFUSED/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/pool exhausted/)).not.toBeInTheDocument();
+      expect(consoleError).toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  // The branch was also a dead end — one red line and nothing to click.
+  it('offers a way out of the session-error screen', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      h.authError = new Error('boom');
+      renderProfile();
+      expect(
+        await screen.findByRole('button', { name: 'Reload page' })
+      ).toBeInTheDocument();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  // Errors state what failed AND what to do next (§6.1). Deliberately worded so
+  // 88-25's negative "failed to load" gate on this file stays green.
+  it('states the next step on the preference-reset failure', async () => {
+    const source = await pageSource();
+    expect(source).not.toContain('Failed to reset');
+    expect(source).toContain("Couldn't reset — try again.");
   });
 });
 

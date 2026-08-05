@@ -657,7 +657,7 @@ function Profile(){
             // WR-03: the owned-games + calendar-status fetchers never run when
             // identity fails terminally (they gate on selfUuid), so their loading
             // flags would stay true forever ("Loading your collection..." /
-            // "Checking..."). Clear them here so those zones render their
+            // "Checking your calendar..."). Clear them here so those zones render their
             // degrade banner instead of an indefinite spinner.
             setLoadingGames(false);
             setCheckingCalendarStatus(false);
@@ -1083,8 +1083,35 @@ function Profile(){
         }
     };
 
-    if (isLoading) return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
-    if (error) return <div className="flex items-center justify-center min-h-screen text-status-error">{error.message}</div>;
+    // §6.3: loading copy NAMES the thing. Worded identically to this route's own
+    // `loading.tsx` fallback so the boundary and the component do not greet the
+    // same person with two different sentences on one navigation.
+    if (isLoading) return <div className="flex items-center justify-center min-h-screen">Loading your profile...</div>;
+
+    /* DECISION Phase 88-19 (Req 7 / T-88-19-02): the session-error branch renders
+       the shared `ErrorFallback` — chosen OVER hand-writing a designed sentence
+       here, which is what this task's action literally asks for and what the
+       neighbouring branch above still does.
+
+       The primitive wins on two counts the copy fix alone would have missed.
+       (1) SECURITY: this branch rendered `{error.message}` — a raw upstream
+       message straight into the DOM (ASVS V7). `ErrorFallback` takes no error at
+       all BY CONTRACT, so the disclosure cannot be reintroduced by editing a
+       string; the detail goes to the console for a developer instead.
+       (2) It was a DEAD END: one red line, no retry, no reload, nothing to do.
+       The fallback ships both affordances.
+
+       Deliberately NOT worded "failed to load" — plan 88-25 arms a negative gate
+       on that phrase across this file. */
+    if (error) {
+        console.error('Auth0 session error on /userProfile:', error);
+        return (
+            <ErrorFallback
+                title="We couldn't load your profile"
+                body="Your session didn't come back. Reload the page, and sign in again if it keeps happening."
+            />
+        );
+    }
 
     return (
         user && (
@@ -1376,10 +1403,10 @@ function Profile(){
                             {selfIdentityErrorState.showError ? (
                                 // WR-03: identity failed terminally — the status
                                 // check never ran; show the degrade notice, not a
-                                // stuck "Checking...".
+                                // stuck "Checking your calendar...".
                                 <FetchErrorBanner state={selfIdentityErrorState} compact />
                             ) : checkingCalendarStatus ? (
-                                <div className="text-sm text-content-muted">Checking...</div>
+                                <div className="text-sm text-content-muted">Checking your calendar...</div>
                             ) : googleCalendarConnected ? (
                                 <button
                                     onClick={handleDisconnectGoogleCalendar}
@@ -1684,7 +1711,7 @@ function Profile(){
                         <div className="mt-2 text-center">
                             {saveStatus.status === 'saving' && <span className="text-xs text-content-muted">Resetting...</span>}
                             {saveStatus.status === 'saved' && <span className="text-xs text-status-success">Reset to defaults</span>}
-                            {saveStatus.status === 'error' && <span className="text-xs text-status-error">Failed to reset</span>}
+                            {saveStatus.status === 'error' && <span className="text-xs text-status-error">Couldn't reset — try again.</span>}
                         </div>
                     )}
 
