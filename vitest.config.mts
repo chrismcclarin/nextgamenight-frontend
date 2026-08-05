@@ -31,9 +31,20 @@ const jsxInJs: Plugin = {
 // tsconfig.json (Don't-Hand-Roll: never duplicate the alias map in resolve.alias).
 // The next/font/google alias (Pitfall 4) is the ONE explicit alias we keep — it
 // stubs the font loader so component tests in later phases don't crash on import.
+//
+// DECISION Phase 88 plan 06: the plugin is pointed at `tsconfig.vitest.json`
+// (which extends the root config and widens `include` to `.js`/`.jsx`) rather
+// than left to crawl for `tsconfig.json`. The plugin refuses to resolve `@/`
+// imports whose IMPORTER is outside the tsconfig `include` globs, and the root
+// config lists only `.ts`/`.tsx` — so a `.tsx` test rendering a `.js` component
+// that imports through `@/` fails at import-analysis. Widening the ROOT config
+// instead would feed JSX-in-`.js` files to `tsc --noEmit` and break
+// `npm run typecheck`; hand-writing the alias into `resolve.alias` is forbidden
+// above. Removing the `projects` argument re-breaks the `.js`-under-`.tsx-test`
+// pattern this whole config exists to support — that is a decision, not a cleanup.
 export default defineConfig({
   // `jsxInJs` must precede react()/oxc so JSX-in-`.js` is desugared first.
-  plugins: [jsxInJs, tsconfigPaths(), react()],
+  plugins: [jsxInJs, tsconfigPaths({ projects: ['tsconfig.vitest.json'] }), react()],
   resolve: {
     alias: {
       'next/font/google': fileURLToPath(
