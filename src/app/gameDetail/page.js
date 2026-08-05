@@ -1134,7 +1134,7 @@ export default function GameDetailPage() {
                 {(userScope === 'group-member' || userScope === 'game-only') && userRole !== 'pending' && participants.length > 0 && (
                     <div className="card p-3 md:p-6 mb-6">
                         <div className="flex items-center justify-between gap-3 mb-3">
-                            <h2 className="text-lg font-semibold text-content-primary">
+                            <h2 className="text-xl font-bold text-content-primary">
                                 Participants ({participants.length})
                             </h2>
                             {userScope === 'group-member' && (
@@ -1249,7 +1249,7 @@ export default function GameDetailPage() {
                 {/* Recommended Games Section */}
                 {eventSuggestions.length > 0 && (
                     <div className="card p-3 md:p-6 mt-6">
-                        <h2 className="text-lg font-semibold text-content-primary mb-1">Recommended Games</h2>
+                        <h2 className="text-xl font-bold text-content-primary mb-1">Recommended Games</h2>
                         {suggestionsPlayerCount && (
                             <p className="text-sm text-content-muted mb-4">
                                 Games from your group that work for {suggestionsPlayerCount} players
@@ -1531,7 +1531,7 @@ export default function GameDetailPage() {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="text-center max-w-md mx-auto px-6">
-                    <p className="text-content-primary text-lg font-semibold mb-2">Event not found</p>
+                    <p className="text-content-primary text-xl font-bold mb-2">Event not found</p>
                     <p className="text-content-secondary mb-6">This event no longer exists or has been cancelled.</p>
                     <Link href="/" className="text-content-link hover:underline">
                         ← Back to Home
@@ -1777,7 +1777,20 @@ export default function GameDetailPage() {
                 {showFilters && (
                 <div className="mb-6 p-4 bg-surface-page rounded-lg border border-line">
                     <div className="flex justify-between items-center mb-3">
-                        <h3 className="font-semibold text-content-primary">Filter & Sort Sessions</h3>
+                        {/* DECISION Phase 88-24 (Req 2 / UI-SPEC §4.1): 16/700, NOT the
+                            20/700 Heading role — chosen OVER the literal reading of Task 3's
+                            "section headings and card titles -> text-xl", which is what a
+                            later reader will "correct" this to. This h3 is nested INSIDE the
+                            "Game Sessions" h2's card (:1742), so promoting it to 20px flattens
+                            a real two-level hierarchy into one visual level. Same rung, same
+                            reasoning, and deliberately the same VALUE as the sub-heading rung
+                            88-19 established on userProfile (see that file's header marker) —
+                            so the two busiest surfaces in the app agree. It had no explicit
+                            size at all before this plan, which is why it reads as a
+                            near-no-op diff; the WEIGHT is the change (§4.2 states 600 as a
+                            prohibition and D-01 gives it exactly one home, the Button
+                            primitive). */}
+                        <h3 className="text-base font-bold text-content-primary">Filter & Sort Sessions</h3>
                         <button
                             onClick={clearFilters}
                             className="text-sm text-content-link hover:text-content-link-hover"
@@ -2159,6 +2172,16 @@ export default function GameDetailPage() {
                     that "Game Sessions (3 of 7)" plus a ~150px filter control did not. A
                     consistency sweep that converges this one onto the sessions treatment is
                     reopening an owner ruling, not tidying an oversight. */}
+                {/* DECISION Phase 88-24 (Req 2): the type-scale sweep SAW this heading and
+                    LEFT IT. It is not an oversight and it is not done. `text-2xl` (24) is
+                    outside §4.1's 4-size working set (14/16/20/30), so on the letter of Req 2
+                    this should be `text-xl` — but converging it is precisely the "consistency
+                    sweep onto the sessions treatment" the D-39 marker above rules out, and
+                    88-24 has no mandate to reopen an owner ruling from 88-11. The residue is
+                    recorded as DEF-88-24-02 in the phase's deferred-items.md so the Req 8
+                    census inherits it with an owner, rather than a later gate discovering it
+                    and silently "fixing" D-39 away. Whoever takes it needs the OWNER, not a
+                    plan: the two markers genuinely conflict and only he can rank them. */}
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold text-content-primary">Reviews ({reviews.length})</h2>
                     {user && !userReview && userRole && userRole !== 'pending' && (

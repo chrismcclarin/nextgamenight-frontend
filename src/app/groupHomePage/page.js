@@ -362,8 +362,17 @@ function GroupHomePage(){
                         </div>
                     )}
                     <div className="flex-1 min-w-0">
+                        {/* DECISION Phase 88-24 (Req 2 / UI-SPEC §4.1): the page title is
+                            `text-3xl` at EVERY width, chosen OVER the shipped
+                            `text-2xl md:text-3xl`. A heading that grows at a breakpoint is a
+                            second type scale — the same reasoning 88-19 recorded when it
+                            removed the md:-prefixed heading sizes from userProfile. This is a
+                            visible +6px on phone, and it is the intended direction: userProfile
+                            (:1268) and gameDetail (:1036) both already render their h1 at 30px
+                            unconditionally, so this surface was the last outlier. `wrap-break-word`
+                            is what keeps a long group name safe at 375px and must stay. */}
                         <h1
-                            className="text-2xl md:text-3xl font-bold wrap-break-word"
+                            className="text-3xl font-bold wrap-break-word"
                             style={getTextStyle(!!Group?.background_image_url, headerBgColor)}
                         >
                             {Group?.name || 'Group'}

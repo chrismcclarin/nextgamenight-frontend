@@ -422,7 +422,7 @@ function FriendsPage() {
         return (
             <div className="min-h-screen bg-surface-page flex items-center justify-center">
                 <div className="text-center">
-                    <h1 className="text-2xl font-bold text-content-primary mb-4">Friends</h1>
+                    <h1 className="text-3xl font-bold text-content-primary mb-4">Friends</h1>
                     <p className="text-content-secondary mb-6">Please log in to view your friends.</p>
                     <a
                         href="/api/auth/login"
@@ -483,7 +483,7 @@ function FriendsPage() {
 
                 {/* Search Section */}
                 <div className="card p-3 md:p-6 mb-6">
-                    <h2 className="text-lg font-semibold text-content-primary mb-3">Add Friend</h2>
+                    <h2 className="text-xl font-bold text-content-primary mb-3">Add Friend</h2>
                     <form onSubmit={handleSearch} className="flex gap-3">
                         <Input
                             type="email"
