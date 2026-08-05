@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
@@ -21,7 +21,7 @@ import ClickableMemberName from '../components/ClickableMemberName';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import StarRatingPicker from '../components/StarRatingPicker';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
-import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { Button } from '../../components/ui/Button';
 import { Input, Textarea, SelectControl } from '../../components/ui/Input';
@@ -201,6 +201,7 @@ export default function GameDetailPage() {
     const [reviews, setReviews] = useState([]);
     const [userReview, setUserReview] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [gameError, setGameError] = useState(null);
     const [showReviewForm, setShowReviewForm] = useState(false);
     const [userRole, setUserRole] = useState(null);
     // Phase 71.1 GAMP-09: scope detection for two-QR model.
@@ -519,7 +520,19 @@ export default function GameDetailPage() {
             router.push(`/groupHomePage?id=${group_id}`);
         } catch (err) {
             console.error('Error cancelling event:', err);
-            toast.error(err.message || 'Failed to cancel event.');
+            /* DECISION Phase 88-25 (Req 14 / T-88-25-01): failure copy is DERIVED from
+               `ApiError.code` via getFetchErrorMessage, chosen OVER the `err.message || '…'`
+               idiom every toast on this page used. `ApiError.message` is whatever the backend
+               sent — down to a literal `HTTP error! status: 500` when a route returns no body
+               (api.ts extractErrorMessage) — so the shipped idiom painted raw upstream text at
+               the user. Same ASVS V7 ruling 88-19 applied to `ErrorFallback`. See the marker on
+               getFetchErrorMessage for why this is a mechanism and not a string sweep. */
+            toast.error(
+                getFetchErrorMessage(err, {
+                    fallback: "We couldn't cancel this event. Please try again.",
+                    byCode: { forbidden: 'Only group owners and admins can cancel an event.' },
+                })
+            );
             setCancellingEvent(false);
             setShowActionsMenu(false);
         }
@@ -559,7 +572,11 @@ export default function GameDetailPage() {
             router.push('/');
         } catch (err) {
             console.error('[handleLeaveEvent] DELETE failed:', err);
-            toast.error(err?.message || "Couldn't leave event. Please try again.");
+            toast.error(
+                getFetchErrorMessage(err, {
+                    fallback: "We couldn't take you off this event. Please try again.",
+                })
+            );
             setLeavingEvent(false);
             setShowActionsMenu(false);
         }
@@ -576,7 +593,11 @@ export default function GameDetailPage() {
             setShowGameQR(true);
         } catch (err) {
             console.error('Failed to get game invite token:', err);
-            toast.error(err.message || 'Failed to load Share QR.');
+            toast.error(
+                getFetchErrorMessage(err, {
+                    fallback: "We couldn't build the share code. Please try again.",
+                })
+            );
         } finally {
             setQrLoading(false);
         }
@@ -615,12 +636,18 @@ export default function GameDetailPage() {
             setParticipants(prev => prev.filter(p => p.user_id !== targetUserDbId));
         } catch (err) {
             console.error('Failed to remove participant:', err);
-            toast.error(err.message || 'Failed to remove participant.');
+            toast.error(
+                getFetchErrorMessage(err, {
+                    fallback: "We couldn't remove them from this event. Please try again.",
+                    byCode: { forbidden: 'Only group owners and admins can remove someone.' },
+                })
+            );
         }
     };
 
     const fetchGameData = async () => {
         if (!game_id) return;
+        setGameError(null);
 
         // Identity-only re-run (selfUuid resolved after first load of the SAME
         // game): refresh in place — no full-page loading flash (#1/#18).
@@ -717,11 +744,39 @@ export default function GameDetailPage() {
             }
         } catch (error) {
             console.error('Error fetching game data:', error);
+            /* DECISION Phase 88-25 (Req 14 / T-88-25-02): a failed load is TRACKED and rendered as
+               the shared fetch-error treatment, chosen OVER the silent `console.error` this
+               shipped with. `game` stays null after a swallowed failure, so the render fell
+               through to the "Game not found" dead end below — a 500 or a dropped connection was
+               reported to the person as a definitive statement that the game does not exist, with
+               no retry and only a back-link. Empty and failed are different facts (UI-SPEC 9.2);
+               a `not_found` code still reaches the not-found branch, which is the one case where
+               that copy is TRUE.
+
+               Keep the ERROR object, not a flattened string: useFetchErrorState reads
+               `ApiError.code` off it. */
+            setGameError(
+                error instanceof Error ? error : new Error("The game request didn't complete.")
+            );
         } finally {
             loadedEntityKeyRef.current = entityKey;
             setLoading(false);
         }
     };
+
+    /* Adapter onto the shared fetch-error pair, matching the shipped 88-14/88-18 shape. `refetch`
+       must be STABLE — the hook puts it in a useCallback dep AND in its refocus-recovery effect
+       deps — and `fetchGameData` is re-declared every render, hence the ref hop. */
+    const fetchGameDataRef = useRef(null);
+    useEffect(() => {
+        fetchGameDataRef.current = fetchGameData;
+    });
+    const retryGameData = useCallback(() => fetchGameDataRef.current?.(), []);
+    const gameErrorState = useFetchErrorState({
+        isError: Boolean(gameError),
+        error: gameError,
+        refetch: retryGameData,
+    });
 
     // Runs ONLY after the dialog gate below has been explicitly confirmed.
     const performDeleteEvent = async (event_id) => {
@@ -731,7 +786,14 @@ export default function GameDetailPage() {
             fetchGameData();
         } catch (error) {
             console.error('Error deleting event:', error);
-            toast.error(error.message || 'Failed to delete event. Only group owners and admins can delete events.');
+            // The shipped copy stated the owner/admin rule unconditionally, so a network blip
+            // was reported as a permissions problem. It is now the `forbidden` branch only.
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't delete this session. Please try again.",
+                    byCode: { forbidden: 'Only group owners and admins can delete a session.' },
+                })
+            );
             // Re-thrown so the gate stays OPEN on failure (useConfirmAction's
             // contract) — swallowing it here would close the dialog and read as
             // "deleted" when the DELETE was refused.
@@ -796,15 +858,20 @@ export default function GameDetailPage() {
             return;
         }
 
+        // CLIENT-side validation is checked BEFORE the try. It used to `throw` into the same
+        // catch that handled the network failure, so its own message reached the user only via
+        // the `error.message` interpolation this plan removed — moving it out is what lets the
+        // catch stop interpolating without losing a real, locally-authored message.
+        const ratingValue = parseFloat(reviewForm.rating);
+        if (isNaN(ratingValue) || ratingValue < 0 || ratingValue > 5) {
+            toast.error('Pick a rating between 0 and 5 stars.');
+            return;
+        }
+
         try {
-            // Ensure rating is a number and within valid range (0-5, increments of 0.5)
-            const ratingValue = parseFloat(reviewForm.rating);
-            if (isNaN(ratingValue) || ratingValue < 0 || ratingValue > 5) {
-                throw new Error('Rating must be between 0 and 5');
-            }
             // Round to nearest 0.5 increment
             const roundedRating = Math.round(ratingValue * 2) / 2;
-            
+
             // Use gameReviewsAPI.submitReview which automatically includes Authorization header
             const data = await gameReviewsAPI.submitReview({
                 user_id: selfUuid,
@@ -823,8 +890,11 @@ export default function GameDetailPage() {
             fetchGameData();
         } catch (error) {
             console.error('Error submitting review:', error);
-            const errorMessage = error.message || 'Failed to submit review. Please try again.';
-            toast.error(errorMessage);
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't save your review. Please try again.",
+                })
+            );
         }
     };
 
@@ -1536,6 +1606,26 @@ export default function GameDetailPage() {
                     <Link href="/" className="text-content-link hover:underline">
                         ← Back to Home
                     </Link>
+                </div>
+            </div>
+        );
+    }
+
+    /* DECISION Phase 88-25 (Req 14 / T-88-25-02): a FAILED game load is checked BEFORE the
+       "Game not found" branch below. Ordering is load-bearing — a failed fetch also leaves `game`
+       null, so flipping these tells someone whose request merely failed that the game does not
+       exist, which is a false statement and a dead end with no retry. `not_found` is deliberately
+       NOT routed here: a real 404 IS "Game not found", and that branch keeps the scope-aware
+       back-link 71.1 GAMP-11 put there. */
+    if (!game && gameErrorState.showError && gameErrorState.code !== 'not_found') {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="w-full max-w-md px-6">
+                    <FetchErrorBanner
+                        state={gameErrorState}
+                        title="We couldn't load this game"
+                        reportContext="Game detail page — game/session fetch"
+                    />
                 </div>
             </div>
         );
