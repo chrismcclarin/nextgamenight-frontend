@@ -8,6 +8,7 @@ import { useAppForm } from '../../lib/useAppForm';
 import { FormField } from './form/FormField';
 import MemberSelector from './MemberSelector';
 import GameComboInput from './GameComboInput';
+import { Modal } from './Modal';
 
 /**
  * ScheduleForm - Form component for creating/editing prompt schedules
@@ -188,27 +189,51 @@ export default function ScheduleForm({
   // Get watched selected_member_ids for MemberSelector
   const selectedMemberIds = watch('selected_member_ids') || [];
 
-  return (
-    <div className="modal-overlay" style={{ zIndex: 100 }}
-         onClick={onCancel}>
-      <div className="modal-content p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
-           onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
-        <div className="modal-header mb-6">
-          <h2 className="text-2xl font-bold text-content-primary">
-            {isEditMode ? 'Edit Schedule' : 'Create Schedule'}
-          </h2>
-          {onCancel && (
-            <button
-              onClick={onCancel}
-              className="text-content-muted hover:text-content-primary text-2xl"
-              type="button"
-            >
-              &times;
-            </button>
-          )}
-        </div>
+  /* DECISION Phase 88-16 (SPEC Req 9): hosted on the shared <Modal>. The
+     bespoke backdrop, its `onClick`/`stopPropagation` pair and the NAMELESS
+     `&times;` button are gone rather than ported — that glyph was the SECOND of
+     the two nameless close buttons SPEC Req 4 names (no text, no `aria-label`,
+     not even a `title`), so screen readers announced "button". <Modal.Header>
+     supplies a close affordance with a real `aria-label="Close"`.
 
+     RESOLVED STACKING ORDER — the old inline `style={{ zIndex: 100 }}` is NOT
+     ported as a bespoke tier on the Radix content, and this is the point the
+     plan asked to be written down. Verified this session:
+       - The raised value existed because this form's own overlay had to clear
+         its PARENT. PromptScheduleManager renders ScheduleForm inside its own
+         surface, and in `variant="modal"` that surface was the legacy overlay
+         class at `z-index: 50` (globals.css). An equal 50 would have lost,
+         because both lived in the same in-page React tree.
+       - That parent is itself a <Modal> since 88-17 (PromptScheduleManager.js,
+         `<Modal open onClose={() => onClose?.()} size="lg">`). Radix portals
+         BOTH dialogs to the end of <body>, and the child opens second, so at an
+         identical z-50 this form still paints above its parent purely by DOM
+         order — measured for the stacked case in DEF/BLK-88-12-01 (outer dialog
+         goes `aria-hidden`, topmost stays live and hit-testable).
+       - HeatmapTooltip.js pins tooltips at z-index 100 as "always topmost"
+         (Plan 72-02 UAT decision). Pre-migration this form TIED that tier at
+         100 and won only by DOM order; it now sits cleanly below it, which is
+         the tooltip tier's stated intent and unreachable in practice anyway
+         (an open dialog inerts the heatmap behind it).
+     Re-adding a bespoke z-index here re-introduces a tier the rest of the modal
+     fleet does not have, to buy an ordering the portal already gives. That is a
+     decision, not a cleanup.
+
+     `onCancel` is OPTIONAL in this component's prop contract while <Modal>'s
+     `onClose` is mandatory, so it is called as `onCancel?.()` — passing it
+     straight through would throw a TypeError on Esc for a caller that omitted
+     it (pre-migration such a caller simply got an undismissable overlay).
+     Same idiom 88-17 used for PromptScheduleManager. Note the close affordance
+     in the header now renders unconditionally, where the old `&times;` was
+     gated on `onCancel` — for a caller without `onCancel` it is a no-op rather
+     than a dead-end, and no shipped caller omits it (PromptScheduleManager is
+     the only one). */
+  return (
+    <Modal open onClose={() => onCancel?.()} className="max-w-2xl">
+      <Modal.Header>
+        {isEditMode ? 'Edit Schedule' : 'Create Schedule'}
+      </Modal.Header>
+      <Modal.Body>
         <form onSubmit={handleAppSubmit(onSubmit)}>
           {/* Day of Week */}
           <FormField label="Day of Week" error={errors.schedule_day_of_week?.message} className="mb-4">
@@ -423,8 +448,8 @@ export default function ScheduleForm({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </Modal.Body>
+    </Modal>
   );
 }
 

@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { groupsAPI } from '../../lib/api';
 import FriendInvitePanel from './FriendInvitePanel';
+import { Modal } from './Modal';
 
 function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
 
@@ -74,69 +75,92 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
 
     return (
         <>
-            {modal && (
-                <div
-                    className="modal-overlay"
-                    onClick={modaltoggle}
-                >
-                    <div className="relative w-auto my-6 mx-auto max-w-sm"
-                         onClick={(e) => e.stopPropagation()}>
-                        {/*content*/}
-                        <div className="modal-content">
-                            {/*header*/}
-                            <div className="modal-header">
-                                <h3 className="text-3xl text-content-primary font-semibold">
-                                    Create a new Group
-                                </h3>
+            {/* DECISION Phase 88-16 (SPEC Req 9): hosted on the shared <Modal>.
+                `size="sm"` reproduces the old `max-w-sm` wrapper exactly, and the
+                `onClick={modaltoggle}` + `stopPropagation` backdrop pair is gone
+                rather than ported — Modal owns outside-dismiss, and it also adds
+                the Esc/focus-trap this dialog never had.
+
+                The title moves from `<h3 className="text-3xl …">` to the
+                DialogTitle contract (20px/700) with NO pixel change, verified
+                rather than assumed: the legacy `.modal-header h3 { font-size:
+                1.25rem }` rule in globals.css is UNLAYERED, so it already beat
+                the layered `text-3xl` utility — the heading has rendered at 20px
+                the whole time. `text-3xl` was dead code, not a size decision, so
+                nothing is being silently demoted here.
+
+                The named red "Close" button below deliberately SURVIVES beside
+                <Modal.Header>'s `×`. What this phase removes is NAMELESS close
+                glyphs (SPEC Req 4); this one carries real text, is the dialog's
+                only visible dismissal, and sits where the person's eye already
+                is. It is the same shape as createEvent keeping its "Cancel"
+                under a Modal header. Deleting it as a "duplicate" is a UX
+                change, not a migration cleanup.
+
+                The old `{modal && (…)}` guard is dropped rather than kept
+                alongside `open={modal}`: two sources of truth for one dialog's
+                open-ness is how a future edit changes one and not the other.
+                Radix renders nothing when `open` is false, and this component's
+                form state lives above the guard either way, so unmount timing
+                is unchanged. `Modal.Body` is `p-0` with the padding pushed onto
+                the <form>, because the "Close" button below is OUTSIDE the form
+                and was outside the padded body before the migration too. */}
+            <Modal open={modal} onClose={modaltoggle} size="sm">
+                <Modal.Header>Create a new Group</Modal.Header>
+                <Modal.Body className="p-0">
+                    <form onSubmit={onSubmit} autoComplete="off" className="p-6">
+                        <div className="mb-3 pt-0">
+                            <div className="relative">
+                                <input
+                                    id="name"
+                                    name="group-name-create"
+                                    onChange={handleChange}
+                                    value={newGroup.name}
+                                    type="text"
+                                    placeholder="Group Name"
+                                    required
+                                    maxLength={40}
+                                    autoComplete="off"
+                                    className="px-3 py-3 placeholder-content-muted text-content-primary relative bg-surface-input rounded-sm text-sm border border-line shadow-sm outline-hidden focus:outline-hidden focus:ring-3 focus:ring-focus-ring w-full pr-16"
+                                />
+                                <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-content-muted pointer-events-none">
+                                    {newGroup.name.length}/40
+                                </span>
                             </div>
-                            <form onSubmit={onSubmit} autoComplete="off" className="modal-body">
-                                <div className="mb-3 pt-0">
-                                    <div className="relative">
-                                        <input
-                                            id="name"
-                                            name="group-name-create"
-                                            onChange={handleChange}
-                                            value={newGroup.name}
-                                            type="text"
-                                            placeholder="Group Name"
-                                            required
-                                            maxLength={40}
-                                            autoComplete="off"
-                                            className="px-3 py-3 placeholder-content-muted text-content-primary relative bg-surface-input rounded-sm text-sm border border-line shadow-sm outline-hidden focus:outline-hidden focus:ring-3 focus:ring-focus-ring w-full pr-16"
-                                        />
-                                        <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-content-muted pointer-events-none">
-                                            {newGroup.name.length}/40
-                                        </span>
-                                    </div>
-                                    {errorMessage && (
-                                        <p className="mt-2 text-sm text-red-600">{errorMessage}</p>
-                                    )}
-                                </div>
-                                {/* Owner report 2026-08-04: button sat off-center under the input.
-                                    Plain utilities instead of .modal-footer — the unlayered global
-                                    (flex-end + its own 1.5rem padding inside the padded body) can
-                                    never line up with the input, and layered utilities lose to it,
-                                    so the class comes off rather than fighting it. */}
-                                <div className="flex justify-center pt-1">
-                                    <button
-                                        className="btn btn-primary font-bold uppercase text-sm px-6 py-3 shadow-sm hover:shadow-lg min-h-11"
-                                        type="submit"
-                                    >
-                                        Create Group
-                                    </button>
-                                </div>
-                            </form>
-                                <button
-                                    className="text-status-error background-transparent font-bold uppercase px-6 py-2 text-sm outline-hidden focus:outline-hidden active:opacity-75 mr-1 mb-1 ease-linear transition-all duration-150"
-                                    type="button"
-                                    onClick={modaltoggle}
-                                >
-                                    Close
-                                </button>
+                            {errorMessage && (
+                                <p className="mt-2 text-sm text-red-600">{errorMessage}</p>
+                            )}
                         </div>
-                    </div>
-                </div>
-            )}
+                        {/* Owner report 2026-08-04: button sat off-center under the input.
+                            Plain utilities instead of the legacy `.modal-footer` class —
+                            the unlayered global (flex-end + its own 1.5rem padding inside
+                            the padded body) can never line up with the input, and layered
+                            utilities lose to it, so the class came off rather than fighting it.
+                            DECISION Phase 88-16: the CASCADE half of that reasoning is now
+                            moot (no unlayered rule reaches this subtree any more), but the
+                            OUTCOME is re-affirmed, not inherited by accident: this stays a
+                            centered in-body row rather than becoming a <Modal.Footer>, which
+                            is `justify-end` by contract and would re-create the exact
+                            off-center look the owner reported. Converging this one dialog on
+                            the fleet footer is a decision, not a cleanup. */}
+                        <div className="flex justify-center pt-1">
+                            <button
+                                className="btn btn-primary font-bold uppercase text-sm px-6 py-3 shadow-sm hover:shadow-lg min-h-11"
+                                type="submit"
+                            >
+                                Create Group
+                            </button>
+                        </div>
+                    </form>
+                    <button
+                        className="text-status-error background-transparent font-bold uppercase px-6 py-2 text-sm outline-hidden focus:outline-hidden active:opacity-75 mr-1 mb-1 ease-linear transition-all duration-150"
+                        type="button"
+                        onClick={modaltoggle}
+                    >
+                        Close
+                    </button>
+                </Modal.Body>
+            </Modal>
 
             {/* Auto-opened for the group that was just created (deliberate since
                 19de50a). `openedFrom="create"` is what earns the panel its
