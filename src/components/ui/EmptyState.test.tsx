@@ -71,7 +71,12 @@ describe('EmptyState', () => {
     const { container } = render(
       <EmptyState
         {...base}
-        illustration={<img src="/art/empty-polls.png" alt="" width={96} />}
+        illustration={
+          // A raw <img> is the point: the slot must accept ANY node, including
+          // artwork a caller has not routed through next/image.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src="/art/empty-polls.png" alt="" width={96} />
+        }
       />
     );
     const media = container.querySelector('[data-slot="empty-state-media"]');
