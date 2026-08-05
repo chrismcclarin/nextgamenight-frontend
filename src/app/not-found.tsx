@@ -18,12 +18,13 @@ import { EmptyState } from '@/components/ui/EmptyState';
    two, which is why this renders `EmptyState` rather than `ErrorFallback`. Giving the 404 its
    own artwork is a decision for the illustration slot (D-17), not a cleanup for this file.
 
-   KNOWN GAP, deliberately left rather than silently patched: `EmptyState` renders its heading
-   as an `<h3>` (fixed in 88-04), so this page's only heading is an `<h3>` — it has no `<h1>`,
-   unlike every shipped page and unlike `ErrorFallback`. Raising it means adding a heading-level
-   prop to the shared primitive, which is outside this plan's declared files; recorded in
-   `deferred-items.md` for the Req 5 a11y plan. Do not "fix" it by bolting a second heading on
-   this page — that trades a missing `<h1>` for a skipped heading level. */
+   HEADING LEVEL — gap CLOSED by 88-18 (DEF-88-09-01), keep it that way. `EmptyState`'s heading
+   was a hardcoded `<h3>`, leaving this page as the app's only page with no `<h1>`. 88-18 added
+   the optional `headingLevel` prop (default `h3`, so no other adopter moved) and this page
+   passes `h1`. The standing warning still holds and is the reason the fix took that shape: do
+   NOT "fix" a missing `<h1>` here by bolting a second heading onto the page — that trades a
+   missing `<h1>` for a skipped heading level (`h1` -> `h3`), which is worse. `headingLevel="h1"`
+   below is load-bearing, not decoration; `not-found.test.tsx` pins it. */
 
 export default function NotFound() {
   return (
@@ -32,6 +33,7 @@ export default function NotFound() {
         <EmptyState
           icon="Compass"
           heading="This page took a wrong turn"
+          headingLevel="h1"
           body="The link may be old, or the page may have moved. Head back to your groups and pick up where you left off."
           action={
             <Button asChild variant="primary">

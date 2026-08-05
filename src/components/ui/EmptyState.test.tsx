@@ -38,6 +38,35 @@ describe('EmptyState', () => {
     expect(heading).toHaveClass('text-content-primary');
   });
 
+  // DEF-88-09-01 (closed in 88-18): the heading LEVEL is overridable so a
+  // page-level EmptyState can supply the document's <h1>; the 20px/700 type
+  // role must NOT follow the level.
+  it('keeps h3 as the default heading level so no shipped call site moves', () => {
+    render(<EmptyState {...base} />);
+    expect(
+      screen.getByRole('heading', { level: 3, name: base.heading })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+  });
+
+  it('renders the heading as an h1 when `headingLevel="h1"`, at the SAME type role', () => {
+    render(<EmptyState {...base} headingLevel="h1" />);
+    const heading = screen.getByRole('heading', { level: 1, name: base.heading });
+    expect(heading.tagName).toBe('H1');
+    // the level moved; the 20px/700 Heading role did not
+    expect(heading).toHaveClass('text-xl');
+    expect(heading).toHaveClass('font-bold');
+    expect(heading).toHaveClass('text-content-primary');
+    expect(screen.queryByRole('heading', { level: 3 })).toBeNull();
+  });
+
+  it('renders the heading as an h2 when asked', () => {
+    render(<EmptyState {...base} headingLevel="h2" />);
+    expect(
+      screen.getByRole('heading', { level: 2, name: base.heading })
+    ).toBeInTheDocument();
+  });
+
   it('renders the body at 16px/400 secondary, measure-capped', () => {
     render(<EmptyState {...base} />);
     const body = screen.getByText(base.body);
