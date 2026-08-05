@@ -6,6 +6,10 @@ import PromptScheduleReadOnly from './PromptScheduleReadOnly';
 import SafeImage from './SafeImage';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { toast } from 'sonner';
+// Relative (not `@/`) so this `.js` component resolves under vitest, matching
+// the sibling ManageMembers.js adopter.
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { useConfirmAction } from '../../components/ui/useConfirmAction';
 
 // Default profile picture options
 const DEFAULT_PROFILE_PICTURES = [
@@ -39,9 +43,6 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
   const [customPictureUrl, setCustomPictureUrl] = useState('');
   const [customBackgroundUrl, setCustomBackgroundUrl] = useState('');
   const [saving, setSaving] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState('');
-  const [deleting, setDeleting] = useState(false);
 
   // Plan 69-04 Leave Group state
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -193,30 +194,41 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
     }
   };
 
-  const handleDeleteGroup = async () => {
+  // Phase 88.2 / SPEC-REQ-7 copy, carried verbatim in MEANING out of the retired
+  // native prompt string and into the dialog body. M-5 still holds: recovery is
+  // attributed to the OTHER members (the deleter is emailed nothing), and a
+  // sole-member group is told plainly that the delete is final. The trailing
+  // "Delete this group?" that the old string carried now lives in the dialog
+  // TITLE — asking it twice in one dialog reads as a stutter.
+  const deleteDialogBody = isSoleMemberDelete ? (
+    <p>
+      You&apos;re the only member — nobody is emailed a recovery link, so deleting this group is
+      final. It is hidden straight away and erased after {recoveryDays} days.
+    </p>
+  ) : (
+    <p>
+      This hides the group from every member straight away, and emails them a link to take it over.
+      If nobody brings it back within {recoveryDays} days, it is erased.
+    </p>
+  );
+
+  // D-06 blocker panel, fed by the pre-flight ALREADY fetched above — there is
+  // deliberately no second `getDeletionImpact` call for the dialog. Renders only
+  // when the fetch succeeded; the degraded path still gets the body copy, which
+  // is the half that carries the recoverability claim.
+  const deleteImpactPanel = deletionImpact ? (
+    <p className="text-sm text-content-secondary">
+      <strong className="text-content-primary">{deletionImpact.member_count}</strong> members lose
+      access to <strong className="text-content-primary">{deletionImpact.event_count}</strong>{' '}
+      events, reviews and history.
+    </p>
+  ) : null;
+
+  const performDeleteGroup = async () => {
     if (!user?.sub || !group) return;
-    
-    // Triple check: user must type the exact group name
-    if (deleteConfirmText !== group.name) {
-      toast.error(`Please type the exact group name "${group.name}" to confirm deletion.`);
-      return;
-    }
-    
-    // Phase 88.2 / SPEC-REQ-7: the string changed, the gate did not. See the
-    // DECISION marker in the Danger Zone render. M-5: recovery is attributed to
-    // the other members (the deleter gets no email), and a sole-member group is
-    // told plainly the delete is final.
-    const confirmMessage = isSoleMemberDelete
-      ? `You're the only member — nobody is emailed a recovery link, so deleting this group is final. It is hidden straight away and erased after ${recoveryDays} days. Delete this group?`
-      : `This hides the group from every member straight away, and emails them a link to take it over. If nobody brings it back within ${recoveryDays} days, it is erased. Delete this group?`;
-    if (!confirm(confirmMessage)) {
-      return;
-    }
-    
     try {
-      setDeleting(true);
       await groupsAPI.deleteGroup(group.id);
-      
+
       // Close modal and navigate away
       if (onClose) onClose();
       if (onGroupDeleted) {
@@ -228,10 +240,55 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
     } catch (error) {
       console.error('Error deleting group:', error);
       toast.error(error.message || 'Failed to delete group. Please try again.');
-    } finally {
-      setDeleting(false);
+      // Re-thrown so useConfirmAction keeps the gate OPEN on failure (its
+      // contract): closing it would leave the owner looking at a Danger Zone
+      // with no indication the group is still there.
+      throw error;
     }
   };
+
+  /* DECISION Phase 88-13 (D-04, supersedes the stacking half of 88.2 SPEC-REQ-6).
+     THIS MARKER REPLACES, AND PRESERVES THE HISTORY OF, the `DECISION Phase 88.2
+     SPEC-REQ-6` marker that stood on the old inline delete block.
+
+     WHAT 88.2 RECORDED (kept, because it is still the reasoning that governs this
+     surface): the owner chose disclosure over refusal. 88.2 added information —
+     the real member/event counts, the real recovery window — and an alternative
+     (transfer ownership), and deliberately added NO friction. It rejected two
+     alternatives by name: an extra acknowledgement step for many-member groups,
+     and "dropping the browser confirmation now that the delete is reversible".
+     It then handed the redesigned dialog component to "Phase 88 Req 11".
+
+     WHAT PHASE 88 DECIDED, AND WHY IT IS NOT AN OVERRIDE: Req 11 / D-04 IS that
+     handed-off redesign, and it is the later decision. Reading 88.2's second
+     rejected alternative literally would forbid the very work it delegated, so
+     the reading taken here — owner-ratified through plan review — is the one that
+     preserves its INTENT: 88.2 refused to leave this surface with LESS friction
+     than it shipped with. So the type-the-group-name gate SURVIVES at full
+     strength, now expressed through the shared `typed` tier: the commit control
+     stays disabled until an exact match on the group name (D-05, per-object —
+     muscle memory cannot carry anyone through it), and the pre-flight counts sit
+     above the input. What DIED is only the second, stacked native browser prompt
+     that sat behind it: a repeat question that added no information and trained
+     reflexive dismissal (D-04). TOTAL FRICTION IS UNCHANGED; what changed is that
+     the one remaining gate is styled, focus-trapping and screen-reader-reachable
+     instead of a native prompt no assistive-tech user could be given context in.
+
+     STILL ACCEPTED-FOREVER, untouched by this phase: no NEW gate is added, and
+     `blocked` is never passed to ConfirmDialog — the backend stays the authority
+     on whether a delete may proceed, exactly as 88.2's degraded path requires.
+
+     Weakening the typed gate, re-stacking a second prompt behind it, or adding a
+     refusal gate re-litigates 88.2-SPEC.md § Boundaries. That is a decision, not
+     a cleanup. */
+  const deleteGate = useConfirmAction({
+    tier: 'typed',
+    title: `Delete ${group.name}?`,
+    body: deleteDialogBody,
+    confirmLabel: 'Delete',
+    expectedPhrase: group.name,
+    onConfirm: performDeleteGroup,
+  });
 
   return (
     <div className="modal-overlay" style={{ zIndex: 100 }} onClick={onClose}>
@@ -514,61 +571,17 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
               Transfer ownership instead
             </button>
 
-            {!showDeleteConfirm ? (
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="btn btn-danger w-full sm:w-auto min-h-11"
-              >
-                Delete Group
-              </button>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-sm font-medium text-content-secondary">
-                  To confirm deletion, please type the group name: <span className="font-bold text-content-primary">{group.name}</span>
-                </p>
-                <input
-                  type="text"
-                  value={deleteConfirmText}
-                  onChange={(e) => setDeleteConfirmText(e.target.value)}
-                  placeholder="Type group name to confirm"
-                  className="w-full p-2 min-h-11 border border-red-300 rounded-sm text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-red-500"
-                />
-                {/* Stacked on a phone, inline from sm: up — two side-by-side
-                    targets at 375px are cramped, and one of them is destructive. */}
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <button
-                    onClick={() => {
-                      setShowDeleteConfirm(false);
-                      setDeleteConfirmText('');
-                    }}
-                    className="btn btn-secondary w-full sm:w-auto min-h-11"
-                  >
-                    Cancel
-                  </button>
-                  {/* DECISION Phase 88.2 SPEC-REQ-6: the type-the-group-name gate
-                      below and the native browser confirmation in handleDeleteGroup
-                      are both PRESERVED, behaviorally unchanged. The owner chose
-                      disclosure over refusal — this phase adds information (the real
-                      counts, the real recovery window) and an alternative (transfer),
-                      and deliberately adds NO friction. Chosen OVER two rejected
-                      alternatives: adding an extra acknowledgement step for
-                      many-member groups, and dropping the browser confirmation now
-                      that the delete is reversible. Phase 88 Req 11 owns the
-                      redesigned dialog component; this phase only corrects the copy
-                      and adds the counts on the existing markup so the app is not
-                      lying in the meantime. Removing either gate, or adding a new
-                      one, re-litigates an accepted-forever decision recorded in
-                      88.2-SPEC.md § Boundaries — that is a decision, not a cleanup. */}
-                  <button
-                    onClick={handleDeleteGroup}
-                    disabled={deleting || deleteConfirmText !== group.name}
-                    className="btn btn-danger w-full sm:w-auto min-h-11"
-                  >
-                    {deleting ? 'Deleting...' : 'Delete Group'}
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* One affordance, one gate. The typed confirmation and its Cancel
+                now live in <ConfirmDialog> (see the DECISION marker above
+                `deleteGate`); this button only opens it. */}
+            <button
+              type="button"
+              onClick={() => deleteGate.trigger()}
+              disabled={deleteGate.pending}
+              className="btn btn-danger w-full sm:w-auto min-h-11"
+            >
+              {deleteGate.pending ? 'Deleting...' : 'Delete Group'}
+            </button>
           </div>
         )}
 
@@ -590,6 +603,12 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
         </div>
       </div>
 
+      {/* Mounted unconditionally, alongside the surface rather than inside the
+          Danger Zone's conditional — a live region that mounts with the gate
+          announces nothing (the `statusNode` contract in useConfirmAction).
+          Silent on the `typed` tier today; still mounted so a retier is one word. */}
+      <ConfirmDialog {...deleteGate.dialogProps} blockerPanel={deleteImpactPanel} />
+      {deleteGate.statusNode}
     </div>
   );
 }
