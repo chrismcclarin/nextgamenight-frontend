@@ -1151,3 +1151,116 @@ describe('userProfile microcopy (Req 7)', () => {
   });
 });
 
+
+// ===========================================================================
+// Plan 88-19 — DEF-88-10-02: the save-status slot is keyed, not single
+// ===========================================================================
+// D-14 exempts these toggles from a success toast precisely BECAUSE the row's
+// own Saving/Saved indicator covers the round trip. A single-slot status made
+// that indicator lie the moment a second toggle was flipped: the first row's
+// "Saving…" vanished with no receipt, and its unkeyed 2s timer could clear the
+// SECOND row's indicator early. Both halves are pinned here.
+// ---------------------------------------------------------------------------
+
+describe('userProfile save-status slots (DEF-88-10-02)', () => {
+  // The first test below parks the sender on a promise it controls. The global
+  // `vi.clearAllMocks()` clears CALLS, not IMPLEMENTATIONS, so without this the
+  // parked promise leaks into every later test and nothing ever resolves.
+  // Restored on both sides so a describe appended after this one is safe too.
+  async function restoreSender() {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.updateNotificationPreferences as ReturnType<typeof vi.fn>).mockResolvedValue({});
+  }
+  beforeEach(restoreSender);
+  afterEach(restoreSender);
+
+  /** The status cell text for one notification row, or '' when at rest. */
+  function rowStatusText(label: string) {
+    const row = screen.getByText(label).closest('div.py-3') as HTMLElement;
+    return row.textContent ?? '';
+  }
+
+  it('keeps a second row’s receipt from erasing the first', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    // Both requests stay in flight so BOTH rows must show "Saving…" at once —
+    // the exact state the single slot could not represent.
+    const pending: Array<() => void> = [];
+    (usersAPI.updateNotificationPreferences as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise<void>((resolve) => pending.push(() => resolve()))
+    );
+
+    renderProfile();
+    fireEvent.click(await screen.findByRole('switch', { name: 'New Event email notifications' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Event Updates email notifications' }));
+
+    await waitFor(() => expect(rowStatusText('New Event')).toContain('Saving'));
+    expect(rowStatusText('Event Updates')).toContain('Saving');
+
+    await act(async () => {
+      pending.forEach((resolve) => resolve());
+    });
+    await waitFor(() => expect(rowStatusText('New Event')).toContain('Saved'));
+    expect(rowStatusText('Event Updates')).toContain('Saved');
+  });
+
+  it('does not let one row’s clear timer wipe another row’s indicator', async () => {
+    vi.useFakeTimers();
+    try {
+      renderProfile();
+      await vi.waitFor(() =>
+        expect(
+          screen.getByRole('switch', { name: 'New Event email notifications' })
+        ).toBeInTheDocument()
+      );
+
+      fireEvent.click(screen.getByRole('switch', { name: 'New Event email notifications' }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      // 1.5s into the first row's 2s window, flip a second row.
+      fireEvent.click(screen.getByRole('switch', { name: 'Event Updates email notifications' }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
+
+      // The first row's timer has now fired and cleared ONLY the first row.
+      expect(rowStatusText('New Event')).not.toContain('Saved');
+      expect(rowStatusText('Event Updates')).toContain('Saved');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Pre-existing double-render, fixed by the same keying: a reminder-window save
+  // set `{type:'reminder'}`, and the ROW indicator never checked the channel, so
+  // "Saving…" appeared twice on the reminder row.
+  it('lights only the window indicator when the reminder window changes', async () => {
+    renderProfile();
+    const select = await screen.findByRole('combobox', { name: 'Remind me' });
+    fireEvent.change(select, { target: { value: '24' } });
+
+    await waitFor(() =>
+      expect(rowStatusText('Event Reminders')).toContain('Saved')
+    );
+    expect(rowStatusText('Event Reminders').match(/Saved/g)).toHaveLength(1);
+  });
+
+  it('surfaces the guard message on the row that was blocked', async () => {
+    renderProfile({
+      notification_preferences: {
+        event_created: { email: true, sms: false },
+        reminder: { email: false, sms: false, window_hours: 1 },
+        event_updated: { email: false, sms: false },
+        event_cancelled: { email: false, sms: false },
+      },
+    });
+    fireEvent.click(
+      await screen.findByRole('switch', { name: 'New Event email notifications' })
+    );
+
+    await waitFor(() =>
+      expect(rowStatusText('New Event')).toContain('At least one notification must stay enabled')
+    );
+    expect(rowStatusText('Event Updates')).not.toContain('At least one');
+  });
+});

@@ -73,6 +73,24 @@ const REMINDER_WINDOWS = [
    deliberately — they are not in the working set. So are the `md:`-prefixed
    heading sizes: a heading that grows at a breakpoint is a second scale. */
 
+/**
+ * The status a notification ROW shows, derived from its two per-channel slots
+ * (DEF-88-10-02). The row has ONE indicator cell but two controls, so when both
+ * are live the more serious state wins — a failed SMS save is never hidden
+ * behind a successful email save. `reminder:window` is deliberately NOT in this
+ * list: it has its own indicator, and the old shape's row check ignored the
+ * channel, so a window save lit BOTH cells at once.
+ */
+const SAVE_STATUS_PRECEDENCE = ['guard', 'error', 'saving', 'saved'];
+/** Slots that are not a per-row channel and therefore have their own indicator. */
+const REMINDER_WINDOW_SLOT = 'reminder:window';
+const RESET_SLOT = 'all:reset';
+function rowSaveStatus(statuses, typeKey) {
+    return SAVE_STATUS_PRECEDENCE.find(
+        status => statuses[`${typeKey}:email`] === status || statuses[`${typeKey}:sms`] === status
+    ) ?? null;
+}
+
 const DEFAULT_PREFERENCES = {
     event_created: { email: true, sms: false },
     reminder: { email: true, sms: false, window_hours: 1 },
@@ -204,7 +222,55 @@ function Profile(){
 
     // Notification preferences state
     const [preferences, setPreferences] = useState(null);
-    const [saveStatus, setSaveStatus] = useState(null); // { type, channel, status: 'saving'|'saved'|'error'|'guard' }
+
+    /* DECISION Phase 88-19 (DEF-88-10-02): the save status is a KEYED MAP with a
+       per-key clear timer, chosen OVER the single `{ type, channel, status }`
+       object this shipped with.
+
+       This is load-bearing precisely BECAUSE of D-14 two screens down. That
+       exemption says these toggles need no success toast, and the reason it
+       gives is that the row's own Saving/Saved indicator covers the round trip.
+       With one slot, that reason was false the moment a second toggle moved:
+       every writer set the slot wholesale, so flipping row B replaced row A's
+       state — row A's "Saving…" vanished with no receipt whatever its request
+       actually did, and if A then FAILED the switch rolled back with nothing
+       said. The 2s/3s clears were unkeyed too, so A's late timer could wipe B's
+       indicator early. A matrix is used by flipping several things in a row;
+       this was the ordinary path, not an edge case.
+
+       Collapsing this back to one slot is a decision that re-opens D-14, not a
+       simplification. */
+    const [saveStatuses, setSaveStatuses] = useState({}); // { [`${type}:${channel}`]: 'saving'|'saved'|'error'|'guard' }
+    const saveStatusTimersRef = useRef({});
+
+    const setSaveStatus = useCallback((key, status, clearAfterMs) => {
+        setSaveStatuses(prev => ({ ...prev, [key]: status }));
+        const timers = saveStatusTimersRef.current;
+        // Cancel this key's own pending clear before arming a new one: without
+        // it, a 'saved' timer already in flight fires over the NEXT status this
+        // same control lands on.
+        if (timers[key]) {
+            clearTimeout(timers[key]);
+            delete timers[key];
+        }
+        if (!clearAfterMs) return; // 'saving' persists until it resolves.
+        timers[key] = setTimeout(() => {
+            delete timers[key];
+            setSaveStatuses(prev => {
+                if (!(key in prev)) return prev;
+                const next = { ...prev };
+                delete next[key];
+                return next;
+            });
+        }, clearAfterMs);
+    }, []);
+
+    useEffect(() => {
+        const timers = saveStatusTimersRef.current;
+        return () => {
+            Object.values(timers).forEach(clearTimeout);
+        };
+    }, []);
 
     const { replayTutorial } = useTutorial();
     const { timezone, setTimezone } = useTimezone();
@@ -540,9 +606,9 @@ function Profile(){
         // guard placed just before the await would leave the UI showing an
         // un-sent change with no rollback (the catch's setPreferences rollback
         // never runs — no error is thrown). Fail loud via saveStatus 'error'.
+        const slot = `${notificationType}:${channel}`;
         if (!selfUuid) {
-            setSaveStatus({ type: notificationType, channel, status: 'error' });
-            setTimeout(() => setSaveStatus(null), 3000);
+            setSaveStatus(slot, 'error', 3000);
             return;
         }
         // Guard: at least one channel must be enabled globally across all notification types
@@ -555,8 +621,7 @@ function Profile(){
                 testPrefs[t.key]?.email || testPrefs[t.key]?.sms
             );
             if (!anyEnabled) {
-                setSaveStatus({ type: notificationType, channel, status: 'guard' });
-                setTimeout(() => setSaveStatus(null), 3000);
+                setSaveStatus(slot, 'guard', 3000);
                 return;
             }
         }
@@ -568,19 +633,17 @@ function Profile(){
             [notificationType]: { ...preferences[notificationType], [channel]: newValue }
         };
         setPreferences(updatedPrefs);
-        setSaveStatus({ type: notificationType, channel, status: 'saving' });
+        setSaveStatus(slot, 'saving');
 
         try {
             await usersAPI.updateNotificationPreferences(selfUuid, updatedPrefs);
             // Keep the immortal self cache coherent (SELF_IDENTITY_KEY contract).
             patchSelfCache(queryClient, { notification_preferences: updatedPrefs });
-            setSaveStatus({ type: notificationType, channel, status: 'saved' });
-            setTimeout(() => setSaveStatus(null), 2000);
+            setSaveStatus(slot, 'saved', 2000);
         } catch (error) {
             console.error('Error updating preference:', error);
             setPreferences(previousPrefs);
-            setSaveStatus({ type: notificationType, channel, status: 'error' });
-            setTimeout(() => setSaveStatus(null), 3000);
+            setSaveStatus(slot, 'error', 3000);
         }
     };
 
@@ -588,8 +651,7 @@ function Profile(){
     const handleReminderWindowChange = async (newWindowHours) => {
         // 87.5 Plan 09: identity guard BEFORE the optimistic setPreferences below.
         if (!selfUuid) {
-            setSaveStatus({ type: 'reminder', channel: 'window', status: 'error' });
-            setTimeout(() => setSaveStatus(null), 3000);
+            setSaveStatus(REMINDER_WINDOW_SLOT, 'error', 3000);
             return;
         }
         const previousPrefs = { ...preferences };
@@ -598,18 +660,16 @@ function Profile(){
             reminder: { ...preferences.reminder, window_hours: newWindowHours }
         };
         setPreferences(updatedPrefs);
-        setSaveStatus({ type: 'reminder', channel: 'window', status: 'saving' });
+        setSaveStatus(REMINDER_WINDOW_SLOT, 'saving');
 
         try {
             await usersAPI.updateNotificationPreferences(selfUuid, updatedPrefs);
             patchSelfCache(queryClient, { notification_preferences: updatedPrefs });
-            setSaveStatus({ type: 'reminder', channel: 'window', status: 'saved' });
-            setTimeout(() => setSaveStatus(null), 2000);
+            setSaveStatus(REMINDER_WINDOW_SLOT, 'saved', 2000);
         } catch (error) {
             console.error('Error updating reminder window:', error);
             setPreferences(previousPrefs);
-            setSaveStatus({ type: 'reminder', channel: 'window', status: 'error' });
-            setTimeout(() => setSaveStatus(null), 3000);
+            setSaveStatus(REMINDER_WINDOW_SLOT, 'error', 3000);
         }
     };
 
@@ -617,24 +677,21 @@ function Profile(){
     const handleResetPreferences = async () => {
         // 87.5 Plan 09: identity guard BEFORE the optimistic setPreferences below.
         if (!selfUuid) {
-            setSaveStatus({ type: 'all', channel: 'reset', status: 'error' });
-            setTimeout(() => setSaveStatus(null), 3000);
+            setSaveStatus(RESET_SLOT, 'error', 3000);
             return;
         }
         const previousPrefs = { ...preferences };
         setPreferences(DEFAULT_PREFERENCES);
-        setSaveStatus({ type: 'all', channel: 'reset', status: 'saving' });
+        setSaveStatus(RESET_SLOT, 'saving');
 
         try {
             await usersAPI.updateNotificationPreferences(selfUuid, DEFAULT_PREFERENCES);
             patchSelfCache(queryClient, { notification_preferences: DEFAULT_PREFERENCES });
-            setSaveStatus({ type: 'all', channel: 'reset', status: 'saved' });
-            setTimeout(() => setSaveStatus(null), 2000);
+            setSaveStatus(RESET_SLOT, 'saved', 2000);
         } catch (error) {
             console.error('Error resetting preferences:', error);
             setPreferences(previousPrefs);
-            setSaveStatus({ type: 'all', channel: 'reset', status: 'error' });
-            setTimeout(() => setSaveStatus(null), 3000);
+            setSaveStatus(RESET_SLOT, 'error', 3000);
         }
     };
 
@@ -1632,16 +1689,16 @@ function Profile(){
 
                                     {/* Status indicator */}
                                     <div className="w-20 text-right">
-                                        {saveStatus?.type === type.key && saveStatus.status === 'saving' && (
+                                        {rowSaveStatus(saveStatuses, type.key) === 'saving' && (
                                             <span className="text-xs text-content-muted">Saving...</span>
                                         )}
-                                        {saveStatus?.type === type.key && saveStatus.status === 'saved' && (
+                                        {rowSaveStatus(saveStatuses, type.key) === 'saved' && (
                                             <span className="text-xs text-status-success">Saved</span>
                                         )}
-                                        {saveStatus?.type === type.key && saveStatus.status === 'error' && (
+                                        {rowSaveStatus(saveStatuses, type.key) === 'error' && (
                                             <span className="text-xs text-status-error">Error</span>
                                         )}
-                                        {saveStatus?.type === type.key && saveStatus.status === 'guard' && (
+                                        {rowSaveStatus(saveStatuses, type.key) === 'guard' && (
                                             <span className="text-xs text-status-error">At least one notification must stay enabled</span>
                                         )}
                                     </div>
@@ -1673,16 +1730,16 @@ function Profile(){
                                                 <option key={w.value} value={w.value}>{w.label}</option>
                                             ))}
                                         </SelectControl>
-                                        {saveStatus?.type === 'reminder' && saveStatus.channel === 'window' && saveStatus.status === 'saving' && (
+                                        {saveStatuses[REMINDER_WINDOW_SLOT] === 'saving' && (
                                             <span className="text-xs text-content-muted">Saving...</span>
                                         )}
-                                        {saveStatus?.type === 'reminder' && saveStatus.channel === 'window' && saveStatus.status === 'saved' && (
+                                        {saveStatuses[REMINDER_WINDOW_SLOT] === 'saved' && (
                                             <span className="text-xs text-status-success">Saved</span>
                                         )}
                                         {/* ML-16 (87.5 review): the identity-guard and persist-failure
                                             paths both set status 'error' here — without this branch the
                                             dropdown silently snapped back with zero feedback. */}
-                                        {saveStatus?.type === 'reminder' && saveStatus.channel === 'window' && saveStatus.status === 'error' && (
+                                        {saveStatuses[REMINDER_WINDOW_SLOT] === 'error' && (
                                             <span className="text-xs text-status-error">Error</span>
                                         )}
                                     </div>
@@ -1707,11 +1764,11 @@ function Profile(){
                     </div>
 
                     {/* Reset status */}
-                    {saveStatus?.type === 'all' && saveStatus.channel === 'reset' && (
+                    {saveStatuses[RESET_SLOT] && (
                         <div className="mt-2 text-center">
-                            {saveStatus.status === 'saving' && <span className="text-xs text-content-muted">Resetting...</span>}
-                            {saveStatus.status === 'saved' && <span className="text-xs text-status-success">Reset to defaults</span>}
-                            {saveStatus.status === 'error' && <span className="text-xs text-status-error">Couldn't reset — try again.</span>}
+                            {saveStatuses[RESET_SLOT] === 'saving' && <span className="text-xs text-content-muted">Resetting...</span>}
+                            {saveStatuses[RESET_SLOT] === 'saved' && <span className="text-xs text-status-success">Reset to defaults</span>}
+                            {saveStatuses[RESET_SLOT] === 'error' && <span className="text-xs text-status-error">Couldn't reset — try again.</span>}
                         </div>
                     )}
 
