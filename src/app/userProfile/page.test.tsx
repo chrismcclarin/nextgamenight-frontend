@@ -862,11 +862,18 @@ describe('userProfile toast register (OI-5)', () => {
 // violation living in a CONSUMER's composed content — which is where the three
 // this run found (an unnamed select, two unnamed phone fields) all lived.
 describe('userProfile a11y audit', () => {
+  // 88-19: the 15s budget below is now on ALL THREE audits, not just the
+  // listbox one. Its reason ("an axe pass over a ~2000-line page is seconds of
+  // real work, and under the full suite it does not fit the 5s default")
+  // applies identically to these two, and 88-19 both grew the page and added
+  // 18 tests to this file. One full-suite run failed once and passed three
+  // times on identical code; the failure was not attributable from the
+  // captured output, and this is the file's own documented flake shape.
   it('passes an axe audit on the default surface', async () => {
     const { container } = renderProfile();
     await screen.findByRole('switch', { name: 'New Event email notifications' });
     expect(await axe(container)).toHaveNoViolations();
-  });
+  }, 15000);
 
   // The closed picker is trivially clean and proves nothing; the open listbox is
   // where the combobox pattern's wiring can actually be wrong. Filtered first so
@@ -889,7 +896,7 @@ describe('userProfile a11y audit', () => {
     const { container } = renderProfile({ sms_enabled: true, phone_verified: false });
     await screen.findByRole('switch', { name: 'New Event SMS notifications' });
     expect(await axe(container)).toHaveNoViolations();
-  });
+  }, 15000);
 });
 
 // ===========================================================================
