@@ -649,7 +649,6 @@ describe('userProfile destructive gates (Req 11)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 // The G6 residue — F-359 / F-357 (plan 88-10 Task 4)
 // ---------------------------------------------------------------------------
 // The picker this replaces opened on click, closed only on a second click, and
@@ -675,8 +674,11 @@ describe('userProfile timezone picker (F-359)', () => {
     renderProfile();
     const field = await screen.findByRole('combobox', { name: 'Timezone' });
 
+    // The query is set in ONE change event rather than typed character by
+    // character: every keystroke re-filters the full IANA set and re-renders the
+    // listbox, which is real work the assertion below does not care about.
     await user.click(field);
-    await user.keyboard('Chicago');
+    fireEvent.change(field, { target: { value: 'Chicago' } });
     expect(screen.getByRole('listbox')).toBeInTheDocument();
 
     await user.keyboard('{Escape}');
@@ -695,7 +697,7 @@ describe('userProfile timezone picker (F-359)', () => {
     const field = await screen.findByRole('combobox', { name: 'Timezone' });
 
     await user.click(field);
-    await user.keyboard('America/Chicago');
+    fireEvent.change(field, { target: { value: 'America/Chicago' } });
 
     await user.keyboard('{ArrowDown}');
     expect(field).toHaveAttribute('aria-activedescendant');
@@ -709,8 +711,9 @@ describe('userProfile timezone picker (F-359)', () => {
     const user = userEvent.setup();
     renderProfile();
 
-    await user.click(await screen.findByRole('combobox', { name: 'Timezone' }));
-    await user.keyboard('America/Chicago');
+    const field = await screen.findByRole('combobox', { name: 'Timezone' });
+    await user.click(field);
+    fireEvent.change(field, { target: { value: 'America/Chicago' } });
 
     const listbox = screen.getByRole('listbox');
     expect(within(listbox).getByRole('group')).toHaveAccessibleName('America');
@@ -859,16 +862,19 @@ describe('userProfile a11y audit', () => {
   // The closed picker is trivially clean and proves nothing; the open listbox is
   // where the combobox pattern's wiring can actually be wrong. Filtered first so
   // the audit runs over a handful of options, not the whole IANA set.
+  // The 15s budget is deliberate: an axe pass over a ~2000-line page is seconds of
+  // real work, and under the full suite it does not fit the 5s default. Dropping it
+  // makes this test flaky under load, not faster.
   it('passes an axe audit with the timezone listbox open', async () => {
-    const user = userEvent.setup();
     const { container } = renderProfile();
 
-    await user.click(await screen.findByRole('combobox', { name: 'Timezone' }));
-    await user.keyboard('America/Chicago');
+    const field = await screen.findByRole('combobox', { name: 'Timezone' });
+    fireEvent.focus(field);
+    fireEvent.change(field, { target: { value: 'America/Chicago' } });
     expect(screen.getByRole('listbox')).toBeInTheDocument();
 
     expect(await axe(container)).toHaveNoViolations();
-  });
+  }, 15000);
 
   it('passes an axe audit with the SMS-entitled surface composed in', async () => {
     const { container } = renderProfile({ sms_enabled: true, phone_verified: false });
