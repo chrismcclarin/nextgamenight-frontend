@@ -9,7 +9,13 @@ import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { DialogClose, DialogTitle } from '../../components/ui/dialog';
 import { Modal } from './Modal';
 
-function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = false }) {
+// `openedFrom` is the entry point this panel was opened from: 'create' is the
+// auto-open immediately after a group is created (createGroup.js) and swaps in
+// the context copy of UI-SPEC §6.3; every other entry point keeps the generic
+// header. Deliberately a plain comment, NOT a JSDoc `@param` block — under
+// checkJs a partial @param list becomes the component's whole props type and
+// every other prop then fails to typecheck at the call sites.
+function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = false, openedFrom = 'default' }) {
     const { user } = useUser();
     // FE-18 cutover: exclude-self keys on the resolved Users.id UUID (async).
     const { selfUuid } = useSelfIdentity();
@@ -255,6 +261,29 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
             },
         });
     };
+
+    /* DECISION Phase 88-15 (SPEC Req 7 / §6.3, owner deferral 2026-08-04): the
+       create path gets its OWN header and lead-in; every other entry point keeps
+       the generic "Invite Members". The owner himself misread the auto-opened
+       panel as an accidental click-through because a generic header gives no
+       hint it is a follow-on step of "create a group".
+
+       The rejected alternative was changing the header everywhere (one string,
+       no prop) — it loses because the copy only makes sense straight after a
+       creation, and reads as a non-sequitur from ManageMembers / userHome. The
+       auto-open itself is deliberately KEPT (owner: "keep the flow, fix the
+       legibility") — removing it is a decision, not a cleanup.
+
+       T-88-15-01: `group.name` is user-supplied and is interpolated into the
+       header. It is rendered as a JSX text child, so React escapes it. Never
+       build this header through `dangerouslySetInnerHTML` or an HTML string. */
+    const fromCreate = openedFrom === 'create' && Boolean(group?.name);
+    const headerTitle = fromCreate
+        ? `${group.name} is live — who's in?`
+        : 'Invite Members';
+    const headerLeadIn = fromCreate
+        ? 'Invite the people you actually play with. You can always add more later.'
+        : (group?.name ? `to ${group.name}` : null);
 
     const availableFriends = friends.filter(f => f.friend);
     const selectableCount = availableFriends.filter(f => !groupMemberIds.includes(f.friend.id)).length;
@@ -529,10 +558,10 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
             <div className="flex items-start justify-between gap-3 border-b border-border px-6 py-5">
                 <div className="min-w-0">
                     <DialogTitle className="text-xl font-bold text-content-primary">
-                        Invite Members
+                        {headerTitle}
                     </DialogTitle>
-                    {group?.name && (
-                        <p className="text-sm text-content-muted mt-0.5">to {group.name}</p>
+                    {headerLeadIn && (
+                        <p className="text-sm text-content-muted mt-0.5">{headerLeadIn}</p>
                     )}
                 </div>
                 <DialogClose

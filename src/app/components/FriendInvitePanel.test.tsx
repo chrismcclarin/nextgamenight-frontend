@@ -119,6 +119,8 @@ export interface RenderPanelOptions {
   open?: boolean;
   /** Pass `null` to render without group context (no QR section). */
   group?: Record<string, unknown> | null;
+  /** Entry point — `'create'` selects the post-creation context copy (§6.3). */
+  openedFrom?: 'default' | 'create';
 }
 
 /** Render the invite panel open, with a group and a resolved identity. */
@@ -129,6 +131,7 @@ export function renderPanel(options: RenderPanelOptions = {}) {
     isAdmin = false,
     open = true,
     group = GROUP,
+    openedFrom = 'default',
   } = options;
   (friendshipsAPI.getFriends as Mock).mockResolvedValue(friends);
   (groupsAPI.getGroupMembers as Mock).mockResolvedValue(members);
@@ -141,6 +144,7 @@ export function renderPanel(options: RenderPanelOptions = {}) {
       onClose={onClose}
       onMemberAdded={onMemberAdded}
       isAdmin={isAdmin}
+      openedFrom={openedFrom}
     />
   );
   return { onClose, onMemberAdded, ...utils };
@@ -265,5 +269,45 @@ describe('FriendInvitePanel — Req 9 migration proof', () => {
     const { onClose } = renderPanel();
     fireEvent.click(await screen.findByRole('button', { name: 'Done' }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('FriendInvitePanel create-path context copy (Req 7 / §6.3)', () => {
+  // The create path is the auto-open straight after group creation
+  // (createGroup.js). Without the context copy the generic header reads as an
+  // accidental click-through — the owner himself misread it that way.
+
+  it('names the freshly created group in the header and explains why it opened', async () => {
+    renderPanel({ openedFrom: 'create' });
+    expect(
+      await screen.findByRole('heading', { name: "Tuesday Night Crew is live — who's in?" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Invite the people you actually play with. You can always add more later.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Invite Members' })).not.toBeInTheDocument();
+  });
+
+  it('leaves every other entry point on the generic header', async () => {
+    renderPanel();
+    expect(await screen.findByRole('heading', { name: 'Invite Members' })).toBeInTheDocument();
+    expect(screen.getByText('to Tuesday Night Crew')).toBeInTheDocument();
+    expect(
+      screen.queryByText(/is live — who's in\?/)
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders a group name with markup characters as inert text (T-88-15-01)', async () => {
+    const dialog = renderPanel({
+      openedFrom: 'create',
+      group: { id: GROUP_ID, name: '<img src=x onerror=alert(1)>' },
+    });
+    const heading = await screen.findByRole('heading', {
+      name: "<img src=x onerror=alert(1)> is live — who's in?",
+    });
+    expect(heading.querySelector('img')).toBeNull();
+    expect(dialog.container.ownerDocument.querySelector('img')).toBeNull();
   });
 });

@@ -138,9 +138,15 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                 </div>
             )}
 
+            {/* Auto-opened for the group that was just created (deliberate since
+                19de50a). `openedFrom="create"` is what earns the panel its
+                create-path header + lead-in (Phase 88-15, UI-SPEC §6.3) —
+                without it the generic "Invite Members" reads as an accidental
+                click-through, which is exactly how the owner read it. */}
             <FriendInvitePanel
                 group={createdGroup}
                 open={!!createdGroup}
+                openedFrom="create"
                 onClose={handleInvitePanelClose}
                 onMemberAdded={handleMemberAdded}
             />
