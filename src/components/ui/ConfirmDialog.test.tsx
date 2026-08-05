@@ -324,7 +324,7 @@ describe('useConfirmAction — two-tap tier', () => {
 
     expect(screen.getByTestId('armed')).toHaveTextContent('none');
     expect(screen.getByTestId('trigger-alex')).toHaveTextContent('Remove Alex');
-    expect(screen.getByRole('status')).toHaveTextContent('');
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
 
     fireEvent.click(screen.getByTestId('trigger-alex'));
     expect(onConfirm).not.toHaveBeenCalled();
@@ -383,7 +383,7 @@ describe('useConfirmAction — the always-mounted announcement region', () => {
 
     const region = screen.getByRole('status');
     expect(region).toBeInTheDocument();
-    expect(region).toHaveTextContent('');
+    expect(region).toBeEmptyDOMElement();
     expect(region).toHaveAttribute('aria-live', 'polite');
   });
 
@@ -410,7 +410,7 @@ describe('useConfirmAction — the always-mounted announcement region', () => {
     });
 
     expect(screen.getByRole('status')).toBe(node);
-    expect(node).toHaveTextContent('');
+    expect(node).toBeEmptyDOMElement();
   });
 
   it('clears the announcement on commit', async () => {
@@ -421,7 +421,7 @@ describe('useConfirmAction — the always-mounted announcement region', () => {
     await act(async () => {
       fireEvent.click(screen.getByTestId('trigger-alex'));
     });
-    expect(screen.getByRole('status')).toHaveTextContent('');
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
   });
 });
 
