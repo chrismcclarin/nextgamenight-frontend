@@ -34,7 +34,7 @@
 // * The D-40 session-delete gate extends `describe('role-gated session
 //   affordances')` — the roster plumbing it needs is already here.
 import * as React from 'react';
-import { render, screen, within, cleanup } from '@testing-library/react';
+import { render, screen, within, cleanup, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -49,7 +49,16 @@ const GROUP_ID = 'GROUP1';
  */
 export type CallerRole = 'owner' | 'admin' | 'member' | 'pending' | 'game-only';
 
-const h = vi.hoisted(() => ({ selfUuid: undefined as string | undefined }));
+const EVENT_ID = 'EVT1';
+
+// `search` is hoisted state, not a literal, because gameDetail renders a WHOLLY
+// DIFFERENT tree for `?event_id=` (the single-event view: participant strip,
+// See-all modal, guest invites) than for `?game_id=` (the game view: sessions,
+// reviews). Plan 88-20 touches both, so the harness has to be able to reach both.
+const h = vi.hoisted(() => ({
+  selfUuid: undefined as string | undefined,
+  search: '',
+}));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   SELF_IDENTITY_KEY: ['users', 'self'],
@@ -62,7 +71,7 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
 }));
 
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams(`game_id=${GAME_ID}&group_id=${GROUP_ID}`),
+  useSearchParams: () => new URLSearchParams(h.search),
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
@@ -105,7 +114,14 @@ vi.mock('@/lib/api', async (importOriginal) => {
   return {
     ...actual,
     gamesAPI: { getGame: vi.fn() },
-    eventsAPI: { getGroupEvents: vi.fn(), getEvent: vi.fn(), deleteEvent: vi.fn() },
+    eventsAPI: {
+      getGroupEvents: vi.fn(),
+      getEvent: vi.fn(),
+      deleteEvent: vi.fn(),
+      removeParticipation: vi.fn(),
+      getEventInviteToken: vi.fn(),
+      leaveEvent: vi.fn(),
+    },
     gameReviewsAPI: { getGameReviews: vi.fn(), submitReview: vi.fn(), deleteReview: vi.fn() },
     groupsAPI: { getGroupMembers: vi.fn() },
     rsvpAPI: { getEventRsvps: vi.fn() },
@@ -116,7 +132,16 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 import GameDetailPage from './page';
-import { gamesAPI, eventsAPI, gameReviewsAPI, groupsAPI, rsvpAPI } from '@/lib/api';
+import {
+  gamesAPI,
+  eventsAPI,
+  gameReviewsAPI,
+  groupsAPI,
+  rsvpAPI,
+  eventBringsAPI,
+  suggestionsAPI,
+  invitesAPI,
+} from '@/lib/api';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -190,12 +215,75 @@ export interface RenderGameDetailOptions {
 export function renderGameDetail(options: RenderGameDetailOptions = {}) {
   const { role = 'member', events = [SESSION], reviews = [], game = GAME } = options;
   h.selfUuid = SELF_UUID;
+  h.search = `game_id=${GAME_ID}&group_id=${GROUP_ID}`;
   (gamesAPI.getGame as Mock).mockResolvedValue(game);
   (eventsAPI.getGroupEvents as Mock).mockResolvedValue(events);
   (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue(reviews);
   (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor(role));
   (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [] });
   return render(<GameDetailPage />);
+}
+
+/**
+ * A flattened EventParticipation row, as `formatEventWithCustomParticipants`
+ * returns it: `user_id` IS the Users.id UUID, and a CUSTOM guest has it null.
+ * That null is what separates "guest with an account we can invite" from
+ * "a name someone typed in", which is the whole of the Req 15 gate.
+ */
+export function participantRow(
+  overrides: Partial<{
+    user_id: string | null;
+    username: string;
+    is_guest: boolean;
+    is_custom: boolean;
+  }> = {}
+) {
+  return {
+    user_id: OTHER_UUID,
+    username: 'Someone Else',
+    is_guest: false,
+    is_custom: false,
+    ...overrides,
+  };
+}
+
+export interface RenderEventDetailOptions {
+  role?: CallerRole;
+  participants?: Array<Record<string, unknown>>;
+}
+
+/**
+ * Render the SINGLE-EVENT view (`?event_id=`) — the tree that owns the
+ * participant strip, the See-all modal and the guest-invite affordance.
+ *
+ * @example renderEventDetail({ role: 'owner', participants: [participantRow()] })
+ */
+export function renderEventDetail(options: RenderEventDetailOptions = {}) {
+  const { role = 'owner', participants = [participantRow()] } = options;
+  h.selfUuid = SELF_UUID;
+  h.search = `event_id=${EVENT_ID}&group_id=${GROUP_ID}`;
+  (eventsAPI.getEvent as Mock).mockResolvedValue({
+    id: EVENT_ID,
+    title: 'Game Night',
+    start_date: '2026-03-01T18:00:00Z',
+    duration_minutes: 120,
+    group_id: GROUP_ID,
+    Group: { id: GROUP_ID, name: 'The Group' },
+    EventParticipations: participants,
+  });
+  (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor(role));
+  (rsvpAPI.getEventRsvps as Mock).mockResolvedValue({ rsvps: [] });
+  (eventBringsAPI.getEventBrings as Mock).mockResolvedValue([]);
+  (suggestionsAPI.getEventSuggestions as Mock).mockResolvedValue([]);
+  return render(<GameDetailPage />);
+}
+
+/** Open the See-all participants modal and return its dialog element. */
+export async function openParticipantsModal(
+  user: ReturnType<typeof userEvent.setup>
+): Promise<HTMLElement> {
+  await user.click(await screen.findByRole('button', { name: /^See all \(/ }));
+  return screen.findByRole('dialog');
 }
 
 /** The Game Sessions card, scoped from its heading. */
@@ -219,6 +307,7 @@ export async function reviewsSection(): Promise<HTMLElement> {
 beforeEach(() => {
   vi.clearAllMocks();
   h.selfUuid = undefined;
+  h.search = '';
 });
 
 afterEach(cleanup);
@@ -395,6 +484,141 @@ describe('gameDetail session-delete gate (D-40, dialog tier)', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('Delete this session?')).toBeInTheDocument();
     expect(eventsAPI.deleteEvent).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Req 9 — gameDetail's two hand-rolled overlays adopt <Modal> (plan 88-20).
+//
+// These were the LAST two `.modal-overlay` surfaces in the repo. The pins go
+// through ROLE and ACCESSIBLE NAME rather than class names on purpose: a class
+// census proves the old shell is gone, it does not prove the new one announces
+// itself. Both are asserted — the census half mirrors GroupSettings.test.tsx.
+// ---------------------------------------------------------------------------
+
+/** Six participants, so the strip's "See all (6)" affordance renders at all. */
+const SIX_PARTICIPANTS = Array.from({ length: 6 }, (_, i) =>
+  participantRow({ user_id: `p-${i}`, username: `Player ${i}` })
+);
+
+describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
+  it('renders the See-all participants list as a dialog named by its header', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
+
+    const dialog = await openParticipantsModal(user);
+    // aria-labelledby is wired from <Modal.Header>; querying BY NAME is what
+    // proves the header actually labels the dialog rather than merely sitting
+    // inside it, which is the whole point of the migration.
+    expect(dialog).toBe(screen.getByRole('dialog', { name: 'Participants (6)' }));
+    expect(within(dialog).getByRole('button', { name: 'Close' })).toBeInTheDocument();
+    expect(document.querySelector('.modal-overlay')).toBeNull();
+  });
+
+  it('closes the participants list on Esc', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
+
+    await openParticipantsModal(user);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('renders the review form as a dialog named by its header', async () => {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'member' });
+    await user.click(await screen.findByRole('button', { name: 'Add Review' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Write a Review' });
+    // The pre-migration close glyph had NO accessible name at all on this one —
+    // a screen-reader user had no announced way out of a form.
+    expect(within(dialog).getByRole('button', { name: 'Close' })).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Review')).toBeInTheDocument();
+    expect(document.querySelector('.modal-overlay')).toBeNull();
+  });
+
+  it('closes the review form on Esc', async () => {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'member' });
+    await user.click(await screen.findByRole('button', { name: 'Add Review' }));
+
+    await screen.findByRole('dialog');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('mounts neither dialog until it is opened', async () => {
+    renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
+    await screen.findByRole('button', { name: /^See all \(/ });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+// EVT-08. The two-tap remove renders INSIDE the migrated See-all modal, so the
+// migration could have broken it silently — Radix's focus trap re-parents the
+// subtree, and the arm/revert is a timer on component state. Both halves of the
+// gate are pinned: it must ARM without deleting, and it must REVERT on its own.
+describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)', () => {
+  it('arms on the first click and deletes nothing yet', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.removeParticipation as Mock).mockResolvedValue({});
+    renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
+
+    const dialog = await openParticipantsModal(user);
+    const removes = within(dialog).getAllByRole('button', { name: 'Remove' });
+    await user.click(removes[0]);
+
+    expect(
+      within(dialog).getByRole('button', { name: 'Click again to remove' })
+    ).toBeInTheDocument();
+    expect(eventsAPI.removeParticipation).not.toHaveBeenCalled();
+  });
+
+  it('removes the armed participant on the second click', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.removeParticipation as Mock).mockResolvedValue({});
+    renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
+
+    const dialog = await openParticipantsModal(user);
+    await user.click(within(dialog).getAllByRole('button', { name: 'Remove' })[0]);
+    await user.click(within(dialog).getByRole('button', { name: 'Click again to remove' }));
+
+    expect(eventsAPI.removeParticipation).toHaveBeenCalledTimes(1);
+    expect(eventsAPI.removeParticipation).toHaveBeenCalledWith(EVENT_ID, 'p-0');
+  });
+
+  it('reverts to Remove when the confirm window lapses, deleting nothing', async () => {
+    // `shouldAdvanceTime` is load-bearing, not decoration: RTL's `waitFor`
+    // sniffs for JEST fake timers, does not recognise vitest's, and then polls
+    // with a `setInterval` that the fake clock has frozen — every `findBy*` in
+    // this file hangs for 5s and the whole suite times out after it. Letting the
+    // fake clock also track real time keeps `waitFor` alive while still allowing
+    // the 3s confirm window to be jumped rather than waited out.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      (eventsAPI.removeParticipation as Mock).mockResolvedValue({});
+      renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
+
+      const dialog = await openParticipantsModal(user);
+      await user.click(within(dialog).getAllByRole('button', { name: 'Remove' })[0]);
+      within(dialog).getByRole('button', { name: 'Click again to remove' });
+
+      await act(async () => {
+        vi.advanceTimersByTime(3100);
+      });
+
+      expect(
+        within(dialog).queryByRole('button', { name: 'Click again to remove' })
+      ).toBeNull();
+      // Every row is back at rest — none of the six is self, so all six are removable.
+      expect(within(dialog).getAllByRole('button', { name: 'Remove' })).toHaveLength(
+        SIX_PARTICIPANTS.length
+      );
+      expect(eventsAPI.removeParticipation).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

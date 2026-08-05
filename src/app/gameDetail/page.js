@@ -12,6 +12,7 @@ import BringGamePicker from '../components/BringGamePicker';
 import BringSummary from '../components/BringSummary';
 import GameSuggestionCard from '../components/GameSuggestionCard';
 import QRCodeModal from '../components/QRCodeModal';
+import { Modal } from '../components/Modal';
 import { formatDate, formatDateTime, formatDuration, formatTime, formatLongDate } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
 import TimezoneNudgeBanner from '../components/TimezoneNudgeBanner';
@@ -1244,160 +1245,164 @@ export default function GameDetailPage() {
                     bringing-game indicator. Owner/admin sees a Remove button
                     on each row (other than themselves) wired to the EVT-08
                     second-click confirm flow. */}
-                {showAllParticipants && (
-                    <div
-                        className="modal-overlay"
-                        onClick={() => setShowAllParticipants(false)}
-                    >
-                        <div
-                            className="modal-content w-full max-w-lg relative p-6"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <button
-                                type="button"
-                                onClick={() => setShowAllParticipants(false)}
-                                className="absolute top-4 right-4 text-content-muted hover:text-content-primary text-2xl leading-none"
-                                aria-label="Close"
-                            >
-                                &times;
-                            </button>
-                            <h3 className="text-xl font-semibold mb-4 pr-8 text-content-primary">
-                                Participants ({participants.length})
-                            </h3>
-                            <div className="max-h-[60vh] overflow-y-auto space-y-2 -mx-1 px-1">
-                                {participants.map((p) => {
-                                    const member = p.user_id ? groupMembersByUserId[p.user_id] : null;
-                                    // Phase 87.3-04: the per-member identity is the DB
-                                    // UUID (member.id) — feeds ALL FOUR downstream uses
-                                    // (chip lookup, isCurrentUser, getFriendshipStatus
-                                    // arg, ClickableMemberName userId) so none is left
-                                    // sub-shaped against the UUID-keyed provider/routes.
-                                    const memberUuid = member?.id;
-                                    const role = member?.UserGroup?.role;
-                                    const status = memberUuid ? rsvpByUserId[memberUuid] : null;
-                                    const isBringing = p.user_id && bringersSet.has(p.user_id);
-                                    const isCurrentUser = !!memberUuid && memberUuid === selfUuid;
-                                    const canRemove = (userRole === 'owner' || userRole === 'admin')
-                                        && !!p.user_id // hide for custom guests (no DB user)
-                                        && !isCurrentUser;
-                                    const isConfirming = removeConfirmingId === p.user_id;
-                                    // Phase 76 SOCL-06: compute friendship status at the modal call site so the
-                                    // trailing-slot affordance matches the per-row relationship. SOCL-06 is a
-                                    // DESKTOP-ONLY bug per CONTEXT — mobile participants modal is already correct
-                                    // (no hover model; existing inline indicators from ClickableMemberName stay
-                                    // intact). The Self "You" pill is the one dual-viewport exception CONTEXT
-                                    // calls out: "visible on both mobile and desktop, not just hover".
-                                    //
-                                    // Per-state behavior:
-                                    //   Self      → 'You' pill on BOTH viewports + route name through plain <span>
-                                    //               (ClickableMemberName already renders plain <span> for self, so
-                                    //               the short-circuit is byte-equivalent and avoids a context lookup).
-                                    //   accepted  → 'Friend' pill on DESKTOP ONLY (hidden md:inline-flex) + keep
-                                    //               name rendering through ClickableMemberName so the existing
-                                    //               'md:hidden ✓ Friend' mobile inline indicator stays preserved.
-                                    //   pending_* → unchanged. ClickableMemberName provides desktop hover popover +
-                                    //               mobile inline indicator.
-                                    //   none      → unchanged. ClickableMemberName provides 'Add friend' on hover.
-                                    const friendStatus = memberUuid ? getFriendshipStatus(memberUuid) : 'unknown';
-                                    const isSelfRow = friendStatus === 'self' || isCurrentUser;
-                                    return (
-                                        <div
-                                            key={p.user_id || `custom-${p.username}`}
-                                            className="flex items-center justify-between gap-3 px-3 py-2 rounded-sm border border-line bg-surface-card"
-                                        >
-                                            <div className="flex items-center gap-2 flex-wrap min-w-0">
-                                                <span className="font-medium text-content-primary truncate">
-                                                    {p.is_custom ? (
-                                                        <>{p.username || 'Guest'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
-                                                    ) : isSelfRow ? (
-                                                        // Self renders as a plain span on both viewports.
-                                                        // ClickableMemberName already returns a plain <span> for
-                                                        // status === 'self' (no popover, no indicator) so this
-                                                        // short-circuit is byte-equivalent on both mobile + desktop.
-                                                        <span>{p.username || 'Unknown'}</span>
-                                                    ) : memberUuid ? (
-                                                        // Stranger / pending / accepted all route through
-                                                        // ClickableMemberName. For accepted on mobile this preserves
-                                                        // the existing md:hidden ✓ Friend indicator (pre-phase
-                                                        // affordance). For accepted on desktop ClickableMemberName
-                                                        // renders only the plain name — the desktop-only 'Friend'
-                                                        // pill below gives desktop its read-only indicator.
-                                                        <ClickableMemberName userId={memberUuid} username={p.username || 'Unknown'} />
-                                                    ) : (
-                                                        // memberUuid couldn't be resolved through groupMembersByUserId
-                                                        // (game-only viewer or missing-from-group edge case).
-                                                        // Render plain text — same fallback as before.
-                                                        <span>{p.username || 'Unknown'}</span>
-                                                    )}
-                                                </span>
-                                                <RsvpStatusPill status={status} />
-                                                {isSelfRow && (
-                                                    // Phase 76 SOCL-06: "You" pill — visible on BOTH viewports per
-                                                    // CONTEXT D-SOCL-06: "visible on both mobile and desktop, not
-                                                    // just hover". Blue fill matches the existing role-pill family
-                                                    // (Owner=purple, Admin=blue) while staying distinguishable from
-                                                    // Owner's purple. Self is a viewer-perspective indicator, not a
-                                                    // role, but the visual family is the closest existing pattern.
-                                                    <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-semibold">
-                                                        You
-                                                    </span>
-                                                )}
-                                                {!isSelfRow && friendStatus === 'accepted' && (
-                                                    // Phase 76 SOCL-06: "Friend" pill — DESKTOP ONLY
-                                                    // (hidden md:inline-flex) per CONTEXT: "SOCL-06 is desktop-only".
-                                                    // Mobile already shows the existing md:hidden ✓ Friend indicator
-                                                    // from ClickableMemberName, preserved by routing accepted rows
-                                                    // through ClickableMemberName above. Emerald color echoes the
-                                                    // text-status-success used by that mobile inline indicator for
-                                                    // visual continuity across viewports.
-                                                    <span className="hidden md:inline-flex items-center text-[10px] uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-semibold">
-                                                        Friend
-                                                    </span>
-                                                )}
-                                                {role === 'owner' && (
-                                                    <span className="text-[10px] uppercase tracking-wide bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm font-semibold">Owner</span>
-                                                )}
-                                                {role === 'admin' && (
-                                                    <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-semibold">Admin</span>
-                                                )}
-                                                {/* Phase 71.1 GAMP-12: render Guest badge for is_guest=true rows
-                                                    when viewer is a full group member. Skips render for game-only
-                                                    viewers (they are guests themselves; redundant on their own row,
-                                                    and on co-attendee rows the badge isn't load-bearing for their
-                                                    flow). Tells admins/owners who joined via game-invite QR so they
-                                                    can decide who to onboard via admin-initiated invite. */}
-                                                {p.is_guest && userScope === 'group-member' && (
-                                                    <span
-                                                        className="inline-flex items-center px-1.5 py-0.5 text-[10px] uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
-                                                        title="Joined via game-invite QR (not a group member)"
-                                                    >
-                                                        Guest
-                                                    </span>
-                                                )}
-                                                {isBringing && (
-                                                    <span title="Bringing a game" className="text-sm" aria-label="Bringing a game">🎲</span>
-                                                )}
-                                            </div>
-                                            {canRemove && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleRemoveClick(p)}
-                                                    className={`text-xs px-2 py-1 border rounded-sm transition-colors shrink-0 ${
-                                                        isConfirming
-                                                            ? 'border-status-error text-status-error font-semibold'
-                                                            : 'border-line text-content-muted hover:bg-surface-card-hover'
-                                                    }`}
-                                                >
-                                                    {isConfirming ? 'Click again to remove' : 'Remove'}
-                                                </button>
+                {/* DECISION Phase 88-20 (SPEC Req 9): hosted on the shared <Modal>. The
+                    hand-rolled backdrop + `stopPropagation` pair is DELETED rather than
+                    ported — Modal owns outside-dismiss, and with it this list finally gets
+                    the focus trap, Esc and focus-restore it never had. The nameless close
+                    glyph goes with it: <Modal.Header> renders its own labelled Close
+                    (SPEC Req 4), so porting the old one would ship two.
+
+                    The `{showAllParticipants && …}` guard is dropped rather than kept beside
+                    `open=`: two sources of truth for one dialog's open-ness is how a later
+                    edit changes one and not the other. Radix renders nothing when closed.
+
+                    `max-h-[60vh]` on the inner scroller is DROPPED, not preserved: the
+                    content surface is already capped at 90vh and <Modal.Body> is the fleet's
+                    single scrolling region, so a second inner cap would leave this list
+                    shorter than every other migrated modal for no reason. `space-y-2` moves
+                    onto the Body; the `-mx-1 px-1` bleed went with the hand-padded shell it
+                    was compensating for.
+
+                    THE PHASE 65-02 EVT-08 TWO-TAP REMOVE RENDERS INSIDE THIS LIST AND IS
+                    UNCHANGED — see its handler marker further up. It is now inside a focus
+                    trap, which is where it always should have been. Promoting it to a
+                    ConfirmDialog because it happens to sit in a dialog now would re-open an
+                    owner ruling: the inline second click IS the friction, and a modal on top
+                    of a modal is worse on a phone. That is a decision, not a cleanup. */}
+                <Modal open={showAllParticipants} onClose={() => setShowAllParticipants(false)}>
+                    <Modal.Header>Participants ({participants.length})</Modal.Header>
+                    <Modal.Body className="space-y-2">
+                        {participants.map((p) => {
+                            const member = p.user_id ? groupMembersByUserId[p.user_id] : null;
+                            // Phase 87.3-04: the per-member identity is the DB
+                            // UUID (member.id) — feeds ALL FOUR downstream uses
+                            // (chip lookup, isCurrentUser, getFriendshipStatus
+                            // arg, ClickableMemberName userId) so none is left
+                            // sub-shaped against the UUID-keyed provider/routes.
+                            const memberUuid = member?.id;
+                            const role = member?.UserGroup?.role;
+                            const status = memberUuid ? rsvpByUserId[memberUuid] : null;
+                            const isBringing = p.user_id && bringersSet.has(p.user_id);
+                            const isCurrentUser = !!memberUuid && memberUuid === selfUuid;
+                            const canRemove = (userRole === 'owner' || userRole === 'admin')
+                                && !!p.user_id // hide for custom guests (no DB user)
+                                && !isCurrentUser;
+                            const isConfirming = removeConfirmingId === p.user_id;
+                            // Phase 76 SOCL-06: compute friendship status at the modal call site so the
+                            // trailing-slot affordance matches the per-row relationship. SOCL-06 is a
+                            // DESKTOP-ONLY bug per CONTEXT — mobile participants modal is already correct
+                            // (no hover model; existing inline indicators from ClickableMemberName stay
+                            // intact). The Self "You" pill is the one dual-viewport exception CONTEXT
+                            // calls out: "visible on both mobile and desktop, not just hover".
+                            //
+                            // Per-state behavior:
+                            //   Self      → 'You' pill on BOTH viewports + route name through plain <span>
+                            //               (ClickableMemberName already renders plain <span> for self, so
+                            //               the short-circuit is byte-equivalent and avoids a context lookup).
+                            //   accepted  → 'Friend' pill on DESKTOP ONLY (hidden md:inline-flex) + keep
+                            //               name rendering through ClickableMemberName so the existing
+                            //               'md:hidden ✓ Friend' mobile inline indicator stays preserved.
+                            //   pending_* → unchanged. ClickableMemberName provides desktop hover popover +
+                            //               mobile inline indicator.
+                            //   none      → unchanged. ClickableMemberName provides 'Add friend' on hover.
+                            const friendStatus = memberUuid ? getFriendshipStatus(memberUuid) : 'unknown';
+                            const isSelfRow = friendStatus === 'self' || isCurrentUser;
+                            return (
+                                <div
+                                    key={p.user_id || `custom-${p.username}`}
+                                    className="flex items-center justify-between gap-3 px-3 py-2 rounded-sm border border-line bg-surface-card"
+                                >
+                                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                        <span className="font-medium text-content-primary truncate">
+                                            {p.is_custom ? (
+                                                <>{p.username || 'Guest'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
+                                            ) : isSelfRow ? (
+                                                // Self renders as a plain span on both viewports.
+                                                // ClickableMemberName already returns a plain <span> for
+                                                // status === 'self' (no popover, no indicator) so this
+                                                // short-circuit is byte-equivalent on both mobile + desktop.
+                                                <span>{p.username || 'Unknown'}</span>
+                                            ) : memberUuid ? (
+                                                // Stranger / pending / accepted all route through
+                                                // ClickableMemberName. For accepted on mobile this preserves
+                                                // the existing md:hidden ✓ Friend indicator (pre-phase
+                                                // affordance). For accepted on desktop ClickableMemberName
+                                                // renders only the plain name — the desktop-only 'Friend'
+                                                // pill below gives desktop its read-only indicator.
+                                                <ClickableMemberName userId={memberUuid} username={p.username || 'Unknown'} />
+                                            ) : (
+                                                // memberUuid couldn't be resolved through groupMembersByUserId
+                                                // (game-only viewer or missing-from-group edge case).
+                                                // Render plain text — same fallback as before.
+                                                <span>{p.username || 'Unknown'}</span>
                                             )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
-                )}
+                                        </span>
+                                        <RsvpStatusPill status={status} />
+                                        {isSelfRow && (
+                                            // Phase 76 SOCL-06: "You" pill — visible on BOTH viewports per
+                                            // CONTEXT D-SOCL-06: "visible on both mobile and desktop, not
+                                            // just hover". Blue fill matches the existing role-pill family
+                                            // (Owner=purple, Admin=blue) while staying distinguishable from
+                                            // Owner's purple. Self is a viewer-perspective indicator, not a
+                                            // role, but the visual family is the closest existing pattern.
+                                            <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-semibold">
+                                                You
+                                            </span>
+                                        )}
+                                        {!isSelfRow && friendStatus === 'accepted' && (
+                                            // Phase 76 SOCL-06: "Friend" pill — DESKTOP ONLY
+                                            // (hidden md:inline-flex) per CONTEXT: "SOCL-06 is desktop-only".
+                                            // Mobile already shows the existing md:hidden ✓ Friend indicator
+                                            // from ClickableMemberName, preserved by routing accepted rows
+                                            // through ClickableMemberName above. Emerald color echoes the
+                                            // text-status-success used by that mobile inline indicator for
+                                            // visual continuity across viewports.
+                                            <span className="hidden md:inline-flex items-center text-[10px] uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-semibold">
+                                                Friend
+                                            </span>
+                                        )}
+                                        {role === 'owner' && (
+                                            <span className="text-[10px] uppercase tracking-wide bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm font-semibold">Owner</span>
+                                        )}
+                                        {role === 'admin' && (
+                                            <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-semibold">Admin</span>
+                                        )}
+                                        {/* Phase 71.1 GAMP-12: render Guest badge for is_guest=true rows
+                                            when viewer is a full group member. Skips render for game-only
+                                            viewers (they are guests themselves; redundant on their own row,
+                                            and on co-attendee rows the badge isn't load-bearing for their
+                                            flow). Tells admins/owners who joined via game-invite QR so they
+                                            can decide who to onboard via admin-initiated invite. */}
+                                        {p.is_guest && userScope === 'group-member' && (
+                                            <span
+                                                className="inline-flex items-center px-1.5 py-0.5 text-[10px] uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
+                                                title="Joined via game-invite QR (not a group member)"
+                                            >
+                                                Guest
+                                            </span>
+                                        )}
+                                        {isBringing && (
+                                            <span title="Bringing a game" className="text-sm" aria-label="Bringing a game">🎲</span>
+                                        )}
+                                    </div>
+                                    {canRemove && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemoveClick(p)}
+                                            className={`text-xs px-2 py-1 border rounded-sm transition-colors shrink-0 ${
+                                                isConfirming
+                                                    ? 'border-status-error text-status-error font-semibold'
+                                                    : 'border-line text-content-muted hover:bg-surface-card-hover'
+                                            }`}
+                                        >
+                                            {isConfirming ? 'Click again to remove' : 'Remove'}
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </Modal.Body>
+                </Modal>
 
                 {/* Phase 65-02 EVT-03: Share Game QR modal — same component +
                     contract used by EventDayModal. Open to all members. */}
@@ -2179,84 +2184,89 @@ export default function GameDetailPage() {
             </div>
 
             {/* Review Modal */}
-            {showReviewForm && (
-                <div className="modal-overlay"
-                     onClick={() => setShowReviewForm(false)}>
-                    <div className="modal-content w-full max-w-md relative p-6"
-                         onClick={(e) => e.stopPropagation()}>
+            {/* DECISION Phase 88-20 (SPEC Req 9): hosted on the shared <Modal>, the last of
+                the phase's hand-rolled overlays. This one had the worst of the old shell:
+                its close glyph carried NO accessible name at all (the participants modal at
+                least had an `aria-label`), so a screen-reader user had no announced way out
+                of a form. <Modal.Header> supplies a named Close, plus the focus trap, Esc
+                and focus-restore this dialog never had.
+
+                `className="max-w-md"` preserves the shipped width rather than snapping to
+                the `default` (max-w-lg) preset — the same call BringGamePicker,
+                FeedbackForm, FriendInvitePanel and ManageMembers already made, so this is
+                the fleet's existing idiom for a max-w-md dialog, not a one-off. At 375px it
+                changes nothing either way (the primitive's phone gutter governs).
+
+                The submit button stays INSIDE the <form>, in the Body, rather than becoming
+                a <Modal.Footer>: a footer button lives outside the form element and would
+                need a `form="…"` association to submit at all. Trading working native
+                submission for footer symmetry is a decision, not a cleanup. */}
+            <Modal open={showReviewForm} onClose={() => setShowReviewForm(false)} className="max-w-md">
+                <Modal.Header>{userReview ? 'Edit Your Review' : 'Write a Review'}</Modal.Header>
+                <Modal.Body>
+                    <form onSubmit={handleReviewSubmit} className="space-y-4">
+                        <div>
+                            {/* DECISION Phase 88-20 (DEF-88-10-01, site 11 of 11): this is a
+                                plain <span>, NOT a <label> — chosen OVER `htmlFor`, which has
+                                nothing to point at. StarRatingPicker renders a
+                                `role="radiogroup"` of ten half-star radios, so a `htmlFor`
+                                would have to name ONE radio and would mislabel it. The group's
+                                accessible name already comes from its own `ariaLabel` below,
+                                which is why this was the lowest-severity of the eleven sites:
+                                the control was named, the <label> was redundant rather than
+                                missing. Left as a <label> it is an orphan that axe reports and
+                                that a reader "fixes" by wiring it to the wrong element.
+                                Turning this back into a <label> is a decision, not a cleanup. */}
+                            <span className="block text-sm font-medium text-content-primary mb-1">
+                                Rating
+                            </span>
+                            <StarRatingPicker
+                                value={reviewForm.rating || 0}
+                                onChange={(newRating) => setReviewForm({...reviewForm, rating: newRating})}
+                                ariaLabel="Game rating"
+                            />
+                        </div>
+                        <div>
+                            <label htmlFor="review_text" className="block text-sm font-medium text-content-primary mb-1">
+                                Review
+                            </label>
+                            <Textarea
+                                id="review_text"
+                                value={reviewForm.review_text}
+                                onChange={(e) => setReviewForm({...reviewForm, review_text: e.target.value})}
+                                rows="4"
+                                placeholder="Share your thoughts about this game..."
+                            />
+                        </div>
+                        <div className="flex items-center">
+                            {/* DECISION Phase 88-20 (Req 1): the recommend checkbox stays a NATIVE
+                                <input>, deliberately NOT routed through the `Input` primitive like
+                                its ten filter siblings. The primitive carries `block w-full p-2`,
+                                which would stretch a checkbox across the dialog. It is also outside
+                                Req 1's actual charter: iOS focus-zoom fires on TEXT-ENTRY controls
+                                below 16px, and a checkbox has no text to size. Sweeping this one
+                                onto the primitive "for consistency" breaks the layout. */}
+                            <input
+                                type="checkbox"
+                                id="recommended"
+                                checked={reviewForm.is_recommended}
+                                onChange={(e) => setReviewForm({...reviewForm, is_recommended: e.target.checked})}
+                                className="mr-2"
+                            />
+                            <label htmlFor="recommended" className="text-sm text-content-secondary cursor-pointer">
+                                ✓ Mark as recommended (shows a "Recommended" badge on your review)
+                            </label>
+                        </div>
                         <button
-                            onClick={() => setShowReviewForm(false)}
-                            className="absolute top-4 right-4 text-content-muted hover:text-content-primary text-2xl leading-none"
+                            type="submit"
+                            className="btn btn-primary px-6 py-2"
                         >
-                            &times;
+                            {userReview ? 'Update Review' : 'Submit Review'}
                         </button>
-                        <h3 className="text-xl font-semibold mb-4 pr-8 text-content-primary">
-                            {userReview ? 'Edit Your Review' : 'Write a Review'}
-                        </h3>
-                        <form onSubmit={handleReviewSubmit} className="space-y-4">
-                            <div>
-                                {/* DECISION Phase 88-20 (DEF-88-10-01, site 11 of 11): this is a
-                                    plain <span>, NOT a <label> — chosen OVER `htmlFor`, which has
-                                    nothing to point at. StarRatingPicker renders a
-                                    `role="radiogroup"` of ten half-star radios, so a `htmlFor`
-                                    would have to name ONE radio and would mislabel it. The group's
-                                    accessible name already comes from its own `ariaLabel` below,
-                                    which is why this was the lowest-severity of the eleven sites:
-                                    the control was named, the <label> was redundant rather than
-                                    missing. Left as a <label> it is an orphan that axe reports and
-                                    that a reader "fixes" by wiring it to the wrong element.
-                                    Turning this back into a <label> is a decision, not a cleanup. */}
-                                <span className="block text-sm font-medium text-content-primary mb-1">
-                                    Rating
-                                </span>
-                                <StarRatingPicker
-                                    value={reviewForm.rating || 0}
-                                    onChange={(newRating) => setReviewForm({...reviewForm, rating: newRating})}
-                                    ariaLabel="Game rating"
-                                />
-                            </div>
-                            <div>
-                                <label htmlFor="review_text" className="block text-sm font-medium text-content-primary mb-1">
-                                    Review
-                                </label>
-                                <Textarea
-                                    id="review_text"
-                                    value={reviewForm.review_text}
-                                    onChange={(e) => setReviewForm({...reviewForm, review_text: e.target.value})}
-                                    rows="4"
-                                    placeholder="Share your thoughts about this game..."
-                                />
-                            </div>
-                            <div className="flex items-center">
-                                {/* DECISION Phase 88-20 (Req 1): the recommend checkbox stays a NATIVE
-                                    <input>, deliberately NOT routed through the `Input` primitive like
-                                    its ten filter siblings. The primitive carries `block w-full p-2`,
-                                    which would stretch a checkbox across the dialog. It is also outside
-                                    Req 1's actual charter: iOS focus-zoom fires on TEXT-ENTRY controls
-                                    below 16px, and a checkbox has no text to size. Sweeping this one
-                                    onto the primitive "for consistency" breaks the layout. */}
-                                <input
-                                    type="checkbox"
-                                    id="recommended"
-                                    checked={reviewForm.is_recommended}
-                                    onChange={(e) => setReviewForm({...reviewForm, is_recommended: e.target.checked})}
-                                    className="mr-2"
-                                />
-                                <label htmlFor="recommended" className="text-sm text-content-secondary cursor-pointer">
-                                    ✓ Mark as recommended (shows a "Recommended" badge on your review)
-                                </label>
-                            </div>
-                            <button
-                                type="submit"
-                                className="btn btn-primary px-6 py-2"
-                            >
-                                {userReview ? 'Update Review' : 'Submit Review'}
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            )}
-            
+                    </form>
+                </Modal.Body>
+            </Modal>
+
             {/* Session-delete gate (D-09 dialog tier). Rendered UNCONDITIONALLY and
                 exactly once for the whole list: the hook owns which session is armed, so
                 a per-row copy would mount one dialog per visible session. `statusNode`
