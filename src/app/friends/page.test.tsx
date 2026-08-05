@@ -5,10 +5,11 @@
 // remove-friend gate had nowhere to be asserted. This harness supplies the mock
 // stack and a render helper; later plans add ASSERTIONS, not infrastructure.
 //
-// WHAT IS ASSERTED HERE: only what is true on THIS branch. In particular the
-// remove-friend flow TODAY goes through the native browser `confirm()` — that is
-// pinned below as the current behaviour, and plan 88-14 is the plan that replaces
-// it. Asserting the replacement now would red every plan in between.
+// WHAT IS ASSERTED HERE: plan 88-14 has since landed the two-tap remove gate and
+// the EmptyState adoption this harness was built for, so the native-`confirm()`
+// pins are gone and the `confirmSpy` plumbing with them. The gate's behaviour is
+// pinned in `describe('remove friend (two-tap tier)')`; the hook's own mechanics
+// (timer, re-arm, aria) live in `ConfirmDialog.test.tsx` and are not re-tested here.
 //
 // `.tsx` is mandatory: vitest.config.mts only includes `.ts`/`.tsx`, and the
 // config's `jsx-in-js` pre-transform handles the `.js` page under test.
@@ -16,21 +17,15 @@
 // ---------------------------------------------------------------------------
 // EXTENSION POINTS — who adds what, and where
 // ---------------------------------------------------------------------------
-// * plan 88-14 replaces the native `confirm()` in `handleRemove` with the
-//   two-tap inline confirmation idiom. When it does, it REPLACES the
-//   `describe('remove friend (current: native confirm)')` block below with the
-//   two-tap pin (first tap arms and sends nothing; second tap commits) and
-//   deletes the `confirmSpy` plumbing.
-// * plan 88-14 also swaps the bare "No friends yet." paragraph for the shared
-//   <EmptyState> primitive and adds that pin to `describe('friends list')`.
-// * Req 6's surface work extends `describe('friends list')` as well — use
-//   `renderFriends({ friends: [] })` for the empty case.
+// * Further Req 6 / Req 11 surface work extends `describe('friends list')` —
+//   use `renderFriends({ friends: [] })` for the empty case.
 import * as React from 'react';
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const SELF_UUID = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 const FRIEND_UUID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+const FRIEND_2_UUID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 
 /**
  * Mutable resolved identity. The friends page GATES its whole render on
@@ -115,6 +110,13 @@ export const FRIENDSHIP = {
   friend: { id: FRIEND_UUID, username: 'Dana' },
 };
 
+/** A SECOND row. Required by the cross-target pin (AR DEC-2) — arming one row
+ *  and tapping another must re-arm, never commit, so one row is not enough. */
+export const FRIENDSHIP_2 = {
+  id: 'fr-2',
+  friend: { id: FRIEND_2_UUID, username: 'Sam' },
+};
+
 export interface RenderFriendsOptions {
   /** Accepted friendships. Pass `[]` for the empty-state case. */
   friends?: Array<Record<string, unknown>>;
@@ -137,16 +139,14 @@ export function renderFriends(options: RenderFriendsOptions = {}) {
   return render(<FriendsPage />);
 }
 
-let confirmSpy: ReturnType<typeof vi.spyOn>;
-
 beforeEach(() => {
   vi.clearAllMocks();
   h.selfUuid = undefined;
-  confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 });
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -173,7 +173,8 @@ describe('friends list', () => {
   it('renders a row per friendship with its remove affordance', async () => {
     renderFriends();
     expect(await screen.findByText('Dana')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+    // The accessible name states the action AND the person (§7.2 / D-36).
+    expect(screen.getByRole('button', { name: 'Remove Dana' })).toBeInTheDocument();
   });
 
   it('renders the empty text when the caller has no friends', async () => {
@@ -181,29 +182,107 @@ describe('friends list', () => {
     expect(
       await screen.findByText('No friends yet. Search for friends by email above!')
     ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Remove/ })).not.toBeInTheDocument();
   });
 });
 
-describe('remove friend (current: native confirm)', () => {
-  it('sends the removal and drops the row once the native confirm is accepted', async () => {
-    renderFriends();
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+describe('remove friend (two-tap tier)', () => {
+  /** The row's remove control, by its resting accessible name. */
+  const removeButton = (name: string) =>
+    screen.getByRole('button', { name: `Remove ${name}` });
 
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
+  it('carries the phone tap floor, a focus-visible ring and a naming label', async () => {
+    renderFriends();
+    const button = await screen.findByRole('button', { name: 'Remove Dana' });
+
+    expect(button).toHaveAttribute('type', 'button');
+    expect(button.className).toContain('min-h-11');
+    expect(button.className).toContain('focus-visible:ring-2');
+    expect(button.className).toContain('focus-visible:ring-focus-ring');
+    // `outline-hidden`, not `outline-none` — Tailwind v4 naming.
+    expect(button.className).toContain('focus:outline-hidden');
+  });
+
+  it('arms on the first tap and sends nothing', async () => {
+    renderFriends();
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+
+    expect(friendshipsAPI.removeFriend as Mock).not.toHaveBeenCalled();
+    expect(screen.getByText('Dana')).toBeInTheDocument();
+
+    const armed = screen.getByRole('button', { name: 'Tap again to confirm' });
+    expect(armed).toHaveTextContent('Tap again to confirm');
+    expect(armed).toHaveAttribute('aria-pressed', 'true');
+    // The live region names the target so a row switch re-announces.
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Press again to confirm: Remove Dana'
+    );
+  });
+
+  it('commits on a second tap inside the window and drops the row', async () => {
+    renderFriends();
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
+
     await waitFor(() =>
       expect(friendshipsAPI.removeFriend as Mock).toHaveBeenCalledWith(FRIENDSHIP.id)
     );
+    expect(friendshipsAPI.removeFriend as Mock).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.queryByText('Dana')).not.toBeInTheDocument());
   });
 
-  it('sends nothing and keeps the row when the native confirm is declined', async () => {
-    confirmSpy.mockReturnValue(false);
+  it('reverts to the resting label once the arm window lapses', async () => {
     renderFriends();
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    const button = await screen.findByRole('button', { name: 'Remove Dana' });
 
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    // Fake timers are installed AFTER the mount fetches settle — installing them
+    // first would stall the promise-driven render this test depends on.
+    vi.useFakeTimers();
+    fireEvent.click(button);
+    expect(button).toHaveTextContent('Tap again to confirm');
+
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    expect(button).toHaveTextContent('Remove');
+    expect(button).toHaveAttribute('aria-label', 'Remove Dana');
+    expect(button).not.toHaveAttribute('aria-pressed');
+    expect(screen.getByRole('status')).toHaveTextContent('');
     expect(friendshipsAPI.removeFriend as Mock).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  // AR DEC-2. The hook keys the armed state on the TARGET id, not a boolean —
+  // without that, arming one row and single-tapping another destroys the second.
+  it('re-arms rather than commits when a DIFFERENT row is tapped inside the window', async () => {
+    renderFriends({ friends: [FRIENDSHIP, FRIENDSHIP_2] });
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+    fireEvent.click(removeButton('Sam'));
+
+    expect(friendshipsAPI.removeFriend as Mock).not.toHaveBeenCalled();
+    expect(screen.getByText('Sam')).toBeInTheDocument();
+
+    // Sam is now the armed row; Dana has reverted to resting.
+    const armed = screen.getByRole('button', { name: 'Tap again to confirm' });
+    expect(armed).toHaveAttribute('aria-pressed', 'true');
+    expect(removeButton('Dana')).not.toHaveAttribute('aria-pressed');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Press again to confirm: Remove Sam'
+    );
+  });
+
+  it('removes the row that is actually armed after a cross-row switch', async () => {
+    renderFriends({ friends: [FRIENDSHIP, FRIENDSHIP_2] });
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+    fireEvent.click(removeButton('Sam'));
+    fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
+
+    await waitFor(() =>
+      expect(friendshipsAPI.removeFriend as Mock).toHaveBeenCalledWith(FRIENDSHIP_2.id)
+    );
+    expect(friendshipsAPI.removeFriend as Mock).not.toHaveBeenCalledWith(FRIENDSHIP.id);
+    await waitFor(() => expect(screen.queryByText('Sam')).not.toBeInTheDocument());
     expect(screen.getByText('Dana')).toBeInTheDocument();
   });
 });

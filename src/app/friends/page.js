@@ -7,6 +7,7 @@ import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { useConfirmAction } from '../../components/ui/useConfirmAction';
 
 function FriendsPage() {
     const { user, isLoading: authLoading } = useUser();
@@ -219,10 +220,9 @@ function FriendsPage() {
         }
     };
 
-    // Remove friend
-    const handleRemove = async (friendshipId) => {
-        if (!confirm('Are you sure you want to remove this friend?')) return;
-
+    // Remove friend — the COMMIT half only. It is unreachable except through the
+    // gate below, which is what makes the first tap non-destructive.
+    const performRemoveFriend = async (friendshipId) => {
         setActionLoading(prev => ({ ...prev, [friendshipId]: 'remove' }));
         try {
             await friendshipsAPI.removeFriend(friendshipId);
@@ -235,6 +235,28 @@ function FriendsPage() {
             setActionLoading(prev => ({ ...prev, [friendshipId]: null }));
         }
     };
+
+    /* DECISION Phase 88-14 (Req 11 / OI-7, owner-ratified 2026-08-04): remove-friend is the
+       TWO-TAP tier, chosen OVER the `dialog` tier this surface's neighbours use and OVER the
+       native browser prompt that shipped here before. Removing a friend is personal and re-addable
+       by the search field directly above the list — the same class as "remove game from
+       collection" — so per D-09's tier rule ("does it need explaining?") the label already says
+       everything a dialog body could, and a misclick is the only real risk.
+
+       Two-tap is viable HERE and not everywhere: D-07's recorded limit is that the armed trigger
+       must SURVIVE the first click. This is a persistent inline row button, not an auto-closing
+       menu item (which is exactly why D-40 keeps the gameDetail kebab's Delete on `dialog`).
+
+       Retiering this to `dialog` is a one-word edit and a decision about friction, not a cleanup. */
+    const removeFriendGate = useConfirmAction({
+        tier: 'two-tap',
+        // `title` is dialog-tier copy, accepted and ignored by two-tap (superset config).
+        // It is authored anyway so a retier is genuinely the one-word edit above.
+        title: 'Remove this friend?',
+        body: "They'll drop off your friends list. You can send a new request by email any time.",
+        confirmLabel: 'Remove',
+        onConfirm: (friendshipId) => performRemoveFriend(friendshipId),
+    });
 
     // Check if a user is already a friend. `userId` is the SEARCHED user's
     // Users.id UUID (not the caller's) — both sides of the join key on the
@@ -415,6 +437,13 @@ function FriendsPage() {
         <div className="min-h-screen bg-surface-page">
             <div className="max-w-3xl mx-auto px-4 py-8">
                 <h1 className="text-3xl font-bold text-content-primary mb-6">Friends</h1>
+
+                {/* The remove-friend gate's live region. Mounted HERE — once, outside the
+                    tab conditional and outside the row map — because a live region that
+                    mounts with the armed row announces nothing (empty-first contract,
+                    StatusRegion.tsx:8-11). Moving it inside the Friends tab or into the
+                    row is a silent a11y regression, not a tidy-up. */}
+                {removeFriendGate.statusNode}
 
                 {/* Search Section */}
                 <div className="card p-6 mb-6">
@@ -662,13 +691,37 @@ function FriendsPage() {
                                                         {/* Friend email is no longer exposed in the friends payload (Phase 83-06 PII default-deny); invites resolve it server-side by user_id. */}
                                                     </div>
                                                 </div>
-                                                <button
-                                                    onClick={() => handleRemove(friendship.id)}
-                                                    disabled={actionLoading[friendship.id] === 'remove'}
-                                                    className="text-status-error text-sm font-medium transition-colors disabled:opacity-50"
-                                                >
-                                                    {actionLoading[friendship.id] === 'remove' ? 'Removing...' : 'Remove'}
-                                                </button>
+                                                {(() => {
+                                                    const friendName = friend.username || 'this friend';
+                                                    const removing = actionLoading[friendship.id] === 'remove';
+                                                    const armed = removeFriendGate.isArmed(friendship.id);
+                                                    return (
+                                                        <button
+                                                            // targetId is the FRIENDSHIP id (what the API takes) and
+                                                            // targetLabel is the person — the live region names them,
+                                                            // so switching rows is a guaranteed re-announcement.
+                                                            {...removeFriendGate.triggerProps(
+                                                                friendship.id,
+                                                                friendName,
+                                                                `Remove ${friendName}`
+                                                            )}
+                                                            // Label-in-Name (WCAG 2.5.3) during the commit: the
+                                                            // visible label is "Removing...", so the accessible name
+                                                            // must contain it. The hook only owns resting-vs-armed.
+                                                            {...(removing ? { 'aria-label': `Removing ${friendName}` } : {})}
+                                                            disabled={removing}
+                                                            className={`min-h-11 px-3 rounded-btn border text-sm transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring text-status-error ${
+                                                                armed
+                                                                    ? 'border-status-error font-semibold'
+                                                                    : 'border-transparent font-medium'
+                                                            }`}
+                                                        >
+                                                            {removing
+                                                                ? 'Removing...'
+                                                                : removeFriendGate.labelFor(friendship.id, 'Remove')}
+                                                        </button>
+                                                    );
+                                                })()}
                                             </div>
                                         );
                                     })}
