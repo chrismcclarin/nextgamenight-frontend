@@ -328,6 +328,17 @@
   --color-status-error: var(--color-error);
   --color-status-warning: var(--color-warning);
 
+  /* status tints (Phase 88 D-33) -- 6 collision keys, aliased. These resolve through the bare
+     `--status-*-subtle` aliases in the shadcn bridge block below, NOT through their own names;
+     see the DECISION marker at those aliases for why a direct self-reference is not an option.
+     No `info` entry: D-33 forbids a fifth status family. */
+  --color-status-success-subtle: var(--status-success-subtle);
+  --color-status-success-subtle-hover: var(--status-success-subtle-hover);
+  --color-status-error-subtle: var(--status-error-subtle);
+  --color-status-error-subtle-hover: var(--status-error-subtle-hover);
+  --color-status-warning-subtle: var(--status-warning-subtle);
+  --color-status-warning-subtle-hover: var(--status-warning-subtle-hover);
+
   /* focus     (tailwind.config.js:105-107) -- 1 collision key, aliased */
   --color-focus-ring: var(--ring);
 
@@ -595,6 +606,41 @@
   --color-error: #dc2626;
   --color-warning: #d97706;
 
+  /* ===== Status TINTS (Phase 88 D-32/D-33, UI-SPEC §10.3) =====
+     DECISION Phase 88-01 (D-33): status tints are HAND-PICKED OPAQUE per-theme values. Two
+     mechanisms were rejected, and both rejections are load-bearing:
+       (a) Tailwind `/N` slash-opacity modifiers (`bg-status-success/10`) — REJECTED. That is
+           precisely what the `DECISION Phase 87.7 D-18` markers stripped out, on a MEASURED
+           defect: v4 emits a two-branch `color-mix()` with an `@supports` fallback, and the
+           fallback branch paints a SOLID status block on browsers without relative-colour
+           support. Re-adding the modifiers reverses a shipped decision.
+       (b) authoring the tints with `color-mix()` here — REJECTED: it surrenders hand-control of
+           the dark values, which is the half of the palette this app is actually judged on.
+
+     THREE RULES A READER WOULD NOT OTHERWISE INFER:
+       (i)  THESE TINTS ASSUME THE CARD SURFACE. Each value is `round((1-t)*card + t*hue)` per
+            channel — t=0.15 resting, t=0.24 hover — against the CARD ground (`#ffffff` light,
+            `#232d3e` dark), NOT the page. Painting one straight onto the page ground is a
+            contrast change, not a reskin; re-derive against the page if you ever need that.
+       (ii) THERE IS DELIBERATELY NO FIFTH `info` FAMILY (D-33). Informational surfaces reuse
+            Banner's shipped treatment — `border-line` on the container, `text-content-secondary`
+            on the glyph. Minting an info colour is a decision, not a completion of the set.
+       (iii) THE LIGHT VALUES BELOW ARE PROVISIONAL, owned by Phase 88.3 (light-mode design), on
+            the same footing as the light `border-strong` value above. The DARK values are the
+            ratified ones (§10.3); measured on `#234443`, `--color-content-primary` reads 10.01:1
+            and success text reads 4.66:1.
+
+     Bucket B (resting BORDER tints) reuses the full-strength `--color-success/-error/-warning`
+     above, and bucket D (overlay dims / text-alpha) reuses `--color-bg-overlay` and
+     `--color-text-muted`. Neither gets a token — minting one for them was rejected as vocabulary
+     that nothing would consume. */
+  --color-status-success-subtle: #dcf1e4;
+  --color-status-success-subtle-hover: #c7e9d4;
+  --color-status-error-subtle: #fadede;
+  --color-status-error-subtle-hover: #f7cbcb;
+  --color-status-warning-subtle: #f9ebda;
+  --color-status-warning-subtle-hover: #f6dec3;
+
   /* Header (warm neutral, NOT purple) */
   --color-bg-header: var(--warm-800);
   --color-bg-header-hover: var(--warm-700);
@@ -669,6 +715,18 @@
   --color-success: #22c55e;
   --color-error: #ef4444;
   --color-warning: #f59e0b;
+
+  /* Status tints — the RATIFIED half (Phase 88 D-33, UI-SPEC §10.3). Derived, not eyeballed:
+     `round((1-t)*card + t*hue)` per channel against the dark card `#232d3e`, t=0.15 resting /
+     t=0.24 hover. See the full marker at the light declarations above for the two rejected
+     mechanisms and the card-surface rule. Nudging one of these by eye desynchronises it from that
+     formula and from its hover step — a decision, not a cleanup. */
+  --color-status-success-subtle: #234443;
+  --color-status-success-subtle-hover: #235146;
+  --color-status-error-subtle: #42303f;
+  --color-status-error-subtle-hover: #54333f;
+  --color-status-warning-subtle: #423e36;
+  --color-status-warning-subtle-hover: #554832;
 
   /* Header (warm neutral) */
   --color-bg-header: var(--warm-900);
@@ -775,6 +833,48 @@
   --accent-hover: var(--color-accent-hover);
   --primary-hover: var(--color-btn-primary-hover);
   --secondary-hover: var(--color-btn-secondary-hover);
+
+  /* DECISION Phase 88-01 (D-33, applying the 87.7 D-01/D-02 rule directly above): the six aliases
+     below are COLLISION-BREAKERS for the new status-tint tokens, not new design values. They exist
+     for exactly the reason the three aliases above exist.
+
+     THE COLLISION. The `-subtle` runtime properties are declared in the `:root`/`.dark` blocks
+     under the names `--color-status-*-subtle`, and those are ALSO the theme keys v4 needs in
+     `@theme inline` to emit the `bg-status-*-subtle` utilities. Writing the bridge entry directly
+     would produce a literal self-reference — `--color-X: var(--color-X)` — which the marker above
+     records as invalid at computed-value time and rendering today only by cascade-layer luck.
+     Pointing each theme key at a DIFFERENTLY-NAMED alias removes that form. This raises the count
+     of colliding keys this file breaks from nine to fifteen.
+
+     PROVEN, not assumed: compiling this file against its own tailwindcss@4.3.3 emits
+     `.bg-status-success-subtle{background-color:var(--status-success-subtle)}` (and the five
+     siblings, plus their `hover:` variants), and a scan of the emitted CSS for the
+     `--color-X: var(--color-X)` form returns zero.
+
+     THE RESIDUAL, stated so it is greppable: v4 DOES emit each `@theme inline` key into
+     `@layer theme`'s `:root`, so the output contains a layered
+     `--color-status-*-subtle: var(--status-*-subtle)` alongside the unlayered literal hex below.
+     The unlayered one wins, which is why the chain terminates. If anything ever moves this file's
+     `:root`/`.dark` blocks INTO a layer, the layered copy starts winning and these two lines close
+     into a two-step reference cycle — the same cascade-layer dependency the marker above records
+     for the original nine, one hop longer and therefore harder to spot. Do not layer these blocks.
+
+     REJECTED ALTERNATIVE: name the runtime properties `--color-success-subtle` (mirroring the
+     shipped `--color-success` -> `--color-status-success` pattern, which collides with nothing).
+     Cleaner in isolation, but it splits the tint vocabulary from the name the adoption plans, the
+     UI-SPEC §10.3 table and the 87.7 opacity census all already write, so the alias is paid once
+     here instead of at 136 call sites. If a later phase does the `--sem-*` runtime rename that the
+     marker above calls the structurally cleaner end state, these six lines go with the other three.
+
+     `:root` ONLY, deliberately — same reason as above: their targets are what flips under `.dark`,
+     and `.dark` is the same element as `:root`, so the aliases follow the theme for free. Adding
+     `.dark` copies would create a second place to keep in sync. */
+  --status-success-subtle: var(--color-status-success-subtle);
+  --status-success-subtle-hover: var(--color-status-success-subtle-hover);
+  --status-error-subtle: var(--color-status-error-subtle);
+  --status-error-subtle-hover: var(--color-status-error-subtle-hover);
+  --status-warning-subtle: var(--color-status-warning-subtle);
+  --status-warning-subtle-hover: var(--color-status-warning-subtle-hover);
 }
 
 /* ===== DESIGN SYSTEM: Theme Transition ===== */
