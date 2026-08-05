@@ -623,6 +623,97 @@ describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)',
 });
 
 // ---------------------------------------------------------------------------
+// Req 15 — the guest-invite dead end, closed from the event view (plan 88-20).
+//
+// The affordance already existed, but only in the per-session results list on
+// the OTHER view: an owner looking at tonight's event could see "Guest" on a
+// participant and had no way to act on it without navigating into history.
+//
+// Two negative pins carry as much weight as the positive one. A custom guest
+// (`user_id: null`) is a name someone typed in, not an account — an invite
+// against it would be dispatched at a non-existent user (T-88-20-02). And a
+// plain member must see nothing (T-88-20-01).
+// ---------------------------------------------------------------------------
+
+const INVITE = 'Invite to group';
+
+describe('gameDetail guest invite from the event view (Req 15)', () => {
+  const GUEST_WITH_ACCOUNT = participantRow({
+    user_id: 'guest-uuid',
+    username: 'Visiting Pat',
+    is_guest: true,
+  });
+  const CUSTOM_GUEST = participantRow({
+    user_id: null,
+    username: 'Whoever Sam Brought',
+    is_guest: true,
+    is_custom: true,
+  });
+
+  it.each(['owner', 'admin'] as const)(
+    'offers the invite to a group %s, on the participant strip',
+    async (role) => {
+      renderEventDetail({ role, participants: [GUEST_WITH_ACCOUNT] });
+      expect(await screen.findByRole('button', { name: INVITE })).toBeInTheDocument();
+    }
+  );
+
+  it('also offers it inside the See-all modal, for guests past the strip cutoff', async () => {
+    const user = userEvent.setup();
+    // The strip renders only the first five; the sixth is reachable ONLY through
+    // the modal, which is why both surfaces carry the affordance.
+    renderEventDetail({
+      role: 'owner',
+      participants: [...SIX_PARTICIPANTS, GUEST_WITH_ACCOUNT],
+    });
+    const dialog = await openParticipantsModal(user);
+    expect(within(dialog).getByRole('button', { name: INVITE })).toBeInTheDocument();
+  });
+
+  it('renders NO affordance for a custom guest — there is no account to invite', async () => {
+    renderEventDetail({ role: 'owner', participants: [CUSTOM_GUEST] });
+    // Wait for the strip itself, so the absence is a real absence and not a race.
+    await screen.findByRole('heading', { name: 'Participants (1)' });
+    expect(screen.queryByRole('button', { name: INVITE })).toBeNull();
+  });
+
+  it('renders no affordance for a non-guest participant', async () => {
+    renderEventDetail({ role: 'owner', participants: [participantRow()] });
+    await screen.findByRole('heading', { name: 'Participants (1)' });
+    expect(screen.queryByRole('button', { name: INVITE })).toBeNull();
+  });
+
+  it('withholds it from a plain member', async () => {
+    renderEventDetail({ role: 'member', participants: [GUEST_WITH_ACCOUNT] });
+    await screen.findByRole('heading', { name: 'Participants (1)' });
+    expect(screen.queryByRole('button', { name: INVITE })).toBeNull();
+  });
+
+  it('sends through the shipped participant-invite call path, by user_id', async () => {
+    const user = userEvent.setup();
+    (invitesAPI.sendParticipantInvite as Mock).mockResolvedValue({});
+    renderEventDetail({ role: 'owner', participants: [GUEST_WITH_ACCOUNT] });
+
+    await user.click(await screen.findByRole('button', { name: INVITE }));
+    // The email is resolved server-side (83-06 PII default-deny), so the client
+    // must send the UUID and nothing else.
+    expect(invitesAPI.sendParticipantInvite).toHaveBeenCalledWith(GROUP_ID, 'guest-uuid');
+    expect(await screen.findByRole('button', { name: 'Invite sent!' })).toBeInTheDocument();
+  });
+
+  it('reuses the shipped 409 -> "Already invited" copy rather than an error', async () => {
+    const user = userEvent.setup();
+    (invitesAPI.sendParticipantInvite as Mock).mockRejectedValue({ status: 409 });
+    renderEventDetail({ role: 'owner', participants: [GUEST_WITH_ACCOUNT] });
+
+    await user.click(await screen.findByRole('button', { name: INVITE }));
+    // 409 is "already a member or already invited" — not a failure to retry.
+    expect(await screen.findByRole('button', { name: 'Already invited' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Req 1 (the 16px iOS focus-zoom floor) + DEF-88-10-01 (label association).
 //
 // These sweep the WHOLE surface rather than naming controls one at a time, on

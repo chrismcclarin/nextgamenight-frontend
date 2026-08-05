@@ -63,7 +63,29 @@ function RsvpStatusPill({ status }) {
 // Mirror the See-all modal's Guest pill gating (suppressed for game-only
 // viewers — redundant on their own row, not load-bearing for co-attendee
 // rows in their flow).
-function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScope }) {
+/* DECISION Phase 88-20 (Req 15): ONE exported gate for the guest-invite affordance,
+   called from BOTH surfaces that render it — chosen OVER inlining the same three-part
+   test at each call site, which is exactly how the two drift apart and how a leak on
+   one surface survives a walkthrough of the other (the F-6d lesson from 88-11's split
+   role gate, one screen over in this same file).
+
+   The custom-guest branch is EXPLICIT rather than implicit: a participant with a null
+   `user_id` is a name someone typed into a session, not an account, so there is nobody
+   to send a group invite to. Falling through to a disabled button or a "Retry" would be
+   worse than rendering nothing — it implies an action exists. Removing this check would
+   dispatch an invite against a non-account record (T-88-20-02). */
+function canInviteGuest(participant, viewerRole) {
+    // Client-side gate only — mirrors the backend authz on the invite route, which is
+    // what actually enforces it (T-88-20-01). No new endpoint, no new payload shape.
+    if (viewerRole !== 'owner' && viewerRole !== 'admin') return false;
+    if (!participant?.is_guest) return false;
+    return !!participant.user_id;
+}
+
+// Phase 88-20 (Req 15): `canInvite` / `groupId` carry the guest-invite affordance
+// onto the chip. The gate is computed by `canInviteGuest` at the call site rather
+// than re-derived here, so the chip and the See-all row cannot disagree.
+function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScope, canInvite, groupId }) {
     const isCustom = !!participant.is_custom;
     return (
         <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line bg-surface-card text-xs max-w-full">
@@ -91,6 +113,9 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
             )}
             {isBringing && (
                 <span title="Bringing a game" aria-label="Bringing a game">🎲</span>
+            )}
+            {canInvite && (
+                <GuestInviteButton groupId={groupId} userId={participant.user_id} />
             )}
         </span>
     );
@@ -1121,6 +1146,20 @@ export default function GameDetailPage() {
                                         role={role}
                                         isBringing={isBringing}
                                         viewerScope={userScope}
+                                        /* Req 15: the invite lives on the STRIP as well as
+                                           the See-all modal, deliberately. The modal alone
+                                           would not close the dead end — "See all" only
+                                           renders past 5 participants, so a 4-person game
+                                           night with a guest would still have nowhere to
+                                           click. The strip alone would strand guests 6+.
+                                           Dropping either surface re-opens the gap for one
+                                           half of the events on the app. */
+                                        canInvite={canInviteGuest(p, userRole)}
+                                        /* effectiveGroupId, NOT the URL group_id: this view
+                                           is reachable as a bare /gameDetail?event_id=X (old
+                                           QR "Go to event" links), where group_id is null and
+                                           the id is derived from the event response. */
+                                        groupId={effectiveGroupId}
                                     />
                                 );
                             })}
@@ -1287,6 +1326,9 @@ export default function GameDetailPage() {
                             const canRemove = (userRole === 'owner' || userRole === 'admin')
                                 && !!p.user_id // hide for custom guests (no DB user)
                                 && !isCurrentUser;
+                            // Req 15: same gate object the strip chip uses, so the two
+                            // surfaces cannot disagree about who is invitable.
+                            const canInvite = canInviteGuest(p, userRole);
                             const isConfirming = removeConfirmingId === p.user_id;
                             // Phase 76 SOCL-06: compute friendship status at the modal call site so the
                             // trailing-slot affordance matches the per-row relationship. SOCL-06 is a
@@ -1385,18 +1427,31 @@ export default function GameDetailPage() {
                                             <span title="Bringing a game" className="text-sm" aria-label="Bringing a game">🎲</span>
                                         )}
                                     </div>
-                                    {canRemove && (
-                                        <button
-                                            type="button"
-                                            onClick={() => handleRemoveClick(p)}
-                                            className={`text-xs px-2 py-1 border rounded-sm transition-colors shrink-0 ${
-                                                isConfirming
-                                                    ? 'border-status-error text-status-error font-semibold'
-                                                    : 'border-line text-content-muted hover:bg-surface-card-hover'
-                                            }`}
-                                        >
-                                            {isConfirming ? 'Click again to remove' : 'Remove'}
-                                        </button>
+                                    {(canInvite || canRemove) && (
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        {/* Req 15: the invite sits BEFORE Remove, not after.
+                                            Both act on the same guest row, and putting the
+                                            constructive action first keeps the destructive
+                                            one at the outer edge where the two-tap expects
+                                            it — swapping them puts "Remove" under the thumb
+                                            that was reaching for "Invite". */}
+                                        {canInvite && (
+                                            <GuestInviteButton groupId={effectiveGroupId} userId={p.user_id} />
+                                        )}
+                                        {canRemove && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRemoveClick(p)}
+                                                className={`text-xs px-2 py-1 border rounded-sm transition-colors shrink-0 ${
+                                                    isConfirming
+                                                        ? 'border-status-error text-status-error font-semibold'
+                                                        : 'border-line text-content-muted hover:bg-surface-card-hover'
+                                                }`}
+                                            >
+                                                {isConfirming ? 'Click again to remove' : 'Remove'}
+                                            </button>
+                                        )}
+                                    </div>
                                     )}
                                 </div>
                             );
