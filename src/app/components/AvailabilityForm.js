@@ -11,6 +11,8 @@ import AvailabilityGrid from './AvailabilityGrid';
 // importers in tests. Matches the sibling ScheduleForm's import style.
 import { availabilityFormAPI } from '../../lib/api';
 import { useAppForm } from '../../lib/useAppForm';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { useConfirmAction } from '../../components/ui/useConfirmAction';
 
 /**
  * Zod schema with cross-field validation
@@ -147,16 +149,10 @@ export default function AvailabilityForm({
   };
 
   // Phase 81 Plan 02 (CHKIN-05) — pre-fill the grid from Google Calendar.
-  // Confirms before overwriting existing painted slots, paints fetched slots
-  // as 'preferred' preference, surfaces an inline auto-fade status message.
+  // Paints fetched slots as 'preferred' preference, surfaces an inline auto-fade
+  // status message. The overwrite confirmation lives in `replaceGate` below.
   // Pitfall 6 mitigation: backend uses { consume: false } — token survives.
-  const handleImportGcal = useCallback(async () => {
-    const currentSlots = watch('time_slots') || [];
-    if (currentSlots.length > 0) {
-      // window.confirm is the existing idiom (FriendInvitePanel, GroupSettings, ManageMembers)
-      if (!window.confirm('This will replace your current selections. Continue?')) return;
-    }
-
+  const performGcalPrefill = useCallback(async () => {
     setIsPrefilling(true);
     try {
       const { slot_ids, count } = await availabilityFormAPI.prefillFromGcal({
@@ -180,19 +176,14 @@ export default function AvailabilityForm({
     } finally {
       setIsPrefilling(false);
     }
-  }, [magicToken, weekStartIsoDate, timezone, watch, setValue]);
+  }, [magicToken, weekStartIsoDate, timezone, setValue]);
 
   // Phase 81 Plan 03 (CHKIN-06) — pre-fill the grid from the user's saved
   // availability (recurring patterns + specific overrides, override-beats-
-  // recurring). Mirrors handleImportGcal's confirm → fetch → paint → status
-  // flow. Backend filters source:'default' so users with zero saved patterns
+  // recurring). Mirrors the GCal fetch → paint → status flow behind the same
+  // gate. Backend filters source:'default' so users with zero saved patterns
   // get an empty result here, NOT the whole grid (research Pitfall 3).
-  const handleUseSaved = useCallback(async () => {
-    const currentSlots = watch('time_slots') || [];
-    if (currentSlots.length > 0) {
-      if (!window.confirm('This will replace your current selections. Continue?')) return;
-    }
-
+  const performSavedPrefill = useCallback(async () => {
     setIsPrefilling(true);
     try {
       const { slot_ids, count } = await availabilityFormAPI.prefillFromSaved({
@@ -214,9 +205,62 @@ export default function AvailabilityForm({
     } finally {
       setIsPrefilling(false);
     }
-  }, [magicToken, weekStartIsoDate, timezone, watch, setValue]);
+  }, [magicToken, weekStartIsoDate, timezone, setValue]);
+
+  // Phase 88-13 (Req 11, UI-SPEC §11.2): ONE dialog-tier gate serves both
+  // pre-fill buttons. They guard the identical consequence — the painted grid is
+  // overwritten — so they get identical copy from one config, and the committed
+  // source is carried by useConfirmAction's targetId rather than by a second,
+  // drift-prone config.
+  //
+  // Prior comment corrected rather than kept: this file used to record
+  // `window.confirm` as "the existing idiom (FriendInvitePanel, GroupSettings,
+  // ManageMembers)". That stopped being true this phase — every one of those
+  // surfaces now routes through useConfirmAction, and these two sites were the
+  // app's last native prompts. NOTE the one deliberate exception: FriendInvitePanel's
+  // reset uses the toast-action confirmation shipped in 86-07, which is a
+  // different idiom on purpose and is NOT part of this migration.
+  //
+  // The perform* callbacks report their own failures inline (prefillStatus.error)
+  // and never reject, so the gate closes after a failed fetch. That is intended:
+  // consent was given, and the failure surface is the status line under the
+  // buttons — not a dialog left hanging open.
+  const replaceGate = useConfirmAction({
+    tier: 'dialog',
+    title: 'Replace your current selections?',
+    body: "What you've painted so far will be overwritten.",
+    confirmLabel: 'Replace',
+    onConfirm: (source) =>
+      source === 'gcal' ? performGcalPrefill() : performSavedPrefill(),
+  });
+
+  // Pulled out of the object so the two callbacks below can depend on the STABLE
+  // `trigger` identity. Depending on `replaceGate` itself (what exhaustive-deps
+  // asks for) re-creates both handlers on every render — the hook returns a fresh
+  // object each time — for no behavioural gain.
+  const triggerReplace = replaceGate.trigger;
+
+  const handleImportGcal = useCallback(() => {
+    const currentSlots = watch('time_slots') || [];
+    // Nothing painted yet means nothing to lose — no gate (unchanged behaviour).
+    if (currentSlots.length > 0) {
+      triggerReplace('gcal');
+      return;
+    }
+    void performGcalPrefill();
+  }, [watch, performGcalPrefill, triggerReplace]);
+
+  const handleUseSaved = useCallback(() => {
+    const currentSlots = watch('time_slots') || [];
+    if (currentSlots.length > 0) {
+      triggerReplace('saved');
+      return;
+    }
+    void performSavedPrefill();
+  }, [watch, performSavedPrefill, triggerReplace]);
 
   return (
+    <>
     <form onSubmit={handleAppSubmit(onSubmit)} className="space-y-6">
       {/* Header Section */}
       <div className="border-b border-line pb-4">
@@ -371,6 +415,15 @@ export default function AvailabilityForm({
         </button>
       </div>
     </form>
+    {/* Deliberately a SIBLING of the <form>, not a child. A portalled dialog
+        still bubbles its events through the React tree, so mounting it inside
+        the form puts its controls one stray `type` attribute away from
+        submitting the availability response. `statusNode` is mounted always and
+        unconditionally (useConfirmAction's contract) — silent on the dialog
+        tier, still there so a retier stays a one-word edit. */}
+    <ConfirmDialog {...replaceGate.dialogProps} />
+    {replaceGate.statusNode}
+    </>
   );
 }
 
