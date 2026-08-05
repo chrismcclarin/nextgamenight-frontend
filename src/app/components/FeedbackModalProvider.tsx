@@ -19,9 +19,19 @@ import { usePathname } from 'next/navigation';
  * `category` seed, and focus management (the element that invoked `open()` is
  * recorded and focus returns to it on `close()`, T-87.8-22). This lets the
  * TRIGGER live in the Header (the mobile nav "Send feedback" row) while the
- * modal itself stays mounted at the layout root — never inside the header
- * dropdown, whose computed `translate` would capture a position:fixed
- * `.modal-overlay` as its containing block (RESEARCH Pitfall 1).
+ * modal itself stays mounted at the layout root.
+ *
+ * Phase 88-17 (Req 9) moved that modal from the hand-rolled `.modal-overlay`
+ * markup onto the shared `<Modal>` primitive, which portals to `<body>`. That
+ * retires the ORIGINAL reason for the split — RESEARCH Pitfall 1, where the
+ * header dropdown's computed `translate` became the containing block for a
+ * position:fixed overlay and clipped it to the dropdown's height. A portalled
+ * dialog cannot hit that. The split is still load-bearing for a SECOND, verified
+ * reason, which is why it stays: the dropdown is rendered unconditionally and
+ * hidden by class toggle, and its closed state carries `pointer-events-none`
+ * (Header.js:176). The row tap closes the menu in the SAME transition that opens
+ * the modal, so a modal rendered inside that subtree would open inert. Moving
+ * the modal into the Header is a decision, not a cleanup.
  *
  * Deliberately does NOT own `text` / `error` / `submitted`: those stay LOCAL
  * to the modal-owning FeedbackButton instance so a keystroke in the textarea

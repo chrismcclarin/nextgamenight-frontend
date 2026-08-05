@@ -5,6 +5,7 @@ import { useUser } from '@auth0/nextjs-auth0/client';
 import { feedbackAPI } from '../../lib/api';
 import { scrubFeedbackPageUrl } from '../../lib/scrubFeedbackPageUrl';
 import { useFeedbackModal, CATEGORIES, getCategoryLabel } from './FeedbackModalProvider';
+import { Modal } from './Modal';
 
 /**
  * Feedback entry points + modal (MOB-04, Plan 87.8-05, D-09).
@@ -34,19 +35,11 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState(null);
 
-  // Close modal on Escape key — only the modal-owning (floating) instance
-  // listens; the row instance renders no modal, so a second listener would
-  // just double-fire close().
-  useEffect(() => {
-    if (variant === 'row' || !isOpen) return;
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        close();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [variant, isOpen, close]);
+  // DECISION Phase 88-17 (Req 9): the hand-rolled document-level Escape listener
+  // that used to live here is REMOVED, not kept alongside <Modal>. Radix's
+  // dialog owns Esc, and a second listener would call close() twice per press —
+  // harmless today only because close() is idempotent. Re-adding a keydown
+  // listener for this modal is a decision, not a cleanup.
 
   // Reset local form state on the provider's open TRANSITION (isOpen becoming
   // true). Both entry points (FAB and nav row) call the same provider open(),
@@ -107,12 +100,6 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
       </button>
     );
   }
-
-  const handleOverlayClick = (e) => {
-    if (e.target === e.currentTarget) {
-      close();
-    }
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -209,15 +196,34 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
         </button>
       </div>
 
-      {/* Modal overlay — stays mounted on THIS (layout-root) instance at every
+      {/* Feedback modal — stays mounted on THIS (layout-root) instance at every
           viewport, including below `md` where the FAB itself is hidden; the
-          phone nav row opens this same modal via the shared provider. */}
+          phone nav row opens this same modal via the shared provider.
+
+          DECISION Phase 88-17 (Req 9): hosted on the shared <Modal>. Three
+          things are deliberately NOT ported:
+            - the bespoke backdrop div and its target-compare click handler
+              (Radix owns outside-dismiss);
+            - the second `aria-label="Close"` glyph — <Modal.Header> supplies one,
+              and two identically-named buttons make Playwright's role lookup in
+              e2e/feedback-stacking.spec.ts ambiguous rather than merely noisy;
+            - the layout-root MOUNT POINT, which is ported exactly as it was.
+              Radix portals to <body>, so the RESEARCH Pitfall 1 failure (the
+              nav dropdown's computed `translate` capturing a position:fixed
+              overlay as its containing block) is now structurally impossible —
+              but moving this render into the Header would still be wrong,
+              because the dropdown unmounts its children and the modal would go
+              with it. The e2e guard for this moved with it.
+
+          The header renders in BOTH states so the dialog always has an
+          accessible name (a Radix dialog with no DialogTitle has none, and warns).
+          `dismissable` is left at its default: this modal has ALWAYS closed on
+          backdrop click, and D-09's non-dismissable lever is for the surfaces
+          that lose long-form input, not this one. */}
       {isOpen && (
-        <div
-          className="modal-overlay"
-          onClick={handleOverlayClick}
-        >
-          <div className="modal-content max-w-md w-full mx-4 p-6">
+        <Modal open onClose={close} className="max-w-md">
+          <Modal.Header>Send Feedback</Modal.Header>
+          <Modal.Body>
             {submitted ? (
               /* Success state */
               <div className="text-center py-4">
@@ -242,25 +248,24 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
               </div>
             ) : (
               /* Form state */
-              <>
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-xl font-bold text-content-primary">Send Feedback</h2>
-                  <button
-                    onClick={close}
-                    className="text-content-muted hover:text-content-primary text-2xl leading-none"
-                    aria-label="Close"
-                  >
-                    &times;
-                  </button>
-                </div>
-
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  {/* Category dropdown */}
+              <form onSubmit={handleSubmit} className="space-y-4">
+                  {/* Category dropdown.
+                      Phase 88-17 (Rule 2, SPEC Req 4): `htmlFor`/`id` added. The
+                      label was rendered ADJACENT to the control with no
+                      association, so the select had NO accessible name at all —
+                      a live axe `select-name` violation this plan's composed
+                      audit caught (FeedbackModals.test.tsx). A real <label>
+                      association is used rather than an `aria-label` so the
+                      visible text and the accessible name cannot drift apart. */}
                   <div>
-                    <label className="block text-sm font-medium text-content-secondary mb-1">
+                    <label
+                      htmlFor="feedback-category"
+                      className="block text-sm font-medium text-content-secondary mb-1"
+                    >
                       Category
                     </label>
                     <select
+                      id="feedback-category"
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
                       className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
@@ -275,10 +280,14 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
 
                   {/* Feedback textarea */}
                   <div>
-                    <label className="block text-sm font-medium text-content-secondary mb-1">
+                    <label
+                      htmlFor="feedback-text"
+                      className="block text-sm font-medium text-content-secondary mb-1"
+                    >
                       Feedback
                     </label>
                     <textarea
+                      id="feedback-text"
                       value={text}
                       onChange={(e) => setText(e.target.value)}
                       placeholder="Tell us what's on your mind..."
@@ -308,10 +317,9 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
                     </button>
                   </div>
                 </form>
-              </>
             )}
-          </div>
-        </div>
+          </Modal.Body>
+        </Modal>
       )}
     </>
   );

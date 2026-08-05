@@ -14,10 +14,13 @@ import { test, expect, type Page } from '@playwright/test';
  *   2. The phone nav menu carries a "Send feedback" row that opens the SAME
  *      modal instance mounted at the layout root. If the modal were mounted
  *      inside the nav dropdown, the dropdown's computed `translate` would make
- *      it the containing block for position:fixed, clipping the overlay to
- *      ~the dropdown's height — so the overlay's bounding-box height is the
- *      regression guard.
- *   3. The FAB must sit BELOW every overlay (z-30 vs the z-index 40/50 tiers).
+ *      it the containing block for position:fixed, clipping the surface to ~the
+ *      dropdown's height. Phase 88-17 moved the modal onto the shared <Modal>
+ *      (a portalled Radix dialog), so the guard is now stated against the
+ *      dialog's ancestor chain and centre rather than an overlay's height —
+ *      see measureModalSurface below for why, in full.
+ *   3. The FAB must sit BELOW every overlay (z-30 vs the z-index 40/50 tiers;
+ *      the shared dialog and its backdrop both sit at z-50).
  *      Asserted behaviourally via elementFromPoint, not by reading a z-index.
  *   4. Logged-out visitors get NEITHER entry point — a real render assertion
  *      in a fresh unauthenticated context, replacing the old grep-only check.
@@ -53,21 +56,62 @@ const navRowLocator = (page: Page, opts: { includeHidden?: boolean } = {}) =>
     .getByRole('button', { name: 'Send feedback', includeHidden: opts.includeHidden ?? false })
     .filter({ hasText: 'Send feedback' });
 
-// The feedback modal's own heading (FeedbackButton.js modal-content h2).
+// The feedback modal's own heading — <Modal.Header>'s DialogTitle since 88-17.
 const modalHeading = (page: Page) => page.getByRole('heading', { name: 'Send Feedback' });
 
-// Climb from the modal heading to its position:fixed ancestor (the overlay)
-// and measure it. Done inside evaluate because Playwright locators cannot
-// ascend, and a class selector for the overlay is banned by the policy.
-async function measureModalOverlay(page: Page) {
+/**
+ * Containing-block probe (rewritten in Phase 88-17, Req 9).
+ *
+ * WHAT IT GUARDS IS UNCHANGED: the feedback modal must resolve its
+ * position:fixed geometry against the VIEWPORT, never against the nav
+ * dropdown. If the modal were rendered inside that dropdown, the dropdown's
+ * computed `translate` would become its containing block and the surface would
+ * be clipped to a ~200px strip (RESEARCH Pitfall 1).
+ *
+ * WHY THE SHAPE CHANGED: pre-88-17 the modal was a hand-rolled `inset: 0`
+ * backdrop, so "climb to the first position:fixed ancestor, assert it fills the
+ * viewport" measured the guard directly. The shared <Modal> is a Radix dialog:
+ * it portals to <body> and its fixed element is the CENTERED content surface,
+ * which is deliberately NOT viewport-sized. A height assertion against that
+ * element would fail on a correct tree — so the guard is restated at its own
+ * level instead of being deleted:
+ *   1. no ancestor between the dialog and <body> establishes a containing block
+ *      for fixed descendants (transform / translate / filter / perspective) —
+ *      the direct, mechanism-level statement of the bug;
+ *   2. the dialog's centre is the VIEWPORT's centre, which is where
+ *      `left:50%/top:50% + translate(-50%,-50%)` lands only when the viewport is
+ *      the containing block — the behavioural half.
+ * Reverting this to a height check is a decision, not a cleanup.
+ *
+ * `closest('[role="dialog"]')` is role-based, so it stays inside the file's
+ * selector policy; the DOM walk happens in evaluate because locators cannot
+ * ascend.
+ */
+async function measureModalSurface(page: Page) {
   return modalHeading(page).evaluate((heading) => {
-    let el: HTMLElement | null = heading as HTMLElement;
-    while (el && getComputedStyle(el).position !== 'fixed') {
-      el = el.parentElement;
+    const dialog = (heading as HTMLElement).closest('[role="dialog"]') as HTMLElement | null;
+    if (!dialog) return null;
+
+    const containingBlockAncestors: string[] = [];
+    for (let el = dialog.parentElement; el && el !== document.body; el = el.parentElement) {
+      const cs = getComputedStyle(el);
+      if (
+        cs.transform !== 'none' ||
+        cs.translate !== 'none' ||
+        cs.filter !== 'none' ||
+        cs.perspective !== 'none'
+      ) {
+        containingBlockAncestors.push(`${el.tagName.toLowerCase()}[class="${el.className}"]`);
+      }
     }
-    if (!el) return null;
-    const rect = el.getBoundingClientRect();
-    return { top: rect.top, height: rect.height };
+
+    const rect = dialog.getBoundingClientRect();
+    return {
+      position: getComputedStyle(dialog).position,
+      centerX: rect.left + rect.width / 2,
+      centerY: rect.top + rect.height / 2,
+      containingBlockAncestors,
+    };
   });
 }
 
@@ -104,7 +148,7 @@ test.describe('phone: feedback trigger moves into the nav menu (R3, D-09)', () =
     ).toBe('none');
   });
 
-  test('nav row opens the layout-root modal: menu closes, overlay is viewport-sized, category is pathname-derived', async ({ page }) => {
+  test('nav row opens the layout-root modal: menu closes, dialog resolves against the viewport, category is pathname-derived', async ({ page }) => {
     // Open the hamburger; the Send feedback row appears alongside its siblings.
     const menuButton = page.getByRole('button', { name: 'Toggle menu' });
     await menuButton.click();
@@ -127,33 +171,39 @@ test.describe('phone: feedback trigger moves into the nav menu (R3, D-09)', () =
       'mobile menu must be closed (aria-expanded=false) by the time the modal is visible — the row tap closes the menu in the same transition that opens the modal',
     ).toHaveAttribute('aria-expanded', 'false');
 
-    // Containing-block regression guard: the overlay must be viewport-sized.
-    // If the modal were mounted inside the nav dropdown, the dropdown's
-    // computed `translate` would become the containing block for
-    // position:fixed and `inset: 0` would resolve against a ~200px dropdown,
-    // not the viewport.
+    // Containing-block regression guard (see measureModalSurface's contract):
+    // the modal's fixed geometry must resolve against the viewport, never
+    // against the nav dropdown's `translate`.
     const viewport = page.viewportSize();
     expect(viewport).not.toBeNull();
-    const overlay = await measureModalOverlay(page);
-    expect(overlay, 'modal heading must have a position:fixed ancestor (the overlay)').not.toBeNull();
+    const surface = await measureModalSurface(page);
+    expect(surface, 'the modal heading must live inside a [role="dialog"] surface').not.toBeNull();
     expect(
-      overlay!.height,
-      `overlay height ${overlay!.height}px must be at least 90% of the ${viewport!.height}px viewport — a short overlay means position:fixed resolved against a transformed ancestor (the nav dropdown as containing block), not the viewport`,
-    ).toBeGreaterThanOrEqual(viewport!.height * 0.9);
+      surface!.position,
+      'the dialog surface must be position:fixed — the whole containing-block guard below is vacuous otherwise',
+    ).toBe('fixed');
     expect(
-      overlay!.top,
-      'overlay top must be at the viewport origin — a non-zero top means inset:0 resolved against a transformed ancestor, not the viewport',
-    ).toBe(0);
+      surface!.containingBlockAncestors,
+      'no ancestor between the dialog and <body> may carry transform/translate/filter/perspective — any of those becomes the containing block for the fixed dialog and clips it to that ancestor (the nav dropdown is the known offender, RESEARCH Pitfall 1)',
+    ).toEqual([]);
+    // ±1px for sub-pixel rounding of the -50%/-50% translate.
+    expect(
+      Math.abs(surface!.centerX - viewport!.width / 2),
+      `dialog centre X ${surface!.centerX} must match the ${viewport!.width}px viewport's centre — an offset centre means left:50% resolved against a transformed ancestor, not the viewport`,
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(surface!.centerY - viewport!.height / 2),
+      `dialog centre Y ${surface!.centerY} must match the ${viewport!.height}px viewport's centre — an offset centre means top:50% resolved against a transformed ancestor, not the viewport`,
+    ).toBeLessThanOrEqual(1);
 
     // Category equivalence: /groupHomePage maps to "Groups" in the provider's
-    // CATEGORY_MAP (FeedbackModalProvider.js). The row entry point must drive
+    // CATEGORY_MAP (FeedbackModalProvider.tsx). The row entry point must drive
     // the FULL open transition — the pathname-derived category seed, not just
     // isOpen — so the select must show the current page's category, not the
     // default General or a leftover from a previous open.
     const categoryValue = await modalHeading(page).evaluate((heading) => {
-      let el: HTMLElement | null = heading as HTMLElement;
-      while (el && getComputedStyle(el).position !== 'fixed') el = el.parentElement;
-      const select = el?.querySelector('select');
+      const dialog = (heading as HTMLElement).closest('[role="dialog"]');
+      const select = dialog?.querySelector('select');
       return select ? (select as HTMLSelectElement).value : null;
     });
     expect(
@@ -201,9 +251,10 @@ test.describe('desktop: FAB present but below every overlay (R3, D-10)', () => {
     await expect(fab).toHaveCount(1);
     await expect(fab).toBeVisible();
 
-    // Open the Footer's own feedback modal (FeedbackForm's .modal-overlay —
-    // the SECOND occlusion instance D-10 fixes; the FAB used to win the z-50
-    // tie against it by DOM order).
+    // Open the Footer's own feedback modal (FeedbackForm — the SECOND occlusion
+    // instance D-10 fixes; the FAB used to win the z-50 tie against it by DOM
+    // order). Since 88-17 that modal is a portalled Radix dialog whose backdrop
+    // is z-50, so the FAB's z-30 must still lose.
     await page.getByRole('button', { name: 'Report bug or suggest feature' }).click();
     await expect(page.getByRole('heading', { name: 'Report Bug or Suggest Feature' })).toBeVisible();
 
