@@ -1,29 +1,25 @@
 // Phase 88 plan 06 Task 3 — RENDER HARNESS for FriendInvitePanel.
+// Phase 88 plan 15 — MIGRATION PROOF (the tripwire below is now armed positive).
 //
 // WHY THIS FILE EXISTS (read before extending):
 // SPEC Req 9 audits the modal fleet by grepping for `.modal-overlay`.
-// FriendInvitePanel is INVISIBLE to that grep: verified this session at
-// `FriendInvitePanel.js:491`, its backdrop is a hand-rolled
-// `fixed inset-0 bg-black/50 z-60` div (the source comment explains the z-60
-// stacks it above `.modal-overlay`'s z-50 when opened from inside
-// ManageMembers), and the panel at `:501` is a hand-rolled slide-in with a
-// plain `<h2>Invite Members</h2>` at `:505`. No `.modal-overlay`, no dialog
-// role, no focus trap, no Esc handler. The class census structurally cannot see
-// it, so Req 9's acceptance demands an EXPLICIT check — this file is it.
+// FriendInvitePanel is INVISIBLE to that grep. Before plan 88-15 it was bespoke
+// via its OWN hand-rolled `fixed inset-0 bg-black/50` backdrop (never
+// `.modal-overlay`), so the census would have passed with it unmigrated; after
+// 88-15 it is hosted on the shared <Modal>, whose Radix content carries no
+// `.modal-overlay` class either. Either way the class census structurally
+// cannot see this component, so Req 9's acceptance demands an EXPLICIT check —
+// this file is it. The pins live in
+// `describe('FriendInvitePanel — Req 9 migration proof')` below: dialog role,
+// Esc-to-close and a focus trap. They started life as plan 88-06's inverse
+// tripwire (asserting NO dialog existed) precisely so the 88-15 swap could not
+// land without visiting this file.
 //
 // `.tsx` is mandatory: vitest.config.mts only includes `.ts`/`.tsx`, and the
 // config's `jsx-in-js` pre-transform handles the `.js` component under test.
-//
-// ---------------------------------------------------------------------------
-// EXTENSION POINT — plan 88-15
-// ---------------------------------------------------------------------------
-// Plan 88-15 replaces the hand-rolled backdrop + panel with the shared <Modal>
-// primitive. At that point it fills in the three `it.todo` entries at the bottom
-// of this file and DELETES the inverse pin in
-// `describe('current: hand-rolled, not a dialog')` — that pin exists precisely
-// so 88-15 cannot land the swap without visiting this file.
 import * as React from 'react';
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const SELF_UUID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -220,26 +216,54 @@ describe('FriendInvitePanel invite list', () => {
   });
 });
 
-describe('FriendInvitePanel current: hand-rolled, not a dialog', () => {
-  // THE Req 9 CHECK. The `.modal-overlay` census cannot see this component, so
-  // its non-dialog status is asserted directly. Plan 88-15 flips this file to
-  // the it.todo pins below and DELETES this block — it is the tripwire that
-  // makes the swap impossible to land silently.
-  it('exposes no dialog to assistive technology today', async () => {
+describe('FriendInvitePanel — Req 9 migration proof', () => {
+  // THE Req 9 CHECK, now armed positive (plan 88-15). The `.modal-overlay`
+  // census cannot see this component either before or after the swap, so its
+  // dialog status is asserted directly here. Plan 88-06 shipped the inverse of
+  // these three pins (`queryByRole('dialog')` is null) so that the migration
+  // could not land silently; 88-15 flipped them.
+
+  it('exposes role=dialog once the panel is composed on <Modal>', async () => {
     renderPanel();
-    await screen.findByRole('heading', { name: 'Invite Members' });
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
-  it('closes only through its explicit Done / dismiss affordances today', async () => {
+  it('takes its accessible name from the panel title (aria-labelledby via DialogTitle)', async () => {
+    renderPanel();
+    expect(
+      await screen.findByRole('dialog', { name: /Invite Members/ })
+    ).toBeInTheDocument();
+  });
+
+  it('closes on Escape now that <Modal> owns dismissal', async () => {
+    const user = userEvent.setup();
+    const { onClose } = renderPanel();
+    await screen.findByRole('dialog');
+    await user.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('traps focus inside the dialog', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    const dialog = await screen.findByRole('dialog');
+    // Radix moves focus into the content on open, then cycles within it.
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+    for (let i = 0; i < 12; i += 1) {
+      await user.tab();
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    }
+  });
+
+  it('keeps its header copy intact through the <Modal> swap', async () => {
+    renderPanel();
+    expect(await screen.findByRole('heading', { name: 'Invite Members' })).toBeInTheDocument();
+    expect(screen.getByText('to Tuesday Night Crew')).toBeInTheDocument();
+  });
+
+  it('still closes through its explicit Done affordance', async () => {
     const { onClose } = renderPanel();
     fireEvent.click(await screen.findByRole('button', { name: 'Done' }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
-});
-
-describe('FriendInvitePanel — pins plan 88-15 turns on', () => {
-  it.todo('exposes role=dialog once the panel is composed on <Modal> (Req 9 dialog-role check)');
-  it.todo('closes on Escape once <Modal> owns dismissal (Req 9 Esc check)');
-  it.todo('keeps its create-path copy intact through the <Modal> swap (Req 9 create-copy check)');
 });

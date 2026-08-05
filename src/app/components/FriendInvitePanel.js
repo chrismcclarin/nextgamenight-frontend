@@ -6,6 +6,8 @@ import { QRCodeSVG } from 'qrcode.react';
 import { toast } from 'sonner';
 import { UserChip } from '@/components/ui/UserChip';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { DialogClose, DialogTitle } from '../../components/ui/dialog';
+import { Modal } from './Modal';
 
 function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = false }) {
     const { user } = useUser();
@@ -254,8 +256,6 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
         });
     };
 
-    if (!open) return null;
-
     const availableFriends = friends.filter(f => f.friend);
     const selectableCount = availableFriends.filter(f => !groupMemberIds.includes(f.friend.id)).length;
 
@@ -486,62 +486,76 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
         </>
     );
 
+    /* DECISION Phase 88-15 (SPEC Req 9): this panel is hosted on the shared
+       <Modal> primitive, and its old bespoke backdrop/panel tiers (a hand-rolled
+       `fixed inset-0 bg-black/50` backdrop one step above `.modal-overlay`, plus
+       a slide-in sheet one step above that) are NOT re-created as custom z-index
+       classes on the Radix content.
+
+       This component was the twelfth bespoke modal and the one the Req 9
+       `.modal-overlay` class census structurally CANNOT see — it was bespoke via
+       its own backdrop, not the shared class — which is why the migration is
+       proven by explicit dialog-role / Esc / focus-trap pins in
+       FriendInvitePanel.test.tsx rather than by the grep gate.
+
+       RESOLVED STACKING ORDER (verified, not assumed — this panel deliberately
+       sits ABOVE other overlays and BELOW the tooltip tier):
+         - `.modal-overlay` is `z-index: 50` and renders inside the React tree
+           (globals.css:1075-1078). ManageMembers.js:645 opens this panel as a
+           sibling of that overlay, and grouplist/userHome open it standalone.
+         - Radix portals this dialog to the END of <body>, so at an equal
+           z-index 50 it still paints above `.modal-overlay` purely by DOM order.
+           The stacking relationship the old bespoke value bought is therefore
+           preserved structurally, without a bespoke tier.
+         - HeatmapTooltip.js:334-340 pins tooltips at z-index 100 as "always
+           topmost" (a shipped Plan 72-02 UAT decision). That tier is untouched
+           and still clears this dialog.
+
+       The rejected alternative was porting the old numbers onto <Modal> via
+       `className`: it re-introduces a bespoke tier the rest of the modal fleet
+       does not have, and it is unnecessary because the portal already resolves
+       the order. Changing this is a decision, not a cleanup.
+
+       The right-hand slide-in sheet chrome is deliberately replaced by the
+       fleet's centered dialog chrome (the panel keeps its `max-w-md` width).
+       Reverting to a sheet is a decision, not a cleanup. */
     return (
-        <>
-            {/* Backdrop — z-60 so it stacks above .modal-overlay (z-50) when
-                opened from inside another modal (e.g. ManageMembers). Clicking
-                the backdrop closes only this panel; the parent modal's overlay
-                no longer receives the click. */}
-            <div
-                className="fixed inset-0 bg-black/50 z-60 transition-opacity"
-                onClick={onClose}
-            />
-
-            {/* Sliding panel — z-70 above its own backdrop. */}
-            <div className="fixed inset-y-0 right-0 w-full max-w-md bg-surface-card shadow-xl z-70 flex flex-col animate-slide-in-right">
-                {/* Header */}
-                <div className="flex items-center justify-between p-5 border-b border-line">
-                    <div>
-                        <h2 className="text-xl font-bold text-content-primary">Invite Members</h2>
-                        {group?.name && (
-                            <p className="text-sm text-content-muted mt-0.5">to {group.name}</p>
-                        )}
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="text-content-muted hover:text-content-secondary text-2xl leading-none p-1"
-                    >
-                        &times;
-                    </button>
+        <Modal open={open} onClose={onClose} className="max-w-md">
+            {/* Freeform header (the QRCodeModal idiom): <Modal.Header> renders a
+                single-line DialogTitle, and this panel's header is a two-line
+                stack. The chrome mirrors <Modal.Header> 1:1 so it matches the
+                fleet, and the title is still the DialogTitle so Radix keeps
+                auto-wiring `aria-labelledby`. */}
+            <div className="flex items-start justify-between gap-3 border-b border-border px-6 py-5">
+                <div className="min-w-0">
+                    <DialogTitle className="text-xl font-bold text-content-primary">
+                        Invite Members
+                    </DialogTitle>
+                    {group?.name && (
+                        <p className="text-sm text-content-muted mt-0.5">to {group.name}</p>
+                    )}
                 </div>
-
-                {/* Body */}
-                <div className="flex-1 overflow-y-auto">
-                    {body}
-                </div>
-
-                {/* Footer */}
-                <div className="p-4 border-t border-line">
-                    <button
-                        onClick={onClose}
-                        className="w-full btn btn-secondary py-2.5"
-                    >
-                        Done
-                    </button>
-                </div>
+                <DialogClose
+                    aria-label="Close"
+                    className="shrink-0 text-2xl leading-none text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                    &times;
+                </DialogClose>
             </div>
 
-            {/* Slide-in animation */}
-            <style jsx>{`
-                @keyframes slideInRight {
-                    from { transform: translateX(100%); }
-                    to { transform: translateX(0); }
-                }
-                .animate-slide-in-right {
-                    animation: slideInRight 0.25s ease-out;
-                }
-            `}</style>
-        </>
+            {/* p-0: every body section below carries its own `p-5`. */}
+            <Modal.Body className="p-0">{body}</Modal.Body>
+
+            <Modal.Footer>
+                <Modal.Action
+                    variant="secondary"
+                    onClick={onClose}
+                    className="w-full py-2.5"
+                >
+                    Done
+                </Modal.Action>
+            </Modal.Footer>
+        </Modal>
     );
 }
 
