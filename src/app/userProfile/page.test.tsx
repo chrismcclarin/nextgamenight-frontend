@@ -1013,3 +1013,76 @@ describe('userProfile form controls (Req 1 — the 16px floor)', () => {
     expect(variantSized).toEqual([]);
   });
 });
+
+// ===========================================================================
+// Plan 88-19 — Req 2 (the type scale, UI-SPEC §4.1/§4.2)
+// ===========================================================================
+// Sizes and weights are asserted from the SOURCE rather than from rendered
+// nodes: several of these headings live behind a tab or a toggle, and a pin
+// that only sees the mounted half is a pin that goes green while the other half
+// drifts.
+// ---------------------------------------------------------------------------
+
+async function pageSource() {
+  return import('node:fs/promises').then((fs) =>
+    fs.readFile('src/app/userProfile/page.js', 'utf8')
+  );
+}
+
+describe('userProfile type scale (Req 2)', () => {
+  it('renders exactly one h1, at the Display role', async () => {
+    renderProfile();
+    await screen.findByRole('heading', { name: 'Notification Preferences' });
+
+    const h1s = Array.from(document.querySelectorAll('h1'));
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].className).toMatch(/\btext-3xl\b/);
+    expect(h1s[0].className).toMatch(/\bfont-bold\b/);
+  });
+
+  // §4.2 states 600 as a PROHIBITION, not a preference, and D-01 gives it
+  // exactly one home — the Button primitive. No heading on this surface may
+  // carry it at any size.
+  it('pairs no heading with font-semibold at any size', async () => {
+    const source = await pageSource();
+    const offenders = [...source.matchAll(/<h[1-6]\s[^>]*className="([^"]*)"/g)]
+      .map((m) => m[1])
+      .filter((cls) => /\bfont-semibold\b/.test(cls));
+    expect(offenders).toEqual([]);
+  });
+
+  // The whole point of a 4-size working set is that a fifth size cannot creep
+  // back in. `text-lg` (18) and `text-2xl` (24) were both on this surface.
+  it('keeps every heading inside the 4-size working set', async () => {
+    const source = await pageSource();
+    const offenders = [...source.matchAll(/<h[1-6]\s[^>]*className="([^"]*)"/g)]
+      .map((m) => m[1])
+      .filter((cls) => /\b(?:[a-z]+:)?text-(lg|2xl|4xl|5xl)\b/.test(cls));
+    expect(offenders).toEqual([]);
+  });
+
+  it('gives every heading an explicit size and the 700 weight', async () => {
+    const source = await pageSource();
+    const headings = [...source.matchAll(/<h[1-6]\s[^>]*className="([^"]*)"/g)].map(
+      (m) => m[1]
+    );
+    expect(headings.length).toBeGreaterThanOrEqual(13);
+    for (const cls of headings) {
+      expect(cls).toMatch(/\btext-(base|xl|3xl)\b/);
+      expect(cls).toMatch(/\bfont-bold\b/);
+    }
+  });
+
+  // Req 2's other half. The four survivors are the Google brand mark, which is
+  // art rather than theme — each is tagged for 88-29's exemption list, and the
+  // tag is what this pin proves is still there.
+  it('leaves no untagged raw hex in the file', async () => {
+    const source = await pageSource();
+    const untagged = source
+      .split('\n')
+      .filter((line) => /#[0-9a-fA-F]{3,6}\b/.test(line))
+      .filter((line) => !line.includes('TODO(88-29)'));
+    expect(untagged).toEqual([]);
+  });
+});
+

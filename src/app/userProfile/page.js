@@ -50,6 +50,29 @@ const REMINDER_WINDOWS = [
     { value: 24, label: '1 day before' },
 ];
 
+/* DECISION Phase 88-19 (Req 2 / UI-SPEC §4.1 + §4.2): this surface renders THREE
+   type roles, not two — 30/700 for the page title, 20/700 (`text-xl font-bold`)
+   for the eight top-level section headings, and 16/700 (`text-base font-bold`)
+   for the six h3/h4 sub-headings that live INSIDE one of those sections.
+
+   The 16/700 rung is the deliberate part. It is chosen OVER promoting every h3
+   to §4.1's Heading role, which is the literal reading of "section headings to
+   text-xl" and is what a later reader will "correct" this to. It loses here
+   because this page nests three levels: "Availability Settings" (h2) contains
+   "Availability Schedules" (h3) which contains "New Schedule" (h4). Rendering
+   all three at 20px flattens a real hierarchy into one visual level, on the
+   surface with the most sections in the app. 16/700 keeps 30 > 20 > 16 legible
+   while staying inside the 4-size working set and never reaching for a fifth.
+
+   What is NOT negotiable in either shape: the weight. §4.2 states 700/400 as a
+   PROHIBITION on 600 ("never 600/400"), and D-01 gives 600 exactly one home,
+   the Button primitive. Every heading here was `font-semibold` or a bare
+   `font-semibold` with no size at all; none may go back.
+
+   `text-lg` (18) and `text-2xl` (24) both appeared on this surface and are gone
+   deliberately — they are not in the working set. So are the `md:`-prefixed
+   heading sizes: a heading that grows at a breakpoint is a second scale. */
+
 const DEFAULT_PREFERENCES = {
     event_created: { email: true, sms: false },
     reminder: { email: true, sms: false, window_hours: 1 },
@@ -1158,7 +1181,7 @@ function Profile(){
                                     </div>
                                 ) : (
                                     <div className="flex items-center gap-2">
-                                        <h1 className="text-xl md:text-2xl font-bold text-content-primary truncate">
+                                        <h1 className="text-3xl font-bold text-content-primary truncate">
                                             {userData?.username || user.name}
                                         </h1>
                                         {/* §7.3: an icon-only control needs a real accessible
@@ -1343,7 +1366,7 @@ function Profile(){
                                     so an h3 skipped a level (axe heading-order). The type role is
                                     carried by the classes, which are unchanged — the tag moved,
                                     the look did not. */}
-                                <h2 className="text-sm font-semibold text-content-primary mb-1">Google Calendar Integration</h2>
+                                <h2 className="text-xl font-bold text-content-primary mb-1">Google Calendar Integration</h2>
                                 <p className="text-xs text-content-secondary">
                                     {googleCalendarConnected 
                                         ? 'Connected - Future game events will be automatically added to your calendar'
@@ -1369,16 +1392,27 @@ function Profile(){
                                     onClick={handleConnectGoogleCalendar}
                                     className="btn btn-primary px-4 py-2 text-sm whitespace-nowrap flex items-center gap-2"
                                 >
-                                    {/* DECISION Phase 88-22 (Req 2): Google LOGO ART —
-                                        the four brand fills stay raw in every theme,
-                                        same exemption class as DieLogo.js. See the
+                                    {/* DECISION Phase 88-22 (Req 2), re-affirmed 88-19: Google
+                                        LOGO ART — the four brand fills stay raw in every
+                                        theme, same exemption class as DieLogo.js. See the
                                         fuller rationale on the identical mark in
-                                        LandingPage.js. Not a cleanup. */}
+                                        LandingPage.js. Not a cleanup.
+
+                                        88-19 (Req 2) tagged each fill `TODO(88-29)` rather
+                                        than converting it. That is a REGISTRATION, not a
+                                        promise to convert: 88-29 arms the phase's raw-value
+                                        gate and needs an explicit exemption list, and a
+                                        silent survivor is indistinguishable from a miss.
+                                        The correct 88-29 outcome here is "exempt, brand
+                                        art", not a token. Tokenising these would repaint
+                                        Google's mark per theme, which their brand terms
+                                        forbid — and a theme-swapped Google logo is a
+                                        licensing problem, not a design one. */}
                                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>{/* TODO(88-29): brand-art hex, exempt — see marker above */}
+                                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>{/* TODO(88-29): brand-art hex, exempt — see marker above */}
+                                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>{/* TODO(88-29): brand-art hex, exempt — see marker above */}
+                                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>{/* TODO(88-29): brand-art hex, exempt — see marker above */}
                                     </svg>
                                     Connect Google Calendar
                                 </button>
@@ -1389,7 +1423,7 @@ function Profile(){
 
                 {/* Theme Setting */}
                 <div className="card p-4 md:p-6 mb-6">
-                    <h2 className="text-lg font-bold text-content-primary mb-1">Theme</h2>
+                    <h2 className="text-xl font-bold text-content-primary mb-1">Theme</h2>
                     <p className="text-sm text-content-muted mb-3">Choose your preferred appearance</p>
                     {/* DECISION Phase 88-10 (Req 5 / F-357): the two theme buttons carry
                         `aria-pressed`, chosen OVER converting them to the `Switch`
@@ -1440,7 +1474,7 @@ function Profile(){
 
                 {/* Timezone Setting */}
                 <div className="card p-4 md:p-6 mb-6">
-                    <h2 className="text-lg font-bold text-content-primary mb-1">Timezone</h2>
+                    <h2 className="text-xl font-bold text-content-primary mb-1">Timezone</h2>
                     <p className="text-sm text-content-secondary mb-3">All event times and schedules use this timezone</p>
                     {/* F-359: the picker is the `Combobox` primitive (88-08). Keyboard
                         operation, Esc AND click-outside close, and focus restore all come
@@ -1468,7 +1502,7 @@ function Profile(){
                 {/* Notification Preferences Section */}
                 {preferences && (
                 <div className="card p-4 md:p-6 mb-6">
-                    <h2 className="text-xl md:text-2xl font-bold text-content-primary mb-1">Notification Preferences</h2>
+                    <h2 className="text-xl font-bold text-content-primary mb-1">Notification Preferences</h2>
                     <p className="text-sm text-content-secondary mb-4">Choose how you receive notifications</p>
 
                     {/* SMS Consent Disclosure (TCPA / carrier compliance) */}
@@ -1671,7 +1705,7 @@ function Profile(){
                     tutorial handoff (ONBD-04, Phase 73). Read by the
                     ?section=availability useEffect above. */}
                 <div id="availability-settings" className="card p-4 md:p-6 mb-6">
-                    <h2 className="text-xl md:text-2xl font-bold text-content-primary mb-4">Availability Settings</h2>
+                    <h2 className="text-xl font-bold text-content-primary mb-4">Availability Settings</h2>
                     <p className="text-sm text-content-secondary mb-4">
                         Set the times when you are <strong>available</strong> (free) to help groups find the best time to schedule game sessions. 
                         {googleCalendarConnected && ' Your Google Calendar busy times will be automatically excluded from your availability.'}
@@ -1697,7 +1731,7 @@ function Profile(){
                         <div>
                             <div className="flex justify-between items-center mb-4">
                                 <div>
-                                    <h3 className="font-semibold text-content-primary">Availability Schedules</h3>
+                                    <h3 className="text-base font-bold text-content-primary">Availability Schedules</h3>
                                     <p className="text-xs text-content-secondary mt-1">Set your recurring availability schedule</p>
                                 </div>
                                 <button
@@ -1710,7 +1744,7 @@ function Profile(){
 
                             {showRecurringForm && (
                                 <div className="mb-6 p-4 border rounded-lg bg-surface-page">
-                                    <h4 className="font-semibold mb-3 text-content-primary">New Schedule</h4>
+                                    <h4 className="text-base font-bold mb-3 text-content-primary">New Schedule</h4>
                                     <div className="space-y-3">
                                         <div>
                                             {/* Not a <label>: this names a GROUP of toggle
@@ -1862,7 +1896,7 @@ function Profile(){
                         <div>
                             <div className="flex justify-between items-center mb-4">
                                 <div>
-                                    <h3 className="font-semibold text-content-primary">Specific Date Overrides</h3>
+                                    <h3 className="text-base font-bold text-content-primary">Specific Date Overrides</h3>
                                     <p className="text-xs text-content-secondary mt-1">Override your schedules for specific dates</p>
                                 </div>
                                 <button
@@ -1875,7 +1909,7 @@ function Profile(){
 
                             {showSpecificForm && (
                                 <div className="mb-6 p-4 border rounded-lg bg-surface-page">
-                                    <h4 className="font-semibold mb-3 text-content-primary">New Specific Override</h4>
+                                    <h4 className="text-base font-bold mb-3 text-content-primary">New Specific Override</h4>
                                     <div className="space-y-3">
                                         <div>
                                             <label htmlFor="specific-date" className="block text-sm font-medium text-content-secondary mb-1">Date</label>
@@ -1994,7 +2028,7 @@ function Profile(){
 
                 {/* Tutorial Section */}
                 <div className="card p-4 md:p-6 mb-6">
-                    <h2 className="text-lg font-bold text-content-primary mb-2">Tutorial</h2>
+                    <h2 className="text-xl font-bold text-content-primary mb-2">Tutorial</h2>
                     <p className="text-sm text-content-secondary mb-4">
                         Need a refresher on how to use Next Game Night? Replay the onboarding tutorial to walk through the key features.
                     </p>
@@ -2010,7 +2044,7 @@ function Profile(){
                 {/* Owned Games Section */}
                 <div className="card p-4 md:p-6">
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-                        <h2 className="text-xl md:text-2xl font-bold text-content-primary">My Game Collection ({ownedGames.length})</h2>
+                        <h2 className="text-xl font-bold text-content-primary">My Game Collection ({ownedGames.length})</h2>
                         <div className="flex gap-2">
                             <button
                                 onClick={() => setShowBggSearch(!showBggSearch)}
@@ -2023,7 +2057,7 @@ function Profile(){
 
                     {/* BGG Collection Import */}
                     <div className="mb-6 p-3 md:p-4 border rounded-lg bg-surface-page">
-                        <h3 className="font-semibold mb-2 text-content-primary text-sm md:text-base">Import Your Entire BGG Collection</h3>
+                        <h3 className="text-base font-bold mb-2 text-content-primary">Import Your Entire BGG Collection</h3>
                         <p className="text-xs md:text-sm text-content-secondary mb-3">
                             Enter your BoardGameGeek username to import all games from your BGG collection at once.
                         </p>
@@ -2130,7 +2164,7 @@ function Profile(){
                                 <div key={game.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="flex-1">
-                                            <h3 className="font-semibold text-content-primary">{game.name}</h3>
+                                            <h3 className="text-base font-bold text-content-primary">{game.name}</h3>
                                             {game.year_published && (
                                                 <p className="text-sm text-content-secondary">({game.year_published})</p>
                                             )}
