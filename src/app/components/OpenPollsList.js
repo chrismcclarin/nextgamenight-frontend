@@ -13,8 +13,9 @@ import KebabMenu from './KebabMenu';
 import StartPollModal from './StartPollModal';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
-import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { toast } from 'sonner';
 
 /**
  * OpenPollsList — Phase 71.2 (POLL-01 / D-UI-01..04)
@@ -83,11 +84,28 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
       // GET /prompts/open query refetches and drops it from the list.
       await invalidateOpenPolls();
     } catch (err) {
-      const msg = err?.message || 'Unknown error';
-      // Match the existing PromptScheduleManager pattern (alert on close-action
-      // failure). KebabMenu has already closed by this point.
-      // eslint-disable-next-line no-alert
-      alert(`Failed to end check-in: ${msg}`);
+      /* No `console.error` here on purpose: this file is NOT on `.eslintrc.json`'s legacy
+         `no-console: off` allow-list, and adding it to that list to keep a log line would widen
+         a deliberate deny. The failure is already reported to the person by the toast below and
+         to Sentry by the global handler. */
+      /* DECISION Phase 88-25 (Req 14 / Req 11, DEF-88-16-01, T-88-25-01): this is a toast with
+         DERIVED copy, chosen OVER the native browser alert with an interpolated upstream message that
+         shipped here. Three defects in one line: a browser alert is unstyled and blocks the page;
+         the raw upstream message was painted at the user (ASVS V7); and it was one of the six
+         native-alert sites DEF-88-16-01 censused as invisible to Req 11's confirm-only gate. (The
+         literal calls are not written out here, comment included — those gates are plain greps
+         and do not exempt comments; same convention as 88-11's marker in gameDetail.)
+
+         It no longer "matches the existing PromptScheduleManager pattern" as the old comment
+         said — that file still has two native alerts of its own and is NOT in this plan's scope.
+         DEF-88-16-01 tracks the remaining four. Do not restore the alert for consistency with
+         them; the debt runs the other way. */
+      toast.error(
+        getFetchErrorMessage(err, {
+          fallback: "We couldn't end that check-in. Please try again.",
+          byCode: { forbidden: 'Only the poll creator and group admins can end a check-in.' },
+        })
+      );
     }
   };
 
