@@ -175,7 +175,14 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
             re-break when it rewrites surfaces. The FAB-above-Footer-modal
             instance was found by source analysis (z-tier + DOM order); the
             live-browser confirmation attempt is recorded in the plan summary
-            (A5). */}
+            (A5).
+
+            AMENDED Phase 88-17 (Req 9), premise re-verified, decision UNCHANGED:
+            the legacy overlay class named above is no longer what this file's
+            own modal uses — it is now a portalled Radix dialog. The z-30 choice
+            still holds because the shared dialog's backdrop is ALSO z-50
+            (ui/dialog.tsx DialogOverlay), so the tier the FAB must stay under
+            did not move. `z-30` is still a decision, not a leftover. */}
         <button
           onClick={(e) => open(e.currentTarget)}
           className="fixed bottom-6 right-6 z-30 w-14 h-14 btn btn-primary rounded-full shadow-lg flex items-center justify-center focus:ring-2 focus:ring-focus-ring focus:ring-offset-2"
