@@ -1494,22 +1494,6 @@ export default function GameDetailPage() {
                 <span className="text-content-primary font-semibold">{game.name}</span>
             </nav>
 
-            {/* Phase 65-03 EVT-05: "Plan a game night with this" CTA. Visible to
-                non-pending group members when group_id is in the URL. Opens the
-                CreateEvent modal pre-filled with the current game (and date if
-                ?date= is in the URL). */}
-            {group_id && userRole && userRole !== 'pending' && (
-                <div className="mb-4 flex justify-end">
-                    <button
-                        type="button"
-                        onClick={() => setShowCreateEvent(true)}
-                        className="btn btn-primary px-6 py-2 text-base font-semibold"
-                    >
-                        Plan a game night with this
-                    </button>
-                </div>
-            )}
-
             {/* Game Details */}
             <div className="card p-6 mb-6">
                 {game.is_custom ? (
@@ -1617,17 +1601,52 @@ export default function GameDetailPage() {
                         </div>
                     </div>
                 )}
+
+                {/* Phase 65-03 EVT-05: "Plan a game night with this" CTA. Visible to
+                    non-pending group members when group_id is in the URL. Opens the
+                    CreateEvent modal pre-filled with the current game (and date if
+                    ?date= is in the URL). */}
+                {/* DECISION Phase 88-11 (D-38, F-6a): the CTA lives INSIDE the game card,
+                    below BOTH the custom-game and BGG render branches — chosen OVER leaving
+                    it right-aligned above the card (its shipped position), which read as an
+                    unanchored floating control at 375px, and OVER a full-width-in-place fix,
+                    which the owner rejected as the weaker of the two. Its placement AFTER
+                    the `game.is_custom` ternary is load-bearing: moving it inside either
+                    branch renders it twice for one game and never for the other. Relocating
+                    it back above the card is a decision, not a cleanup. */}
+                {group_id && userRole && userRole !== 'pending' && (
+                    <div className="mt-6 pt-4 border-t border-line flex justify-end">
+                        <button
+                            type="button"
+                            onClick={() => setShowCreateEvent(true)}
+                            className="btn btn-primary min-h-11 w-full sm:w-auto px-6 py-2 text-base font-semibold"
+                        >
+                            Plan a game night with this
+                        </button>
+                    </div>
+                )}
             </div>
 
             {/* Game Sessions */}
             <div className="card p-6 mb-6">
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-2xl font-bold text-content-primary">
-                        Game Sessions ({filteredEvents.length} of {events.length})
+                {/* DECISION Phase 88-11 (D-39, F-6b): the count is CONDITIONAL — "(7)" at rest,
+                    "(3 of 7)" only while a filter is actually hiding sessions. Chosen OVER the
+                    shipped unconditional "N of M", which rendered "1 of 1" with no filter active
+                    and spent ~10 characters of a 375px header line saying nothing. The "of" is
+                    the signal that filtering is on; restoring it unconditionally removes that
+                    signal. The header also stacks (`flex-col sm:flex-row`) so the title and the
+                    ~150px filter button stop colliding at phone width. NOTE: the Reviews header
+                    below has the same shape and is deliberately NOT converged — see the marker
+                    there. */}
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+                    <h2 className="w-full text-xl leading-tight font-bold text-content-primary">
+                        Game Sessions ({filteredEvents.length === events.length
+                            ? events.length
+                            : `${filteredEvents.length} of ${events.length}`})
                     </h2>
                     <button
                         onClick={() => setShowFilters(!showFilters)}
-                        className="btn btn-secondary px-4 py-2 text-sm font-medium flex items-center gap-2"
+                        className="btn btn-secondary min-h-11 w-full sm:w-auto px-4 py-2 text-sm font-medium flex items-center justify-center gap-2"
                     >
                         {showFilters ? (
                             <>
@@ -1969,6 +1988,14 @@ export default function GameDetailPage() {
                     identity-resolution failure — own-review edit/delete gate on
                     selfUuid, so surface (never silently hide) when it can't resolve. */}
                 <FetchErrorBanner state={selfIdentityErrorState} compact />
+                {/* DECISION Phase 88-11 (D-39): this header is LEFT AS IT SHIPS — same
+                    justify-between shape and same 24px heading as the sessions header above,
+                    which WAS restacked and retyped this phase. The similarity is known and the
+                    divergence is deliberate: the owner walked both at 375px and ruled Reviews
+                    fine, because "Reviews (3)" plus a short "Add Review" button fits the line
+                    that "Game Sessions (3 of 7)" plus a ~150px filter control did not. A
+                    consistency sweep that converges this one onto the sessions treatment is
+                    reopening an owner ruling, not tidying an oversight. */}
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold text-content-primary">Reviews ({reviews.length})</h2>
                     {user && !userReview && userRole && userRole !== 'pending' && (

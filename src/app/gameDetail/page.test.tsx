@@ -35,6 +35,7 @@
 //   affordances')` — the roster plumbing it needs is already here.
 import * as React from 'react';
 import { render, screen, within, cleanup } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const SELF_UUID = '11111111-1111-4111-8111-111111111111';
@@ -170,6 +171,12 @@ export interface RenderGameDetailOptions {
   events?: Array<Record<string, unknown>>;
   /** Reviews for this game. Default [] so no own-review affordance renders. */
   reviews?: Array<Record<string, unknown>>;
+  /**
+   * The game itself. Overriding it is how the `is_custom` render branch is
+   * reached — the page picks its branch from this payload, and D-38's CTA sits
+   * after BOTH branches, so both need covering.
+   */
+  game?: Record<string, unknown>;
 }
 
 /**
@@ -178,9 +185,9 @@ export interface RenderGameDetailOptions {
  * @example renderGameDetail({ role: 'member' })
  */
 export function renderGameDetail(options: RenderGameDetailOptions = {}) {
-  const { role = 'member', events = [SESSION], reviews = [] } = options;
+  const { role = 'member', events = [SESSION], reviews = [], game = GAME } = options;
   h.selfUuid = SELF_UUID;
-  (gamesAPI.getGame as Mock).mockResolvedValue(GAME);
+  (gamesAPI.getGame as Mock).mockResolvedValue(game);
   (eventsAPI.getGroupEvents as Mock).mockResolvedValue(events);
   (gameReviewsAPI.getGameReviews as Mock).mockResolvedValue(reviews);
   (groupsAPI.getGroupMembers as Mock).mockResolvedValue(rosterFor(role));
@@ -192,6 +199,12 @@ export function renderGameDetail(options: RenderGameDetailOptions = {}) {
 export async function sessionsSection(): Promise<HTMLElement> {
   const heading = await screen.findByRole('heading', { name: /^Game Sessions \(/ });
   return heading.closest('div')?.parentElement as HTMLElement;
+}
+
+/** The Game Sessions header row (title + filter toggle), scoped from the heading. */
+export async function sessionsHeader(): Promise<HTMLElement> {
+  const heading = await screen.findByRole('heading', { name: /^Game Sessions \(/ });
+  return heading.parentElement as HTMLElement;
 }
 
 /** The Reviews card, scoped from its heading. */
@@ -212,7 +225,7 @@ describe('gameDetail render harness', () => {
     renderGameDetail();
     expect(await screen.findByRole('heading', { name: 'Wingspan' })).toBeInTheDocument();
     expect(
-      await screen.findByRole('heading', { name: 'Game Sessions (1 of 1)' })
+      await screen.findByRole('heading', { name: 'Game Sessions (1)' })
     ).toBeInTheDocument();
   });
 
@@ -222,15 +235,59 @@ describe('gameDetail render harness', () => {
     expect(within(sessions).getByText('Close finish on the last round')).toBeInTheDocument();
   });
 
-  it('counts filtered-of-total in the sessions header, excluding other games', async () => {
-    // The page filters the group's events down to THIS game — the "of N" total is
-    // the filtered set, not the raw group feed.
+  it('counts only sessions of THIS game in the header, excluding other games', async () => {
+    // The page filters the group's events down to THIS game — the total is the
+    // this-game set, not the raw group feed.
     renderGameDetail({
       events: [SESSION, { ...SESSION, id: 'evt-2', game_id: 'OTHER_GAME' }],
     });
     expect(
-      await screen.findByRole('heading', { name: 'Game Sessions (1 of 1)' })
+      await screen.findByRole('heading', { name: 'Game Sessions (1)' })
     ).toBeInTheDocument();
+  });
+});
+
+// D-39 / F-6b. The "of" is the ONLY signal that a filter is hiding sessions, so
+// the two states are pinned separately: its absence at rest is as load-bearing as
+// its presence while filtering.
+describe('gameDetail sessions header (D-39)', () => {
+  it('renders a bare count when no filter is hiding anything', async () => {
+    renderGameDetail({ events: [SESSION, { ...SESSION, id: 'evt-2' }] });
+    expect(
+      await screen.findByRole('heading', { name: 'Game Sessions (2)' })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Game Sessions \(\d+ of/ })).toBeNull();
+  });
+
+  it('renders "N of M" once a filter actually hides sessions', async () => {
+    const user = userEvent.setup();
+    renderGameDetail({
+      events: [SESSION, { ...SESSION, id: 'evt-2', duration_minutes: 30 }],
+    });
+    await screen.findByRole('heading', { name: 'Game Sessions (2)' });
+
+    await user.click(screen.getByRole('button', { name: /Show Filters/ }));
+    // The filter inputs are not label-associated on this branch (that is plan
+    // 88-20's form-control scope, not this plan's) — reach the control through
+    // its label's own wrapper rather than silently widening this plan.
+    const minDurationField = screen.getByText('Min Duration (min)').parentElement as HTMLElement;
+    await user.type(within(minDurationField).getByRole('spinbutton'), '60');
+
+    expect(
+      await screen.findByRole('heading', { name: 'Game Sessions (1 of 2)' })
+    ).toBeInTheDocument();
+  });
+
+  it('stacks the header and floors the filter toggle at phone width', async () => {
+    renderGameDetail();
+    const header = await sessionsHeader();
+    expect(header.className).toContain('flex-col');
+    expect(header.className).toContain('sm:flex-row');
+
+    const filterToggle = within(header).getByRole('button', { name: /Show Filters/ });
+    expect(filterToggle.className).toContain('min-h-11');
+    expect(filterToggle.className).toContain('w-full');
+    expect(filterToggle.className).toContain('sm:w-auto');
   });
 });
 
@@ -267,5 +324,28 @@ describe('gameDetail plan-a-game-night CTA', () => {
     expect(
       screen.queryByRole('button', { name: 'Plan a game night with this' })
     ).not.toBeInTheDocument();
+  });
+
+  // D-38 / F-6a. Rendering ONCE is the pin that matters: the CTA sits after the
+  // custom-game/BGG ternary, and the failure mode of moving it inside a branch is
+  // a duplicate on one branch and nothing on the other.
+  it('renders exactly once, anchored inside the game card, with the phone floor', async () => {
+    renderGameDetail({ role: 'member' });
+    const ctas = await screen.findAllByRole('button', {
+      name: 'Plan a game night with this',
+    });
+    expect(ctas).toHaveLength(1);
+    expect(ctas[0].className).toContain('min-h-11');
+    expect(ctas[0].closest('.card')).not.toBeNull();
+  });
+
+  it('renders exactly once on the custom-game branch too', async () => {
+    renderGameDetail({
+      role: 'member',
+      game: { ...GAME, is_custom: true, bgg_id: null },
+    });
+    expect(
+      await screen.findAllByRole('button', { name: 'Plan a game night with this' })
+    ).toHaveLength(1);
   });
 });
