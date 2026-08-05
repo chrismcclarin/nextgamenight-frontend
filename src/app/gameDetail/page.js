@@ -23,6 +23,7 @@ import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { Button } from '../../components/ui/Button';
+import { Input, Textarea, SelectControl } from '../../components/ui/Input';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import KebabMenu from '../components/KebabMenu';
@@ -1701,113 +1702,129 @@ export default function GameDetailPage() {
                         </button>
                     </div>
                     
+                    {/* DECISION Phase 88-20 (Req 1 / UI-SPEC §8.2 + DEF-88-10-01): all ten
+                        session filters render through the `Input`/`SelectControl` PRIMITIVES
+                        with NO size class of their own — chosen OVER swapping each shipped
+                        `text-sm` for a local `text-base`, which reaches the same 16px today
+                        and then drifts the moment someone "tidies" one control back down.
+                        The primitive is the single place the iOS focus-zoom floor is written,
+                        and it deliberately carries no breakpoint variant (see its own marker).
+                        Ten controls at 12px on the app's busiest detail page were the
+                        second-largest Req 1 cluster; every one of them zoomed the page on tap.
+
+                        Each label is now `htmlFor`-associated to a matching control `id` —
+                        these are the ten DEF-88-10-01 sites (a screen reader announced "edit
+                        blank" for the whole panel, WCAG 4.1.2 A). Association is chosen OVER
+                        an `aria-label` per control precisely because the visible text and the
+                        accessible name then cannot drift apart. Do not re-inline a size class
+                        here, and do not drop an `id`: both are decisions, not cleanups. */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {/* Date Range */}
                         <div>
-                            <label className="block text-xs font-medium text-content-secondary mb-1">From Date</label>
-                            <input
+                            <label htmlFor="session-filter-date-from" className="block text-xs font-medium text-content-secondary mb-1">From Date</label>
+                            <Input
+                                id="session-filter-date-from"
                                 type="date"
                                 value={filters.dateFrom}
                                 onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
-                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-content-secondary mb-1">To Date</label>
-                            <input
+                            <label htmlFor="session-filter-date-to" className="block text-xs font-medium text-content-secondary mb-1">To Date</label>
+                            <Input
+                                id="session-filter-date-to"
                                 type="date"
                                 value={filters.dateTo}
                                 onChange={(e) => handleFilterChange('dateTo', e.target.value)}
-                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
-                        
+
                         {/* Player Filters */}
                         <div>
-                            <label className="block text-xs font-medium text-content-secondary mb-1">Player Won</label>
-                            <input
+                            <label htmlFor="session-filter-player-won" className="block text-xs font-medium text-content-secondary mb-1">Player Won</label>
+                            <Input
+                                id="session-filter-player-won"
                                 type="text"
                                 value={filters.playerWon}
                                 onChange={(e) => handleFilterChange('playerWon', e.target.value)}
                                 placeholder="Player name..."
-                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-content-secondary mb-1">Player Picked</label>
-                            <input
+                            <label htmlFor="session-filter-player-picked" className="block text-xs font-medium text-content-secondary mb-1">Player Picked</label>
+                            <Input
+                                id="session-filter-player-picked"
                                 type="text"
                                 value={filters.playerPicked}
                                 onChange={(e) => handleFilterChange('playerPicked', e.target.value)}
                                 placeholder="Player name..."
-                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-content-secondary mb-1">Player Participated</label>
-                            <input
+                            <label htmlFor="session-filter-player-participated" className="block text-xs font-medium text-content-secondary mb-1">Player Participated</label>
+                            <Input
+                                id="session-filter-player-participated"
                                 type="text"
                                 value={filters.playerParticipated}
                                 onChange={(e) => handleFilterChange('playerParticipated', e.target.value)}
                                 placeholder="Player name..."
-                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
-                        
+
                         {/* Duration Filters */}
                         <div>
-                            <label className="block text-xs font-medium text-content-secondary mb-1">Min Duration (min)</label>
-                            <input
+                            <label htmlFor="session-filter-min-duration" className="block text-xs font-medium text-content-secondary mb-1">Min Duration (min)</label>
+                            <Input
+                                id="session-filter-min-duration"
                                 type="number"
                                 value={filters.minDuration}
                                 onChange={(e) => handleFilterChange('minDuration', e.target.value)}
                                 placeholder="0"
-                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-content-secondary mb-1">Max Duration (min)</label>
-                            <input
+                            <label htmlFor="session-filter-max-duration" className="block text-xs font-medium text-content-secondary mb-1">Max Duration (min)</label>
+                            <Input
+                                id="session-filter-max-duration"
                                 type="number"
                                 value={filters.maxDuration}
                                 onChange={(e) => handleFilterChange('maxDuration', e.target.value)}
                                 placeholder="∞"
-                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
-                        
+
                         {/* Player Count */}
                         <div>
-                            <label className="block text-xs font-medium text-content-secondary mb-1">Min Players</label>
-                            <input
+                            <label htmlFor="session-filter-min-players" className="block text-xs font-medium text-content-secondary mb-1">Min Players</label>
+                            <Input
+                                id="session-filter-min-players"
                                 type="number"
                                 value={filters.minPlayers}
                                 onChange={(e) => handleFilterChange('minPlayers', e.target.value)}
                                 placeholder="0"
-                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
-                        
+
                         {/* Max Score */}
                         <div>
-                            <label className="block text-xs font-medium text-content-secondary mb-1">Min Score</label>
-                            <input
+                            <label htmlFor="session-filter-min-score" className="block text-xs font-medium text-content-secondary mb-1">Min Score</label>
+                            <Input
+                                id="session-filter-min-score"
                                 type="number"
                                 step="0.01"
                                 value={filters.maxScore}
                                 onChange={(e) => handleFilterChange('maxScore', e.target.value)}
                                 placeholder="0"
-                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             />
                         </div>
-                        
+
                         {/* Sort By */}
                         <div>
-                            <label className="block text-xs font-medium text-content-secondary mb-1">Sort By</label>
-                            <select
+                            <label htmlFor="session-filter-sort-by" className="block text-xs font-medium text-content-secondary mb-1">Sort By</label>
+                            <SelectControl
+                                id="session-filter-sort-by"
                                 value={filters.sortBy}
                                 onChange={(e) => handleFilterChange('sortBy', e.target.value)}
-                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
                             >
                                 <option value="date_desc">Date (Newest First)</option>
                                 <option value="date_asc">Date (Oldest First)</option>
@@ -1815,7 +1832,7 @@ export default function GameDetailPage() {
                                 <option value="score_asc">Lowest Score</option>
                                 <option value="duration_desc">Longest Duration</option>
                                 <option value="duration_asc">Shortest Duration</option>
-                            </select>
+                            </SelectControl>
                         </div>
                     </div>
                 </div>
@@ -2178,9 +2195,20 @@ export default function GameDetailPage() {
                         </h3>
                         <form onSubmit={handleReviewSubmit} className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-content-primary mb-1">
+                                {/* DECISION Phase 88-20 (DEF-88-10-01, site 11 of 11): this is a
+                                    plain <span>, NOT a <label> — chosen OVER `htmlFor`, which has
+                                    nothing to point at. StarRatingPicker renders a
+                                    `role="radiogroup"` of ten half-star radios, so a `htmlFor`
+                                    would have to name ONE radio and would mislabel it. The group's
+                                    accessible name already comes from its own `ariaLabel` below,
+                                    which is why this was the lowest-severity of the eleven sites:
+                                    the control was named, the <label> was redundant rather than
+                                    missing. Left as a <label> it is an orphan that axe reports and
+                                    that a reader "fixes" by wiring it to the wrong element.
+                                    Turning this back into a <label> is a decision, not a cleanup. */}
+                                <span className="block text-sm font-medium text-content-primary mb-1">
                                     Rating
-                                </label>
+                                </span>
                                 <StarRatingPicker
                                     value={reviewForm.rating || 0}
                                     onChange={(newRating) => setReviewForm({...reviewForm, rating: newRating})}
@@ -2191,16 +2219,22 @@ export default function GameDetailPage() {
                                 <label htmlFor="review_text" className="block text-sm font-medium text-content-primary mb-1">
                                     Review
                                 </label>
-                                <textarea
+                                <Textarea
                                     id="review_text"
                                     value={reviewForm.review_text}
                                     onChange={(e) => setReviewForm({...reviewForm, review_text: e.target.value})}
                                     rows="4"
-                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                     placeholder="Share your thoughts about this game..."
                                 />
                             </div>
                             <div className="flex items-center">
+                                {/* DECISION Phase 88-20 (Req 1): the recommend checkbox stays a NATIVE
+                                    <input>, deliberately NOT routed through the `Input` primitive like
+                                    its ten filter siblings. The primitive carries `block w-full p-2`,
+                                    which would stretch a checkbox across the dialog. It is also outside
+                                    Req 1's actual charter: iOS focus-zoom fires on TEXT-ENTRY controls
+                                    below 16px, and a checkbox has no text to size. Sweeping this one
+                                    onto the primitive "for consistency" breaks the layout. */}
                                 <input
                                     type="checkbox"
                                     id="recommended"

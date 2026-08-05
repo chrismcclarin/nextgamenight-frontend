@@ -90,7 +90,10 @@ vi.mock('@/app/components/GameSuggestionCard', () => ({ default: () => null }));
 vi.mock('@/app/components/QRCodeModal', () => ({ default: () => null }));
 vi.mock('@/app/components/TimezoneNudgeBanner', () => ({ default: () => null }));
 vi.mock('@/app/components/SafeImage', () => ({ default: () => null }));
-vi.mock('@/app/components/StarRatingPicker', () => ({ default: () => null }));
+// StarRatingPicker is deliberately NOT stubbed (plan 88-20). It is the one child
+// whose a11y contract this file asserts — DEF-88-10-01's eleventh site is the
+// orphan <label> that sat over it, and a `() => null` stub makes both the
+// radiogroup-name pin and the orphan-label sweep vacuous on the review dialog.
 vi.mock('@/app/components/ClickableMemberName', () => ({
   default: ({ username }: { username?: string }) => <span>{username}</span>,
 }));
@@ -267,11 +270,10 @@ describe('gameDetail sessions header (D-39)', () => {
     await screen.findByRole('heading', { name: 'Game Sessions (2)' });
 
     await user.click(screen.getByRole('button', { name: /Show Filters/ }));
-    // The filter inputs are not label-associated on this branch (that is plan
-    // 88-20's form-control scope, not this plan's) — reach the control through
-    // its label's own wrapper rather than silently widening this plan.
-    const minDurationField = screen.getByText('Min Duration (min)').parentElement as HTMLElement;
-    await user.type(within(minDurationField).getByRole('spinbutton'), '60');
+    // Plan 88-20 label-associated every session filter (DEF-88-10-01), so this
+    // now reaches the control the way a screen-reader user does. It previously
+    // had to walk the label's wrapper because nothing named the control.
+    await user.type(screen.getByLabelText('Min Duration (min)'), '60');
 
     expect(
       await screen.findByRole('heading', { name: 'Game Sessions (1 of 2)' })
@@ -393,6 +395,115 @@ describe('gameDetail session-delete gate (D-40, dialog tier)', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('Delete this session?')).toBeInTheDocument();
     expect(eventsAPI.deleteEvent).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Req 1 (the 16px iOS focus-zoom floor) + DEF-88-10-01 (label association).
+//
+// These sweep the WHOLE surface rather than naming controls one at a time, on
+// purpose: the failure this phase is closing is not "control X is 12px", it is
+// "nothing notices when a sub-16px control lands". A named-control pin goes
+// green forever the moment someone adds an eleventh filter; the sweep does not.
+//
+// jsdom compiles no Tailwind, so computed font-size is meaningless here — the
+// assertion is on the class contract the `Input`/`Textarea`/`SelectControl`
+// primitives supply (`text-base`, unconditional, no breakpoint variant).
+// ---------------------------------------------------------------------------
+
+/** Open both control-bearing surfaces: the session-filter panel and the review dialog. */
+async function openAllControlSurfaces(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: /Show Filters/ }));
+  await user.click(screen.getByRole('button', { name: 'Add Review' }));
+}
+
+/** Every form control currently in the document, portal-included. */
+function allControls(): HTMLElement[] {
+  return Array.from(
+    document.body.querySelectorAll<HTMLElement>('input, select, textarea')
+  );
+}
+
+describe('gameDetail form controls (Req 1 — the 16px floor)', () => {
+  it('carries no sub-16px size class on any control', async () => {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'member' });
+    await openAllControlSurfaces(user);
+
+    const controls = allControls();
+    // Guard against the sweep silently passing over an empty set.
+    expect(controls.length).toBeGreaterThanOrEqual(12);
+
+    const offenders = controls
+      .filter((c) => /\btext-(xs|sm)\b/.test(c.className))
+      .map((c) => `${c.tagName.toLowerCase()}#${c.id || '(no id)'}: ${c.className}`);
+    expect(offenders).toEqual([]);
+  });
+
+  it('renders every text-entry control at text-base', async () => {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'member' });
+    await openAllControlSurfaces(user);
+
+    // The recommend checkbox is excluded by TYPE, not by name: iOS focus-zoom is
+    // a text-entry behaviour, and the primitive's `block w-full p-2` would
+    // stretch a checkbox across the dialog. See the marker at its call site.
+    const textEntry = allControls().filter(
+      (c) => !(c instanceof HTMLInputElement && c.type === 'checkbox')
+    );
+    const unsized = textEntry
+      .filter((c) => !/\btext-base\b/.test(c.className))
+      .map((c) => `${c.tagName.toLowerCase()}#${c.id || '(no id)'}`);
+    expect(unsized).toEqual([]);
+  });
+});
+
+describe('gameDetail control labelling (DEF-88-10-01)', () => {
+  const FILTER_LABELS = [
+    'From Date',
+    'To Date',
+    'Player Won',
+    'Player Picked',
+    'Player Participated',
+    'Min Duration (min)',
+    'Max Duration (min)',
+    'Min Players',
+    'Min Score',
+    'Sort By',
+  ];
+
+  it.each(FILTER_LABELS)('names the "%s" session filter to assistive tech', async (label) => {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'member' });
+    await user.click(await screen.findByRole('button', { name: /Show Filters/ }));
+    expect(screen.getByLabelText(label)).toBeInTheDocument();
+  });
+
+  it('leaves no orphan <label> anywhere on the surface', async () => {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'member' });
+    await openAllControlSurfaces(user);
+
+    // An orphan is a <label> that neither points at a control (`for`) nor wraps
+    // one. That is the exact idiom DEF-88-10-01's repo-wide sweep hunts, and it
+    // is what a screen reader renders as "edit blank".
+    const orphans = Array.from(document.body.querySelectorAll('label'))
+      .filter((l) => !l.htmlFor && !l.querySelector('input, select, textarea'))
+      .map((l) => l.textContent?.trim());
+    expect(orphans).toEqual([]);
+  });
+
+  it('keeps the star-rating group named without an orphan label', async () => {
+    const user = userEvent.setup();
+    renderGameDetail({ role: 'member' });
+    await user.click(await screen.findByRole('button', { name: 'Add Review' }));
+
+    // Both halves matter, so both are pinned: the visible "Rating" text survives
+    // (as a <span>, not an orphan <label>), and the control's own accessible name
+    // comes from the radiogroup. Dropping the first leaves a sighted user
+    // guessing; dropping the second leaves a screen-reader user with nothing.
+    expect((await screen.findByText('Rating')).tagName).toBe('SPAN');
+    expect(screen.getByRole('radiogroup', { name: 'Game rating' })).toBeInTheDocument();
   });
 });
 
