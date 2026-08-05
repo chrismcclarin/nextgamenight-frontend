@@ -34,7 +34,9 @@ describe('isUnsetBackgroundColor', () => {
   });
 
   it('does not throw on a non-string', () => {
-    expect(isUnsetBackgroundColor(42)).toBe(true);
+    // The cast is the point: the contract says string, the guard exists anyway
+    // because this value comes off an API response.
+    expect(isUnsetBackgroundColor(42 as unknown as string)).toBe(true);
   });
 });
 

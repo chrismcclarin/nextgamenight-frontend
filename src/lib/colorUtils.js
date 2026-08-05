@@ -136,7 +136,7 @@ const STROKE_DARK = '0.5px rgba(0, 0, 0, 0.9)';
  * Calculate perceived brightness of a hex color.
  * Uses the W3C formula: (r * 299 + g * 587 + b * 114) / 1000.
  *
- * @param {string} hexColor - Hex color string (with or without '#')
+ * @param {string|null|undefined} hexColor - Hex color string (with or without '#')
  * @returns {number} Brightness value 0-255. Returns 255 (light) for invalid/missing input.
  */
 export function getBrightness(hexColor) {
@@ -163,7 +163,7 @@ export function getBrightness(hexColor) {
  * Returns dark gray for light backgrounds, white for dark backgrounds.
  * Used in EventCalendar list-view and similar contexts.
  *
- * @param {string} hexColor - Background hex color
+ * @param {string|null|undefined} hexColor - Background hex color
  * @returns {string} The dark pole (slate) or the light pole (white)
  */
 export function getContrastColor(hexColor) {
@@ -179,7 +179,7 @@ export function getContrastColor(hexColor) {
  * meaningful for a REAL colour: with no colour the element is on the app's
  * themed surface, so ask `isUnsetBackgroundColor` first.
  *
- * @param {string} hexColor - Background hex color
+ * @param {string|null|undefined} hexColor - Background hex color
  * @returns {boolean}
  */
 export function isDarkBackground(hexColor) {
@@ -195,7 +195,7 @@ export function isDarkBackground(hexColor) {
  * With no group colour the tile has no background of its own and sits on the
  * themed month cell, so the content token is returned instead of a pole (D-28).
  *
- * @param {string} hexColor - Background hex color
+ * @param {string|null|undefined} hexColor - Background hex color
  * @returns {string} A content token (no colour), tile blue, or white
  */
 export function getEventTileTextColor(hexColor) {
@@ -213,7 +213,7 @@ export function getEventTileTextColor(hexColor) {
  * Matches the canonical implementation from grouplist.js getTextStyleWithOutline.
  *
  * @param {boolean} hasBackgroundImage - Whether the element has a background image
- * @param {string} backgroundColor - Background hex color
+ * @param {string|null|undefined} backgroundColor - Background hex color
  * @returns {{ color: string, textShadow: string, WebkitTextStroke?: string, fontWeight?: string }}
  */
 export function getTextStyle(hasBackgroundImage, backgroundColor) {
@@ -273,7 +273,7 @@ export function getTextStyle(hasBackgroundImage, backgroundColor) {
  * Matches the subtitle styling from groupHomePage lines 316-349.
  *
  * @param {boolean} hasBackgroundImage - Whether the element has a background image
- * @param {string} backgroundColor - Background hex color
+ * @param {string|null|undefined} backgroundColor - Background hex color
  * @returns {{ color: string, textShadow: string, WebkitTextStroke?: string }}
  */
 export function getSubtitleStyle(hasBackgroundImage, backgroundColor) {
@@ -326,7 +326,7 @@ export function getSubtitleStyle(hasBackgroundImage, backgroundColor) {
  * Provided for backward compatibility with the original function name.
  *
  * @param {boolean} hasBackgroundImage - Whether the element has a background image
- * @param {string} backgroundColor - Background hex color
+ * @param {string|null|undefined} backgroundColor - Background hex color
  * @returns {{ color: string, textShadow: string, WebkitTextStroke?: string, fontWeight?: string }}
  */
 export function getTextStyleWithOutline(hasBackgroundImage, backgroundColor) {

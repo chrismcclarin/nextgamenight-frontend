@@ -396,10 +396,9 @@ function GroupHomePage(){
                     {userRole && userRole !== 'pending' && (
                         <button
                             onClick={() => setMemberModal(true)}
-                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap text-white border-2 border-white/30 rounded-btn backdrop-blur-xs hover:bg-white/20 transition-all"
+                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap text-white border-2 border-white/30 rounded-btn backdrop-blur-xs hover:bg-white/20 transition-all shadow-theme-md"
                             style={{
                                 backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
                             }}
                         >
                             Manage Members
@@ -408,21 +407,28 @@ function GroupHomePage(){
                     {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the groupHomePage primary CTA (~37px: the px/py utilities here are DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text link. */}
                     <Link
                         href={`/groupPlanning?group_id=${Router}`}
-                        className="btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white/20 text-center min-h-11"
-                        style={{
-                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.15)',
-                        }}
+                        /* The inline boxShadow this replaces carried TWO halves: a
+                           pure-black drop shadow AND a 2px white ring. Req 3 moves
+                           the black half onto the warm `shadow-theme-lg` token —
+                           which this element already declared and the inline style
+                           was silently overriding — and the ring survives as
+                           `ring-2 ring-white/15`, the same 15% white at the same
+                           2px. Dropping the ring would still pass 88-29's
+                           zero-`rgba(0,0,0` gate while looking wrong. */
+                        className="btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white/20 text-center min-h-11 ring-2 ring-white/15"
                     >
                         Plan Game Session
                     </Link>
                     {userRole && userRole !== 'pending' && (
                         <button
                             onClick={toggleEventModal}
-                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap rounded-btn transition-all border-2 border-amber-400/40 hover:border-amber-400/60"
+                            /* Same two-half shadow as the CTA above: black half ->
+                               `shadow-theme-lg`, white ring half preserved as
+                               `ring-2 ring-white/15`. */
+                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap rounded-btn transition-all border-2 border-amber-400/40 hover:border-amber-400/60 shadow-theme-lg ring-2 ring-white/15"
                             style={{
                                 backgroundColor: 'var(--amber-600)',
                                 color: 'white',
-                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.15)',
                             }}
                         >
                             Add New Game Event

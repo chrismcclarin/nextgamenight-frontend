@@ -5,6 +5,7 @@ import { groupsAPI, API_BASE_URL } from '../../lib/api';
 import PromptScheduleReadOnly from './PromptScheduleReadOnly';
 import SafeImage from './SafeImage';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
+import { resolveGroupBackgroundColor } from '../../lib/colorUtils';
 import { toast } from 'sonner';
 // Relative (not `@/`) so this `.js` component resolves under vitest, matching
 // the sibling ManageMembers.js adopter.
@@ -24,7 +25,24 @@ const DEFAULT_PROFILE_PICTURES = [
   { name: 'Rocket', url: '🚀' },
 ];
 
-// Default background color options
+/*
+ * Default background color options.
+ *
+ * DECISION Phase 88-22 (D-27, Req 2): these eight values stay RAW, chosen OVER
+ * converting them to semantic tokens like every other component file.
+ *
+ * WHY. They are not styling — they are the product's curated palette DATA. Each
+ * one is PERSISTED to `Groups.background_color` and later fed back through the
+ * brightness algorithm in lib/colorUtils.js to compute text contrast. A
+ * `var(--color-*)` reference cannot be stored in a database column, cannot be
+ * parsed by `getBrightness`, and would fail the backend's `^#[0-9A-Fa-f]{6}$`
+ * validator (middleware/validators.js). The palette being all-dark is
+ * deliberate — this app is dark-first (88-CONTEXT), not drift.
+ *
+ * CONSEQUENCE for Req 2's grep gate (plan 88-29): this file needs a SCOPED
+ * allowlist entry naming this array, not a bare one. Converting these is a
+ * decision — and a cross-stack one — not a cleanup.
+ */
 const DEFAULT_BACKGROUND_COLORS = [
   { name: 'Charcoal', value: '#1e1e2e' },
   { name: 'Slate', value: '#1e293b' },
@@ -39,7 +57,14 @@ const DEFAULT_BACKGROUND_COLORS = [
 export default function GroupSettings({ group, user, onClose, onUpdate, userRole, onGroupDeleted, onOpenManageMembers }) {
   const router = useRouter();
   const [profilePictureUrl, setProfilePictureUrl] = useState(group.profile_picture_url || '');
-  const [backgroundColor, setBackgroundColor] = useState(group.background_color || '#ffffff');
+  // '' means "no colour chosen", which is a real state: models/Group.js still
+  // DEFAULTS the column to white, so most groups arrive carrying white without
+  // anyone having picked it. Seeding the picker with that value made every save
+  // re-persist it, which is what manufactured the D-28 white cards in the first
+  // place. resolveGroupBackgroundColor treats stored white as unset.
+  const [backgroundColor, setBackgroundColor] = useState(
+    resolveGroupBackgroundColor(group.background_color) || ''
+  );
   const [backgroundImageUrl, setBackgroundImageUrl] = useState(group.background_image_url || '');
   const [customPictureUrl, setCustomPictureUrl] = useState('');
   const [customBackgroundUrl, setCustomBackgroundUrl] = useState('');
@@ -138,7 +163,9 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
       setSaving(true);
       const settings = {
         profile_picture_url: profilePictureUrl || null,
-        background_color: backgroundColor,
+        // null, not '' — the validator accepts both, but null is what "no
+        // colour" means and keeps the column from re-acquiring white.
+        background_color: backgroundColor || null,
         background_image_url: backgroundImageUrl || null,
       };
       
@@ -177,7 +204,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
   const handleUseCustomBackground = () => {
     if (customBackgroundUrl.trim()) {
       setBackgroundImageUrl(customBackgroundUrl.trim());
-      setBackgroundColor('#ffffff'); // Reset color when using image
+      setBackgroundColor(''); // Clear the colour when using an image
     }
   };
 
@@ -397,8 +424,10 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
           <h3 className="text-lg font-semibold text-content-primary mb-3">Background</h3>
           
           {/* Current Selection Preview */}
-          <div className="mb-4 p-4 border rounded-lg" style={{
-            backgroundColor: backgroundColor,
+          {/* bg-surface-card so "no colour chosen" previews what the group will
+              actually look like — the themed card, not a white rectangle. */}
+          <div className="mb-4 p-4 border rounded-lg bg-surface-card" style={{
+            ...(backgroundColor && { backgroundColor }),
             ...safeBgImageStyle(backgroundImageUrl),
             backgroundSize: 'cover',
             backgroundPosition: 'center',
