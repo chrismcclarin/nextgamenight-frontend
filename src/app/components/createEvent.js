@@ -16,6 +16,7 @@ import EventResultFields from './EventResultFields';
 import { useTimezone } from './TimezoneProvider';
 import { utcToWallClock, wallClockToUtc } from '../../lib/tzUtils';
 import TimezoneNudgeBanner from './TimezoneNudgeBanner';
+import { Modal } from './Modal';
 import { toast } from 'sonner';
 
 function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId = null }) {
@@ -611,6 +612,19 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         }
       }
 
+      /* DECISION Phase 88-16 (CONTEXT D-13, Req 12): the receipt fires HERE —
+         one statement BEFORE `modaltoggle()` — not after it. Sonner's <Toaster>
+         lives in the root layout and survives the SPA re-render/navigation that
+         closing this modal kicks off; queueing the toast on the far side of the
+         close is what loses it. The ORDER is the decision, not a formatting
+         choice: swapping these two lines is a regression, not a cleanup.
+         Copy is the D-12 terse-utility register ("{Object} {past-tense verb}"),
+         verbatim from the UI-SPEC §6.2 register — do not warm it up.
+         Verified this session that nothing between the API success and this line
+         can eat it: all five shipped `onEventCreated` consumers
+         (groupHomePage:509, groupPlanning:286, gameDetail:1221/2243/2258,
+         HeatmapGrid:518 -> its parent) refetch or unmount; none navigates. */
+      toast.success(editingEvent ? 'Event updated' : 'Event created');
       modaltoggle();
       // Reset form. Phase 66-01: derivedSelectedSlot resets automatically
       // when newEvent.start_date is cleared by createEventForm — no separate
@@ -650,35 +664,53 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
   if (!modal) return null;
 
-  if (loading) {
-    return (
-      <div className="modal-overlay">
-        <div className="modal-content p-6">Loading group members...</div>
-      </div>
-    );
-  }
+  /* DECISION Phase 88-16 (SPEC Req 9 / Req 4): this component's TWO legacy
+     overlay wrappers — the pre-roster "Loading group members..." one and the
+     main form one — collapse onto ONE <Modal> host with a conditional body,
+     chosen OVER two sibling <Modal> elements that mirror the old early-return
+     shape. Two Modals would unmount one Radix dialog and mount another the
+     instant `loading` flips false: focus escapes back to the launcher, the open
+     animation replays, and a screen reader hears the dialog close and reopen —
+     none of which the pre-migration plain <div>s did, because they were not
+     dialogs. The two STATES are both still here and still distinct; only the
+     host is shared. Splitting them back apart is a decision, not a cleanup.
 
+     The loading state deliberately carries the SAME accessible name as the
+     loaded one ("Create Event" / "Edit Event") rather than a "Loading" title:
+     a dialog whose accessible name mutates underneath the user announces twice
+     for one open. Radix also REQUIRES a DialogTitle, so a title-less loading
+     dialog is not an option — leaving it unlabelled is what the old markup did.
+
+     Gone rather than ported: the backdrop `onClick`/`stopPropagation` pair
+     (Modal owns outside-dismiss) and the NAMELESS `×` button at the old `:674`
+     — one of the two nameless close glyphs SPEC Req 4 names. It carried neither
+     text nor `aria-label`, so screen readers announced "button". <Modal.Header>
+     supplies a close affordance with a real `aria-label="Close"`, so no close
+     glyph survives here that needs one. The header also drops from `text-2xl`
+     (24px) to the dialog-title contract (20px/700, UI-SPEC §4.2) because it is
+     now the DialogTitle — same call 88-17 made for PromptScheduleManager. */
   return (
-    <div className="modal-overlay" onClick={modaltoggle}>
-      <div className="modal-content max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        {/* DECISION Phase 87.8 DEC-3: p-3 at phone / p-6 at desktop on the modal BODY
-            wrapper — paired with the phone-scoped `.modal-overlay` 12px rule in
-            globals.css, this brings the Create Event chain under the SPEC R2 75px
-            budget (12+12 = 24/side = 48px; the nested heatmap p-3 box adds 12/side
-            → 72px, still under). The padding lives HERE (a layered utility on a
-            plain div) and NOT on the overlay div, where it would lose to the
-            unlayered `.modal-overlay` block. */}
-        <div className="p-3 md:p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold text-content-primary">{editingEvent ? 'Edit Event' : 'Create Event'}</h2>
-          <button
-            onClick={modaltoggle}
-            className="text-content-muted hover:text-content-primary active:opacity-75 text-2xl"
-          >
-            ×
-          </button>
-        </div>
-
+    <Modal open onClose={modaltoggle} size="lg">
+      <Modal.Header>{editingEvent ? 'Edit Event' : 'Create Event'}</Modal.Header>
+      {/* DECISION Phase 87.8 DEC-3, re-based by 88-16: `p-3` at phone / `p-6` at
+          desktop, now carried by <Modal.Body> (whose own default is a flat `p-6`)
+          instead of by a plain inner div. The 12px-per-side phone value is the
+          SAME number DEC-3 chose and for the same reason — it keeps the Create
+          Event chain under the SPEC R2 75px budget: 12 (this) + 12 (the phone
+          gutter that DEF-88-17-01 restored to Modal.tsx) = 24/side = 48px total,
+          exactly the pre-migration figure, with the nested heatmap `p-3` box
+          adding 12/side -> 72px, still under. DEC-3's original cascade caveat is
+          now MOOT and is deliberately not repeated: it warned that the padding
+          could not live on the overlay div because the unlayered legacy overlay
+          block would beat a layered utility. There is no such block in this
+          file's chain any more — Radix's content surface takes utilities
+          normally. Flattening this to the primitive's default `p-6` would put
+          24+12 = 36/side on a 375px phone and is a decision, not a cleanup. */}
+      <Modal.Body className="p-3 md:p-6">
+        {loading ? (
+          <p className="text-content-primary">Loading group members...</p>
+        ) : (
+          <>
         {/* Phase 62-02: nudge user to set profile TZ before editing/creating
             so saved start_date is stamped against a stable canonical TZ. */}
         <TimezoneNudgeBanner />
@@ -998,9 +1030,10 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             </button>
           </div>
         </form>
-        </div>
-      </div>
-    </div>
+          </>
+        )}
+      </Modal.Body>
+    </Modal>
   );
 }
 
