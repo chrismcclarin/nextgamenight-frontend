@@ -11,6 +11,7 @@ import {
 } from '../../lib/schemas/prompts';
 import ScheduleForm from './ScheduleForm';
 import ScheduleList from './ScheduleList';
+import { Modal } from './Modal';
 
 /**
  * PromptScheduleManager - Main container for schedule management
@@ -197,31 +198,35 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
     );
   }
 
-  // Modal variant (default): full-screen backdrop with centered card
+  // Modal variant (default): hosted on the shared <Modal> (size="lg" == the
+  // legacy max-w-4xl; the 90vh cap is the primitive's own default).
+  /* DECISION Phase 88-17 (Req 9 / Req 4): the bespoke backdrop, the
+     `onClick={onClose}` + `stopPropagation` pair and the NAMELESS `&times;`
+     button are gone rather than ported. That glyph was one of the two nameless
+     close buttons SPEC Req 4 names: it carried neither text nor `aria-label`
+     (not even a `title`), so screen readers announced "button". <Modal.Header>
+     supplies a close affordance with a real `aria-label="Close"`, so no close
+     glyph survives here to need one.
+
+     The header drops from `text-2xl` (24px) to the dialog-title contract
+     (20px/700, UI-SPEC §4.2) because it is now a DialogTitle — chosen OVER
+     passing `text-2xl` through `<Modal.Header className>`, which would make
+     this the one dialog in the fleet with an off-contract title for no reason
+     other than matching its own pre-migration size. Restoring 24px here is a
+     decision, not a cleanup.
+
+     `onClose` is OPTIONAL in this component's prop contract while <Modal>'s is
+     mandatory, so the old `{onClose && ...}` guard survives as `onClose?.()`
+     rather than being dropped. Passing `onClose` straight through would throw a
+     TypeError on Esc for a caller that omitted it — pre-migration that same
+     caller simply got an overlay that could not be dismissed. Removing the
+     optional call re-introduces that crash path. */
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        {/* Header - pinned above scrollable content */}
-        <div className="modal-header p-6 pb-4 border-b border-line shrink-0">
-          <h2 className="text-2xl font-bold text-content-primary">Recurring Check-ins</h2>
-
-          {/* Close button */}
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="text-content-muted hover:text-content-primary active:opacity-75 text-2xl"
-              type="button"
-            >
-              &times;
-            </button>
-          )}
-        </div>
-
-        {/* Scrollable content area */}
-        <div className="p-6 pt-4 overflow-y-auto flex-1">
-          {renderContent()}
-        </div>
-      </div>
-    </div>
+    <Modal open onClose={() => onClose?.()} size="lg">
+      <Modal.Header>Recurring Check-ins</Modal.Header>
+      <Modal.Body className="pt-4">
+        {renderContent()}
+      </Modal.Body>
+    </Modal>
   );
 }

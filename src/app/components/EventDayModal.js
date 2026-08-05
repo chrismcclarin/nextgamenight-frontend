@@ -8,6 +8,7 @@ import SafeImage from './SafeImage';
 import QRCodeModal from './QRCodeModal';
 import TimezoneNudgeBanner from './TimezoneNudgeBanner';
 import { eventsAPI } from '../../lib/api';
+import { Modal } from './Modal';
 
 export default function EventDayModal({
   selectedDay,
@@ -40,30 +41,25 @@ export default function EventDayModal({
   };
 
   return (
-    <div
-      className="modal-overlay"
-      onClick={onClose}
-    >
-      <div
-        className="modal-content max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Modal Header */}
-        <div className="modal-header">
-          <h3 className="text-xl font-bold text-content-primary">
-            {formatLongDate(selectedDay.date)}
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-content-muted hover:text-content-primary text-2xl font-bold"
-            title="Close"
-          >
-            ×
-          </button>
-        </div>
+    <>
+      {/* DECISION Phase 88-17 (Req 9): hosted on the shared <Modal> — the
+          hand-rolled backdrop, the `onClick={onClose}` / `stopPropagation` pair
+          and the untitled close glyph are GONE rather than ported. The glyph
+          carried only `title="Close"`, which is not an accessible name; the
+          header close affordance <Modal> supplies carries a real `aria-label`
+          (SPEC Req 4). The 80vh cap is deliberately preserved via className
+          (the primitive's default is 90vh) — this surface is a scrolling day
+          list and its shorter cap is a shipped choice, not a leftover.
 
-        {/* Modal Content */}
-        <div className="modal-body">
+          QRCodeModal moves OUT of the overlay to a SIBLING of <Modal>. It used
+          to live inside the backdrop div; nesting one Radix dialog inside
+          another's content would put the QR dialog inside this dialog's focus
+          scope. As siblings, each portals to <body> in mount order and the QR
+          dialog layers above the day list, which is the shipped behaviour.
+          Re-nesting it is a decision, not a cleanup. */}
+      <Modal open onClose={onClose} className="max-w-2xl max-h-[80vh]">
+        <Modal.Header>{formatLongDate(selectedDay.date)}</Modal.Header>
+        <Modal.Body>
           {/* Phase 62-02: nudge user to set profile TZ if not yet set so the
               displayed times below have a stable canonical reference. */}
           <TimezoneNudgeBanner />
@@ -214,8 +210,8 @@ export default function EventDayModal({
               })}
             </div>
           )}
-        </div>
-      </div>
+        </Modal.Body>
+      </Modal>
 
       {/* Game QR Code Modal */}
       <QRCodeModal
@@ -225,6 +221,6 @@ export default function EventDayModal({
         title="Game Night Invite QR"
         showReset={false}
       />
-    </div>
+    </>
   );
 }
