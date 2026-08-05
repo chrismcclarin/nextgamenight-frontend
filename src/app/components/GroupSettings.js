@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 // the sibling ManageMembers.js adopter.
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
+import { Modal } from './Modal';
 
 // Default profile picture options
 const DEFAULT_PROFILE_PICTURES = [
@@ -142,6 +143,10 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
       };
       
       await groupsAPI.updateGroupSettings(group.id, settings);
+      // Req 12 receipt (UI-SPEC §6.2). ORDER IS LOAD-BEARING, same reason as
+      // D-13's create-event redirect: fire the toast BEFORE onClose() unmounts
+      // this surface. Sonner outlives the unmount; the reverse order eats it.
+      toast.success('Settings saved');
       if (onUpdate) onUpdate();
       if (onClose) onClose();
     } catch (error) {
@@ -291,17 +296,29 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
   });
 
   return (
-    <div className="modal-overlay" style={{ zIndex: 100 }} onClick={onClose}>
-      <div className="modal-content max-w-2xl w-full mx-4 p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold text-content-primary">Customize Group</h2>
-          <button
-            onClick={onClose}
-            className="text-content-muted hover:text-content-primary text-2xl"
-          >
-            ×
-          </button>
-        </div>
+    <>
+      {/* DECISION Phase 88-13 (Req 9): hosted on the shared <Modal>, and the old
+          hand-rolled `zIndex: 100` is NOT re-created as a bespoke z-index class on
+          the Radix content — same call ManageMembers.js and FriendInvitePanel made
+          in 88-12/88-15.
+
+          RESOLVED STACKING (verified, not assumed): the `zIndex: 100` existed so this
+          surface painted above the group page's other overlays. Radix portals every
+          dialog to the END of <body>, so a later-mounted dialog paints above an
+          earlier one by DOM order alone — this component mounts only when opened FROM
+          the group page, and the delete confirmation mounts later still, so the
+          intended order holds with no z-index anywhere. The rejected alternative was
+          porting `zIndex: 100` onto <Modal> via className: it re-introduces a bespoke
+          tier the rest of the fleet does not have, for an ordering the portal already
+          guarantees, and a hand-set tier is exactly what starts a z-index arms race.
+
+          The backdrop onClick + stopPropagation pair is likewise gone rather than
+          ported — it existed only to stop the overlay's own close firing through the
+          card, which Radix's outside-interaction handling makes moot. Re-adding
+          either is a decision, not a cleanup. */}
+      <Modal open onClose={onClose} className="max-w-2xl">
+        <Modal.Header>Customize Group</Modal.Header>
+        <Modal.Body>
 
         {/* Profile Picture Section */}
         <div className="mb-6">
@@ -585,31 +602,26 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
           </div>
         )}
 
-        {/* Action Buttons */}
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="btn btn-secondary"
-          >
+        </Modal.Body>
+        <Modal.Footer>
+          <Modal.Action variant="secondary" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="btn btn-primary"
-          >
+          </Modal.Action>
+          <Modal.Action variant="primary" onClick={handleSave} disabled={saving}>
             {saving ? 'Saving...' : 'Save Changes'}
-          </button>
-        </div>
-      </div>
+          </Modal.Action>
+        </Modal.Footer>
+      </Modal>
 
-      {/* Mounted unconditionally, alongside the surface rather than inside the
-          Danger Zone's conditional — a live region that mounts with the gate
-          announces nothing (the `statusNode` contract in useConfirmAction).
-          Silent on the `typed` tier today; still mounted so a retier is one word. */}
+      {/* Siblings of the Modal, not children: the confirmation is its own dialog
+          and must mount AFTER this one to stack above it. Mounted unconditionally
+          rather than inside the Danger Zone's conditional — a live region that
+          mounts with the gate announces nothing (`statusNode`'s contract in
+          useConfirmAction). Silent on the `typed` tier today; still mounted so a
+          retier stays a one-word edit. */}
       <ConfirmDialog {...deleteGate.dialogProps} blockerPanel={deleteImpactPanel} />
       {deleteGate.statusNode}
-    </div>
+    </>
   );
 }
 

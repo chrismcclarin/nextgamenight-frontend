@@ -42,6 +42,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import GroupSettings from './GroupSettings';
 import { groupsAPI } from '@/lib/api';
+import { toast } from 'sonner';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -113,6 +114,39 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+});
+
+describe('Phase 88-13 — the settings surface is on the shared Modal, and saving is audible', () => {
+  it('renders as a labelled dialog with no hand-rolled backdrop', async () => {
+    const { container } = renderSettings();
+    const dialog = await screen.findByRole('dialog', { name: 'Customize Group' });
+    expect(dialog).toBeInTheDocument();
+    // The hand-rolled overlay/backdrop pair is gone, not re-created inside.
+    expect(container.querySelector('.modal-overlay')).toBeNull();
+    expect(document.querySelector('.modal-overlay')).toBeNull();
+  });
+
+  it('fires the Settings saved receipt, in that exact register (Req 12 / §6.2)', async () => {
+    (groupsAPI.updateGroupSettings as Mock).mockResolvedValue({});
+    const onClose = vi.fn();
+    renderSettings({ onClose });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(toast.success as Mock).toHaveBeenCalledWith('Settings saved'));
+    // No exclamation, no "successfully" — and it must be fired BEFORE the
+    // unmount, or Sonner never shows it.
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const successOrder = (toast.success as Mock).mock.invocationCallOrder[0];
+    expect(successOrder).toBeLessThan(onClose.mock.invocationCallOrder[0]);
+  });
+
+  it('does not claim success when the save fails', async () => {
+    (groupsAPI.updateGroupSettings as Mock).mockRejectedValue(new Error('nope'));
+    renderSettings();
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(toast.error as Mock).toHaveBeenCalled());
+    expect(toast.success as Mock).not.toHaveBeenCalled();
+  });
 });
 
 describe('SPEC-REQ-5 — the Danger Zone states the real blast radius', () => {
