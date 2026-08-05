@@ -29,6 +29,9 @@ import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { Switch } from '../../components/ui/Switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Tabs';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { useConfirmAction } from '../../components/ui/useConfirmAction';
+import { Modal } from '../components/Modal';
 
 const NOTIFICATION_TYPES = [
     { key: 'event_created', label: 'New Event', description: 'When a game session is scheduled' },
@@ -77,6 +80,9 @@ function Profile(){
     const [bggSearching, setBggSearching] = useState(false);
     const [showBggSearch, setShowBggSearch] = useState(false);
     const [bggUsername, setBggUsername] = useState('');
+    // The BGG import's slow-operation prompt (D-10) — an informational Modal, not a
+    // destructive gate. See the marker on `handleImportCollectionClick`.
+    const [bggImportPromptOpen, setBggImportPromptOpen] = useState(false);
     const [importingCollection, setImportingCollection] = useState(false);
     const [importProgress, setImportProgress] = useState(null);
     const [googleCalendarConnected, setGoogleCalendarConnected] = useState(false);
@@ -699,15 +705,7 @@ function Profile(){
         window.location.href = '/api/auth/google-connect';
     };
 
-    const handleDisconnectGoogleCalendar = async () => {
-        if (!user?.sub) return;
-        if (!selfUuid) {
-            toast.error('Still loading your account — please try again in a moment.');
-            return;
-        }
-        if (!confirm('Are you sure you want to disconnect Google Calendar? Future events will not be automatically added to your calendar.')) {
-            return;
-        }
+    const performDisconnectGoogleCalendar = async () => {
         try {
             await googleCalendarAPI.disconnect(selfUuid);
             setGoogleCalendarConnected(false);
@@ -715,7 +713,30 @@ function Profile(){
         } catch (error) {
             console.error('Error disconnecting Google Calendar:', error);
             toast.error('Failed to disconnect Google Calendar. Please try again.');
+            // Rethrow so the gate stays OPEN (useConfirmAction's contract) rather
+            // than closing over a disconnect that never happened.
+            throw error;
         }
+    };
+
+    // Dialog tier (UI-SPEC §11.2). Title and body are the ratified copy, verbatim —
+    // the body states what actually changes, and deliberately makes no "cannot be
+    // undone" claim, because reconnecting is a two-click round trip.
+    const disconnectCalendarGate = useConfirmAction({
+        tier: 'dialog',
+        title: 'Disconnect Google Calendar?',
+        body: 'Future events stop syncing. Events already on your calendar stay.',
+        confirmLabel: 'Disconnect',
+        onConfirm: performDisconnectGoogleCalendar,
+    });
+
+    const handleDisconnectGoogleCalendar = () => {
+        if (!user?.sub) return;
+        if (!selfUuid) {
+            toast.error('Still loading your account — please try again in a moment.');
+            return;
+        }
+        disconnectCalendarGate.trigger();
     };
 
     const fetchOwnedGames = useCallback(async () => {
@@ -790,7 +811,6 @@ function Profile(){
             toast.error('Still loading your account — please try again in a moment.');
             return;
         }
-        if (!confirm('Are you sure you want to remove this game from your collection?')) return;
         try {
             await userGamesAPI.removeOwnedGame(selfUuid, game_id);
             await fetchOwnedGames();
@@ -799,6 +819,21 @@ function Profile(){
             toast.error('Failed to remove game from collection. Please try again.');
         }
     };
+
+    // Two-tap tier (UI-SPEC §11.2): personal and trivially re-added from the search
+    // directly above the list, so per D-09's tier rule the label already says
+    // everything a dialog body could. Viable here because the trigger is a
+    // persistent inline row button that survives the first tap — D-07's recorded
+    // limit (auto-closing menu items) does not bite.
+    const removeGameGate = useConfirmAction({
+        tier: 'two-tap',
+        // Dialog-tier copy, accepted and ignored by two-tap (superset config). It is
+        // authored anyway so a retier is genuinely the one-word edit above.
+        title: 'Remove this game from your collection?',
+        body: 'It drops off your collection. You can add it back from the search above.',
+        confirmLabel: 'Remove',
+        onConfirm: (gameId) => removeGameFromCollection(gameId),
+    });
 
     // The old hand-rolled patterns fetcher (silent-retry + window-refocus
     // listener) is GONE (PRIM-03): the useQuery above owns fetching + silent-
@@ -877,8 +912,7 @@ function Profile(){
         }
     };
 
-    const handleDeletePattern = async (patternId) => {
-        if (!confirm('Are you sure you want to delete this availability pattern?')) return;
+    const performDeletePattern = async (patternId) => {
         try {
             await availabilityAPI.deleteAvailability(patternId);
             await patternsQuery.refetch();
@@ -889,26 +923,57 @@ function Profile(){
         }
     };
 
+    // Two-tap tier (UI-SPEC §11.2): a pattern is re-creatable from the form directly
+    // above, and the button's own label says what it does. ONE gate serves BOTH lists
+    // (schedules and overrides) — the pattern id is the target key, so arming a row in
+    // one list and tapping a different row re-arms rather than committing (AR DEC-2).
+    const deletePatternGate = useConfirmAction({
+        tier: 'two-tap',
+        title: 'Delete this availability pattern?',
+        body: 'It stops counting towards your availability. You can add it again.',
+        confirmLabel: 'Delete',
+        onConfirm: (patternId) => performDeletePattern(patternId),
+    });
+
     const getDayName = (dayOfWeek) => {
         const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         return days[dayOfWeek];
     };
 
 
-    const importBGGCollection = async () => {
+    /* DECISION Phase 88-10 (D-10): the BGG import gate is an ORDINARY INFORMATIONAL
+       `<Modal>`, deliberately NOT `ConfirmDialog`/`useConfirmAction` like the three
+       gates above it — chosen OVER the obvious "finish the migration and put every
+       remaining gate on the ladder".
+
+       It is not a destructive gate. Nothing is lost or overwritten; the warning exists
+       because the import is SLOW ("this may take a few minutes"), and D-10 records that
+       ruling. Putting it on the destructive ladder would dress a progress warning up as
+       a consequence, and would make the ladder's own inventory a lie about how many
+       destructive gates this app has.
+
+       It still had to stop being the bare browser prompt, because 88-29's census gate
+       arms at ZERO native prompts in `src/` — leaving this one would make that gate
+       unarmable (AR R1-M1). Hence: dismissable Modal, Continue/Cancel, same message.
+
+       Moving this onto ConfirmDialog is a decision that reopens D-10, not a cleanup. */
+    const handleImportCollectionClick = () => {
         if (!user?.sub || !bggUsername.trim()) {
             toast.error('Please enter your BGG username');
             return;
         }
-        
+
         if (!selfUuid) {
             toast.error('Still loading your account — please try again in a moment.');
             return;
         }
 
-        if (!confirm(`This will import all games from your BoardGameGeek collection (username: ${bggUsername}). This may take a few minutes. Continue?`)) {
-            return;
-        }
+        setBggImportPromptOpen(true);
+    };
+
+    const importBGGCollection = async () => {
+        setBggImportPromptOpen(false);
+        if (!user?.sub || !bggUsername.trim() || !selfUuid) return;
 
         try {
             setImportingCollection(true);
@@ -1707,12 +1772,23 @@ function Profile(){
                                                         {formatDate(pattern.start_date)} - {formatDate(pattern.end_date)}
                                                     </p>
                                                 </div>
-                                                <button
-                                                    onClick={() => handleDeletePattern(pattern.id)}
-                                                    className="text-status-error text-sm"
-                                                >
-                                                    Delete
-                                                </button>
+                                                {(() => {
+                                                    const patternLabel = `${getDayName(pattern.pattern_data.dayOfWeek)} schedule`;
+                                                    return (
+                                                        <button
+                                                            {...deletePatternGate.triggerProps(
+                                                                pattern.id,
+                                                                patternLabel,
+                                                                `Delete ${patternLabel}`
+                                                            )}
+                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                                deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
+                                                            }`}
+                                                        >
+                                                            {deletePatternGate.labelFor(pattern.id, 'Delete')}
+                                                        </button>
+                                                    );
+                                                })()}
                                             </div>
                                         ))}
                                     {availabilityPatterns.filter(p => p.type === 'recurring_pattern').length === 0 && (
@@ -1822,12 +1898,23 @@ function Profile(){
                                                         {pattern.is_available ? 'Available' : 'Busy'}
                                                     </p>
                                                 </div>
-                                                <button
-                                                    onClick={() => handleDeletePattern(pattern.id)}
-                                                    className="text-status-error text-sm"
-                                                >
-                                                    Delete
-                                                </button>
+                                                {(() => {
+                                                    const patternLabel = `${formatDate(pattern.pattern_data.date)} override`;
+                                                    return (
+                                                        <button
+                                                            {...deletePatternGate.triggerProps(
+                                                                pattern.id,
+                                                                patternLabel,
+                                                                `Delete ${patternLabel}`
+                                                            )}
+                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                                deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
+                                                            }`}
+                                                        >
+                                                            {deletePatternGate.labelFor(pattern.id, 'Delete')}
+                                                        </button>
+                                                    );
+                                                })()}
                                             </div>
                                         ))}
                                     {availabilityPatterns.filter(p => p.type === 'specific_override').length === 0 && (
@@ -1886,7 +1973,7 @@ function Profile(){
                                 disabled={importingCollection}
                             />
                             <button
-                                onClick={importBGGCollection}
+                                onClick={handleImportCollectionClick}
                                 disabled={importingCollection || !bggUsername.trim()}
                                 className="btn btn-primary px-4 md:px-6 py-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base whitespace-nowrap"
                             >
@@ -1977,12 +2064,23 @@ function Profile(){
                                                 <p className="text-sm text-content-secondary">({game.year_published})</p>
                                             )}
                                         </div>
+                                        {/* Two-tap gate. The accessible name names the ACTION
+                                            and the OBJECT (F-369) — a bare glyph is not a
+                                            name, and the `title` it used to carry does not
+                                            count (§7.3). Armed state swaps the visible label
+                                            AND the name together (Label-in-Name, WCAG 2.5.3),
+                                            both from the hook. */}
                                         <button
-                                            onClick={() => removeGameFromCollection(game.id)}
-                                            className="text-status-error hover:text-red-700 text-sm"
-                                            title="Remove from collection"
+                                            {...removeGameGate.triggerProps(
+                                                game.id,
+                                                game.name,
+                                                `Remove ${game.name}`
+                                            )}
+                                            className={`inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-btn px-2 text-sm text-status-error hover:text-red-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                removeGameGate.isArmed(game.id) ? 'font-semibold' : ''
+                                            }`}
                                         >
-                                            ×
+                                            {removeGameGate.labelFor(game.id, '×')}
                                         </button>
                                     </div>
                                     <SafeImage
@@ -2004,6 +2102,41 @@ function Profile(){
                 <div className="mt-6">
                     <DangerZoneDeleteAccount />
                 </div>
+
+                {/* The three tiered gates, mounted ONCE at page level rather than per
+                    row: the hook holds the target id, so one dialog serves every row.
+                    Each `statusNode` is likewise mounted unconditionally and always —
+                    a live region that is conditionally mounted announces nothing. The
+                    two two-tap gates render a null dialog by design (88-05), and they
+                    are mounted anyway so retiering stays the one-word edit. */}
+                <ConfirmDialog {...disconnectCalendarGate.dialogProps} />
+                {disconnectCalendarGate.statusNode}
+                <ConfirmDialog {...removeGameGate.dialogProps} />
+                {removeGameGate.statusNode}
+                <ConfirmDialog {...deletePatternGate.dialogProps} />
+                {deletePatternGate.statusNode}
+
+                {/* Slow-operation warning, NOT a destructive gate (D-10) — see the
+                    marker on `handleImportCollectionClick`. Dismissable, and its
+                    primary action is the neutral verb the old prompt ended on. */}
+                <Modal open={bggImportPromptOpen} onClose={() => setBggImportPromptOpen(false)}>
+                    <Modal.Header>Import your BGG collection?</Modal.Header>
+                    <Modal.Body>
+                        <p className="text-base text-content-secondary">
+                            This imports every game from your BoardGameGeek collection (username:{' '}
+                            <span className="font-semibold text-content-primary">{bggUsername}</span>
+                            ). It may take a few minutes.
+                        </p>
+                    </Modal.Body>
+                    <Modal.Footer>
+                        <Modal.Action variant="secondary" onClick={() => setBggImportPromptOpen(false)}>
+                            Cancel
+                        </Modal.Action>
+                        <Modal.Action variant="primary" onClick={importBGGCollection}>
+                            Continue
+                        </Modal.Action>
+                    </Modal.Footer>
+                </Modal>
 
                 {/* PRIM-03: the patterns-fetch bug-report modal now lives inside
                     FetchErrorBanner (rendered per-tab), so the page-level mount is gone. */}

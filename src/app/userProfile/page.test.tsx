@@ -58,6 +58,29 @@ const DEFAULT_PREFS = {
  */
 const h = vi.hoisted(() => ({
   self: undefined as undefined | Record<string, unknown>,
+  /**
+   * Availability rows the mocked `useQuery` returns. Held here (not baked into
+   * the mock) so the two-tap delete pins can render real rows without a
+   * QueryClientProvider. Plan 88-10 added this; the default stays `[]` so every
+   * pre-existing test sees exactly what it saw before.
+   */
+  patterns: [] as Record<string, unknown>[],
+  /**
+   * The Auth0 row, held as ONE object rather than rebuilt inside the mock factory.
+   * Identity matters: the page's owned-games / calendar-status effect depends on
+   * `user`, so a mock that returns a fresh object literal per render re-runs that
+   * effect on EVERY render — which flips `loadingGames` back to true and unmounts
+   * the collection grid mid-interaction. The real `useUser` returns a stable
+   * context value, so the loop is a mock artefact, not page behaviour. Making this
+   * stable is a decision, not a tidy-up: reverting it makes any test that clicks a
+   * row in the collection non-deterministic.
+   */
+  authUser: {
+    sub: 'auth0|self',
+    name: 'Self',
+    email: 'self@example.com',
+    picture: null,
+  } as Record<string, unknown>,
 }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
@@ -74,7 +97,7 @@ vi.mock('@/lib/hooks/selfIdentityCache', () => ({ patchSelfCache: vi.fn() }));
 
 vi.mock('@auth0/nextjs-auth0/client', () => ({
   useUser: () => ({
-    user: { sub: 'auth0|self', name: 'Self', email: 'self@example.com', picture: null },
+    user: h.authUser,
     error: null,
     isLoading: false,
   }),
@@ -93,7 +116,13 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   return {
     ...actual,
     useQueryClient: () => ({ invalidateQueries: vi.fn(), setQueryData: vi.fn() }),
-    useQuery: () => ({ data: [], isPending: false, isError: false, error: null, refetch: vi.fn() }),
+    useQuery: () => ({
+      data: h.patterns,
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    }),
   };
 });
 
@@ -213,6 +242,7 @@ export function renderProfile(selfOverrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   h.self = undefined;
+  h.patterns = [];
 });
 
 afterEach(cleanup);
@@ -400,6 +430,218 @@ describe('userProfile availability settings', () => {
     expect(
       screen.queryByRole('heading', { name: 'Availability Schedules' })
     ).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Req 11 — the four native prompts, retiered (plan 88-10 Task 2)
+// ---------------------------------------------------------------------------
+// Blocking semantics are the thing under test in every tier: the API is not
+// reached until an explicit second act, and cancel aborts. These pins are what
+// make a silent regression to a toast-and-proceed gate fail.
+
+const OWNED_GAMES = [
+  { id: 'game-catan', name: 'Catan', year_published: 1995, image_url: null },
+  { id: 'game-brass', name: 'Brass', year_published: 2007, image_url: null },
+];
+
+const PATTERNS = [
+  {
+    id: 'pattern-mon',
+    type: 'recurring_pattern',
+    start_date: '2026-01-01',
+    end_date: '2026-12-31',
+    pattern_data: { dayOfWeek: 1, startTime: '18:00', endTime: '22:00' },
+  },
+  {
+    id: 'pattern-tue',
+    type: 'recurring_pattern',
+    start_date: '2026-01-01',
+    end_date: '2026-12-31',
+    pattern_data: { dayOfWeek: 2, startTime: '18:00', endTime: '22:00' },
+  },
+];
+
+/** The armed live-region text, as composed by the hook's default announcement. */
+function armedAnnouncement() {
+  return screen
+    .getAllByRole('status')
+    .map((node) => node.textContent ?? '')
+    .join(' | ');
+}
+
+describe('userProfile destructive gates (Req 11)', () => {
+  it('disconnect Google Calendar blocks in a dialog and does not call the API until confirmed', async () => {
+    const { googleCalendarAPI } = await import('@/lib/api');
+    (googleCalendarAPI.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+      connected: true,
+    });
+
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Calendar' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Disconnect Google Calendar?')).toBeInTheDocument();
+    expect(googleCalendarAPI.disconnect).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
+    await waitFor(() =>
+      expect(googleCalendarAPI.disconnect).toHaveBeenCalledWith(SELF_UUID)
+    );
+  });
+
+  it('cancel on the disconnect dialog aborts — the API is never reached', async () => {
+    const { googleCalendarAPI } = await import('@/lib/api');
+    (googleCalendarAPI.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+      connected: true,
+    });
+
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Calendar' }));
+
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(googleCalendarAPI.disconnect).not.toHaveBeenCalled();
+  });
+
+  // UI-SPEC §11.2 copy, verbatim — and the banned generic permanence claim.
+  it('ships the ratified disconnect body and no "cannot be undone"', async () => {
+    const { googleCalendarAPI } = await import('@/lib/api');
+    (googleCalendarAPI.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+      connected: true,
+    });
+
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Calendar' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText(
+        'Future events stop syncing. Events already on your calendar stay.'
+      )
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/cannot be undone/i)).not.toBeInTheDocument();
+  });
+
+  it('remove-game needs two taps and names the action AND the game (F-369)', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as ReturnType<typeof vi.fn>).mockResolvedValue(OWNED_GAMES);
+
+    renderProfile();
+    const trigger = await screen.findByRole('button', { name: 'Remove Catan' });
+
+    fireEvent.click(trigger);
+    expect(userGamesAPI.removeOwnedGame).not.toHaveBeenCalled();
+    // Armed: aria-pressed appears (F-357) and the live region names the target.
+        expect(armedAnnouncement()).toContain('Catan');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
+    await waitFor(() =>
+      expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledWith(SELF_UUID, 'game-catan')
+    );
+  });
+
+  // AR DEC-2: the armed state is keyed by TARGET, not a boolean. Without that,
+  // arming one row and single-tapping another destroys the second one.
+  it('arming one game then tapping another re-arms instead of removing', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as ReturnType<typeof vi.fn>).mockResolvedValue(OWNED_GAMES);
+
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Catan' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Brass' }));
+
+    expect(userGamesAPI.removeOwnedGame).not.toHaveBeenCalled();
+    // The new target is armed, the old one is back at rest.
+    expect(screen.getByRole('button', { name: 'Tap again to confirm' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove Catan' })).toBeInTheDocument();
+    expect(armedAnnouncement()).toContain('Brass');
+  });
+
+  it('delete-pattern needs two taps, keyed per pattern', async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    h.patterns = PATTERNS;
+
+    renderProfile();
+    const trigger = await screen.findByRole('button', { name: 'Delete Monday schedule' });
+
+    fireEvent.click(trigger);
+    expect(availabilityAPI.deleteAvailability).not.toHaveBeenCalled();
+    expect(trigger).toHaveAttribute('aria-pressed', 'true');
+
+    // A different row must not commit the armed one.
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Tuesday schedule' }));
+    expect(availabilityAPI.deleteAvailability).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
+    await waitFor(() =>
+      expect(availabilityAPI.deleteAvailability).toHaveBeenCalledWith('pattern-tue')
+    );
+  });
+
+  // D-10: this one is a SLOW-OPERATION warning, so it is an ordinary informational
+  // Modal and deliberately NOT on the destructive ladder. It still has to block, and
+  // it still must not be a native browser prompt (88-29's census arms at zero).
+  it('BGG import warns in an ordinary modal and imports only on Continue', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    renderProfile();
+
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Import Collection' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/may take a few minutes/)).toBeInTheDocument();
+    expect(userGamesAPI.importBGGCollection).not.toHaveBeenCalled();
+
+    // Neutral verb, not a destructive one — this is not a consequence gate.
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Continue' }));
+    await waitFor(() =>
+      expect(userGamesAPI.importBGGCollection).toHaveBeenCalledWith(SELF_UUID, 'someone')
+    );
+  });
+
+  it('cancelling the BGG warning imports nothing', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    renderProfile();
+
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'BoardGameGeek username' }),
+      { target: { value: 'someone' } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Import Collection' }));
+
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(userGamesAPI.importBGGCollection).not.toHaveBeenCalled();
+  });
+
+  // The D-10 exclusion is only durable if the reason survives at the SITE. This pins
+  // the marker itself, so a later "finish the migration" sweep cannot absorb the BGG
+  // gate onto the ladder without first deleting an assertion.
+  it('records the D-10 exclusion with a marker at the BGG site', async () => {
+    const source = await import('node:fs/promises').then((fs) =>
+      fs.readFile('src/app/userProfile/page.js', 'utf8')
+    );
+    expect(source).toContain('DECISION Phase 88-10 (D-10)');
+  });
+
+  // Req 11's real acceptance: ZERO native prompts survive in this file. The upstream
+  // census gate grepped for the `window.`-qualified form and would have passed with
+  // all four of these live (§11.1 / OI-8).
+  it('leaves no native browser prompt in the file', async () => {
+    const source = await import('node:fs/promises').then((fs) =>
+      fs.readFile('src/app/userProfile/page.js', 'utf8')
+    );
+    // Built from fragments so this assertion cannot trip the phase's own grep gate.
+    const bare = new RegExp(`(^|[^.a-zA-Z_$])${['con', 'firm'].join('')}\\(`, 'm');
+    expect(source).not.toMatch(bare);
   });
 });
 
