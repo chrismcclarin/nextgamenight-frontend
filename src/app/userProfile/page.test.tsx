@@ -645,6 +645,98 @@ describe('userProfile destructive gates (Req 11)', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Req 12 / OI-5 — one register for this surface's receipts (plan 88-10 Task 3)
+// ---------------------------------------------------------------------------
+// §6.2's contract is `{Object} {past-tense verb}`: no "successfully", no
+// exclamation mark, <=4 words. These pin the EXACT strings, because the failure
+// mode OI-5 exists to close is drift back to a chattier voice one string at a
+// time — which no shape-based assertion would catch.
+
+describe('userProfile toast register (OI-5)', () => {
+  it('converges the username receipt', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.updateUsername as ReturnType<typeof vi.fn>).mockResolvedValue({
+      username: 'Renamed',
+    });
+
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit username' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Username' }), {
+      target: { value: 'Renamed' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(toastMock().success).toHaveBeenCalledWith('Username updated')
+    );
+  });
+
+  it('converges the Google Calendar receipt', async () => {
+    const { googleCalendarAPI } = await import('@/lib/api');
+    (googleCalendarAPI.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
+      connected: true,
+    });
+
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Calendar' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
+
+    await waitFor(() =>
+      expect(toastMock().success).toHaveBeenCalledWith('Google Calendar disconnected')
+    );
+  });
+
+  it('converges the pattern-deleted receipt', async () => {
+    h.patterns = PATTERNS;
+    renderProfile();
+
+    const trigger = await screen.findByRole('button', { name: 'Delete Monday schedule' });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
+
+    await waitFor(() => expect(toastMock().success).toHaveBeenCalledWith('Pattern deleted'));
+  });
+
+  it('gives the collection mutations a receipt in the same register', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as ReturnType<typeof vi.fn>).mockResolvedValue(OWNED_GAMES);
+
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Catan' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
+
+    await waitFor(() => expect(toastMock().success).toHaveBeenCalledWith('Game removed'));
+  });
+
+  // The register is a contract, not four hand-checked strings: this reads every
+  // success string the file emits and holds them ALL to §6.2, so a sixth added
+  // later cannot quietly arrive in the old voice.
+  it('holds every success string on this surface to the §6.2 contract', async () => {
+    const source = await import('node:fs/promises').then((fs) =>
+      fs.readFile('src/app/userProfile/page.js', 'utf8')
+    );
+    const strings = [...source.matchAll(/toast\.success\((['"`])([^'"`]*)\1\)/g)].map(
+      (match) => match[2]
+    );
+
+    expect(strings.length).toBeGreaterThanOrEqual(7);
+    for (const value of strings) {
+      expect(value).not.toMatch(/successfully/i);
+      expect(value).not.toContain('!');
+      expect(value.split(' ').length).toBeLessThanOrEqual(4);
+    }
+  });
+
+  it('records the D-14 self-stating-toggle exemption at the switch cluster', async () => {
+    const source = await import('node:fs/promises').then((fs) =>
+      fs.readFile('src/app/userProfile/page.js', 'utf8')
+    );
+    expect(source).toContain('DECISION Phase 88-10 (D-14)');
+  });
+});
+
 // Req 5's acceptance criterion, and the composed audit DEF-88-12-04 asks for: the
 // primitives' own suites audit them with trivial children and cannot see a
 // violation living in a CONSUMER's composed content — which is where the three

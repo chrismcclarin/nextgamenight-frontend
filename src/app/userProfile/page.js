@@ -636,7 +636,7 @@ function Profile(){
             // verified phone vanish from the cached self for the session.
             patchSelfCache(queryClient, { username: updatedUser.username });
             setEditingUsername(false);
-            toast.success('Username updated successfully!');
+            toast.success('Username updated');
         } catch (error) {
             console.error('Error updating username:', error);
             toast.error(`Failed to update username: ${error.message || 'Please try again.'}`);
@@ -709,7 +709,7 @@ function Profile(){
         try {
             await googleCalendarAPI.disconnect(selfUuid);
             setGoogleCalendarConnected(false);
-            toast.success('Google Calendar disconnected successfully');
+            toast.success('Google Calendar disconnected');
         } catch (error) {
             console.error('Error disconnecting Google Calendar:', error);
             toast.error('Failed to disconnect Google Calendar. Please try again.');
@@ -799,6 +799,9 @@ function Profile(){
             setShowBggSearch(false);
             setBggSearchQuery('');
             setBggSearchResults([]);
+            // Req 12: this mutation closes the search panel it was started from, so
+            // without a receipt the only feedback is a panel vanishing.
+            toast.success('Game added');
         } catch (error) {
             console.error('Error adding game to collection:', error);
             toast.error('Failed to add game to collection. Please try again.');
@@ -814,6 +817,7 @@ function Profile(){
         try {
             await userGamesAPI.removeOwnedGame(selfUuid, game_id);
             await fetchOwnedGames();
+            toast.success('Game removed');
         } catch (error) {
             console.error('Error removing game from collection:', error);
             toast.error('Failed to remove game from collection. Please try again.');
@@ -878,8 +882,10 @@ function Profile(){
                 end_date: '',
                 timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
             });
-            const count = recurringForm.daysOfWeek.length;
-            toast.success(`${count} schedule${count > 1 ? 's' : ''} created successfully!`);
+            // §6.2's form is `{Object} {past-tense verb}`, <=4 words — so the count
+            // the old string carried is deliberately dropped rather than shortened
+            // into it. The created rows are visible in the list directly below.
+            toast.success('Schedules created');
         } catch (error) {
             console.error('Error creating schedule:', error);
             toast.error(`Failed to create pattern: ${error.message || 'Please try again.'}`);
@@ -903,7 +909,7 @@ function Profile(){
                 endTime: '17:00',
                 isAvailable: true,
             });
-            toast.success('Specific override created successfully!');
+            toast.success('Override created');
         } catch (error) {
             console.error('Error creating specific override:', error);
             toast.error(`Failed to create override: ${error.message || 'Please try again.'}`);
@@ -916,7 +922,7 @@ function Profile(){
         try {
             await availabilityAPI.deleteAvailability(patternId);
             await patternsQuery.refetch();
-            toast.success('Pattern deleted successfully!');
+            toast.success('Pattern deleted');
         } catch (error) {
             console.error('Error deleting pattern:', error);
             toast.error('Failed to delete pattern. Please try again.');
@@ -983,7 +989,7 @@ function Profile(){
             
             setImportProgress({
                 status: 'complete',
-                message: `Successfully imported ${result.imported} games!`,
+                message: `Imported ${result.imported} games`,
                 details: result
             });
             
@@ -1446,6 +1452,23 @@ function Profile(){
                         </div>
                     )}
 
+                    {/* DECISION Phase 88-10 (D-14): the toggles in this matrix fire NO
+                        success toast, deliberately — chosen OVER giving every mutation on
+                        this page a receipt, which is what Req 12 does everywhere else and
+                        is therefore what a reader will assume is missing here.
+
+                        A switch that visibly flips is its own receipt: the control has
+                        already moved under the person's finger, and the row's own
+                        "Saving…"/"Saved" indicator to its right covers the round trip. A
+                        toast per flip turns a four-row matrix into a toast storm on the
+                        surface people tune most, and it re-announces a state change the
+                        screen reader has already read from the control itself.
+
+                        This exemption is recorded so a missing toast here reads as
+                        INTENTIONAL at UAT rather than as a defect. Adding one is a
+                        decision, not a consistency fix. The failure path is different and
+                        is already handled: a failed toggle rolls the switch back and shows
+                        "Error", because there the visible state would otherwise lie. */}
                     {/* Preferences Matrix */}
                     <div className="space-y-0">
                         {/* Verify-phone CTA — only shown to entitled users (sms_enabled=true)
