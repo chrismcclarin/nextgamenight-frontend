@@ -25,7 +25,7 @@ import { useQuery } from '@tanstack/react-query';
 import { validatedQueryFn } from '../../lib/validatedQueryFn';
 import { AvailabilityPatternListSchema } from '../../lib/schemas/availability';
 import { availabilityKeys } from '../../lib/queryKeys/availabilityKeys';
-import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { Switch } from '../../components/ui/Switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Tabs';
@@ -412,7 +412,11 @@ function Profile(){
             replayTutorial();
         } catch (error) {
             console.error('Error replaying tutorial:', error);
-            toast.error('Failed to replay tutorial. Please try again.');
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't restart the tour. Please try again.",
+                })
+            );
         } finally {
             setReplayingTutorial(false);
         }
@@ -463,7 +467,12 @@ function Profile(){
             setPhoneState('verifying');
         } catch (error) {
             console.error('Error saving phone:', error);
-            setPhoneError(error.message || 'Failed to send verification code');
+            setPhoneError(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't send the code. Check the number and try again.",
+                    byCode: { validation: "That number wasn't accepted. Check it and try again." },
+                })
+            );
             setPhoneState('editing');
         }
     };
@@ -487,7 +496,14 @@ function Profile(){
             patchSelfCache(queryClient, { phone: phoneInput, phone_verified: true });
         } catch (error) {
             console.error('Error verifying code:', error);
-            setPhoneError(error.message || 'Invalid verification code');
+            setPhoneError(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't check that code. Please try again.",
+                    // A wrong/expired code comes back as a 400 — the one outcome worth
+                    // naming, because the fix is the person's, not ours.
+                    byCode: { validation: "That code didn't match. Check it and try again." },
+                })
+            );
         }
     };
 
@@ -518,7 +534,11 @@ function Profile(){
             }, 1000);
         } catch (error) {
             console.error('Error resending code:', error);
-            setPhoneError(error.message || 'Failed to resend code');
+            setPhoneError(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't resend the code. Please try again.",
+                })
+            );
         }
     };
 
@@ -577,7 +597,11 @@ function Profile(){
             setSmsDisabledBannerDismissed(false); // Reset dismissal so banner shows fresh.
         } catch (error) {
             console.error('Error removing phone:', error);
-            setPhoneError(error.message || 'Failed to remove phone number');
+            setPhoneError(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't remove your number. Please try again.",
+                })
+            );
             // NOTE: do NOT set phoneJustRemoved on failure — banner only fires on success.
         }
     };
@@ -767,7 +791,12 @@ function Profile(){
             toast.success('Username updated');
         } catch (error) {
             console.error('Error updating username:', error);
-            toast.error(`Failed to update username: ${error.message || 'Please try again.'}`);
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't save your username. Please try again.",
+                    byCode: { validation: "That username can't be used. Try a different one." },
+                })
+            );
         } finally {
             setSavingUsername(false);
         }
@@ -805,8 +834,16 @@ function Profile(){
             // Remove query param from URL
             window.history.replaceState({}, '', '/userProfile/');
         } else if (calendarStatus === 'error') {
-            const errorMessage = searchParams.get('message');
-            toast.error(`Failed to connect Google Calendar: ${errorMessage || 'Unknown error'}`);
+            /* DECISION Phase 88-25 (Req 14 / T-88-25-01): the toast is FIXED copy, chosen OVER
+               interpolating `searchParams.get('message')`. That value is an attacker-controllable
+               URL query parameter, so the shipped line let anyone who could get a person to open
+               `/userProfile?google_calendar=error&message=…` put arbitrary text in a toast on
+               their own profile page — a phishing surface, one class worse than the raw-backend-
+               message disclosure this plan is closing everywhere else. React escapes it, so it is
+               not injection; it is unbounded attacker-authored COPY, which is the part that
+               matters. Do not re-add the interpolation to "help with debugging" — the OAuth
+               failure reason is in the server log, not the person's screen. */
+            toast.error("We couldn't connect Google Calendar. Please try again.");
             setGoogleCalendarConnected(false);
             window.history.replaceState({}, '', '/userProfile/');
         }
@@ -840,7 +877,11 @@ function Profile(){
             toast.success('Google Calendar disconnected');
         } catch (error) {
             console.error('Error disconnecting Google Calendar:', error);
-            toast.error('Failed to disconnect Google Calendar. Please try again.');
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't disconnect Google Calendar. Please try again.",
+                })
+            );
             // Rethrow so the gate stays OPEN (useConfirmAction's contract) rather
             // than closing over a disconnect that never happened.
             throw error;
@@ -896,12 +937,26 @@ function Profile(){
         } catch (error) {
             console.error('Error searching BGG:', error);
             setBggSearchResults([]);
-            const errorMessage = error.message || 'Failed to search BoardGameGeek';
-            if (errorMessage.includes('401') || errorMessage.includes('403') || errorMessage.includes('rate limiting')) {
-                toast.error('BoardGameGeek API is currently unavailable or rate-limited. Please try again in a few moments.');
-            } else {
-                toast.error(`Error searching BoardGameGeek: ${errorMessage}`);
-            }
+            /* DECISION Phase 88-25 (Req 14 / T-88-25-01): the BGG-unavailable case is selected by
+               `ApiError.code`, chosen OVER the shipped `errorMessage.includes('401')` /
+               `.includes('403')` / `.includes('rate limiting')` prose match. Two defects in one:
+               the else-branch interpolated the raw upstream message, and the prose match itself
+               was unreliable — it keyed on substrings of a message the backend is free to reword,
+               and 'rate limiting' would also fire on a game whose TITLE contained it. The codes
+               are the seam that exists for exactly this (api.ts mapErrorToCode). */
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't reach BoardGameGeek. Please try again in a few moments.",
+                    byCode: {
+                        rate_limited:
+                            'BoardGameGeek is rate-limiting us right now. Try again in a few moments.',
+                        unauthorized:
+                            "BoardGameGeek isn't accepting requests right now. Try again in a few moments.",
+                        forbidden:
+                            "BoardGameGeek isn't accepting requests right now. Try again in a few moments.",
+                    },
+                })
+            );
         } finally {
             setBggSearching(false);
         }
@@ -932,7 +987,11 @@ function Profile(){
             toast.success('Game added');
         } catch (error) {
             console.error('Error adding game to collection:', error);
-            toast.error('Failed to add game to collection. Please try again.');
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't add that game. Please try again.",
+                })
+            );
         }
     };
 
@@ -948,7 +1007,11 @@ function Profile(){
             toast.success('Game removed');
         } catch (error) {
             console.error('Error removing game from collection:', error);
-            toast.error('Failed to remove game from collection. Please try again.');
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't remove that game. Please try again.",
+                })
+            );
         }
     };
 
@@ -1016,7 +1079,11 @@ function Profile(){
             toast.success('Schedules created');
         } catch (error) {
             console.error('Error creating schedule:', error);
-            toast.error(`Failed to create pattern: ${error.message || 'Please try again.'}`);
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't save that schedule. Please try again.",
+                })
+            );
         } finally {
             setSavingPattern(false);
         }
@@ -1040,7 +1107,11 @@ function Profile(){
             toast.success('Override created');
         } catch (error) {
             console.error('Error creating specific override:', error);
-            toast.error(`Failed to create override: ${error.message || 'Please try again.'}`);
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't save that override. Please try again.",
+                })
+            );
         } finally {
             setSavingPattern(false);
         }
@@ -1053,7 +1124,11 @@ function Profile(){
             toast.success('Pattern deleted');
         } catch (error) {
             console.error('Error deleting pattern:', error);
-            toast.error('Failed to delete pattern. Please try again.');
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't delete that entry. Please try again.",
+                })
+            );
         }
     };
 
@@ -1133,7 +1208,9 @@ function Profile(){
             console.error('Error importing BGG collection:', error);
             setImportProgress({
                 status: 'error',
-                message: error.message || 'Failed to import BGG collection. Please try again.'
+                message: getFetchErrorMessage(error, {
+                    fallback: "We couldn't import that collection. Check the username and try again.",
+                })
             });
         } finally {
             setImportingCollection(false);
@@ -1323,6 +1400,17 @@ function Profile(){
                                                     value={phoneInput}
                                                     onChange={(e) => handlePhoneChange(e.target.value)}
                                                     placeholder="+1 555-123-4567"
+                                                    aria-invalid={
+                                                        phoneValidation.error || phoneError ? 'true' : undefined
+                                                    }
+                                                    aria-describedby={
+                                                        [
+                                                            phoneValidation.error ? 'phone-format-error' : null,
+                                                            phoneError ? 'phone-flow-error' : null,
+                                                        ]
+                                                            .filter(Boolean)
+                                                            .join(' ') || undefined
+                                                    }
                                                     className={
                                                         phoneValidation.valid ? 'border-status-success' :
                                                         phoneValidation.error ? 'border-status-error' :
@@ -1336,8 +1424,21 @@ function Profile(){
                                                         </svg>
                                                     </span>
                                                 )}
+                                                {/* Same DEF-88-19-04 gap, client-side half: this
+                                                    format message was equally silent to a screen
+                                                    reader. It types as you go, so it is POLITE
+                                                    (role="status") rather than assertive — an
+                                                    alert on every keystroke would talk over the
+                                                    person mid-entry. The submit-time failure
+                                                    above is the one that interrupts. */}
                                                 {phoneValidation.error && (
-                                                    <p className="text-status-error text-xs mt-1">{phoneValidation.error}</p>
+                                                    <p
+                                                        id="phone-format-error"
+                                                        role="status"
+                                                        className="text-status-error text-xs mt-1"
+                                                    >
+                                                        {phoneValidation.error}
+                                                    </p>
                                                 )}
                                             </div>
                                             <button
@@ -1380,6 +1481,8 @@ function Profile(){
                                                     onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                                                     placeholder="Enter 6-digit code"
                                                     maxLength={6}
+                                                    aria-invalid={phoneError ? 'true' : undefined}
+                                                    aria-describedby={phoneError ? 'phone-flow-error' : undefined}
                                                     className="w-32 text-center tracking-widest"
                                                 />
                                                 <button
@@ -1435,8 +1538,39 @@ function Profile(){
                                         </div>
                                     )}
 
+                                    {/* DECISION Phase 88-25 (DEF-88-19-04): the phone flow's error
+                                        node gets `role="alert"` + `aria-describedby` wiring
+                                        DIRECTLY, chosen OVER routing it through `FormField`'s
+                                        error slot as DEF-88-19-04 suggested.
+
+                                        WHY FormField LOSES HERE: its contract is "exactly one
+                                        control element", which it clones to inject
+                                        `id`/`aria-invalid`/`aria-describedby`. This ONE error
+                                        node serves four different phone states — the tel input
+                                        (idle/editing), the disabled input (saving), the
+                                        verification-code input (verifying), and the VERIFIED row,
+                                        which has no control at all (the error there comes from
+                                        Remove). There is no single control to wrap, so adopting
+                                        FormField would mean either splitting `phoneError` into
+                                        per-state slots or wrapping a control that did not cause
+                                        the error. The a11y property DEF-88-19-04 actually names —
+                                        a screen-reader user is told when their submission fails —
+                                        is delivered in full here.
+
+                                        `role="alert"` is on a CONDITIONALLY-MOUNTED node, which
+                                        is normally the anti-pattern StatusRegion exists to stop.
+                                        It is correct in this one case: assertive alerts DO
+                                        announce on insertion, and the message must interrupt.
+                                        Do not "fix" this into a StatusRegion — that would make it
+                                        polite and it would be missed. */}
                                     {phoneError && (
-                                        <p className="text-status-error text-xs mt-1">{phoneError}</p>
+                                        <p
+                                            id="phone-flow-error"
+                                            role="alert"
+                                            className="text-status-error text-xs mt-1"
+                                        >
+                                            {phoneError}
+                                        </p>
                                     )}
                                 </div>
                     )}
