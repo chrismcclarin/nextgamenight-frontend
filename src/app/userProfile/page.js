@@ -27,6 +27,8 @@ import { AvailabilityPatternListSchema } from '../../lib/schemas/availability';
 import { availabilityKeys } from '../../lib/queryKeys/availabilityKeys';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { Switch } from '../../components/ui/Switch';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Tabs';
 
 const NOTIFICATION_TYPES = [
     { key: 'event_created', label: 'New Event', description: 'When a game session is scheduled' },
@@ -989,6 +991,7 @@ function Profile(){
                                     <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                                         <input
                                             type="text"
+                                            aria-label="Username"
                                             value={username}
                                             onChange={(e) => setUsername(e.target.value)}
                                             maxLength={50}
@@ -1022,9 +1025,14 @@ function Profile(){
                                         <h1 className="text-xl md:text-2xl font-bold text-content-primary truncate">
                                             {userData?.username || user.name}
                                         </h1>
+                                        {/* §7.3: an icon-only control needs a real accessible
+                                            name; the pencil glyph is the whole content, so
+                                            without this the name announced was the emoji, and
+                                            a `title` does not count. */}
                                         <button
                                             onClick={() => setEditingUsername(true)}
                                             className="text-content-link hover:text-content-link-hover text-sm md:text-base"
+                                            aria-label="Edit username"
                                             title="Edit username"
                                         >
                                             ✏️
@@ -1063,8 +1071,12 @@ function Profile(){
                                     {(phoneState === 'idle' || phoneState === 'editing') && (
                                         <div className="flex flex-col sm:flex-row sm:items-start gap-2">
                                             <div className="flex-1 relative">
+                                                {/* Named explicitly: this control has no visible
+                                                    label of any kind (a placeholder is not a
+                                                    name — axe `label`, WCAG 4.1.2 A). */}
                                                 <input
                                                     type="tel"
+                                                    aria-label="Phone number"
                                                     value={phoneInput}
                                                     onChange={(e) => handlePhoneChange(e.target.value)}
                                                     placeholder="+1 555-123-4567"
@@ -1099,6 +1111,7 @@ function Profile(){
                                         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                                             <input
                                                 type="tel"
+                                                aria-label="Phone number"
                                                 value={phoneInput}
                                                 disabled
                                                 className="flex-1 px-3 py-2 border border-line rounded-btn text-sm bg-surface-card-hover text-content-primary"
@@ -1120,6 +1133,7 @@ function Profile(){
                                             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                                                 <input
                                                     type="text"
+                                                    aria-label="Verification code"
                                                     value={verificationCode}
                                                     onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                                                     placeholder="Enter 6-digit code"
@@ -1189,7 +1203,12 @@ function Profile(){
                     <div className="mt-4 pt-4 border-t border-line">
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                             <div>
-                                <h3 className="text-sm font-semibold text-content-primary mb-1">Google Calendar Integration</h3>
+                                {/* h2, not h3: this is a top-level section of the page and the
+                                    nearest preceding heading is the h1 username directly above,
+                                    so an h3 skipped a level (axe heading-order). The type role is
+                                    carried by the classes, which are unchanged — the tag moved,
+                                    the look did not. */}
+                                <h2 className="text-sm font-semibold text-content-primary mb-1">Google Calendar Integration</h2>
                                 <p className="text-xs text-content-secondary">
                                     {googleCalendarConnected 
                                         ? 'Connected - Future game events will be automatically added to your calendar'
@@ -1237,10 +1256,22 @@ function Profile(){
                 <div className="card p-4 md:p-6 mb-6">
                     <h2 className="text-lg font-bold text-content-primary mb-1">Theme</h2>
                     <p className="text-sm text-content-muted mb-3">Choose your preferred appearance</p>
+                    {/* DECISION Phase 88-10 (Req 5 / F-357): the two theme buttons carry
+                        `aria-pressed`, chosen OVER converting them to the `Switch`
+                        primitive like the notification toggles further down. A switch
+                        models ONE binary thing being on or off; this is a choice between
+                        two named appearances, each with its own icon and label, and a
+                        third (system) is the obvious future addition. Modelling that as
+                        a switch would force "Dark mode: off" to mean "light", which is
+                        not what the control says. Toggle-buttons are the right pattern
+                        and `aria-pressed` is their state attribute. Converting these to
+                        a Switch "for consistency with the toggles below" is a decision
+                        about what the control MEANS, not a cleanup. */}
                     {themeMounted ? (
                         <div className="flex gap-3">
                             <button
                                 onClick={() => setTheme('light')}
+                                aria-pressed={resolvedTheme === 'light'}
                                 className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
                                     resolvedTheme === 'light'
                                         ? 'border-amber-500 bg-amber-50 font-semibold text-content-primary'
@@ -1254,6 +1285,7 @@ function Profile(){
                             </button>
                             <button
                                 onClick={() => setTheme('dark')}
+                                aria-pressed={resolvedTheme === 'dark'}
                                 className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
                                     resolvedTheme === 'dark'
                                         ? 'border-amber-500 bg-purple-900 font-semibold text-white'
@@ -1387,40 +1419,33 @@ function Profile(){
                                         <p className="text-xs text-content-muted">{type.description}</p>
                                     </div>
 
-                                    {/* Email Toggle */}
+                                    {/* Email Toggle — the `Switch` primitive (88-07). Its
+                                        widget semantics and checked-state attribute come
+                                        from Radix; nothing is hand-authored here, which is
+                                        the whole point of adopting it (F-353/357/362). */}
                                     <div className="w-16 flex justify-center">
-                                        <button
-                                            onClick={() => handleToggle(type.key, 'email', !preferences[type.key]?.email)}
-                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                                preferences[type.key]?.email ? 'bg-status-success' : 'bg-line-strong'
-                                            }`}
+                                        <Switch
+                                            checked={Boolean(preferences[type.key]?.email)}
+                                            onCheckedChange={(next) => handleToggle(type.key, 'email', next)}
                                             aria-label={`${type.label} email notifications`}
-                                        >
-                                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                                preferences[type.key]?.email ? 'translate-x-6' : 'translate-x-1'
-                                            }`} />
-                                        </button>
+                                        />
                                     </div>
 
                                     {/* SMS Toggle — only rendered for entitled users
                                         (sms_enabled=true). Within that, the toggle is
                                         disabled (greyed) until the user has verified their
-                                        phone number — three layers of defense: onClick
-                                        guard, native disabled prop, opacity-50 styling. */}
+                                        phone number — three layers of defense preserved
+                                        across the primitive swap: the handler guard, the
+                                        native disabled prop, and the primitive's own
+                                        `disabled:opacity-50`. */}
                                     {userData?.sms_enabled && (
                                         <div className="w-16 flex justify-center">
-                                            <button
-                                                onClick={() => userData?.phone_verified && handleToggle(type.key, 'sms', !preferences[type.key]?.sms)}
+                                            <Switch
+                                                checked={Boolean(preferences[type.key]?.sms)}
+                                                onCheckedChange={(next) => userData?.phone_verified && handleToggle(type.key, 'sms', next)}
                                                 disabled={!userData?.phone_verified}
-                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                                    preferences[type.key]?.sms ? 'bg-status-success' : 'bg-line-strong'
-                                                } ${!userData?.phone_verified ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                 aria-label={`${type.label} SMS notifications`}
-                                            >
-                                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                                    preferences[type.key]?.sms ? 'translate-x-6' : 'translate-x-1'
-                                                }`} />
-                                            </button>
+                                            />
                                         </div>
                                     )}
 
@@ -1445,7 +1470,13 @@ function Profile(){
                                 {type.key === 'reminder' && (
                                     <div className="mt-2 ml-0 sm:ml-4 flex items-center gap-2">
                                         <span className="text-xs text-content-muted">Remind me:</span>
+                                        {/* The adjacent "Remind me:" span is NOT associated with
+                                            this control, so the select shipped with no accessible
+                                            name (axe select-name, WCAG 4.1.2 A) — the same
+                                            label-with-no-htmlFor idiom found on three other
+                                            surfaces this phase. Named explicitly here. */}
                                         <select
+                                            aria-label="Remind me"
                                             value={preferences.reminder?.window_hours ?? 1}
                                             onChange={(e) => handleReminderWindowChange(parseFloat(e.target.value))}
                                             className="text-sm border border-line rounded-btn px-2 py-1 text-content-secondary bg-surface-input"
@@ -1468,9 +1499,19 @@ function Profile(){
                                         )}
                                     </div>
                                 )}
+                                {/* Reminder helper text — rewritten from the folded todo
+                                    2026-05-09 (UI-SPEC §6.3). It now names WHO is reminded
+                                    and WHEN, in one sentence, and covers BOTH systems this
+                                    single key drives: the pre-event reminder
+                                    (schedulers/reminderScheduler.js) and the check-in nudge
+                                    (workers/reminderWorker.js). The old copy described only
+                                    the second, in "poll deadline" jargon that predates the
+                                    check-in rename, and its second sentence claimed event
+                                    create/update/cancel are "always sent" — which reads as
+                                    false next to the three toggles directly above it. */}
                                 {type.key === 'reminder' && (
-                                    <p className="mt-2 ml-0 sm:ml-4 text-xs text-content-muted">
-                                        Controls availability reminders (50% / 90% of poll deadline). Event creation, updates, and cancellations are always sent.
+                                    <p className="mt-2 ml-0 sm:ml-4 text-sm text-content-secondary">
+                                        You&apos;ll get a reminder before events you&apos;re going to, and a nudge while your group is still waiting on your availability.
                                     </p>
                                 )}
                             </div>
@@ -1509,32 +1550,23 @@ function Profile(){
                         {googleCalendarConnected && ' Your Google Calendar busy times will be automatically excluded from your availability.'}
                     </p>
 
-                    {/* Tabs */}
-                    <div className="flex gap-2 mb-4 border-b">
-                        <button
-                            onClick={() => setAvailabilityTab('recurring')}
-                            className={`px-4 py-2 font-medium text-sm ${
-                                availabilityTab === 'recurring'
-                                    ? 'border-b-2 border-btn-primary text-btn-primary'
-                                    : 'text-content-secondary hover:text-content-primary'
-                            }`}
-                        >
+                    {/* Tab strip — the `Tabs` compound (88-07). The strip's widget
+                        semantics, its selected-state attribute, the panel wiring and the
+                        arrow-key roving tabindex all come from Radix; the hand-rolled
+                        strip this replaces emitted none of them. `availabilityTab` stays
+                        the source of truth (controlled) so nothing else on the page moves. */}
+                    <Tabs value={availabilityTab} onValueChange={setAvailabilityTab}>
+                    <TabsList aria-label="Availability settings" className="mb-4">
+                        <TabsTrigger value="recurring">
                             Schedules
-                        </button>
-                        <button
-                            onClick={() => setAvailabilityTab('specific')}
-                            className={`px-4 py-2 font-medium text-sm ${
-                                availabilityTab === 'specific'
-                                    ? 'border-b-2 border-btn-primary text-btn-primary'
-                                    : 'text-content-secondary hover:text-content-primary'
-                            }`}
-                        >
+                        </TabsTrigger>
+                        <TabsTrigger value="specific">
                             Specific Dates
-                        </button>
-                    </div>
+                        </TabsTrigger>
+                    </TabsList>
 
                     {/* Schedules Tab */}
-                    {availabilityTab === 'recurring' && (
+                    <TabsContent value="recurring">
                         <div>
                             <div className="flex justify-between items-center mb-4">
                                 <div>
@@ -1554,8 +1586,11 @@ function Profile(){
                                     <h4 className="font-semibold mb-3 text-content-primary">New Schedule</h4>
                                     <div className="space-y-3">
                                         <div>
-                                            <label className="block text-sm font-medium text-content-secondary mb-1">Days of Week</label>
-                                            <div className="flex flex-wrap gap-2 mt-1">
+                                            {/* Not a <label>: this names a GROUP of toggle
+                                                buttons, not a single form control, and a label
+                                                with no control is a label pointing at nothing. */}
+                                            <span id="days-of-week-label" className="block text-sm font-medium text-content-secondary mb-1">Days of Week</span>
+                                            <div role="group" aria-labelledby="days-of-week-label" className="flex flex-wrap gap-2 mt-1">
                                                 {[0, 1, 2, 3, 4, 5, 6].map(day => (
                                                     <button
                                                         key={day}
@@ -1594,8 +1629,9 @@ function Profile(){
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <label className="block text-sm font-medium text-content-secondary mb-1">Available From (Start Time)</label>
+                                                <label htmlFor="recurring-start-time" className="block text-sm font-medium text-content-secondary mb-1">Available From (Start Time)</label>
                                                 <input
+                                                    id="recurring-start-time"
                                                     type="time"
                                                     value={recurringForm.startTime}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, startTime: e.target.value })}
@@ -1604,8 +1640,9 @@ function Profile(){
                                                 <p className="text-xs text-content-muted mt-1">When you become available</p>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium text-content-secondary mb-1">Available Until (End Time)</label>
+                                                <label htmlFor="recurring-end-time" className="block text-sm font-medium text-content-secondary mb-1">Available Until (End Time)</label>
                                                 <input
+                                                    id="recurring-end-time"
                                                     type="time"
                                                     value={recurringForm.endTime}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, endTime: e.target.value })}
@@ -1616,8 +1653,9 @@ function Profile(){
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <label className="block text-sm font-medium text-content-secondary mb-1">Start Date</label>
+                                                <label htmlFor="recurring-start-date" className="block text-sm font-medium text-content-secondary mb-1">Start Date</label>
                                                 <input
+                                                    id="recurring-start-date"
                                                     type="date"
                                                     value={recurringForm.start_date}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, start_date: e.target.value })}
@@ -1625,8 +1663,9 @@ function Profile(){
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium text-content-secondary mb-1">End Date (Optional)</label>
+                                                <label htmlFor="recurring-end-date" className="block text-sm font-medium text-content-secondary mb-1">End Date (Optional)</label>
                                                 <input
+                                                    id="recurring-end-date"
                                                     type="date"
                                                     value={recurringForm.end_date}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, end_date: e.target.value })}
@@ -1682,10 +1721,10 @@ function Profile(){
                                 </div>
                             )}
                         </div>
-                    )}
+                    </TabsContent>
 
                     {/* Specific Dates Tab */}
-                    {availabilityTab === 'specific' && (
+                    <TabsContent value="specific">
                         <div>
                             <div className="flex justify-between items-center mb-4">
                                 <div>
@@ -1705,8 +1744,9 @@ function Profile(){
                                     <h4 className="font-semibold mb-3 text-content-primary">New Specific Override</h4>
                                     <div className="space-y-3">
                                         <div>
-                                            <label className="block text-sm font-medium text-content-secondary mb-1">Date</label>
+                                            <label htmlFor="specific-date" className="block text-sm font-medium text-content-secondary mb-1">Date</label>
                                             <input
+                                                id="specific-date"
                                                 type="date"
                                                 value={specificForm.date}
                                                 onChange={(e) => setSpecificForm({ ...specificForm, date: e.target.value })}
@@ -1715,8 +1755,9 @@ function Profile(){
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <label className="block text-sm font-medium text-content-secondary mb-1">Available From (Start Time)</label>
+                                                <label htmlFor="specific-start-time" className="block text-sm font-medium text-content-secondary mb-1">Available From (Start Time)</label>
                                                 <input
+                                                    id="specific-start-time"
                                                     type="time"
                                                     value={specificForm.startTime}
                                                     onChange={(e) => setSpecificForm({ ...specificForm, startTime: e.target.value })}
@@ -1725,8 +1766,9 @@ function Profile(){
                                                 <p className="text-xs text-content-muted mt-1">When you become available</p>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium text-content-secondary mb-1">Available Until (End Time)</label>
+                                                <label htmlFor="specific-end-time" className="block text-sm font-medium text-content-secondary mb-1">Available Until (End Time)</label>
                                                 <input
+                                                    id="specific-end-time"
                                                     type="time"
                                                     value={specificForm.endTime}
                                                     onChange={(e) => setSpecificForm({ ...specificForm, endTime: e.target.value })}
@@ -1794,7 +1836,8 @@ function Profile(){
                                 </div>
                             )}
                         </div>
-                    )}
+                    </TabsContent>
+                    </Tabs>
                 </div>
 
                 {/* Tutorial Section */}
@@ -1835,6 +1878,7 @@ function Profile(){
                         <div className="flex flex-col sm:flex-row gap-2">
                             <input
                                 type="text"
+                                aria-label="BoardGameGeek username"
                                 value={bggUsername}
                                 onChange={(e) => setBggUsername(e.target.value)}
                                 placeholder="Your BGG username"
@@ -1873,6 +1917,7 @@ function Profile(){
                             <div className="flex flex-col sm:flex-row gap-2 mb-3">
                                 <input
                                     type="text"
+                                    aria-label="Search BoardGameGeek"
                                     value={bggSearchQuery}
                                     onChange={(e) => setBggSearchQuery(e.target.value)}
                                     onKeyPress={(e) => e.key === 'Enter' && searchBGG()}
