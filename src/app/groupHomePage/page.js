@@ -8,7 +8,7 @@ import ManageMembers from '../components/ManageMembers';
 import { listsAPI, groupsAPI, eventsAPI, API_BASE_URL } from '../../lib/api';
 import GroupGamesList from '../components/GroupGamesList';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
-import { getTextStyle, getSubtitleStyle } from '../../lib/colorUtils';
+import { getTextStyle, getSubtitleStyle, resolveGroupBackgroundColor } from '../../lib/colorUtils';
 import SafeImage from '../components/SafeImage';
 import EventCalendar from '../components/EventCalendar';
 import PendingMemberBanner from '../components/PendingMemberBanner';
@@ -279,6 +279,10 @@ function GroupHomePage(){
         );
     }
 
+    // null when the group has no colour of its own — the identity header then
+    // keeps its themed surface class instead of an inline override (D-28).
+    const headerBgColor = resolveGroupBackgroundColor(Group?.background_color);
+
     return (
         // POLL-02: FriendshipStatusProvider lifted to root layout — see
         // src/app/layout.js. Nested mount removed so NotificationBell +
@@ -304,10 +308,16 @@ function GroupHomePage(){
                 and full-bleeding it deletes that anchor. Padding is depth-2
                 (12px phone / 24px desktop) only. Removing this exemption is a decision, not a
                 cleanup. */}
+            {/* The old hardcoded near-black fallback here was a LOCAL patch of
+                the D-28 white-card bug: this one surface pinned a dark value
+                because the shared fallback resolved to white. Phase 88-22 fixed
+                the shared fallback, so the patch drops and the header falls back
+                to the themed elevated surface — which also makes it correct in
+                light mode, where a hardcoded near-black header was not. */}
             <div
-                className="mb-6 flex flex-col gap-4 p-3 md:p-6 rounded-lg relative overflow-visible"
+                className="mb-6 flex flex-col gap-4 p-3 md:p-6 rounded-lg relative overflow-visible bg-surface-elevated"
                 style={{
-                    backgroundColor: Group?.background_color || '#111418',
+                    ...(headerBgColor && { backgroundColor: headerBgColor }),
                     ...safeBgImageStyle(Group?.background_image_url),
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
@@ -320,7 +330,15 @@ function GroupHomePage(){
                     left: 0,
                     right: 0,
                     bottom: 0,
-                    backgroundColor: Group?.background_image_url ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.15)',
+                    // The dim exists to darken a user-chosen colour or cover
+                    // image so the title reads over it. With neither, the header
+                    // is on a themed surface that already has its contrast — a
+                    // wash there just muddies the token (D-28).
+                    backgroundColor: Group?.background_image_url
+                        ? 'rgba(0, 0, 0, 0.4)'
+                        : headerBgColor
+                            ? 'rgba(0, 0, 0, 0.15)'
+                            : 'transparent',
                     zIndex: 0,
                     borderRadius: 'inherit',
                 }} />
@@ -346,13 +364,13 @@ function GroupHomePage(){
                     <div className="flex-1 min-w-0">
                         <h1
                             className="text-2xl md:text-3xl font-bold wrap-break-word"
-                            style={getTextStyle(!!Group?.background_image_url, Group?.background_color || '#1f2937')}
+                            style={getTextStyle(!!Group?.background_image_url, headerBgColor)}
                         >
                             {Group?.name || 'Group'}
                         </h1>
                         <p
                             className="mt-1"
-                            style={getSubtitleStyle(!!Group?.background_image_url, Group?.background_color || '#1f2937')}
+                            style={getSubtitleStyle(!!Group?.background_image_url, headerBgColor)}
                         >
                             {gamesList.length} {gamesList.length === 1 ? 'game' : 'games'} played
                             {UserList && UserList.length > 0 && (

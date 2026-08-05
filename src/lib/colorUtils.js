@@ -50,10 +50,25 @@ const SUBTITLE_DARK_BG = 'rgba(255, 255, 255, 0.95)';
 // --- Calendar tile text color constants (computed poles) ---
 const TILE_TEXT_LIGHT_BG = '#1e40af'; // Blue text on light calendar tiles
 const TILE_TEXT_DARK_BG = '#ffffff';
+const TEXT_MUTED_ON_LIGHT_BG = '#6b7280'; // Muted body text on a light ground
 
 // --- Standard contrast color constants (computed poles) ---
 const CONTRAST_DARK = '#1f2937';
 const CONTRAST_LIGHT = '#ffffff';
+
+/*
+ * Exported poles. CalendarListView's `EventRow` and EventDayModal's rows carry
+ * their own bespoke contrast branches (different shadow weights from
+ * getTextStyle's — a shipped visual, not drift), and used to re-declare these
+ * literals locally. Importing them keeps raw colour values in exactly ONE
+ * allowlisted file, which is what makes Req 2's grep gate meaningful: a hex
+ * value appearing in a component file is then always a defect, never a copy of
+ * a legitimate pole.
+ */
+export const TEXT_ON_LIGHT = CONTRAST_DARK;
+export const TEXT_ON_DARK = CONTRAST_LIGHT;
+export const SUBTEXT_ON_LIGHT = SUBTITLE_MEDIUM_LIGHT_BG;
+export const SUBTEXT_MUTED_ON_LIGHT = TEXT_MUTED_ON_LIGHT_BG;
 
 /*
  * --- No-colour fallbacks (D-28) ---
@@ -154,6 +169,21 @@ export function getBrightness(hexColor) {
 export function getContrastColor(hexColor) {
   const brightness = getBrightness(hexColor);
   return brightness > 128 ? CONTRAST_DARK : CONTRAST_LIGHT;
+}
+
+/**
+ * True when a background is dark enough to need light text.
+ *
+ * The same predicate as `getContrastColor(c) === <the light pole>`, expressed
+ * without the pole so callers never need the literal (Req 2). Note this is only
+ * meaningful for a REAL colour: with no colour the element is on the app's
+ * themed surface, so ask `isUnsetBackgroundColor` first.
+ *
+ * @param {string} hexColor - Background hex color
+ * @returns {boolean}
+ */
+export function isDarkBackground(hexColor) {
+  return getBrightness(hexColor) <= 128;
 }
 
 /**

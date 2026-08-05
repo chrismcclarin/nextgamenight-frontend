@@ -1,6 +1,11 @@
 'use client';
 import { getEventsForDate, isToday } from '../../lib/calendarUtils';
-import { getEventTileTextColor, getBrightness } from '../../lib/colorUtils';
+import {
+  getEventTileTextColor,
+  getBrightness,
+  resolveGroupBackgroundColor,
+  SUBTEXT_MUTED_ON_LIGHT,
+} from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import SafeImage from './SafeImage';
 import RsvpCount from './RsvpCount';
@@ -158,7 +163,9 @@ export default function CalendarMonthView({
                           );
                         }
                         // Full variant (user-home)
-                        const groupBgColor = event.Group?.background_color || '#ffffff';
+                        // null when the group has no colour of its own (D-28) —
+                        // the tile then keeps the themed month-cell ground.
+                        const groupBgColor = resolveGroupBackgroundColor(event.Group?.background_color);
                         const groupProfilePic = event.Group?.profile_picture_url;
                         const groupBgImage = event.Group?.background_image_url;
 
@@ -171,11 +178,13 @@ export default function CalendarMonthView({
                             }}
                             className={`text-xs p-1 rounded-sm truncate hover:opacity-90 transition-opacity flex items-center gap-1 font-medium cursor-pointer`}
                             style={{
-                              backgroundColor: groupBgColor,
+                              ...(groupBgColor && { backgroundColor: groupBgColor }),
                               ...safeBgImageStyle(groupBgImage),
                               backgroundSize: 'cover',
                               backgroundPosition: 'center',
-                              color: isPastDate ? '#6b7280' : getEventTileTextColor(groupBgColor),
+                              color: isPastDate
+                                ? (groupBgColor ? SUBTEXT_MUTED_ON_LIGHT : 'var(--color-content-muted)')
+                                : getEventTileTextColor(groupBgColor),
                               position: 'relative',
                               zIndex: 1,
                               border: `1px solid ${isPastDate ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.2)'}`,
@@ -218,6 +227,12 @@ export default function CalendarMonthView({
                                       WebkitTextStroke: groupBgImage,
                                       fontWeight: '600',
                                     };
+                                  }
+                                  // No group colour: the tile is on the themed
+                                  // month cell, and a text shadow tuned for a
+                                  // coloured ground only muddies it there.
+                                  if (!groupBgColor) {
+                                    return { fontWeight: '600' };
                                   }
                                   const brightness = getBrightness(groupBgColor);
                                   return {

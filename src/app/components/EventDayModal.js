@@ -1,6 +1,15 @@
 'use client';
 import { useState } from 'react';
-import { getContrastColor } from '../../lib/colorUtils';
+import {
+  getSubtitleStyle,
+  getTextStyle,
+  isDarkBackground,
+  resolveGroupBackgroundColor,
+  SUBTEXT_MUTED_ON_LIGHT,
+  SUBTEXT_ON_LIGHT,
+  TEXT_ON_DARK,
+  TEXT_ON_LIGHT,
+} from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { formatTime, formatLongDate } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
@@ -85,17 +94,21 @@ export default function EventDayModal({
               {selectedDay.events.map(event => {
                 const eventDate = new Date(event.start_date);
                 const isPastEvent = eventDate < new Date();
-                const groupBgColor = event.Group?.background_color || '#ffffff';
+                // null when the group has no colour of its own (D-28).
+                const groupBgColor = resolveGroupBackgroundColor(event.Group?.background_color);
                 const groupProfilePic = event.Group?.profile_picture_url;
                 const groupBgImage = event.Group?.background_image_url;
+                // No image and no group colour: the row is on the themed
+                // surface, so the shared fallback resolution owns its text.
+                const isThemedRow = !groupBgImage && !groupBgColor;
 
                 return (
                   <div
                     key={event.id}
                     onClick={() => onEventClick(event)}
-                    className={`p-4 border rounded-lg transition-all hover:shadow-md cursor-pointer`}
+                    className={`p-4 border rounded-lg transition-all hover:shadow-md cursor-pointer bg-surface-card`}
                     style={{
-                      backgroundColor: groupBgColor,
+                      ...(groupBgColor && { backgroundColor: groupBgColor }),
                       ...safeBgImageStyle(groupBgImage),
                       backgroundSize: 'cover',
                       backgroundPosition: 'center',
@@ -134,12 +147,12 @@ export default function EventDayModal({
                             <h4
                               className="font-semibold"
                               style={(() => {
+                                if (isThemedRow) return getTextStyle(false, null);
                                 const hasBgImage = !!groupBgImage;
-                                const textColor = hasBgImage ? '#1f2937' : getContrastColor(groupBgColor);
-                                const isDark = !hasBgImage && getContrastColor(groupBgColor) === '#ffffff';
+                                const isDark = !hasBgImage && isDarkBackground(groupBgColor);
 
                                 return {
-                                  color: textColor,
+                                  color: isDark ? TEXT_ON_DARK : TEXT_ON_LIGHT,
                                   textShadow: hasBgImage
                                     ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
                                     : (isDark
@@ -154,9 +167,14 @@ export default function EventDayModal({
                             <p
                               className="text-sm"
                               style={(() => {
+                                if (isThemedRow) return getSubtitleStyle(false, null);
                                 const hasBgImage = !!groupBgImage;
-                                const textColor = hasBgImage ? '#4b5563' : (getContrastColor(groupBgColor) === '#ffffff' ? 'rgba(255,255,255,0.9)' : '#6b7280');
-                                const isDark = !hasBgImage && getContrastColor(groupBgColor) === '#ffffff';
+                                const isDark = !hasBgImage && isDarkBackground(groupBgColor);
+                                const textColor = hasBgImage
+                                  ? SUBTEXT_ON_LIGHT
+                                  : isDark
+                                    ? 'rgba(255,255,255,0.9)'
+                                    : SUBTEXT_MUTED_ON_LIGHT;
 
                                 return {
                                   color: textColor,

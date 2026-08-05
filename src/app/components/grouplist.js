@@ -6,7 +6,7 @@ import Link from 'next/link';
 import GroupSettings from './GroupSettings';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { groupsAPI } from '../../lib/api';
-import { getTextStyle } from '../../lib/colorUtils';
+import { getTextStyle, resolveGroupBackgroundColor } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { formatDate } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
@@ -179,7 +179,9 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
               userRole = userMember?.UserGroup?.role || userMember?.role;
             }
             const canEdit = userRole === 'owner' || userRole === 'admin';
-            const bgColor = group.background_color || '#ffffff';
+            // null when the group has no colour of its own — the inline
+            // backgroundColor is then omitted so `bg-surface-card` wins (D-28).
+            const bgColor = resolveGroupBackgroundColor(group.background_color);
             const bgImage = group.background_image_url;
             const profilePic = group.profile_picture_url;
 
@@ -196,7 +198,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   }
                 }}
                 style={{
-                  backgroundColor: bgColor,
+                  ...(bgColor && { backgroundColor: bgColor }),
                   ...safeBgImageStyle(bgImage),
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
@@ -242,9 +244,17 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         {group.name}
                       </h3>
                     </div>
+                    {/* DECISION Phase 88-22 (D-28): the players pill does NOT take
+                        the group's text style, unlike its three siblings in this
+                        card. It paints its OWN surface (`bg-btn-primary`), so it
+                        must use that surface's paired token — the group style is
+                        computed against the CARD's ground, and applying it inline
+                        beat `text-btn-primary-text` and put slate text on purple
+                        for any colourless group. Chosen OVER keeping the sibling
+                        symmetry. Re-adding the inline style is a decision, not a
+                        cleanup. */}
                     <span
                       className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-semibold ml-2 shrink-0"
-                      style={getTextStyle(bgImage, bgColor)}
                     >
                       {groupUsers.length} {groupUsers.length === 1 ? 'player' : 'players'}
                     </span>
