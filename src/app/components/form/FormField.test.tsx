@@ -37,6 +37,35 @@ describe('FormField a11y contract', () => {
     expect(input).not.toHaveAttribute('aria-invalid');
     expect(screen.queryByRole('alert')).toBeNull();
   });
+
+  // Pin for the Phase 88-03 DECISION in FormField.tsx (UI-SPEC §4.2): weight 600 has
+  // exactly one home, the Button primitive. The default label is 14px/400 with COLOUR
+  // carrying the emphasis. This test fails if a later phase restores semibold here.
+  it('renders the default label at weight 400, with colour carrying the emphasis', () => {
+    render(
+      <FormField label="Email">
+        <input type="text" />
+      </FormField>
+    );
+    const label = screen.getByText('Email');
+    expect(label.tagName).toBe('LABEL');
+    expect(label).not.toHaveClass('font-semibold');
+    expect(label).not.toHaveClass('font-bold');
+    expect(label).not.toHaveClass('font-medium');
+    expect(label).toHaveClass('font-normal');
+    expect(label).toHaveClass('text-content-primary');
+  });
+
+  it('still lets a call site override the label classes', () => {
+    render(
+      <FormField label="Email" labelClassName="sr-only">
+        <input type="text" />
+      </FormField>
+    );
+    const label = screen.getByText('Email');
+    expect(label).toHaveClass('sr-only');
+    expect(label).not.toHaveClass('font-normal');
+  });
 });
 
 function SelectHarness({ error }: { error?: string }) {
