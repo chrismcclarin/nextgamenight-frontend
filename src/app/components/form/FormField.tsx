@@ -33,8 +33,12 @@ import * as React from 'react';
    WHY THE EXCEPTION LIST LOSES: it re-scatters the decision this wrapper exists to centralize,
    and a list nobody can see from the call site is a list that drifts.
 
-   THIS IS A NAMED TRADE-OFF, NOT A SILENT EDIT: it changes label rendering in EVERY form in
-   the app. `labelClassName` stays overridable for a genuine one-off. `FormField.test.tsx`
+   THIS IS A NAMED TRADE-OFF, NOT A SILENT EDIT: it changes label rendering in every form that
+   uses this wrapper, and it is the default every future adopter inherits. MEASURED BLAST
+   RADIUS AT THE TIME OF THE EDIT (2026-08-04): one production consumer, `ScheduleForm.js`
+   (8 fields, :214-:365), plus `SelectField.tsx`, which has no production consumer yet — so the
+   change is preventative, taken here precisely BEFORE the Req 1 adoption pass multiplies it.
+   `labelClassName` stays overridable for a genuine one-off. `FormField.test.tsx`
    pins the absence of a semibold utility so a later phase cannot quietly restore 600 here. */
 export interface FormFieldProps {
   /** Visible label text (14px/400), wired to the control via htmlFor/id. */
