@@ -24,8 +24,10 @@
 //   keyboard, the composed axe audit, the Req 11 gate pins and the Req 12 /
 //   OI-5 toast pins. The a11y matcher is registered globally in
 //   `vitest.setup.ts` — do NOT add a per-file `expect.extend`.
-// * plan 88-19 extends this file with the 16px control pins for the profile's
-//   inputs/selects.
+// * plan 88-19 (SPEC Reqs 1/2/7) — LANDED. Its pins live at the bottom of this
+//   file: the 16px control sweep over every control-bearing surface, the type
+//   scale on the page's headings, the warm loading copy, and the keyed
+//   per-row save status (DEF-88-10-02).
 //
 // DECISION Phase 88 plan 06 (now historical — kept as the record): the extension
 // points above were originally written as PROSE, not as the literal
@@ -880,5 +882,134 @@ describe('userProfile a11y audit', () => {
     const { container } = renderProfile({ sms_enabled: true, phone_verified: false });
     await screen.findByRole('switch', { name: 'New Event SMS notifications' });
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+// ===========================================================================
+// Plan 88-19 — Req 1 (the 16px iOS focus-zoom floor)
+// ===========================================================================
+// Swept, not enumerated, for the reason 88-20 gives on the same pin in
+// gameDetail: the failure this phase closes is not "control X is 12px", it is
+// "nothing notices when a sub-16px control lands". A named-control pin goes
+// green forever the moment an eighth availability field is added.
+//
+// jsdom compiles no Tailwind, so a computed font-size is meaningless here — the
+// assertion is on the class contract the `Input`/`SelectControl` primitives
+// supply (`text-base`, unconditional, no breakpoint variant).
+//
+// NOTE for whoever extends this: the plan's shell gate
+// (`! grep -nE "<(input|select|textarea)[^>]*text-(xs|sm)"`) is line-based and
+// every control in this file is written across multiple lines, so it can never
+// match — it passed before any of this work was done. These pins are the real
+// gate. Do not delete them in favour of the grep.
+// ---------------------------------------------------------------------------
+
+/** Every form control currently in the document, portal-included. */
+function allControls(): HTMLElement[] {
+  return Array.from(
+    document.body.querySelectorAll<HTMLElement>('input, select, textarea')
+  );
+}
+
+function sizeOffenders(): string[] {
+  return allControls()
+    .filter((c) => /\btext-(xs|sm)\b/.test(c.className))
+    .map((c) => `${c.tagName.toLowerCase()}#${c.id || '(no id)'}: ${c.className}`);
+}
+
+function unsizedTextEntry(): string[] {
+  // The availability "Mark as available" checkbox is excluded BY TYPE, not by
+  // name: iOS focus-zoom is a text-entry behaviour and the primitive's
+  // `block w-full p-2` would stretch the box across the form. See the marker at
+  // its call site.
+  return allControls()
+    .filter((c) => !(c instanceof HTMLInputElement && c.type === 'checkbox'))
+    .filter((c) => !/\btext-base\b/.test(c.className))
+    .map((c) => `${c.tagName.toLowerCase()}#${c.id || '(no id)'}: ${c.className}`);
+}
+
+/**
+ * Open every control-bearing surface reachable from the DEFAULT tab: the
+ * username editor, the recurring-schedule form and the BGG search panel. The
+ * phone controls come from `sms_enabled`, so the caller supplies that.
+ *
+ * The Specific Dates form is deliberately NOT here — Radix unmounts the
+ * inactive tab panel, so the two forms cannot be open at once. It has its own
+ * test below.
+ */
+async function openDefaultTabControls(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: 'Edit username' }));
+  await user.click(screen.getByRole('button', { name: '+ Add Schedule' }));
+  await user.click(screen.getByRole('button', { name: '+ Add from BGG' }));
+}
+
+describe('userProfile form controls (Req 1 — the 16px floor)', () => {
+  it('carries no sub-16px size class on any control', async () => {
+    const user = userEvent.setup();
+    renderProfile({ sms_enabled: true, phone_verified: false });
+    await openDefaultTabControls(user);
+
+    // Guard against the sweep silently passing over an empty set.
+    expect(allControls().length).toBeGreaterThanOrEqual(10);
+    expect(sizeOffenders()).toEqual([]);
+  });
+
+  it('renders every text-entry control at text-base', async () => {
+    const user = userEvent.setup();
+    renderProfile({ sms_enabled: true, phone_verified: false });
+    await openDefaultTabControls(user);
+
+    expect(unsizedTextEntry()).toEqual([]);
+  });
+
+  it('holds the Specific Dates form to the same floor', async () => {
+    const user = userEvent.setup();
+    renderProfile();
+
+    await user.click(await screen.findByRole('tab', { name: 'Specific Dates' }));
+    await user.click(await screen.findByRole('button', { name: '+ Add Override' }));
+
+    // 3 date/time controls + the excluded checkbox, plus the timezone combobox
+    // and the reminder select that render on every tab.
+    expect(allControls().length).toBeGreaterThanOrEqual(6);
+    expect(sizeOffenders()).toEqual([]);
+    expect(unsizedTextEntry()).toEqual([]);
+  });
+
+  it('holds the verify-code step to the same floor', async () => {
+    renderProfile({ sms_enabled: true, phone_verified: false });
+
+    const phone = await screen.findByRole('textbox', { name: 'Phone number' });
+    // A real, parseable US number: libphonenumber rejects the 555-01xx
+    // fictional range, so "Save & Verify" stays disabled with a 555 number and
+    // the flow never advances.
+    fireEvent.change(phone, { target: { value: '+1 415 555 2671' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Verify' }));
+
+    await screen.findByRole('textbox', { name: 'Verification code' });
+    expect(sizeOffenders()).toEqual([]);
+    expect(unsizedTextEntry()).toEqual([]);
+  });
+
+  // The one fix that would satisfy a naive reading of Req 1 and still ship the
+  // blocker: `md:` is the breakpoint phones sit BELOW, so a size variant applies
+  // the un-zoomable size to desktop and the zooming size to the phone. Two
+  // controls on this surface shipped exactly that.
+  //
+  // Asserted over the RENDERED controls rather than by grepping the source, on
+  // purpose: a source grep for the offending utility also matches the comment
+  // that explains why it is banned, and the surrounding prose in this file.
+  // Two other elements on this surface legitimately carry a breakpoint size
+  // (a body <p> and two `.btn` labels) and are Req 8 / the `.btn` census's, not
+  // Req 1's — a file-wide grep could not tell them apart from a control.
+  it('never promotes a control to 16px at a breakpoint', async () => {
+    const user = userEvent.setup();
+    renderProfile({ sms_enabled: true, phone_verified: false });
+    await openDefaultTabControls(user);
+
+    const variantSized = allControls()
+      .filter((c) => /\b[a-z]+:text-[a-z0-9]+\b/.test(c.className))
+      .map((c) => `${c.tagName.toLowerCase()}#${c.id || '(no id)'}: ${c.className}`);
+    expect(variantSized).toEqual([]);
   });
 });

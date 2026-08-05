@@ -33,6 +33,8 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { Modal } from '../components/Modal';
 import { Combobox } from '../../components/ui/Combobox';
+import { Input, SelectControl } from '../../components/ui/Input';
+import { ErrorFallback } from '../../components/ui/ErrorFallback';
 
 const NOTIFICATION_TYPES = [
     { key: 'event_created', label: 'New Event', description: 'When a game session is scheduled' },
@@ -1106,13 +1108,30 @@ function Profile(){
                             <div className="min-w-0 flex-1">
                                 {editingUsername ? (
                                     <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                                        <input
-                                            type="text"
+                                        {/* DECISION Phase 88-19 (Req 1 + Req 2): the inline
+                                            username editor renders through the `Input`
+                                            PRIMITIVE at body size — chosen OVER keeping it
+                                            sized to MIRROR the <h1> it replaces, which is
+                                            what it shipped as (`text-lg md:text-xl
+                                            font-bold`).
+
+                                            Two reasons the mirror loses. (1) Task 2 moves
+                                            that <h1> to the Display role, 30px/700 — a
+                                            30px-tall text field is absurd on a 375px phone,
+                                            so the mirror was already going to break, and
+                                            "mirror it, but smaller" is a size nobody owns.
+                                            (2) §4.2 gives 700 to headings and 400 to body;
+                                            an input is body, and a control that renders like
+                                            a heading hides that it is editable at all.
+
+                                            Re-styling this to match the heading again is a
+                                            decision, not a cleanup. */}
+                                        <Input
                                             aria-label="Username"
                                             value={username}
                                             onChange={(e) => setUsername(e.target.value)}
                                             maxLength={50}
-                                            className="flex-1 px-3 py-2 border border-line rounded-btn text-content-primary bg-surface-input text-lg md:text-xl font-bold"
+                                            className="flex-1"
                                             placeholder="Enter username"
                                             autoFocus
                                         />
@@ -1191,17 +1210,17 @@ function Profile(){
                                                 {/* Named explicitly: this control has no visible
                                                     label of any kind (a placeholder is not a
                                                     name — axe `label`, WCAG 4.1.2 A). */}
-                                                <input
+                                                <Input
                                                     type="tel"
                                                     aria-label="Phone number"
                                                     value={phoneInput}
                                                     onChange={(e) => handlePhoneChange(e.target.value)}
                                                     placeholder="+1 555-123-4567"
-                                                    className={`w-full px-3 py-2 border rounded-btn text-sm bg-surface-input text-content-primary ${
+                                                    className={
                                                         phoneValidation.valid ? 'border-status-success' :
                                                         phoneValidation.error ? 'border-status-error' :
-                                                        'border-line'
-                                                    }`}
+                                                        ''
+                                                    }
                                                 />
                                                 {phoneValidation.valid && (
                                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-status-success">
@@ -1226,12 +1245,12 @@ function Profile(){
 
                                     {phoneState === 'saving' && (
                                         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                                            <input
+                                            <Input
                                                 type="tel"
                                                 aria-label="Phone number"
                                                 value={phoneInput}
                                                 disabled
-                                                className="flex-1 px-3 py-2 border border-line rounded-btn text-sm bg-surface-card-hover text-content-primary"
+                                                className="flex-1 bg-surface-card-hover"
                                             />
                                             <button
                                                 disabled
@@ -1248,14 +1267,13 @@ function Profile(){
                                                 Code sent to <span className="font-medium">{phoneValidation.formatted || phoneInput}</span>
                                             </p>
                                             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                                                <input
-                                                    type="text"
+                                                <Input
                                                     aria-label="Verification code"
                                                     value={verificationCode}
                                                     onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                                                     placeholder="Enter 6-digit code"
                                                     maxLength={6}
-                                                    className="w-32 px-3 py-2 border border-line rounded-btn text-sm text-center tracking-widest bg-surface-input text-content-primary"
+                                                    className="w-32 text-center tracking-widest"
                                                 />
                                                 <button
                                                     onClick={handleVerifyCode}
@@ -1577,16 +1595,23 @@ function Profile(){
                                             name (axe select-name, WCAG 4.1.2 A) — the same
                                             label-with-no-htmlFor idiom found on three other
                                             surfaces this phase. Named explicitly here. */}
-                                        <select
+                                        {/* `w-auto` is the ONLY geometry override: the primitive
+                                            is `block w-full` by design (88-03), which would
+                                            stretch this inline dropdown across the whole matrix
+                                            row and push its status indicator onto a second line
+                                            at phone width. Everything else — the 16px floor, the
+                                            44px phone touch height, the ring — comes from the
+                                            primitive and must not be re-inlined here. */}
+                                        <SelectControl
                                             aria-label="Remind me"
                                             value={preferences.reminder?.window_hours ?? 1}
                                             onChange={(e) => handleReminderWindowChange(parseFloat(e.target.value))}
-                                            className="text-sm border border-line rounded-btn px-2 py-1 text-content-secondary bg-surface-input"
+                                            className="w-auto"
                                         >
                                             {REMINDER_WINDOWS.map(w => (
                                                 <option key={w.value} value={w.value}>{w.label}</option>
                                             ))}
-                                        </select>
+                                        </SelectControl>
                                         {saveStatus?.type === 'reminder' && saveStatus.channel === 'window' && saveStatus.status === 'saving' && (
                                             <span className="text-xs text-content-muted">Saving...</span>
                                         )}
@@ -1732,23 +1757,21 @@ function Profile(){
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
                                                 <label htmlFor="recurring-start-time" className="block text-sm font-medium text-content-secondary mb-1">Available From (Start Time)</label>
-                                                <input
+                                                <Input
                                                     id="recurring-start-time"
                                                     type="time"
                                                     value={recurringForm.startTime}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, startTime: e.target.value })}
-                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
                                                 <p className="text-xs text-content-muted mt-1">When you become available</p>
                                             </div>
                                             <div>
                                                 <label htmlFor="recurring-end-time" className="block text-sm font-medium text-content-secondary mb-1">Available Until (End Time)</label>
-                                                <input
+                                                <Input
                                                     id="recurring-end-time"
                                                     type="time"
                                                     value={recurringForm.endTime}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, endTime: e.target.value })}
-                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
                                                 <p className="text-xs text-content-muted mt-1">When you become unavailable</p>
                                             </div>
@@ -1756,22 +1779,20 @@ function Profile(){
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
                                                 <label htmlFor="recurring-start-date" className="block text-sm font-medium text-content-secondary mb-1">Start Date</label>
-                                                <input
+                                                <Input
                                                     id="recurring-start-date"
                                                     type="date"
                                                     value={recurringForm.start_date}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, start_date: e.target.value })}
-                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
                                             </div>
                                             <div>
                                                 <label htmlFor="recurring-end-date" className="block text-sm font-medium text-content-secondary mb-1">End Date (Optional)</label>
-                                                <input
+                                                <Input
                                                     id="recurring-end-date"
                                                     type="date"
                                                     value={recurringForm.end_date}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, end_date: e.target.value })}
-                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
                                             </div>
                                         </div>
@@ -1858,40 +1879,47 @@ function Profile(){
                                     <div className="space-y-3">
                                         <div>
                                             <label htmlFor="specific-date" className="block text-sm font-medium text-content-secondary mb-1">Date</label>
-                                            <input
+                                            <Input
                                                 id="specific-date"
                                                 type="date"
                                                 value={specificForm.date}
                                                 onChange={(e) => setSpecificForm({ ...specificForm, date: e.target.value })}
-                                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                             />
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
                                                 <label htmlFor="specific-start-time" className="block text-sm font-medium text-content-secondary mb-1">Available From (Start Time)</label>
-                                                <input
+                                                <Input
                                                     id="specific-start-time"
                                                     type="time"
                                                     value={specificForm.startTime}
                                                     onChange={(e) => setSpecificForm({ ...specificForm, startTime: e.target.value })}
-                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
                                                 <p className="text-xs text-content-muted mt-1">When you become available</p>
                                             </div>
                                             <div>
                                                 <label htmlFor="specific-end-time" className="block text-sm font-medium text-content-secondary mb-1">Available Until (End Time)</label>
-                                                <input
+                                                <Input
                                                     id="specific-end-time"
                                                     type="time"
                                                     value={specificForm.endTime}
                                                     onChange={(e) => setSpecificForm({ ...specificForm, endTime: e.target.value })}
-                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
                                                 <p className="text-xs text-content-muted mt-1">When you become unavailable</p>
                                             </div>
                                         </div>
                                         <div>
                                             <label className="flex items-center gap-2">
+                                                {/* DECISION Phase 88-19 (Req 1): this stays a NATIVE
+                                                    checkbox and is deliberately NOT routed through
+                                                    the `Input` primitive like the seven date/time
+                                                    controls above it. iOS focus-zoom is a TEXT-ENTRY
+                                                    behaviour — a checkbox has no text to zoom — and
+                                                    the primitive's `block w-full p-2` would stretch
+                                                    the box across the whole form. Same exclusion, on
+                                                    the same grounds, as gameDetail's recommend
+                                                    checkbox (88-20). The Req 1 test pin excludes it
+                                                    BY TYPE, so adding it here would fail. */}
                                                 <input
                                                     type="checkbox"
                                                     checked={specificForm.isAvailable}
@@ -2000,13 +2028,20 @@ function Profile(){
                             Enter your BoardGameGeek username to import all games from your BGG collection at once.
                         </p>
                         <div className="flex flex-col sm:flex-row gap-2">
-                            <input
-                                type="text"
+                            {/* This and the BGG search field below shipped as 14px promoted
+                                to 16px at a breakpoint — the exact anti-pattern §8.2 names.
+                                `md` is the breakpoint phones sit BELOW, so the variant
+                                applied the un-zoomable size to desktop and the zooming size
+                                to the only viewport that suffers from it. The primitive
+                                carries 16px unconditionally and must not be re-variant-ed.
+                                (Spelled out in words rather than the utility itself so a
+                                grep-based gate does not match this comment.) */}
+                            <Input
                                 aria-label="BoardGameGeek username"
                                 value={bggUsername}
                                 onChange={(e) => setBggUsername(e.target.value)}
                                 placeholder="Your BGG username"
-                                className="flex-1 p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm md:text-base"
+                                className="flex-1"
                                 disabled={importingCollection}
                             />
                             <button
@@ -2039,14 +2074,13 @@ function Profile(){
                     {showBggSearch && (
                         <div className="mb-6 p-3 md:p-4 border rounded-sm bg-surface-page">
                             <div className="flex flex-col sm:flex-row gap-2 mb-3">
-                                <input
-                                    type="text"
+                                <Input
                                     aria-label="Search BoardGameGeek"
                                     value={bggSearchQuery}
                                     onChange={(e) => setBggSearchQuery(e.target.value)}
                                     onKeyPress={(e) => e.key === 'Enter' && searchBGG()}
                                     placeholder="Search BoardGameGeek..."
-                                    className="flex-1 p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm md:text-base"
+                                    className="flex-1"
                                 />
                                 <button
                                     onClick={searchBGG}
