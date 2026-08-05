@@ -56,6 +56,8 @@ vi.mock('@/lib/api', async (importOriginal) => {
   };
 });
 
+import { toast } from 'sonner';
+
 import ManageMembers from './ManageMembers';
 import { groupsAPI, invitesAPI } from '@/lib/api';
 
@@ -306,6 +308,57 @@ describe('ManageMembers AR R2-M10 — only ESCALATION to admin is gated', () => 
       expect(groupsAPI.updateUserRole as Mock).toHaveBeenCalledWith(GROUP_ID, TARGET_UUID, 'member')
     );
     expect(screen.queryByRole('dialog', { name: /an admin\?/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('ManageMembers Req 12 — success receipts for the two named silent mutations', () => {
+  it('member removal produces "Member removed" on BOTH entry points', async () => {
+    await openMembersModal();
+    fireEvent.click(await screen.findByText('Remove'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Member removed'));
+
+    // The mobile kebab shares the same commit path, so it gets the same receipt.
+    (toast.success as Mock).mockClear();
+    fireEvent.click(await screen.findByLabelText('Member actions'));
+    const menu = await screen.findByRole('menu');
+    const removeItem = within(menu).getByRole('menuitem', { name: 'Remove' });
+    fireEvent.click(removeItem);
+    fireEvent.click(removeItem);
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Member removed'));
+  });
+
+  it('a role change produces "Role updated" on the escalation AND the demotion path', async () => {
+    await openMembersModal();
+    const select = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'admin' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Make admin' }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Role updated'));
+
+    cleanup();
+    (toast.success as Mock).mockClear();
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue([
+      ROSTER[0],
+      { ...ROSTER[1], UserGroup: { role: 'admin' } },
+      ROSTER[2],
+    ]);
+    await openMembersModal();
+    const demote = (await screen.findAllByRole('combobox'))[0] as HTMLSelectElement;
+    fireEvent.change(demote, { target: { value: 'member' } });
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Role updated'));
+  });
+
+  it('no receipt on this surface uses "successfully" or an exclamation mark', async () => {
+    await openMembersModal();
+    fireEvent.click(await screen.findByText('Remove'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+
+    for (const [message] of (toast.success as Mock).mock.calls) {
+      expect(String(message)).not.toMatch(/successfully/i);
+      expect(String(message)).not.toContain('!');
+      expect(String(message).split(/\s+/).length).toBeLessThanOrEqual(4);
+    }
   });
 });
 

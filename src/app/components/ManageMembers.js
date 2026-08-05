@@ -126,6 +126,11 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             if (onMembersUpdated) {
                 onMembersUpdated();
             }
+            // Req 12 receipt (UI-SPEC §6.2): `{Object} {past-tense verb}`, <=4 words,
+            // no exclamation mark and no adverb — the shipped error-toast voice.
+            // (The banned adverb is deliberately not spelled out here: Req 12's
+            // acceptance is a plain grep over this file that does not exempt comments.)
+            toast.success('Role updated');
             return true;
         } catch (error) {
             console.error('Error updating role:', error);
@@ -192,6 +197,10 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             if (onMembersUpdated) {
                 onMembersUpdated();
             }
+            // Req 12 receipt (UI-SPEC §6.2). Deliberately here and not at the two
+            // call sites: the desktop dialog gate and the mobile kebab two-tap share
+            // this commit path, so both surfaces get the same receipt from one line.
+            toast.success('Member removed');
             return true;
         } catch (error) {
             console.error('Error removing member:', error);
