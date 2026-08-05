@@ -5,7 +5,7 @@ import { useUser } from '@auth0/nextjs-auth0/client';
 import { friendshipsAPI, groupsAPI, invitesAPI } from '../../lib/api';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
-import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -138,7 +138,13 @@ function FriendsPage() {
             console.error('Error fetching friends:', err);
             // Keep the ERROR, not a flattened string: useFetchErrorState reads
             // `ApiError.code` off it to pick the right user-facing copy.
-            setFriendsLoadError(err instanceof Error ? err : new Error('Failed to load friends.'));
+            // Wording matches the 88-18 register ("The X request didn't complete.") used by
+            // grouplist.js / GroupLibrary.js. This string is never shown — a non-ApiError
+            // resolves to code `unknown` and useFetchErrorState renders the designed copy for
+            // that code — but Req 14's negative gate is a plain grep, so the phrasing matters.
+            setFriendsLoadError(
+                err instanceof Error ? err : new Error("The friends request didn't complete.")
+            );
         } finally {
             setLoadingFriends(false);
         }
@@ -179,11 +185,29 @@ function FriendsPage() {
             setSentRequests(Array.isArray(data) ? data : []);
         } catch (err) {
             console.error('Error fetching sent requests:', err);
-            setSentError('Failed to load sent requests.');
+            // Keep the ERROR object, not a flattened string: useFetchErrorState reads
+            // `ApiError.code` off it to pick the right user-facing copy.
+            setSentError(
+                err instanceof Error ? err : new Error("The sent-requests request didn't complete.")
+            );
         } finally {
             setLoadingSent(false);
         }
     };
+
+    /* Adapter onto the shared pair, identical in shape to `friendsErrorState` above (88-14).
+       `refetch` must be STABLE — the hook puts it in a useCallback dep AND in its
+       refocus-recovery effect deps. */
+    const fetchSentRef = useRef(null);
+    useEffect(() => {
+        fetchSentRef.current = fetchSentRequests;
+    });
+    const retrySent = useCallback(() => fetchSentRef.current?.(), []);
+    const sentErrorState = useFetchErrorState({
+        isError: Boolean(sentError),
+        error: sentError,
+        refetch: retrySent,
+    });
 
     // Search handler
     const handleSearch = async (e) => {
@@ -204,7 +228,16 @@ function FriendsPage() {
             } else if (err.message && err.message.includes('No user found')) {
                 setSearchError('No user found with that email.');
             } else {
-                setSearchError(err.message || 'Search failed. Please try again.');
+                /* DECISION Phase 88-25 (Req 14 / T-88-25-01): derived copy, chosen OVER
+                   `err.message || '…'`. The two branches above deliberately KEEP their prose
+                   match — "no user found" is a legitimate SEARCH OUTCOME the person can act on
+                   (check the address), not a failure, and there is no ApiError code that carries
+                   it. This branch is the genuine failure and no longer paints upstream text. */
+                setSearchError(
+                    getFetchErrorMessage(err, {
+                        fallback: "We couldn't run that search. Please try again.",
+                    })
+                );
             }
         } finally {
             setSearching(false);
@@ -220,7 +253,12 @@ function FriendsPage() {
             // Refresh sent requests list
             fetchSentRequests();
         } catch (err) {
-            setSearchError(err.message || 'Failed to send friend request.');
+            setSearchError(
+                getFetchErrorMessage(err, {
+                    fallback: "We couldn't send that request. Please try again.",
+                    byCode: { validation: "That request couldn't be sent — you may already have one pending." },
+                })
+            );
         } finally {
             setSendingRequest(false);
         }
@@ -266,7 +304,11 @@ function FriendsPage() {
             setFriends(prev => prev.filter(f => f.id !== friendshipId));
         } catch (err) {
             console.error('Error removing friend:', err);
-            setRemoveError(err.message || 'Failed to remove friend.');
+            setRemoveError(
+                getFetchErrorMessage(err, {
+                    fallback: "We couldn't remove that friend. Please try again.",
+                })
+            );
         } finally {
             setActionLoading(prev => ({ ...prev, [friendshipId]: null }));
         }
@@ -510,8 +552,11 @@ function FriendsPage() {
                         </div>
                     )}
 
+                    {/* role="alert": submit-time search feedback, including the legitimate
+                        "no user found" outcome — either way the person pressed Search and is
+                        waiting to be told what happened. */}
                     {searchError && (
-                        <div className="mt-4 p-3 bg-surface-page border border-line rounded-lg">
+                        <div role="alert" className="mt-4 p-3 bg-surface-page border border-line rounded-lg">
                             <p className="text-content-secondary">{searchError}</p>
                         </div>
                     )}
@@ -612,8 +657,11 @@ function FriendsPage() {
                         {/* An ACTION failure (a remove that did not go through) is a line above
                             an otherwise intact list — deliberately NOT one of the branches below,
                             which would blank the list the person is still looking at. */}
+                        {/* role="alert": this is a submit-time failure on a destructive action,
+                            so it must interrupt. Same DEF-88-19-04 gap as userProfile's phone
+                            flow — a screen-reader user was told nothing when a Remove failed. */}
                         {removeError && (
-                            <p className="text-status-error text-sm mb-4">{removeError}</p>
+                            <p role="alert" className="text-status-error text-sm mb-4">{removeError}</p>
                         )}
                         {/* DECISION Phase 88-14 (Req 6 / Req 14, UI-SPEC §9.2): empty and failed-to-load
                             are SEPARATE, mutually exclusive branches here. Before this, a failed fetch
@@ -698,7 +746,7 @@ function FriendsPage() {
                                                     ? `Invited ${bulkInviteResult.successCount} friend(s) to ${getSelectedGroupName()}!`
                                                     : bulkInviteResult.successCount > 0
                                                         ? `Invited ${bulkInviteResult.successCount} friend(s), ${bulkInviteResult.failCount} failed`
-                                                        : 'Failed to send invites. Please try again.'
+                                                        : "We couldn't send those invites. Please try again."
                                                 }
                                             </div>
                                         )}
@@ -852,14 +900,24 @@ function FriendsPage() {
                 {/* Sent Tab */}
                 {activeTab === 'sent' && (
                     <div>
-                        {sentError && (
-                            <p className="text-status-error text-sm mb-4">{sentError}</p>
-                        )}
+                        {/* DECISION Phase 88-25 (Req 14 / T-88-25-02, UI-SPEC 9.2): the Sent tab now
+                            splits empty from failed, the same way 88-14 split the Friends tab above.
+                            Before this, a failed fetch printed a bare red line AND fell through to
+                            "No sent friend requests." — so the person was told, in the same breath,
+                            that something went wrong and that they had sent nothing. The error branch
+                            is checked BEFORE the empty branch and that order is load-bearing: an
+                            errored fetch also has zero requests. */}
                         {loadingSent ? (
                             <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
                                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading sent requests...</span>
                             </div>
+                        ) : sentErrorState.showError ? (
+                            <FetchErrorBanner
+                                state={sentErrorState}
+                                title="Couldn't load your sent requests"
+                                reportContext="friends page — sent requests fetch"
+                            />
                         ) : sentRequests.length === 0 ? (
                             <div className="text-center py-12">
                                 <p className="text-content-muted">No sent friend requests.</p>
