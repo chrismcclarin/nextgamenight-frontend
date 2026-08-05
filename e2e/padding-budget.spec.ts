@@ -3,8 +3,16 @@ import { test, expect, type Locator } from '@playwright/test';
 /**
  * Phase 87.8 SPEC R2 — the padding-budget instrument (MOB-02).
  *
+ * EXTENDED Phase 88-24 (owner ruling 2026-08-05, option-a): gameDetail,
+ * userProfile and friends join the original five. Those three were the surfaces
+ * carrying the off-ladder `.card` padding idioms (bare `p-6` = 24px at phone,
+ * DOUBLE the ratified 12px rung), and they were exempt from this gate — so the
+ * budget could not see the worst offenders. 88-24 converged all 28 `.card` call
+ * sites onto `p-3 md:p-6`; these three tests are what stop that convergence
+ * being re-lost, per the ruling's "machine-asserted rather than eyeballed".
+ *
  * Measures the TOTAL horizontal padding from a body-text node up its ancestor
- * chain to <body> on each of the five walked surfaces, and fails when the sum
+ * chain to <body> on each of the eight walked surfaces, and fails when the sum
  * exceeds the UI-SPEC's locked ceiling: 75px, i.e. 20% of a 375px viewport
  * (Verification Contract row V1). Each failure message carries the measured
  * total AND the per-level breakdown, so a red run IS the diagnosis — no re-run
@@ -51,6 +59,11 @@ const PADDING_BUDGET_PX = 75;
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
 const E2E_AVAILABILITY_TOKEN = process.env.E2E_AVAILABILITY_TOKEN ?? 'seed-availability-token';
 const E2E_INVITE_GROUP_NAME = process.env.E2E_INVITE_GROUP_NAME ?? 'E2E Invite Group';
+// Phase 88-24: same fixture idiom and same URL shape touch-targets.spec.ts:49-50
+// already runs green in the phone lane — deliberately NOT a second variable name
+// for the same path, so a fixture rename moves both specs together.
+const E2E_EVENT_DETAIL_PATH =
+  process.env.E2E_EVENT_DETAIL_PATH ?? `/gameDetail?event_id=1&group_id=${E2E_GROUP_ID}`;
 
 interface PaddingLevel {
   tagName: string;
@@ -122,7 +135,7 @@ function vacuityMessage(surface: string, chain: PaddingChain): string {
   );
 }
 
-test.describe('SPEC R2 — horizontal padding budget on the five walked surfaces', () => {
+test.describe('SPEC R2 — horizontal padding budget on the eight walked surfaces', () => {
   // Runs ONLY in the `phone` project. Inverse of the guard at
   // tailwind-v4-styles.spec.ts:57 — that file opts OUT of phone; this file
   // opts out of everything EXCEPT phone. Both `journeys`
@@ -232,5 +245,71 @@ test.describe('SPEC R2 — horizontal padding budget on the five walked surfaces
     const chain = await measurePaddingChain(anchor);
     expect(chain.levels.length, vacuityMessage('availability grid', chain)).toBeGreaterThanOrEqual(2);
     expect(chain.total, describeChain('availability grid', chain)).toBeLessThanOrEqual(PADDING_BUDGET_PX);
+  });
+
+  /* DECISION Phase 88-24 (SPEC Req 2, owner ruling 2026-08-05 = option-a): the three
+     tests below are the machine half of that ruling. The owner accepted a visible ~12px
+     phone tightening on the bare-`p-6` cards specifically so the result would be gated
+     rather than eyeballed — without these, the convergence is a diff nobody re-checks and
+     the next plan that touches one of these files silently re-loses it.
+
+     ANCHOR POLICY, and it is load-bearing: each anchors on a heading INSIDE a converged
+     `.card p-3 md:p-6`, so the card's own padding is genuinely in the measured chain. An
+     anchor above the card (a page title, a breadcrumb) would still pass the 75px budget
+     and would assert nothing about the padding this plan changed — a vacuous gate. Moving
+     any of these anchors out of its card is a regression to that vacuity, not a cleanup.
+
+     PREDICTED, not observed: these were written against the source chains (the phone lane
+     needs CI's Auth0 storageState and cannot run locally — playwright.config.ts:19-21).
+     gameDetail is the tight one at a predicted 72/75: its PAGE wrapper is a bare `p-6`
+     (gameDetail/page.js:1578 — 48px of the 72), which is the outlier against
+     userProfile's `p-3 md:p-6` and groupPlanning's `p-4 md:p-6`. That wrapper is logged
+     in this phase's deferred-items.md and is the lever if this test comes back red — do
+     NOT respond by loosening PADDING_BUDGET_PX or by re-anchoring above the card. */
+
+  test('gameDetail sessions card: padding chain stays within budget', async ({ page }) => {
+    await page.goto(E2E_EVENT_DETAIL_PATH);
+
+    // Anchor: the "Game Sessions (N)" <h2> (gameDetail/page.js:1741-1743 — inside the
+    // `card p-3 md:p-6` this plan converged from bare `p-6`). The count is CONDITIONAL
+    // ("(7)" at rest, "(3 of 7)" while filtering — DECISION Phase 88-11 D-39), so the
+    // name is matched by PREFIX; pinning the full string would break the moment a filter
+    // is applied or the fixture's session count changes.
+    const anchor = page.getByRole('heading', { name: /^Game Sessions/ });
+    await expect(anchor).toBeVisible({ timeout: 15_000 });
+
+    const chain = await measurePaddingChain(anchor);
+    expect(chain.levels.length, vacuityMessage('gameDetail sessions card', chain)).toBeGreaterThanOrEqual(2);
+    expect(chain.total, describeChain('gameDetail sessions card', chain)).toBeLessThanOrEqual(PADDING_BUDGET_PX);
+  });
+
+  test('userProfile theme card: padding chain stays within budget', async ({ page }) => {
+    await page.goto('/userProfile');
+
+    // Anchor: the "Theme" <h2> (userProfile/page.js:1510) inside the `card p-3 md:p-6`
+    // at :1509. Unconditional — it renders for every authenticated user, unlike the
+    // SMS block (entitlement-gated) or the Google Calendar block (connection-state
+    // dependent), either of which would make this test fixture-fragile.
+    const anchor = page.getByRole('heading', { name: 'Theme', exact: true });
+    await expect(anchor).toBeVisible({ timeout: 15_000 });
+
+    const chain = await measurePaddingChain(anchor);
+    expect(chain.levels.length, vacuityMessage('userProfile theme card', chain)).toBeGreaterThanOrEqual(2);
+    expect(chain.total, describeChain('userProfile theme card', chain)).toBeLessThanOrEqual(PADDING_BUDGET_PX);
+  });
+
+  test('friends add-friend card: padding chain stays within budget', async ({ page }) => {
+    await page.goto('/friends');
+
+    // Anchor: the "Add Friend" <h2> (friends/page.js:486) inside the `card p-3 md:p-6`
+    // at :485, converged from bare `p-6` by this plan. Chosen OVER any of the friend-row
+    // cards below it, which render only when the seeded user actually has friends /
+    // pending requests — this card renders on the empty state too.
+    const anchor = page.getByRole('heading', { name: 'Add Friend', exact: true });
+    await expect(anchor).toBeVisible({ timeout: 15_000 });
+
+    const chain = await measurePaddingChain(anchor);
+    expect(chain.levels.length, vacuityMessage('friends add-friend card', chain)).toBeGreaterThanOrEqual(2);
+    expect(chain.total, describeChain('friends add-friend card', chain)).toBeLessThanOrEqual(PADDING_BUDGET_PX);
   });
 });
