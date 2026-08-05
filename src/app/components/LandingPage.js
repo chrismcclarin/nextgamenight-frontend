@@ -57,7 +57,7 @@ export default function LandingPage() {
             Everything your group needs
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="card p-6 hover:shadow-theme-md transition-all border border-line hover:border-line-accent">
+            <div className="card p-3 md:p-6 hover:shadow-theme-md transition-all border border-line hover:border-line-accent">
               <div className="text-4xl mb-4">🎲</div>
               <h3 className="text-xl font-bold mb-2 text-content-primary">Track Sessions</h3>
               <p className="text-content-secondary">
@@ -65,7 +65,7 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="card p-6 hover:shadow-theme-md transition-all border border-line hover:border-line-accent">
+            <div className="card p-3 md:p-6 hover:shadow-theme-md transition-all border border-line hover:border-line-accent">
               <div className="text-4xl mb-4">👥</div>
               <h3 className="text-xl font-bold mb-2 text-content-primary">Gather Your Crew</h3>
               <p className="text-content-secondary">
@@ -73,7 +73,7 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="card p-6 hover:shadow-theme-md transition-all border border-line hover:border-line-accent">
+            <div className="card p-3 md:p-6 hover:shadow-theme-md transition-all border border-line hover:border-line-accent">
               <div className="text-4xl mb-4">⭐</div>
               <h3 className="text-xl font-bold mb-2 text-content-primary">Rate &amp; Remember</h3>
               <p className="text-content-secondary">

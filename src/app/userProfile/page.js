@@ -1203,7 +1203,7 @@ function Profile(){
                 </nav>
 
                 {/* Profile Header */}
-                <div className="card p-4 md:p-6 mb-6">
+                <div className="card p-3 md:p-6 mb-6">
                     {/* Avatar + Username zone — paint-gated (D-PAINT-01) so user.name (Auth0/Google)
                         never flashes before userData.username arrives. Skeleton on first paint;
                         real content (or Auth0 fallback on fetch failure) once profileLoaded flips. */}
@@ -1506,7 +1506,7 @@ function Profile(){
                 </div>
 
                 {/* Theme Setting */}
-                <div className="card p-4 md:p-6 mb-6">
+                <div className="card p-3 md:p-6 mb-6">
                     <h2 className="text-xl font-bold text-content-primary mb-1">Theme</h2>
                     <p className="text-sm text-content-muted mb-3">Choose your preferred appearance</p>
                     {/* DECISION Phase 88-10 (Req 5 / F-357): the two theme buttons carry
@@ -1557,7 +1557,7 @@ function Profile(){
                 </div>
 
                 {/* Timezone Setting */}
-                <div className="card p-4 md:p-6 mb-6">
+                <div className="card p-3 md:p-6 mb-6">
                     <h2 className="text-xl font-bold text-content-primary mb-1">Timezone</h2>
                     <p className="text-sm text-content-secondary mb-3">All event times and schedules use this timezone</p>
                     {/* F-359: the picker is the `Combobox` primitive (88-08). Keyboard
@@ -1585,7 +1585,7 @@ function Profile(){
 
                 {/* Notification Preferences Section */}
                 {preferences && (
-                <div className="card p-4 md:p-6 mb-6">
+                <div className="card p-3 md:p-6 mb-6">
                     <h2 className="text-xl font-bold text-content-primary mb-1">Notification Preferences</h2>
                     <p className="text-sm text-content-secondary mb-4">Choose how you receive notifications</p>
 
@@ -1788,7 +1788,7 @@ function Profile(){
                 {/* id="availability-settings" — scroll target for the invited-branch
                     tutorial handoff (ONBD-04, Phase 73). Read by the
                     ?section=availability useEffect above. */}
-                <div id="availability-settings" className="card p-4 md:p-6 mb-6">
+                <div id="availability-settings" className="card p-3 md:p-6 mb-6">
                     <h2 className="text-xl font-bold text-content-primary mb-4">Availability Settings</h2>
                     <p className="text-sm text-content-secondary mb-4">
                         Set the times when you are <strong>available</strong> (free) to help groups find the best time to schedule game sessions. 
@@ -2111,7 +2111,7 @@ function Profile(){
                 </div>
 
                 {/* Tutorial Section */}
-                <div className="card p-4 md:p-6 mb-6">
+                <div className="card p-3 md:p-6 mb-6">
                     <h2 className="text-xl font-bold text-content-primary mb-2">Tutorial</h2>
                     <p className="text-sm text-content-secondary mb-4">
                         Need a refresher on how to use Next Game Night? Replay the onboarding tutorial to walk through the key features.
@@ -2126,7 +2126,7 @@ function Profile(){
                 </div>
 
                 {/* Owned Games Section */}
-                <div className="card p-4 md:p-6">
+                <div className="card p-3 md:p-6">
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
                         <h2 className="text-xl font-bold text-content-primary">My Game Collection ({ownedGames.length})</h2>
                         <div className="flex gap-2">

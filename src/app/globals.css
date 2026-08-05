@@ -955,6 +955,10 @@ body {
   background-color: var(--color-bg-card);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-md);
+  /* DECISION Phase 88-24: this 24px is the FALLBACK, not the shipped value. All 28
+     `.card` call sites author `p-3 md:p-6` (12px phone / 24px desktop) and every one
+     of them is load-bearing — deleting a call site's `p-*` silently doubles its phone
+     padding to this value. Full reasoning at the marker in gameDetail/page.js. */
   padding: 1.5rem;
   transition: var(--theme-transition);
 

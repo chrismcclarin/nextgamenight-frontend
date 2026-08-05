@@ -482,7 +482,7 @@ function FriendsPage() {
                 {removeFriendGate.statusNode}
 
                 {/* Search Section */}
-                <div className="card p-6 mb-6">
+                <div className="card p-3 md:p-6 mb-6">
                     <h2 className="text-lg font-semibold text-content-primary mb-3">Add Friend</h2>
                     <form onSubmit={handleSearch} className="flex gap-3">
                         <Input
@@ -644,7 +644,7 @@ function FriendsPage() {
                             <div>
                                 {/* Group Invite Bulk Action Bar */}
                                 {userGroups.length > 0 && (
-                                    <div className="mb-4 p-4 md:p-6 card">
+                                    <div className="mb-4 p-3 md:p-6 card">
                                         <div className="flex flex-wrap items-center gap-3">
                                             <label htmlFor="group-invite-select" className="text-sm font-medium text-content-secondary">
                                                 Invite to Group:

@@ -216,7 +216,7 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
     preflightPending || deleting || confirmText !== CONFIRM_PHRASE;
 
   return (
-    <section className="card p-4 md:p-6 border">
+    <section className="card p-3 md:p-6 border">
       <h2 className="text-lg font-bold text-status-error mb-2">Danger Zone</h2>
       <p className="text-sm text-content-secondary mb-4">
         Permanently delete your account and all associated data. This action

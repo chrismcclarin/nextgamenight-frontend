@@ -1024,7 +1024,31 @@ export default function GameDetailPage() {
                     surfaces loudly-but-small instead of silently. */}
                 <FetchErrorBanner state={selfIdentityErrorState} compact />
 
-                <div className="card p-6 mb-6">
+                {/* DECISION Phase 88-24 (SPEC Req 2, owner ruling 2026-08-05 = option-a):
+                    the `p-3 md:p-6` on the `.card` below — and on all 28 `.card` call sites
+                    app-wide — is DELIBERATELY RETAINED, not leftover. Req 2's wording is
+                    "`.card` padding overrides removed or promoted to explicit card variants";
+                    read as "delete the `p-*`" it does the OPPOSITE of what it intends.
+
+                    Why: `.card` is a layered `@utility` (globals.css, `DECISION Phase 87.8
+                    (D-01)`) that declares its own `padding: 1.5rem`. 87.8 moved it to
+                    `@utility` PRECISELY so a consumer's padding utility wins. So deleting the
+                    `p-3 md:p-6` here does not "clean up" anything — it silently restores 24px
+                    at phone width, DOUBLE the ratified 12px top-level-card rung, on every card
+                    at once, and blows `e2e/padding-budget.spec.ts`'s <=75px phone budget.
+
+                    Chosen OVER two alternatives: (a) deleting the overrides and re-tuning
+                    `@utility card`'s own padding to `0.75rem` + a `md` variant — rejected
+                    because `@utility` cannot express a breakpoint without duplicating the
+                    block, and it would move every card in one unreviewable step; (b) leaving
+                    the three shipped idioms (`p-3 md:p-6`, `p-4 md:p-6`, bare `p-6`) alone —
+                    rejected by the owner on 2026-08-05, who accepted the visible ~12px phone
+                    tightening on the bare-`p-6` cards in exchange for one idiom app-wide.
+
+                    Removing this utility is a DECISION (it changes rendered padding), not a
+                    cleanup. `padding-budget.spec.ts` now covers this surface so the regression
+                    fails CI rather than shipping. */}
+                <div className="card p-3 md:p-6 mb-6">
                     {/* Phase 65-02 EVT-01 + Phase 71.1 GAMP-10: header row with
                         title + scope-aware kebab actions menu. Single-click
                         commits inside the dropdown — kebab placement IS the
@@ -1108,7 +1132,7 @@ export default function GameDetailPage() {
                     per CONTEXT (admin/owner-initiated invites only — not
                     surfaced to game-only callers). */}
                 {(userScope === 'group-member' || userScope === 'game-only') && userRole !== 'pending' && participants.length > 0 && (
-                    <div className="card p-6 mb-6">
+                    <div className="card p-3 md:p-6 mb-6">
                         <div className="flex items-center justify-between gap-3 mb-3">
                             <h2 className="text-lg font-semibold text-content-primary">
                                 Participants ({participants.length})
@@ -1224,7 +1248,7 @@ export default function GameDetailPage() {
 
                 {/* Recommended Games Section */}
                 {eventSuggestions.length > 0 && (
-                    <div className="card p-6 mt-6">
+                    <div className="card p-3 md:p-6 mt-6">
                         <h2 className="text-lg font-semibold text-content-primary mb-1">Recommended Games</h2>
                         {suggestionsPlayerCount && (
                             <p className="text-sm text-content-muted mb-4">
@@ -1582,7 +1606,7 @@ export default function GameDetailPage() {
             </nav>
 
             {/* Game Details */}
-            <div className="card p-6 mb-6">
+            <div className="card p-3 md:p-6 mb-6">
                 {game.is_custom ? (
                     /* Custom game: show available details */
                     <div>
@@ -1715,7 +1739,7 @@ export default function GameDetailPage() {
             </div>
 
             {/* Game Sessions */}
-            <div className="card p-6 mb-6">
+            <div className="card p-3 md:p-6 mb-6">
                 {/* DECISION Phase 88-11 (D-39, F-6b): the count is CONDITIONAL — "(7)" at rest,
                     "(3 of 7)" only while a filter is actually hiding sessions. Chosen OVER the
                     shipped unconditional "N of M", which rendered "1 of 1" with no filter active
@@ -2122,7 +2146,7 @@ export default function GameDetailPage() {
             </div>
 
             {/* Reviews Section */}
-            <div className="card p-6">
+            <div className="card p-3 md:p-6">
                 {/* D-08 (Phase 87.3-04): non-blocking degrade notice on PERMANENT
                     identity-resolution failure — own-review edit/delete gate on
                     selfUuid, so surface (never silently hide) when it can't resolve. */}
