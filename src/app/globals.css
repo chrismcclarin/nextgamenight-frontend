@@ -122,10 +122,22 @@
      converted back from OKLCH — after Plan 02 replaced node_modules, that capture is the ONLY
      surviving source of the v3 values.
 
-     THIS BLOCK IS DELIBERATELY REVERSIBLE AND PHASE 88 OWNS DROPPING IT. It is a migration
-     compatibility surface, not a design decision about what colour anything should be — Phase 88's
-     colour redesign deletes it in one block as an intentional act. Removing it earlier, or
-     trimming "unused-looking" keys out of it, is a VISUAL CHANGE, not a cleanup.
+     SUPERSEDED BY PHASE 88 (D-31) — READ THIS BEFORE ACTING ON ANYTHING BELOW. This paragraph
+     used to say "THIS BLOCK IS DELIBERATELY REVERSIBLE AND PHASE 88 OWNS DROPPING IT... Phase 88's
+     colour redesign deletes it in one block as an intentional act." PHASE 88 DECIDED THE OPPOSITE.
+     The ruling is SHRINK, THEN KEEP THE RESIDUE: Req 2's token migration retires most raw-palette
+     USAGE at the call sites, and what remains pinned here is then KEPT and re-read as the app's
+     DESIGNED PALETTE — no longer migration debt, and no longer scheduled for deletion by anyone.
+
+     REJECTED ALTERNATIVE, recorded because it is the thing a future reader will reach for: a
+     deliberate OKLCH recolour of the palette. Not rejected forever — DEFERRED to after Phase 88.3
+     (which owns light mode), on the reasoning that the recolour gets strictly cheaper once Req 2
+     has made the call sites token-driven, because at that point it is a token-value change rather
+     than a sweep across 38 files. Doing it before that inverts the cost.
+
+     SO: DELETING THIS BLOCK IS NOW A DECISION, NOT A CLEANUP — and it is a decision that no
+     currently-scheduled phase is authorised to take. Trimming "unused-looking" keys out of it is
+     still a VISUAL CHANGE, exactly as before.
 
      TRAP FOR FUTURE PHASES — the one thing you would not otherwise infer: this block pins only the
      keys censused at the time of writing. A NEW raw-palette class introduced later — an unlisted
@@ -967,9 +979,18 @@ body {
      0.7 reads as disabled against `.btn:disabled` opacity 0.5 (above). 0.75 sits clear of both.
    Zero new colour values, deliberately — a slash-opacity tint would collide with the D-18
    token strip and Phase 88's tint boundary. D-12 covers ONLY this press rule; the 44px
-   touch-floor decision lives per-CTA at the SPEC R4 call sites (D-13/D-14/AF-2), NOT here —
-   `.btn` deliberately carries no global min-height (that question is Phase 88's, DEF-1).
-   Removing or retuning this is a decision, not a cleanup. */
+   touch-floor decision lives per-CTA at the SPEC R4 call sites (D-13/D-14/AF-2), NOT here.
+
+   UPDATED BY PHASE 88 (D-36) — this paragraph previously read "`.btn` deliberately carries no
+   global min-height (that question is Phase 88's, DEF-1)". DEF-1 IS NOW ANSWERED, and the answer
+   is a PARTIAL yes: `.btn` now carries a 44px floor at PHONE WIDTHS ONLY, authored unlayered after
+   the `.btn-*` family below, with an unlayered `.btn-compact` opt-out for the two `w-8 h-8`
+   steppers (`BrowseMoreModal.js:206,230`, which take the opt-out in plan 88-17). A global
+   all-viewport floor stays REJECTED for exactly that reason — it deforms square-by-design
+   controls — so DESKTOP is still deliberately floorless at ~37px until the Button migration sets
+   each height with intent. The full derivation lives at the media block's own marker below; the
+   old sentence is amended rather than deleted so a reader who remembers it can find where it went.
+   Removing or retuning this press rule is a decision, not a cleanup. */
 .btn:active:not(:disabled) {
   opacity: 0.75;
 }
@@ -999,6 +1020,40 @@ body {
 
 .btn-danger:hover:not(:disabled) {
   opacity: 0.9;
+}
+
+/* DECISION Phase 88-01 (D-36, UI-SPEC §3.2 exception 2): `.btn` takes a 44px touch floor at PHONE
+   WIDTHS ONLY, resolving the question the 87.8 D-12 marker above deliberately left open (DEF-1).
+   `.btn`'s shipped padding (`0.5rem 1rem` + 0.875rem/600 text) computes to roughly 37px tall — under
+   the 44x44 floor on the surface this app is actually used on (a phone at game night).
+
+   REJECTED — a global, all-viewport `min-height` on `.btn`. It deforms controls that are square by
+   design: `BrowseMoreModal.js:206` and `:230` are `w-8 h-8` (32px) player-count steppers wearing
+   `.btn`, and a 44px floor stretches them into 32x44 lozenges. Desktop is therefore deliberately
+   LEFT AT ~37px until the Req 5 Button migration reaches each call site and sets the height there
+   with intent — a phone-only floor is the smallest change that fixes the surface that matters,
+   which is also why this mirrors the `.modal-overlay` phone-scoped precedent directly below rather
+   than inventing an idiom.
+
+   BOTH RULES ARE UNLAYERED, AND THE AUTHORING ORDER IS LOAD-BEARING — this is the part that is not
+   obvious and that a tidy-up would break:
+     - `.btn` is unlayered (see the guardrail note above `@utility card`), and an unlayered author
+       rule beats EVERY `@layer utilities` rule regardless of specificity. So a Tailwind `min-h-0`
+       utility at a call site CANNOT opt out of this floor. It would silently do nothing — the exact
+       cascade defect 87.8 DEC-2/DEC-3 already hit twice on this same pair of rules.
+     - `.btn-compact` is therefore also unlayered, and is authored AFTER the media block so it wins
+       the tie on source order. Moving it above, or putting either rule inside `@layer`, re-breaks
+       the opt-out with no build error.
+   Changing the breakpoint, layering either rule, reordering them, or promoting the floor to all
+   viewports is a decision, not a cleanup. */
+@media (width < 48rem) {
+  .btn {
+    min-height: 2.75rem;
+  }
+}
+
+.btn-compact {
+  min-height: 0;
 }
 
 .modal-overlay {
