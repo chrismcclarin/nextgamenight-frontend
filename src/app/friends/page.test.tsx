@@ -18,7 +18,9 @@
 // EXTENSION POINTS — who adds what, and where
 // ---------------------------------------------------------------------------
 // * Further Req 6 / Req 11 surface work extends `describe('friends list')` —
-//   use `renderFriends({ friends: [] })` for the empty case.
+//   use `renderFriends({ friends: [] })` for the empty case and
+//   `renderFriends({ loadError: ... })` for the failed-fetch case. Those two are
+//   deliberately DIFFERENT surfaces; see the DECISION marker on the Friends tab.
 import * as React from 'react';
 import { act, render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -100,7 +102,9 @@ vi.mock('@/lib/api', async (importOriginal) => {
 });
 
 import FriendsPage from './page';
-import { friendshipsAPI } from '@/lib/api';
+// ApiError survives the partial mock above (the `importOriginal` spread), so the
+// error pins exercise the REAL code-to-copy derivation in useFetchErrorState.
+import { ApiError, friendshipsAPI } from '@/lib/api';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -128,13 +132,23 @@ export interface RenderFriendsOptions {
    * `undefined`, which would silently resolve identity instead.
    */
   selfUuid?: string | null;
+  /**
+   * Make the friends fetch REJECT. The list then stays empty, which is exactly
+   * the state that used to render the empty copy — so this is the option that
+   * proves empty and error are different surfaces.
+   */
+  loadError?: unknown;
 }
 
 /** Render the friends page with a resolved identity by default. */
 export function renderFriends(options: RenderFriendsOptions = {}) {
-  const { friends = [FRIENDSHIP], sent = [], selfUuid = SELF_UUID } = options;
+  const { friends = [FRIENDSHIP], sent = [], selfUuid = SELF_UUID, loadError } = options;
   h.selfUuid = selfUuid ?? undefined;
-  (friendshipsAPI.getFriends as Mock).mockResolvedValue(friends);
+  if (loadError !== undefined) {
+    (friendshipsAPI.getFriends as Mock).mockRejectedValue(loadError);
+  } else {
+    (friendshipsAPI.getFriends as Mock).mockResolvedValue(friends);
+  }
   (friendshipsAPI.getSentRequests as Mock).mockResolvedValue(sent);
   return render(<FriendsPage />);
 }
@@ -177,12 +191,53 @@ describe('friends list', () => {
     expect(screen.getByRole('button', { name: 'Remove Dana' })).toBeInTheDocument();
   });
 
-  it('renders the empty text when the caller has no friends', async () => {
+  it('renders the shared EmptyState when the caller has no friends', async () => {
     renderFriends({ friends: [] });
+
     expect(
-      await screen.findByText('No friends yet. Search for friends by email above!')
+      await screen.findByRole('heading', { name: 'No friends yet' })
     ).toBeInTheDocument();
+    expect(
+      screen.getByText('Search by email above to find the people you play with.')
+    ).toBeInTheDocument();
+    // §9.2: no CTA button — the search field above IS the action.
+    expect(
+      screen.queryByText('No friends yet. Search for friends by email above!')
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Remove/ })).not.toBeInTheDocument();
+  });
+
+  // Req 6 + Req 14: a failed fetch also leaves the list empty. It must NOT read
+  // as "you have no friends".
+  it('renders the fetch-error surface — not the empty state — when the fetch fails', async () => {
+    renderFriends({ loadError: new ApiError('boom', 'network', 500) });
+
+    expect(
+      await screen.findByText("Couldn't load your friends")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "We couldn't reach the server. Check your connection and try again."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Try again/ })).toBeInTheDocument();
+
+    expect(
+      screen.queryByRole('heading', { name: 'No friends yet' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('retries the fetch from the error surface', async () => {
+    renderFriends({ loadError: new ApiError('boom', 'network', 500) });
+    const retry = await screen.findByRole('button', { name: /Try again/ });
+
+    (friendshipsAPI.getFriends as Mock).mockResolvedValue([FRIENDSHIP]);
+    fireEvent.click(retry);
+
+    expect(await screen.findByText('Dana')).toBeInTheDocument();
+    expect(
+      screen.queryByText("Couldn't load your friends")
+    ).not.toBeInTheDocument();
   });
 });
 

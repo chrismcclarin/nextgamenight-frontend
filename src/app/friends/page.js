@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { friendshipsAPI, groupsAPI, invitesAPI } from '../../lib/api';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
@@ -8,6 +8,7 @@ import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
+import { EmptyState } from '../../components/ui/EmptyState';
 
 function FriendsPage() {
     const { user, isLoading: authLoading } = useUser();
@@ -50,8 +51,12 @@ function FriendsPage() {
     const [requestSent, setRequestSent] = useState(false);
     const [sendingRequest, setSendingRequest] = useState(false);
 
-    // Error state
-    const [friendsError, setFriendsError] = useState(null);
+    // Error state. `friendsLoadError` is the FETCH failure (the whole list is
+    // unavailable); `removeError` is an ACTION failure with the list still
+    // intact. They render as different things — see the DECISION marker on the
+    // Friends tab below.
+    const [friendsLoadError, setFriendsLoadError] = useState(null);
+    const [removeError, setRemoveError] = useState(null);
     const [sentError, setSentError] = useState(null);
 
     // Action loading state
@@ -124,17 +129,46 @@ function FriendsPage() {
 
     const fetchFriends = async () => {
         setLoadingFriends(true);
-        setFriendsError(null);
+        setFriendsLoadError(null);
         try {
             const data = await friendshipsAPI.getFriends();
             setFriends(Array.isArray(data) ? data : []);
         } catch (err) {
             console.error('Error fetching friends:', err);
-            setFriendsError('Failed to load friends.');
+            // Keep the ERROR, not a flattened string: useFetchErrorState reads
+            // `ApiError.code` off it to pick the right user-facing copy.
+            setFriendsLoadError(err instanceof Error ? err : new Error('Failed to load friends.'));
         } finally {
             setLoadingFriends(false);
         }
     };
+
+    /* DECISION Phase 88-14 (Req 6 / Req 14, UI-SPEC §9.2): the friends-list fetch failure is
+       ADAPTED onto the shipped `useFetchErrorState` + `FetchErrorBanner` pair by handing the hook
+       a minimal query-shaped object, chosen OVER the two alternatives.
+
+       REJECTED 1 — migrating `fetchFriends` to TanStack so a real `UseQueryResult` exists. That is
+       a data-layer change on a surface this phase is only re-skinning; it would also move the
+       friends list out from under the page's own D-09 identity gate. Out of scope by size, not by
+       merit — if the page is ever migrated, delete this adapter and pass the query.
+       REJECTED 2 — hand-rolling a second error look on this one tab. That is precisely the
+       divergence Req 14 exists to remove; the identity gate a few lines up already uses the banner.
+
+       The adapter is contract-backed, not a shim around a private API: `useFetchErrorState`
+       documents that it reads ONLY `isError`/`error`/`refetch` (useFetchErrorState.ts:89). */
+    const fetchFriendsRef = useRef(null);
+    useEffect(() => {
+        fetchFriendsRef.current = fetchFriends;
+    });
+    // Stable identity: the hook puts `refetch` in a useCallback dep AND in the
+    // refocus-recovery effect's deps, so handing it a fresh function each render
+    // would re-subscribe that listener on every render while erroring.
+    const retryFriends = useCallback(() => fetchFriendsRef.current?.(), []);
+    const friendsErrorState = useFetchErrorState({
+        isError: Boolean(friendsLoadError),
+        error: friendsLoadError,
+        refetch: retryFriends,
+    });
 
     const fetchSentRequests = async () => {
         setLoadingSent(true);
@@ -224,13 +258,14 @@ function FriendsPage() {
     // gate below, which is what makes the first tap non-destructive.
     const performRemoveFriend = async (friendshipId) => {
         setActionLoading(prev => ({ ...prev, [friendshipId]: 'remove' }));
+        setRemoveError(null);
         try {
             await friendshipsAPI.removeFriend(friendshipId);
             // Optimistically update: remove from friends list
             setFriends(prev => prev.filter(f => f.id !== friendshipId));
         } catch (err) {
             console.error('Error removing friend:', err);
-            setFriendsError(err.message || 'Failed to remove friend.');
+            setRemoveError(err.message || 'Failed to remove friend.');
         } finally {
             setActionLoading(prev => ({ ...prev, [friendshipId]: null }));
         }
@@ -573,18 +608,37 @@ function FriendsPage() {
                 {/* Friends Tab */}
                 {activeTab === 'friends' && (
                     <div>
-                        {friendsError && (
-                            <p className="text-status-error text-sm mb-4">{friendsError}</p>
+                        {/* An ACTION failure (a remove that did not go through) is a line above
+                            an otherwise intact list — deliberately NOT one of the branches below,
+                            which would blank the list the person is still looking at. */}
+                        {removeError && (
+                            <p className="text-status-error text-sm mb-4">{removeError}</p>
                         )}
+                        {/* DECISION Phase 88-14 (Req 6 / Req 14, UI-SPEC §9.2): empty and failed-to-load
+                            are SEPARATE, mutually exclusive branches here. Before this, a failed fetch
+                            left `friends` at [] and fell through to the empty copy, so a network failure
+                            told the person they had no friends — the shipped walkthrough finding §9.2
+                            folds in. EmptyState means "nothing here yet" and nothing else; a fetch
+                            failure gets the error banner with its retry. Collapsing these back into one
+                            branch is a decision to re-introduce that lie, not a simplification. */}
                         {loadingFriends ? (
                             <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
                                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading friends...</span>
                             </div>
+                        ) : friendsErrorState.showError ? (
+                            <FetchErrorBanner
+                                state={friendsErrorState}
+                                title="Couldn't load your friends"
+                                reportContext="friends page — friends list fetch"
+                            />
                         ) : friends.length === 0 ? (
-                            <div className="text-center py-12">
-                                <p className="text-content-muted">No friends yet. Search for friends by email above!</p>
-                            </div>
+                            /* No CTA: the search field directly above IS the action (§9.2). */
+                            <EmptyState
+                                icon="UsersRound"
+                                heading="No friends yet"
+                                body="Search by email above to find the people you play with."
+                            />
                         ) : (
                             <div>
                                 {/* Group Invite Bulk Action Bar */}
