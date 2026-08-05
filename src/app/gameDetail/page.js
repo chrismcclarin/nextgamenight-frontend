@@ -22,6 +22,10 @@ import StarRatingPicker from '../components/StarRatingPicker';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { Button } from '../../components/ui/Button';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { useConfirmAction } from '../../components/ui/useConfirmAction';
+import KebabMenu from '../components/KebabMenu';
 import { toast } from 'sonner';
 
 // Phase 65-02: small helper that renders a colored RSVP-status indicator.
@@ -692,13 +696,8 @@ export default function GameDetailPage() {
         }
     };
 
-    const handleDeleteEvent = async (event_id) => {
-        if (!user?.sub) return;
-        
-        if (!confirm('Are you sure you want to delete this game session? This action cannot be undone.')) {
-            return;
-        }
-        
+    // Runs ONLY after the dialog gate below has been explicitly confirmed.
+    const performDeleteEvent = async (event_id) => {
         try {
             await eventsAPI.deleteEvent(event_id);
             // Refresh events after deletion
@@ -706,7 +705,34 @@ export default function GameDetailPage() {
         } catch (error) {
             console.error('Error deleting event:', error);
             toast.error(error.message || 'Failed to delete event. Only group owners and admins can delete events.');
+            // Re-thrown so the gate stays OPEN on failure (useConfirmAction's
+            // contract) — swallowing it here would close the dialog and read as
+            // "deleted" when the DELETE was refused.
+            throw error;
         }
+    };
+
+    /* DECISION Phase 88-11 (D-09/D-40, Req 11, UI-SPEC §11.2): session delete is on the
+       DIALOG tier, replacing the native browser confirm that shipped here. (The literal
+       call is not written out anywhere in this file, comment included — Req 11's CI gate is
+       a plain grep and does not exempt comments.) Chosen OVER two-tap,
+       which is the cheaper gate and is what the phone affordance's host (KebabMenu) already
+       supports: a play record is SHARED data — the scores and who was there vanish for
+       everyone, which is a consequence the label "Delete" cannot convey, and D-09's rule
+       ("does it need explaining?") therefore puts it on a dialog. The kebab additionally
+       cannot host two-tap at all (D-07: the menu unmounts the armed trigger). Retiering this
+       is a one-word edit by design — but it is a decision, not a simplification. */
+    const deleteSessionGate = useConfirmAction({
+        tier: 'dialog',
+        title: 'Delete this session?',
+        body: 'The play record, scores and who was there are deleted for everyone.',
+        confirmLabel: 'Delete',
+        onConfirm: (event_id) => performDeleteEvent(event_id),
+    });
+
+    const handleDeleteEvent = (event_id) => {
+        if (!user?.sub) return;
+        deleteSessionGate.trigger(event_id);
     };
 
     const handleEditEvent = (event) => {
@@ -1813,153 +1839,189 @@ export default function GameDetailPage() {
                             further apart is a design question and belongs to Phase 88. */}
                         {displayedEvents.map((event, index) => (
                             <div key={event.id} className={`pl-4 py-2 ${index > 0 ? 'border-t-2 border-line-strong pt-4' : ''}`} style={{ borderLeft: '4px solid var(--color-btn-primary-bg)' }}>
-                                <div className="flex justify-between items-start gap-4">
+                                <div className="flex items-start justify-between gap-4 mb-2">
                                     <div className="flex-1">
-                                        <div className="flex items-start justify-between gap-4 mb-2">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-3 mb-2">
-                                                    <p className="font-semibold text-content-primary">
-                                                        {formatDate(event.start_date, timezone)}
-                                                    </p>
-                                                    {event.duration_minutes && (
-                                                        <span className="text-sm text-content-secondary">
-                                                            • {formatDuration(event.duration_minutes)}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                {event.is_group_win ? (
-                                                    <p className="text-sm text-status-success font-semibold mb-1">
-                                                        ✓ Group Win
-                                                    </p>
-                                                ) : event.Winner && (
-                                                    <p className="text-sm text-content-secondary mb-1">
-                                                        Winner: <span className="font-semibold text-content-link">
-                                                            {event.Winner.is_custom ? (
-                                                                <>{event.Winner.username || event.Winner.name || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
-                                                            ) : (
-                                                                <ClickableMemberName userId={event.Winner.id} username={event.Winner.username || 'Unknown'} />
-                                                            )}
-                                                        </span>
-                                                    </p>
-                                                )}
-                                                {event.comments && (
-                                                    <p className="text-content-secondary mt-1 text-sm italic">{event.comments}</p>
-                                                )}
-                                            </div>
-                                            {(userRole === 'owner' || userRole === 'admin') && (
-                                                <div className="flex gap-2 shrink-0">
-                                                    <button
-                                                        onClick={() => handleEditEvent(event)}
-                                                        className="btn btn-primary px-3 py-1 text-sm"
-                                                        title="Edit this session"
-                                                    >
-                                                        Edit
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDeleteEvent(event.id)}
-                                                        className="btn btn-danger px-3 py-1 text-sm"
-                                                        title="Delete this session"
-                                                    >
-                                                        Delete
-                                                    </button>
-                                                </div>
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <p className="font-semibold text-content-primary">
+                                                {formatDate(event.start_date, timezone)}
+                                            </p>
+                                            {event.duration_minutes && (
+                                                <span className="text-sm text-content-secondary">
+                                                    • {formatDuration(event.duration_minutes)}
+                                                </span>
                                             )}
                                         </div>
-                                        {event.EventParticipations && event.EventParticipations.length > 0 && (
-                                            <div className="text-sm mt-3 pt-2 border-t border-line">
-                                                <p className="font-semibold mb-2 text-content-primary">Participants:</p>
-                                                <div className="space-y-2">
-                                                    {event.EventParticipations.map((participation, idx) => (
-                                                        <div key={idx} className="flex items-center gap-2 flex-wrap">
-                                                            <span className="bg-surface-card-hover text-content-primary px-3 py-1 rounded-sm border border-line inline-flex items-center gap-2">
-                                                                <span className="font-medium">
-                                                                    {participation.is_custom ? (
-                                                                        <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
-                                                                    ) : (
-                                                                        // Phase 87.3-06: SANCTIONED flat read. Past-events participation
-                                                                        // rows come through formatEventWithCustomParticipants (events.js),
-                                                                        // which replaces EventParticipations with flat entries
-                                                                        // `{ user_id: ep.User?.id }` — already the Users.id UUID, with NO
-                                                                        // nested User to source from. The dead `participation.User?.user_id`
-                                                                        // prefix is dropped; `participation.user_id` here is UUID-keyed
-                                                                        // (unlike every other flat user_id site) and is allowlisted in the
-                                                                        // plan-06 residue grep.
-                                                                        <ClickableMemberName userId={participation.user_id} username={participation.User?.username || participation.username || 'Unknown'} />
-                                                                    )}
-                                                                </span>
-                                                                {participation.is_guest && (
-                                                                    <span className="text-xs bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded-full font-medium">
-                                                                        Guest
-                                                                    </span>
-                                                                )}
-                                                                {participation.is_new_player && (
-                                                                    <span className="text-xs bg-surface-card-hover text-content-link px-1.5 py-0.5 rounded-sm font-semibold">
-                                                                        New Player
-                                                                    </span>
-                                                                )}
-                                                                {participation.faction && (
-                                                                    <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm">
-                                                                        {participation.faction}
-                                                                    </span>
-                                                                )}
-                                                                {participation.score !== null && (
-                                                                    <span className="text-xs font-semibold text-content-secondary">
-                                                                        Score: {participation.score}
-                                                                    </span>
-                                                                )}
-                                                                {participation.placement && (
-                                                                    <span className="text-xs text-content-muted">
-                                                                        #{participation.placement}
-                                                                    </span>
-                                                                )}
-                                                            </span>
-                                                            {participation.is_guest && (userRole === 'owner' || userRole === 'admin') && participation.user_id && (
-                                                                <GuestInviteButton groupId={group_id} userId={participation.user_id} />
-                                                            )}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
+                                        {event.is_group_win ? (
+                                            <p className="text-sm text-status-success font-semibold mb-1">
+                                                ✓ Group Win
+                                            </p>
+                                        ) : event.Winner && (
+                                            <p className="text-sm text-content-secondary mb-1">
+                                                Winner: <span className="font-semibold text-content-link">
+                                                    {event.Winner.is_custom ? (
+                                                        <>{event.Winner.username || event.Winner.name || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
+                                                    ) : (
+                                                        <ClickableMemberName userId={event.Winner.id} username={event.Winner.username || 'Unknown'} />
+                                                    )}
+                                                </span>
+                                            </p>
                                         )}
-                                        {/* RSVP Section - interactive for future events, read-only for past */}
-                                        <RsvpSection
-                                            key={`${event.id}-${rsvpRefreshKey}`}
-                                            eventId={event.id}
-                                            self={self}
-                                            eventDate={event.start_date}
-                                            onRsvpChange={(status) => {
-                                                const prevStatus = eventRsvpStatuses[event.id];
-                                                setEventRsvpStatuses(prev => ({ ...prev, [event.id]: status }));
-                                                // NO rsvpByUserId patch here: that map is
-                                                // single-event data (fetched/read only by the
-                                                // event view's strip + See-all) — a per-user
-                                                // write from the multi-event view would flatten
-                                                // per-event state into a map with no event
-                                                // dimension (plan-10 review #2).
-                                                if (status === 'yes' && prevStatus !== 'yes') {
-                                                    setBringPickerEventId(event.id);
-                                                    setShowBringPicker(true);
-                                                }
-                                                setBringRefreshKey(k => k + 1);
-                                            }}
-                                        />
-                                        {/* Ballot Section - game voting */}
-                                        <BallotSection
-                                            eventId={event.id}
-                                            eventDate={event.start_date}
-                                            userRole={userRole}
-                                            userRsvpStatus={eventRsvpStatuses[event.id] || null}
-                                        />
-                                        {/* Bring Summary - who is bringing which games */}
-                                        <BringSummary
-                                            eventId={event.id}
-                                            groupId={group_id}
-                                            self={self}
-                                            refreshKey={bringRefreshKey}
-                                            onEditClick={() => { setBringPickerEventId(event.id); setShowBringPicker(true); }}
-                                        />
+                                        {event.comments && (
+                                            <p className="text-content-secondary mt-1 text-sm italic">{event.comments}</p>
+                                        )}
                                     </div>
+                                    {/* DECISION Phase 88-11 (D-40, F-6c/F-6d): ONE role gate wraps BOTH
+                                        breakpoint renderings — chosen OVER duplicating the
+                                        `userRole === 'owner' || userRole === 'admin'` test inside each
+                                        branch. Splitting the gate is what lets the two drift, and a
+                                        phone-only leak would be invisible to a desktop walkthrough; the
+                                        gate must keep mirroring the backend's owner/admin 403 on
+                                        PUT/DELETE /events/:id for both. Collapsing the two renderings
+                                        back into one always-visible cluster is a decision, not a
+                                        cleanup — the solid primary/danger pair is exactly the hierarchy
+                                        inversion F-6c recorded. */}
+                                    {(userRole === 'owner' || userRole === 'admin') && (
+                                        <>
+                                            {/* Phone: collapse both actions into the shipped kebab,
+                                                matching ScheduleList/ManageMembers, so the date, winner
+                                                and comment reclaim the full row width (F-6d). */}
+                                            <div className="md:hidden">
+                                                <KebabMenu
+                                                    ariaLabel="Session actions"
+                                                    items={[
+                                                        {
+                                                            label: 'Edit',
+                                                            onClick: () => handleEditEvent(event),
+                                                        },
+                                                        {
+                                                            label: 'Delete',
+                                                            onClick: () => handleDeleteEvent(event.id),
+                                                            danger: true,
+                                                            // D-40 + D-07: explicitly NOT the two-tap tier.
+                                                            // The menu unmounts the armed item on the first
+                                                            // click, so the second tap could never reach it —
+                                                            // this Delete routes to the dialog tier instead.
+                                                            twoTap: false,
+                                                        },
+                                                    ]}
+                                                />
+                                            </div>
+                                            {/* Desktop: still visible, demoted to ghost so they stop
+                                                outranking the plain-text content they act on (F-6c). */}
+                                            <div className="hidden md:flex gap-2 shrink-0">
+                                                <Button
+                                                    variant="ghost"
+                                                    onClick={() => handleEditEvent(event)}
+                                                    className="px-3 py-1 text-sm"
+                                                    title="Edit this session"
+                                                >
+                                                    Edit
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    onClick={() => handleDeleteEvent(event.id)}
+                                                    className="px-3 py-1 text-sm"
+                                                    title="Delete this session"
+                                                >
+                                                    Delete
+                                                </Button>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
+                                {event.EventParticipations && event.EventParticipations.length > 0 && (
+                                    <div className="text-sm mt-3 pt-2 border-t border-line">
+                                        <p className="font-semibold mb-2 text-content-primary">Participants:</p>
+                                        <div className="space-y-2">
+                                            {event.EventParticipations.map((participation, idx) => (
+                                                <div key={idx} className="flex items-center gap-2 flex-wrap">
+                                                    <span className="bg-surface-card-hover text-content-primary px-3 py-1 rounded-sm border border-line inline-flex items-center gap-2">
+                                                        <span className="font-medium">
+                                                            {participation.is_custom ? (
+                                                                <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
+                                                            ) : (
+                                                                // Phase 87.3-06: SANCTIONED flat read. Past-events participation
+                                                                // rows come through formatEventWithCustomParticipants (events.js),
+                                                                // which replaces EventParticipations with flat entries
+                                                                // `{ user_id: ep.User?.id }` — already the Users.id UUID, with NO
+                                                                // nested User to source from. The dead `participation.User?.user_id`
+                                                                // prefix is dropped; `participation.user_id` here is UUID-keyed
+                                                                // (unlike every other flat user_id site) and is allowlisted in the
+                                                                // plan-06 residue grep.
+                                                                <ClickableMemberName userId={participation.user_id} username={participation.User?.username || participation.username || 'Unknown'} />
+                                                            )}
+                                                        </span>
+                                                        {participation.is_guest && (
+                                                            <span className="text-xs bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded-full font-medium">
+                                                                Guest
+                                                            </span>
+                                                        )}
+                                                        {participation.is_new_player && (
+                                                            <span className="text-xs bg-surface-card-hover text-content-link px-1.5 py-0.5 rounded-sm font-semibold">
+                                                                New Player
+                                                            </span>
+                                                        )}
+                                                        {participation.faction && (
+                                                            <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm">
+                                                                {participation.faction}
+                                                            </span>
+                                                        )}
+                                                        {participation.score !== null && (
+                                                            <span className="text-xs font-semibold text-content-secondary">
+                                                                Score: {participation.score}
+                                                            </span>
+                                                        )}
+                                                        {participation.placement && (
+                                                            <span className="text-xs text-content-muted">
+                                                                #{participation.placement}
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                    {participation.is_guest && (userRole === 'owner' || userRole === 'admin') && participation.user_id && (
+                                                        <GuestInviteButton groupId={group_id} userId={participation.user_id} />
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                {/* RSVP Section - interactive for future events, read-only for past */}
+                                <RsvpSection
+                                    key={`${event.id}-${rsvpRefreshKey}`}
+                                    eventId={event.id}
+                                    self={self}
+                                    eventDate={event.start_date}
+                                    onRsvpChange={(status) => {
+                                        const prevStatus = eventRsvpStatuses[event.id];
+                                        setEventRsvpStatuses(prev => ({ ...prev, [event.id]: status }));
+                                        // NO rsvpByUserId patch here: that map is
+                                        // single-event data (fetched/read only by the
+                                        // event view's strip + See-all) — a per-user
+                                        // write from the multi-event view would flatten
+                                        // per-event state into a map with no event
+                                        // dimension (plan-10 review #2).
+                                        if (status === 'yes' && prevStatus !== 'yes') {
+                                            setBringPickerEventId(event.id);
+                                            setShowBringPicker(true);
+                                        }
+                                        setBringRefreshKey(k => k + 1);
+                                    }}
+                                />
+                                {/* Ballot Section - game voting */}
+                                <BallotSection
+                                    eventId={event.id}
+                                    eventDate={event.start_date}
+                                    userRole={userRole}
+                                    userRsvpStatus={eventRsvpStatuses[event.id] || null}
+                                />
+                                {/* Bring Summary - who is bringing which games */}
+                                <BringSummary
+                                    eventId={event.id}
+                                    groupId={group_id}
+                                    self={self}
+                                    refreshKey={bringRefreshKey}
+                                    onEditClick={() => { setBringPickerEventId(event.id); setShowBringPicker(true); }}
+                                />
                             </div>
                         ))}
                     </div>
@@ -2161,6 +2223,14 @@ export default function GameDetailPage() {
                 </div>
             )}
             
+            {/* Session-delete gate (D-09 dialog tier). Rendered UNCONDITIONALLY and
+                exactly once for the whole list: the hook owns which session is armed, so
+                a per-row copy would mount one dialog per visible session. `statusNode`
+                is likewise mounted once and always — a conditionally-mounted live region
+                announces nothing. */}
+            <ConfirmDialog {...deleteSessionGate.dialogProps} />
+            {deleteSessionGate.statusNode}
+
             {/* Edit Event Modal */}
             {editEventModal && (
                 <CreateEvent

@@ -291,22 +291,108 @@ describe('gameDetail sessions header (D-39)', () => {
   });
 });
 
+// D-40 / F-6c / F-6d. jsdom applies no media queries, so BOTH breakpoint
+// renderings are in the DOM at once here: the `md:hidden` kebab trigger and the
+// `hidden md:flex` ghost pair. That is what makes the negative pin meaningful —
+// it proves the role gate covers both layouts, not just the one a desktop
+// walkthrough would look at.
 describe('gameDetail role-gated session affordances', () => {
   it.each(['owner', 'admin'] as const)(
-    'shows the per-session Edit and Delete affordances to a group %s',
+    'shows the per-session Edit and Delete affordances to a group %s, in both layouts',
     async (role) => {
       renderGameDetail({ role });
       const sessions = await sessionsSection();
-      expect(within(sessions).getByRole('button', { name: 'Edit' })).toBeInTheDocument();
-      expect(within(sessions).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+
+      // Desktop layout: ghost-demoted, still visible.
+      const desktopEdit = within(sessions).getByRole('button', { name: 'Edit' });
+      const desktopDelete = within(sessions).getByRole('button', { name: 'Delete' });
+      expect(desktopEdit).toBeInTheDocument();
+      expect(desktopDelete).toBeInTheDocument();
+      const desktopCluster = desktopEdit.parentElement as HTMLElement;
+      expect(desktopCluster.className).toContain('hidden');
+      expect(desktopCluster.className).toContain('md:flex');
+      // F-6c: no longer the solid primary/danger pair that outranked the content.
+      expect(desktopEdit.className).not.toContain('btn-primary');
+      expect(desktopDelete.className).not.toContain('btn-danger');
+
+      // Phone layout: the kebab, so the row content reclaims the width (F-6d).
+      const kebab = within(sessions).getByRole('button', { name: 'Session actions' });
+      expect((kebab.closest('div')?.parentElement as HTMLElement).className).toContain(
+        'md:hidden'
+      );
     }
   );
 
-  it('hides them from a plain member', async () => {
+  it('hides them from a plain member in BOTH layouts', async () => {
     renderGameDetail({ role: 'member' });
     const sessions = await sessionsSection();
     expect(within(sessions).queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
     expect(within(sessions).queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+    // The phone affordance is gated by the same check — a kebab with no items
+    // would still be a leak, so assert the trigger itself is absent.
+    expect(
+      within(sessions).queryByRole('button', { name: 'Session actions' })
+    ).not.toBeInTheDocument();
+  });
+});
+
+// D-09 dialog tier / Req 11 / T-88-11-02. The play record is shared data, so the
+// gate must BLOCK: nothing is deleted until an explicit confirmation, and cancel
+// aborts. These two pins are the mitigation the threat register names.
+describe('gameDetail session-delete gate (D-40, dialog tier)', () => {
+  async function openDeleteFromKebab(user: ReturnType<typeof userEvent.setup>) {
+    const sessions = await sessionsSection();
+    await user.click(within(sessions).getByRole('button', { name: 'Session actions' }));
+    await user.click(within(sessions).getByRole('menuitem', { name: 'Delete' }));
+    return screen.findByRole('dialog');
+  }
+
+  it('opens the blocking dialog from the kebab and deletes nothing yet', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderGameDetail({ role: 'owner' });
+
+    const dialog = await openDeleteFromKebab(user);
+    expect(within(dialog).getByText('Delete this session?')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        'The play record, scores and who was there are deleted for everyone.'
+      )
+    ).toBeInTheDocument();
+    expect(eventsAPI.deleteEvent).not.toHaveBeenCalled();
+  });
+
+  it('aborts on cancel', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderGameDetail({ role: 'owner' });
+
+    const dialog = await openDeleteFromKebab(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(eventsAPI.deleteEvent).not.toHaveBeenCalled();
+  });
+
+  it('deletes only after the explicit confirmation, and for the armed session', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderGameDetail({ role: 'owner' });
+
+    const dialog = await openDeleteFromKebab(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+    expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1);
+    expect(eventsAPI.deleteEvent).toHaveBeenCalledWith(SESSION.id);
+  });
+
+  it('routes the desktop ghost Delete through the same gate', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    renderGameDetail({ role: 'owner' });
+
+    const sessions = await sessionsSection();
+    await user.click(within(sessions).getByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Delete this session?')).toBeInTheDocument();
+    expect(eventsAPI.deleteEvent).not.toHaveBeenCalled();
   });
 });
 
