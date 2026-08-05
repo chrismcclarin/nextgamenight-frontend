@@ -7,6 +7,7 @@ import { useTimezone } from '../components/TimezoneProvider';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { SelectControl } from '../../components/ui/Input';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
 function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, timezone }) {
     return (
@@ -56,7 +57,14 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
     );
 }
 
-export default function GroupGamesList({ games, groupId, onAddEvent, userRole, members }) {
+/**
+ * @param {Object} [props.errorState=null] - Phase 88-25 (Req 14 / DEF-88-18-01): the OWNER of the
+ *   games fetch (`groupHomePage/page.js`) passes its `useFetchErrorState` result here so a failed
+ *   load renders the shared error treatment instead of falling through to "no game nights logged
+ *   yet". This component does not fetch, so it cannot derive this itself. Same contract as
+ *   `UpcomingEventsCard` (88-18).
+ */
+export default function GroupGamesList({ games, groupId, onAddEvent, userRole, members, errorState = null }) {
     const { timezone } = useTimezone();
     const [sortBy, setSortBy] = useState('name');
     const [sortOrder, setSortOrder] = useState('asc');
@@ -239,6 +247,23 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
         return 'Players: Unknown';
     };
 
+    /* DECISION Phase 88-25 (Req 14 / DEF-88-18-01, T-88-18-01): the failed-fetch branch is checked
+       BEFORE the empty branch below. That ordering is load-bearing and is the whole fix — an
+       errored fetch also has zero games, so flipping these two silently restores the bug where a
+       group with years of history was told it had logged nothing. Do not merge them. */
+    if (errorState?.showError) {
+        return (
+            <div className="mt-8">
+                <h2 className="text-2xl font-bold text-content-primary mb-4">Group Games</h2>
+                <FetchErrorBanner
+                    state={errorState}
+                    title="We couldn't load this group's games"
+                    reportContext="Group games list (group home page)"
+                />
+            </div>
+        );
+    }
+
     if (!games || games.length === 0) {
         return (
             /* DECISION Phase 88-18 (E-25): this copy is play-SESSION-HISTORY copy ("No game nights
@@ -262,11 +287,13 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                site: `EmptyState.action` is a ReactNode precisely so the primitive never learns about
                roles.
 
-               Not done here, on purpose: this surface does not fetch — `games` arrives as a prop and
-               the parent's catch does `setGamesList([])` (groupHomePage/page.js), so a failed request
-               still lands in this branch. Plan 88-25 (Req 14) owns `groupHomePage/page.js` and is
-               where that split belongs; the shape to copy is `UpcomingEventsCard`, which takes an
-               `errorState` prop checked BEFORE its empty branch. */
+               CLOSED by plan 88-25 (Req 14 / DEF-88-18-01). This paragraph previously read "not done
+               here, on purpose": the surface does not fetch, `games` arrived as a prop, and the
+               parent's catch did `setGamesList([])`, so a failed request landed in THIS empty branch.
+               88-25 took `groupHomePage/page.js` as scheduled, replaced that flattening with a
+               tracked `gamesError`, and passes an `errorState` prop checked in the branch ABOVE
+               this one. The warning survives the fix: this branch means "nothing here yet" and
+               NOTHING else — do not let a failure reach it again. */
             <EmptyState
                 icon="Dices"
                 heading="No game nights logged yet"

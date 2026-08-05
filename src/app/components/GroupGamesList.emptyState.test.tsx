@@ -91,6 +91,86 @@ describe('GroupGamesList empty state (§9.2, owner-ruled E-25)', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders the error treatment and NOT the empty heading when the fetch failed', () => {
+    // Phase 88-25 (DEF-88-18-01 / T-88-18-01). Before this, the parent's catch
+    // did `setGamesList([])`, so a network/5xx failure arrived here as a
+    // legitimately-empty list and a group with years of history was told it had
+    // logged nothing. An errored fetch ALSO has zero games, so the branch order
+    // is the entire fix — this test is what stops it being flipped back.
+    render(
+      <GroupGamesList
+        {...anyProps({
+          games: [],
+          groupId: 'g1',
+          userRole: 'member',
+          onAddEvent: vi.fn(),
+          errorState: {
+            showError: true,
+            message: 'Something went wrong. Refresh the page to try again.',
+            code: 'unknown',
+            retry: vi.fn(),
+          },
+        })}
+      />
+    );
+
+    expect(
+      screen.getByText("We couldn't load this group's games")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'No game nights logged yet' })
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Log a game night' })).toBeNull();
+  });
+
+  it('a failed fetch wins over a NON-empty stale list too (the error is not hidden by data)', () => {
+    // The parent deliberately leaves the previous list in place on a refetch
+    // failure rather than blanking it, so this ordering has to hold with data
+    // present as well — otherwise a failed refresh would look like a success.
+    render(
+      <GroupGamesList
+        {...anyProps({
+          games: [{ id: 'game-1', name: 'Wingspan', play_count: 2 }],
+          groupId: 'g1',
+          userRole: 'member',
+          onAddEvent: vi.fn(),
+          errorState: {
+            showError: true,
+            message: 'Something went wrong. Refresh the page to try again.',
+            code: 'unknown',
+            retry: vi.fn(),
+          },
+        })}
+      />
+    );
+
+    expect(
+      screen.getByText("We couldn't load this group's games")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Wingspan' })).toBeNull();
+  });
+
+  it('errorState with showError:false is inert — the normal branches still decide', () => {
+    // Anti-vacuity: the two assertions above would also pass for a component
+    // that rendered the banner unconditionally.
+    render(
+      <GroupGamesList
+        {...anyProps({
+          games: [],
+          groupId: 'g1',
+          userRole: 'member',
+          onAddEvent: vi.fn(),
+          errorState: { showError: false, message: '', code: 'unknown', retry: vi.fn() },
+        })}
+      />
+    );
+
+    expect(
+      screen.getByRole('heading', { name: 'No game nights logged yet' })
+    ).toBeInTheDocument();
+    expect(screen.queryByText("We couldn't load this group's games")).toBeNull();
+  });
+
   it('does not render the empty state when the group has played games', () => {
     render(
       <GroupGamesList

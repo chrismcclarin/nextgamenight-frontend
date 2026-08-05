@@ -34,6 +34,7 @@ function GroupHomePage(){
     const [Group, setGroup] = useState(null);
     const [UserList, setUserList] = useState(null);
     const [gamesList, setGamesList] = useState([]);
+    const [gamesError, setGamesError] = useState(null);
     const [eventModal, setEventModal] = useState(false);
     const [memberModal, setMemberModal] = useState(false);
     const [showGroupSettings, setShowGroupSettings] = useState(false);
@@ -173,6 +174,7 @@ function GroupHomePage(){
         if (!Router || !user?.sub || !selfUuid) return;
         try {
             setLoading(true);
+            setGamesError(null);
             const games = await listsAPI.getGroupGames(Router, selfUuid);
             setGamesList(games || []);
         } catch (error) {
@@ -184,12 +186,37 @@ function GroupHomePage(){
                 return;
             }
             console.error('Error fetching games:', error);
-            setGamesList([]);
+            /* DECISION Phase 88-25 (Req 14 / DEF-88-18-01, T-88-18-01): a failed games request is
+               TRACKED as a failure here and handed to GroupGamesList as an `errorState` prop —
+               chosen OVER the `setGamesList([])` this shipped with. GroupGamesList takes `games`
+               as a prop and does not fetch, so flattening the failure into an empty array arrived
+               at the component as a legitimately-empty list: a group with years of history was
+               told "No game nights logged yet" when its request had merely failed. Empty and
+               failed are different facts (UI-SPEC 9.2).
+
+               The removal-403 redirect above stays FIRST and is untouched — that path is a real
+               403 with a real meaning and must never reach the error banner.
+
+               Keep the ERROR object, not a flattened string: useFetchErrorState reads
+               `ApiError.code` off it to pick the right user-facing copy. Do NOT re-add
+               `setGamesList([])` here — the stale list is deliberately left alone so a refetch
+               failure does not blank a list the person is still looking at. */
+            setGamesError(
+                error instanceof Error ? error : new Error("The group games request didn't complete.")
+            );
         } finally {
             setLoading(false);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [Router, user?.sub, selfUuid]);
+
+    // getGamesForGroup is already a useCallback with a stable identity, so it can be handed to
+    // the hook directly — no ref hop needed here (unlike groupPlanning's per-render fetches).
+    const gamesErrorState = useFetchErrorState({
+        isError: Boolean(gamesError),
+        error: gamesError,
+        refetch: getGamesForGroup,
+    });
 
     // PR2-L11 (SPEC Req 7): getGroup + fetchGroupEvents do NOT depend on selfUuid,
     // so they live in an effect keyed only on [Router, user?.sub, ...] — they fire
@@ -499,6 +526,7 @@ function GroupHomePage(){
                     onAddEvent={toggleEventModal}
                     userRole={userRole}
                     members={UserList}
+                    errorState={gamesErrorState}
                 />
               </>
             )}
