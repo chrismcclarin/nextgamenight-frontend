@@ -19,29 +19,26 @@
 // ---------------------------------------------------------------------------
 // EXTENSION POINTS — who adds what, and where
 // ---------------------------------------------------------------------------
-// * plan 88-10 (SPEC Req 5, ARIA cluster) extends `describe('notification
-//   preferences')` with the switch-semantics pins (the widget role and its
-//   checked-state attribute on each email toggle), extends `describe(
-//   'availability settings')` with the tab-strip ARIA roles and the per-tab
-//   selected-state attribute, and adds the vitest-axe no-violations assertion
-//   over the rendered page. The a11y matcher is already registered globally in
+// * plan 88-10 (SPEC Req 5, ARIA cluster) — LANDED. Its pins live below: the
+//   switch semantics on every notification toggle, the tab-strip roles +
+//   keyboard, the composed axe audit, the Req 11 gate pins and the Req 12 /
+//   OI-5 toast pins. The a11y matcher is registered globally in
 //   `vitest.setup.ts` — do NOT add a per-file `expect.extend`.
-// * plan 88-10 also owns the Req 12 / OI-5 toast pins. `toastMock()` below is
-//   the accessor: `expect(toastMock().success).toHaveBeenCalledWith(...)`
-//   against the four success strings the page emits (username updated, Google
-//   Calendar disconnected, specific override created, pattern deleted).
 // * plan 88-19 extends this file with the 16px control pins for the profile's
 //   inputs/selects.
 //
-// DECISION Phase 88 plan 06: the extension points above are written as PROSE,
-// not as the literal attribute/matcher tokens they describe. Plan 88-06's
-// acceptance gate greps this file to prove those assertions are absent today,
-// and a comment carrying the literals would false-positive that gate (the same
-// failure mode hit plans 88-01..05). Spelling them out literally is a decision,
-// not a cleanup — it breaks the gate.
+// DECISION Phase 88 plan 06 (now historical — kept as the record): the extension
+// points above were originally written as PROSE, not as the literal
+// attribute/matcher tokens they describe, because 88-06's acceptance gate
+// grepped this file to prove those assertions were absent at the time (the same
+// false-positive failure mode hit plans 88-01..05). That gate has run; 88-10
+// then wrote the real assertions, which is why the literals now appear in the
+// test bodies below. Do not "restore" the prose form over a live assertion.
 import * as React from 'react';
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { axe } from 'vitest-axe';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
@@ -235,37 +232,94 @@ describe('userProfile notification preferences', () => {
     renderProfile();
     for (const label of NOTIFICATION_LABELS) {
       expect(
-        await screen.findByRole('button', { name: `${label} email notifications` })
+        await screen.findByRole('switch', { name: `${label} email notifications` })
       ).toBeInTheDocument();
     }
   });
 
+  // Req 5 / F-353/357/362: the toggles announce as switches with an on/off state.
+  // Queried BY ROLE, never by class — a regression to a styled <button> fails here
+  // even if it renders pixel-identically.
+  it('announces every notification toggle as a switch carrying its on/off state', async () => {
+    renderProfile();
+    await screen.findByRole('switch', { name: 'New Event email notifications' });
+
+    const switches = screen.getAllByRole('switch');
+    expect(switches).toHaveLength(NOTIFICATION_LABELS.length);
+    for (const control of switches) {
+      expect(control).toHaveAttribute('aria-checked', 'true');
+    }
+  });
+
+  it('flips the checked state on the toggled switch and leaves its siblings alone', async () => {
+    renderProfile();
+    const target = await screen.findByRole('switch', {
+      name: 'New Event email notifications',
+    });
+    expect(target).toHaveAttribute('aria-checked', 'true');
+
+    fireEvent.click(target);
+
+    await waitFor(() => expect(target).toHaveAttribute('aria-checked', 'false'));
+    expect(
+      screen.getByRole('switch', { name: 'Event Updates email notifications' })
+    ).toHaveAttribute('aria-checked', 'true');
+  });
+
   it('renders the reminder-window select and the reset affordance', async () => {
     renderProfile();
-    await screen.findByRole('button', { name: 'New Event email notifications' });
+    await screen.findByRole('switch', { name: 'New Event email notifications' });
     expect(screen.getByRole('option', { name: '1 hour before' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reset to defaults' })).toBeInTheDocument();
   });
 
+  // The select shipped with no accessible name at all (axe select-name). Pinned by
+  // role+name so the fix cannot be dropped silently.
+  it('names the reminder-window select', async () => {
+    renderProfile();
+    expect(
+      await screen.findByRole('combobox', { name: 'Remind me' })
+    ).toBeInTheDocument();
+  });
+
+  // Folded todo 2026-05-09 / UI-SPEC §6.3: the helper text must name WHO is
+  // reminded and WHEN, in one sentence.
+  it('states who is reminded and when, under the reminder toggle', async () => {
+    renderProfile();
+    await screen.findByRole('switch', { name: 'Event Reminders email notifications' });
+
+    const helper = screen.getByText(/You'll get a reminder before events/);
+    expect(helper).toHaveTextContent(/still waiting on your availability/);
+    // The jargon the todo was raised against is gone.
+    expect(screen.queryByText(/poll deadline/i)).not.toBeInTheDocument();
+  });
+
   it('hides the SMS column entirely for a non-entitled user', async () => {
     renderProfile({ sms_enabled: false });
-    await screen.findByRole('button', { name: 'New Event email notifications' });
+    await screen.findByRole('switch', { name: 'New Event email notifications' });
     expect(
-      screen.queryByRole('button', { name: 'New Event SMS notifications' })
+      screen.queryByRole('switch', { name: 'New Event SMS notifications' })
     ).not.toBeInTheDocument();
   });
 
   it('renders the SMS toggles for an entitled user', async () => {
     renderProfile({ sms_enabled: true, phone_verified: true });
     expect(
-      await screen.findByRole('button', { name: 'New Event SMS notifications' })
+      await screen.findByRole('switch', { name: 'New Event SMS notifications' })
     ).toBeInTheDocument();
+  });
+
+  it('keeps the SMS switches disabled until the phone is verified', async () => {
+    renderProfile({ sms_enabled: true, phone_verified: false });
+    expect(
+      await screen.findByRole('switch', { name: 'New Event SMS notifications' })
+    ).toBeDisabled();
   });
 
   it('persists an email-toggle flip through the notification-preferences sender', async () => {
     const { usersAPI } = await import('@/lib/api');
     renderProfile();
-    fireEvent.click(await screen.findByRole('button', { name: 'New Event email notifications' }));
+    fireEvent.click(await screen.findByRole('switch', { name: 'New Event email notifications' }));
     await waitFor(() =>
       expect(usersAPI.updateNotificationPreferences).toHaveBeenCalledWith(
         SELF_UUID,
@@ -273,16 +327,62 @@ describe('userProfile notification preferences', () => {
       )
     );
   });
+
+  // D-14, asserted rather than merely written down: a switch that visibly flips is
+  // its own receipt and deliberately fires NO toast. Without this pin, a later
+  // "every mutation gets a receipt" sweep re-adds one and nothing objects.
+  it('fires no toast when a self-stating toggle flips (D-14)', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    renderProfile();
+    fireEvent.click(await screen.findByRole('switch', { name: 'New Event email notifications' }));
+    await waitFor(() => expect(usersAPI.updateNotificationPreferences).toHaveBeenCalled());
+    expect(toastMock().success).not.toHaveBeenCalled();
+  });
 });
 
 describe('userProfile availability settings', () => {
   it('renders both tabs of the availability tab strip', async () => {
     renderProfile();
-    expect(await screen.findByRole('button', { name: 'Schedules' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Specific Dates' })).toBeInTheDocument();
+    expect(await screen.findByRole('tab', { name: 'Schedules' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Specific Dates' })).toBeInTheDocument();
   });
 
+  // Req 5: the strip announces as a tab strip with a named owner and a selected tab.
+  it('exposes the strip as a named tab set with one selected tab and a panel', async () => {
+    renderProfile();
+    const strip = await screen.findByRole('tablist', { name: 'Availability settings' });
+    const tabs = within(strip).getAllByRole('tab');
+
+    expect(tabs).toHaveLength(2);
+    expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
+    expect(tabs[1]).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('Availability Schedules');
+  });
+
+  // The hand-rolled strip had no roving tabindex at all: arrow keys did nothing.
+  it('moves the selection with arrow keys', async () => {
+    const user = userEvent.setup();
+    renderProfile();
+    const first = await screen.findByRole('tab', { name: 'Schedules' });
+    const second = screen.getByRole('tab', { name: 'Specific Dates' });
+
+    first.focus();
+    await user.keyboard('{ArrowRight}');
+
+    expect(second).toHaveFocus();
+    expect(second).toHaveAttribute('aria-selected', 'true');
+    expect(first).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('Specific Date Overrides');
+
+    await user.keyboard('{ArrowLeft}');
+    expect(first).toHaveAttribute('aria-selected', 'true');
+  });
+
+  // Driven with userEvent, NOT fireEvent.click: Radix selects a tab on pointer-down
+  // and on focus, so a synthetic click alone never reaches it. That is a property of
+  // the primitive, not of this page — see the same shape in `Tabs.test.tsx`.
   it('swaps the visible panel when the Specific Dates tab is activated', async () => {
+    const user = userEvent.setup();
     renderProfile();
     // Recurring is the default tab.
     expect(
@@ -292,7 +392,7 @@ describe('userProfile availability settings', () => {
       screen.queryByRole('heading', { name: 'Specific Date Overrides' })
     ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Specific Dates' }));
+    await user.click(screen.getByRole('tab', { name: 'Specific Dates' }));
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Specific Date Overrides' })).toBeInTheDocument()
@@ -300,5 +400,23 @@ describe('userProfile availability settings', () => {
     expect(
       screen.queryByRole('heading', { name: 'Availability Schedules' })
     ).not.toBeInTheDocument();
+  });
+});
+
+// Req 5's acceptance criterion, and the composed audit DEF-88-12-04 asks for: the
+// primitives' own suites audit them with trivial children and cannot see a
+// violation living in a CONSUMER's composed content — which is where the three
+// this run found (an unnamed select, two unnamed phone fields) all lived.
+describe('userProfile a11y audit', () => {
+  it('passes an axe audit on the default surface', async () => {
+    const { container } = renderProfile();
+    await screen.findByRole('switch', { name: 'New Event email notifications' });
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('passes an axe audit with the SMS-entitled surface composed in', async () => {
+    const { container } = renderProfile({ sms_enabled: true, phone_verified: false });
+    await screen.findByRole('switch', { name: 'New Event SMS notifications' });
+    expect(await axe(container)).toHaveNoViolations();
   });
 });
