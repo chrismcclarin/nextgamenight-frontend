@@ -195,7 +195,33 @@ export default function BrowseMoreModal({
           className="sticky top-0 z-10 bg-card px-4 pt-3 pb-3 border-b border-line"
         >
           <div className="flex flex-wrap items-center gap-3">
-            {/* Player-count stepper */}
+            {/* Player-count stepper.
+
+                DECISION Phase 88-17 (D-36, UI-SPEC §3.2 exception 2): these TWO
+                buttons — and only these two in the whole app — carry
+                `btn-compact`, the opt-out from the phone-width 44px `.btn` floor
+                that plan 88-01 added at globals.css. They are square by design
+                (32x32); under the floor they would stretch into 32x44 lozenges,
+                and that deformation is the exact reason a blanket all-viewport
+                floor was REJECTED in 87.8. Every other compact `.btn` row in the
+                app deliberately takes the floor and grows ~7px: their
+                `text-xs px-3 py-1` utilities were measured DEAD against the
+                unlayered `.btn` rule, so they do not double in height.
+
+                THE MECHANISM IS THE LOAD-BEARING PART. The opt-out is the
+                unlayered `.btn-compact` class, chosen OVER a Tailwind
+                minimum-height-zero utility at this call site. That utility
+                CANNOT work here: `.btn` and its floor are unlayered author
+                rules, and an unlayered rule beats every `@layer utilities` rule
+                regardless of specificity — the utility would silently do
+                nothing, which is the same cascade defect this repo has already
+                hit twice (87.8 DEC-2 and DEC-3, both recorded in globals.css).
+                Swapping this class for a Tailwind utility is a decision, not a
+                cleanup, and it is a decision that loses.
+
+                Phone geometry for this pair is covered by plan 88-30's e2e
+                extension, not by a unit test — the floor only exists below
+                48rem, and jsdom has no viewport. */}
             <div className="flex items-center gap-1" title="Player count">
               <button
                 type="button"
@@ -203,7 +229,7 @@ export default function BrowseMoreModal({
                   setPlayerCount((p) => Math.max(1, (p || 1) - 1))
                 }
                 disabled={decrementDisabled}
-                className="btn btn-secondary w-8 h-8 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn btn-compact btn-secondary w-8 h-8 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                 aria-label="Decrease player count"
               >
                 −
@@ -227,7 +253,8 @@ export default function BrowseMoreModal({
               <button
                 type="button"
                 onClick={() => setPlayerCount((p) => (p || 0) + 1)}
-                className="btn btn-secondary w-8 h-8 flex items-center justify-center"
+                /* btn-compact: see the D-36 marker on the decrement twin above. */
+                className="btn btn-compact btn-secondary w-8 h-8 flex items-center justify-center"
                 aria-label="Increase player count"
               >
                 +
