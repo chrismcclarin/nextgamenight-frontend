@@ -6,6 +6,7 @@ import { formatDate } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
+import { SelectControl } from '../../components/ui/Input';
 
 function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, timezone }) {
     return (
@@ -297,15 +298,21 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                 <div className="flex items-center gap-2">
                     <label className="flex items-center gap-2">
                         <span className="text-sm font-medium text-content-secondary whitespace-nowrap">Sort by:</span>
-                        <select
+                        {/* DECISION Phase 88-21 (Req 1): `w-auto` overrides the primitive's
+                            `block w-full`. This select sits INLINE beside its "Sort by:" span on
+                            one toolbar row, unlike the two filter selects below it which are
+                            stacked and genuinely full-width. Taking the primitive default here
+                            would push the select onto its own line and break the toolbar. Same
+                            override 88-19 used for the reminder-window select. */}
+                        <SelectControl
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value)}
-                            className="px-3 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
+                            className="w-auto"
                         >
                             <option value="name">Name</option>
                             <option value="theme">Theme</option>
                             <option value="player_count">Player Count</option>
-                        </select>
+                        </SelectControl>
                     </label>
                     <button
                         onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
@@ -332,10 +339,9 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                     <div className="flex flex-col sm:flex-row gap-3">
                         <label className="flex-1">
                             <span className="text-sm font-medium text-content-secondary block mb-1">Winner</span>
-                            <select
+                            <SelectControl
                                 value={filterWinner}
                                 onChange={(e) => setFilterWinner(e.target.value)}
-                                className="w-full px-3 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
                             >
                                 <option value="">All</option>
                                 {winnerOptions.map(opt => (
@@ -343,14 +349,13 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                                         {opt.username}{opt.is_custom ? ' (guest)' : ''} ({opt.totalCount} {opt.totalCount === 1 ? 'win' : 'wins'})
                                     </option>
                                 ))}
-                            </select>
+                            </SelectControl>
                         </label>
                         <label className="flex-1">
                             <span className="text-sm font-medium text-content-secondary block mb-1">Picker</span>
-                            <select
+                            <SelectControl
                                 value={filterPicker}
                                 onChange={(e) => setFilterPicker(e.target.value)}
-                                className="w-full px-3 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
                             >
                                 <option value="">All</option>
                                 {pickerOptions.map(opt => (
@@ -358,7 +363,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                                         {opt.username}{opt.is_custom ? ' (guest)' : ''} ({opt.totalCount} {opt.totalCount === 1 ? 'pick' : 'picks'})
                                     </option>
                                 ))}
-                            </select>
+                            </SelectControl>
                         </label>
                     </div>
                 </div>

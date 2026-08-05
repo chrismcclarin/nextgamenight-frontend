@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { Modal } from './Modal';
+import { Input } from '../../components/ui/Input';
 
 // Default profile picture options
 const DEFAULT_PROFILE_PICTURES = [
@@ -402,12 +403,12 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
           <div>
             <p className="text-sm text-content-secondary mb-2">Or enter a custom image URL:</p>
             <div className="flex gap-2">
-              <input
+              <Input
                 type="text"
                 value={customPictureUrl}
                 onChange={(e) => setCustomPictureUrl(e.target.value)}
                 placeholder="https://example.com/image.jpg"
-                className="flex-1 p-2 border border-line rounded-sm text-content-primary bg-surface-input"
+                className="flex-1"
               />
               <button
                 onClick={handleUseCustomPicture}
@@ -458,12 +459,12 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
           <div>
             <p className="text-sm text-content-secondary mb-2">Or enter a custom background image URL:</p>
             <div className="flex gap-2">
-              <input
+              <Input
                 type="text"
                 value={customBackgroundUrl}
                 onChange={(e) => setCustomBackgroundUrl(e.target.value)}
                 placeholder="https://example.com/background.jpg"
-                className="flex-1 p-2 border border-line rounded-sm text-content-primary bg-surface-input"
+                className="flex-1"
               />
               <button
                 onClick={handleUseCustomBackground}

@@ -1,5 +1,7 @@
 'use client';
 
+import { SelectControl } from '../../components/ui/Input';
+
 export default function EventResultFields({ newEvent, handleChange }) {
   return (
     <>
@@ -8,11 +10,10 @@ export default function EventResultFields({ newEvent, handleChange }) {
         <label htmlFor="winner_id" className="block text-sm font-medium mb-1 text-content-primary">
           Winner
         </label>
-        <select
+        <SelectControl
           id="winner_id"
           value={newEvent.winner_id || ''}
           onChange={handleChange}
-          className="w-full p-2 border border-line rounded-sm text-content-primary bg-surface-input"
         >
           <option value="">Select winner (optional)</option>
           {newEvent.participants
@@ -26,7 +27,7 @@ export default function EventResultFields({ newEvent, handleChange }) {
                 </option>
               );
             })}
-        </select>
+        </SelectControl>
       </div>
 
       {/* Picked By Selection */}
@@ -34,11 +35,10 @@ export default function EventResultFields({ newEvent, handleChange }) {
         <label htmlFor="picked_by_id" className="block text-sm font-medium mb-1 text-content-primary">
           Picked By
         </label>
-        <select
+        <SelectControl
           id="picked_by_id"
           value={newEvent.picked_by_id || ''}
           onChange={handleChange}
-          className="w-full p-2 border border-line rounded-sm text-content-primary bg-surface-input"
         >
           <option value="">Select who picked the game (optional)</option>
           {newEvent.participants
@@ -52,7 +52,7 @@ export default function EventResultFields({ newEvent, handleChange }) {
                 </option>
               );
             })}
-        </select>
+        </SelectControl>
       </div>
 
       {/* Group Win Checkbox */}

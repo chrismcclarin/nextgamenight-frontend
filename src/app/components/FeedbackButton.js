@@ -6,6 +6,7 @@ import { feedbackAPI } from '../../lib/api';
 import { scrubFeedbackPageUrl } from '../../lib/scrubFeedbackPageUrl';
 import { useFeedbackModal, CATEGORIES, getCategoryLabel } from './FeedbackModalProvider';
 import { Modal } from './Modal';
+import { Textarea, SelectControl } from '@/components/ui/Input';
 
 /**
  * Feedback entry points + modal (MOB-04, Plan 87.8-05, D-09).
@@ -271,18 +272,17 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
                     >
                       Category
                     </label>
-                    <select
+                    <SelectControl
                       id="feedback-category"
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
-                      className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
                     >
                       {CATEGORIES.map((cat) => (
                         <option key={cat} value={cat}>
                           {cat}
                         </option>
                       ))}
-                    </select>
+                    </SelectControl>
                   </div>
 
                   {/* Feedback textarea */}
@@ -293,13 +293,13 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
                     >
                       Feedback
                     </label>
-                    <textarea
+                    <Textarea
                       id="feedback-text"
                       value={text}
                       onChange={(e) => setText(e.target.value)}
                       placeholder="Tell us what's on your mind..."
                       rows={5}
-                      className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring resize-none"
+                      className="resize-none"
                     />
                     <p className="text-xs text-content-muted mt-1">
                       {text.trim().length} characters (10 minimum)

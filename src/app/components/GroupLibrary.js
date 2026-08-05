@@ -9,6 +9,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { Input, SelectControl } from '../../components/ui/Input';
 
 export default function GroupLibrary({ groupId }) {
   const router = useRouter();
@@ -193,12 +194,11 @@ export default function GroupLibrary({ groupId }) {
     <div className="mt-4">
       {/* Search bar */}
       <div className="mb-3">
-        <input
+        <Input
           type="text"
           placeholder="Search games..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full px-4 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-hidden focus:ring-2 focus:ring-focus-ring focus:border-transparent"
         />
       </div>
 
@@ -206,16 +206,18 @@ export default function GroupLibrary({ groupId }) {
       <div className="mb-3 flex items-center justify-between">
         <label className="flex items-center gap-2">
           <span className="text-sm font-medium text-content-secondary">Sort:</span>
-          <select
+          {/* `w-auto`: inline beside its "Sort:" span on a toolbar row — same shape as
+              GroupGamesList's sort select. See the marker there. */}
+          <SelectControl
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            className="px-3 py-1.5 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
+            className="w-auto"
           >
             <option value="name">Name (A-Z)</option>
             <option value="players">Player Count</option>
             <option value="time">Play Time</option>
             <option value="complexity">Complexity</option>
-          </select>
+          </SelectControl>
         </label>
         <span className="text-sm text-content-muted">
           {filteredGames.length} {filteredGames.length === 1 ? 'game' : 'games'}

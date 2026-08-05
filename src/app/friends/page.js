@@ -9,6 +9,7 @@ import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { Input, SelectControl } from '../../components/ui/Input';
 
 function FriendsPage() {
     const { user, isLoading: authLoading } = useUser();
@@ -484,12 +485,12 @@ function FriendsPage() {
                 <div className="card p-6 mb-6">
                     <h2 className="text-lg font-semibold text-content-primary mb-3">Add Friend</h2>
                     <form onSubmit={handleSearch} className="flex gap-3">
-                        <input
+                        <Input
                             type="email"
                             value={searchEmail}
                             onChange={(e) => setSearchEmail(e.target.value)}
                             placeholder="Enter friend's email address"
-                            className="flex-1 px-4 py-2 border border-line rounded-btn focus:outline-hidden focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
+                            className="flex-1"
                             required
                         />
                         <button
@@ -648,12 +649,12 @@ function FriendsPage() {
                                             <label htmlFor="group-invite-select" className="text-sm font-medium text-content-secondary">
                                                 Invite to Group:
                                             </label>
-                                            <select
+                                            <SelectControl
                                                 id="group-invite-select"
                                                 aria-label="Invite to group"
                                                 value={selectedGroupId}
                                                 onChange={(e) => setSelectedGroupId(e.target.value)}
-                                                className="flex-1 min-w-[180px] max-w-xs px-3 py-2 border border-line rounded-btn text-sm text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
+                                                className="flex-1 min-w-[180px] max-w-xs"
                                             >
                                                 <option value="" disabled>Select a group...</option>
                                                 {userGroups.map(group => (
@@ -661,7 +662,7 @@ function FriendsPage() {
                                                         {group.name}
                                                     </option>
                                                 ))}
-                                            </select>
+                                            </SelectControl>
                                             <button
                                                 onClick={handleBulkInvite}
                                                 disabled={!selectedGroupId || selectedFriends.size === 0 || bulkInviteLoading}

@@ -8,6 +8,7 @@ import { UserChip } from '@/components/ui/UserChip';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { DialogClose, DialogTitle } from '../../components/ui/dialog';
 import { Modal } from './Modal';
+import { Input } from '@/components/ui/Input';
 
 // `openedFrom` is the entry point this panel was opened from: 'create' is the
 // auto-open immediately after a group is created (createGroup.js) and swaps in
@@ -404,7 +405,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                             Invite by Email
                         </h3>
                         <form onSubmit={handleEmailInvite} className="flex gap-2">
-                            <input
+                            <Input
                                 type="email"
                                 value={email}
                                 onChange={(e) => {
@@ -415,7 +416,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                 placeholder="user@example.com"
                                 required
                                 disabled={emailLoading}
-                                className="flex-1 px-3 py-2.5 border border-line rounded-lg text-sm text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring focus:border-accent disabled:opacity-50"
+                                className="flex-1 disabled:opacity-50"
                             />
                             <button
                                 type="submit"
