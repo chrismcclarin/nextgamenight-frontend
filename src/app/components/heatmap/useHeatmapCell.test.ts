@@ -1,7 +1,8 @@
 // Parity pins for useHeatmapCell (D-04).
 //
-// The hook owns the COMPLETE roving-tabindex + nav-key state machine lifted from
-// HeatmapGrid.js:227-267. This suite proves keyboard parity for EVERY one of the
+// The hook owns the COMPLETE roving-tabindex + nav-key state machine lifted from the
+// legacy intensity read-grid's :227-267 (that component was deleted by plan 88-31's
+// dead-code gate). This suite proves keyboard parity for EVERY one of the
 // eight nav keys (arrows + Home/End/PageUp/PageDown) plus Enter/Space select,
 // non-nav pass-through, and the roving tabIndex rule — so when 84-10 deletes the
 // grid-level handler, no key can silently regress.
@@ -55,7 +56,7 @@ describe('useHeatmapCell — roving tabIndex rule', () => {
   });
 });
 
-describe('useHeatmapCell — eight nav keys (parity with HeatmapGrid.js:227-267)', () => {
+describe('useHeatmapCell — eight nav keys (parity with the legacy read-grid :227-267)', () => {
   it('ArrowUp moves row-1, same col', () => {
     const { result, onMove } = renderMidGrid();
     const e = keyEvent('ArrowUp');

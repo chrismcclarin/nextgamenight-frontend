@@ -405,8 +405,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   };
   // null sentinel = "use today's Monday" (page-load reset). Today button
   // returns to the null-state which the fetch effect resolves to today's
-  // actual Monday — label-accurate semantics consistent with HeatmapGrid
-  // and MergedHeatmap.
+  // actual Monday — label-accurate semantics consistent with MergedHeatmap.
+  // (A second grid was named here until plan 88-31 deleted it as dead code.)
   const handleToday = () => setCurrentWeekStart(null);
   const isOnTodayMonday = isSameWeek(effectiveMondayForUI, todayMonday, { weekStartsOn: 1 });
 
@@ -623,8 +623,11 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
          verbatim from the UI-SPEC §6.2 register — do not warm it up.
          Verified this session that nothing between the API success and this line
          can eat it: all five shipped `onEventCreated` consumers
-         (groupHomePage:509, groupPlanning:286, gameDetail:1221/2243/2258,
-         HeatmapGrid:518 -> its parent) refetch or unmount; none navigates. */
+         (groupHomePage:509, groupPlanning:286, gameDetail:1221/2243/2258, and the
+         legacy read-grid at its :518 -> its parent) refetch or unmount; none
+         navigates. NOTE: that fifth consumer was deleted by plan 88-31's dead-code
+         gate, so the live count is now four — the claim is unaffected, but do not
+         re-verify it expecting five. */
       toast.success(editingEvent ? 'Event updated' : 'Event created');
       modaltoggle();
       // Reset form. Phase 66-01: derivedSelectedSlot resets automatically

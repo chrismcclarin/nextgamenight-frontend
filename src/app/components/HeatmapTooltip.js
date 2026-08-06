@@ -29,8 +29,9 @@
 //     <CellElement />                // single trigger child
 //   </HeatmapTooltip>
 //
-// triggerRef escape hatch: parent grids in Plan 02 (HeatmapGrid +
-// MergedHeatmapGrid) implement roving-tabindex arrow-key navigation and need to
+// triggerRef escape hatch: parent grids in Plan 02 (MergedHeatmapGrid, and the
+// legacy intensity read-grid deleted by 88-31) implement roving-tabindex
+// arrow-key navigation and need to
 // call `cellRefs.current[idx].focus()` without fighting floating-ui's internal
 // `refs.setReference` ref. The primitive merges floating-ui's ref with the
 // caller's `triggerRef` so both stay in sync. Honored on the disabled

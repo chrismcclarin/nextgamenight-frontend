@@ -9,50 +9,36 @@
 // job in Phase 84. These are extracted as-is to preserve current behavior bit-for-bit.
 
 /**
- * ⚠️ DEAD CODE — DELETE AT END OF PHASE 88 (owner decision 2026-07-25).
+ * DECISION Phase 88-31 (SPEC "END-OF-PHASE DEAD-CODE GATE"): THE SECOND RAMP IS GONE.
  *
- * This yellow→orange→red ramp has NO live render path. It is reachable only through
- * `ReadCell`'s DEFAULT variant, and the sole caller of that default is
- * `app/components/HeatmapGrid.js` — which **nothing imports**. Verified 2026-07-25.
+ * A yellow→orange→red intensity ramp used to live here, exported as a sibling of
+ * `mergedCellColor` below. It served the OLD tutorial heatmap; the Phase 73 tutorial rewrite
+ * replaced that surface with production-matching greens and orphaned it. Its only render path
+ * ran through the shared read cell's DEFAULT variant, whose only caller was a legacy read-grid
+ * component that nothing imported (verified 2026-07-25, and re-verified immediately before the
+ * deletion — see below).
  *
- * Origin: it served the OLD tutorial heatmap. The Phase 73 tutorial rewrite replaced that
- * surface with production-matching greens (green-100..500) and orphaned this ramp.
+ * THE DELAY WAS THE POINT, and it is worth keeping because it is the reusable part. The owner
+ * ruled on 2026-07-25 to leave it in place and delete it at the END of the phase, so that a
+ * full phase of design-system work ran against the cluster first and proved nothing had
+ * quietly grown a dependency on it. Deleting on the day it was identified would have proved
+ * only that nothing imported it that morning.
  *
- * It is being left in place rather than removed now, deliberately: a full phase of Phase 88
- * work runs against it first, so nothing can be silently depending on it. **Delete at the end
- * of Phase 88** — see 88-SPEC.md "END-OF-PHASE DEAD-CODE GATE". The cluster to remove:
- *   - this function + its `describe` block in `availabilityColor.test.ts`
- *   - `app/components/HeatmapGrid.js` + `HeatmapGrid.test.tsx`
- *   - `ReadCell`'s default/intensity branch + the `IntensityReadCellProps` arm of its union
+ * Re-verified before deleting rather than trusted from the 2026-07-25 note: the census was run
+ * WORD-BOUNDED, because the SPEC's own bare pattern is a substring of the LIVE
+ * `MergedHeatmapGrid` and matches ~10 live files. Every surviving hit was a comment, a type arm
+ * or a test mention; not one was a live import or call.
  *
- * DO NOT adopt this ramp for anything new. The canonical availability ramp is
- * `mergedCellColor` below — 5 steps, green-100 → green-500 (owner decision 2026-07-25).
+ * Deleted together, as one commit, because they only typecheck together: this function, its
+ * `describe` block in `availabilityColor.test.ts`, the legacy read-grid component and its test,
+ * the read cell's default/intensity branch and the intensity arm of its props union, and — the
+ * item the SPEC's own list missed — the matching arm of `WeekGrid`'s read-data union.
  *
- * ---
- * Calculate color intensity based on participant count and preference weighting.
- * Extracted VERBATIM from HeatmapCell.js `getIntensityColor`.
- *
- * @param participantCount - Total number of available participants
- * @param preferredCount - Number of participants who marked as preferred
- * @param totalMembers - Total group members
- * @returns Tailwind CSS classes for background and border
+ * THE CANONICAL AVAILABILITY RAMP IS `mergedCellColor` BELOW — 5 steps, green-100 → green-500
+ * (owner decision 2026-07-25). Re-introducing a second ramp is a design decision, not a
+ * convenience; the whole point of PRIM-01 was that two divergent ramps existed and one had to
+ * win.
  */
-export function intensityColor(
-  participantCount: number,
-  preferredCount: number,
-  totalMembers: number
-): string {
-  // Weight preferred 1.5x for intensity calculation only
-  const weightedScore = participantCount + preferredCount * 0.5;
-  const maxPossible = totalMembers * 1.5; // if all preferred
-  const percentage = maxPossible > 0 ? (weightedScore / maxPossible) * 100 : 0;
-
-  if (participantCount === 0) return 'bg-surface-elevated border-line';
-  if (percentage <= 25) return 'bg-yellow-200 border-yellow-400';
-  if (percentage <= 50) return 'bg-yellow-400 border-yellow-500';
-  if (percentage <= 75) return 'bg-orange-400 border-orange-500';
-  return 'bg-red-500 border-red-600';
-}
 
 /**
  * ★ CANONICAL AVAILABILITY RAMP — 5 steps, green-100 → green-500 (owner decision 2026-07-25).

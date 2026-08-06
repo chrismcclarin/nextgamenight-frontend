@@ -13,8 +13,13 @@ import { WeekGrid } from './WeekGrid';
 
 afterEach(cleanup);
 
-const readCell = () =>
-  ({ variant: 'intensity', participantCount: 1, preferredCount: 0, totalMembers: 4 }) as const;
+// AMENDED BY PHASE 88-31: this fixture was `{ variant: 'intensity', participantCount, … }`.
+// The intensity arm of `WeekGridReadData` went with the dead-code gate, so the fixture moved to
+// the surviving `merged` shape. The three pins below are about the ARIA scaffold, real DOM focus
+// movement and write-cycle persistence — none of them depends on which colour ramp a read cell
+// uses, so this is a fixture swap, not a coverage loss. Converting them was chosen OVER deleting
+// them: they are the only tests of `variant="read"` in the suite.
+const readCell = () => ({ variant: 'merged', availableCount: 1, totalMembers: 4 }) as const;
 
 describe('WeekGrid — ARIA grid scaffold', () => {
   it('renders role="grid" with the supplied aria-label', () => {

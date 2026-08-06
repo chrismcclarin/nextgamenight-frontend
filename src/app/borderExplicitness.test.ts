@@ -231,11 +231,11 @@ const PAIRED_ELSEWHERE: Record<string, string> = {
     'friend-row ternary: all three branches name a colour (line / accent / line)',
   'app/components/GroupGamesList.js':
     'filter-toggle ternary: both branches name a colour (line-accent / line)',
-  'app/components/HeatmapGrid.js':
-    'ReadCell appends intensityColor(), and ALL FIVE of its branches name a border ' +
-    'colour. Adding one here would overpaint the ramp: ReadCell applies the colour ' +
-    'string verbatim with no tailwind-merge (its 84-05 byte-identical contract), so ' +
-    'stylesheet order would decide and the neutral is emitted last. Dead file besides.',
+  // REMOVED BY 88-31: the legacy intensity read-grid was exempt here ("dead file besides").
+  // Its file, its colour ramp and its cell variant were all deleted by the same plan's
+  // dead-code gate, so the exemption had to go with them or test 2 (allow-list staleness)
+  // would red on a file that no longer exists. That coupling is deliberate and is exactly
+  // what test 2 is for — a deletion cannot leave a widening exemption behind.
   'app/components/ManageMembers.js':
     'role pill: all four roleStyles entries name a colour, and the `||` guarantees a fallback',
   'app/friends/page.js':

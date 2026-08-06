@@ -1,56 +1,23 @@
 // Regression pins for availabilityColor.ts (C-009).
-// Pins the EXACT class-string outputs of the two VERBATIM-extracted functions at
-// every boundary. Assumption A5: do NOT assert a converged scheme — PRIM-01
-// (Phase 84) converges them; these tests are the net it refactors against.
+// Pins the EXACT class-string outputs of every ramp in this module at every boundary.
+//
+// AMENDED BY PHASE 88-31: the dead yellow→orange→red intensity-ramp describe block was deleted
+// here alongside the function itself (SPEC "END-OF-PHASE DEAD-CODE GATE"). The function name is
+// DESCRIBED rather than written, because the SPEC's exit criterion for that gate is a bare grep
+// for the identifier across `src/` — a marker naming it would hold the criterion red forever on a
+// correct tree, which is the comment-blindness this phase has now recorded sixteen times. The
+// original header said these tests
+// pinned "the two VERBATIM-extracted functions" and carried Assumption A5 — "do NOT assert a
+// converged scheme; PRIM-01 (Phase 84) converges them". A5 is now spent: PRIM-01 picked
+// `mergedCellColor` as the canonical ramp and 88-31 removed the loser. The remaining pins are
+// still byte-exact class strings, and `calendarWashColor` is a recorded translucent VARIANT of
+// the canonical ramp (88-23), not a third scheme.
 import {
   CALENDAR_WASH_RAMP,
   calendarWashColor,
-  intensityColor,
   mergedCellColor,
   preferenceColor,
 } from './availabilityColor';
-
-describe('availabilityColor — intensityColor (yellow→orange→red intensity)', () => {
-  // maxPossible = totalMembers * 1.5 = 7.5; percentage = (count + pref*0.5)/7.5 * 100
-  it('returns the empty-cell classes when participantCount is 0', () => {
-    expect(intensityColor(0, 0, 5)).toBe('bg-surface-elevated border-line');
-  });
-
-  it('maps <=25% to yellow-200', () => {
-    // 1/7.5 = 13.3%
-    expect(intensityColor(1, 0, 5)).toBe('bg-yellow-200 border-yellow-400');
-  });
-
-  it('maps the exact 25% boundary to yellow-200', () => {
-    // 1.875/7.5 = 25%
-    expect(intensityColor(1, 1.75, 5)).toBe('bg-yellow-200 border-yellow-400');
-  });
-
-  it('maps >25% and <=50% to yellow-400', () => {
-    // 3/7.5 = 40%
-    expect(intensityColor(3, 0, 5)).toBe('bg-yellow-400 border-yellow-500');
-  });
-
-  it('maps the exact 50% boundary to yellow-400', () => {
-    // 3.75/7.5 = 50%
-    expect(intensityColor(3, 1.5, 5)).toBe('bg-yellow-400 border-yellow-500');
-  });
-
-  it('maps >50% and <=75% to orange-400', () => {
-    // 4/7.5 = 53.3%
-    expect(intensityColor(4, 0, 5)).toBe('bg-orange-400 border-orange-500');
-  });
-
-  it('maps the exact 75% boundary to orange-400', () => {
-    // 5.625/7.5 = 75%
-    expect(intensityColor(5, 1.25, 5)).toBe('bg-orange-400 border-orange-500');
-  });
-
-  it('maps >75% to red-500', () => {
-    // 6/7.5 = 80%
-    expect(intensityColor(6, 0, 5)).toBe('bg-red-500 border-red-600');
-  });
-});
 
 describe('availabilityColor — mergedCellColor (green availability gradient)', () => {
   it('returns the empty-cell classes when availableCount is 0', () => {

@@ -1,6 +1,6 @@
 'use client';
 
-// ReadCell — presentational read/intensity heatmap cell (PRIM-01, D-04/D-06).
+// ReadCell — presentational read heatmap cell (PRIM-01, D-04/D-06).
 //
 // A THIN React.memo wrapper over the engine: keyboard/roving comes from
 // `useHeatmapCell`, color comes from `availabilityColor` (applied VERBATIM — no
@@ -23,7 +23,7 @@
 
 import React, { memo } from 'react';
 import HeatmapTooltip from '../HeatmapTooltip';
-import { intensityColor, mergedCellColor } from '@/lib/availabilityColor';
+import { mergedCellColor } from '@/lib/availabilityColor';
 import { useHeatmapCell } from './useHeatmapCell';
 
 const noop = () => {};
@@ -73,18 +73,11 @@ interface ReadCellBaseProps {
   /**
    * Fill the parent (width/height 100%). Default `true` for the WeekGrid
    * sized-wrapper pattern. Prod div-grids that size the cell via `className`
-   * (HeatmapGrid w-24/h-12) pass `fill={false}`.
+   * (e.g. `MergedHeatmapGrid`'s w-24/h-12 cells) pass `fill={false}`.
    */
   fill?: boolean;
   /** Cell content rendered inside the colored div (e.g. the participant-count badge). */
   children?: React.ReactNode;
-}
-
-export interface IntensityReadCellProps extends ReadCellBaseProps {
-  variant?: 'intensity';
-  participantCount: number;
-  preferredCount: number;
-  totalMembers: number;
 }
 
 export interface MergedReadCellProps extends ReadCellBaseProps {
@@ -93,19 +86,24 @@ export interface MergedReadCellProps extends ReadCellBaseProps {
   totalMembers: number;
 }
 
-export type ReadCellProps = IntensityReadCellProps | MergedReadCellProps;
+// DECISION Phase 88-31 (SPEC "END-OF-PHASE DEAD-CODE GATE"): ONE variant, `merged`, chosen
+// OVER keeping the union with its second arm.
+//
+// This type used to be a union of a default/intensity arm and this one, and `resolveColor`
+// below used to branch on it. That default arm had no live caller — the only consumer was a
+// legacy read-grid component nothing imported — and its colour function was the dead second
+// ramp deleted from `lib/availabilityColor.ts` in the same commit. `variant: 'merged'` is
+// kept REQUIRED and the union shape (`ReadCellProps` as a distinct alias) is kept even though
+// there is one member, so re-introducing a second cell variant is an additive change here
+// rather than a rewrite of every call site.
+//
+// RE-ADDING A SECOND COLOUR SCHEME IS A DESIGN DECISION, NOT A CONVENIENCE. PRIM-01 existed
+// because two divergent ramps had shipped; Phase 84 converged them and Phase 88 removed the
+// loser. See the marker at the top of `lib/availabilityColor.ts`.
+export type ReadCellProps = MergedReadCellProps;
 
 function resolveColor(props: ReadCellProps): string {
-  if (props.variant === 'merged') {
-    return mergedCellColor(props.availableCount, props.totalMembers);
-  }
-  // ⚠️ DEAD BRANCH — DELETE AT END OF PHASE 88 (owner decision 2026-07-25).
-  // The default (intensity) variant has no live caller: its only consumer is
-  // `HeatmapGrid.js`, which nothing imports. Verified 2026-07-25. When this goes,
-  // remove the `IntensityReadCellProps` arm of the props union above and the
-  // `intensityColor` import — see 88-SPEC.md "END-OF-PHASE DEAD-CODE GATE".
-  // Every LIVE consumer passes variant="merged".
-  return intensityColor(props.participantCount, props.preferredCount, props.totalMembers);
+  return mergedCellColor(props.availableCount, props.totalMembers);
 }
 
 export const ReadCell = memo(function ReadCell(props: ReadCellProps) {

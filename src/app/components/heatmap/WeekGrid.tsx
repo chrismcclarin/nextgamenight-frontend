@@ -10,8 +10,10 @@
 //
 //   - `focusedCoord` state marks which cell holds the single tabIndex=0.
 //   - a `cellRefs` map keyed by "row:col" stores each cell's DOM node so an arrow
-//     key moves REAL DOM focus (`.focus()`), mirroring HeatmapGrid's
-//     `cellRefs[...].focus()` — not just a tabIndex shuffle.
+//     key moves REAL DOM focus (`.focus()`), mirroring the legacy intensity read-grid's
+//     `cellRefs[...].focus()` — not just a tabIndex shuffle. (That component was deleted by
+//     plan 88-31's dead-code gate; the behaviour it is credited with here is the one this
+//     grid still implements, and the original is in git history if the wording matters.)
 //   - handlers handed to the (React.memo) cells are STABLE across renders:
 //     `onMove` is a single stable callback (the hook passes it the clamped
 //     target), ref + per-coord `onSelect` callbacks are memoized in a Map, and
@@ -25,23 +27,26 @@ import { WriteCell, cyclePreference, type Preference } from './WriteCell';
 
 const coordKey = (row: number, col: number) => `${row}:${col}`;
 
-/** Per-cell read data returned by `getCell` (color args + presentation). */
-export type WeekGridReadData =
-  | {
-      variant?: 'intensity';
-      participantCount: number;
-      preferredCount: number;
-      totalMembers: number;
-      ariaLabel?: string;
-      tooltipContent?: React.ReactNode;
-    }
-  | {
-      variant: 'merged';
-      availableCount: number;
-      totalMembers: number;
-      ariaLabel?: string;
-      tooltipContent?: React.ReactNode;
-    };
+/**
+ * Per-cell read data returned by `getCell` (color args + presentation).
+ *
+ * DECISION Phase 88-31: the second arm of this union — the default/intensity shape carrying
+ * `participantCount` / `preferredCount` — was deleted with the rest of the dead intensity
+ * cluster (SPEC "END-OF-PHASE DEAD-CODE GATE").
+ *
+ * WORTH KNOWING: this arm is NOT in the SPEC's enumerated delete list, and `tsc --noEmit` is
+ * what makes that safe rather than lucky — leaving it would have left a type describing props
+ * `ReadCell` no longer accepts, and the build would have said so. It is recorded here because
+ * the next person auditing that list against what actually shipped will otherwise read this as
+ * scope drift.
+ */
+export type WeekGridReadData = {
+  variant: 'merged';
+  availableCount: number;
+  totalMembers: number;
+  ariaLabel?: string;
+  tooltipContent?: React.ReactNode;
+};
 
 interface WeekGridBaseProps {
   /** Number of day columns. */
@@ -176,23 +181,13 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
         onMove,
         triggerRef: getCellRef(key),
       };
-      if (data.variant === 'merged') {
-        return (
-          <ReadCell
-            {...common}
-            variant="merged"
-            availableCount={data.availableCount}
-            totalMembers={data.totalMembers}
-            ariaLabel={data.ariaLabel}
-            tooltipContent={data.tooltipContent}
-          />
-        );
-      }
+      // One read variant since 88-31 (see `WeekGridReadData` above); the branch that used to
+      // sit here rendered the deleted intensity cell.
       return (
         <ReadCell
           {...common}
-          participantCount={data.participantCount}
-          preferredCount={data.preferredCount}
+          variant="merged"
+          availableCount={data.availableCount}
           totalMembers={data.totalMembers}
           ariaLabel={data.ariaLabel}
           tooltipContent={data.tooltipContent}
