@@ -39,6 +39,14 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
  * Fixtures follow the env-const idiom (tailwind-v4-styles.spec.ts:47-49): seeded ids
  * minted by the backend's scripts/e2e-fixtures.js in CI. Do not run locally —
  * credentials are intentionally absent (playwright.config.ts:19-21).
+ *
+ * EXTENDED Phase 88-30 (DEF-88-28-02). 88-28 raised the Header hamburger (`p-2` ->
+ * `p-2.5`) and the KebabMenu trigger (`px-2 py-1` -> `min-h-11 min-w-11`) BY ARITHMETIC
+ * only — RESEARCH logged the pre-change hamburger as assumption A7 ("the arithmetic is
+ * sound but it was NOT measured in a browser") and the kebab's own must-have figure was
+ * wrong by a factor that mattered (it described the hamburger). Both are now measured at
+ * 375px here. 88-30 also adds the D-36 `.btn` phone-floor pair: the floor is live on a
+ * shipped bare-`.btn` call site, and the `.btn-compact` opt-out still wins the cascade.
  */
 
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
@@ -207,6 +215,114 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await guardResolved(submit, 'the availability submit CTA (AvailabilityForm.js census row 8)');
     await assertMin44(submit, 'availability submit');
     await assertPressedOpacity(page, submit, 'availability submit');
+  });
+
+  /* Phase 88-30 (DEF-88-28-02): the two controls plan 88-28 RESIZED are the two whose
+     new size was never measured. Both are located by their shipped accessible names —
+     "Toggle menu" (Header.js) and "Group actions" (the `ariaLabel` groupHomePage passes
+     to KebabMenu) — so the selector policy above holds and a rename fails loudly rather
+     than silently measuring nothing.
+
+     The hamburger is `md:hidden`, so this assertion is only meaningful in the phone
+     project; the file-level skip already guarantees that. The kebab renders at every
+     breakpoint (its own marker says so) but its floor is a phone-tenet requirement, so it
+     is asserted here rather than in `journeys`. */
+  test('R4: hamburger and KebabMenu trigger measure >= 44x44 at 375px (88-28 geometry, measured not derived)', async ({ page }) => {
+    await page.goto('/');
+    await assertDarkTheme(page);
+
+    // 88-28: `p-2` -> `p-2.5` = 10 + 24 (the w-6 h-6 svg) + 10 = 44x44. The fix was
+    // chosen OVER an invisible `after:` extension precisely so the button's OWN
+    // bounding box measures 44 — which is what assertMin44 reads.
+    const hamburger = page.getByRole('button', { name: 'Toggle menu' });
+    await guardResolved(hamburger, 'the Header hamburger (md:hidden — phone only)');
+    await assertMin44(hamburger, 'Header hamburger');
+
+    // The kebab is gated on `userRole && userRole !== 'pending'`; the fixture user owns
+    // the seeded group, so it MUST render — a missing kebab is a fixture/locator failure,
+    // never a silent skip.
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    await assertDarkTheme(page);
+    const kebab = page.getByRole('button', { name: 'Group actions' });
+    await guardResolved(kebab, 'the groupHomePage KebabMenu trigger (owner/member only)');
+    await assertMin44(kebab, 'KebabMenu trigger');
+  });
+
+  /* DECISION Phase 88-30 (D-36 / DEF-1): the `.btn-compact` half of this test measures
+     PLANTED probe elements, chosen OVER driving the two shipped `w-8 h-8` steppers in
+     `BrowseMoreModal.js` — which is the obvious move and the thing a future reader will
+     "fix" this to.
+
+     MEASURED, not assumed: those steppers are UNREACHABLE in CI. `BrowseMoreModal` mounts
+     only from `QuickSuggestions` (QuickSuggestions.js:115), whose "Browse more" trigger
+     renders only when `suggestions.length > 0` (:161-176). `suggestionService.getSuggestions`
+     builds its entire candidate set from `UserGame` rows (services/suggestionService.js:121)
+     and returns `{ suggestions: [] }` when that set is empty (:150), and
+     `scripts/seed-sample-data.js` creates ZERO `UserGame` rows (grep: no matches). So the
+     seeded group has no suggestions, no "Browse more" button, and no steppers. Driving them
+     would need a new backend fixture — a cross-repo change that also alters the Create Event
+     surface four other green specs walk.
+
+     What the probe DOES claim, and it is the half nothing else can see: that in the EMITTED
+     stylesheet at 375px, `.btn-compact` still beats the unlayered `.btn { min-height: 2.75rem }`
+     phone floor. That is a pure cascade fact about authoring order (globals.css:1100-1108),
+     which jsdom cannot evaluate and which `decisionMarkers.test.ts:120-122` can only pin at
+     SOURCE level. The two are complementary: that suite proves the call sites wear the class
+     and the rule exists; this proves the browser resolves them the way the marker claims.
+
+     The bare-`.btn` probe alongside it is the anti-vacuity guard: if the media query stopped
+     applying (a breakpoint edit, a layering "cleanup"), the compact probe would pass at 32px
+     for the WRONG reason. Both probes must disagree, or the test is meaningless. */
+  test('D-36: the .btn phone floor is live on a shipped call site, and .btn-compact still opts out', async ({ page }) => {
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    await assertDarkTheme(page);
+
+    // The REAL call site: "Manage Members" is a bare `.btn` with NO per-CTA `min-h-11`
+    // (groupHomePage/page.js), so the ONLY thing that can hold it at 44px here is the D-36
+    // phone floor. "Plan Game Session" (asserted above) carries its own `min-h-11` and
+    // therefore proves nothing about the floor.
+    const manageMembers = page.getByRole('button', { name: /manage members/i });
+    await guardResolved(manageMembers, 'the "Manage Members" bare-.btn CTA (no per-CTA min-h-11)');
+    await assertMin44(manageMembers, '"Manage Members" (bare .btn, floored by D-36 only)');
+
+    const probes = await page.evaluate(() => {
+      const make = (className: string) => {
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = className;
+        el.textContent = '+';
+        document.body.appendChild(el);
+        return el;
+      };
+      // Same class list the shipped steppers wear (BrowseMoreModal.js), plus a bare
+      // control for the floor. `w-8`/`h-8` are emitted because those steppers use them.
+      const compact = make('btn btn-compact btn-secondary w-8 h-8');
+      const bare = make('btn btn-secondary');
+      const read = (el: HTMLElement) => {
+        const r = el.getBoundingClientRect();
+        return { width: r.width, height: r.height, minHeight: getComputedStyle(el).minHeight };
+      };
+      const result = { compact: read(compact), bare: read(bare) };
+      compact.remove();
+      bare.remove();
+      return result;
+    });
+
+    // (a) The floor is live at 375px — if this fails, the compact result below means nothing.
+    expect(
+      probes.bare.height,
+      `bare .btn probe measured ${probes.bare.height}px (min-height: ${probes.bare.minHeight}) — the D-36 phone floor is NOT applying at 375px, which makes the .btn-compact assertion below vacuous. Look at globals.css's @media (width < 48rem) block and its authoring order, not at BrowseMoreModal`,
+    ).toBeGreaterThanOrEqual(44);
+
+    // (b) The opt-out wins: the stepper stays SQUARE, not stretched into a 32x44 lozenge.
+    expect(
+      probes.compact.height,
+      `.btn.btn-compact probe measured ${probes.compact.height}px tall (min-height: ${probes.compact.minHeight}) — expected 32px. The opt-out lost the cascade: 87.8 AF-2 rejected an all-viewport floor precisely because it deforms these w-8 h-8 steppers into 32x44. Check that .btn-compact is still UNLAYERED and still authored AFTER the media block`,
+    ).toBeCloseTo(32, 1);
+    expect(
+      Math.abs(probes.compact.width - probes.compact.height),
+      `.btn.btn-compact probe measured ${probes.compact.width}x${probes.compact.height} — the steppers are square BY DESIGN and a height-only assertion would not have caught a 32x44 deformation`,
+    ).toBeLessThanOrEqual(1);
   });
 
   test('R4: add-friend "+" carries a 44x32 ::after hit extension (owner-accepted asymmetric floor)', async ({ page }) => {
