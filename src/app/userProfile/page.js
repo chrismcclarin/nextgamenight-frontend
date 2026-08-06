@@ -485,7 +485,17 @@ function Profile(){
         }
         try {
             setPhoneError(null);
-            await usersAPI.verifyPhone(selfUuid, verificationCode);
+            // 88-CODE-REVIEW H1: the wrong-code outcome is a 200 { verified: false }
+            // (routes/users.js:727-732 — the Twilio check not approving is a response,
+            // not a throw; only MALFORMED input 400s). apiFetch throws solely on
+            // !response.ok, so discarding this body took the success path on a wrong
+            // code: phone_verified true in local state + the immortal self cache while
+            // the DB row stayed false — SMS toggles enabled, SMS never sending.
+            const result = await usersAPI.verifyPhone(selfUuid, verificationCode);
+            if (!result?.verified) {
+                setPhoneError("That code didn't match. Check it and try again.");
+                return;
+            }
             setPhoneState('verified');
             setVerificationCode('');
             // Reflect the now-verified number locally (enables the SMS toggles,
@@ -499,8 +509,9 @@ function Profile(){
             setPhoneError(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't check that code. Please try again.",
-                    // A wrong/expired code comes back as a 400 — the one outcome worth
-                    // naming, because the fix is the person's, not ours.
+                    // The 400 arm covers MALFORMED/missing input only (users.js:701-713)
+                    // — the actual wrong-code outcome is the 200 { verified: false }
+                    // branch above, which reuses the same ratified copy.
                     byCode: { validation: "That code didn't match. Check it and try again." },
                 })
             );

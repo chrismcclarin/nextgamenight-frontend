@@ -1271,3 +1271,65 @@ describe('userProfile save-status slots (DEF-88-10-02)', () => {
     expect(rowStatusText('Event Updates')).not.toContain('At least one');
   });
 });
+
+// ===========================================================================
+// 88-CODE-REVIEW H1 — a wrong verification code is NOT success
+// ===========================================================================
+// The backend's wrong-code outcome is a 200 { verified: false } (routes/
+// users.js:727-732 — only MALFORMED input 400s), so the handler must read the
+// body. Before H1 it discarded it: a wrong code marked the phone verified in
+// local state and the immortal self cache while the DB row stayed false — the
+// SMS toggles enabled and SMS silently never sent. These pins hold the gate.
+describe('phone verification — wrong code shows error, never verifies (H1)', () => {
+  async function reachArmedVerify() {
+    renderProfile({ sms_enabled: true, phone_verified: false });
+    const phone = await screen.findByRole('textbox', { name: 'Phone number' });
+    fireEvent.change(phone, { target: { value: '+1 415 555 2671' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Verify' }));
+    const code = await screen.findByRole('textbox', { name: 'Verification code' });
+    fireEvent.change(code, { target: { value: '123456' } });
+    // Two buttons on the page are named "Verify" (this one + a link-style one in
+    // the SMS rows) — scope to the code-entry row.
+    return within(code.parentElement as HTMLElement).getByRole('button', { name: 'Verify' });
+  }
+
+  it('200 { verified: false } → error copy, SMS toggles stay disabled, cache untouched', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    const { patchSelfCache } = await import('@/lib/hooks/selfIdentityCache');
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockResolvedValue({
+      verified: false,
+      error: 'Invalid or expired code',
+    });
+
+    fireEvent.click(await reachArmedVerify());
+
+    expect(
+      await screen.findByText("That code didn't match. Check it and try again.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('switch', { name: 'New Event SMS notifications' })
+    ).toBeDisabled();
+    expect(patchSelfCache).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ phone_verified: true })
+    );
+  });
+
+  it('200 { verified: true } still completes the verified path', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    const { patchSelfCache } = await import('@/lib/hooks/selfIdentityCache');
+    (usersAPI.verifyPhone as ReturnType<typeof vi.fn>).mockResolvedValue({ verified: true });
+
+    fireEvent.click(await reachArmedVerify());
+
+    await waitFor(() =>
+      expect(patchSelfCache).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ phone_verified: true })
+      )
+    );
+    expect(
+      screen.queryByText("That code didn't match. Check it and try again.")
+    ).not.toBeInTheDocument();
+  });
+});
