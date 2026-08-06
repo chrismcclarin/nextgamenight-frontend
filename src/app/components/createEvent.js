@@ -709,8 +709,16 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           block would beat a layered utility. There is no such block in this
           file's chain any more — Radix's content surface takes utilities
           normally. Flattening this to the primitive's default `p-6` would put
-          24+12 = 36/side on a 375px phone and is a decision, not a cleanup. */}
-      <Modal.Body className="p-3 md:p-6">
+          24+12 = 36/side on a 375px phone and is a decision, not a cleanup.
+          AMENDED 2026-08-06 (Phase 88-32 owner ruling 6, DEF-88-30-03): that
+          decision was then made, the other way around — the PRIMITIVE's default
+          became `p-3 md:p-6` (see the marker in Modal.tsx), i.e. the fleet
+          converged onto DEC-3's value rather than DEC-3 flattening onto the
+          fleet's. The explicit className here was removed as redundant, NOT as
+          a rejection of DEC-3 — the rendered padding is byte-identical. If the
+          primitive default ever changes again, this modal must re-assert
+          `p-3 md:p-6` or the R2 75px budget arithmetic above breaks. */}
+      <Modal.Body>
         {loading ? (
           <p className="text-content-primary">Loading group members...</p>
         ) : (

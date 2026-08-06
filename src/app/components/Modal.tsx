@@ -220,7 +220,13 @@ export interface ModalBodyProps {
 /** `.modal-body`: 1.5rem padding, flex:1, scroll-y (the only scrolling region). */
 function ModalBody({ children, className }: ModalBodyProps) {
   return (
-    <div className={cn('flex-1 overflow-y-auto p-6', className)}>{children}</div>
+    /* DECISION Phase 88-32 ruling 6 (DEF-88-30-03): Body defaults to `p-3 md:p-6` —
+       chosen OVER the flat `p-6` it shipped with. Same ruling shape as 88-24's card
+       idiom: 24px per side put the fleet at 72px of horizontal loss against the 75px
+       phone budget at 375px; 12px on phone drops it to 48 with real margin, and
+       matches the one consumer (createEvent, 87.8 DEC-3) that was already overriding.
+       Widening the phone default back to `p-6` is a decision, not a cleanup. */
+    <div className={cn('flex-1 overflow-y-auto p-3 md:p-6', className)}>{children}</div>
   );
 }
 
