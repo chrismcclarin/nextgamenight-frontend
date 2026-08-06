@@ -209,7 +209,7 @@ jobs:
             "src/app/components/controlSizeFloor.test.tsx:5" \
             "src/app/cardPaddingIdiom.test.ts:4" \
             "src/app/typeScaleTouchedSurfaces.test.ts:7" \
-            "src/app/borderExplicitness.test.ts:8" \
+            "src/app/borderExplicitness.test.ts:12" \
             "src/app/tintTreatment.test.ts:8" \
             "src/app/fetchErrorTreatment.test.ts:8" \
             "src/app/focusAndMotionTreatment.test.ts:18" \

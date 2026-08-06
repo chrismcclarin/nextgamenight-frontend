@@ -21,6 +21,27 @@
  * border painted in the element's TEXT colour. Nothing else in the suite would catch
  * that, because it renders — it just renders wrong.
  *
+ * THE SHIM IS NOW ACTUALLY GONE (88-31), AND THE TRIGGER WAS WIDENED TO MATCH
+ * --------------------------------------------------------------------------
+ * DECISION Phase 88-31 (DEF-88-27-02): this scan fires on a bare border token OR an
+ * uncoloured border WIDTH utility — chosen OVER keeping the original `bare`-only trigger.
+ * 88-26 wrote the trigger as `kinds.includes('bare')`, so `border-2` / `border-t-4` /
+ * `border-b-[3px]` were structurally invisible to it even though they depend on the shim
+ * IDENTICALLY. That was a tolerable gap while the shim existed (an uncoloured width
+ * utility merely painted the wrong shade). It stops being tolerable the moment the shim
+ * is deleted in this same plan, because from then on the same class list paints
+ * `currentColor`. Measured before widening: 10 chunks in the tree carry a width utility
+ * with no colour — 2 are `border-0` (now classified `zero`, see below) and the other 8
+ * are paired on every runtime branch, each verified by READING the site, and each
+ * enumerated in `PAIRED_ELSEWHERE` with the mechanism that supplies the colour. So the
+ * widening finds no live defect; it closes the detector so a NEW one cannot land.
+ *
+ * `border-0` is classified `zero`, not `width`, and does not trigger. A zero-width border
+ * paints nothing, so it has no colour dependency in either direction. Folding it into
+ * `width` would have forced two allow-list entries for sites that are not exposed —
+ * exemptions that would then sit there widening the hole for a future real defect in the
+ * same file, which is the staleness test 2 exists to prevent. Test 5a pins the split.
+ *
  * WHY THIS IS A SOURCE SCAN AND NOT A RENDER TEST
  * ----------------------------------------------
  * Same reasoning as `cardPaddingIdiom.test.ts` and `components/controlSizeFloor.test.tsx`:
@@ -77,11 +98,17 @@ const BORDER_STYLE_KEYWORDS = new Set([
   'separate',
 ]);
 
-type BorderKind = 'bare' | 'width' | 'style' | 'color' | null;
+type BorderKind = 'bare' | 'width' | 'zero' | 'style' | 'color' | null;
 
 /**
- * Classify one class token. `bare` means "sets a border width and names no colour",
- * i.e. the shape that falls through to the shim.
+ * Classify one class token.
+ *
+ * `bare`  — `border`, `border-b`: sets the 1px default width and names no colour.
+ * `width` — `border-2`, `border-l-4`, `border-b-[3px]`: a NON-ZERO explicit width, no colour.
+ * `zero`  — `border-0`, `border-x-0`: paints nothing, so it has no colour dependency.
+ *
+ * `bare` and `width` are the two shapes that used to fall through to the shim and now fall
+ * through to `currentColor`. `zero` is deliberately neither (DEF-88-27-02).
  */
 export function classifyBorderToken(token: string): BorderKind {
   let t = token;
@@ -96,7 +123,9 @@ export function classifyBorderToken(token: string): BorderKind {
   if (!m) return null;
   const suffix = m[2];
   if (suffix === undefined) return 'bare';
-  if (/^\d+$/.test(suffix) || /^\[[\d.]+(px|rem|em|%)\]$/.test(suffix)) return 'width';
+  if (/^\d+$/.test(suffix) || /^\[[\d.]+(px|rem|em|%)\]$/.test(suffix)) {
+    return /^(?:0+|\[0*(?:\.0+)?(?:px|rem|em|%)\])$/.test(suffix) ? 'zero' : 'width';
+  }
   if (BORDER_STYLE_KEYWORDS.has(suffix)) return 'style';
   if (suffix.startsWith('spacing')) return null;
   return 'color';
@@ -112,14 +141,61 @@ export function classifyBorderToken(token: string): BorderKind {
 // its own `describe` blocks, so that import would run another suite in this file's context.
 // Re-inlining a private copy here is a decision, not a cleanup.
 
-/** Chunks that set a border width and name no colour. */
+/** Chunks that set a NON-ZERO border width and name no colour. */
 export function shimDependentChunks(src: string): { line: number; text: string }[] {
   const hits: { line: number; text: string }[] = [];
   for (const { offset, text } of stringChunks(src)) {
     const kinds = text.split(/\s+/).filter(Boolean).map(classifyBorderToken);
-    if (!kinds.includes('bare')) continue;
+    // DEF-88-27-02: `width` joins `bare` here. A `border-2` with no colour depended on the
+    // deleted shim exactly as a bare `border` did, and now resolves to `currentColor`.
+    if (!kinds.includes('bare') && !kinds.includes('width')) continue;
     if (kinds.includes('color')) continue;
     hits.push({ line: src.slice(0, offset).split('\n').length, text: text.trim() });
+  }
+  return hits;
+}
+
+/**
+ * Every rule in a stylesheet that sets a border COLOUR on a UNIVERSAL selector — i.e. the
+ * shim shape, in any spelling.
+ *
+ * Written as a property rather than a string match, deliberately. 88-31's plan gate was
+ * `! grep "border-color: var(--color-gray-200" globals.css`, which fails twice over: it goes
+ * RED on a correct tree the moment a DECISION marker describes what it deleted (the
+ * comment-blindness recorded in DEF-88-25-02 / DEF-88-27-01 / DEF-88-28-01, and it did —
+ * measured, which is why the marker in `globals.css` describes the declaration instead of
+ * quoting it), and it matches exactly ONE spelling, so `border-color:#e5e7eb` or a
+ * `border: 1px solid var(--anything)` restoration would sail straight past it.
+ *
+ * Comments are stripped first; the selector list is split so `*, ::after, ::before` counts
+ * on any of its parts; and a SCOPED rule (`.card { border-color: … }`) is never a hit.
+ *
+ * "Universal" means a part built ONLY from `*` and combinators, or one of preflight's four
+ * pseudo-elements. That precision is load-bearing and was forced by a false positive on the
+ * first run: `.rbc-time-content > * + * > *` (a react-big-calendar override that legitimately
+ * sets `border-left-color`) ends in `*`, so an "any `*` anywhere" predicate flagged it. A
+ * guard that reds on a correct tree is the defect this phase recorded fifteen times, so it
+ * was tightened rather than allow-listed.
+ */
+export function universalBorderColourRules(css: string): string[] {
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const hits: string[] = [];
+  for (const m of bare.matchAll(/([^{}]*)\{([^{}]*)\}/g)) {
+    const selector = m[1].trim();
+    const body = m[2];
+    const isUniversal = selector
+      .split(',')
+      .map((s) => s.trim())
+      .some(
+        (s) =>
+          (s.includes('*') && /^[*\s>+~]+$/.test(s)) ||
+          /^::?(after|before|backdrop|file-selector-button)$/.test(s)
+      );
+    if (!isUniversal) continue;
+    const setsBorderColour =
+      /\bborder(-(top|right|bottom|left|block|inline|[tblrxy]))?-color\s*:/.test(body) ||
+      /\bborder(-(top|right|bottom|left))?\s*:[^;]*(#|var\(|rgb|hsl|oklch|currentcolor)/i.test(body);
+    if (setsBorderColour) hits.push(`${selector} { ${body.trim().slice(0, 80)} }`);
   }
   return hits;
 }
@@ -148,6 +224,7 @@ function sourceFiles(dir: string): string[] {
  * one to make this test green.
  */
 const PAIRED_ELSEWHERE: Record<string, string> = {
+  // ── bare-token sites (88-26) ──────────────────────────────────────────────
   'app/components/AvailabilityGrid.js':
     'paint-mode ternary: both branches name a colour (green-400 / yellow-400)',
   'app/components/FriendInvitePanel.js':
@@ -167,6 +244,30 @@ const PAIRED_ELSEWHERE: Record<string, string> = {
     'two-tap remove ternary: both branches name a colour (status-error / line)',
   'app/userProfile/page.js':
     'theme buttons and the day-of-week toggles: every branch names a colour (amber-500 / line, btn-primary / line)',
+
+  // ── uncoloured WIDTH-utility sites, added by 88-31 with the DEF-88-27-02 widening ──
+  // All eight were read one at a time before being listed. Two shapes: a ternary written
+  // beside the utility, and a colour arriving from a lookup or helper the chunk cannot see.
+  'app/components/AvailabilityForm.js':
+    'unavailable-checkbox `border-2`: both ternary branches name a colour ' +
+    '(border-status-error / border-line-strong), and the button it sits in is paired too',
+  'app/components/BallotSection.js':
+    'vote-option `border-2`: both ternary branches name a colour (border-accent / border-line)',
+  'app/components/BringGamePicker.js':
+    'bring-checkbox `border-2`: both ternary branches name a colour (border-accent / border-line)',
+  'app/components/GroupSettings.js':
+    'default-picture and default-colour pickers, two `border-2` grids: each ternary names a ' +
+    'colour on both branches (border-accent / border-line)',
+  'app/components/RsvpSection.js':
+    'active status button `border-2`: the colour comes from `statusConfig[status].activeBorder`, ' +
+    'and all three entries (yes/maybe/no) name one. `status` is bounded by the literal ' +
+    "['yes','maybe','no'] the buttons map over, so there is no fourth key to miss.",
+  'app/components/SuggestionCard.js':
+    'score card `border-2`: the colour comes from `getScoreColor()`, whose three returns each ' +
+    'name a border colour (line / status-success / status-warning) and which has no fallthrough',
+  'app/rsvp/[token]/page.js':
+    'success card `border-t-4`: the colour comes from `STATUS_CONFIG[...] || STATUS_CONFIG.yes`, ' +
+    'all three entries name one and the `||` guarantees a member',
 };
 
 describe('D-35 border explicitness (Req 16)', () => {
@@ -227,6 +328,7 @@ describe('D-35 border explicitness (Req 16)', () => {
     expect(classifyBorderToken('hover:border-t')).toBe('bare');
     expect(classifyBorderToken('border-2')).toBe('width');
     expect(classifyBorderToken('border-l-4')).toBe('width');
+    expect(classifyBorderToken('border-b-[3px]')).toBe('width');
     expect(classifyBorderToken('border-solid')).toBe('style');
     expect(classifyBorderToken('border-line')).toBe('color');
     expect(classifyBorderToken('border-l-status-success')).toBe('color');
@@ -240,6 +342,64 @@ describe('D-35 border explicitness (Req 16)', () => {
     // The plan gate has no [tblrxy] alternation, so it missed three real sites.
     const fixture = 'const a = <div className="px-4 py-3 border-b" />;';
     expect(shimDependentChunks(fixture)).toHaveLength(1);
+  });
+
+  it('8. an uncoloured border WIDTH utility is a violation (DEF-88-27-02)', () => {
+    // The gap this widening closes. Before 88-31 these three were invisible to the scan
+    // while depending on the shim identically; after the shim deletion they paint
+    // `currentColor`, so they render and therefore hide.
+    expect(shimDependentChunks('const a = <div className="rounded-card border-2 p-4" />;')).toHaveLength(1);
+    expect(shimDependentChunks('const a = <div className="border-t-4 shadow" />;')).toHaveLength(1);
+    expect(shimDependentChunks('const a = <div className="border-b-[3px]" />;')).toHaveLength(1);
+    // ...and naming a colour beside it still clears, so this is not a blanket ban on widths.
+    expect(shimDependentChunks('const a = <div className="border-2 border-line" />;')).toEqual([]);
+  });
+
+  it('9. `border-0` is NOT a violation — a zero width paints nothing', () => {
+    // Anti-over-reach guard for test 8. Two shipped sites (`StarRatingPicker.js`'s two
+    // half-star hit areas) are `border-0`; folding them into `width` would have bought two
+    // allow-list entries for files with no exposure, and an exemption is a standing hole.
+    expect(classifyBorderToken('border-0')).toBe('zero');
+    expect(classifyBorderToken('border-x-0')).toBe('zero');
+    expect(shimDependentChunks('const a = <button className="bg-transparent border-0 p-0" />;')).toEqual([]);
+  });
+
+  it('10. the shim itself is GONE from globals.css and cannot come back', () => {
+    // Every other assertion in this file guards the CALL SITES. This one guards the
+    // STYLESHEET, and without it the widening above is defeatable in one line: re-adding a
+    // global border-colour default makes every uncoloured border render plausibly again, so
+    // nothing scanning `src/app/**` would notice.
+    const css = fs.readFileSync(path.join(SRC, 'app/globals.css'), 'utf8');
+    expect(universalBorderColourRules(css)).toEqual([]);
+  });
+
+  it('11. test 10 is not vacuous — the same predicate FINDS a restored shim', () => {
+    // Without this, a typo in the selector predicate would make test 10 pass forever over a
+    // restored shim. The SAME function is used, so the two cannot drift apart.
+    const restored = [
+      '/* a marker describing the rule must NOT count — DEF-88-25-02 */',
+      '/* border-color: var(--color-gray-200, currentcolor); */',
+      '@layer base {',
+      '  *,',
+      '  ::after,',
+      '  ::before {',
+      '    border-color: var(--color-gray-200, currentcolor);',
+      '  }',
+      '}',
+    ].join('\n');
+    expect(universalBorderColourRules(restored)).toHaveLength(1);
+    // ...and a comment ALONE is not a hit, which is why the plan's grep gate could not be used.
+    expect(
+      universalBorderColourRules('/* border-color: var(--color-gray-200, currentcolor); */')
+    ).toEqual([]);
+    // ...and a SCOPED border colour is not a hit either, or every rule in the file would be.
+    expect(universalBorderColourRules('.card { border-color: var(--color-line); }')).toEqual([]);
+    // ...including the shipped rbc override that ENDS in `*`, the first-run false positive.
+    expect(
+      universalBorderColourRules('.rbc-time-content > * + * > * { border-left-color: var(--color-border); }')
+    ).toEqual([]);
+    // ...but a genuinely unscoped `* > *` IS still caught.
+    expect(universalBorderColourRules('* > * { border-color: #e5e7eb; }')).toHaveLength(1);
   });
 
   it('7. the two shared primitives name their own neutral', () => {

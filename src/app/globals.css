@@ -450,45 +450,49 @@
    The practical conclusion is unchanged and now better supported: keep the scoping. "Restoring"
    the unscoped v3 form would give disabled controls a pointer cursor that v3 never showed. The
    reasoning is corrected rather than deleted so a reader who remembers the old text can find it. */
+/* DECISION Phase 88-31 (DES-02 / D-35): THE v3 BORDER-COLOUR SHIM IS GONE. It used to sit at the
+   top of the `@layer base` block below and read
+
+     *, ::after, ::before, ::backdrop, ::file-selector-button {
+       <a border-colour default, read from the raw-palette grey-200 key, falling back to
+        the current colour>
+     }
+
+   The declaration is DESCRIBED rather than quoted on purpose (88-11's marker convention, and the
+   comment-blindness recorded in DEF-88-25-02 / DEF-88-27-01 / DEF-88-28-01). This plan's own verify
+   gate is `! grep "border-color: var(--color-gray-200" globals.css`, so a marker quoting the rule
+   it just deleted would hold that gate permanently red on a CORRECT tree — the exact defect the
+   phase has now recorded fifteen times. The property is instead armed as a real, comment-stripping
+   assertion in `src/app/borderExplicitness.test.ts` (test 10), which is what actually stops the
+   shim coming back.
+
+   The 87.7 marker it replaced said, in terms, that giving all 43 unpaired sites an explicit border
+   colour and then deleting this rule WAS Phase 88's scheduled work — "not accepted-forever". Plans
+   88-26 and 88-27 did the sites; this plan did the deletion. That is now DONE and this paragraph is
+   the record, kept rather than deleted so a reader who remembers the old text finds where it went.
+
+   WHY IT MATTERED (kept, because it is what a reader needs to NOT re-introduce it): v4's preflight
+   dropped v3's `border:0 solid #e5e7eb` colour, so every element naming a border WIDTH but no
+   border COLOUR fell through to this rule and painted #e5e7eb — 11.19:1 against the dark page where
+   the neutral token is 1.78:1. A near-white hairline in dark mode, app-wide.
+
+   THE ORDER WAS LOAD-BEARING AND STILL IS, IN REVERSE. With the shim gone, an uncoloured border no
+   longer paints the wrong SHADE — it paints `currentColor`, i.e. the element's own text colour.
+   That renders, so it hides. `src/app/borderExplicitness.test.ts` is the standing guard and its
+   trigger was widened by this plan (DEF-88-27-02) to catch an uncoloured border WIDTH utility
+   (`border-2`, `border-t-4`) as well as a bare `border`, because both depended on this rule
+   identically. RE-ADDING A GLOBAL BORDER-COLOUR DEFAULT would silently disarm that guard's whole
+   premise — that is a decision, not a cleanup.
+
+   Historical note kept from 87.7 for whoever greps DI-87.7-20: the rule's one dependency was
+   `--color-gray-200`, which in the v4 build is `oklch(92.8% .006 264.531)` and round-trips to
+   #e5e7eb exactly. The residual that entry recorded (it stayed right only while upstream's OKLCH
+   grey ramp did) is now moot — nothing in this stylesheet reads that key. The 43 sites are still
+   enumerated with file:line in
+   .planning/phases/87.7-tailwind-v4-migration-inserted-2026-07-25/87.7-STYLE-AUDIT.md
+   (path written un-globbed on purpose — DI-87.7-12), and their converged state in
+   .planning/phases/88-fe-wave-3-design-system-a11y/88-BORDER-CENSUS.md. */
 @layer base {
-  /* DECISION Phase 87.7 (Plan 08, R4): the border-colour rule below is KEPT for this phase, chosen
-     OVER giving every unpaired site an explicit border colour and deleting this rule. It reproduces
-     v3's default EXACTLY, so all 43 unpaired sites render byte-identically to v3 and the migration
-     diff stays minimal. Proven, not assumed, from the two built stylesheets:
-
-       v3 preflight (the only e5e7eb in the whole v3 baseline):
-         *,:after,:before { box-sizing:border-box; border:0 solid #e5e7eb }
-       v4 preflight (colour DROPPED — this is the regression this rule repairs):
-         *,::backdrop,:after,:before { box-sizing:border-box; border:0 solid; margin:0; padding:0 }
-
-     THIS RULE'S ONLY DEPENDENCY IS --color-gray-200, AND THAT IS THE INTERESTING PART. In the v4
-     build it is NOT a hex — it is v4's re-derived OKLCH palette value,
-     oklch(92.8% .006 264.531), and v4's OKLCH re-derivation moved other palette entries by as much
-     as 56/255 (RESEARCH Pitfall 3). It was therefore converted rather than eyeballed: it
-     round-trips to rgb(229,231,235) = #e5e7eb, delta 0,0,0 on all three channels, in gamut.
-
-     It is also the ONE raw-palette key this app depends on that Plan 04's pin block does NOT pin —
-     correctly so, since that census scans component class strings and this dependency lives here,
-     in CSS. No pin was added because the value is provably right today; the residual (it stays
-     right only while upstream's OKLCH grey ramp does) is recorded as DI-87.7-20 and named here so
-     it is greppable. If you are about to "tidy" --color-gray-200 out of this line, that is the
-     thing you would be breaking.
-
-     The 43 sites are enumerated with file:line in
-     .planning/phases/87.7-tailwind-v4-migration-inserted-2026-07-25/87.7-STYLE-AUDIT.md
-     (path written un-globbed on purpose — DI-87.7-12).
-
-     GIVING THOSE 43 SITES EXPLICIT COLOURS AND DELETING THIS RULE IS PHASE 88's WORK, scheduled,
-     not accepted-forever. Deleting it before then is a VISUAL CHANGE across 43 sites, not a
-     cleanup. */
-  *,
-  ::after,
-  ::before,
-  ::backdrop,
-  ::file-selector-button {
-    border-color: var(--color-gray-200, currentcolor);
-  }
-
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
@@ -981,7 +985,13 @@ body {
    The neighbouring UNLAYERED blocks — the `.rbc-*` overrides, the `:root` palette
    blocks (guardrail comment above), `.btn`, `.btn-*` and `.modal-overlay` — MUST STAY
    unlayered; their cascade position is a measured 87.7 decision and nothing needs to
-   override them. Only `.card` moves. Moving it back is a decision, not a cleanup. */
+   override them. Only `.card` moves. Moving it back is a decision, not a cleanup.
+   AMENDED BY PHASE 88-31: `.modal-overlay` is no longer in that list because the rule no
+   longer exists — the dialog fleet moved onto the `<Modal>` primitive and its CSS was
+   deleted here (see the amended DEC-3 marker below, where `.modal-overlay` used to sit).
+   The sentence is amended rather than rewritten so a reader who remembers the original
+   four-item list can see which item went and why. The unlayered requirement stands
+   unchanged for every remaining item. */
 @utility card {
   background-color: var(--color-bg-card);
   border-radius: var(--radius-card);
@@ -1085,6 +1095,12 @@ body {
    with intent — a phone-only floor is the smallest change that fixes the surface that matters,
    which is also why this mirrors the `.modal-overlay` phone-scoped precedent directly below rather
    than inventing an idiom.
+   AMENDED BY PHASE 88-31: that precedent is no longer "directly below" — the `.modal-overlay` rules
+   were deleted once the dialog fleet moved onto the `<Modal>` primitive. The precedent itself still
+   holds and is not lost: the same 12px/48rem phone scoping now lives in `Modal.tsx` as a width
+   inset (`w-[calc(100%-1.5rem)] md:w-full`), and the amended DEC-3 marker below — where the CSS
+   used to be — carries the full trail. The pointer is corrected rather than deleted so the
+   reasoning for the phone-only shape here still has something to point at.
 
    BOTH RULES ARE UNLAYERED, AND THE AUTHORING ORDER IS LOAD-BEARING — this is the part that is not
    obvious and that a tidy-up would break:
@@ -1107,35 +1123,40 @@ body {
   min-height: 0;
 }
 
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: var(--color-bg-overlay);
-  padding: 1rem;
-}
+/* DECISION Phase 87.8 DEC-3 — AMENDED BY PHASE 88-31: THE `.modal-overlay` RULES ARE GONE, AND
+   THE 12px PHONE GUTTER THEY CARRIED NOW LIVES IN `src/app/components/Modal.tsx`.
 
-/* DECISION Phase 87.8 DEC-3: phone-scoped `.modal-overlay` padding (12px < 48rem, 16px
-   desktop via the base rule above), applied GLOBALLY to all 16 overlay call sites across
-   12 components — chosen OVER a per-instance Tailwind utility on the Create Event overlay
-   div. The per-instance utility was REJECTED because it silently does nothing: this block
-   is UNLAYERED (deliberately — see the guardrail note above `@utility card`), and unlayered
-   author styles beat every `@layer utilities` rule regardless of specificity — the exact
-   cascade defect DEC-2 fixed for `.btn`/the feedback button. BringGamePicker.js's
-   `modal-overlay p-4` is live proof: its `p-4` has always been dead against this rule.
-   The global blast radius was justified by a full call-site census + computed-padding
-   spot-check, recorded in 87.8-MODAL-CENSUS.md (planning repo, phase 87.8 dir) — a 12px
-   overlay gutter at phone width is uniform across all modals by design. Scoping a regressed site
-   individually is fine; reverting the global rule is a decision, not a cleanup. */
-@media (width < 48rem) {
-  .modal-overlay {
-    padding: 0.75rem;
-  }
-}
+   What used to be here: an unlayered `.modal-overlay` base rule (fixed inset-0, z-index 50, flex
+   centring, `var(--color-bg-overlay)`, 16px padding) plus a `@media (width < 48rem)` companion
+   dropping that padding to 0.75rem. DEC-3's own text described the 12px phone gutter as "uniform
+   across all modals by design", applied globally to all 16 overlay call sites across 12 components.
 
+   Why they are gone: Phase 88's Req 9 migrated the whole dialog fleet onto the shared `<Modal>`
+   primitive (Radix), which supplies the backdrop, the focus trap, the accessible name and
+   Esc-to-dismiss. The census condition the SPEC set for this deletion was met and re-verified
+   immediately before it: `grep -rn "modal-overlay" src` returns 14 lines and ZERO are a
+   class-attribute usage — every one is a DECISION marker recording the migration, plus this
+   stylesheet. `src/app/legacyOverlayClass.test.ts` is the standing guard on that property, and it
+   deliberately asserts nothing about this stylesheet so it survives the deletion.
+
+   THE 12px NUMBER SURVIVED THE MIGRATION AND IS NOT REDERIVABLE FROM HERE ANY MORE. Deleting the
+   overlay CSS without saying this would have destroyed the last stylesheet record of DEC-3.
+   `Modal.tsx` reproduces it exactly, as `w-[calc(100%-1.5rem)] md:w-full` — 1.5rem total = 0.75rem
+   per side = this rule's value, at this rule's breakpoint (`md` = 48rem), so desktop geometry is
+   untouched. That is a WIDTH INSET, not padding, because the gutter is space OUTSIDE the card;
+   implementing it as padding would inset the card's contents and stack with `Modal.Body`'s own.
+   The full derivation, the rejected alternatives and the test pins live at the `DECISION Phase
+   88-16` marker in `Modal.tsx`, and the e2e padding budget measures it (88-30 taught
+   `measurePaddingChain` to count the outside gap, and asserts `outsideGap > 0`).
+
+   REJECTED — keeping these two rules as dead CSS "in case something still needs them". A rule
+   nothing references is a rule the next census has to re-adjudicate, and a `querySelector` written
+   against the legacy DOM shape would go silently null rather than throw. The census is the gate;
+   it was zero.
+
+   What was NOT deleted, deliberately: `.modal-content` directly below. Its class census is also
+   zero, but it is not in this SPEC's enumerated deletion list, so it is routed to
+   88-RESIDUAL-CENSUS.md with an owner rather than removed under cover of this one. */
 .modal-content {
   background-color: var(--color-bg-card);
   border-radius: 12px;
