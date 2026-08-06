@@ -114,6 +114,34 @@ describe('createGroup — Req 9 migration proof', () => {
     renderCreateGroup({ modal: false });
     expect(screen.queryByRole('dialog')).toBeNull();
   });
+
+  // Phase 88-29 (Req 11 / DEF-88-16-01). The blank-name guard used to raise a browser
+  // `alert()`. Three assertions, because two of the three plausible regressions would
+  // pass the other two: that no native dialog is raised, that the message lands in the
+  // component's inline slot, and that the slot is ANNOUNCED. The third is the one that
+  // matters — silently dropping `role="alert"` would leave a screen-reader user worse
+  // off than the alert they had, and it would look like a passing test.
+  it('reports a blank name inline and ANNOUNCED — never through a native dialog', async () => {
+    const user = userEvent.setup();
+    const nativeAlert = vi.fn();
+    vi.stubGlobal('alert', nativeAlert);
+    try {
+      renderCreateGroup();
+      // Whitespace passes the input's `required`, which is why this guard is reachable.
+      await user.type(screen.getByPlaceholderText('Group Name'), '   ');
+      await user.click(screen.getByRole('button', { name: /create group/i }));
+
+      expect(nativeAlert).not.toHaveBeenCalled();
+      const error = await screen.findByRole('alert');
+      expect(error).toHaveTextContent('Please enter a group name');
+      expect(screen.getByPlaceholderText('Group Name')).toHaveAttribute(
+        'aria-describedby',
+        error.id,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 /**

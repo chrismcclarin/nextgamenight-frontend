@@ -26,7 +26,19 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
     const onSubmit = async (e) => {
         e.preventDefault();
         if (!newGroup.name.trim()) {
-            alert('Please enter a group name');
+            // DECISION Phase 88-29 (Req 11 / DEF-88-16-01): this validation failure reports
+            // through the component's OWN inline error slot, chosen OVER the browser
+            // `alert()` it replaces and OVER inventing a toast string. The string is
+            // unchanged, so no copy was authored — this phase forbids strings outside the
+            // ratified register, and the register has none for this.
+            //
+            // The alert was reachable, not dead: the input carries `required`, so the
+            // browser blocks a truly EMPTY submit, but a whitespace-only name passes
+            // `required` and fails this `.trim()`. It was also the only user-facing error
+            // in this file that skipped the `errorMessage` slot rendered 100 lines below —
+            // a self-inconsistency inside one component. Restoring a native dialog here is
+            // a decision, not a cleanup.
+            setErrorMessage('Please enter a group name');
             return;
         }
         try {
@@ -122,14 +134,24 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                     required
                                     maxLength={40}
                                     autoComplete="off"
+                                    aria-invalid={errorMessage ? 'true' : undefined}
+                                    aria-describedby={errorMessage ? 'create-group-error' : undefined}
                                     className="relative pr-16 shadow-sm"
                                 />
                                 <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-content-muted pointer-events-none">
                                     {newGroup.name.length}/40
                                 </span>
                             </div>
+                            {/* DECISION Phase 88-29 (Req 11 / DEF-88-19-04 shape): `role="alert"`
+                                — ASSERTIVE, chosen over `role="status"`. Both things routed here
+                                are submit-time failures the person has just caused and is waiting
+                                on, so interrupting is correct; 88-25 made the same call on
+                                `userProfile`'s phone error and used polite only for the
+                                types-as-you-go format hint. Without a role this node is silent to
+                                a screen reader, which would make replacing the native `alert()`
+                                above an a11y REGRESSION — an alert dialog is announced. */}
                             {errorMessage && (
-                                <p className="mt-2 text-sm text-red-600">{errorMessage}</p>
+                                <p id="create-group-error" role="alert" className="mt-2 text-sm text-red-600">{errorMessage}</p>
                             )}
                         </div>
                         {/* Owner report 2026-08-04: button sat off-center under the input.
