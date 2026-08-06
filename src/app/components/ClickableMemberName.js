@@ -236,6 +236,45 @@ export default function ClickableMemberName({ userId, username, children }) {
     // .planning/deferred/phase-88.md). Changing this back to a symmetric
     // inset is a decision, not a cleanup.
     //
+    // AMENDED Phase 88-28 (D-37) — this marker is now the PERMANENT record,
+    // and the paragraph above contains one CORRECTED claim. Both halves:
+    //
+    //   (i) RULING: 44x32 is ACCEPTED FOREVER. The owner was shown the
+    //       trade-off — the last 12px against list density, and the fact that
+    //       a mis-tap here is socially costly (it sends a stranger a friend
+    //       request, not a recoverable UI action) — and chose density,
+    //       informed, on 2026-08-05. This is no longer "owned by Phase 88";
+    //       Phase 88 is where it was decided, and it was decided to stand.
+    //       The e2e assertion in `touch-targets.spec.ts` stays at 44x32 and
+    //       must NOT be "tightened" to 44x44: that would fail a shipped,
+    //       recorded decision rather than catch a regression.
+    //
+    //  (ii) CORRECTION: "requires widening the row gap at all 9 render sites"
+    //       is WRONG, and it made the fix look 9x more expensive than it is.
+    //       RE-VERIFIED 2026-08-05 by reading the container above each of the
+    //       nine, not by trusting the plan text. The 4px extension needs 8px
+    //       of vertical room BETWEEN two adjacent instances:
+    //         CONSTRAINED (1) — `RsvpSection.js:289` `space-y-1` = 4px. This
+    //           is the ONLY container tighter than 8px, and it is what set the
+    //           `after:-inset-y-1` ceiling: at 4px the two extensions meet
+    //           exactly at the gap midpoint, which is the "terminates exactly
+    //           at the gap" sentence above.
+    //         EXACTLY AT THE BOUNDARY (2) — `grouplist.js:336` `flex flex-wrap
+    //           gap-2` and `gameDetail/page.js:2182` `space-y-2`, both 8px.
+    //           Not constrained, but they are the next things to check if the
+    //           extension is ever grown.
+    //         ROOMY (6) — `ManageMembers.js:440,472` (`space-y-3` + `p-4`
+    //           rows) and `gameDetail/page.js:1467, 2088, 2352, 2399` (`py-2`
+    //           rows). All have >=8px and would take a bigger extension today.
+    //       So a future phase revisiting this has ONE lever, not nine.
+    //       Line numbers are the 88-28 re-derivation: CONTEXT D-37 cites this
+    //       as `RsvpSection.js:288`, which drifted by one.
+    //       That lever is deliberately NOT pulled here (D-37): widening the
+    //       RSVP row gap is a density change to a list the owner just chose to
+    //       keep dense, and doing it as a side effect of an a11y sweep would
+    //       be the silent override this project's Evidence Rule forbids.
+    //       `RsvpSection.js:289`'s `space-y-1` is unchanged, on purpose.
+    //
     // DECISION Phase 87.8 (D-13): invisible pseudo-element hit extension
     // chosen OVER visible min-height growth (the per-CTA token technique at
     // the 13 shipped 44px CTA sites — wrong for an inline control inside a

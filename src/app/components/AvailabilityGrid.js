@@ -695,7 +695,26 @@ export default function AvailabilityGrid({
                 before; cells stay 76x48 — above the 44px touch floor. The SAME
                 phone width must be carried by all six aligned sites (header
                 spacer, headers, checkbox spacer, checkboxes, labels, cells) or
-                the columns shear. sm:+ widths unchanged. */}
+                the columns shear. sm:+ widths unchanged.
+
+                AMENDED Phase 88-28 (Req 4), premise re-verified, decision UNCHANGED: 88-28's
+                plan text says this gutter is `w-16`/`w-20` and asks for it to be shrunk at
+                phone width with `md:` restoring desktop. That premise is STALE — the work was
+                already done here by 87.8-13, one breakpoint lower (`w-12 sm:w-20`), and the
+                arithmetic above still holds on this tree. Nothing was re-cut, deliberately:
+                  - Narrowing the gutter below `w-12` truncates the compact "10:30p" label
+                    the same walkthrough introduced to make `w-12` possible.
+                  - Narrowing the 76px columns to fit a 5th day was REJECTED: 76x48 is a
+                    measured 87.8-13 value sitting above the 44px floor, and re-deciding it
+                    from a stale plan premise is exactly the silent-override this project's
+                    Evidence Rule forbids.
+                  - Moving `sm:` to `md:` would widen the phone treatment to 768px but would
+                    DESYNC the width from the label toggle below (`sm:hidden` /
+                    `hidden sm:inline`), which is keyed to the same breakpoint on purpose.
+                What 88-28 could not do is MEASURE the rendered column count — that needs a
+                browser, and the container's own padding eats into the 375px this arithmetic
+                assumes. Plan 88-30 owns the assertion. The six-site lockstep above is pinned
+                in `availabilityGridColumns.test.ts`. */}
             {days.map((day, index) => (
               <div
                 key={day.toISOString()}
