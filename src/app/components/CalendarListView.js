@@ -293,7 +293,7 @@ export default function CalendarListView({
         >
           <div className="space-y-3">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="border rounded-lg p-4 animate-pulse">
+              <div key={i} className="border border-line rounded-lg p-4 animate-pulse">
                 <div className="h-4 w-1/3 bg-surface-elevated rounded-sm mb-2" />
                 <div className="h-3 w-1/4 bg-surface-elevated rounded-sm" />
               </div>
@@ -490,7 +490,7 @@ const EventRow = forwardRef(function EventRow({ event, timezone, onClick }, ref)
       }}
       role="button"
       tabIndex={0}
-      className="p-3 sm:p-4 border rounded-lg transition-all hover:shadow-md cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-content-link bg-surface-card"
+      className="p-3 sm:p-4 border border-line rounded-lg transition-all hover:shadow-md cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-content-link bg-surface-card"
       style={{
         ...(groupBgColor && { backgroundColor: groupBgColor }),
         ...safeBgImageStyle(groupBgImage),

@@ -737,10 +737,10 @@ function FriendsPage() {
                                         {bulkInviteResult && (
                                             <div className={`mt-3 p-3 rounded-lg text-sm font-medium ${
                                                 bulkInviteResult.failCount === 0
-                                                    ? 'text-status-success border'
+                                                    ? 'text-status-success border border-line'
                                                     : bulkInviteResult.successCount > 0
-                                                        ? 'text-status-warning border'
-                                                        : 'text-status-error border'
+                                                        ? 'text-status-warning border border-line'
+                                                        : 'text-status-error border border-line'
                                             }`}>
                                                 {bulkInviteResult.failCount === 0
                                                     ? `Invited ${bulkInviteResult.successCount} friend(s) to ${getSelectedGroupName()}!`
@@ -941,7 +941,7 @@ function FriendsPage() {
                                                     <p className="text-sm text-content-muted mt-0.5">{addressee.email}</p>
                                                 )}
                                             </div>
-                                            <span className="px-3 py-1 rounded-full text-xs font-semibold text-status-warning border">
+                                            <span className="px-3 py-1 rounded-full text-xs font-semibold text-status-warning border border-line">
                                                 Pending
                                             </span>
                                         </div>

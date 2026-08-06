@@ -377,7 +377,7 @@ export default function AvailabilityForm({
 
       {/* Validation Error Display */}
       {errors.time_slots && (
-        <div className="border rounded-btn p-3">
+        <div className="border border-line rounded-btn p-3">
           <p className="text-sm text-status-error">
             {errors.time_slots.message}
           </p>
@@ -386,7 +386,7 @@ export default function AvailabilityForm({
 
       {/* Submission Error Display (inline submit-error UI) */}
       {submitError && (
-        <div className="border rounded-btn p-3">
+        <div className="border border-line rounded-btn p-3">
           <p role="alert" className="text-sm text-status-error">
             {submitError}
           </p>

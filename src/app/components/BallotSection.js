@@ -109,7 +109,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
             <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
           </div>
           <div className="p-4">
-            <div className="border rounded-card p-4 mb-3">
+            <div className="border border-line rounded-card p-4 mb-3">
               <div className="flex items-center gap-2">
                 <span className="text-lg font-bold text-status-success">Winner</span>
               </div>
@@ -134,7 +134,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
     if (needs_tie_break && isOrganizer) {
       return (
         <div className="mt-4 border border-status-warning rounded-card overflow-hidden">
-          <div className="px-4 py-3 border-b">
+          <div className="px-4 py-3 border-b border-line">
             <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
           </div>
           <div className="p-4">
@@ -177,7 +177,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
     if (needs_fallback_pick && isOrganizer) {
       return (
         <div className="mt-4 border border-status-warning rounded-card overflow-hidden">
-          <div className="px-4 py-3 border-b">
+          <div className="px-4 py-3 border-b border-line">
             <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
           </div>
           <div className="p-4">

@@ -294,7 +294,7 @@ export default function TutorialOverlay({ onComplete }) {
           <button
             onClick={goBack}
             disabled={isWelcome}
-            className={`px-4 py-1.5 text-sm font-medium border rounded-btn transition-colors ${
+            className={`px-4 py-1.5 text-sm font-medium border border-line rounded-btn transition-colors ${
               isWelcome
                 ? 'cursor-not-allowed'
                 : 'text-content-primary bg-surface-elevated hover:bg-surface-card-hover border-line'

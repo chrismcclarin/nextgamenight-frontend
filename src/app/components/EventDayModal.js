@@ -106,7 +106,7 @@ export default function EventDayModal({
                   <div
                     key={event.id}
                     onClick={() => onEventClick(event)}
-                    className={`p-4 border rounded-lg transition-all hover:shadow-md cursor-pointer bg-surface-card`}
+                    className={`p-4 border border-line rounded-lg transition-all hover:shadow-md cursor-pointer bg-surface-card`}
                     style={{
                       ...(groupBgColor && { backgroundColor: groupBgColor }),
                       ...safeBgImageStyle(groupBgImage),

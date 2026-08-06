@@ -1961,7 +1961,7 @@ function Profile(){
                             </div>
 
                             {showRecurringForm && (
-                                <div className="mb-6 p-4 border rounded-lg bg-surface-page">
+                                <div className="mb-6 p-4 border border-line rounded-lg bg-surface-page">
                                     <h4 className="text-base font-bold mb-3 text-content-primary">New Schedule</h4>
                                     <div className="space-y-3">
                                         <div>
@@ -2073,7 +2073,7 @@ function Profile(){
                                     {availabilityPatterns
                                         .filter(p => p.type === 'recurring_pattern')
                                         .map(pattern => (
-                                            <div key={pattern.id} className="p-3 border rounded-lg flex justify-between items-center">
+                                            <div key={pattern.id} className="p-3 border border-line rounded-lg flex justify-between items-center">
                                                 <div>
                                                     <p className="font-medium text-content-primary">
                                                         {getDayName(pattern.pattern_data.dayOfWeek)}: {pattern.pattern_data.startTime} - {pattern.pattern_data.endTime}
@@ -2126,7 +2126,7 @@ function Profile(){
                             </div>
 
                             {showSpecificForm && (
-                                <div className="mb-6 p-4 border rounded-lg bg-surface-page">
+                                <div className="mb-6 p-4 border border-line rounded-lg bg-surface-page">
                                     <h4 className="text-base font-bold mb-3 text-content-primary">New Specific Override</h4>
                                     <div className="space-y-3">
                                         <div>
@@ -2206,7 +2206,7 @@ function Profile(){
                                     {availabilityPatterns
                                         .filter(p => p.type === 'specific_override')
                                         .map(pattern => (
-                                            <div key={pattern.id} className="p-3 border rounded-lg flex justify-between items-center">
+                                            <div key={pattern.id} className="p-3 border border-line rounded-lg flex justify-between items-center">
                                                 <div>
                                                     <p className="font-medium text-content-primary">
                                                         {formatDate(pattern.pattern_data.date)}: {pattern.pattern_data.startTime} - {pattern.pattern_data.endTime}
@@ -2274,7 +2274,7 @@ function Profile(){
                     </div>
 
                     {/* BGG Collection Import */}
-                    <div className="mb-6 p-3 md:p-4 border rounded-lg bg-surface-page">
+                    <div className="mb-6 p-3 md:p-4 border border-line rounded-lg bg-surface-page">
                         <h3 className="text-base font-bold mb-2 text-content-primary">Import Your Entire BGG Collection</h3>
                         <p className="text-xs md:text-sm text-content-secondary mb-3">
                             Enter your BoardGameGeek username to import all games from your BGG collection at once.
@@ -2324,7 +2324,7 @@ function Profile(){
 
                     {/* BGG Search */}
                     {showBggSearch && (
-                        <div className="mb-6 p-3 md:p-4 border rounded-sm bg-surface-page">
+                        <div className="mb-6 p-3 md:p-4 border border-line rounded-sm bg-surface-page">
                             <div className="flex flex-col sm:flex-row gap-2 mb-3">
                                 <Input
                                     aria-label="Search BoardGameGeek"
@@ -2379,7 +2379,7 @@ function Profile(){
                     ) : ownedGames.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {ownedGames.map((game) => (
-                                <div key={game.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                                <div key={game.id} className="border border-line rounded-lg p-4 hover:shadow-md transition-shadow">
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="flex-1">
                                             <h3 className="text-base font-bold text-content-primary">{game.name}</h3>

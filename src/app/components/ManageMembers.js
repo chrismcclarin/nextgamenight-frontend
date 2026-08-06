@@ -496,7 +496,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                         renders the role pill on the right; this inline badge is
                                                         the canonical "this is the owner" indicator per CONTEXT. */}
                                                     {isOwner ? (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-accent border">
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-accent border border-line">
                                                             Owner
                                                         </span>
                                                     ) : (

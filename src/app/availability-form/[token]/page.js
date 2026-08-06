@@ -244,7 +244,7 @@ export default function AvailabilityFormPage() {
 
           {/* Token expiry warning */}
           {isExpiryWarning() && (
-            <div className="mt-4 border rounded-btn p-2 md:p-3">
+            <div className="mt-4 border border-line rounded-btn p-2 md:p-3">
               <p className="text-sm text-status-warning">
                 <span className="font-medium">Heads up:</span> This link expires in {getTimeRemaining()}. Please submit your availability soon.
               </p>

@@ -142,7 +142,7 @@ function GuestInviteButton({ groupId, userId }) {
         <button
             onClick={handleInvite}
             disabled={status === 'sending' || status === 'sent' || status === 'already'}
-            className={`text-xs px-2 py-0.5 rounded-sm border transition-colors ${
+            className={`text-xs px-2 py-0.5 rounded-sm border border-line transition-colors ${
                 status === 'sent'
                     ? 'text-status-success'
                     : status === 'already'

@@ -36,7 +36,16 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
     // controls line) — the single-row layout's ~350px fixed control cluster
     // forced the whole participant list into horizontal scroll at 375px.
     // sm:+ is the original one-line layout, unchanged.
-    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 p-2 border-b">
+    //
+    // DECISION Phase 88-26 (D-35/D-34): this row divider is the ONE site in the 41-site sweep
+    // promoted to the STRONG hairline instead of taking the mechanical `-line` default. Rows
+    // here have no background alternation, so this rule is the entire separation between one
+    // participant and the next — D-34's "must be SEEN as a separator in isolation" case, and
+    // the reason D-34 darkened the strong token rather than the neutral one (darkening the
+    // neutral was rejected as a 280-site re-theme). In-repo precedent for the same role:
+    // gameDetail/page.js's between-session rule and Header.js's sticky-header underline.
+    // Demoting this to the neutral is a decision, not a consistency cleanup.
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 p-2 border-b border-line-strong">
       <div className="sm:flex-1">
         {/* Owner refinement 2026-08-04 (on F-3): at phone width "New Player"
             rides the title line (right-aligned) instead of the controls row —
@@ -192,7 +201,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
               type="button"
               onClick={handleInviteToGroup}
               disabled={inviteStatus === 'sending' || inviteStatus === 'sent'}
-              className={`text-xs px-2 py-1 border rounded-sm transition-colors ${
+              className={`text-xs px-2 py-1 border border-line rounded-sm transition-colors ${
                 inviteStatus === 'sent'
                   ? 'text-status-success'
                   : inviteStatus === 'error'
@@ -210,7 +219,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
           <button
             type="button"
             onClick={() => onToggleParticipant(index)}
-            className="text-status-error hover:text-status-error text-sm px-2 py-1 border rounded-sm"
+            className="text-status-error hover:text-status-error text-sm px-2 py-1 border border-line rounded-sm"
             title="Remove participant"
           >
             Remove

@@ -188,7 +188,7 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
 
             {/* Delete Confirmation Dialog */}
             {deleteConfirm === schedule.id && (
-              <div className="mt-4 p-3 md:p-4 border rounded-card">
+              <div className="mt-4 p-3 md:p-4 border border-line rounded-card">
                 <p className="text-status-error font-medium mb-3">
                   Delete {scheduleName}? This will stop sending prompts.
                 </p>

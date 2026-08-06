@@ -134,7 +134,7 @@ export default function ResponseDashboard({
   // Error state
   if (error) {
     return (
-      <div className="bg-surface-card rounded-card border p-4">
+      <div className="bg-surface-card rounded-card border border-line p-4">
         <div className="flex items-center gap-2 text-status-error">
           <ExclamationIcon className="w-5 h-5" />
           <span>{error}</span>
@@ -157,14 +157,14 @@ export default function ResponseDashboard({
 
       {/* Reminder error message */}
       {reminderError && (
-        <div className="mb-3 p-2 border rounded-sm text-sm text-status-error">
+        <div className="mb-3 p-2 border border-line rounded-sm text-sm text-status-error">
           {reminderError}
         </div>
       )}
 
       {/* Blind voting notice */}
       {blindVotingEnabled && !pollClosed && !userHasResponded && !isAdmin && (
-        <div className="mb-3 p-2 border rounded-sm text-sm text-status-warning">
+        <div className="mb-3 p-2 border border-line rounded-sm text-sm text-status-warning">
           Slot counts are hidden until you submit your response or the poll closes.
         </div>
       )}

@@ -427,7 +427,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
           {/* Current Selection Preview */}
           {/* bg-surface-card so "no colour chosen" previews what the group will
               actually look like — the themed card, not a white rectangle. */}
-          <div className="mb-4 p-4 border rounded-lg bg-surface-card" style={{
+          <div className="mb-4 p-4 border border-line rounded-lg bg-surface-card" style={{
             ...(backgroundColor && { backgroundColor }),
             ...safeBgImageStyle(backgroundImageUrl),
             backgroundSize: 'cover',

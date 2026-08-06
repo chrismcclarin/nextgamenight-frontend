@@ -19,7 +19,7 @@ export default function PendingMemberBanner({ groupId }) {
     };
 
     return (
-        <div className="border rounded-card p-4 mb-4 flex items-center justify-between">
+        <div className="border border-line rounded-card p-4 mb-4 flex items-center justify-between">
             <p className="text-content-secondary text-sm">
                 Welcome! You&apos;re a pending member &mdash; an admin will approve you shortly. Feel free to look around in the meantime.
             </p>
