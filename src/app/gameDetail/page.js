@@ -1048,7 +1048,14 @@ export default function GameDetailPage() {
     // Event-only view (no game_id, e.g. events with ballot voting)
     if (!game_id && singleEvent) {
         return (
-            <div className="p-6 max-w-6xl mx-auto">
+            /* DECISION Phase 88 (DEF-88-24-01, owner ruling 2026-08-05): `p-3 md:p-6`, moved
+               together with the game-view wrapper below — the full rationale lives at that
+               site. Both branches of this ONE route were bare `p-6`; converging only the one
+               the deferral happened to cite by line number would have made the phone gutter
+               depend on whether the URL carried a game_id, which nobody would read as
+               intentional. This is also the branch `/gameDetail?event_id=…&group_id=…`
+               actually renders, so it is the one the padding-budget e2e loads. */
+            <div className="p-3 md:p-6 max-w-6xl mx-auto">
                 <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
                     <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
                     {effectiveGroupId && singleEvent?.Group?.name && (
@@ -1665,7 +1672,29 @@ export default function GameDetailPage() {
         // mounted here. The shared receivedRequests / accept/decline mutators
         // come from the root provider so NotificationBell + friends/page +
         // ClickableMemberName all read from one source of truth.
-        <div className="p-6 max-w-6xl mx-auto">
+
+        /* DECISION Phase 88 (DEF-88-24-01, owner ruling 2026-08-05): this page wrapper is
+           `p-3 md:p-6`, NOT a bare `p-6`. Chosen OVER leaving the bare `p-6` that shipped
+           here, and over loosening e2e/padding-budget.spec.ts's 75px ceiling.
+
+           Why: at 375px a bare `p-6` spends 48px — 24 per side — before any card inside it
+           has spent anything. With 88-24's `.card` convergence that put gameDetail's measured
+           padding chain at a predicted 72 of the 75px budget, i.e. passing on 3px of headroom,
+           on the app's busiest detail page. It was also the largest of four different page
+           gutters shipping across four page wrappers (24 / 12 / 16 / 16). `p-3 md:p-6` is
+           userProfile's wrapper verbatim and the ratified 12px phone / 24px desktop rung, so
+           this converges rather than inventing a fifth value. Desktop geometry is unchanged.
+
+           88-24 deliberately did NOT make this change — it is not a `.card` site, so it sat
+           outside that plan's charter and outside the owner's Task 1 ruling, and it is a
+           VISIBLE 12px phone change. It was escalated as DEF-88-24-01 and the owner ruled:
+           "You can correct the padding." The sibling wrapper on the event-only branch above
+           carries the same value for the same reason — the two must move together or one
+           gameDetail URL renders a 24px gutter and another a 12px one.
+
+           Restoring `p-6` is a DECISION (it re-tightens the budget to ~72/75 and re-splits the
+           two branches), not a cleanup. */
+        <div className="p-3 md:p-6 max-w-6xl mx-auto">
             {/* Breadcrumbs */}
             <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
@@ -1836,9 +1865,12 @@ export default function GameDetailPage() {
                     and spent ~10 characters of a 375px header line saying nothing. The "of" is
                     the signal that filtering is on; restoring it unconditionally removes that
                     signal. The header also stacks (`flex-col sm:flex-row`) so the title and the
-                    ~150px filter button stop colliding at phone width. NOTE: the Reviews header
-                    below has the same shape and is deliberately NOT converged — see the marker
-                    there. */}
+                    ~150px filter button stop colliding at phone width. NOTE (updated 2026-08-05):
+                    the Reviews header below has the same shape and WAS the one deliberate
+                    non-convergence here. The owner reopened that exemption (DEF-88-24-02) and
+                    converged it, so both headers are now 20/700 — the marker there records the
+                    reopening. This marker's OWN subject (the conditional count and the stacking)
+                    is untouched by that ruling and still stands. */}
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
                     <h2 className="w-full text-xl leading-tight font-bold text-content-primary">
                         Game Sessions ({filteredEvents.length === events.length
@@ -2254,26 +2286,46 @@ export default function GameDetailPage() {
                     identity-resolution failure — own-review edit/delete gate on
                     selfUuid, so surface (never silently hide) when it can't resolve. */}
                 <FetchErrorBanner state={selfIdentityErrorState} compact />
-                {/* DECISION Phase 88-11 (D-39): this header is LEFT AS IT SHIPS — same
+                {/* DECISION Phase 88-11 (D-39) — AMENDED 2026-08-05: the exemption this marker
+                    created has been REOPENED BY THE OWNER and closed. The original ruling is
+                    kept below verbatim, because a reopening has to be visible AS a reopening —
+                    otherwise the next reader cannot tell a sanctioned convergence from a
+                    bulldozed one, which is the exact failure this marker existed to prevent.
+
+                    ORIGINAL RULING (88-11, superseded): this header was LEFT AS IT SHIPS — same
                     justify-between shape and same 24px heading as the sessions header above,
-                    which WAS restacked and retyped this phase. The similarity is known and the
-                    divergence is deliberate: the owner walked both at 375px and ruled Reviews
+                    which WAS restacked and retyped that phase. The similarity was known and the
+                    divergence was deliberate: the owner walked both at 375px and ruled Reviews
                     fine, because "Reviews (3)" plus a short "Add Review" button fits the line
-                    that "Game Sessions (3 of 7)" plus a ~150px filter control did not. A
-                    consistency sweep that converges this one onto the sessions treatment is
-                    reopening an owner ruling, not tidying an oversight. */}
-                {/* DECISION Phase 88-24 (Req 2): the type-scale sweep SAW this heading and
-                    LEFT IT. It is not an oversight and it is not done. `text-2xl` (24) is
-                    outside §4.1's 4-size working set (14/16/20/30), so on the letter of Req 2
-                    this should be `text-xl` — but converging it is precisely the "consistency
-                    sweep onto the sessions treatment" the D-39 marker above rules out, and
-                    88-24 has no mandate to reopen an owner ruling from 88-11. The residue is
-                    recorded as DEF-88-24-02 in the phase's deferred-items.md so the Req 8
-                    census inherits it with an owner, rather than a later gate discovering it
-                    and silently "fixing" D-39 away. Whoever takes it needs the OWNER, not a
-                    plan: the two markers genuinely conflict and only he can rank them. */}
+                    that "Game Sessions (3 of 7)" plus a ~150px filter control did not. It closed
+                    "A consistency sweep that converges this one onto the sessions treatment is
+                    reopening an owner ruling, not tidying an oversight."
+
+                    AMENDMENT — post-plan owner ruling, 2026-08-05, via DEF-88-24-02. The owner
+                    reopened D-39 himself and converged it: "make it match the same size as all
+                    other headings." So this h2 is now `text-xl font-bold` (20/700) — the same
+                    rung as every other h2 on this surface (Participants, Recommended Games, Game
+                    Sessions) and inside UI-SPEC §4.1's 14/16/20/30 working set. D-39's stated
+                    reason was line-fitting at 375px, and the convergence moves that in the SAFE
+                    direction: a 20px heading fits the line more easily than 24px, never less.
+
+                    What this is NOT: a sweep overriding a ruling. 88-24's type sweep correctly
+                    REFUSED to take it and escalated instead (see the amended 88-24 marker
+                    below); the owner then ruled. Reverting to `text-2xl` now reopens HIS
+                    convergence AND puts a fifth size back in a 4-size working set. Pinned in
+                    src/app/typeScaleTouchedSurfaces.test.ts. */}
+                {/* DECISION Phase 88-24 (Req 2) — CLOSED 2026-08-05 by the owner ruling above.
+                    Kept as the evidence trail for how that ruling was reached. ORIGINAL: the
+                    type-scale sweep SAW this heading and LEFT IT. `text-2xl` (24) is outside
+                    §4.1's 4-size working set, so on the letter of Req 2 it should have been
+                    `text-xl` — but converging it was precisely the "consistency sweep onto the
+                    sessions treatment" the D-39 marker ruled out, and 88-24 had no mandate to
+                    reopen an owner ruling from 88-11. It was recorded as DEF-88-24-02 so the
+                    conflict carried an OWNER rather than being silently "fixed" away by a later
+                    gate. That escalation is what produced the ruling above: the deferral worked
+                    exactly as designed, and is now RESOLVED. */}
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-2xl font-bold text-content-primary">Reviews ({reviews.length})</h2>
+                    <h2 className="text-xl font-bold text-content-primary">Reviews ({reviews.length})</h2>
                     {user && !userReview && userRole && userRole !== 'pending' && (
                         <button
                             onClick={() => setShowReviewForm(true)}

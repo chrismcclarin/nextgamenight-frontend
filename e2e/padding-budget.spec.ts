@@ -261,11 +261,14 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
 
      PREDICTED, not observed: these were written against the source chains (the phone lane
      needs CI's Auth0 storageState and cannot run locally — playwright.config.ts:19-21).
-     gameDetail is the tight one at a predicted 72/75: its PAGE wrapper is a bare `p-6`
-     (gameDetail/page.js:1578 — 48px of the 72), which is the outlier against
-     userProfile's `p-3 md:p-6` and groupPlanning's `p-4 md:p-6`. That wrapper is logged
-     in this phase's deferred-items.md and is the lever if this test comes back red — do
-     NOT respond by loosening PADDING_BUDGET_PX or by re-anchoring above the card. */
+
+     UPDATED 2026-08-05 (DEF-88-24-01, owner ruling). gameDetail was the tight one at a
+     predicted 72/75, 48 of which was its PAGE wrapper's bare `p-6`. The owner ruled that
+     wrapper down to `p-3 md:p-6` — BOTH branches of the route, since both were bare `p-6`
+     — so the predicted chain is now 24 (wrapper) + 24 (card) = 48/75. The headroom went
+     from 3px to 27px. If this test still comes back red, the lever is NOT loosening
+     PADDING_BUDGET_PX and NOT re-anchoring above the card; read the per-level breakdown
+     the failure prints and find the level that is not one of those two. */
 
   test('gameDetail sessions card: padding chain stays within budget', async ({ page }) => {
     await page.goto(E2E_EVENT_DETAIL_PATH);
