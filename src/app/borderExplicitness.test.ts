@@ -82,7 +82,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { stringChunks } from '../test-utils/sourceScan';
+import { sourceFiles, stringChunks } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -200,20 +200,28 @@ export function universalBorderColourRules(css: string): string[] {
   return hits;
 }
 
-function sourceFiles(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      out.push(...sourceFiles(full));
-      continue;
-    }
-    if (!/\.(js|jsx|ts|tsx)$/.test(entry.name)) continue;
-    if (/\.(test|spec)\./.test(entry.name)) continue;
-    out.push(full);
-  }
-  return out;
-}
+// DECISION Phase 88-31 (DEF-88-29-01): `sourceFiles` is IMPORTED from
+// `src/test-utils/sourceScan.ts`, chosen OVER keeping this suite's private copy.
+//
+// 88-29 extracted `stringChunks` and deliberately left `sourceFiles` alone, because its six
+// copies had visibly different SIGNATURES — `(dir)` vs `(dir, out = [])` vs `(dir, acc = [])`
+// — and converging them from the plan whose job was arming gates would have been an
+// unannounced behaviour change to six shipped, negative-checked suites. This is the residual
+// pass that entry named as the owner, and the convergence was MEASURED before it was made,
+// not assumed from reading:
+//   - four copies (this one's family) were semantically identical to the canonical one;
+//   - `cardPaddingIdiom`'s carried an extra `node_modules` skip, and there are ZERO
+//     `node_modules` directories under `src/` (measured), so it was dead;
+//   - `controlSizeFloor`'s excluded `.test.` but NOT `.spec.`, and there are ZERO `.spec.`
+//     files under `src/` (measured), so its set was identical too. Its root is `src/`, the
+//     same as everyone else's — the "different root" in the deferral was a misreading.
+// So all six enumerated the same files, and this is a verbatim move rather than a behaviour
+// change. Each suite's own anti-vacuity floor (`files.length > 100`) still holds afterwards.
+//
+// Re-inlining a private copy here is a decision, not a cleanup: six copies of a directory
+// walker is five places a correctness fix — a new extension, a newly-excluded directory — can
+// be forgotten, which is the drift shape the Phase 88 gate ledger records fifteen times, one
+// layer down.
 
 /**
  * The ONLY sites allowed to carry a bare border-width token with no colour beside it,
