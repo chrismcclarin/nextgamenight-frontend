@@ -526,6 +526,44 @@ describe('Req 19 / gate-hygiene — the drift-gate registry step (parsed from ci
   });
 });
 
+// ---------------------------------------------------------------------------
+// Phase 88 plan 31 — the e2e typecheck step (DEF-88-30-02).
+//
+// `tsconfig.json` excludes `e2e/`, so the ordinary typecheck step is structurally
+// incapable of failing on a Playwright spec. 88-31 added a second step pointed at
+// `tsconfig.e2e.json`. Pinned here for the same reason the registry step is: without
+// it, deleting one line of ci.yml silently re-opens the gap, and nothing reds.
+// ---------------------------------------------------------------------------
+
+const E2E_TSC_STEP = 'Typecheck e2e specs (DEF-88-30-02';
+
+describe('DEF-88-30-02 — the e2e typecheck step (parsed from ci.yml by step name)', () => {
+  test('the step exists and points at the e2e-scoped config, not the app one', () => {
+    const window = stepWindow(E2E_TSC_STEP).join('\n');
+    expect(window).toMatch(/run:\s*npx tsc --noEmit -p tsconfig\.e2e\.json\s*$/m);
+  });
+
+  test('tsconfig.e2e.json exists, includes e2e/, and EXTENDS the app config', () => {
+    const cfgPath = resolve(__dirname, '../../tsconfig.e2e.json');
+    expect(existsSync(cfgPath)).toBe(true);
+    const cfg = readFileSync(cfgPath, 'utf8');
+    // Extending rather than restating is what stops the two lanes drifting into
+    // different compiler options — a strictness change in one place only.
+    expect(cfg).toMatch(/"extends"\s*:\s*"\.\/tsconfig\.json"/);
+    expect(cfg).toMatch(/"include"[\s\S]*e2e\/\*\*\/\*\.ts/);
+  });
+
+  test('the app config still EXCLUDES e2e/ — this step is load-bearing, not redundant', () => {
+    // The anti-vacuity guard. If someone "simplifies" by deleting the exclude, the two
+    // steps become duplicates and this one looks droppable — but that change also pulls
+    // @playwright/test's globals into the app program alongside vitest/globals, which is
+    // the collision tsconfig.e2e.json's own comment explains. Either outcome should be a
+    // deliberate edit here, not a silent one there.
+    const app = readFileSync(resolve(__dirname, '../../tsconfig.json'), 'utf8');
+    expect(app).toMatch(/"exclude"[\s\S]*"e2e"/);
+  });
+});
+
 describe('Req 19 — the two-sided CSS bundle guard step (parsed from ci.yml by step name)', () => {
   const window = stepWindow(BUNDLE_STEP).join('\n');
 

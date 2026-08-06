@@ -1,0 +1,43 @@
+{
+  // Typecheck for the Playwright specs under `e2e/` — DEF-88-30-02.
+  //
+  // WHY THIS FILE EXISTS
+  // --------------------
+  // `tsconfig.json` carries `"exclude": ["node_modules", "e2e"]`, so `tsc --noEmit -p
+  // tsconfig.json` cannot fail on anything in `e2e/`. Three `verify` blocks in plan 88-30
+  // alone were written as `npx tsc --noEmit -p tsconfig.json && <something>` against e2e
+  // spec files, i.e. the tsc half was inert. Probed as real shell, both directions: a
+  // planted `const x: number = "not a number";` in `e2e/route-fallbacks.spec.ts` exits 0
+  // under the app config and exits 1 with TS2322 under an e2e-scoped one.
+  //
+  // That is a different failure shape from this phase's fifteen defective grep gates. Those
+  // were patterns aimed at the wrong text; this was a CORRECT command pointed at a scope
+  // that excluded its target, which none of the usual predictors would flag.
+  //
+  // DECISION Phase 88-31 (DEF-88-30-02): a SEPARATE config plus a `quality`-job step,
+  // chosen OVER deleting `"e2e"` from the app config's `exclude`.
+  //
+  // Deleting the exclude was rejected and the reason is mechanical, not stylistic: it would
+  // pull `@playwright/test` types and every spec file into the APP's build program. Next's
+  // own typecheck, the `next build`, and the editor's project service all read that program,
+  // so browser-context globals and Playwright's `test`/`expect` would start resolving inside
+  // app source — and `"types": ["vitest/globals"]` means `expect` is already declared there
+  // by Vitest. Two competing global `expect` declarations in one program is a collision the
+  // app config has no reason to take on.
+  //
+  // It extends the app config rather than restating it, so a compiler-option change in one
+  // place cannot leave the e2e lane checking under different rules. Only three keys are
+  // overridden, each with a reason:
+  //   - `include`/`exclude`: point the program at `e2e/` and nothing else.
+  //   - `types`: Playwright's globals instead of Vitest's, for the collision above.
+  //   - `incremental`/`tsBuildInfoFile`: a distinct build-info path, or the two programs
+  //     fight over `.tsbuildinfo` and each run invalidates the other's cache.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "@playwright/test"],
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.e2e.tsbuildinfo"
+  },
+  "include": ["e2e/**/*.ts", "playwright.config.ts"],
+  "exclude": ["node_modules"]
+}

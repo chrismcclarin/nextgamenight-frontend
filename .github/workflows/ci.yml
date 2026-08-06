@@ -48,6 +48,18 @@ jobs:
       - name: Typecheck (hard tsc gate — not relying on `next build` alone)
         run: npm run typecheck # tsc --noEmit; checkJs:false keeps it sub-second
 
+      # DEF-88-30-02. `tsconfig.json` excludes `e2e/`, so the step above is structurally
+      # incapable of failing on a Playwright spec — three `verify` blocks in plan 88-30 alone
+      # were written as if it did. Probed both ways: a planted TS2322 in
+      # `e2e/route-fallbacks.spec.ts` exits 0 under the app config and exits 2 under this one.
+      #
+      # It runs in `quality`, not `e2e`, on purpose: it needs no build, no browsers, no
+      # database and no secrets, so it is the cheapest possible place to catch a broken spec —
+      # and catching it here means a spec that cannot compile fails in ~10s instead of after
+      # the e2e job has spent ten minutes standing up a backend to run it.
+      - name: Typecheck e2e specs (DEF-88-30-02 — tsconfig.json excludes e2e/)
+        run: npx tsc --noEmit -p tsconfig.e2e.json
+
       - name: Unit tests
         run: npx vitest run
 
