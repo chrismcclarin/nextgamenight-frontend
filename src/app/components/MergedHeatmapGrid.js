@@ -203,7 +203,7 @@ export default function MergedHeatmapGrid({ slots = [], totalMembers, selectedSl
                   tooltipContent={tooltipContent}
                   tone={tone}
                   fill={false}
-                  className={`min-h-11 min-w-11 flex flex-col items-center justify-center cursor-pointer active:opacity-75 transition-shadow rounded-xs ${selectionRing}`}
+                  className={`min-h-11 min-w-11 flex flex-col items-center justify-center cursor-pointer active:opacity-75 transition-shadow rounded-xs focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${selectionRing}`}
                 >
                   <span className="text-sm font-semibold leading-none">{availableCount}</span>
                 </ReadCell>

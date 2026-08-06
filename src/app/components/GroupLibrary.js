@@ -228,7 +228,7 @@ export default function GroupLibrary({ groupId }) {
       <div className="mb-4 overflow-x-auto flex gap-2 pb-1 -mx-1 px-1">
         <button
           onClick={() => setSelectedOwner(null)}
-          className={`shrink-0 px-3 py-1 rounded-full text-sm font-medium active:opacity-75 transition-colors ${
+          className={`shrink-0 px-3 py-1 rounded-full text-sm font-medium active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
             selectedOwner === null
               ? 'bg-btn-primary text-btn-primary-text'
               : 'bg-surface-card-hover text-content-secondary hover:text-content-primary'
@@ -240,7 +240,7 @@ export default function GroupLibrary({ groupId }) {
           <button
             key={member.user_id}
             onClick={() => setSelectedOwner(member.user_id === selectedOwner ? null : member.user_id)}
-            className={`shrink-0 px-3 py-1 rounded-full text-sm font-medium active:opacity-75 transition-colors ${
+            className={`shrink-0 px-3 py-1 rounded-full text-sm font-medium active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
               selectedOwner === member.user_id
                 ? 'bg-btn-primary text-btn-primary-text'
                 : 'bg-surface-card-hover text-content-secondary hover:text-content-primary'
@@ -257,7 +257,7 @@ export default function GroupLibrary({ groupId }) {
           <p className="text-content-secondary mb-3">No games found</p>
           <button
             onClick={clearFilters}
-            className="text-content-link hover:text-content-link-hover active:opacity-75 text-sm font-medium"
+            className="text-content-link hover:text-content-link-hover active:opacity-75 text-sm font-medium focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
           >
             Clear filters
           </button>
@@ -293,7 +293,7 @@ export default function GroupLibrary({ groupId }) {
               {/* Collapsed row */}
               <button
                 onClick={() => setExpandedId(isExpanded ? null : game.id)}
-                className="w-full flex items-center gap-3 p-3 hover:bg-surface-card-hover active:opacity-75 transition-colors text-left"
+                className="w-full flex items-center gap-3 p-3 hover:bg-surface-card-hover active:opacity-75 transition-colors text-left focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                 style={{ minHeight: '56px' }}
               >
                 <SafeImage
@@ -330,7 +330,7 @@ export default function GroupLibrary({ groupId }) {
                       e.stopPropagation();
                       router.push(`/gameDetail?game_id=${encodeURIComponent(game.id)}&group_id=${encodeURIComponent(groupId)}`);
                     }}
-                    className="mt-2 text-sm text-content-link hover:text-content-link-hover active:opacity-75 font-medium"
+                    className="mt-2 text-sm text-content-link hover:text-content-link-hover active:opacity-75 font-medium focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                   >
                     View game
                   </button>
@@ -363,7 +363,7 @@ function OwnerList({ owners, showAll, onToggleShowAll, onSelectOwner }) {
               e.stopPropagation();
               onSelectOwner(owner.user_id);
             }}
-            className="text-content-link hover:text-content-link-hover hover:underline active:opacity-75"
+            className="text-content-link hover:text-content-link-hover hover:underline active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
           >
             {owner.username}
           </button>
@@ -375,7 +375,7 @@ function OwnerList({ owners, showAll, onToggleShowAll, onSelectOwner }) {
             e.stopPropagation();
             onToggleShowAll();
           }}
-          className="text-content-link hover:text-content-link-hover hover:underline active:opacity-75 ml-1"
+          className="text-content-link hover:text-content-link-hover hover:underline active:opacity-75 ml-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
         >
           and {remaining} more
         </button>

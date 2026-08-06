@@ -28,7 +28,7 @@ export default function LandingPage() {
             </a>
             <a
               href="/api/auth/login?connection=google-oauth2"
-              className="bg-white/20 hover:bg-white/30 active:opacity-75 border border-white/30 text-white px-8 py-4 rounded-btn text-lg font-semibold transition-all w-full sm:w-auto text-center flex items-center justify-center gap-3"
+              className="bg-white/20 hover:bg-white/30 active:opacity-75 border border-white/30 text-white px-8 py-4 rounded-btn text-lg font-semibold transition-all w-full sm:w-auto text-center flex items-center justify-center gap-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
             >
               {/* DECISION Phase 88-22 (Req 2): the four fills below stay RAW,
                   chosen OVER converting them to semantic tokens with the rest of

@@ -81,7 +81,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
         // keyboard/switch users get the same visible affordance from either
         // entry point; inset (no ring-offset) because the row is a full-bleed
         // menu row where an offset ring would clip against siblings.
-        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:opacity-75 transition-colors focus:ring-2 focus:ring-focus-ring focus:ring-inset"
+        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
         aria-label="Send feedback"
       >
         <svg
@@ -186,7 +186,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
             did not move. `z-30` is still a decision, not a leftover. */}
         <button
           onClick={(e) => open(e.currentTarget)}
-          className="fixed bottom-6 right-6 z-30 w-14 h-14 btn btn-primary rounded-full shadow-lg flex items-center justify-center focus:ring-2 focus:ring-focus-ring focus:ring-offset-2"
+          className="fixed bottom-6 right-6 z-30 w-14 h-14 btn btn-primary rounded-full shadow-lg flex items-center justify-center focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
           aria-label="Send feedback"
         >
           <svg

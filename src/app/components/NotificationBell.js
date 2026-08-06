@@ -169,7 +169,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
         // on touch (Tailwind v4 hover media query), and inertness is not a defect.
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:opacity-75 transition-colors"
+          className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
           aria-label={label ? `${label} notifications` : 'Notifications'}
         >
           {bellIcon}

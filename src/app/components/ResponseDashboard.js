@@ -141,7 +141,7 @@ export default function ResponseDashboard({
         </div>
         <button
           onClick={fetchRespondents}
-          className="mt-3 text-sm text-content-link hover:text-content-link-hover active:opacity-75"
+          className="mt-3 text-sm text-content-link hover:text-content-link-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
         >
           Try again
         </button>
@@ -230,7 +230,7 @@ export default function ResponseDashboard({
       {/* Refresh button */}
       <button
         onClick={fetchRespondents}
-        className="mt-4 text-sm text-content-muted hover:text-content-secondary active:opacity-75 flex items-center gap-1"
+        className="mt-4 text-sm text-content-muted hover:text-content-secondary active:opacity-75 flex items-center gap-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
       >
         <RefreshIcon className="w-4 h-4" />
         Refresh
@@ -269,7 +269,7 @@ function RemindButton({ userId, lastRemindedAt, isReminding, onRemind }) {
     <button
       onClick={() => onRemind(userId)}
       disabled={isReminding}
-      className="px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-card-hover active:opacity-75 disabled:opacity-50 shrink-0 transition-colors"
+      className="px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-card-hover active:opacity-75 disabled:opacity-50 shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
     >
       {isReminding ? 'Sending...' : 'Remind'}
     </button>

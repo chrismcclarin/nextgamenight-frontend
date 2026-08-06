@@ -625,6 +625,7 @@ export default function AvailabilityGrid({
             className={`
               px-3 py-1.5 text-sm font-medium rounded-md border
               transition-colors
+              focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2
               ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80 active:opacity-75'}
               ${
                 paintMode === 'preferred'
@@ -645,6 +646,7 @@ export default function AvailabilityGrid({
               className={`
                 px-3 py-1.5 text-sm font-medium rounded-btn border border-line
                 text-content-secondary bg-surface-card
+                focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2
                 ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-surface-card-hover active:opacity-75'}
               `}
             >

@@ -479,7 +479,7 @@ function GroupHomePage(){
             <div className="flex border-b border-line mb-4">
                 <button
                     onClick={() => setActiveTab('home')}
-                    className={`px-4 py-2 text-sm font-medium active:opacity-75 transition-colors ${
+                    className={`px-4 py-2 text-sm font-medium active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
                         activeTab === 'home'
                             ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
                             : 'text-content-secondary hover:text-content-primary'
@@ -489,7 +489,7 @@ function GroupHomePage(){
                 </button>
                 <button
                     onClick={() => setActiveTab('library')}
-                    className={`px-4 py-2 text-sm font-medium active:opacity-75 transition-colors ${
+                    className={`px-4 py-2 text-sm font-medium active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
                         activeTab === 'library'
                             ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
                             : 'text-content-secondary hover:text-content-primary'

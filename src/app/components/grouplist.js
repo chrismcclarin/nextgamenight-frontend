@@ -246,7 +246,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             return (
               <div
                 key={group.id}
-                className="bg-surface-card rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover hover:bg-surface-card-hover active:opacity-75 focus:outline-hidden focus:border-focus-ring"
+                className="bg-surface-card rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover hover:bg-surface-card-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                 onClick={(e) => handleGroupClick(group, e)}
                 role="button"
                 tabIndex={0}
@@ -385,7 +385,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                     )}
                     {canEdit && (
                       <button
-                        className="px-3 py-1 bg-surface-elevated text-content-primary rounded-btn hover:bg-surface-card-hover active:opacity-75 text-sm shrink-0"
+                        className="px-3 py-1 bg-surface-elevated text-content-primary rounded-btn hover:bg-surface-card-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSettingsGroup(group);

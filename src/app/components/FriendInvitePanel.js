@@ -334,7 +334,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                                 checked={isInGroup || selectedFriends.has(friend.id)}
                                                 disabled={isInGroup}
                                                 onChange={() => toggleFriend(friend.id)}
-                                                className="h-4 w-4 rounded-sm border-line text-accent focus:ring-focus-ring disabled:opacity-40"
+                                                className="h-4 w-4 rounded-sm border-line text-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 disabled:opacity-40"
                                             />
                                             <div className="flex-1 min-w-0">
                                                 <p className={`font-medium truncate ${isInGroup ? 'text-content-muted' : 'text-content-primary'}`}>

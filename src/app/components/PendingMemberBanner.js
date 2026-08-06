@@ -25,7 +25,7 @@ export default function PendingMemberBanner({ groupId }) {
             </p>
             <button
                 onClick={handleDismiss}
-                className="text-content-muted hover:text-content-secondary active:opacity-75 ml-4 shrink-0 text-lg leading-none"
+                className="text-content-muted hover:text-content-secondary active:opacity-75 ml-4 shrink-0 text-lg leading-none focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                 aria-label="Dismiss banner"
             >
                 &times;

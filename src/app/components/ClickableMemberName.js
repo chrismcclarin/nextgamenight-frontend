@@ -272,7 +272,7 @@ export default function ClickableMemberName({ userId, username, children }) {
       <button
         type="button"
         onClick={handleSendRequest}
-        className="md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-card-hover text-btn-primary text-sm font-bold cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75"
+        className="md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-card-hover text-btn-primary text-sm font-bold cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
         aria-label={`Add ${username} as a friend`}
       >
         +

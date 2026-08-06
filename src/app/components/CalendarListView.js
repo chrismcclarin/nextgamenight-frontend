@@ -498,7 +498,7 @@ const EventRow = forwardRef(function EventRow({ event, timezone, onClick }, ref)
       }}
       role="button"
       tabIndex={0}
-      className="p-3 sm:p-4 border border-line rounded-lg transition-all hover:shadow-md cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-content-link bg-surface-card"
+      className="p-3 sm:p-4 border border-line rounded-lg transition-all hover:shadow-md cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 bg-surface-card"
       style={{
         ...(groupBgColor && { backgroundColor: groupBgColor }),
         ...safeBgImageStyle(groupBgImage),

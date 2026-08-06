@@ -92,7 +92,7 @@ export default function AutoPromptBehaviorBanner() {
                 <button
                     type="button"
                     onClick={handleDismiss}
-                    className="min-h-11 inline-flex items-center rounded-sm px-2 py-1 text-sm font-medium text-content-link underline transition-colors hover:no-underline active:opacity-75"
+                    className="min-h-11 inline-flex items-center rounded-sm px-2 py-1 text-sm font-medium text-content-link underline transition-colors hover:no-underline active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                     aria-label="Dismiss banner"
                 >
                     Got it

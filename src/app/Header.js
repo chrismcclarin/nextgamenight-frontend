@@ -125,7 +125,7 @@ function Header(){
                             over the hamburger icon's top-right corner. */}
                         <button
                             ref={triggerRef}
-                            className="relative md:hidden text-white p-2 hover:text-accent active:opacity-75 transition-colors"
+                            className="relative md:hidden text-white p-2 hover:text-accent active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                             aria-label="Toggle menu"
                             aria-expanded={mobileMenuOpen}
@@ -182,7 +182,7 @@ function Header(){
                                     {isLink ? (
                                         <Link
                                             href={href}
-                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover active:opacity-75 transition-colors"
+                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                                             onClick={() => setMobileMenuOpen(false)}
                                         >
                                             {label}
@@ -190,7 +190,7 @@ function Header(){
                                     ) : (
                                         <a
                                             href={href}
-                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover active:opacity-75 transition-colors"
+                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                                             onClick={() => setMobileMenuOpen(false)}
                                         >
                                             {label}

@@ -201,7 +201,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                   key={status}
                   onClick={() => handleStatusClick(status)}
                   disabled={!!submitting}
-                  className={`flex-1 px-3 py-2 text-sm font-medium active:opacity-75 transition-colors
+                  className={`flex-1 px-3 py-2 text-sm font-medium active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset
                     ${idx > 0 ? 'border-l border-line' : ''}
                     ${isActive
                       ? `${config.activeBg} ${config.activeBorder} border-2 text-content-primary`
