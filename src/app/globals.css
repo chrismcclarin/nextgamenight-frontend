@@ -1154,48 +1154,17 @@ body {
    against the legacy DOM shape would go silently null rather than throw. The census is the gate;
    it was zero.
 
-   What was NOT deleted, deliberately: `.modal-content` directly below. Its class census is also
-   zero, but it is not in this SPEC's enumerated deletion list, so it is routed to
-   88-RESIDUAL-CENSUS.md with an owner rather than removed under cover of this one. */
-.modal-content {
-  background-color: var(--color-bg-card);
-  border-radius: 12px;
-  box-shadow: var(--shadow-lg);
-  width: 100%;
-  max-height: 90vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
+   What was NOT deleted by 88-31, deliberately: `.modal-content` and its `.modal-header` /
+   `.modal-body` / `.modal-footer` neighbours, which sat directly below. Their class census was
+   also zero, but they were not in that SPEC's enumerated deletion list, so they were routed to
+   88-RESIDUAL-CENSUS.md §7.9 with an owner rather than removed under cover of the overlay ruling.
 
-.modal-header {
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid var(--color-border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.modal-header h2,
-.modal-header h3 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-.modal-body {
-  padding: 1.5rem;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.modal-footer {
-  padding: 1rem 1.5rem;
-  border-top: 1px solid var(--color-border);
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-}
+   AMENDED 2026-08-06 (Phase 88-32 owner ruling, census §7.9): NOW DELETED, all four rules, on the
+   owner's explicit word after a fresh repo-wide census (zero live references — every surviving
+   mention is a comment or docstring). The legacy values are not lost: `Modal.tsx`'s docstrings
+   record each rule's numbers as the primitive's derivation source, and the dialog-title 20px/700
+   contract lives in UI-SPEC §4.2. Same reasoning as the overlay deletion above — a rule nothing
+   references is a rule every future census re-adjudicates. */
 
 /* ===== DESIGN SYSTEM: React Big Calendar Restyle ===== */
 
