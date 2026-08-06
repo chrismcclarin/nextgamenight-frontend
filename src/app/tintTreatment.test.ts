@@ -54,6 +54,8 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { stringChunks } from '../test-utils/sourceScan';
+
 const SRC = path.resolve(__dirname, '..');
 const GLOBALS = path.join(__dirname, 'globals.css');
 
@@ -125,82 +127,15 @@ export function parseAlphaToken(
   return null;
 }
 
-/** Every string-literal / template-static chunk at ANY nesting depth, comments removed. */
-export function stringChunks(src: string): { offset: number; text: string }[] {
-  const out: { offset: number; text: string }[] = [];
-  const n = src.length;
-  let i = 0;
-  while (i < n) {
-    const c = src[i];
-    if (c === '"' || c === "'") {
-      let j = i + 1;
-      let buf = '';
-      while (j < n) {
-        if (src[j] === '\\') {
-          buf += src.slice(j, j + 2);
-          j += 2;
-          continue;
-        }
-        if (src[j] === c || src[j] === '\n') break;
-        buf += src[j];
-        j += 1;
-      }
-      out.push({ offset: i, text: buf });
-      i = j + 1;
-    } else if (c === '`') {
-      let j = i + 1;
-      let buf = '';
-      let bufStart = j;
-      while (j < n) {
-        if (src[j] === '\\') {
-          j += 2;
-          continue;
-        }
-        if (src[j] === '`') break;
-        if (src[j] === '$' && src[j + 1] === '{') {
-          let depth = 1;
-          let k = j + 2;
-          const start = k;
-          while (k < n && depth > 0) {
-            const ch = src[k];
-            if (ch === '{') depth += 1;
-            else if (ch === '}') depth -= 1;
-            else if (ch === '"' || ch === "'" || ch === '`') {
-              const q = ch;
-              k += 1;
-              while (k < n && src[k] !== q) {
-                if (src[k] === '\\') k += 1;
-                k += 1;
-              }
-            }
-            k += 1;
-          }
-          out.push({ offset: bufStart, text: buf });
-          buf = '';
-          for (const inner of stringChunks(src.slice(start, k - 1))) {
-            out.push({ offset: start + inner.offset, text: inner.text });
-          }
-          j = k;
-          bufStart = j;
-          continue;
-        }
-        buf += src[j];
-        j += 1;
-      }
-      out.push({ offset: bufStart, text: buf });
-      i = j + 1;
-    } else if (c === '/' && src[i + 1] === '/') {
-      const k = src.indexOf('\n', i);
-      i = k < 0 ? n : k;
-    } else if (c === '/' && src[i + 1] === '*') {
-      const k = src.indexOf('*/', i);
-      i = k < 0 ? n : k + 2;
-    } else {
-      i += 1;
-    }
-  }
-  return out;
-}
+// DECISION Phase 88-29 (gate hygiene): `stringChunks` moved to
+// `src/test-utils/sourceScan.ts` and IMPORTED here, chosen OVER keeping a per-suite copy.
+// `tintTreatment.test.ts` itself nominated this extraction for 88-29; by then there were
+// THREE byte-identical copies (verified by brace-balanced pairwise diff before the move)
+// and this plan needed two more. Five copies of a scanner is four places a correctness fix
+// can be forgotten — the exact drift shape the Phase 88 gate ledger records fourteen times.
+// The lexer could not be imported from a sibling TEST file: a test module's body registers
+// its own `describe` blocks, so that import would run another suite in this file's context.
+// Re-inlining a private copy here is a decision, not a cleanup.
 
 /**
  * The resting `-subtle` tints, and why a second resting `bg-*` beside one is a defect.
