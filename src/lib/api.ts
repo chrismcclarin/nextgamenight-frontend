@@ -80,6 +80,15 @@ const BFF_BASE = '/api';
 //     non-retryable. A 410 is Gone: terminal by definition, never retried.
 //     No BE registry entry emits `gone` — if one ever does, pick a real domain
 //     code instead.
+//   - `conflict` is CLIENT-SIDE ONLY, same shape as `gone` (88-CODE-REVIEW D2,
+//     owner-ruled 2026-08-06): the status-mapped fallback for a CODE-LESS 409
+//     body. The legacy conflict responses (friendships "Already friends"/
+//     "Friend request already pending", availabilityPrompt "Poll is already
+//     closed/converted", invites) are raw 409s with no envelope code; without
+//     this arm they fell through to `unknown` — retryable-once, and unreachable
+//     by the byCode copy designed for exactly these outcomes. A 409 is a
+//     terminal state conflict: never retried. No BE registry entry emits
+//     `conflict` — if one ever does, pick a real domain code instead.
 export type ApiErrorCode =
   | 'unknown'
   | 'validation'
@@ -98,6 +107,7 @@ export type ApiErrorCode =
   | 'already_used'
   | 'invalid_token'
   | 'gone'
+  | 'conflict'
   | 'internal'
   | 'network'
   | 'config';
@@ -232,6 +242,9 @@ function statusToCode(status: number): ApiErrorCode {
   // M-2: code-less 410s (88.2's join-by-token + invite accept/decline liveness
   // gates) must classify as terminal, matching the phase's coded 410s.
   if (status === 410) return 'gone';
+  // 88-CODE-REVIEW D2: code-less 409s are terminal-state conflicts (see the
+  // `conflict` union note) — without this arm they classified as `unknown`.
+  if (status === 409) return 'conflict';
   if (status === 429) return 'rate_limited';
   if (status >= 500) return 'internal';
   return 'unknown';

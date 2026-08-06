@@ -44,6 +44,12 @@ describe('mapErrorToCode — status mapping', () => {
     expect(mapErrorToCode({ code: 'window_expired' }, 410)).toBe('window_expired');
   });
 
+  it('maps a code-less 409 → conflict (88-CODE-REVIEW D2: terminal, never retried)', () => {
+    expect(mapErrorToCode({}, 409)).toBe('conflict');
+    // A coded 409 still prefers its envelope code, same as the 410 rule above.
+    expect(mapErrorToCode({ code: 'owner_of_active_groups' }, 409)).toBe('owner_of_active_groups');
+  });
+
   it('maps 422 → validation', () => {
     expect(mapErrorToCode({}, 422)).toBe('validation');
   });

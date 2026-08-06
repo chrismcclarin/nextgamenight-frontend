@@ -75,6 +75,9 @@ const NON_RETRYABLE_API_CODES: ReadonlyArray<string> = [
   'already_used',
   'invalid_token',
   'gone',
+  // 88-CODE-REVIEW D2: a 409 is a terminal-state conflict — non-transient by
+  // definition; as `unknown` it was pointlessly retried once.
+  'conflict',
 ];
 
 /**

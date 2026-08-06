@@ -241,6 +241,53 @@ describe('friends list', () => {
   });
 });
 
+// 88-CODE-REVIEW D2: the send-request failure paths had ZERO coverage, which is
+// how the conflict copy shipped keyed on a code a 409 never produces. ApiError
+// is real here (importOriginal spread), so these pins exercise the REAL
+// statusToCode → byCode derivation, not a mocked message.
+describe('send friend request — conflict/validation copy (D2)', () => {
+  async function searchAndFind() {
+    renderFriends({ friends: [] });
+    (friendshipsAPI.searchUserByEmail as Mock).mockResolvedValue({
+      id: 'user-search-hit',
+      username: 'Riley',
+      email: 'riley@example.com',
+    });
+    fireEvent.change(screen.getByPlaceholderText("Enter friend's email address"), {
+      target: { value: 'riley@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    return screen.findByRole('button', { name: 'Send Request' });
+  }
+
+  it('a code-less 409 shows the ratified conflict copy, not the generic fallback', async () => {
+    const send = await searchAndFind();
+    (friendshipsAPI.sendRequest as Mock).mockRejectedValue(
+      new ApiError('Friend request already pending', 'conflict', 409)
+    );
+    fireEvent.click(send);
+
+    expect(
+      await screen.findByText("You're already friends, or a request is already pending.")
+    ).toBeInTheDocument();
+  });
+
+  it('a 400 shows the validation copy — no longer the (wrong) already-pending line', async () => {
+    const send = await searchAndFind();
+    (friendshipsAPI.sendRequest as Mock).mockRejectedValue(
+      new ApiError('Cannot send a friend request to yourself', 'validation', 400)
+    );
+    fireEvent.click(send);
+
+    expect(
+      await screen.findByText("That request couldn't be sent. Check who you're sending it to.")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/already have one pending/)
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe('remove friend (two-tap tier)', () => {
   /** The row's remove control, by its resting accessible name. */
   const removeButton = (name: string) =>

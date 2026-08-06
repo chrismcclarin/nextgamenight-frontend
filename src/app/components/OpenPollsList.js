@@ -103,7 +103,15 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
       toast.error(
         getFetchErrorMessage(err, {
           fallback: "We couldn't end that check-in. Please try again.",
-          byCode: { forbidden: 'Only the poll creator and group admins can end a check-in.' },
+          // 88-CODE-REVIEW D2: 'conflict' ADDED, 'forbidden' KEPT — the remedy check
+          // flagged that replacing this map would silently drop the forbidden copy
+          // (a real, reachable 403 with no test pin at the time). Both arms below are
+          // now pinned. The 409 body can also read "Poll is already converted";
+          // the closed copy is the ratified approximate for both.
+          byCode: {
+            conflict: 'This check-in is already closed.',
+            forbidden: 'Only the poll creator and group admins can end a check-in.',
+          },
         })
       );
     }

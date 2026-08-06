@@ -256,7 +256,15 @@ function FriendsPage() {
             setSearchError(
                 getFetchErrorMessage(err, {
                     fallback: "We couldn't send that request. Please try again.",
-                    byCode: { validation: "That request couldn't be sent — you may already have one pending." },
+                    // 88-CODE-REVIEW D2: the already-friends/already-pending outcomes are
+                    // code-less 409s -> 'conflict'. The old copy here keyed them on
+                    // 'validation', which a 409 never produced — so it never fired, and the
+                    // one case validation DOES catch (400 self-request) showed the wrong
+                    // message. Copy owner-ratified 2026-08-06.
+                    byCode: {
+                        conflict: "You're already friends, or a request is already pending.",
+                        validation: "That request couldn't be sent. Check who you're sending it to.",
+                    },
                 })
             );
         } finally {

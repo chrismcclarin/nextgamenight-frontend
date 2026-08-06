@@ -57,6 +57,9 @@ const MESSAGE_BY_CODE: Record<FetchErrorCode, string> = {
   owner_of_active_groups:
     'You still own active groups. Transfer ownership or delete them, then try again.',
   account_deleted: 'This account has already been deleted.',
+  // 88-CODE-REVIEW D2 (owner-ratified copy, 2026-08-06): generic fallback for a
+  // code-less 409 — surfaces override per outcome via byCode (friends, polls).
+  conflict: "That can't be done — it may already be settled. Refresh to see the latest state.",
   // Phase 88.2 group-restore codes. This map is the GENERIC fallback copy for a
   // query-driven fetch; the restore page owns its own cause-split copy, which is
   // richer than anything sensible here.

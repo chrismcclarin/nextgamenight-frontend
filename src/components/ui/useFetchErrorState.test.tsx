@@ -131,6 +131,26 @@ describe('getFetchErrorMessage — designed copy for action-path failures', () =
     expect(out).not.toContain('duplicate key');
   });
 
+  // 88-CODE-REVIEW D2: 'conflict' (code-less 409) carries designed generic copy,
+  // and a byCode map with BOTH conflict and forbidden arms serves each outcome —
+  // the OpenPollsList shape, where the remedy check found the forbidden copy was
+  // convention-pinned only. This is its pin.
+  it("conflict (409) has designed generic copy and byCode maps keep sibling arms live", () => {
+    expect(getFetchErrorMessage(new ApiError('Already friends', 'conflict', 409))).toMatch(
+      /already be settled/i
+    );
+    const byCode = {
+      conflict: 'This check-in is already closed.',
+      forbidden: 'Only the poll creator and group admins can end a check-in.',
+    };
+    expect(
+      getFetchErrorMessage(new ApiError('Poll is already closed', 'conflict', 409), { byCode })
+    ).toBe('This check-in is already closed.');
+    expect(
+      getFetchErrorMessage(new ApiError('nope', 'forbidden', 403), { byCode })
+    ).toBe('Only the poll creator and group admins can end a check-in.');
+  });
+
   it('a bare unknown failure with no options still returns designed copy, never empty', () => {
     const out = getFetchErrorMessage(undefined);
     expect(out.length).toBeGreaterThan(0);
