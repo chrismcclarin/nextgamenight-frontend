@@ -156,6 +156,52 @@ describe('Combobox', () => {
     expect(onSelectSpies.catan).toHaveBeenCalledTimes(1);
   });
 
+  // 88-CODE-REVIEW MED#2: focus-opened full-list pickers (timezone) opt out of
+  // select-first — Enter with nothing highlighted is inert, arrow-then-Enter works.
+  it('selectFirstOnEnter={false}: bare Enter is inert; an arrowed option still commits', async () => {
+    const user = userEvent.setup();
+    render(<Harness selectFirstOnEnter={false} />);
+    getInput().focus();
+
+    await user.keyboard('{Enter}');
+    expect(onSelectSpies.catan).not.toHaveBeenCalled();
+    expect(onSelectSpies.brass).not.toHaveBeenCalled();
+
+    await user.keyboard('{ArrowDown}{Enter}');
+    expect(onSelectSpies.catan).toHaveBeenCalledTimes(1);
+  });
+
+  // 88-CODE-REVIEW MED#3: Enter while open ALWAYS absorbs — the deleted
+  // GameComboInput handler preventDefaulted unconditionally while open, and losing
+  // that let Enter during the loading/no-results window submit the host <form>
+  // (createEvent, ScheduleForm, BallotOptionsEditor all wrap this in one).
+  it('Enter during loading neither selects nor submits a wrapping form', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
+    render(
+      <form onSubmit={onSubmit}>
+        <Harness items={[]} loading />
+      </form>
+    );
+    getInput().focus();
+
+    await user.keyboard('{Enter}');
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onSelectSpies.catan).not.toHaveBeenCalled();
+
+    // Same absorb with selectFirstOnEnter={false} and items present but none active.
+    cleanup();
+    onSubmit.mockClear();
+    render(
+      <form onSubmit={onSubmit}>
+        <Harness selectFirstOnEnter={false} />
+      </form>
+    );
+    getInput().focus();
+    await user.keyboard('{Enter}');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it('selects on click and never selects a disabled option', async () => {
     const user = userEvent.setup();
     render(<Harness items={makeItems([{}, {}, { disabled: true }])} />);

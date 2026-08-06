@@ -101,6 +101,14 @@ export interface ComboboxProps
   loading?: boolean;
   loadingLabel?: string;
   emptyLabel?: string;
+  /**
+   * When no option is highlighted, does Enter commit the FIRST enabled item?
+   * Defaults true — the 88-08 GameComboInput parity (relevant-search-hit lists).
+   * Pass false for pickers that open on FOCUS over a full unfiltered list
+   * (88-CODE-REVIEW MED#2: the timezone picker committed "Africa/Abidjan" on a
+   * bare Enter from a keyboard user tabbing through the page).
+   */
+  selectFirstOnEnter?: boolean;
   /** Accessible name for the listbox itself. */
   listLabel?: string;
   /**
@@ -132,6 +140,7 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
       loading = false,
       loadingLabel = 'Searching…',
       emptyLabel = 'No results found',
+      selectFirstOnEnter = true,
       listLabel = 'Suggestions',
       trailing,
       className,
@@ -218,12 +227,23 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
        rather than doing nothing (the strict ARIA-pattern reading). This PRESERVES the
        shipped `GameComboInput` behaviour — `handleKeyDown` there selects `localResults[0]`
        or `bggResults[0]` on Enter — and 88-08 is an adoption, not a behaviour change.
-       Making Enter inert without an active option is a decision, not a cleanup. */
+       Making Enter inert without an active option is a decision, not a cleanup.
+       AMENDED by 88-CODE-REVIEW MED#2 (2026-08-06): parity stays the DEFAULT, but it was
+       written for lists that only open after typed input (every first item is a relevant
+       hit). A consumer that opens on FOCUS over a full unfiltered list opts out via
+       `selectFirstOnEnter={false}` — there, Enter with nothing highlighted takes the
+       strict ARIA reading (inert) instead of committing an arbitrary first entry.
+       AMENDED by 88-CODE-REVIEW MED#3 (2026-08-06): Enter-while-open ALWAYS
+       preventDefaults, selectable item or not. The deleted GameComboInput handler
+       absorbed Enter unconditionally while open; dropping that let Enter during the
+       debounce/no-results window fall through and SUBMIT the host form (createEvent,
+       ScheduleForm, BallotOptionsEditor all wrap this in <form onSubmit>). */
     const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
       if (event.key === 'Enter' && open) {
-        const index = activeIndex ?? items.findIndex((item) => !item.disabled);
+        event.preventDefault();
+        const index =
+          activeIndex ?? (selectFirstOnEnter ? items.findIndex((item) => !item.disabled) : -1);
         if (index >= 0) {
-          event.preventDefault();
           selectAt(index);
         }
         return;

@@ -308,8 +308,22 @@ function FriendsPage() {
         setRemoveError(null);
         try {
             await friendshipsAPI.removeFriend(friendshipId);
+            // 88-CODE-REVIEW MED#1: resolve the ex-friend's userId BEFORE filtering,
+            // and prune them from the bulk-invite selection too — otherwise the
+            // "N selected" count keeps counting them and handleBulkInvite still
+            // dispatches a group invite on behalf of a just-severed relationship
+            // (the relationship-exit-pruning class, 2026-07-31).
+            const removedUserId = friends.find(f => f.id === friendshipId)?.friend?.id;
             // Optimistically update: remove from friends list
             setFriends(prev => prev.filter(f => f.id !== friendshipId));
+            if (removedUserId) {
+                setSelectedFriends(prev => {
+                    if (!prev.has(removedUserId)) return prev;
+                    const next = new Set(prev);
+                    next.delete(removedUserId);
+                    return next;
+                });
+            }
         } catch (err) {
             console.error('Error removing friend:', err);
             setRemoveError(

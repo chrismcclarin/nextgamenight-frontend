@@ -141,7 +141,15 @@ if (css.includes(SENTINEL)) {
 }
 
 // ---- Direction B: real utilities MUST ship --------------------------------------------
-const missing = REQUIRED.filter((u) => !css.includes(`.${u}`));
+// 88-CODE-REVIEW MED#4: rule-boundary-aware match, not a bare substring. `css.includes('.btn')`
+// was satisfied by `.btn-primary`/`.btn-compact` even with the `.btn` rule itself deleted —
+// the lookalike-token defect class (DEF-88-28-01) reintroduced in the replacement tool. A
+// selector token ends at `{ , : . [ >` + whitespace or a pseudo (`:hover`); `-` continuing
+// the name must NOT match. Minified output has no spaces, so the char class is the boundary.
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const missing = REQUIRED.filter(
+  (u) => !new RegExp(`\\.${escapeRegExp(u)}[,{:.\\s[>)~+]`).test(css),
+);
 if (missing.length > 0) {
   failures.push(
     `DIRECTION B FAILED — the build emitted no rule for: ${missing.join(', ')}. Either the ` +

@@ -245,6 +245,40 @@ describe('friends list', () => {
 // how the conflict copy shipped keyed on a code a 409 never produces. ApiError
 // is real here (importOriginal spread), so these pins exercise the REAL
 // statusToCode → byCode derivation, not a mocked message.
+// 88-CODE-REVIEW MED#1: removing a friend must also prune them from the
+// bulk-invite selection — before this pin, the "N selected" count kept counting
+// the ex-friend and handleBulkInvite still dispatched a group invite on behalf
+// of the severed relationship (the relationship-exit-pruning class).
+describe('remove friend prunes the bulk-invite selection (MED#1)', () => {
+  it('unselects the removed friend — the selected counter clears with the row', async () => {
+    const { groupsAPI } = await import('@/lib/api');
+    // The invite bar filters to groups where SELF is owner/admin, via the
+    // roster on each group row — the shape the derive effect reads.
+    (groupsAPI.getUserGroups as Mock).mockResolvedValue([
+      {
+        id: 'g1',
+        name: 'Test Group',
+        Users: [{ id: SELF_UUID, UserGroup: { role: 'owner' } }],
+      },
+    ]);
+    renderFriends();
+
+    fireEvent.change(await screen.findByLabelText('Invite to group'), {
+      target: { value: 'g1' },
+    });
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select Dana' }));
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Dana' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
+
+    await waitFor(() =>
+      expect(friendshipsAPI.removeFriend as Mock).toHaveBeenCalledWith(FRIENDSHIP.id)
+    );
+    expect(screen.queryByText('1 selected')).not.toBeInTheDocument();
+  });
+});
+
 describe('send friend request — conflict/validation copy (D2)', () => {
   async function searchAndFind() {
     renderFriends({ friends: [] });

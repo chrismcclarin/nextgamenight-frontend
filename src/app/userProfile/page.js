@@ -312,15 +312,24 @@ function Profile(){
         }
     }, [timezone]);
 
+    /* 88-CODE-REVIEW MED#11: the expensive BASE list is built once per open, not once
+       per keystroke. F-359's gate below protected first render only — while the picker
+       was open, every keystroke invalidated filteredTimezones, whose body rebuilt the
+       full IANA set (~800 Intl.DateTimeFormat constructions) before filtering.
+       Filtering ~400 strings per keystroke is cheap; constructing the list is not. */
+    const allTimezones = useMemo(
+        () => (tzPickerOpen ? getTimezoneList() : []),
+        [tzPickerOpen, getTimezoneList]
+    );
+
     const filteredTimezones = useCallback(() => {
-        const all = getTimezoneList();
-        if (!tzSearch.trim()) return all;
+        if (!tzSearch.trim()) return allTimezones;
         const query = tzSearch.toLowerCase().replace(/[_/]/g, ' ');
-        return all.filter(tz => {
+        return allTimezones.filter(tz => {
             const searchable = tz.label.toLowerCase().replace(/[_/]/g, ' ');
             return searchable.includes(query);
         });
-    }, [getTimezoneList, tzSearch]);
+    }, [allTimezones, tzSearch]);
 
     const handleTimezoneSelect = useCallback((tz) => {
         setTimezone(tz);
@@ -1063,6 +1072,13 @@ function Profile(){
             toast.error('Please select at least one day.');
             return;
         }
+        // 88-CODE-REVIEW MED#7: client-side mirror of availability.js:130 — the code-less
+        // 400 this triggers maps to generic "refresh the page" copy that both hides the
+        // fix and discards the form. HH:MM strings compare correctly as strings.
+        if (recurringForm.startTime >= recurringForm.endTime) {
+            toast.error('Start time must be before end time.');
+            return;
+        }
         try {
             setSavingPattern(true);
             // Create one schedule per selected day
@@ -1104,6 +1120,12 @@ function Profile(){
         // 87.4 Plan 10: gate on the resolved self identity, not user?.sub, so the
         // write cannot fire (and cannot send an empty self-param) before self resolves.
         if (!self?.id) return;
+        // 88-CODE-REVIEW MED#7: same client-side start<end mirror as the recurring form
+        // (availability.js:208 on this path).
+        if (specificForm.startTime >= specificForm.endTime) {
+            toast.error('Start time must be before end time.');
+            return;
+        }
         try {
             setSavingPattern(true);
             await availabilityAPI.createOverride(self.id, specificForm);
@@ -1713,6 +1735,12 @@ function Profile(){
                         any of that. */}
                     <Combobox
                         aria-label="Timezone"
+                        /* 88-CODE-REVIEW MED#2: this picker opens on FOCUS over the full
+                           alphabetized IANA list — with the default Enter-selects-first, a
+                           keyboard user tabbing in and pressing Enter silently committed
+                           "Africa/Abidjan" as their timezone. Enter is inert here until an
+                           option is highlighted (arrow keys) or the search narrows it. */
+                        selectFirstOnEnter={false}
                         value={tzPickerOpen ? tzSearch : currentTimezoneLabel()}
                         onValueChange={(next) => {
                             setTzSearch(next);
