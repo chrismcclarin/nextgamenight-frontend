@@ -577,9 +577,11 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                         <p className="text-sm text-content-muted mt-0.5">{headerLeadIn}</p>
                     )}
                 </div>
+                {/* 88-CODE-REVIEW D1 (2026-08-06): same 44px real-box fix as Modal.tsx's
+                    ModalHeader DialogClose — this is the one freeform copy of that idiom. */}
                 <DialogClose
                     aria-label="Close"
-                    className="shrink-0 text-2xl leading-none text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                    className="inline-flex min-h-11 min-w-11 items-center justify-center shrink-0 text-2xl leading-none text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 >
                     &times;
                 </DialogClose>

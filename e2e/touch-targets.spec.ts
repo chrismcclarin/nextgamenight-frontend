@@ -176,6 +176,15 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await guardResolved(submit, 'the Create Event submit CTA (createEvent.js census row 7)');
     await assertMin44(submit, '"Create Event" submit');
     await assertPressedOpacity(page, submit, '"Create Event" submit');
+
+    // 88-CODE-REVIEW D1: the modal fleet's close button. One assertion here covers all 37
+    // Modal.Header call sites — every migrated modal renders this exact DialogClose from
+    // Modal.tsx's ModalHeader. It wears a REAL min-h-11/min-w-11 box (the 88-28 idiom this
+    // spec's own comment at the hamburger records), so assertMin44's boundingBox() read is
+    // the correct instrument — a regression to the bare ~15x24px glyph reds here.
+    const modalClose = page.getByRole('button', { name: 'Close' });
+    await guardResolved(modalClose, "the Create Event modal's close button (Modal.tsx ModalHeader DialogClose)");
+    await assertMin44(modalClose, 'modal fleet close button');
   });
 
   test('R4: groupPlanning census CTAs measure >= 44x44 and press-dim', async ({ page }) => {

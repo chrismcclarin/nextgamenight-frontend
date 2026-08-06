@@ -202,9 +202,14 @@ function ModalHeader({ children, className }: ModalHeaderProps) {
       <DialogTitle className="text-xl font-bold text-content-primary">
         {children}
       </DialogTitle>
+      {/* 88-CODE-REVIEW D1 (2026-08-06): 44px REAL box (min-h-11/min-w-11, the KebabMenu/88-28
+          idiom) over a pseudo-element hit extension — assertMin44 in e2e/touch-targets.spec.ts
+          measures boundingBox(), which ::after never changes (recorded 88-28 decision at
+          touch-targets.spec.ts:234-236). The bare glyph measured ~15x24px, below even WCAG
+          2.5.8's 24px, on all 37 Modal.Header call sites. Header grows ~68px -> ~84px. */}
       <DialogClose
         aria-label="Close"
-        className="text-2xl leading-none text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+        className="inline-flex min-h-11 min-w-11 items-center justify-center text-2xl leading-none text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
       >
         &times;
       </DialogClose>
