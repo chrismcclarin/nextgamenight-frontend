@@ -27,16 +27,51 @@
 // it was written to protect completely unverified. Do NOT go back to a
 // positional lookup. Renaming a step in ci.yml without updating the name here
 // throws loudly at import, which is the intended failure mode.
-
+//
+// Phase 88 plan 29: this file now covers FOUR ci.yml steps, and the two new ones
+// are NOT grep gates, so `parseGate` cannot read them. They get their own readers
+// (`stepWindow` + `parseRegistryEntries`), each still keyed by STEP NAME for the
+// same reason the 88.2 note above gives.
+//
+// The two new steps exist because 88-29's gate-hygiene pass concluded that ZERO
+// new grep gates should ship. All seven drift classes the plan proposed to grep
+// were measured against this tree first and every pattern was defective — red on
+// a correct tree, blind to the defect, or both. They are armed as source-scan
+// tests instead, in the house shape the phase has used since 88-21. That moved
+// the gates into vitest and opened a new hole: a test file can be DELETED and
+// `npx vitest run` stays green. The registry step closes it, and this file is
+// what keeps the registry honest about its own contents.
 import { describe, test, expect } from 'vitest';
 import { execFileSync } from 'child_process';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 
 const CI_YML = readFileSync(
   resolve(__dirname, '../../.github/workflows/ci.yml'),
   'utf8',
 );
+
+/**
+ * DECISION Phase 88-29 (Req 19): the CSS-bundle guard's NEGATIVE-CONTROL SENTINEL lives here,
+ * and this file was chosen deliberately over any other home for it.
+ *
+ * `src/app/globals.css` scopes Tailwind v4 with `@import 'tailwindcss' source(none)`, three
+ * `@source` globs (one of which is `../lib/**`), and two `@source not` exclusions — one of
+ * which is `../lib/**\/*.test.{js,ts,jsx,tsx}`, i.e. THIS FILE. So the sentinel sits inside a
+ * directory Tailwind is told to scan, kept out of the bundle by the exclusion and nothing else.
+ * That is the whole point: `scripts/css-bundle-guard.mjs` asserts it is ABSENT from the built
+ * CSS, and deleting either `source(none)` or the exclusion makes it appear. A sentinel planted
+ * somewhere never scanned in the first place would stay absent no matter what broke, which is a
+ * gate that cannot red.
+ *
+ * `mt-[88291px]` is an arbitrary-value utility, so v4 emits a real rule for it the moment this
+ * file is scanned, and the value cannot collide with anything a designer would write.
+ *
+ * Deleting this constant, or moving it out of a `src/lib/*.test.*` file, silently disarms
+ * direction A of that guard. That is a decision, not a cleanup — the constant is referenced by
+ * a lockstep assertion at the bottom of this file, so a delete reds rather than passing.
+ */
+export const CSS_BUNDLE_SENTINEL_CLASS = 'mt-[88291px]';
 
 interface Gate {
   /** The regex the gate matches with. */
@@ -387,5 +422,155 @@ describe('SPEC-REQ-7 permanence-copy grep gate — lockstep self-test (parsed fr
       // That is the whole reason the scope is a file list rather than `src/`.
       expect(permanenceHits('This action cannot be undone.')).not.toBe('');
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88 plan 29 — the two NON-grep ci.yml steps this plan added.
+//
+// Both are located by STEP NAME, for the reason the 88.2 header note gives: a
+// positional lookup already shipped once here and made step ORDER load-bearing
+// with nothing declaring it.
+// ---------------------------------------------------------------------------
+
+/** The window of ci.yml lines belonging to one step, located by its name. */
+function stepWindow(stepName: string): string[] {
+  const lines = CI_YML.split('\n');
+  const start = lines.findIndex((l) => l.includes(stepName));
+  if (start === -1) {
+    throw new Error(`ci.yml step "${stepName}" not found — was it renamed or removed?`);
+  }
+  const rest = lines.slice(start + 1);
+  const nextStep = rest.findIndex((l) => /^\s*- name:/.test(l));
+  return nextStep === -1 ? rest : rest.slice(0, nextStep);
+}
+
+const REGISTRY_STEP = "Drift-gate registry — Phase 88's source-scan guards must exist and stay armed";
+const BUNDLE_STEP = 'CSS bundle guard — two-sided emitted-CSS assertion';
+
+/**
+ * Parse the registry step's `"<path>:<min>"` rows out of ci.yml.
+ *
+ * ANCHORED to the quoted-row shape, not to a substring search of the step window: the
+ * step's own comment block names several of these paths in prose, and a loose match
+ * would read the prose as data. That is the identical trap `parseGate` documents at
+ * `:86` and which fired while it was being written.
+ */
+function parseRegistryEntries(): { file: string; min: number }[] {
+  const out: { file: string; min: number }[] = [];
+  for (const line of stepWindow(REGISTRY_STEP)) {
+    const m = line.match(/^\s*"([^":]+):(\d+)"\s*\\?\s*$/);
+    if (m) out.push({ file: m[1], min: Number(m[2]) });
+  }
+  if (out.length === 0) {
+    throw new Error(
+      `ci.yml step "${REGISTRY_STEP}" parsed ZERO registry rows — keep the one-per-line "<path>:<min>" shape.`,
+    );
+  }
+  return out;
+}
+
+const REGISTRY = parseRegistryEntries();
+
+describe('Req 19 / gate-hygiene — the drift-gate registry step (parsed from ci.yml by step name)', () => {
+  test('the registry parses, and covers the whole Phase 88 guard set', () => {
+    // A floor, not an exact count, so a future phase adding a guard is not a red build
+    // here. Thirteen suites plus the shared scanner at the time of writing.
+    expect(REGISTRY.length).toBeGreaterThanOrEqual(14);
+  });
+
+  test('every registered guard EXISTS on disk', () => {
+    // This is the assertion that would catch the registry being pointed at a path that
+    // was renamed — the exact silent-shrink L-12 closed for the permanence gate's scope.
+    const missing = REGISTRY.filter(
+      (e) => !existsSync(resolve(__dirname, '../..', e.file)),
+    ).map((e) => e.file);
+    expect(missing).toEqual([]);
+  });
+
+  test('every registered guard really carries at least its stated assertion count', () => {
+    // Lockstep in the OTHER direction: the CI step reads these numbers out of a shell
+    // loop, and nothing there would notice a number set to 0 to make a red build green.
+    // Here a floor written below reality is not caught — a floor written ABOVE it is,
+    // and so is a suite that has been gutted since the number was set.
+    const short: string[] = [];
+    for (const { file, min } of REGISTRY) {
+      const full = resolve(__dirname, '../..', file);
+      if (!existsSync(full)) continue; // already reported by the test above
+      const n = (readFileSync(full, 'utf8').match(/^[ \t]*(it|test)\(/gm) ?? []).length;
+      if (n < min) short.push(`${file}: ${n} assertions, registry expects >= ${min}`);
+    }
+    expect(short).toEqual([]);
+  });
+
+  test('the registry names the guards for every drift class this phase closed', () => {
+    // Named individually rather than by count, because a count is satisfiable by any
+    // fourteen rows — DEF-88-28-01's threshold-on-a-superset defect. Dropping the tint
+    // guard and adding an unrelated one must not pass.
+    const files = REGISTRY.map((e) => e.file);
+    for (const required of [
+      'src/app/components/controlSizeFloor.test.tsx', // Req 1  — 16px control floor
+      'src/app/cardPaddingIdiom.test.ts', //             Req 2  — card padding idiom
+      'src/app/typeScaleTouchedSurfaces.test.ts', //     CD-006 — heading type scale
+      'src/app/rawColorValues.test.ts', //               Req 2  — raw hex / black shadows
+      'src/app/legacyOverlayClass.test.ts', //           Req 9  — the legacy overlay class
+      'src/app/nativeDialogs.test.ts', //                Req 11 — native browser dialogs
+      'src/app/fetchErrorTreatment.test.ts', //          Req 14 — fetch-error treatment
+      'src/app/borderExplicitness.test.ts', //           Req 16 — explicit border colours
+      'src/app/tintTreatment.test.ts', //                Req 17 — opaque tints
+      'src/app/focusAndMotionTreatment.test.ts', //      Req 4  — focus + reduced motion
+      'src/test-utils/sourceScan.ts', //                 the scanner all of them share
+    ]) {
+      expect(files, `registry lost ${required}`).toContain(required);
+    }
+  });
+});
+
+describe('Req 19 — the two-sided CSS bundle guard step (parsed from ci.yml by step name)', () => {
+  const window = stepWindow(BUNDLE_STEP).join('\n');
+
+  test('the step runs the guard SCRIPT, not an inline one-liner that can drift', () => {
+    expect(window).toMatch(/run:\s*node scripts\/css-bundle-guard\.mjs\s*$/m);
+  });
+
+  test('the guard script exists and asserts in BOTH directions', () => {
+    const script = resolve(__dirname, '../../scripts/css-bundle-guard.mjs');
+    expect(existsSync(script)).toBe(true);
+    const src = readFileSync(script, 'utf8');
+    // Direction A: the sentinel must be ABSENT. Direction B: real utilities PRESENT.
+    // Both are asserted here because a one-sided guard is the failure mode the step
+    // exists to prevent — an empty bundle satisfies direction A on its own.
+    expect(src).toMatch(/DIRECTION A FAILED/);
+    expect(src).toMatch(/DIRECTION B FAILED/);
+    expect(src).toMatch(/process\.exit\(1\)/);
+  });
+
+  test('the sentinel the guard looks for is the one declared in THIS file', () => {
+    // The load-bearing lockstep. The guard hard-codes an escaped CSS form of the
+    // sentinel; this file declares the Tailwind class. If they drift, the guard looks
+    // for something no build can ever emit and direction A goes permanently, silently
+    // green — which is precisely the class of defect this whole plan is about.
+    const src = readFileSync(
+      resolve(__dirname, '../../scripts/css-bundle-guard.mjs'),
+      'utf8',
+    );
+    const escaped = CSS_BUNDLE_SENTINEL_CLASS.replace(/[[\]]/g, (c) => `\\\\${c}`);
+    expect(src).toContain(escaped);
+    // ...and the guard must still name THIS file as where the sentinel lives, so the
+    // pointer a future reader follows cannot rot.
+    expect(src).toContain('src/lib/ci-grep-gate.fixture.test.ts');
+  });
+
+  test('the sentinel is a real Tailwind arbitrary-value utility, not inert text', () => {
+    // If the sentinel were not a class Tailwind can compile, direction A could never
+    // red no matter which `@source` line was deleted. Shape check: `<utility>-[<value>]`.
+    expect(CSS_BUNDLE_SENTINEL_CLASS).toMatch(/^[a-z-]+-\[[^\]]+\]$/);
+  });
+
+  test('the post-88 baseline exists where the step says it does', () => {
+    // DI-87.7-22's standing rule: all chunks concatenated, sorted. Deliberately not
+    // asserted for CONTENT — see the step comment — but it must exist, or the pointer
+    // recorded for the next phase points at nothing.
+    expect(existsSync(resolve(__dirname, '../../scripts/baselines/post-88.css'))).toBe(true);
   });
 });

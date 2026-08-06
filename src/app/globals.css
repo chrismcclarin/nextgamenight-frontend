@@ -89,6 +89,37 @@
    the pinned ^4.3.3 (landed 4.1). */
 @source not '../lib/**/*.test.{js,ts,jsx,tsx}';
 @source not '../lib/__fixtures__';
+/* DECISION Phase 88-29 (Req 19): the SAME exclusion for the other two globs, which the 87.7
+   block above closed only for `../lib/**`. The hazard it describes was not hypothetical and was
+   not confined to lib — MEASURED on this tree, before these two lines existed, a production
+   build shipped:
+
+     .bg-status-error\/10{background-color:var(--color-error)}
+     .bg-status-error\/10{background-color:color-mix(in oklab,var(--color-error) 10%,transparent)}
+
+   Its ONLY source in the repo is `src/app/tintTreatment.test.ts`, the Req 17 guard written to
+   prove that class is never used. So writing the proof shipped the thing being disproved — and
+   it shipped in exactly the two-branch form 87.7 D-18 stripped the token to avoid: an
+   alpha-DROPPING fallback that paints a solid status-coloured block, plus a `color-mix()`
+   branch. Dead CSS today (nothing applies the class), which is why nobody noticed.
+
+   Found by the two-sided guard this plan armed — `scripts/css-bundle-guard.mjs`, whose whole
+   job is this leak class. Verified with `scripts/tw4-css-diff.mjs` (87.7's own review tool)
+   rather than asserted: adding these two lines drops 28 selectors and 3,793 bytes, ADDS
+   nothing (ONLY-IN-B: 0), and every one of the 28 was checked token-exact against non-test
+   source and is unused there. The list is all test fixtures — `border-[tblrxy]`,
+   `bg-status-error/10`, `border-status-error/30`, eleven `focus:*` probe utilities,
+   `h-11`/`isolate`/`border-solid`/`translate-y-1/2` (source uses `min-h-11` and
+   `-translate-y-1/2`, which are different classes and still emit) — plus `.paused`, which came
+   from a `animation-play-state: paused` line in `focusAndMotionTreatment.test.ts`'s docblock.
+   The differ's CHANGED section is its own documented duplicate-selector AGGREGATION ordering,
+   not a declaration change; `translate-y-[-50%]`, `min-h-11`, `rounded-btn`,
+   `bg-surface-accent-subtle` and `ring-white/15` were each confirmed still emitted after.
+
+   Deleting either line re-opens the leak with no build error and no visible diff in the
+   `@source` block above. That is a decision, not a cleanup. */
+@source not './**/*.test.{js,ts,jsx,tsx}';
+@source not '../components/**/*.test.{js,ts,jsx,tsx}';
 
 /* ===== TAILWIND v4: DARK VARIANT =====
    Replaces the JS config's `darkMode: 'class'`. `next-themes` toggles the class on <html>.
