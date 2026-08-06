@@ -142,9 +142,28 @@ export default function PromptScheduleSection({
 
   return (
     <div>
+      {/* DECISION Phase 88-28 (Req 4): this is `role="button"` + `tabIndex` + a key handler,
+          chosen OVER converting it to a real `<button>`. The header renders a `<p>` in its
+          admin branch (the "Next check-in:" line below), and `<p>` is not phrasing content —
+          a browser parsing `<button><p>` breaks the paragraph OUT of the button, restructuring
+          the DOM under React and producing a hydration mismatch. The ARIA pattern gives the
+          same role, name, keyboard contract and focus ring with no content-model violation.
+          87.8-08's census recorded this control as press-styled but NOT keyboard-operable
+          ("NO (div, no role/tabIndex)") and deferred it here. Space is `preventDefault`ed
+          because the browser's default for Space on a non-button is to scroll the page.
+          Turning this into a `<button>` "for correctness" is a decision, not a cleanup. */}
       <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
         onClick={() => setIsExpanded(!isExpanded)}
-        className="p-3 cursor-pointer hover:bg-surface-card-hover active:opacity-75 rounded-card transition-colors"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setIsExpanded((prev) => !prev);
+          }
+        }}
+        className="p-3 cursor-pointer hover:bg-surface-card-hover active:opacity-75 rounded-card transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

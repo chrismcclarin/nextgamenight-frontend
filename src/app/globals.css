@@ -1365,3 +1365,86 @@ body {
     }
   }
 }
+
+/* ===== PHASE 88-28: REDUCED-MOTION CONTRACT (Req 4 / UI-SPEC §7.1) ===== */
+
+/* DECISION Phase 88-28 (Req 4, UI-SPEC §7.1): motion is CUT to <=100ms, never KILLED with a
+   global `animation: none`. Before this block the repo had ZERO `prefers-reduced-motion` and
+   zero `motion-reduce:` handling — a person with the OS setting on got the full 250ms theme
+   transition, the 700ms tutorial fill-in, the header slide and 15 pulsing skeletons.
+
+   Four choices are encoded here, each rejecting a more obvious alternative:
+
+   (1) DURATION CUT chosen OVER the common animation-kill idiom (the `animation` shorthand
+       forced to `none` across a wildcard). Killing the shorthand removes the animation from
+       the element entirely, so `animationend` never fires — and Radix's `Presence` (which
+       every modal in the fleet now goes through, ui/dialog.tsx) waits on exactly that event
+       to unmount exit-animating content. That would leave dialogs mounted. Cutting
+       `animation-duration` keeps the event.
+       (The forbidden declaration is deliberately NOT quoted verbatim anywhere in this file:
+       the Req 4 verify gate greps for that exact literal, and 88-25/88-26 both recorded
+       gates going permanently red on the marker that documented the decision. 88-11's
+       convention — describe it, do not write it — is followed here.)
+
+   (2) UNLAYERED, chosen OVER `@layer utilities`. For `!important` declarations the cascade
+       layer order INVERTS, and unlayered `!important` outranks every layered `!important` —
+       so this is the only placement from which the block reliably beats a Tailwind
+       `duration-700` utility. MEASURED in `.next/static/css/*.css` after a real `next build`,
+       not reasoned from the spec (this file's own history records two prior cascade calls
+       that went the opposite way to the intuition). The walk over the emitted stylesheet
+       reports this block at nesting depth 0 with an EMPTY layer stack, i.e. genuinely
+       unlayered, while `.animate-spin` / `.animate-pulse` / `.duration-700` all sit inside
+       `@layer utilities`. Note also what the utilities emit: `.animate-spin{animation:
+       var(--animate-spin)}` — the SHORTHAND, whose duration and `infinite` are overridden by
+       the longhands below because an important longhand beats a normal shorthand. Moving this
+       block into a layer would silently invert all of that.
+
+   (3) `.animate-spin` is EXEMPTED and explicitly SLOWED to 1.5s, chosen OVER letting the
+       wildcard reach it. This is the trap in the naive implementation: the 29 `animate-spin`
+       sites are functional status indicators, and a blanket 100ms `animation-duration` would
+       not calm them — it would make every spinner rotate TEN TIMES A SECOND, i.e. turn an
+       accessibility accommodation into a strobe for the exact users who asked for less
+       motion. §7.1 says spinners may slow and must not stop; 1.5s is slower than the 1s
+       default, and still unmistakably moving.
+       `.animate-pulse` (the 15 skeleton "shimmer" bars, §7.1's disable-outright case) instead
+       gets `animation-iteration-count: 1`: one 100ms pass and then static. The keyframe
+       returns to opacity 1, so the bar stays VISIBLE — a skeleton that vanished would read as
+       a broken load.
+
+   (4) NO global `transform: none`. §7.1 asks for scale/translate transitions to be disabled
+       outright, and this block delivers that as the <=100ms cut instead — deliberately.
+       `transform` is not only used for motion here: `ui/dialog.tsx:64` centres EVERY modal
+       with `translate-x-[-50%] translate-y-[-50%]`, and `AvailabilityGrid`'s sticky axis and
+       the tutorial grid also carry static transforms. A `transform: none !important` under
+       reduced motion would throw every dialog in the app half a viewport off-centre for
+       precisely the users least able to cope with it. Targeting Tailwind's escaped class
+       names (`.hover\:-translate-y-0\.5`) from an unlayered rule instead would be the
+       fragile-selector hack this project forbids. The residue is small and honest: a hover
+       lift and the header slide still move, in <=100ms.
+
+   Re-widening the wildcard, or "simplifying" either exception away, is a decision. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 100ms !important;
+    transition-delay: 0ms !important;
+    animation-duration: 100ms !important;
+    animation-delay: 0ms !important;
+  }
+
+  html {
+    scroll-behavior: auto !important;
+  }
+
+  /* (3) above — functional, must keep moving. Specificity 0,1,0 beats the 0,0,0 wildcard
+     within the same unlayered !important origin. */
+  .animate-spin {
+    animation-duration: 1.5s !important;
+  }
+
+  /* (3) above — decorative shimmer. One pass, then static and still visible. */
+  .animate-pulse {
+    animation-iteration-count: 1 !important;
+  }
+}

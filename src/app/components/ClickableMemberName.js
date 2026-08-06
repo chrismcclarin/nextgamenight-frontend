@@ -282,23 +282,79 @@ export default function ClickableMemberName({ userId, username, children }) {
 
   return (
     <>
+      {/* DECISION Phase 88-28 (Req 4): the username is now keyboard-OPERABLE, not merely
+          reachable. 87.8-08's census recorded it as "NO (span, no tabIndex)" — the popover
+          it toggles is opened by HOVER (useHover, `mouseOnly: true`) and by tap, so before
+          this a keyboard-only user had NO path to the friend-request flow at all on any
+          surface where the `md:hidden` "+" is hidden. Focusable-but-inert would not have
+          closed that (AR R1-M21): Enter AND Space must both activate, and both are pinned.
+
+          Three specifics, each a choice:
+          - `role="button"` + `tabIndex` chosen OVER a real `<button>`: this span is rendered
+            inside a `<p>` at `ManageMembers.js:446` and inside table-ish rows elsewhere
+            (9 render sites), and it must stay inline phrasing content that wraps with the
+            surrounding text.
+          - `stopPropagation` on the key handler is LOAD-BEARING, not defensive: at
+            `grouplist.js` the name renders inside a `role="button"` group card that has its
+            own Enter/Space handler. Without it, Enter on a member's name would ALSO navigate
+            to the group — the keyboard twin of the tap-stealing bug 87.8 D-13 fixed for the
+            adjacent "+".
+          - Space is `preventDefault`ed because its default on a non-button is page scroll.
+
+          The props go THROUGH `getReferenceProps({...})` rather than being written after a
+          `{...getReferenceProps()}` spread. MEASURED — and the measurement CORRECTED a first
+          draft of this comment, so both halves are recorded:
+            - `getReferenceProps()` returns `['onPointerDown','onPointerEnter','onMouseMove',
+              'onKeyDown']`. It HAS an `onKeyDown` of its own, so a sibling `onKeyDown={...}`
+              after a spread REPLACES a library handler rather than adding to one.
+            - That handler is `useDismiss`'s `closeOnEscapeKeyDown` — but Esc-to-dismiss does
+              NOT visibly break when it is clobbered. Verified by planting the spread form and
+              re-running the suite, which stayed green: `useDismiss` ALSO registers the same
+              callback on the DOCUMENT in an effect (@floating-ui/react useDismiss, `if
+              (escapeKey) doc.addEventListener('keydown', …)`). The clobber is MASKED by a
+              redundancy, not harmless by design.
+          The merge API is used anyway, because that redundancy is the library's private
+          implementation detail rather than a contract, and because the next interaction hook
+          added here would not be so lucky: `useClick`'s and `useListNavigation`'s reference
+          `onKeyDown` (Enter/Space activation; arrow-key navigation) have NO document-level
+          twin, and a spread would drop them silently. Going back to the spread form is a
+          decision, not a cleanup — and it is pinned in `keyboardOperability.test.tsx` as a
+          SOURCE property, deliberately not a behavioural one, precisely because the behaviour
+          is currently masked and a behavioural pin would be vacuous.
+          `aria-haspopup` is deliberately NOT set: the floating element is a plain div with no
+          dialog/menu role, so any value would announce a control that is not there.
+
+          The `'ontouchstart'` branch on onClick is preserved verbatim below — it is the
+          hybrid-touch-laptop path, and keyboard activation is deliberately NOT gated on it. */}
       <span
         ref={refs.setReference}
-        {...getReferenceProps()}
-        className="cursor-pointer hover:underline"
-        onClick={(e) => {
-          e.stopPropagation();
-          // Hybrid touch laptop fallback — preserved verbatim. At ≥768px
-          // viewports on touch-capable devices the mobile "+" is hidden
-          // (md:hidden) and the popover-via-tap is the only path to the
-          // friend-request flow.
-          if ('ontouchstart' in window) {
-            setIsOpen((prev) => !prev);
-          }
-        }}
-        onTouchStart={(e) => {
-          e.stopPropagation();
-        }}
+        {...getReferenceProps({
+          role: 'button',
+          tabIndex: 0,
+          'aria-expanded': isOpen,
+          className:
+            'cursor-pointer hover:underline rounded-xs focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2',
+          onClick: (e) => {
+            e.stopPropagation();
+            // Hybrid touch laptop fallback — preserved verbatim. At ≥768px
+            // viewports on touch-capable devices the mobile "+" is hidden
+            // (md:hidden) and the popover-via-tap is the only path to the
+            // friend-request flow.
+            if ('ontouchstart' in window) {
+              setIsOpen((prev) => !prev);
+            }
+          },
+          onKeyDown: (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsOpen((prev) => !prev);
+            }
+          },
+          onTouchStart: (e) => {
+            e.stopPropagation();
+          },
+        })}
       >
         {children || username}
       </span>
