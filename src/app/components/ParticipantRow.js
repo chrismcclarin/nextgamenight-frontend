@@ -214,8 +214,8 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
                 inviteStatus === 'sent'
                   ? 'bg-status-success-subtle border-status-success text-status-success'
                   : inviteStatus === 'error'
-                    ? 'bg-status-error-subtle border-status-error text-status-error'
-                    : 'border-line-accent text-content-link'
+                    ? 'bg-status-error-subtle border-status-error hover:bg-status-error-subtle-hover text-status-error'
+                    : 'border-line-accent hover:bg-surface-card-hover text-content-link'
               }`}
               title={inviteStatus === 'sent' ? 'Invite sent!' : 'Invite this guest to join the group'}
             >
@@ -228,7 +228,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
           <button
             type="button"
             onClick={() => onToggleParticipant(index)}
-            className="text-status-error hover:text-status-error text-sm px-2 py-1 border border-status-error rounded-sm"
+            className="text-status-error hover:text-status-error text-sm px-2 py-1 border border-status-error rounded-sm hover:bg-status-error-subtle"
             title="Remove participant"
           >
             Remove

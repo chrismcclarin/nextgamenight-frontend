@@ -813,7 +813,18 @@ function FriendsPage() {
                                                             // must contain it. The hook only owns resting-vs-armed.
                                                             {...(removing ? { 'aria-label': `Removing ${friendName}` } : {})}
                                                             disabled={removing}
-                                                            className={`min-h-11 px-3 rounded-btn border text-sm transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring text-status-error ${
+                                                            // DECISION Phase 88-27 (D-32 bucket D): the hover affordance
+                                                            // 87.7 stripped from here was a TEXT alpha (error text at
+                                                            // 80% on hover). It comes back as a subtle SURFACE, chosen
+                                                            // OVER re-adding the text alpha — that is the forbidden
+                                                            // mechanism — and OVER leaving the control with no hover
+                                                            // state at all, which would have been a silent downgrade
+                                                            // dressed up as a decision. A background cannot collide with
+                                                            // the armed state below it, which speaks in border and
+                                                            // weight. Same treatment on the two delete-pattern gates in
+                                                            // userProfile and on ParticipantRow's Remove, which reaches
+                                                            // it by the ordinary bucket-C rule.
+                                                            className={`min-h-11 px-3 rounded-btn border text-sm transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring text-status-error hover:bg-status-error-subtle ${
                                                                 armed
                                                                     ? 'border-status-error font-semibold'
                                                                     : 'border-transparent font-medium'

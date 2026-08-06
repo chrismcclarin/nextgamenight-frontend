@@ -178,7 +178,13 @@ export default function TutorialOverlay({ onComplete }) {
   const isHandoff = phase === 'handoff';
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+    /* DECISION Phase 88-27 (D-32 bucket D): the scrim reuses `--color-bg-overlay` — the property
+       `.modal-overlay` already paints every other modal in the app with — chosen OVER restoring
+       the raw `bg-black/85` that 87.7 stripped from here. A raw literal is not theme-aware and
+       would have made the tutorial the one modal whose scrim ignores the theme. Referenced as an
+       arbitrary value rather than a new theme key because D-32 says bucket D mints NO token.
+       Until now this modal has had no scrim at all — that is the visible change. */
+    <div className="fixed inset-0 z-60 bg-[var(--color-bg-overlay)] flex items-center justify-center p-4">
       <div className="bg-surface-page rounded-card shadow-theme-lg max-w-3xl w-full max-h-[92vh] flex flex-col border border-line">
         {/* Header — step indicator */}
         <div className="px-6 pt-5 pb-3 flex items-center justify-between">
@@ -291,12 +297,23 @@ export default function TutorialOverlay({ onComplete }) {
             controls (same button styling). Skip is the lighter text link
             in between because it's a different kind of action. */}
         <div className="border-t border-line px-6 py-3 flex items-center justify-between gap-3">
+          {/* DECISION Phase 88-27 (D-32 buckets B/D): this button carried THREE stripped alpha
+              tokens — a 40% muted text, a 40% elevated surface and a 40% neutral border, all on
+              the `isWelcome` branch. Because the element also carries `disabled={isWelcome}`, that
+              branch IS the disabled state, so the dimming moves onto `disabled:opacity-50`
+              (the app's shipped idiom: KebabMenu, ResponseDashboard's Remind, friends' Remove)
+              rather than being re-expressed as three separate 40% values. Chosen OVER re-adding
+              per-property alphas, which is the forbidden mechanism, and OVER hand-picking three
+              more `-subtle` values for a single disabled control. The branch keeps
+              `text-content-muted` (bucket D's text-alpha rule, verbatim) and the same
+              `bg-surface-elevated` as its enabled twin, so only the dimming distinguishes them.
+              WCAG 1.4.3 exempts disabled controls from the contrast minimum. */}
           <button
             onClick={goBack}
             disabled={isWelcome}
-            className={`px-4 py-1.5 text-sm font-medium border border-line rounded-btn transition-colors ${
+            className={`px-4 py-1.5 text-sm font-medium border border-line rounded-btn transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
               isWelcome
-                ? 'cursor-not-allowed'
+                ? 'text-content-muted bg-surface-elevated'
                 : 'text-content-primary bg-surface-elevated hover:bg-surface-card-hover border-line'
             }`}
           >

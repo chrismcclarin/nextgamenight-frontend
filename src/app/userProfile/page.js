@@ -2091,7 +2091,10 @@ function Profile(){
                                                                 patternLabel,
                                                                 `Delete ${patternLabel}`
                                                             )}
-                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                            // DECISION Phase 88-27 (D-32 bucket D): the stripped hover was a TEXT
+                                                            // alpha; it returns as a subtle SURFACE. Full reasoning at the twin
+                                                            // marker on friends/page.js's Remove-friend gate.
+                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
                                                                 deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
                                                             }`}
                                                         >
@@ -2224,7 +2227,10 @@ function Profile(){
                                                                 patternLabel,
                                                                 `Delete ${patternLabel}`
                                                             )}
-                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                            // DECISION Phase 88-27 (D-32 bucket D): the stripped hover was a TEXT
+                                                            // alpha; it returns as a subtle SURFACE. Full reasoning at the twin
+                                                            // marker on friends/page.js's Remove-friend gate.
+                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
                                                                 deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
                                                             }`}
                                                         >

@@ -269,7 +269,7 @@ function RemindButton({ userId, lastRemindedAt, isReminding, onRemind }) {
     <button
       onClick={() => onRemind(userId)}
       disabled={isReminding}
-      className="px-3 py-1 text-sm text-content-link rounded-sm active:opacity-75 disabled:opacity-50 shrink-0 transition-colors"
+      className="px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-card-hover active:opacity-75 disabled:opacity-50 shrink-0 transition-colors"
     >
       {isReminding ? 'Sending...' : 'Remind'}
     </button>

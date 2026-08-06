@@ -159,8 +159,8 @@ function GuestInviteButton({ groupId, userId }) {
                     : status === 'already'
                         ? 'text-content-muted border-line bg-surface-page'
                         : status === 'error'
-                            ? 'bg-status-error-subtle border-status-error text-status-error'
-                            : 'text-content-link'
+                            ? 'bg-status-error-subtle border-status-error hover:bg-status-error-subtle-hover text-status-error'
+                            : 'hover:bg-surface-card-hover text-content-link'
             }`}
             title={
                 status === 'sent'

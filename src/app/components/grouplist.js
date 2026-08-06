@@ -263,16 +263,31 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                 }}
               >
                 {bgImage && (
-                  // This overlay currently paints NOTHING — placeholder, kept
-                  // deliberately. Phase 73-02 gave it a semantic surface tint at
-                  // 85% so the bg image dims and text stays readable in both
-                  // themes; that slash-opacity was inert on v3's var()-backed
-                  // tokens and 87.7 D-18 stripped it rather than let v4 start
-                  // rendering it (a new visual). Do NOT re-add a dim here ad
-                  // hoc — Phase 88 owns the real treatment via its opacity
-                  // mechanism (census: 87.7-OPACITY-CENSUS.md). The div stays
-                  // so 88's fix is a class edit, not a structure change.
-                  <div className="absolute inset-0 z-0 rounded-card" />
+                  // Phase 73-02 gave this overlay a semantic surface tint at 85%
+                  // so the bg image dims and the title stays readable; that
+                  // slash-opacity was inert on v3's var()-backed tokens and
+                  // 87.7 D-18 stripped it rather than let v4 start rendering it
+                  // (census: 87.7-OPACITY-CENSUS.md). The div was kept so the
+                  // fix would be a class edit, not a structure change.
+                  //
+                  // DECISION Phase 88-27 (D-32 bucket D): the dim is now
+                  // `--color-bg-overlay`, one of the three UI-SPEC §10.3
+                  // exemplars. Chosen OVER restoring what 73-02 actually wrote —
+                  // 85% of the CARD colour, which is near-WHITE in light mode.
+                  // A group title over a background image is ALWAYS white text
+                  // with a dark shadow, in both themes, unconditionally
+                  // (colorUtils.js getTextStyle, the `hasBackgroundImage`
+                  // branch). So a card-coloured wash in light mode would have
+                  // put white text on a near-white ground — the overlay would
+                  // have caused the illegibility it exists to prevent.
+                  // `--color-bg-overlay` darkens in both themes, which is what
+                  // white text needs. Re-deriving this from the card surface is
+                  // a decision that breaks light mode, not a fidelity fix.
+                  //
+                  // The `{bgImage && …}` gate is deliberate and unchanged: this
+                  // never renders for colour-only cards, whose title takes a
+                  // contrast-computed pole instead and needs no dim.
+                  <div className="absolute inset-0 z-0 rounded-card bg-[var(--color-bg-overlay)]" />
                 )}
                 <div className="relative z-1">
                   {/* 87.8-13 walkthrough F-8: single row at ALL widths — the old

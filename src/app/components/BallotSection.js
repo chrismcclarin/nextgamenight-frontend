@@ -157,7 +157,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   key={opt.id}
                   type="button"
                   onClick={() => handleResolveTie(opt.id)}
-                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle transition-colors text-sm font-medium text-content-primary cursor-pointer"
+                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm font-medium text-content-primary cursor-pointer"
                 >
                   {opt.game_name}
                 </button>
@@ -202,7 +202,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   key={opt.id}
                   type="button"
                   onClick={() => handleResolveTie(opt.id)}
-                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle transition-colors text-sm font-medium text-content-primary cursor-pointer"
+                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm font-medium text-content-primary cursor-pointer"
                 >
                   {opt.game_name}
                 </button>

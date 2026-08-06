@@ -141,8 +141,8 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
                   onClick={() => onToggle?.(schedule.id)}
                   className={`px-3 py-1.5 text-sm rounded-btn transition-colors ${
                     isActive
-                      ? 'bg-status-warning-subtle text-status-warning'
-                      : 'bg-status-success-subtle text-status-success'
+                      ? 'bg-status-warning-subtle text-status-warning hover:bg-status-warning-subtle-hover'
+                      : 'bg-status-success-subtle text-status-success hover:bg-status-success-subtle-hover'
                   }`}
                   title={isActive ? 'Pause schedule' : 'Resume schedule'}
                 >
