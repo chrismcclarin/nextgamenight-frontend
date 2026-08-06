@@ -12,6 +12,7 @@ import {
   shift,
   autoUpdate,
   FloatingPortal,
+  FloatingFocusManager,
 } from '@floating-ui/react';
 import { FriendshipContext } from './FriendshipStatusProvider';
 
@@ -57,9 +58,20 @@ export default function ClickableMemberName({ userId, username, children }) {
 
   const status = getStatus(userId);
 
+  /* 88-CODE-REVIEW MED#16: keyboard-opened popovers get FloatingFocusManager.
+     The portal appends to document.body, so without focus management the
+     popover's "Add friend" button was the LAST tab stop in the whole document —
+     Enter "opened" the flow (WCAG operable, nominally) but its commit button was
+     practically unreachable (WCAG 2.4.3). Hover-open keeps the no-focus-move
+     behavior: yanking focus on hover is its own a11y failure. */
+  const [openedByKeyboard, setOpenedByKeyboard] = useState(false);
+
   const { refs, floatingStyles, context } = useFloating({
     open: isOpen,
-    onOpenChange: setIsOpen,
+    onOpenChange: (open) => {
+      setIsOpen(open);
+      if (!open) setOpenedByKeyboard(false);
+    },
     placement: 'bottom-start',
     middleware: [offset(6), flip(), shift({ padding: 8 })],
     whileElementsMounted: autoUpdate,
@@ -380,6 +392,7 @@ export default function ClickableMemberName({ userId, username, children }) {
             // (md:hidden) and the popover-via-tap is the only path to the
             // friend-request flow.
             if ('ontouchstart' in window) {
+              setOpenedByKeyboard(false);
               setIsOpen((prev) => !prev);
             }
           },
@@ -387,6 +400,9 @@ export default function ClickableMemberName({ userId, username, children }) {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
               e.stopPropagation();
+              // MED#16: record the input modality BEFORE the toggle — only a
+              // keyboard OPEN engages the focus manager below.
+              setOpenedByKeyboard(!isOpen);
               setIsOpen((prev) => !prev);
             }
           },
@@ -400,14 +416,31 @@ export default function ClickableMemberName({ userId, username, children }) {
       {renderMobileIndicator()}
       {isOpen && (
         <FloatingPortal>
-          <div
-            ref={refs.setFloating}
-            style={floatingStyles}
-            {...getFloatingProps()}
-            className="bg-surface-card rounded-card shadow-theme-lg border border-line px-3 py-2 z-60"
-          >
-            {renderTooltipContent()}
-          </div>
+          {/* MED#16: focus manager on KEYBOARD open only — initial focus lands on
+              the popover's first tabbable (the Add friend button), Esc/close
+              returns it to the name span (returnFocus default). modal={false}
+              keeps useDismiss's outside-press/Escape behavior intact. */}
+          {openedByKeyboard ? (
+            <FloatingFocusManager context={context} modal={false}>
+              <div
+                ref={refs.setFloating}
+                style={floatingStyles}
+                {...getFloatingProps()}
+                className="bg-surface-card rounded-card shadow-theme-lg border border-line px-3 py-2 z-60"
+              >
+                {renderTooltipContent()}
+              </div>
+            </FloatingFocusManager>
+          ) : (
+            <div
+              ref={refs.setFloating}
+              style={floatingStyles}
+              {...getFloatingProps()}
+              className="bg-surface-card rounded-card shadow-theme-lg border border-line px-3 py-2 z-60"
+            >
+              {renderTooltipContent()}
+            </div>
+          )}
         </FloatingPortal>
       )}
     </>

@@ -33,6 +33,7 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { Modal } from '../components/Modal';
 import { Combobox } from '../../components/ui/Combobox';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { ErrorFallback } from '../../components/ui/ErrorFallback';
 
@@ -243,8 +244,31 @@ function Profile(){
     const [saveStatuses, setSaveStatuses] = useState({}); // { [`${type}:${channel}`]: 'saving'|'saved'|'error'|'guard' }
     const saveStatusTimersRef = useRef({});
 
+    /* 88-CODE-REVIEW MED#15: SR announcements for save OUTCOMES. The Radix Switch
+       announces the optimistic aria-checked flip immediately, so a failed save's
+       visual-only rollback left a screen-reader user believing the toggle took.
+       Two always-mounted sr-only regions (StatusRegion's empty-first contract):
+       polite for 'saved', assertive (role=alert) for 'error' and the guard —
+       they explain a rejected/reverted action. 'saving' is deliberately NOT
+       announced: transient, and the outcome announcement covers the round trip. */
+    const [politeSaveAnnouncement, setPoliteSaveAnnouncement] = useState('');
+    const [assertiveSaveAnnouncement, setAssertiveSaveAnnouncement] = useState('');
+    const saveSlotLabel = (key) => {
+        if (key === REMINDER_WINDOW_SLOT) return 'Reminder timing';
+        const [typeKey, channel] = key.split(':');
+        const t = NOTIFICATION_TYPES.find(x => x.key === typeKey);
+        return `${t?.label || typeKey} ${channel || ''} notifications`.replace(/\s+/g, ' ').trim();
+    };
+
     const setSaveStatus = useCallback((key, status, clearAfterMs) => {
         setSaveStatuses(prev => ({ ...prev, [key]: status }));
+        if (status === 'saved') {
+            setPoliteSaveAnnouncement(`${saveSlotLabel(key)}: saved`);
+        } else if (status === 'error') {
+            setAssertiveSaveAnnouncement(`${saveSlotLabel(key)}: save failed — the switch was reset`);
+        } else if (status === 'guard') {
+            setAssertiveSaveAnnouncement('At least one notification must stay enabled');
+        }
         const timers = saveStatusTimersRef.current;
         // Cancel this key's own pending clear before arming a new one: without
         // it, a 'saved' timer already in flight fires over the NEXT status this
@@ -1761,6 +1785,12 @@ function Profile(){
                 <div className="card p-3 md:p-6 mb-6">
                     <h2 className="text-xl font-bold text-content-primary mb-1">Notification Preferences</h2>
                     <p className="text-sm text-content-secondary mb-4">Choose how you receive notifications</p>
+
+                    {/* 88-CODE-REVIEW MED#15: always-mounted sr-only outcome regions —
+                        see the setSaveStatus marker for the split and why 'saving' is
+                        not announced. The visible per-row spans stay as-is. */}
+                    <StatusRegion className="sr-only" message={politeSaveAnnouncement} />
+                    <StatusRegion className="sr-only" politeness="assertive" message={assertiveSaveAnnouncement} />
 
                     {/* SMS Consent Disclosure (TCPA / carrier compliance) */}
                     {userData?.sms_enabled && (

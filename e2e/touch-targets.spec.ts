@@ -255,6 +255,16 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     const kebab = page.getByRole('button', { name: 'Group actions' });
     await guardResolved(kebab, 'the groupHomePage KebabMenu trigger (owner/member only)');
     await assertMin44(kebab, 'KebabMenu trigger');
+
+    // 88-CODE-REVIEW MED#13: the ITEMS behind the trigger — the destructive row
+    // actions D-40 routed through this menu — carried the census's ~36px FAIL
+    // even after 88-28 floored the trigger. min-h-11 on the item row; all six
+    // render sites inherit from the one shared component, so one opened menu
+    // is the fleet assertion.
+    await kebab.click();
+    const firstItem = page.getByRole('menuitem').first();
+    await guardResolved(firstItem, 'the first KebabMenu item (opened menu)');
+    await assertMin44(firstItem, 'KebabMenu item row');
   });
 
   /* DECISION Phase 88-30 (D-36 / DEF-1): the `.btn-compact` half of this test measures

@@ -118,13 +118,31 @@ describe('ClickableMemberName username is keyboard-operable (87.8-08 -> 88-28)',
     expect(name).toHaveAttribute('aria-expanded', 'false');
     fireEvent.keyDown(name, { key: 'Enter' });
     // the popover's own control is the proof the flow is REACHED, not just that a flag flipped
-    await screen.findByRole('button', { name: /add friend/i });
+    await screen.findByRole('button', { name: 'Add friend' });
     unmount();
 
     renderMemberName();
     const name2 = screen.getByRole('button', { name: 'ada' });
     fireEvent.keyDown(name2, { key: ' ' });
-    await screen.findByRole('button', { name: /add friend/i });
+    await screen.findByRole('button', { name: 'Add friend' });
+  });
+
+  // 88-CODE-REVIEW MED#16: opening was pinned (test 4), but the popover portals to
+  // end-of-body — without FloatingFocusManager the Add friend button was the LAST
+  // tab stop in the document, so "operable" was only nominal. On keyboard open,
+  // focus must LAND on the button and Enter must fire the actual request.
+  it('4b. keyboard open moves focus INTO the popover and Enter activates Add friend', async () => {
+    friendshipValue.sendRequest.mockClear();
+    renderMemberName();
+    const name = screen.getByRole('button', { name: 'ada' });
+    name.focus();
+    fireEvent.keyDown(name, { key: 'Enter' });
+
+    const addFriend = await screen.findByRole('button', { name: 'Add friend' });
+    await waitFor(() => expect(addFriend).toHaveFocus());
+
+    fireEvent.click(addFriend);
+    await waitFor(() => expect(friendshipValue.sendRequest).toHaveBeenCalledWith('u1'));
   });
 
   it('5. ANTI-VACUITY: the pin fails for a control that is focusable but inert', () => {
@@ -138,14 +156,14 @@ describe('ClickableMemberName username is keyboard-operable (87.8-08 -> 88-28)',
     const inert = screen.getByRole('button', { name: 'ada' });
     expect(inert).toHaveAttribute('tabindex', '0'); // reachable...
     fireEvent.keyDown(inert, { key: 'Enter' });
-    expect(screen.queryByRole('button', { name: /add friend/i })).not.toBeInTheDocument(); // ...and dead
+    expect(screen.queryByRole('button', { name: 'Add friend' })).not.toBeInTheDocument(); // ...and dead
   });
 
   it('6. Enter does NOT also fire the enclosing card handler (the keyboard tap-stealing twin)', async () => {
     const onParentKeyDown = vi.fn();
     renderMemberName({ onParentKeyDown });
     fireEvent.keyDown(screen.getByRole('button', { name: 'ada' }), { key: 'Enter' });
-    await screen.findByRole('button', { name: /add friend/i });
+    await screen.findByRole('button', { name: 'Add friend' });
     // Without stopPropagation this is 1, and pressing Enter on a member's name would ALSO
     // navigate to the group — the keyboard twin of the tap-stealing bug 87.8 D-13 fixed.
     expect(onParentKeyDown).not.toHaveBeenCalled();

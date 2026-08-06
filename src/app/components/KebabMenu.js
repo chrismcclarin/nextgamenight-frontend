@@ -148,7 +148,12 @@ export default function KebabMenu({
                 role="menuitem"
                 onClick={() => handleItemClick(item, index)}
                 disabled={item.disabled}
-                className={`w-full text-left px-3 py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
+                /* 88-CODE-REVIEW MED#13: min-h-11 — the 87.8-08 census FAIL row (~36px)
+                   these items still carried after D-40 made this menu the SOLE phone
+                   path to destructive row actions. The trigger was floored by 88-28;
+                   the items behind it were not. The dropdown is an absolute overlay,
+                   so taller rows reflow nothing outside it. */
+                className={`w-full min-h-11 text-left px-3 py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
                   danger
                     ? `text-status-error ${isArmed ? 'bg-status-error-subtle font-semibold' : 'hover:bg-surface-card-hover'}`
                     : 'text-content-primary hover:bg-surface-card-hover'

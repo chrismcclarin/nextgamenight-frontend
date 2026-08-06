@@ -1270,6 +1270,43 @@ describe('userProfile save-status slots (DEF-88-10-02)', () => {
     );
     expect(rowStatusText('Event Updates')).not.toContain('At least one');
   });
+
+  // 88-CODE-REVIEW MED#15: the Switch announces the optimistic flip, so outcomes
+  // must be announced too — a failed save's rollback was visual-only. Outcomes
+  // land in always-mounted sr-only StatusRegions: polite for saved, ASSERTIVE
+  // (role=alert) for error and the guard, since they explain a reverted action.
+  it('announces a failed save assertively — the rollback is no longer SR-silent', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.updateNotificationPreferences as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('boom')
+    );
+
+    renderProfile();
+    fireEvent.click(await screen.findByRole('switch', { name: 'New Event email notifications' }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('New Event email notifications: save failed — the switch was reset')
+      ).toBeInTheDocument()
+    );
+    const region = screen
+      .getByText('New Event email notifications: save failed — the switch was reset')
+      .closest('[role="alert"]');
+    expect(region).not.toBeNull();
+  });
+
+  it('announces a successful save politely through the status region', async () => {
+    renderProfile();
+    fireEvent.click(await screen.findByRole('switch', { name: 'New Event email notifications' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('New Event email notifications: saved')).toBeInTheDocument()
+    );
+    const region = screen
+      .getByText('New Event email notifications: saved')
+      .closest('[role="status"]');
+    expect(region).not.toBeNull();
+  });
 });
 
 // ===========================================================================
