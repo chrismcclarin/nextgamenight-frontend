@@ -247,7 +247,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
   return (
     <Modal open onClose={() => onClose?.()} size="lg">
       <Modal.Header>Recurring Check-ins</Modal.Header>
-      <Modal.Body className="pt-4">
+      <Modal.Body className="pt-4 md:pt-4">
         {renderContent()}
       </Modal.Body>
     </Modal>

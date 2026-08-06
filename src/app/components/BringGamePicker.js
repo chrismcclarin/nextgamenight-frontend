@@ -136,7 +136,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
        list scrolls — that is a decision, not a cleanup. */
     <Modal open onClose={onClose} className="max-w-md max-h-[80vh]">
       <Modal.Header>Games to Bring</Modal.Header>
-      <Modal.Body className="flex flex-col p-0">
+      <Modal.Body className="flex flex-col p-0 md:p-0">
         {/* Search */}
         <div className="shrink-0 p-4 pb-2">
           <Input

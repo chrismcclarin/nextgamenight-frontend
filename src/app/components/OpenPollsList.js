@@ -105,9 +105,12 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
           fallback: "We couldn't end that check-in. Please try again.",
           // 88-CODE-REVIEW D2: 'conflict' ADDED, 'forbidden' KEPT — the remedy check
           // flagged that replacing this map would silently drop the forbidden copy
-          // (a real, reachable 403 with no test pin at the time). Both arms below are
-          // now pinned. The 409 body can also read "Poll is already converted";
-          // the closed copy is the ratified approximate for both.
+          // (a real, reachable 403 with no test pin at the time). The pins live in
+          // useFetchErrorState.test.tsx: a mechanism pin over an identical byCode
+          // literal, plus a SOURCE pin asserting this file still carries both arms
+          // (delta-review correction 2026-08-06 — the mechanism pin alone could not
+          // see this map drift). The 409 body can also read "Poll is already
+          // converted"; the closed copy is the ratified approximate for both.
           byCode: {
             conflict: 'This check-in is already closed.',
             forbidden: 'Only the poll creator and group admins can end a check-in.',

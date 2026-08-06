@@ -188,7 +188,7 @@ export default function BrowseMoreModal({
   return (
     <Modal open={open} onClose={onClose} size="lg">
       <Modal.Header>Browse games</Modal.Header>
-      <Modal.Body className="p-0">
+      <Modal.Body className="p-0 md:p-0">
         {/* Filter / sort row — pinned over the scrolling grid */}
         <div
           data-testid="browse-more-controls"

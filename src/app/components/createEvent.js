@@ -697,7 +697,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     <Modal open onClose={modaltoggle} size="lg">
       <Modal.Header>{editingEvent ? 'Edit Event' : 'Create Event'}</Modal.Header>
       {/* DECISION Phase 87.8 DEC-3, re-based by 88-16: `p-3` at phone / `p-6` at
-          desktop, now carried by <Modal.Body> (whose own default is a flat `p-6`)
+          desktop, now carried by <Modal.Body> (whose own default WAS a flat `p-6`
+          until 88-32 ruling 6 — see the AMENDED paragraph at the end)
           instead of by a plain inner div. The 12px-per-side phone value is the
           SAME number DEC-3 chose and for the same reason — it keeps the Create
           Event chain under the SPEC R2 75px budget: 12 (this) + 12 (the phone

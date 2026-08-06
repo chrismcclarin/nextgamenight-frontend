@@ -143,6 +143,30 @@ describe('ClickableMemberName username is keyboard-operable (87.8-08 -> 88-28)',
 
     fireEvent.click(addFriend);
     await waitFor(() => expect(friendshipValue.sendRequest).toHaveBeenCalledWith('u1'));
+
+    // Delta review 2026-08-06: the success swap UNMOUNTS the focused button —
+    // the outcome must be announced (role=status). The focus half of the fix
+    // (FloatingFocusManager restoreFocus) is NOT assertable here: jsdom fires
+    // no focusout when a focused element is REMOVED, which is the exact signal
+    // restoreFocus listens for — activeElement lands on <body> in jsdom no
+    // matter what the manager does. Browser behavior; UAT-walk territory.
+    const receipt = await screen.findByText('Request sent');
+    expect(receipt.closest('[role="status"]')).not.toBeNull();
+  });
+
+  it('4c. a FAILED send is announced as an alert (focus half untestable in jsdom — see 4b)', async () => {
+    friendshipValue.sendRequest.mockRejectedValueOnce(new Error('boom'));
+    renderMemberName();
+    const name = screen.getByRole('button', { name: 'ada' });
+    name.focus();
+    fireEvent.keyDown(name, { key: 'Enter' });
+
+    const addFriend = await screen.findByRole('button', { name: 'Add friend' });
+    await waitFor(() => expect(addFriend).toHaveFocus());
+    fireEvent.click(addFriend);
+
+    const failure = await screen.findByText('Failed to send request');
+    expect(failure.closest('[role="alert"]')).not.toBeNull();
   });
 
   it('5. ANTI-VACUITY: the pin fails for a control that is focusable but inert', () => {

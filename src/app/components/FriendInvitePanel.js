@@ -588,7 +588,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
             </div>
 
             {/* p-0: every body section below carries its own `p-5`. */}
-            <Modal.Body className="p-0">{body}</Modal.Body>
+            <Modal.Body className="p-0 md:p-0">{body}</Modal.Body>
 
             <Modal.Footer>
                 <Modal.Action

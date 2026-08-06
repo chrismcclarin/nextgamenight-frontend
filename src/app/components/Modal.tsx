@@ -230,7 +230,11 @@ function ModalBody({ children, className }: ModalBodyProps) {
        idiom: 24px per side put the fleet at 72px of horizontal loss against the 75px
        phone budget at 375px; 12px on phone drops it to 48 with real margin, and
        matches the one consumer (createEvent, 87.8 DEC-3) that was already overriding.
-       Widening the phone default back to `p-6` is a decision, not a cleanup. */
+       Widening the phone default back to `p-6` is a decision, not a cleanup.
+       COMPOSITION RULE (delta review 2026-08-06, HIGH): a two-breakpoint default means
+       padding overrides must cover BOTH buckets — twMerge collapses per-modifier, so a
+       bare `p-0` removes `p-3` but leaves `md:p-6` winning at desktop. Zero-padding
+       consumers write `p-0 md:p-0`; longhand overrides write both too (`pt-4 md:pt-4`). */
     <div className={cn('flex-1 overflow-y-auto p-3 md:p-6', className)}>{children}</div>
   );
 }

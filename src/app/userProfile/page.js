@@ -262,10 +262,27 @@ function Profile(){
 
     const setSaveStatus = useCallback((key, status, clearAfterMs) => {
         setSaveStatuses(prev => ({ ...prev, [key]: status }));
+        // Delta review 2026-08-06 (MED x2 on the MED#15 wiring):
+        //  - RESET_SLOT gets its own copy — the generic template produced the
+        //    garbled "all reset notifications" label, and its error line claimed
+        //    "the switch was reset" for an action that has no switch and did NOT
+        //    reset. Error copy mirrors the visible text at the reset button.
+        //  - Announcements are CLEARED by the same timer that clears the visual
+        //    status (below). aria-live fires on DOM CHANGE only, so a second
+        //    identical outcome (same toggle re-flipped; the guard hit twice) was
+        //    a React state bail-out — announced once, silent forever after.
         if (status === 'saved') {
-            setPoliteSaveAnnouncement(`${saveSlotLabel(key)}: saved`);
+            setPoliteSaveAnnouncement(
+                key === RESET_SLOT
+                    ? 'Notification preferences reset to defaults'
+                    : `${saveSlotLabel(key)}: saved`
+            );
         } else if (status === 'error') {
-            setAssertiveSaveAnnouncement(`${saveSlotLabel(key)}: save failed — the switch was reset`);
+            setAssertiveSaveAnnouncement(
+                key === RESET_SLOT
+                    ? "Couldn't reset notification preferences — try again"
+                    : `${saveSlotLabel(key)}: save failed — the switch was reset`
+            );
         } else if (status === 'guard') {
             setAssertiveSaveAnnouncement('At least one notification must stay enabled');
         }
@@ -280,6 +297,11 @@ function Profile(){
         if (!clearAfterMs) return; // 'saving' persists until it resolves.
         timers[key] = setTimeout(() => {
             delete timers[key];
+            // Empty the live regions with the visual clear — StatusRegion's
+            // empty-first contract; the next identical outcome is then a real
+            // DOM change and announces again.
+            setPoliteSaveAnnouncement('');
+            setAssertiveSaveAnnouncement('');
             setSaveStatuses(prev => {
                 if (!(key in prev)) return prev;
                 const next = { ...prev };
@@ -340,11 +362,19 @@ function Profile(){
        per keystroke. F-359's gate below protected first render only — while the picker
        was open, every keystroke invalidated filteredTimezones, whose body rebuilt the
        full IANA set (~800 Intl.DateTimeFormat constructions) before filtering.
-       Filtering ~400 strings per keystroke is cheap; constructing the list is not. */
-    const allTimezones = useMemo(
-        () => (tzPickerOpen ? getTimezoneList() : []),
-        [tzPickerOpen, getTimezoneList]
-    );
+       Filtering ~400 strings per keystroke is cheap; constructing the list is not.
+       Delta review 2026-08-06 (LOW): cached across REOPENS too via ref — closing the
+       picker no longer evicts the built list. The F-359 page-load gate still holds
+       (nothing builds until the first open); the cache invalidates with the builder's
+       identity, which changes only when `timezone` does (its fallback branch). */
+    const tzListCacheRef = useRef({ builder: null, list: [] });
+    const allTimezones = useMemo(() => {
+        if (!tzPickerOpen) return []; // closed shape unchanged; the CACHE survives the close
+        if (tzListCacheRef.current.builder !== getTimezoneList) {
+            tzListCacheRef.current = { builder: getTimezoneList, list: getTimezoneList() };
+        }
+        return tzListCacheRef.current.list;
+    }, [tzPickerOpen, getTimezoneList]);
 
     const filteredTimezones = useCallback(() => {
         if (!tzSearch.trim()) return allTimezones;

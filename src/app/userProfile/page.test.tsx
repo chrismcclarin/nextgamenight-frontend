@@ -1370,3 +1370,66 @@ describe('phone verification — wrong code shows error, never verifies (H1)', (
     ).not.toBeInTheDocument();
   });
 });
+
+// ===========================================================================
+// Delta review 2026-08-06 — consumer-wiring pins (the mechanisms were tested,
+// the wiring was not; removing one prop/gate silently restored the defects)
+// ===========================================================================
+describe('delta-review consumer pins', () => {
+  it('bare Enter in the just-focused timezone picker commits NOTHING (selectFirstOnEnter wiring)', async () => {
+    renderProfile();
+    const tz = await screen.findByRole('combobox', { name: 'Timezone' });
+
+    fireEvent.focus(tz); // opens the picker over the full IANA list, search cleared
+    await waitFor(() => expect(tz).toHaveAttribute('aria-expanded', 'true'));
+    fireEvent.keyDown(tz, { key: 'Enter' });
+
+    // Without the opt-out prop this commits the alphabetized list's first zone
+    // ("Africa/Abidjan") — MED#2's exact defect. The hoisted provider spy is the
+    // commit observable; the picker also stays open because nothing selected.
+    expect(h.setTimezone).not.toHaveBeenCalled();
+    expect(tz).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('recurring schedule: end-before-start is gated client-side with the actionable toast', async () => {
+    const { availabilityAPI } = await import('@/lib/api');
+    renderProfile();
+
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add Schedule' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mon' }));
+    fireEvent.change(screen.getByLabelText('Available From (Start Time)'), {
+      target: { value: '17:00' },
+    });
+    fireEvent.change(screen.getByLabelText('Available Until (End Time)'), {
+      target: { value: '09:00' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Schedule' }));
+
+    await waitFor(() =>
+      expect(toastMock().error).toHaveBeenCalledWith('Start time must be before end time.')
+    );
+    expect(availabilityAPI.createRecurringPattern).not.toHaveBeenCalled();
+  });
+
+  it('specific override: end-before-start is gated client-side with the actionable toast', async () => {
+    const user = userEvent.setup();
+    const { availabilityAPI } = await import('@/lib/api');
+    renderProfile();
+
+    (await screen.findByRole('tab', { name: 'Specific Dates' })).focus();
+    await user.keyboard('{Enter}');
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add Override' }));
+    fireEvent.change(screen.getByLabelText('Available From (Start Time)'), {
+      target: { value: '17:00' },
+    });
+    fireEvent.change(screen.getByLabelText('Available Until (End Time)'), {
+      target: { value: '09:00' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Override' }));
+
+    await waitFor(() =>
+      expect(toastMock().error).toHaveBeenCalledWith('Start time must be before end time.')
+    );
+    expect(availabilityAPI.createOverride).not.toHaveBeenCalled();
+  });
+});

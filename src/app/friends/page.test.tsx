@@ -96,7 +96,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
     },
     invitesAPI: {
       ...actual.invitesAPI,
-      sendGroupInvite: vi.fn().mockResolvedValue({}),
+      sendFriendInvite: vi.fn().mockResolvedValue({}),
     },
   };
 });
@@ -243,8 +243,12 @@ describe('friends list', () => {
 
 // 88-CODE-REVIEW D2: the send-request failure paths had ZERO coverage, which is
 // how the conflict copy shipped keyed on a code a 409 never produces. ApiError
-// is real here (importOriginal spread), so these pins exercise the REAL
-// statusToCode → byCode derivation, not a mocked message.
+// is real here (importOriginal spread), so these pins exercise the REAL byCode
+// derivation over an ApiError carrying the 409-mapped code — the status→code
+// arm itself is pinned in api.test.ts (mapErrorToCode 409 → 'conflict'); this
+// file hand-supplies the code and does NOT execute statusToCode (delta-review
+// comment correction, 2026-08-06 — do not delete the api.test.ts pin believing
+// this one covers that seam).
 // 88-CODE-REVIEW MED#1: removing a friend must also prune them from the
 // bulk-invite selection — before this pin, the "N selected" count kept counting
 // the ex-friend and handleBulkInvite still dispatched a group invite on behalf

@@ -134,7 +134,9 @@ describe('getFetchErrorMessage — designed copy for action-path failures', () =
   // 88-CODE-REVIEW D2: 'conflict' (code-less 409) carries designed generic copy,
   // and a byCode map with BOTH conflict and forbidden arms serves each outcome —
   // the OpenPollsList shape, where the remedy check found the forbidden copy was
-  // convention-pinned only. This is its pin.
+  // convention-pinned only. This is the MECHANISM pin; the SOURCE pin below it
+  // holds the component's actual map (delta review 2026-08-06: this pin alone
+  // duplicated the literal and could not see the component's map drift).
   it("conflict (409) has designed generic copy and byCode maps keep sibling arms live", () => {
     expect(getFetchErrorMessage(new ApiError('Already friends', 'conflict', 409))).toMatch(
       /already be settled/i
@@ -149,6 +151,22 @@ describe('getFetchErrorMessage — designed copy for action-path failures', () =
     expect(
       getFetchErrorMessage(new ApiError('nope', 'forbidden', 403), { byCode })
     ).toBe('Only the poll creator and group admins can end a check-in.');
+  });
+
+  it("OpenPollsList's end-check-in byCode map really carries BOTH ratified arms (source pin)", () => {
+    // Delta review 2026-08-06: the mechanism pin above uses its own copy of the
+    // literals, so the component's map could drop an arm (the exact defect the
+    // D2 remedy check flagged) with every suite green. This reads the source.
+    const { readFileSync } = require('fs') as typeof import('fs');
+    const { resolve } = require('path') as typeof import('path');
+    const src = readFileSync(
+      resolve(__dirname, '../../app/components/OpenPollsList.js'),
+      'utf8'
+    );
+    expect(src).toContain("conflict: 'This check-in is already closed.'");
+    expect(src).toContain(
+      "forbidden: 'Only the poll creator and group admins can end a check-in.'"
+    );
   });
 
   it('a bare unknown failure with no options still returns designed copy, never empty', () => {

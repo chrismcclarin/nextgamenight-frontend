@@ -120,7 +120,7 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                 and was outside the padded body before the migration too. */}
             <Modal open={modal} onClose={modaltoggle} size="sm">
                 <Modal.Header>Create a new Group</Modal.Header>
-                <Modal.Body className="p-0">
+                <Modal.Body className="p-0 md:p-0">
                     <form onSubmit={onSubmit} autoComplete="off" className="p-6">
                         <div className="mb-3 pt-0">
                             <div className="relative">

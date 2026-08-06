@@ -155,9 +155,16 @@ export default function ClickableMemberName({ userId, username, children }) {
     }
 
     // Already sent (optimistic UI after clicking Add friend)
+    // Delta review 2026-08-06 (MED): both outcome swaps UNMOUNT the focused
+    // Add-friend button — without live-region roles the outcome was silent to
+    // screen readers on the keyboard path MED#16 just promoted (the mobile "+"
+    // path had this treatment from D-13; the popover path did not). Insertion-
+    // announced role=status/alert is the same idiom the mobile pending span
+    // defends at its own marker. Focus survival is FloatingFocusManager's
+    // restoreFocus (render site below).
     if (sent) {
       return (
-        <div className="flex items-center gap-1.5 text-sm text-status-success font-medium">
+        <div role="status" className="flex items-center gap-1.5 text-sm text-status-success font-medium">
           <span>&#10003;</span>
           <span>Request sent</span>
         </div>
@@ -166,7 +173,7 @@ export default function ClickableMemberName({ userId, username, children }) {
 
     if (sendError) {
       return (
-        <div className="text-sm text-status-error">
+        <div role="alert" className="text-sm text-status-error">
           Failed to send request
         </div>
       );
@@ -421,7 +428,10 @@ export default function ClickableMemberName({ userId, username, children }) {
               returns it to the name span (returnFocus default). modal={false}
               keeps useDismiss's outside-press/Escape behavior intact. */}
           {openedByKeyboard ? (
-            <FloatingFocusManager context={context} modal={false}>
+            /* restoreFocus (delta review 2026-08-06): when the focused Add-friend
+               button unmounts on the sent/error swap, keep focus inside the
+               popover instead of dropping to <body>. */
+            <FloatingFocusManager context={context} modal={false} restoreFocus>
               <div
                 ref={refs.setFloating}
                 style={floatingStyles}

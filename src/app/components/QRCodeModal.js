@@ -25,9 +25,13 @@ function QRCodeModal({ isOpen, onClose, url, title, onReset = null, showReset = 
   return (
     <Modal open={isOpen} onClose={onClose} size="sm">
       <Modal.Body className="relative">
+        {/* Delta review 2026-08-06 (MED): same 44px real-box idiom as Modal.tsx's
+            ModalHeader DialogClose — this headerless modal was the one fleet member
+            the D1 fix missed. Offsets shrink top-3/right-3 -> top-1/right-1 so the
+            LARGER box keeps the glyph visually where it was. */}
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 text-content-muted hover:text-content-primary text-2xl"
+          className="absolute top-1 right-1 inline-flex min-h-11 min-w-11 items-center justify-center text-content-muted hover:text-content-primary text-2xl"
           aria-label="Close"
         >
           &times;
