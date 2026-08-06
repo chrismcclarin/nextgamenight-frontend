@@ -74,7 +74,22 @@ const ErrorFallback = React.forwardRef<HTMLDivElement, ErrorFallbackProps>(
         className="flex min-h-screen items-center justify-center bg-surface-page px-4"
       >
         <div className="w-full max-w-md rounded-card border border-line-strong bg-surface-card p-8 text-center shadow-lg">
-          <h1 className="text-xl font-semibold text-content-primary">{title}</h1>
+          {/* DECISION Phase 88-29 (DEF-88-19-03, §4.2): `font-bold` (700), chosen OVER
+              leaving the shipped `font-semibold` (600). §4.2 scopes 600 to the Button
+              primitive and states it appears nowhere else in this phase's work, so a
+              20px/600 heading is a stated prohibition — and this is the one place it
+              survived, in a primitive THIS phase created and 88-09 then fanned out to
+              nine error boundaries. It was never a recorded exemption: the file's
+              `DECISION Phase 88-04 (D-20)` marker justifies keeping the two BUTTONS as
+              raw `<button>`s and says nothing about the heading's weight. It was an
+              unnoticed carry-over from the pre-phase JSX.
+
+              Fixed here, and not deferred to 88-31's residual census, because 88-29 arms
+              the phase's drift gates: a type gate that armed green over a §4.2 violation
+              inside a phase-created primitive would be exactly the vacuous gate this plan
+              exists to stop shipping. `typeScaleTouchedSurfaces.test.ts` now scans this
+              file as a fifth surface, so 600 cannot come back here quietly. */}
+          <h1 className="text-xl font-bold text-content-primary">{title}</h1>
           <p className="mt-2 text-sm text-content-secondary">
             {body ?? (
               <>

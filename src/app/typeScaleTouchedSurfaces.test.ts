@@ -38,6 +38,17 @@
  * `text-sm` has ~461 occurrences across `src/app`, and a blanket 14 -> 16 body change
  * is a re-theme, which the SPEC forbids. That residue is Req 8's census (Phase 90/92).
  * This file is headings only, on four files only.
+ *
+ * AMENDED Phase 88-29 (DEF-88-19-03) — everything above is KEPT AS 88-24'S CHARTER and is
+ * still accurate for the four pages. One FIFTH surface joined the list:
+ * `components/ui/ErrorFallback.tsx`, a primitive this phase created and fanned out to nine
+ * error boundaries, whose `<h1>` shipped at `text-xl font-semibold`. 88-29 arms the phase's
+ * drift gates, and a type gate that reported clean over a §4.2 violation inside the phase's
+ * own primitive is the vacuous-gate shape the whole plan exists to stop. The 30/700 Display
+ * assertion is scoped to `PAGE_SURFACES` for that reason — see the amendment on it.
+ *
+ * "Headings only" still holds. The 57-heading / 35-file residual census (DEF-88-24-03)
+ * remains 88-31's; this is one file, added because 88-29 fixed it.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -46,11 +57,32 @@ import { describe, expect, it } from 'vitest';
 
 const APP = path.resolve(__dirname, '.');
 
-const SURFACES = [
+/**
+ * The four PAGE surfaces 88-24 touched. Kept as its own list because one assertion below
+ * — the 30/700 Display h1 — is a rule about PAGE TITLES specifically and must not reach a
+ * primitive. See the amendment on that test.
+ */
+const PAGE_SURFACES = [
   'gameDetail/page.js',
   'groupHomePage/page.js',
   'userProfile/page.js',
   'friends/page.js',
+] as const;
+
+const SURFACES = [
+  ...PAGE_SURFACES,
+  // AMENDED Phase 88-29 (DEF-88-19-03), original four KEPT AS THE 88-24 CHARTER above:
+  // a FIFTH surface, and deliberately not one of 88-24's pages. `ErrorFallback` is a
+  // primitive THIS phase created (88-04) and 88-09 fanned out to nine error boundaries,
+  // and its `<h1>` shipped as `text-xl font-semibold` — a §4.2 prohibition living in more
+  // places than any single page. DEF-88-19-03 routed it to 88-29 precisely because a type
+  // gate armed without it would report clean over the phase's own contract being broken.
+  //
+  // This is NOT the start of DEF-88-24-03's 57-heading residual census (35 files, several
+  // needing per-site decisions — marketing display type, the four legal-page `text-4xl`
+  // titles, the `text-sm font-semibold` eyebrow labels). That stays 88-31's. This one file
+  // is here because 88-29 fixed it, and a fix with no pin is a fix that comes undone.
+  '../components/ui/ErrorFallback.tsx',
 ] as const;
 
 /** §4.1's working set, as Tailwind utilities: 14 / 16 / 20 / 30. */
@@ -136,7 +168,7 @@ function describeHeading(h: Heading): string {
 const REVIEWS_HEADING = (h: Heading) =>
   h.surface === 'gameDetail/page.js' && /^Reviews\b/.test(h.text.trim());
 
-describe('Req 2 (CD-006): the heading type scale on 88-24\'s four touched surfaces', () => {
+describe('Req 2 (CD-006): the heading type scale on 88-24\'s four touched surfaces + the ErrorFallback primitive (88-29)', () => {
   it('finds headings on every one of the four surfaces (guards a scanner that silently matches nothing)', () => {
     for (const surface of SURFACES) {
       expect(headings(surface).length, `${surface}: no headings matched`).toBeGreaterThanOrEqual(1);
@@ -223,11 +255,22 @@ describe('Req 2 (CD-006): the heading type scale on 88-24\'s four touched surfac
     ).toEqual([]);
   });
 
-  it('renders exactly one h1 per surface, at the 30/700 Display role', () => {
+  it('renders exactly one h1 per PAGE surface, at the 30/700 Display role', () => {
     // gameDetail and friends each render their h1 in several mutually-exclusive
     // branches (event view / game view; loading / error / loaded), so the assertion is
     // per-h1 rather than a count — every branch's title must be Display.
+    //
+    // AMENDED Phase 88-29 (DEF-88-19-03): scoped to the four PAGE surfaces, because the
+    // fifth surface added above is a PRIMITIVE and its `<h1>` is deliberately not a page
+    // title. `ErrorFallback` renders a 20px card heading that happens to be the only
+    // heading on a crashed boundary — `<h1>` for the document OUTLINE, 20px for the type
+    // ROLE. That is the same split `EmptyState` shipped under DEF-88-09-01, whose marker
+    // records why level and size must not be one prop ("coupling them would let a caller
+    // silently demote the 404's type by asking for the right outline"). Growing it to
+    // `text-3xl` to satisfy this assertion would be that exact demotion in reverse, on
+    // nine error boundaries at once. The Display rule is about page titles; keep it there.
     const offenders = ALL.filter((h) => h.level === 1)
+      .filter((h) => (PAGE_SURFACES as readonly string[]).includes(h.surface))
       .filter((h) => !/\btext-3xl\b/.test(h.className))
       .map(describeHeading);
     expect(
