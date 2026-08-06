@@ -174,7 +174,7 @@ export default function AvailabilityFormPage() {
     return (
       <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
-          <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -198,7 +198,7 @@ export default function AvailabilityFormPage() {
     return (
       <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
-          <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 bg-status-success-subtle rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-status-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
@@ -244,7 +244,7 @@ export default function AvailabilityFormPage() {
 
           {/* Token expiry warning */}
           {isExpiryWarning() && (
-            <div className="mt-4 border border-line rounded-btn p-2 md:p-3">
+            <div className="mt-4 bg-status-warning-subtle border border-status-warning rounded-btn p-2 md:p-3">
               <p className="text-sm text-status-warning">
                 <span className="font-medium">Heads up:</span> This link expires in {getTimeRemaining()}. Please submit your availability soon.
               </p>

@@ -172,7 +172,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
         </p>
 
         {error && (
-          <div className="mb-4 p-3 border border-line rounded-btn">
+          <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
             <p className="text-status-error text-sm">{error}</p>
           </div>
         )}

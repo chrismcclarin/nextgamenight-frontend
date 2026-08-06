@@ -372,12 +372,24 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                 </button>
 
                                 {inviteResult && (
+                                    /* DECISION Phase 88-27 (D-32 buckets A/B): only the first branch
+                                       is a censused tint row. The other two were converged anyway,
+                                       chosen OVER touching just the censused one — that would have
+                                       left `bg-amber-50 text-amber-700 border-amber-200` and
+                                       `bg-red-50 …` beside a token-based sibling, and those raw
+                                       literals are light-only values on a card that flips to
+                                       `#232d3e`, so they were already wrong in dark mode. The
+                                       IDENTICAL bulk-invite result block at friends/page.js:740-743
+                                       already uses status tokens on all three branches, so this
+                                       converges the outlier onto shipped precedent rather than
+                                       inventing a treatment. Reverting to raw palette is a
+                                       decision, not a cleanup. */
                                     <div className={`mt-2 p-3 rounded-lg text-sm font-medium ${
                                         inviteResult.failCount === 0
-                                            ? 'text-status-success border border-line'
+                                            ? 'bg-status-success-subtle text-status-success border border-status-success'
                                             : inviteResult.successCount > 0
-                                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                : 'bg-red-50 text-red-700 border border-red-200'
+                                                ? 'bg-status-warning-subtle text-status-warning border border-status-warning'
+                                                : 'bg-status-error-subtle text-status-error border border-status-error'
                                     }`}>
                                         {inviteResult.failCount === 0
                                             ? `Invited ${inviteResult.successCount} friend${inviteResult.successCount !== 1 ? 's' : ''}!`

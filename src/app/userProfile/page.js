@@ -2306,8 +2306,8 @@ function Profile(){
                         </div>
                         {importProgress && (
                             <div className={`mt-3 p-3 rounded-btn ${
-                                importProgress.status === 'error' ? 'text-status-error' :
-                                importProgress.status === 'complete' ? 'text-status-success' :
+                                importProgress.status === 'error' ? 'bg-status-error-subtle text-status-error' :
+                                importProgress.status === 'complete' ? 'bg-status-success-subtle text-status-success' :
                                 'bg-surface-card-hover text-content-link'
                             }`}>
                                 <p className="font-medium">{importProgress.message}</p>

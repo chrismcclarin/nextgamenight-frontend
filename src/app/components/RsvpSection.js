@@ -119,7 +119,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
     yes: {
       label: "You're going!",
       textColor: 'text-status-success',
-      activeBg: '',
+      activeBg: 'bg-status-success-subtle',
       activeBorder: 'border-status-success',
       hoverBg: '',
       buttonText: 'Yes',
@@ -128,7 +128,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
     maybe: {
       label: "You're a maybe",
       textColor: 'text-status-warning',
-      activeBg: '',
+      activeBg: 'bg-status-warning-subtle',
       activeBorder: 'border-status-warning',
       hoverBg: '',
       buttonText: 'Maybe',

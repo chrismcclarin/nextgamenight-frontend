@@ -201,12 +201,21 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
               type="button"
               onClick={handleInviteToGroup}
               disabled={inviteStatus === 'sending' || inviteStatus === 'sent'}
+              /* DECISION Phase 88-27 (D-32 buckets A/B/C): the neutral `border-line` STAYS on the
+                 base and each branch overrides it, chosen OVER moving the colour onto every branch
+                 (which is the other way to satisfy D-35). This is a plain template literal with no
+                 tailwind-merge, so stylesheet order decides the winner — MEASURED in a real
+                 `next build` of this app, not reasoned: `.border-line` is emitted at offset 35468
+                 and `.border-status-success/-error` at 35906/35959, i.e. AFTER, so the branch wins.
+                 88-26 hit the mirror image of this at TutorialGrid, where the neutral was emitted
+                 LAST and DID overpaint the caller. If that ordering ever flips, this reverts to a
+                 bare `border` on the base with a colour on all three branches. */
               className={`text-xs px-2 py-1 border border-line rounded-sm transition-colors ${
                 inviteStatus === 'sent'
-                  ? 'text-status-success'
+                  ? 'bg-status-success-subtle border-status-success text-status-success'
                   : inviteStatus === 'error'
-                    ? 'text-status-error'
-                    : 'text-content-link'
+                    ? 'bg-status-error-subtle border-status-error text-status-error'
+                    : 'border-line-accent text-content-link'
               }`}
               title={inviteStatus === 'sent' ? 'Invite sent!' : 'Invite this guest to join the group'}
             >
@@ -219,7 +228,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
           <button
             type="button"
             onClick={() => onToggleParticipant(index)}
-            className="text-status-error hover:text-status-error text-sm px-2 py-1 border border-line rounded-sm"
+            className="text-status-error hover:text-status-error text-sm px-2 py-1 border border-status-error rounded-sm"
             title="Remove participant"
           >
             Remove

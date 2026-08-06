@@ -478,6 +478,13 @@ export default function EventScheduler({
         className="relative h-[600px] bg-surface-card rounded-card border border-line overflow-hidden"
       >
         {dragHighlight && (
+          /* DECISION Phase 88-27 (D-32 bucket A): this drag rectangle deliberately gets NO FILL,
+             chosen OVER the bucket-A default of a `-subtle` surface token. It is a censused tint
+             site (87.7 stripped a translucent primary wash from it), but every mechanism D-33
+             allows is OPAQUE, and an opaque fill here would hide the grid cells the drag is
+             selecting — the opposite of what a selection rectangle is for. The 2px border carries
+             it alone. A translucent selection wash is the one legitimate use of alpha in the whole
+             census and is a Phase 88.3 question. Adding a fill is a decision, not a completion. */
           <div
             className="absolute pointer-events-none border-2 border-btn-primary rounded-sm z-10"
             style={{

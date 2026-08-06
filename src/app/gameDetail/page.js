@@ -32,10 +32,17 @@ import { toast } from 'sonner';
 
 // Phase 65-02: small helper that renders a colored RSVP-status indicator.
 // status is one of 'yes' | 'maybe' | 'no' | null/undefined (no response).
+// DECISION Phase 88-27 (D-32 bucket A): `yes` is the censused row (its tint was stripped by 87.7);
+// `maybe` was NOT, and was converged anyway. Chosen OVER touching only the censused branch, which
+// would have left one map of three siblings speaking two vocabularies — and the branch left behind
+// was `bg-amber-100 text-amber-700`, light-only raw-palette literals on a card that flips to
+// `#232d3e` in dark mode, i.e. already broken there. Warning is how every other surface in the app
+// renders an RSVP maybe (RsvpSection's statusConfig, rsvp/[token]'s config map). Reverting `maybe`
+// to raw amber is a decision, not a cleanup.
 function RsvpStatusPill({ status }) {
     const map = {
-        yes: { label: 'Going', cls: 'text-status-success' },
-        maybe: { label: 'Maybe', cls: 'bg-amber-100 text-amber-700' },
+        yes: { label: 'Going', cls: 'bg-status-success-subtle text-status-success' },
+        maybe: { label: 'Maybe', cls: 'bg-status-warning-subtle text-status-warning' },
         no: { label: 'No', cls: 'bg-surface-card-hover text-content-muted' },
     };
     if (!status) {
@@ -142,13 +149,17 @@ function GuestInviteButton({ groupId, userId }) {
         <button
             onClick={handleInvite}
             disabled={status === 'sending' || status === 'sent' || status === 'already'}
+            /* DECISION Phase 88-27 (D-32 buckets A/B/C): base keeps the neutral, branches override
+               it — same call, same measured cascade fact, as the marker at ParticipantRow.js:204.
+               `.border-status-*` is emitted after `.border-line` in the built stylesheet, and there
+               is no tailwind-merge on this template literal. */
             className={`text-xs px-2 py-0.5 rounded-sm border border-line transition-colors ${
                 status === 'sent'
-                    ? 'text-status-success'
+                    ? 'bg-status-success-subtle border-status-success text-status-success'
                     : status === 'already'
                         ? 'text-content-muted border-line bg-surface-page'
                         : status === 'error'
-                            ? 'text-status-error'
+                            ? 'bg-status-error-subtle border-status-error text-status-error'
                             : 'text-content-link'
             }`}
             title={
@@ -1545,7 +1556,7 @@ export default function GameDetailPage() {
                                                 onClick={() => handleRemoveClick(p)}
                                                 className={`text-xs px-2 py-1 border rounded-sm transition-colors shrink-0 ${
                                                     isConfirming
-                                                        ? 'border-status-error text-status-error font-semibold'
+                                                        ? 'bg-status-error-subtle border-status-error text-status-error font-semibold'
                                                         : 'border-line text-content-muted hover:bg-surface-card-hover'
                                                 }`}
                                             >

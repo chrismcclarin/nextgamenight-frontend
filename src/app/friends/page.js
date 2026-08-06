@@ -737,10 +737,10 @@ function FriendsPage() {
                                         {bulkInviteResult && (
                                             <div className={`mt-3 p-3 rounded-lg text-sm font-medium ${
                                                 bulkInviteResult.failCount === 0
-                                                    ? 'text-status-success border border-line'
+                                                    ? 'bg-status-success-subtle text-status-success border border-status-success'
                                                     : bulkInviteResult.successCount > 0
-                                                        ? 'text-status-warning border border-line'
-                                                        : 'text-status-error border border-line'
+                                                        ? 'bg-status-warning-subtle text-status-warning border border-status-warning'
+                                                        : 'bg-status-error-subtle text-status-error border border-status-error'
                                             }`}>
                                                 {bulkInviteResult.failCount === 0
                                                     ? `Invited ${bulkInviteResult.successCount} friend(s) to ${getSelectedGroupName()}!`
@@ -941,7 +941,7 @@ function FriendsPage() {
                                                     <p className="text-sm text-content-muted mt-0.5">{addressee.email}</p>
                                                 )}
                                             </div>
-                                            <span className="px-3 py-1 rounded-full text-xs font-semibold text-status-warning border border-line">
+                                            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-status-warning-subtle text-status-warning border border-status-warning">
                                                 Pending
                                             </span>
                                         </div>

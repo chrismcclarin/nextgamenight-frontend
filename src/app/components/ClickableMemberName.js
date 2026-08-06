@@ -250,8 +250,21 @@ export default function ClickableMemberName({ userId, username, children }) {
     // target across the old 4px gap — a tap meant for the name must never
     // send a friend request. cursor-pointer is REQUIRED for :active to fire
     // on iOS; .btn carries it (globals.css) but this bare button does not use
-    // .btn. The visible TINT is deliberately NOT added here — it is Phase
-    // 88's half of the M-15 split (SPEC R4 names the split as deliberate).
+    // .btn.
+    //
+    // DECISION Phase 88-27 (D-32/D-33): the visible TINT — Phase 88's half of
+    // the M-15 split, which the line above used to say was deliberately absent
+    // — is now `bg-surface-card-hover`, one of the three UI-SPEC §10.3
+    // exemplars. Chosen OVER `bg-surface-accent-subtle` (an amber circle under
+    // a `text-btn-primary` purple "+" — the two clash) and OVER minting a
+    // `btn-primary-subtle` token, which D-33 forbids. `bg-surface-elevated` was
+    // MEASURED and rejected: it is `#ffffff` in light mode, byte-identical to
+    // the card this control sits on, so the circle would have been invisible on
+    // exactly its own surface. The stripped `hover:`/`active:` halves are NOT
+    // re-added: the button is `md:hidden`, so hover can never fire on its
+    // audience, and 87.8-08's `active:opacity-75` at the end of this string is
+    // already the press feedback. Removing the tint re-opens M-15.
+    //
     // After a successful add, focus moves to the ⏳ Pending span that
     // replaces this button (see the focus effect near the top of the
     // component and the comment on the pending branch above).
@@ -259,7 +272,7 @@ export default function ClickableMemberName({ userId, username, children }) {
       <button
         type="button"
         onClick={handleSendRequest}
-        className="md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full text-btn-primary text-sm font-bold cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75"
+        className="md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-card-hover text-btn-primary text-sm font-bold cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75"
         aria-label={`Add ${username} as a friend`}
       >
         +

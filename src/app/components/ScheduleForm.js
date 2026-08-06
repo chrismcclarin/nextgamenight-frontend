@@ -397,14 +397,14 @@ export default function ScheduleForm({
 
           {/* Server Error (inline submit-error UI) */}
           {serverError && (
-            <div className="mb-4 p-3 border border-line rounded-btn">
+            <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
               <p role="alert" className="text-status-error text-sm">{serverError}</p>
             </div>
           )}
 
           {/* Root Error (from setError) */}
           {errors.root && (
-            <div className="mb-4 p-3 border border-line rounded-btn">
+            <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
               <p className="text-status-error text-sm">{errors.root.message}</p>
             </div>
           )}

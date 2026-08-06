@@ -385,7 +385,15 @@ const TodayDivider = forwardRef(function TodayDivider({ label }, ref) {
       aria-label={label}
       className="relative flex items-center justify-center py-2"
     >
-      <div className="absolute inset-x-0 top-1/2 border-t-2" aria-hidden="true" />
+      {/* DECISION Phase 88-27 (D-32 bucket B): the rule takes the NEUTRAL, chosen OVER
+          `border-content-link` at full strength (which is what 87.7 stripped from here, at 40%).
+          It is `aria-hidden` decoration and the pill beside it is already `bg-content-link` at
+          full strength — a 2px link-coloured line across the whole viewport would compete with the
+          thing it exists to frame. This is D-32's own "or `border-line` where the tint was purely
+          decorative" exception. It also closes a shim dependency 88-26's census could not see:
+          its lexer fires on a BARE border token, so `border-t-2` with no colour was invisible to
+          it, and 88-31 deletes that shim. Removing the colour re-opens both. */}
+      <div className="absolute inset-x-0 top-1/2 border-t-2 border-line" aria-hidden="true" />
       <span className="relative z-10 inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-content-link text-white shadow-theme-sm">
         {label}
       </span>

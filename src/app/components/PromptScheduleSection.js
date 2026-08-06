@@ -134,7 +134,7 @@ export default function PromptScheduleSection({
       );
     }
     return (
-      <span className="text-status-success rounded-full px-2 py-0.5 text-xs font-medium">
+      <span className="bg-status-success-subtle text-status-success rounded-full px-2 py-0.5 text-xs font-medium">
         {openPollCount} open {openPollCount === 1 ? 'poll' : 'polls'}
       </span>
     );
