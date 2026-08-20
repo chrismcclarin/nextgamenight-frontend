@@ -78,6 +78,15 @@ const NON_RETRYABLE_API_CODES: ReadonlyArray<string> = [
   // 88-CODE-REVIEW D2: a 409 is a terminal-state conflict — non-transient by
   // definition; as `unknown` it was pointlessly retried once.
   'conflict',
+  // 88-33 Task 2 / Fork F (owner-ruled 2026-08-20): the two group-invite 409s
+  // registered BE-side by 88-34 Task 4. The SAME 88-CODE-REVIEW D2 ruling
+  // applies — a verified-terminal 409 conflict is never retried. Without these
+  // two rows the codes classify as neither `conflict` (they carry their own
+  // envelope code) nor a listed terminal, so `shouldRetry` would retry each one
+  // once the moment the backend starts emitting them: a silent, transient-only
+  // regression of D2 that no other gate would catch.
+  'already_member',
+  'invite_pending',
 ];
 
 /**

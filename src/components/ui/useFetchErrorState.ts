@@ -60,6 +60,16 @@ const MESSAGE_BY_CODE: Record<FetchErrorCode, string> = {
   // 88-CODE-REVIEW D2 (owner-ratified copy, 2026-08-06): generic fallback for a
   // code-less 409 — surfaces override per outcome via byCode (friends, polls).
   conflict: "That can't be done — it may already be settled. Refresh to see the latest state.",
+  // 88-33 Task 2 / Fork F (owner-ruled 2026-08-20): the two group-invite 409s
+  // from 88-34's ERROR_REGISTRY. This Record is EXHAUSTIVE over ApiErrorCode by
+  // design — widening the union without adding both entries is a TS2739 build
+  // failure, and widening the Record to Partial to dodge that error is
+  // FORBIDDEN: it would destroy the exhaustiveness guarantee for every other
+  // code too. This is the GENERIC query-fallback copy; the invite surface's own
+  // richer 'Invite pending' / 'Already a member' resting states take precedence
+  // whenever that surface is showing.
+  already_member: 'This person is already a member of the group',
+  invite_pending: 'This person already has a pending invite.',
   // Phase 88.2 group-restore codes. This map is the GENERIC fallback copy for a
   // query-driven fetch; the restore page owns its own cause-split copy, which is
   // richer than anything sensible here.

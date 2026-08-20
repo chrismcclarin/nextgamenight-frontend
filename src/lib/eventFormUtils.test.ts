@@ -13,7 +13,13 @@
 
 import { describe, it, expect } from 'vitest';
 import { addWeeks, startOfWeek, subWeeks } from 'date-fns';
-import { resolveInitialHeatmapWeek } from './eventFormUtils';
+import {
+  resolveInitialHeatmapWeek,
+  createParticipant,
+  withRowIds,
+  prepareEventData,
+  remapCustomParticipantRef,
+} from './eventFormUtils';
 
 // A fixed "today" so the pins never drift with the wall clock.
 // 2026-07-25 is a Saturday; its Monday is 2026-07-20.
@@ -83,5 +89,75 @@ describe('resolveInitialHeatmapWeek — paths that must keep returning null', ()
 
   it('returns null when both are absent', () => {
     expect(resolve(null, null)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88-33 Task 2 (WI-F2) — draft row identity + winner/picked-by attribution
+// ---------------------------------------------------------------------------
+describe('withRowIds / createParticipant — stable draft identity', () => {
+  it('mints a distinct id per row and leaves existing ids alone', () => {
+    const a = createParticipant('', 'Gina', false);
+    const b = createParticipant('', 'Gina', false);
+    expect(a._rowId).toBeTruthy();
+    expect(b._rowId).toBeTruthy();
+    // Two guests with the SAME name still get different identities (fork 3).
+    expect(a._rowId).not.toBe(b._rowId);
+
+    const [kept, minted] = withRowIds([a, { username: 'Hal' }]);
+    expect(kept._rowId).toBe(a._rowId);
+    expect(minted._rowId).toBeTruthy();
+  });
+
+  it('never leaks the draft id into a submitted payload', () => {
+    const prepared = prepareEventData({
+      participants: [
+        createParticipant('user-1', 'Alice', true),
+        createParticipant('', 'Gina', false),
+      ],
+    });
+    expect(JSON.stringify(prepared)).not.toContain('_rowId');
+    expect(prepared.custom_participants[0]).not.toHaveProperty('_rowId');
+    expect(prepared.participants[0]).not.toHaveProperty('_rowId');
+  });
+});
+
+describe('remapCustomParticipantRef — attribution survives a removal + undo', () => {
+  const rows = (...names: string[]) => names.map((n) => ({ username: n, user_id: '' }));
+
+  it('rebases a custom winner reference after an EARLIER row is removed', () => {
+    // Draft: [Gina, Hal, Ivy]; the winner is Ivy at select-position 2.
+    const before = rows('Gina', 'Hal', 'Ivy');
+    const winner = `custom_2_Ivy`;
+    expect(remapCustomParticipantRef(winner, before)).toBe('custom_2_Ivy');
+
+    // Remove Hal — Ivy is now at position 1. Without the rebase the stored
+    // value matches no option and the select silently blanks the winner.
+    const afterRemove = rows('Gina', 'Ivy');
+    const rebased = remapCustomParticipantRef(winner, afterRemove);
+    expect(rebased).toBe('custom_1_Ivy');
+
+    // Undo restores Hal at his old index — and the reference comes back too.
+    const afterUndo = rows('Gina', 'Hal', 'Ivy');
+    expect(remapCustomParticipantRef(rebased, afterUndo)).toBe('custom_2_Ivy');
+  });
+
+  it('drops the reference when the referenced person is the one removed', () => {
+    expect(remapCustomParticipantRef('custom_1_Hal', rows('Gina', 'Ivy'))).toBeNull();
+  });
+
+  it('leaves a real user_id reference untouched', () => {
+    expect(remapCustomParticipantRef('user-uuid-1', rows('Gina'))).toBe('user-uuid-1');
+    expect(remapCustomParticipantRef(null, rows('Gina'))).toBeNull();
+  });
+
+  // ACCEPTED-WITH-REASON (triage A1, owner-ruled 2026-08-20). Duplicates are
+  // deliberately allowed (fork 3) and winner/picked-by attribution stays
+  // NAME-keyed, so with two same-named guests the re-link matches the FIRST
+  // occurrence. This pin exists so a future reader sees a recorded decision
+  // rather than a regression. Identity-keyed attribution is future schema work.
+  it('DOCUMENTED: with two same-named guests, attribution matches the FIRST occurrence', () => {
+    const twoGarys = rows('Gary', 'Hal', 'Gary');
+    expect(remapCustomParticipantRef('custom_2_Gary', twoGarys)).toBe('custom_0_Gary');
   });
 });

@@ -108,6 +108,15 @@ export type ApiErrorCode =
   | 'invalid_token'
   | 'gone'
   | 'conflict'
+  // 88-33 Task 2 / Fork F (owner-ruled 2026-08-20): the two group-invite 409s,
+  // registered BE-side in ERROR_REGISTRY by 88-34 Task 4 (`already_member` and
+  // `invite_pending`, both httpStatus 409, messages = the live route strings).
+  // `mapErrorToCode` passes `body.code` through VERBATIM, so a code that is not
+  // in this union lands outside `ApiErrorCode` and every downstream Record keyed
+  // on it silently misses. Both are terminal-state conflicts — see the D2 note
+  // in queryClient.ts NON_RETRYABLE_API_CODES.
+  | 'already_member'
+  | 'invite_pending'
   | 'internal'
   | 'network'
   | 'config';

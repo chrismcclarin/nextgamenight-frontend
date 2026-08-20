@@ -129,7 +129,8 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
 }
 
 function GuestInviteButton({ groupId, userId }) {
-    const [status, setStatus] = useState(null); // null | 'sending' | 'sent' | 'already' | 'error'
+    // null | 'sending' | 'sent' | 'pending' | 'member' | 'already' | 'error'
+    const [status, setStatus] = useState(null);
 
     const handleInvite = async () => {
         setStatus('sending');
@@ -139,16 +140,36 @@ function GuestInviteButton({ groupId, userId }) {
             await invitesAPI.sendParticipantInvite(groupId, userId);
             setStatus('sent');
         } catch (err) {
-            // 409 = already a pending invite / already a member — not a failure to
-            // retry, so surface it as "Already invited" rather than "Retry". [83.3 SEAM-01]
-            setStatus(err?.status === 409 ? 'already' : 'error');
+            /* DECISION Phase 88-33 Task 2 step 4b (UAT row 614, Fork F): the two 409 outcomes are
+               told APART — chosen OVER the shipped single "Already invited" collapse, which said
+               the same thing whether the person was already a member (nothing to do, ever) or had
+               an invite in flight (they just have not answered yet).
+
+               Branches on the BE envelope `code` from 88-34's ERROR_REGISTRY, with a STRING
+               fallback that stays live until that backend change merges — production will keep
+               sending code-less 409s until then, so removing the string branch before the merge
+               silently reverts this to the generic error state. The bare `status === 409` arm below
+               remains the final safety net. */
+            const code = err?.code;
+            const message = String(err?.message || '').toLowerCase();
+            if (code === 'already_member' || (!code && message.includes('already a member'))) {
+                setStatus('member');
+            } else if (code === 'invite_pending' || (!code && message.includes('pending invite'))) {
+                setStatus('pending');
+            } else if (err?.status === 409) {
+                // 409 with no recognisable code — terminal either way, so never "Retry".
+                setStatus('already');
+            } else {
+                setStatus('error');
+            }
         }
     };
+    const settled = status === 'sent' || status === 'pending' || status === 'member' || status === 'already';
 
     return (
         <button
             onClick={handleInvite}
-            disabled={status === 'sending' || status === 'sent' || status === 'already'}
+            disabled={status === 'sending' || settled}
             /* DECISION Phase 88-27 (D-32 buckets A/B/C): base keeps the neutral, branches override
                it — same call, same measured cascade fact, as the marker at ParticipantRow.js:204.
                `.border-status-*` is emitted after `.border-line` in the built stylesheet, and there
@@ -156,7 +177,7 @@ function GuestInviteButton({ groupId, userId }) {
             className={`text-xs px-2 py-0.5 rounded-sm border border-line transition-colors ${
                 status === 'sent'
                     ? 'bg-status-success-subtle border-status-success text-status-success'
-                    : status === 'already'
+                    : status === 'pending' || status === 'member' || status === 'already'
                         ? 'text-content-muted border-line bg-surface-page'
                         : status === 'error'
                             ? 'bg-status-error-subtle border-status-error hover:bg-status-error-subtle-hover text-status-error'
@@ -165,13 +186,19 @@ function GuestInviteButton({ groupId, userId }) {
             title={
                 status === 'sent'
                     ? 'Invite sent!'
-                    : status === 'already'
-                        ? 'This guest is already invited or a member'
-                        : 'Invite this guest to join the group'
+                    : status === 'pending'
+                        ? 'They already have an invite waiting — nothing more to send'
+                        : status === 'member'
+                            ? 'They are already in this group'
+                            : status === 'already'
+                                ? 'This guest is already invited or a member'
+                                : 'Invite this guest to join the group'
             }
         >
             {status === 'sending' && 'Sending...'}
             {status === 'sent' && 'Invite sent!'}
+            {status === 'pending' && 'Invite pending'}
+            {status === 'member' && 'Already a member'}
             {status === 'already' && 'Already invited'}
             {status === 'error' && 'Retry'}
             {!status && 'Invite to group'}
@@ -1242,7 +1269,7 @@ export default function GameDetailPage() {
                             )}
                         </div>
                         <div className="flex flex-wrap gap-2">
-                            {participants.slice(0, 5).map((p) => {
+                            {participants.slice(0, 5).map((p, idx) => {
                                 const member = p.user_id ? groupMembersByUserId[p.user_id] : null;
                                 // Phase 87.3-04: derive the member DB UUID (not the
                                 // sub) and look up the RSVP chip on the UUID-keyed map.
@@ -1251,8 +1278,15 @@ export default function GameDetailPage() {
                                 const status = memberUuid ? rsvpByUserId[memberUuid] : null;
                                 const isBringing = p.user_id && bringersSet.has(p.user_id);
                                 return (
+                                    /* DECISION Phase 88-33 Task 2 (UAT row 520): keyed on the
+                                       EventParticipation row id, chosen OVER the shipped
+                                       `p.user_id || custom-${p.username}` fallback. Two guests may
+                                       legitimately share a display name (fork 3 RULED duplicates
+                                       allowed, and the backend accepts them), and the name-derived
+                                       key made React duplicate/omit rows outright. Reverting to a
+                                       name key is a decision to re-break same-named guests. */
                                     <ParticipantChip
-                                        key={p.user_id || `custom-${p.username}`}
+                                        key={p.id ?? p.user_id ?? `row-${idx}`}
                                         participant={p}
                                         rsvpStatus={status}
                                         role={role}
@@ -1423,7 +1457,7 @@ export default function GameDetailPage() {
                 <Modal open={showAllParticipants} onClose={() => setShowAllParticipants(false)}>
                     <Modal.Header>Participants ({participants.length})</Modal.Header>
                     <Modal.Body className="space-y-2">
-                        {participants.map((p) => {
+                        {participants.map((p, idx) => {
                             const member = p.user_id ? groupMembersByUserId[p.user_id] : null;
                             // Phase 87.3-04: the per-member identity is the DB
                             // UUID (member.id) — feeds ALL FOUR downstream uses
@@ -1463,7 +1497,9 @@ export default function GameDetailPage() {
                             const isSelfRow = friendStatus === 'self' || isCurrentUser;
                             return (
                                 <div
-                                    key={p.user_id || `custom-${p.username}`}
+                                    /* Row-id key — see the DECISION marker on the strip's
+                                       ParticipantChip above (88-33 Task 2, UAT row 520). */
+                                    key={p.id ?? p.user_id ?? `row-${idx}`}
                                     className="flex items-center justify-between gap-3 px-3 py-2 rounded-sm border border-line bg-surface-card"
                                 >
                                     <div className="flex items-center gap-2 flex-wrap min-w-0">

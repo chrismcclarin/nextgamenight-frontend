@@ -141,6 +141,7 @@ import {
   eventBringsAPI,
   suggestionsAPI,
   invitesAPI,
+  ApiError,
 } from '@/lib/api';
 
 type Mock = ReturnType<typeof vi.fn>;
@@ -701,7 +702,7 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
     expect(await screen.findByRole('button', { name: 'Invite sent!' })).toBeInTheDocument();
   });
 
-  it('reuses the shipped 409 -> "Already invited" copy rather than an error', async () => {
+  it('falls back to the shipped 409 -> "Already invited" copy for an UNCODED conflict', async () => {
     const user = userEvent.setup();
     (invitesAPI.sendParticipantInvite as Mock).mockRejectedValue({ status: 409 });
     renderEventDetail({ role: 'owner', participants: [GUEST_WITH_ACCOUNT] });
@@ -710,6 +711,45 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
     // 409 is "already a member or already invited" — not a failure to retry.
     expect(await screen.findByRole('button', { name: 'Already invited' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  // 88-33 Task 2 step 4b (UAT row 614, Fork F): the two 409 outcomes are told
+  // apart. Both the ENVELOPE-CODE path (once 88-34 ships the ERROR_REGISTRY
+  // entries) and the STRING path (production, until that merges) are pinned —
+  // dropping the string branch early silently reverts the surface.
+  it('renders "Invite pending" for the invite_pending envelope code', async () => {
+    const user = userEvent.setup();
+    (invitesAPI.sendParticipantInvite as Mock).mockRejectedValue(
+      new ApiError('This person already has a pending invite', 'invite_pending', 409)
+    );
+    renderEventDetail({ role: 'owner', participants: [GUEST_WITH_ACCOUNT] });
+
+    await user.click(await screen.findByRole('button', { name: INVITE }));
+    expect(await screen.findByRole('button', { name: 'Invite pending' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('renders "Already a member" for the already_member envelope code', async () => {
+    const user = userEvent.setup();
+    (invitesAPI.sendParticipantInvite as Mock).mockRejectedValue(
+      new ApiError('This person is already a member of the group', 'already_member', 409)
+    );
+    renderEventDetail({ role: 'owner', participants: [GUEST_WITH_ACCOUNT] });
+
+    await user.click(await screen.findByRole('button', { name: INVITE }));
+    expect(await screen.findByRole('button', { name: 'Already a member' })).toBeInTheDocument();
+  });
+
+  it('still tells them apart from a CODE-LESS 409 (production, pre-88-34)', async () => {
+    const user = userEvent.setup();
+    (invitesAPI.sendParticipantInvite as Mock).mockRejectedValue({
+      status: 409,
+      message: 'This person already has a pending invite',
+    });
+    renderEventDetail({ role: 'owner', participants: [GUEST_WITH_ACCOUNT] });
+
+    await user.click(await screen.findByRole('button', { name: INVITE }));
+    expect(await screen.findByRole('button', { name: 'Invite pending' })).toBeInTheDocument();
   });
 });
 

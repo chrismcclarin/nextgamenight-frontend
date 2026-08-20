@@ -1,11 +1,9 @@
 'use client';
-import { useId, useState } from 'react';
-import { invitesAPI } from '../../lib/api';
+import { useId } from 'react';
 import { Input } from '@/components/ui/Input';
+import { StatusRegion } from '@/components/ui/StatusRegion';
 
-export default function ParticipantRow({ participant, index, groupMembers, onParticipantChange, onToggleParticipant, isAdmin = false, group_id = null }) {
-  const [inviteStatus, setInviteStatus] = useState(null); // null | 'sending' | 'sent' | 'error'
-  const [inviteError, setInviteError] = useState(null);
+export default function ParticipantRow({ participant, index, groupMembers, onParticipantChange, onToggleParticipant, duplicateOfName = null }) {
   /* DECISION Phase 88-21 (DEF-88-10-01): control ids come from `useId`, NOT from the `index`
      prop. Chosen OVER `participant-${index}-score`, which is the obvious shape and is what the
      surrounding code already has in hand. Index-derived ids are only unique WITHIN one list, and
@@ -17,19 +15,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
   const scoreId = `${rowId}-score`;
   const factionId = `${rowId}-faction`;
   const newPlayerId = `${rowId}-new-player`;
-
-  const handleInviteToGroup = async () => {
-    if (!participant.email || !group_id) return;
-    setInviteStatus('sending');
-    setInviteError(null);
-    try {
-      await invitesAPI.sendInvite(group_id, participant.email);
-      setInviteStatus('sent');
-    } catch (err) {
-      setInviteStatus('error');
-      setInviteError(err.message || 'Failed to send invite');
-    }
-  };
+  const hintId = `${rowId}-name-hint`;
 
   return (
     // 87.8-13 walkthrough F-3: stacked at phone width (name line + wrapping
@@ -77,12 +63,12 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
           <div className="flex items-center gap-2">
             <Input
               id={nameId}
+              name={nameId}
               type="text"
+              aria-describedby={duplicateOfName ? hintId : undefined}
               value={participant.username || ''}
               onChange={(e) => {
                 const value = e.target.value;
-                // Allow typing any name (group member or custom)
-                onParticipantChange(index, 'username', value);
 
                 // Try to find matching group member
                 const matchingMember = groupMembers.find(m =>
@@ -90,16 +76,18 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
                   m.email?.toLowerCase() === value.toLowerCase()
                 );
 
-                if (matchingMember) {
-                  // If it matches a group member, set the user_id and mark as from group
-                  onParticipantChange(index, 'user_id', matchingMember.id);
-                  // Note: We can't change isFromGroup here, but the user_id will be set
-                } else {
-                  // If it doesn't match, clear user_id (custom participant)
-                  if (participant.user_id) {
-                    onParticipantChange(index, 'user_id', '');
-                  }
-                }
+                /* DECISION Phase 88-33 Task 2 (M5, UAT row 497): ONE atomic patch, not two
+                   sequential single-field calls — on BOTH branches. The shipped shape fired
+                   `username` then `user_id` in the same tick and the parent rebuilt from a stale
+                   closure each time, so the second call clobbered the first and the completing
+                   keystroke of any member's name was permanently lost. The no-match branch
+                   double-fired too (set username + clear user_id), so it is patched here as well.
+                   Splitting this back into two calls re-opens M5 even with a functional
+                   setState upstream, because the two would still race within the tick. */
+                onParticipantChange(index, {
+                  username: value,
+                  user_id: matchingMember ? matchingMember.id : '',
+                });
               }}
               placeholder="Type name (group member or custom)"
             />
@@ -109,6 +97,20 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
               </span>
             )}
           </div>
+        )}
+        {/* Duplicate-name hint (88-33 Task 2 step 3b / triage A1). Empty-first live region so a
+            newly-typed duplicate is announced as a CHANGE rather than a fresh mount. Non-blocking
+            by design — fork 3 allows duplicates. */}
+        {!participant.isFromGroup && (
+          <StatusRegion
+            id={hintId}
+            politeness="polite"
+            className="mt-1 text-xs text-content-muted"
+          >
+            {duplicateOfName
+              ? `Heads up: there's already a participant named ${duplicateOfName}.`
+              : ''}
+          </StatusRegion>
         )}
       </div>
 
@@ -173,58 +175,52 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
           <label htmlFor={newPlayerId} className="text-xs text-content-primary">New Player</label>
         </div>
 
-        {/* Invite to group button - shown for guest participants when current user is admin/owner */}
         {/*
-          DECISION Phase 87.7 D-18 (className-string shape): the branches below used to also carry
-          `border-status-*` and `bg-status-*` opacity-modifier tokens. Those were REMOVED, not
-          rewritten. On Tailwind v3 a `/N` modifier on a `var()`-backed colour generated no class at
-          all, so these branches have always rendered with no tint and no coloured border — removal is
-          what reproduces today's rendering. Rejected: (a) dropping the `/N` to keep the base class,
-          which paints a SOLID status-coloured block — the exact regression being avoided; (b) making
-          the tints work via `color-mix`, which is a deliberate visual change and this phase forbids
-          those. The `text-status-*` tokens survive and carry the semantics. Designing the real tints
-          is PHASE 88's (it owns the design system); the full 136-site list, with the sites
-          deliberately left alone, is in the phase-87.7 planning directory, file
-          `87.7-OPACITY-CENSUS.md`. (Path written without a glob on purpose: a `star-slash` inside a
-          JSX block comment terminates it.)
-          One of exactly two markers for this ~91-line strip — see RsvpSection.js for the
-          object-literal shape. Re-adding a tint here is a decision, not a cleanup.
+          DECISION Phase 88-33 Task 2 step 4b (2026-08-20) — AMENDMENT, D-39 house style. The
+          "Invite to group" button that used to live here is DELETED, and with it the two markers
+          that documented its className. Both originals are preserved verbatim below because they
+          are cross-referenced from other files; only their SUBJECT is gone.
+
+          WHY DELETED, not wired: it was dead AND unwireable. `createEvent.js` is its only consumer
+          and never passed `isAdmin`/`group_id`, so the branch never rendered — but wiring those in
+          would not have helped: the handler called `invitesAPI.sendInvite(group_id, email)` and a
+          draft participant has NO email (Phase 83-06 PII default-deny strips participant emails
+          from every client payload), so the guard `if (!participant.email) return` could never
+          pass. A draft CUSTOM participant is also not a user at all — there is nobody to invite.
+          The live, working analogue is `GuestInviteButton` in `gameDetail/page.js`, which invites
+          by `participant_user_id` and resolves the email server-side; that is the surface UAT row
+          614 was actually walked on and the one Task 2 hardened.
+
+          ORIGINAL MARKER 1, verbatim (Phase 87.7 D-18, className-string shape): "the branches
+          below used to also carry `border-status-*` and `bg-status-*` opacity-modifier tokens.
+          Those were REMOVED, not rewritten. On Tailwind v3 a `/N` modifier on a `var()`-backed
+          colour generated no class at all, so these branches have always rendered with no tint and
+          no coloured border — removal is what reproduces today's rendering. Rejected: (a) dropping
+          the `/N` to keep the base class, which paints a SOLID status-coloured block — the exact
+          regression being avoided; (b) making the tints work via `color-mix`, which is a deliberate
+          visual change and this phase forbids those. The `text-status-*` tokens survive and carry
+          the semantics. ... One of exactly two markers for this ~91-line strip — see RsvpSection.js
+          for the object-literal shape." The census file it cites is `87.7-OPACITY-CENSUS.md` in the
+          phase-87.7 planning directory. RsvpSection.js's twin marker is UNAFFECTED and still live.
+
+          ORIGINAL MARKER 2, verbatim (Phase 88-27, D-32 buckets A/B/C): "the neutral `border-line`
+          STAYS on the base and each branch overrides it, chosen OVER moving the colour onto every
+          branch (which is the other way to satisfy D-35). This is a plain template literal with no
+          tailwind-merge, so stylesheet order decides the winner — MEASURED in a real `next build`
+          of this app, not reasoned: `.border-line` is emitted at offset 35468 and
+          `.border-status-success/-error` at 35906/35959, i.e. AFTER, so the branch wins. 88-26 hit
+          the mirror image of this at TutorialGrid, where the neutral was emitted LAST and DID
+          overpaint the caller." `gameDetail/page.js`'s GuestInviteButton marker cites THIS one by
+          file — that measured cascade fact stands on its own there and needs no edit.
+
+          Restoring an invite affordance to this row is a decision (it needs a user_id-based
+          endpoint and an admin-reachable surface), not a cleanup.
         */}
-        {/* ml-auto cluster: [Invite] + Remove wrap TOGETHER as one right-aligned
-            unit at phone width (owner refinement round 2 — a guest row's tight
-            line was stranding Remove alone below). Remove stays outermost right:
-            destructive control at the end of the row, matching the session-row
-            Edit/Delete side (owner call 2026-08-04). sm:+ keeps the original flow. */}
+        {/* ml-auto cluster: Remove wraps as one right-aligned unit at phone width (owner
+            refinement round 2 — a guest row's tight line was stranding Remove alone below).
+            Remove stays outermost right: destructive control at the end of the row, matching the
+            session-row Edit/Delete side (owner call 2026-08-04). sm:+ keeps the original flow. */}
         <div className="flex gap-2 ml-auto sm:ml-0">
-          {participant.is_guest && isAdmin && group_id && (
-            <button
-              type="button"
-              onClick={handleInviteToGroup}
-              disabled={inviteStatus === 'sending' || inviteStatus === 'sent'}
-              /* DECISION Phase 88-27 (D-32 buckets A/B/C): the neutral `border-line` STAYS on the
-                 base and each branch overrides it, chosen OVER moving the colour onto every branch
-                 (which is the other way to satisfy D-35). This is a plain template literal with no
-                 tailwind-merge, so stylesheet order decides the winner — MEASURED in a real
-                 `next build` of this app, not reasoned: `.border-line` is emitted at offset 35468
-                 and `.border-status-success/-error` at 35906/35959, i.e. AFTER, so the branch wins.
-                 88-26 hit the mirror image of this at TutorialGrid, where the neutral was emitted
-                 LAST and DID overpaint the caller. If that ordering ever flips, this reverts to a
-                 bare `border` on the base with a colour on all three branches. */
-              className={`text-xs px-2 py-1 border border-line rounded-sm transition-colors ${
-                inviteStatus === 'sent'
-                  ? 'bg-status-success-subtle border-status-success text-status-success'
-                  : inviteStatus === 'error'
-                    ? 'bg-status-error-subtle border-status-error hover:bg-status-error-subtle-hover text-status-error'
-                    : 'border-line-accent hover:bg-surface-card-hover text-content-link'
-              }`}
-              title={inviteStatus === 'sent' ? 'Invite sent!' : 'Invite this guest to join the group'}
-            >
-              {inviteStatus === 'sending' && 'Sending...'}
-              {inviteStatus === 'sent' && 'Invite sent!'}
-              {inviteStatus === 'error' && 'Retry'}
-              {!inviteStatus && 'Invite to group'}
-            </button>
-          )}
           <button
             type="button"
             onClick={() => onToggleParticipant(index)}

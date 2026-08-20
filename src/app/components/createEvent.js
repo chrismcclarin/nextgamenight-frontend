@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { gamesAPI, eventsAPI, groupsAPI, ballotAPI, availabilityAPI, promptAPI, API_BASE_URL } from '../../lib/api';
 import { format, parseISO, differenceInMinutes, startOfWeek, addWeeks, subWeeks, isSameWeek } from 'date-fns';
@@ -9,7 +9,7 @@ import EventHeatmapBackground from './EventHeatmapBackground';
 import GameComboInput from './GameComboInput';
 import QuickSuggestions from './QuickSuggestions';
 import useSwipeNavigation from './useSwipeNavigation';
-import { createParticipant, createEventForm, prepareEventData, resolveInitialHeatmapWeek } from '../../lib/eventFormUtils';
+import { createParticipant, createEventForm, prepareEventData, resolveInitialHeatmapWeek, withRowIds, remapCustomParticipantRef } from '../../lib/eventFormUtils';
 import ParticipantRow from './ParticipantRow';
 import BallotOptionsEditor from './BallotOptionsEditor';
 import EventResultFields from './EventResultFields';
@@ -19,6 +19,7 @@ import TimezoneNudgeBanner from './TimezoneNudgeBanner';
 import { Modal } from './Modal';
 import { toast } from 'sonner';
 import { Input, Textarea } from '@/components/ui/Input';
+import { StatusRegion } from '@/components/ui/StatusRegion';
 
 function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId = null }) {
   // Identity: send the caller's resolved Users.id UUID to searchAll (via the two
@@ -205,11 +206,16 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       }) || [];
       
       // If no participants from event, use all group members
-      const finalParticipants = participants.length > 0 
-        ? participants 
-        : groupMembers.map(member => 
-            createParticipant(member.id, member.username, true)
-          );
+      // withRowIds: the inline objects built above from EventParticipations do
+      // NOT come from createParticipant, so they carry no draft id — assign one
+      // here or the list silently falls back to index keys (88-33 Task 2).
+      const finalParticipants = withRowIds(
+        participants.length > 0
+          ? participants
+          : groupMembers.map(member =>
+              createParticipant(member.id, member.username, true)
+            )
+      );
 
       // Handle winner and picked_by - check if they're custom (no id, just username)
       let winner_id = null;
@@ -464,31 +470,127 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     });
   };
 
-  const handleParticipantChange = (index, field, value) => {
-    const updatedParticipants = [...newEvent.participants];
-    updatedParticipants[index] = {
-      ...updatedParticipants[index],
-      [field]: field === 'is_new_player' ? value : (value === '' ? null : value)
-    };
-    setNewEvent({...newEvent, participants: updatedParticipants});
+  /* DECISION Phase 88-33 Task 2 (M5, UAT row 497): participant edits go through FUNCTIONAL
+     setState AND accept a whole-object PATCH — chosen OVER the shipped
+     `(index, field, value)` + closure-read shape, and OVER "just" adding the updater form.
+
+     THE BUG THIS FIXES: ParticipantRow's name onChange fired TWO calls in one tick (username,
+     then user_id) and each rebuilt from the same STALE `newEvent` closure, so the second
+     clobbered the first — you could never type the last character of a member's name, and the
+     designed member re-link path was unusable. The updater form alone fixes the staleness; the
+     PATCH is what removes the two-calls-one-tick shape at its source, on BOTH branches (the
+     no-match branch double-fired too: set username + clear user_id). Reverting either half
+     re-opens M5. */
+  const handleParticipantChange = (index, fieldOrPatch, value) => {
+    const patch =
+      fieldOrPatch && typeof fieldOrPatch === 'object'
+        ? fieldOrPatch
+        : { [fieldOrPatch]: value };
+    setNewEvent(prev => {
+      const updatedParticipants = [...prev.participants];
+      const normalized = {};
+      for (const [key, raw] of Object.entries(patch)) {
+        normalized[key] = key === 'is_new_player' ? raw : (raw === '' ? null : raw);
+      }
+      updatedParticipants[index] = { ...updatedParticipants[index], ...normalized };
+      return { ...prev, participants: updatedParticipants };
+    });
   };
 
-  const toggleParticipant = (index) => {
-    // Instead of removing, we'll mark them as not participating
-    // Or we could remove them - let's remove for now
-    const updatedParticipants = newEvent.participants.filter((_, i) => i !== index);
-    // Keep at least one participant
-    if (updatedParticipants.length > 0) {
-      setNewEvent({...newEvent, participants: updatedParticipants});
+  /* DECISION Phase 88-33 Task 2 (fork 4, owner-ruled 2026-08-17): removing a draft row offers
+     UNDO — chosen OVER the two-tap gate the owner originally proposed (fork 4 explicitly rules
+     NO two-tap here) and OVER a 3-second auto-vanishing toast.
+
+     The placeholder is PERSISTENT, not timed: WCAG 2.2.1 (Timing Adjustable) is not satisfied by
+     an affordance that is only reachable inside a countdown, and the whole point is the owner's
+     "accidentally removed Bob, had to restart the modal" complaint. It clears when undone, when
+     another removal replaces it, or when the modal closes. Replacing it with a timed toast is a
+     decision, not a tidy-up. */
+  const [removedParticipant, setRemovedParticipant] = useState(null);
+  const undoButtonRef = useRef(null);
+  const pendingUndoFocus = useRef(false);
+
+  useEffect(() => {
+    if (pendingUndoFocus.current && undoButtonRef.current) {
+      pendingUndoFocus.current = false;
+      undoButtonRef.current.focus();
     }
+  }, [removedParticipant]);
+
+  const toggleParticipant = (index) => {
+    setNewEvent(prev => {
+      const removed = prev.participants[index];
+      const updatedParticipants = prev.participants.filter((_, i) => i !== index);
+      // Keep at least one participant. This guard returns WITHOUT removing, so
+      // the undo affordance must not fire either — announcing an undo for a
+      // removal that never happened is a false affordance (r3 triage).
+      if (updatedParticipants.length === 0) return prev;
+
+      setRemovedParticipant({ row: removed, index, name: removed?.username || 'Participant' });
+      pendingUndoFocus.current = true;
+      return {
+        ...prev,
+        participants: updatedParticipants,
+        // Keep winner / picked-by attribution pointing at the same PERSON: the
+        // stored `custom_<index>_<name>` embeds a position that just shifted.
+        winner_id: remapCustomParticipantRef(prev.winner_id, updatedParticipants),
+        picked_by_id: remapCustomParticipantRef(prev.picked_by_id, updatedParticipants),
+      };
+    });
+  };
+
+  const undoRemoveParticipant = () => {
+    const pending = removedParticipant;
+    if (!pending) return;
+    setNewEvent(prev => {
+      const restored = [...prev.participants];
+      // CLAMP to the current bounds — adds/removes may have happened since.
+      const at = Math.max(0, Math.min(pending.index, restored.length));
+      restored.splice(at, 0, pending.row);
+      return {
+        ...prev,
+        participants: restored,
+        winner_id: remapCustomParticipantRef(prev.winner_id, restored),
+        picked_by_id: remapCustomParticipantRef(prev.picked_by_id, restored),
+      };
+    });
+    setRemovedParticipant(null);
   };
 
   const addParticipant = () => {
-    setNewEvent({
-      ...newEvent,
-      participants: [...newEvent.participants, createParticipant("", "", false)]
-    });
+    setNewEvent(prev => ({
+      ...prev,
+      participants: [...prev.participants, createParticipant("", "", false)]
+    }));
   };
+
+  // Clear a stale undo offer whenever the modal opens/closes or the edited
+  // event changes — the row it would restore belongs to a different draft.
+  useEffect(() => {
+    setRemovedParticipant(null);
+  }, [modal, editingEvent]);
+
+  /* DECISION Phase 88-33 Task 2 step 3b (triage A1, owner-ruled 2026-08-20): a duplicate
+     participant name shows a NON-BLOCKING inline hint — chosen OVER blocking submit and OVER
+     forced differentiation (the owner's original fork-3 proposal (b)). Fork 3 RULED that
+     duplicates are allowed: an all-Garys game night is legitimate, and the backend accepts it.
+     The hint is informational only; it never gates typing or submit. Turning it into a validation
+     error is a decision, not a hardening. */
+  const duplicateNameByIndex = useMemo(() => {
+    const seen = new Map(); // lowercased name -> count
+    for (const p of newEvent.participants) {
+      const name = (p.username || '').trim().toLowerCase();
+      if (!name) continue;
+      seen.set(name, (seen.get(name) || 0) + 1);
+    }
+    return newEvent.participants.map(p => {
+      if (p.isFromGroup) return null; // read-only rows have no input to hint under
+      const raw = (p.username || '').trim();
+      const name = raw.toLowerCase();
+      if (!name) return null;
+      return (seen.get(name) || 0) > 1 ? raw : null;
+    });
+  }, [newEvent.participants]);
 
   // Derive participant count for QuickSuggestions
   const participantCount = newEvent.participants.length;
@@ -999,15 +1101,46 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             >
               {newEvent.participants.map((participant, index) => (
                 <ParticipantRow
-                  key={index}
+                  key={participant._rowId ?? index}
                   participant={participant}
                   index={index}
                   groupMembers={groupMembers}
                   onParticipantChange={handleParticipantChange}
                   onToggleParticipant={toggleParticipant}
+                  duplicateOfName={duplicateNameByIndex[index] ?? null}
                 />
               ))}
             </div>
+
+            {/* Undo-on-remove (fork 4). Persistent, not timed — see the marker on
+                toggleParticipant. Mounted right under the list so focus lands next to
+                where the row was. */}
+            <StatusRegion politeness="polite" className="sr-only">
+              {removedParticipant
+                ? `${removedParticipant.name} removed. Undo is available.`
+                : ''}
+            </StatusRegion>
+            {removedParticipant && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-sm border border-line bg-surface-page px-2 py-1.5 text-sm text-content-secondary">
+                <span>{removedParticipant.name} removed</span>
+                <button
+                  type="button"
+                  ref={undoButtonRef}
+                  onClick={undoRemoveParticipant}
+                  className="min-h-11 px-2 font-medium text-content-link underline hover:no-underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring"
+                >
+                  Undo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRemovedParticipant(null)}
+                  className="min-h-11 px-2 text-content-muted hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  aria-label={`Dismiss undo for ${removedParticipant.name}`}
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
             <button
               type="button"
               onClick={addParticipant}
