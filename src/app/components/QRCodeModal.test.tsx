@@ -52,4 +52,27 @@ describe('QRCodeModal (migrated onto <Modal size="sm">)', () => {
       screen.getAllByRole('button', { name: /close/i })
     ).toHaveLength(2);
   });
+
+  // 88-33 Task 3 (fork 6, UAT row 333). The walk sighting was that THIS modal's
+  // glyph "sits LOWER" than the fleet's: it carried the shared 44px box and the
+  // text-2xl size but NOT `leading-none`, so the glyph rode the line-box. The
+  // insets now land on the same edge the fleet header's close box does.
+  it('centers its close glyph optically and sits on the fleet header inset', () => {
+    render(
+      <QRCodeModal
+        isOpen
+        onClose={vi.fn()}
+        url="https://nextgamenight.app/invite/abc123"
+        title="Invite to group"
+      />
+    );
+    // Two controls share the name 'Close' (corner glyph + footer button); the
+    // corner one is first in DOM order.
+    const [corner] = screen.getAllByRole('button', { name: 'Close' });
+    expect(corner.className).toContain('leading-none');
+    expect(corner.className).toContain('min-h-11');
+    expect(corner.className).toContain('min-w-11');
+    expect(corner.className).toContain('right-3');
+    expect(corner.className).toContain('md:right-6');
+  });
 });

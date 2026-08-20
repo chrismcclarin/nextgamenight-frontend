@@ -133,3 +133,53 @@ describe('Modal', () => {
     expect(danger).toHaveClass('btn', 'btn-danger');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 88-33 Task 3 (fork 6, UAT rows 299/308/317/313/333) — ONE shared
+// horizontal scale across header, body and footer.
+//
+// Assertions read the COMPUTED class list off a real render, not a regex over
+// the source: the phase's anti-pattern register records 17 defective
+// grep-shaped gates, several of which passed against JSX the regex could not
+// see. A render-based pin cannot be vacuous — if the element stops existing,
+// the query throws.
+// ---------------------------------------------------------------------------
+describe('Modal padding scale (fork 6)', () => {
+  /** Walk up from the title/body text to the padded container. */
+  function headerEl() {
+    return screen.getByText('Start a check-in').parentElement as HTMLElement;
+  }
+  function bodyEl() {
+    return screen.getByText('When are you free?').parentElement as HTMLElement;
+  }
+  function footerEl() {
+    return screen.getByRole('button', { name: 'Cancel' }).parentElement as HTMLElement;
+  }
+
+  it('header, body and footer share the SAME horizontal padding at both breakpoints', () => {
+    renderModal();
+    // Body is the reference scale (88-32 ruling 6: `p-3 md:p-6`).
+    expect(bodyEl().className).toContain('p-3');
+    expect(bodyEl().className).toContain('md:p-6');
+
+    for (const el of [headerEl(), footerEl()]) {
+      expect(el.className).toContain('px-3');
+      expect(el.className).toContain('md:px-6');
+      // The old flat scale is what indented the title past the body content.
+      expect(el.className).not.toMatch(/(^|\s)px-6(\s|$)/);
+    }
+  });
+
+  it('tightens the header vertically without touching the 44px close box', () => {
+    renderModal();
+    expect(headerEl().className).toContain('py-2');
+    expect(headerEl().className).toContain('md:py-3');
+    expect(headerEl().className).not.toMatch(/(^|\s)py-5(\s|$)/);
+
+    const close = screen.getByRole('button', { name: 'Close' });
+    expect(close.className).toContain('min-h-11');
+    expect(close.className).toContain('min-w-11');
+    // Optical centering of the glyph inside the taller box.
+    expect(close.className).toContain('leading-none');
+  });
+});

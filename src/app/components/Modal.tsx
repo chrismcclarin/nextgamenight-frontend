@@ -194,8 +194,22 @@ export interface ModalHeaderProps {
 function ModalHeader({ children, className }: ModalHeaderProps) {
   return (
     <div
+      /* DECISION Phase 88-33 Task 3 (fork 6, RULED 2026-08-17; UAT rows 299/308/313): the header
+         takes the BODY's horizontal scale (`px-3 md:px-6`), chosen OVER keeping its own flat
+         `px-6` and OVER widening Body back to match the header.
+
+         THE MISALIGNMENT: header `px-6` (24px) against Body's `p-3` (12px) indented the title
+         12px past the field labels underneath it at 375px — a visible step at the top of every
+         one of the ~37 Modal.Header call sites. Fork 6 ruled ONE shared horizontal scale, fixed
+         at the primitive rather than per consumer.
+
+         VERTICAL: `py-5` (20px) is now `py-2 md:py-3`. The 44px close box — not the padding —
+         sets the header's floor (88-CODE-REVIEW D1, see the marker below), so the old 20px was
+         pure dead space at phone width. Measured header height at 375px: 85px -> 61px (44px box
+         + 2x8px padding + the 1px rule); desktop 85px -> 69px. Growing these back re-opens both
+         the alignment step and the phone-height budget. */
       className={cn(
-        'flex items-center justify-between border-b border-border px-6 py-5',
+        'flex items-center justify-between border-b border-border px-3 py-2 md:px-6 md:py-3',
         className
       )}
     >
@@ -248,8 +262,11 @@ export interface ModalFooterProps {
 function ModalFooter({ children, className }: ModalFooterProps) {
   return (
     <div
+      /* 88-33 Task 3 (fork 6): the footer rides the SAME horizontal scale as the header and
+         body — otherwise the footer's actions sit on a third, different left/right edge at
+         phone width. Vertical padding is unchanged; the footer has no 44px box driving it. */
       className={cn(
-        'flex justify-end gap-3 border-t border-border px-6 py-4',
+        'flex justify-end gap-3 border-t border-border px-3 py-4 md:px-6',
         className
       )}
     >
