@@ -298,9 +298,12 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                         </h3>
 
                         {loadingFriends || loadingMembers ? (
-                            <div className="flex items-center gap-2 text-content-muted py-6 justify-center">
-                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent" />
-                                <span>Loading...</span>
+                            /* 88-33 Task 1: generic "Loading..." named per the walk's
+                               in-page-loading-states row — the heading above says what section
+                               this is, but the status itself said nothing to a screen reader. */
+                            <div role="status" aria-label="Loading your friends" className="flex items-center gap-2 text-content-muted py-6 justify-center">
+                                <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent" />
+                                <span>Loading your friends...</span>
                             </div>
                         ) : availableFriends.length === 0 ? (
                             <div className="text-center py-6">
@@ -359,10 +362,11 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                 <button
                                     onClick={handleBulkInvite}
                                     disabled={selectedFriends.size === 0 || inviting}
+                                    aria-busy={inviting || undefined}
                                     className="w-full btn btn-primary py-2.5 flex items-center justify-center gap-2"
                                 >
                                     {inviting && (
-                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                                        <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
                                     )}
                                     {inviting
                                         ? 'Sending...'
@@ -487,9 +491,9 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                     Share QR Code
                                 </h3>
                                 {tokenLoading ? (
-                                    <div className="flex items-center gap-2 text-content-muted py-6 justify-center">
-                                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent" />
-                                        <span>Loading...</span>
+                                    <div role="status" aria-label="Loading QR code" className="flex items-center gap-2 text-content-muted py-6 justify-center">
+                                        <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent" />
+                                        <span>Loading QR code...</span>
                                     </div>
                                 ) : inviteUrl ? (
                                     <div className="flex flex-col items-center">

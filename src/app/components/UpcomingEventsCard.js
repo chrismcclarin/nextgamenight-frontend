@@ -147,7 +147,17 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
       <h3 className="font-medium text-content-primary">Upcoming Events</h3>
 
       {loading ? (
-        <p className="text-sm text-content-muted mt-2">Loading...</p>
+        /* 88-33 Task 1 (M1's in-page-spinner class, walk row "In-page loading states name
+           what is loading"): a named status, not a bare "Loading..." — the accessible name
+           is what a screen-reader user gets, and the walk's "empty main" readings came from
+           accessibility trees with nothing in them. */
+        <p
+          role="status"
+          aria-label="Loading your upcoming events"
+          className="text-sm text-content-muted mt-2"
+        >
+          Loading your upcoming events...
+        </p>
       ) : errorState?.showError ? (
         /* DECISION Phase 88-18 (Req 6 / T-88-18-01): a failed events fetch renders the shared
            error treatment here, checked BEFORE the empty branch. The parent used to swallow the

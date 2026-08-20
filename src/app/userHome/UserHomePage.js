@@ -96,6 +96,25 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
         refetch: retryUpcoming,
     });
 
+    /* DECISION Phase 88-33 Task 1 (M2, walk 2026-08-13 test 9): an UNRESOLVED identity counts as
+       an in-flight upcoming-events load, chosen OVER passing the raw `upcomingLoading` (the
+       shipped shape) and OVER giving the card its own identity awareness.
+
+       THE BUG THIS FIXES: `upcomingLoading` initialises to false and the fetch effect above
+       early-returns at `if (!selfUuid) return;` BEFORE it ever calls setUpcomingLoading(true) —
+       so for the whole identity-resolution window the card was handed
+       `loading=false, events=[], showError=false` and rendered "Nothing on the calendar" at
+       someone whose calendar had not been fetched at all. With the backend up that lie lasts a
+       few hundred ms; with it unreachable the window is ~60s (two BFF proxy attempts, each
+       bounded by PROXY_TIMEOUT_MS=30_000 in app/api/[...path]/route.ts, plus shouldRetry's one
+       retry) — the walk's "60+s". Same class as grouplist's WR-03 stuck spinner, one state over:
+       that one HUNG on terminal failure, this one LIED while pending.
+
+       ML-17's terminal branch below is deliberately checked FIRST and is unaffected: a resolved
+       identity FAILURE degrades to the banner, an unresolved identity reads as loading. Passing
+       `upcomingLoading` back in is a decision to restore the lie, not a simplification. */
+    const upcomingPending = upcomingLoading || (!selfUuid && !selfIdentityErrorState.showError);
+
     const handleGroupSelect = (group) => {
         setSelectedGroup(group);
         setInvitePanelOpen(true);
@@ -185,7 +204,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                            the owner at 88-18's checkpoint. */
                         <UpcomingEventsCard
                             events={upcomingEvents}
-                            loading={upcomingLoading}
+                            loading={upcomingPending}
                             showGroupName={true}
                             viewerDbUserId={selfUuid ?? null}
                             errorState={upcomingErrorState}

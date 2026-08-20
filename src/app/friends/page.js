@@ -7,6 +7,12 @@ import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+// 88-33 Task 1 (r3 triage): this page's fetchers run through a raw
+// Promise.allSettled, NOT react-query, so they bypass the global
+// QueryCache.onError hook entirely and their failures never reached Sentry.
+// Reporting through the SAME exported function keeps the entity/scope tagging
+// and the T-84-05 PII rules identical to every query-driven report.
+import { queryCacheOnError } from '../../lib/queryClient';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Input, SelectControl } from '../../components/ui/Input';
@@ -59,6 +65,10 @@ function FriendsPage() {
     const [friendsLoadError, setFriendsLoadError] = useState(null);
     const [removeError, setRemoveError] = useState(null);
     const [sentError, setSentError] = useState(null);
+    // 88-33 Task 1: the groups fetch used to swallow its failure into
+    // `setRawGroups([])`, which silently emptied the invite bar and read as
+    // "you administer no groups". Same empty-vs-failed split as the two above.
+    const [groupsError, setGroupsError] = useState(null);
 
     // Action loading state
     const [actionLoading, setActionLoading] = useState({});
@@ -105,14 +115,34 @@ function FriendsPage() {
 
     const fetchUserGroups = async () => {
         if (!selfUuid) return;
+        setGroupsError(null);
         try {
             const groups = await groupsAPI.getUserGroups(selfUuid);
             setRawGroups(Array.isArray(groups) ? groups : []);
         } catch (err) {
             console.error('Error fetching user groups:', err);
+            queryCacheOnError(err, { queryKey: ['groups', 'user'] });
+            // Keep the ERROR object (88-14 idiom): useFetchErrorState reads
+            // `ApiError.code` off it to pick the right user-facing copy.
+            setGroupsError(
+                err instanceof Error ? err : new Error("The groups request didn't complete.")
+            );
             setRawGroups([]);
         }
     };
+
+    /* Adapter onto the shared fetch-error pair, identical in shape to
+       `friendsErrorState` below (88-14). `refetch` must be STABLE. */
+    const fetchGroupsRef = useRef(null);
+    useEffect(() => {
+        fetchGroupsRef.current = fetchUserGroups;
+    });
+    const retryGroups = useCallback(() => fetchGroupsRef.current?.(), []);
+    const groupsErrorState = useFetchErrorState({
+        isError: Boolean(groupsError),
+        error: groupsError,
+        refetch: retryGroups,
+    });
 
     // Admin-group derive runs in its own effect keyed on [rawGroups, selfUuid]
     // (grouplist.js pattern): the mount fetch fires before selfUuid resolves,
@@ -136,6 +166,7 @@ function FriendsPage() {
             setFriends(Array.isArray(data) ? data : []);
         } catch (err) {
             console.error('Error fetching friends:', err);
+            queryCacheOnError(err, { queryKey: ['friendships', 'accepted'] });
             // Keep the ERROR, not a flattened string: useFetchErrorState reads
             // `ApiError.code` off it to pick the right user-facing copy.
             // Wording matches the 88-18 register ("The X request didn't complete.") used by
@@ -185,6 +216,7 @@ function FriendsPage() {
             setSentRequests(Array.isArray(data) ? data : []);
         } catch (err) {
             console.error('Error fetching sent requests:', err);
+            queryCacheOnError(err, { queryKey: ['friendships', 'sent'] });
             // Keep the ERROR object, not a flattened string: useFetchErrorState reads
             // `ApiError.code` off it to pick the right user-facing copy.
             setSentError(
@@ -477,7 +509,10 @@ function FriendsPage() {
     if (authLoading) {
         return (
             <div className="min-h-screen bg-surface-page flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-btn-primary" />
+                <div role="status" aria-label="Signing you in" className="flex items-center gap-2 text-content-secondary">
+                    <div aria-hidden="true" className="animate-spin rounded-full h-8 w-8 border-b-2 border-btn-primary" />
+                    <span className="sr-only">Signing you in...</span>
+                </div>
             </div>
         );
     }
@@ -519,10 +554,46 @@ function FriendsPage() {
         );
     }
 
+    /* DECISION Phase 88-33 Task 1 (M1, walk 2026-08-13 test 9): while identity is still
+       UNRESOLVED, a page-data failure that has ALREADY happened outranks the identity spinner —
+       chosen OVER leaving the `!selfUuid` spinner as the unconditional gate (the shipped shape),
+       and OVER dropping the D-09 gate altogether.
+
+       THE BUG THIS FIXES: the friends + sent fetchers fire on `[user]`, not on identity, so with
+       the backend unreachable they fail within a tick and `friendsErrorState.showError` is already
+       true — but the bare `!selfUuid` spinner rendered above them, so nothing that already knew
+       the backend was down could reach the screen. The window is not milliseconds: every attempt
+       goes through the BFF proxy, whose own PROXY_TIMEOUT_MS is 30_000
+       (app/api/[...path]/route.ts:22), and `shouldRetry` grants one retry — which is the walk's
+       "observed 30-60s" / "60+s" of blank page, not a missing terminal state.
+
+       D-09 IS PRESERVED, not weakened: this branch renders NO friend↔friend classification — no
+       list, no tabs, no search results — only the shell plus the error surface. The gate's rule is
+       "never render a mixed/partial list before the caller's UUID resolves"; telling someone the
+       load failed is not a partial list. Re-collapsing this into the spinner is a decision to
+       restore a silent blank page, not a simplification. */
+    if (!selfUuid && (friendsErrorState.showError || sentErrorState.showError)) {
+        return (
+            <div className="min-h-screen bg-surface-page">
+                <div className="max-w-3xl mx-auto px-4 py-8">
+                    <h1 className="text-3xl font-bold text-content-primary mb-6">Friends</h1>
+                    <FetchErrorBanner
+                        state={friendsErrorState.showError ? friendsErrorState : sentErrorState}
+                        title="Couldn't load your friends"
+                        reportContext="friends page — page data failed while identity was still resolving"
+                    />
+                </div>
+            </div>
+        );
+    }
+
     if (!selfUuid) {
         return (
             <div className="min-h-screen bg-surface-page flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-btn-primary" />
+                <div role="status" aria-label="Loading your friends" className="flex items-center gap-2 text-content-secondary">
+                    <div aria-hidden="true" className="animate-spin rounded-full h-8 w-8 border-b-2 border-btn-primary" />
+                    <span className="sr-only">Loading your friends...</span>
+                </div>
             </div>
         );
     }
@@ -568,8 +639,8 @@ function FriendsPage() {
 
                     {/* Search Result */}
                     {searching && (
-                        <div className="mt-4 flex items-center gap-2 text-content-secondary">
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-btn-primary" />
+                        <div role="status" aria-label="Searching for that email address" className="mt-4 flex items-center gap-2 text-content-secondary">
+                            <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-btn-primary" />
                             <span>Searching...</span>
                         </div>
                     )}
@@ -685,6 +756,15 @@ function FriendsPage() {
                         {removeError && (
                             <p role="alert" className="text-status-error text-sm mb-4">{removeError}</p>
                         )}
+                        {/* 88-33 Task 1: the groups fetch feeds ONLY the invite-to-group bar, which is
+                            itself gated on `userGroups.length > 0` — so a swallowed failure was
+                            indistinguishable from "you administer no groups". Compact degrade notice:
+                            the friends list beside it is intact, so this must not blank it. */}
+                        {groupsErrorState.showError && (
+                            <div className="mb-4">
+                                <FetchErrorBanner state={groupsErrorState} compact />
+                            </div>
+                        )}
                         {/* DECISION Phase 88-14 (Req 6 / Req 14, UI-SPEC §9.2): empty and failed-to-load
                             are SEPARATE, mutually exclusive branches here. Before this, a failed fetch
                             left `friends` at [] and fell through to the empty copy, so a network failure
@@ -693,8 +773,8 @@ function FriendsPage() {
                             failure gets the error banner with its retry. Collapsing these back into one
                             branch is a decision to re-introduce that lie, not a simplification. */}
                         {loadingFriends ? (
-                            <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
-                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
+                            <div role="status" aria-label="Loading your friends" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
+                                <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading friends...</span>
                             </div>
                         ) : friendsErrorState.showError ? (
@@ -736,10 +816,14 @@ function FriendsPage() {
                                             <button
                                                 onClick={handleBulkInvite}
                                                 disabled={!selectedGroupId || selectedFriends.size === 0 || bulkInviteLoading}
+                                                aria-busy={bulkInviteLoading || undefined}
                                                 className="btn btn-primary px-4 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                                             >
                                                 {bulkInviteLoading && (
-                                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                                                    <>
+                                                        <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                                                        <span className="sr-only">Sending invites...</span>
+                                                    </>
                                                 )}
                                                 Invite to Group
                                             </button>
@@ -750,8 +834,8 @@ function FriendsPage() {
                                             )}
                                         </div>
                                         {groupMembersLoading && (
-                                            <div className="mt-2 flex items-center gap-2 text-xs text-content-muted">
-                                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-content-muted" />
+                                            <div role="status" aria-label="Loading group members" className="mt-2 flex items-center gap-2 text-xs text-content-muted">
+                                                <div aria-hidden="true" className="animate-spin rounded-full h-3 w-3 border-b-2 border-content-muted" />
                                                 <span>Loading group members...</span>
                                             </div>
                                         )}
@@ -879,8 +963,8 @@ function FriendsPage() {
                 {activeTab === 'requests' && (
                     <div>
                         {friendshipCtxLoading ? (
-                            <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
-                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
+                            <div role="status" aria-label="Loading your friend requests" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
+                                <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading requests...</span>
                             </div>
                         ) : receivedRequests.length === 0 ? (
@@ -941,8 +1025,8 @@ function FriendsPage() {
                             is checked BEFORE the empty branch and that order is load-bearing: an
                             errored fetch also has zero requests. */}
                         {loadingSent ? (
-                            <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
-                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
+                            <div role="status" aria-label="Loading your sent requests" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
+                                <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading sent requests...</span>
                             </div>
                         ) : sentErrorState.showError ? (
