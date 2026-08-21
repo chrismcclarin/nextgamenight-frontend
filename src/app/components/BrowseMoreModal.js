@@ -188,14 +188,40 @@ export default function BrowseMoreModal({
   return (
     <Modal open={open} onClose={onClose} size="lg">
       <Modal.Header>Browse games</Modal.Header>
-      <Modal.Body className="p-0">
+      <Modal.Body className="p-0 md:p-0">
         {/* Filter / sort row — pinned over the scrolling grid */}
         <div
           data-testid="browse-more-controls"
           className="sticky top-0 z-10 bg-card px-4 pt-3 pb-3 border-b border-line"
         >
           <div className="flex flex-wrap items-center gap-3">
-            {/* Player-count stepper */}
+            {/* Player-count stepper.
+
+                DECISION Phase 88-17 (D-36, UI-SPEC §3.2 exception 2): these TWO
+                buttons — and only these two in the whole app — carry
+                `btn-compact`, the opt-out from the phone-width 44px `.btn` floor
+                that plan 88-01 added at globals.css. They are square by design
+                (32x32); under the floor they would stretch into 32x44 lozenges,
+                and that deformation is the exact reason a blanket all-viewport
+                floor was REJECTED in 87.8. Every other compact `.btn` row in the
+                app deliberately takes the floor and grows ~7px: their
+                `text-xs px-3 py-1` utilities were measured DEAD against the
+                unlayered `.btn` rule, so they do not double in height.
+
+                THE MECHANISM IS THE LOAD-BEARING PART. The opt-out is the
+                unlayered `.btn-compact` class, chosen OVER a Tailwind
+                minimum-height-zero utility at this call site. That utility
+                CANNOT work here: `.btn` and its floor are unlayered author
+                rules, and an unlayered rule beats every `@layer utilities` rule
+                regardless of specificity — the utility would silently do
+                nothing, which is the same cascade defect this repo has already
+                hit twice (87.8 DEC-2 and DEC-3, both recorded in globals.css).
+                Swapping this class for a Tailwind utility is a decision, not a
+                cleanup, and it is a decision that loses.
+
+                Phone geometry for this pair is covered by plan 88-30's e2e
+                extension, not by a unit test — the floor only exists below
+                48rem, and jsdom has no viewport. */}
             <div className="flex items-center gap-1" title="Player count">
               <button
                 type="button"
@@ -203,12 +229,14 @@ export default function BrowseMoreModal({
                   setPlayerCount((p) => Math.max(1, (p || 1) - 1))
                 }
                 disabled={decrementDisabled}
-                className="btn btn-secondary w-8 h-8 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn btn-compact btn-secondary w-8 h-8 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                 aria-label="Decrease player count"
               >
                 −
               </button>
               <input
+                id="bm-player-count"
+                name="bm-player-count"
                 type="number"
                 min="1"
                 value={playerCount === '' || playerCount == null ? '' : playerCount}
@@ -221,13 +249,25 @@ export default function BrowseMoreModal({
                   const v = parseInt(raw, 10);
                   setPlayerCount(Number.isNaN(v) ? '' : Math.max(1, v));
                 }}
-                className="w-16 text-center p-1 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
+                /* DECISION Phase 88-21 (Req 1): `text-base` is added IN PLACE here rather than
+                   adopting the `Input` primitive — the one deliberate non-adoption in this
+                   sweep, and it applies to both controls in this toolbar. The primitive carries
+                   `max-md:min-h-11`, and THESE ARE THE EXACT CONTROLS 87.8 CITED when it rejected
+                   a blanket height floor: this box sits between two `w-8 h-8` (32px) stepper
+                   buttons, so growing it to 44px at phone leaves a square-button/tall-box row
+                   that reads as broken. 88-SPEC.md:111 requires the height floor be decided
+                   against a call-site census, "never a blanket rule with no census", and that
+                   census is DEF-88-20-01's, not this plan's. Req 1 is the 16px TEXT floor, which
+                   is what changes here; the touch-target question stays with its owner.
+                   Swapping this for the bare primitive is a decision, not a cleanup. */
+                className="w-16 text-center p-1 border border-line rounded-btn text-content-primary bg-surface-input text-base"
                 aria-label="Player count"
               />
               <button
                 type="button"
                 onClick={() => setPlayerCount((p) => (p || 0) + 1)}
-                className="btn btn-secondary w-8 h-8 flex items-center justify-center"
+                /* btn-compact: see the D-36 marker on the decrement twin above. */
+                className="btn btn-compact btn-secondary w-8 h-8 flex items-center justify-center"
                 aria-label="Increase player count"
               >
                 +
@@ -272,9 +312,12 @@ export default function BrowseMoreModal({
               </label>
               <select
                 id="bm-sort"
+                name="bm-sort"
                 value={sortKey}
                 onChange={handleSortKeyChange}
-                className="p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm"
+                /* `text-base` in place, not the primitive — same reason as the player-count
+                   box above: this select's row-mates are `px-2 py-1` toggles. See that marker. */
+                className="p-2 border border-line rounded-btn text-content-primary bg-surface-input text-base"
               >
                 <option value="rating">Best fit</option>
                 <option value="complexity">Complexity</option>

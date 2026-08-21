@@ -5,6 +5,7 @@ import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay, differenceInMinutes, setHours, setMinutes, addMinutes, addDays, getHours, getMinutes } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { calendarWashColor, CALENDAR_WASH_RAMP } from '../../lib/availabilityColor';
 import HeatmapTooltip from './HeatmapTooltip';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
@@ -353,15 +354,13 @@ export default function EventScheduler({
     const slot = heatmapLookup.get(key);
     const count = slot?.availableCount || 0;
 
-    let bgColor = undefined;
-    if (totalMembers > 0 && count > 0) {
-      const ratio = count / totalMembers;
-      // Green availability gradient -- status indicator, intentionally green
-      if (ratio <= 0.25) bgColor = 'rgba(34, 197, 94, 0.15)';
-      else if (ratio <= 0.5) bgColor = 'rgba(34, 197, 94, 0.25)';
-      else if (ratio <= 0.75) bgColor = 'rgba(34, 197, 94, 0.4)';
-      else bgColor = 'rgba(34, 197, 94, 0.55)';
-    }
+    // DECISION Phase 88-23 DES-02: the canonical 5-step availability ramp, applied here as the
+    // TRANSLUCENT `calendarWashColor` variant rather than the opaque `mergedCellColor` the grids
+    // use — this shading sits BEHIND gridlines and event blocks and must not cover them. The
+    // ladder is derived from the canonical green-100..500 values in one place; see the full
+    // rationale and derivation on `calendarWashColor` in src/lib/availabilityColor.ts. Do not
+    // reinline a private ramp here, and do not "unify" this onto the opaque one as a cleanup.
+    const bgColor = calendarWashColor(count, totalMembers);
 
     return {
       style: {
@@ -479,6 +478,13 @@ export default function EventScheduler({
         className="relative h-[600px] bg-surface-card rounded-card border border-line overflow-hidden"
       >
         {dragHighlight && (
+          /* DECISION Phase 88-27 (D-32 bucket A): this drag rectangle deliberately gets NO FILL,
+             chosen OVER the bucket-A default of a `-subtle` surface token. It is a censused tint
+             site (87.7 stripped a translucent primary wash from it), but every mechanism D-33
+             allows is OPAQUE, and an opaque fill here would hide the grid cells the drag is
+             selecting — the opposite of what a selection rectangle is for. The 2px border carries
+             it alone. A translucent selection wash is the one legitimate use of alpha in the whole
+             census and is a Phase 88.3 question. Adding a fill is a decision, not a completion. */
           <div
             className="absolute pointer-events-none border-2 border-btn-primary rounded-sm z-10"
             style={{
@@ -532,11 +538,14 @@ export default function EventScheduler({
       {totalMembers > 0 && (
         <div className="flex items-center gap-2 text-xs text-content-muted">
           <span>Availability:</span>
+          {/* Swatches render FROM the exported ramp, never hand-copied literals -- a legend with
+              its own copy of the colours is free to desync from the ramp it describes, and no
+              lint or grep gate can see that (the previous 4-swatch legend was correct only by
+              coincidence of maintenance). Five swatches because the ramp has five steps. */}
           <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-xs" style={{ backgroundColor: 'rgba(34, 197, 94, 0.15)' }} />
-            <div className="w-3 h-3 rounded-xs" style={{ backgroundColor: 'rgba(34, 197, 94, 0.25)' }} />
-            <div className="w-3 h-3 rounded-xs" style={{ backgroundColor: 'rgba(34, 197, 94, 0.4)' }} />
-            <div className="w-3 h-3 rounded-xs" style={{ backgroundColor: 'rgba(34, 197, 94, 0.55)' }} />
+            {CALENDAR_WASH_RAMP.map((color) => (
+              <div key={color} className="w-3 h-3 rounded-xs" style={{ backgroundColor: color }} />
+            ))}
           </div>
           <span>More available</span>
         </div>

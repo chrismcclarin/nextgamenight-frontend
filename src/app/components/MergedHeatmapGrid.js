@@ -122,9 +122,21 @@ export default function MergedHeatmapGrid({ slots = [], totalMembers, selectedSl
             key={dateStr}
             // The today-column header tint (an accent slash-opacity utility from Phase 59-05,
             // inert on v3's var()-backed tokens) was stripped by 87.7 D-18 — v4 would have
-            // started rendering it, a new visual. Phase 88 owns designing a real tint; census
-            // in 87.7-OPACITY-CENSUS.md. (Utility described, not named — DI-87.7-08 rule.)
-            className="bg-surface-card p-2 text-center"
+            // started rendering it, a new visual. Census in 87.7-OPACITY-CENSUS.md.
+            //
+            // DECISION Phase 88-27 (D-32 bucket A): Phase 88 designed it, and it is one of the
+            // three UI-SPEC §10.3 exemplars. The two backgrounds are MUTUALLY EXCLUSIVE branches
+            // of one ternary, chosen OVER the shape this line used to have — a static
+            // `bg-surface-card` with the tint appended in an interpolation. That shape would have
+            // rendered NOTHING: there is no tailwind-merge on this template literal, so stylesheet
+            // order decides, and MEASURED in a real `next build` of this app
+            // `.bg-surface-accent-subtle` is emitted at offset 38992 and `.bg-surface-card` at
+            // 39065 — the plain card wins and the tint is silently dropped. (88-26 hit the mirror
+            // image of this at TutorialGrid, where the neutral was the one emitted last.)
+            // Collapsing these back into one static class plus an interpolated tint is a decision
+            // that turns the tint off, not a simplification. `isTodayDate` also drives the day
+            // number's `text-accent` five lines down; the two must agree.
+            className={`p-2 text-center ${isTodayDate ? 'bg-surface-accent-subtle' : 'bg-surface-card'}`}
           >
             <div className="text-xs font-semibold text-content-secondary">
               {DAY_LABELS[idx]}
@@ -191,7 +203,7 @@ export default function MergedHeatmapGrid({ slots = [], totalMembers, selectedSl
                   tooltipContent={tooltipContent}
                   tone={tone}
                   fill={false}
-                  className={`min-h-11 min-w-11 flex flex-col items-center justify-center cursor-pointer active:opacity-75 transition-shadow rounded-xs ${selectionRing}`}
+                  className={`min-h-11 min-w-11 flex flex-col items-center justify-center cursor-pointer active:opacity-75 transition-shadow rounded-xs focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${selectionRing}`}
                 >
                   <span className="text-sm font-semibold leading-none">{availableCount}</span>
                 </ReadCell>

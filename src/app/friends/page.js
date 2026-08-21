@@ -1,12 +1,21 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { friendshipsAPI, groupsAPI, invitesAPI } from '../../lib/api';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
-import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+// 88-33 Task 1 (r3 triage): this page's fetchers run through a raw
+// Promise.allSettled, NOT react-query, so they bypass the global
+// QueryCache.onError hook entirely and their failures never reached Sentry.
+// Reporting through the SAME exported function keeps the entity/scope tagging
+// and the T-84-05 PII rules identical to every query-driven report.
+import { queryCacheOnError } from '../../lib/queryClient';
+import { useConfirmAction } from '../../components/ui/useConfirmAction';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Input, SelectControl } from '../../components/ui/Input';
 
 function FriendsPage() {
     const { user, isLoading: authLoading } = useUser();
@@ -28,6 +37,10 @@ function FriendsPage() {
         acceptRequest: ctxAcceptRequest,
         declineRequest: ctxDeclineRequest,
         loading: friendshipCtxLoading,
+        // 88-33 Task 9 (UAT row 553): the provider-wide refresh — called after a
+        // successful unfriend so friend pills EVERYWHERE update without a manual
+        // reload (the local optimistic filter below only fixes THIS page's list).
+        refreshFriendships,
     } = useFriendshipStatus();
 
     // Tab state
@@ -49,9 +62,17 @@ function FriendsPage() {
     const [requestSent, setRequestSent] = useState(false);
     const [sendingRequest, setSendingRequest] = useState(false);
 
-    // Error state
-    const [friendsError, setFriendsError] = useState(null);
+    // Error state. `friendsLoadError` is the FETCH failure (the whole list is
+    // unavailable); `removeError` is an ACTION failure with the list still
+    // intact. They render as different things — see the DECISION marker on the
+    // Friends tab below.
+    const [friendsLoadError, setFriendsLoadError] = useState(null);
+    const [removeError, setRemoveError] = useState(null);
     const [sentError, setSentError] = useState(null);
+    // 88-33 Task 1: the groups fetch used to swallow its failure into
+    // `setRawGroups([])`, which silently emptied the invite bar and read as
+    // "you administer no groups". Same empty-vs-failed split as the two above.
+    const [groupsError, setGroupsError] = useState(null);
 
     // Action loading state
     const [actionLoading, setActionLoading] = useState({});
@@ -98,14 +119,34 @@ function FriendsPage() {
 
     const fetchUserGroups = async () => {
         if (!selfUuid) return;
+        setGroupsError(null);
         try {
             const groups = await groupsAPI.getUserGroups(selfUuid);
             setRawGroups(Array.isArray(groups) ? groups : []);
         } catch (err) {
             console.error('Error fetching user groups:', err);
+            queryCacheOnError(err, { queryKey: ['groups', 'user'] });
+            // Keep the ERROR object (88-14 idiom): useFetchErrorState reads
+            // `ApiError.code` off it to pick the right user-facing copy.
+            setGroupsError(
+                err instanceof Error ? err : new Error("The groups request didn't complete.")
+            );
             setRawGroups([]);
         }
     };
+
+    /* Adapter onto the shared fetch-error pair, identical in shape to
+       `friendsErrorState` below (88-14). `refetch` must be STABLE. */
+    const fetchGroupsRef = useRef(null);
+    useEffect(() => {
+        fetchGroupsRef.current = fetchUserGroups;
+    });
+    const retryGroups = useCallback(() => fetchGroupsRef.current?.(), []);
+    const groupsErrorState = useFetchErrorState({
+        isError: Boolean(groupsError),
+        error: groupsError,
+        refetch: retryGroups,
+    });
 
     // Admin-group derive runs in its own effect keyed on [rawGroups, selfUuid]
     // (grouplist.js pattern): the mount fetch fires before selfUuid resolves,
@@ -123,17 +164,53 @@ function FriendsPage() {
 
     const fetchFriends = async () => {
         setLoadingFriends(true);
-        setFriendsError(null);
+        setFriendsLoadError(null);
         try {
             const data = await friendshipsAPI.getFriends();
             setFriends(Array.isArray(data) ? data : []);
         } catch (err) {
             console.error('Error fetching friends:', err);
-            setFriendsError('Failed to load friends.');
+            queryCacheOnError(err, { queryKey: ['friendships', 'accepted'] });
+            // Keep the ERROR, not a flattened string: useFetchErrorState reads
+            // `ApiError.code` off it to pick the right user-facing copy.
+            // Wording matches the 88-18 register ("The X request didn't complete.") used by
+            // grouplist.js / GroupLibrary.js. This string is never shown — a non-ApiError
+            // resolves to code `unknown` and useFetchErrorState renders the designed copy for
+            // that code — but Req 14's negative gate is a plain grep, so the phrasing matters.
+            setFriendsLoadError(
+                err instanceof Error ? err : new Error("The friends request didn't complete.")
+            );
         } finally {
             setLoadingFriends(false);
         }
     };
+
+    /* DECISION Phase 88-14 (Req 6 / Req 14, UI-SPEC §9.2): the friends-list fetch failure is
+       ADAPTED onto the shipped `useFetchErrorState` + `FetchErrorBanner` pair by handing the hook
+       a minimal query-shaped object, chosen OVER the two alternatives.
+
+       REJECTED 1 — migrating `fetchFriends` to TanStack so a real `UseQueryResult` exists. That is
+       a data-layer change on a surface this phase is only re-skinning; it would also move the
+       friends list out from under the page's own D-09 identity gate. Out of scope by size, not by
+       merit — if the page is ever migrated, delete this adapter and pass the query.
+       REJECTED 2 — hand-rolling a second error look on this one tab. That is precisely the
+       divergence Req 14 exists to remove; the identity gate a few lines up already uses the banner.
+
+       The adapter is contract-backed, not a shim around a private API: `useFetchErrorState`
+       documents that it reads ONLY `isError`/`error`/`refetch` (useFetchErrorState.ts:89). */
+    const fetchFriendsRef = useRef(null);
+    useEffect(() => {
+        fetchFriendsRef.current = fetchFriends;
+    });
+    // Stable identity: the hook puts `refetch` in a useCallback dep AND in the
+    // refocus-recovery effect's deps, so handing it a fresh function each render
+    // would re-subscribe that listener on every render while erroring.
+    const retryFriends = useCallback(() => fetchFriendsRef.current?.(), []);
+    const friendsErrorState = useFetchErrorState({
+        isError: Boolean(friendsLoadError),
+        error: friendsLoadError,
+        refetch: retryFriends,
+    });
 
     const fetchSentRequests = async () => {
         setLoadingSent(true);
@@ -143,11 +220,30 @@ function FriendsPage() {
             setSentRequests(Array.isArray(data) ? data : []);
         } catch (err) {
             console.error('Error fetching sent requests:', err);
-            setSentError('Failed to load sent requests.');
+            queryCacheOnError(err, { queryKey: ['friendships', 'sent'] });
+            // Keep the ERROR object, not a flattened string: useFetchErrorState reads
+            // `ApiError.code` off it to pick the right user-facing copy.
+            setSentError(
+                err instanceof Error ? err : new Error("The sent-requests request didn't complete.")
+            );
         } finally {
             setLoadingSent(false);
         }
     };
+
+    /* Adapter onto the shared pair, identical in shape to `friendsErrorState` above (88-14).
+       `refetch` must be STABLE — the hook puts it in a useCallback dep AND in its
+       refocus-recovery effect deps. */
+    const fetchSentRef = useRef(null);
+    useEffect(() => {
+        fetchSentRef.current = fetchSentRequests;
+    });
+    const retrySent = useCallback(() => fetchSentRef.current?.(), []);
+    const sentErrorState = useFetchErrorState({
+        isError: Boolean(sentError),
+        error: sentError,
+        refetch: retrySent,
+    });
 
     // Search handler
     const handleSearch = async (e) => {
@@ -168,7 +264,16 @@ function FriendsPage() {
             } else if (err.message && err.message.includes('No user found')) {
                 setSearchError('No user found with that email.');
             } else {
-                setSearchError(err.message || 'Search failed. Please try again.');
+                /* DECISION Phase 88-25 (Req 14 / T-88-25-01): derived copy, chosen OVER
+                   `err.message || '…'`. The two branches above deliberately KEEP their prose
+                   match — "no user found" is a legitimate SEARCH OUTCOME the person can act on
+                   (check the address), not a failure, and there is no ApiError code that carries
+                   it. This branch is the genuine failure and no longer paints upstream text. */
+                setSearchError(
+                    getFetchErrorMessage(err, {
+                        fallback: "We couldn't run that search. Please try again.",
+                    })
+                );
             }
         } finally {
             setSearching(false);
@@ -184,7 +289,20 @@ function FriendsPage() {
             // Refresh sent requests list
             fetchSentRequests();
         } catch (err) {
-            setSearchError(err.message || 'Failed to send friend request.');
+            setSearchError(
+                getFetchErrorMessage(err, {
+                    fallback: "We couldn't send that request. Please try again.",
+                    // 88-CODE-REVIEW D2: the already-friends/already-pending outcomes are
+                    // code-less 409s -> 'conflict'. The old copy here keyed them on
+                    // 'validation', which a 409 never produced — so it never fired, and the
+                    // one case validation DOES catch (400 self-request) showed the wrong
+                    // message. Copy owner-ratified 2026-08-06.
+                    byCode: {
+                        conflict: "You're already friends, or a request is already pending.",
+                        validation: "That request couldn't be sent. Check who you're sending it to.",
+                    },
+                })
+            );
         } finally {
             setSendingRequest(false);
         }
@@ -219,22 +337,65 @@ function FriendsPage() {
         }
     };
 
-    // Remove friend
-    const handleRemove = async (friendshipId) => {
-        if (!confirm('Are you sure you want to remove this friend?')) return;
-
+    // Remove friend — the COMMIT half only. It is unreachable except through the
+    // gate below, which is what makes the first tap non-destructive.
+    const performRemoveFriend = async (friendshipId) => {
         setActionLoading(prev => ({ ...prev, [friendshipId]: 'remove' }));
+        setRemoveError(null);
         try {
             await friendshipsAPI.removeFriend(friendshipId);
+            // 88-CODE-REVIEW MED#1: resolve the ex-friend's userId BEFORE filtering,
+            // and prune them from the bulk-invite selection too — otherwise the
+            // "N selected" count keeps counting them and handleBulkInvite still
+            // dispatches a group invite on behalf of a just-severed relationship
+            // (the relationship-exit-pruning class, 2026-07-31).
+            const removedUserId = friends.find(f => f.id === friendshipId)?.friend?.id;
             // Optimistically update: remove from friends list
             setFriends(prev => prev.filter(f => f.id !== friendshipId));
+            if (removedUserId) {
+                setSelectedFriends(prev => {
+                    if (!prev.has(removedUserId)) return prev;
+                    const next = new Set(prev);
+                    next.delete(removedUserId);
+                    return next;
+                });
+            }
+            // 88-33 Task 9 (row 553): refresh the shared provider so friendship
+            // pills on every other surface reflect the removal immediately.
+            refreshFriendships?.();
         } catch (err) {
             console.error('Error removing friend:', err);
-            setFriendsError(err.message || 'Failed to remove friend.');
+            setRemoveError(
+                getFetchErrorMessage(err, {
+                    fallback: "We couldn't remove that friend. Please try again.",
+                })
+            );
         } finally {
             setActionLoading(prev => ({ ...prev, [friendshipId]: null }));
         }
     };
+
+    /* DECISION Phase 88-14 (Req 11 / OI-7, owner-ratified 2026-08-04): remove-friend is the
+       TWO-TAP tier, chosen OVER the `dialog` tier this surface's neighbours use and OVER the
+       native browser prompt that shipped here before. Removing a friend is personal and re-addable
+       by the search field directly above the list — the same class as "remove game from
+       collection" — so per D-09's tier rule ("does it need explaining?") the label already says
+       everything a dialog body could, and a misclick is the only real risk.
+
+       Two-tap is viable HERE and not everywhere: D-07's recorded limit is that the armed trigger
+       must SURVIVE the first click. This is a persistent inline row button, not an auto-closing
+       menu item (which is exactly why D-40 keeps the gameDetail kebab's Delete on `dialog`).
+
+       Retiering this to `dialog` is a one-word edit and a decision about friction, not a cleanup. */
+    const removeFriendGate = useConfirmAction({
+        tier: 'two-tap',
+        // `title` is dialog-tier copy, accepted and ignored by two-tap (superset config).
+        // It is authored anyway so a retier is genuinely the one-word edit above.
+        title: 'Remove this friend?',
+        body: "They'll drop off your friends list. You can send a new request by email any time.",
+        confirmLabel: 'Remove',
+        onConfirm: (friendshipId) => performRemoveFriend(friendshipId),
+    });
 
     // Check if a user is already a friend. `userId` is the SEARCHED user's
     // Users.id UUID (not the caller's) — both sides of the join key on the
@@ -355,7 +516,10 @@ function FriendsPage() {
     if (authLoading) {
         return (
             <div className="min-h-screen bg-surface-page flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-btn-primary" />
+                <div role="status" aria-label="Signing you in" className="flex items-center gap-2 text-content-secondary">
+                    <div aria-hidden="true" className="animate-spin rounded-full h-8 w-8 border-b-2 border-btn-primary" />
+                    <span className="sr-only">Signing you in...</span>
+                </div>
             </div>
         );
     }
@@ -364,7 +528,7 @@ function FriendsPage() {
         return (
             <div className="min-h-screen bg-surface-page flex items-center justify-center">
                 <div className="text-center">
-                    <h1 className="text-2xl font-bold text-content-primary mb-4">Friends</h1>
+                    <h1 className="text-3xl font-bold text-content-primary mb-4">Friends</h1>
                     <p className="text-content-secondary mb-6">Please log in to view your friends.</p>
                     <a
                         href="/api/auth/login"
@@ -397,10 +561,46 @@ function FriendsPage() {
         );
     }
 
+    /* DECISION Phase 88-33 Task 1 (M1, walk 2026-08-13 test 9): while identity is still
+       UNRESOLVED, a page-data failure that has ALREADY happened outranks the identity spinner —
+       chosen OVER leaving the `!selfUuid` spinner as the unconditional gate (the shipped shape),
+       and OVER dropping the D-09 gate altogether.
+
+       THE BUG THIS FIXES: the friends + sent fetchers fire on `[user]`, not on identity, so with
+       the backend unreachable they fail within a tick and `friendsErrorState.showError` is already
+       true — but the bare `!selfUuid` spinner rendered above them, so nothing that already knew
+       the backend was down could reach the screen. The window is not milliseconds: every attempt
+       goes through the BFF proxy, whose own PROXY_TIMEOUT_MS is 30_000
+       (app/api/[...path]/route.ts:22), and `shouldRetry` grants one retry — which is the walk's
+       "observed 30-60s" / "60+s" of blank page, not a missing terminal state.
+
+       D-09 IS PRESERVED, not weakened: this branch renders NO friend↔friend classification — no
+       list, no tabs, no search results — only the shell plus the error surface. The gate's rule is
+       "never render a mixed/partial list before the caller's UUID resolves"; telling someone the
+       load failed is not a partial list. Re-collapsing this into the spinner is a decision to
+       restore a silent blank page, not a simplification. */
+    if (!selfUuid && (friendsErrorState.showError || sentErrorState.showError)) {
+        return (
+            <div className="min-h-screen bg-surface-page">
+                <div className="max-w-3xl mx-auto px-4 py-8">
+                    <h1 className="text-3xl font-bold text-content-primary mb-6">Friends</h1>
+                    <FetchErrorBanner
+                        state={friendsErrorState.showError ? friendsErrorState : sentErrorState}
+                        title="Couldn't load your friends"
+                        reportContext="friends page — page data failed while identity was still resolving"
+                    />
+                </div>
+            </div>
+        );
+    }
+
     if (!selfUuid) {
         return (
             <div className="min-h-screen bg-surface-page flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-btn-primary" />
+                <div role="status" aria-label="Loading your friends" className="flex items-center gap-2 text-content-secondary">
+                    <div aria-hidden="true" className="animate-spin rounded-full h-8 w-8 border-b-2 border-btn-primary" />
+                    <span className="sr-only">Loading your friends...</span>
+                </div>
             </div>
         );
     }
@@ -416,16 +616,28 @@ function FriendsPage() {
             <div className="max-w-3xl mx-auto px-4 py-8">
                 <h1 className="text-3xl font-bold text-content-primary mb-6">Friends</h1>
 
+                {/* The remove-friend gate's live region. Mounted HERE — once, outside the
+                    tab conditional and outside the row map — because a live region that
+                    mounts with the armed row announces nothing (empty-first contract,
+                    StatusRegion.tsx:8-11). Moving it inside the Friends tab or into the
+                    row is a silent a11y regression, not a tidy-up. */}
+                {removeFriendGate.statusNode}
+
                 {/* Search Section */}
-                <div className="card p-6 mb-6">
-                    <h2 className="text-lg font-semibold text-content-primary mb-3">Add Friend</h2>
+                <div className="card p-3 md:p-6 mb-6">
+                    <h2 className="text-xl font-bold text-content-primary mb-3">Add Friend</h2>
                     <form onSubmit={handleSearch} className="flex gap-3">
-                        <input
+                        {/* 88-33 Task 8 (fork 5): id/name + explicit name — the section
+                            heading ("Add Friend") names the card, not the field. */}
+                        <Input
+                            id="add-friend-email"
+                            name="add-friend-email"
+                            aria-label="Friend's email address"
                             type="email"
                             value={searchEmail}
                             onChange={(e) => setSearchEmail(e.target.value)}
                             placeholder="Enter friend's email address"
-                            className="flex-1 px-4 py-2 border border-line rounded-btn focus:outline-hidden focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
+                            className="flex-1"
                             required
                         />
                         <button
@@ -439,14 +651,17 @@ function FriendsPage() {
 
                     {/* Search Result */}
                     {searching && (
-                        <div className="mt-4 flex items-center gap-2 text-content-secondary">
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-btn-primary" />
+                        <div role="status" aria-label="Searching for that email address" className="mt-4 flex items-center gap-2 text-content-secondary">
+                            <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-btn-primary" />
                             <span>Searching...</span>
                         </div>
                     )}
 
+                    {/* role="alert": submit-time search feedback, including the legitimate
+                        "no user found" outcome — either way the person pressed Search and is
+                        waiting to be told what happened. */}
                     {searchError && (
-                        <div className="mt-4 p-3 bg-surface-page border border-line rounded-lg">
+                        <div role="alert" className="mt-4 p-3 bg-surface-page border border-line rounded-lg">
                             <p className="text-content-secondary">{searchError}</p>
                         </div>
                     )}
@@ -544,33 +759,64 @@ function FriendsPage() {
                 {/* Friends Tab */}
                 {activeTab === 'friends' && (
                     <div>
-                        {friendsError && (
-                            <p className="text-status-error text-sm mb-4">{friendsError}</p>
+                        {/* An ACTION failure (a remove that did not go through) is a line above
+                            an otherwise intact list — deliberately NOT one of the branches below,
+                            which would blank the list the person is still looking at. */}
+                        {/* role="alert": this is a submit-time failure on a destructive action,
+                            so it must interrupt. Same DEF-88-19-04 gap as userProfile's phone
+                            flow — a screen-reader user was told nothing when a Remove failed. */}
+                        {removeError && (
+                            <p role="alert" className="text-status-error text-sm mb-4">{removeError}</p>
                         )}
+                        {/* 88-33 Task 1: the groups fetch feeds ONLY the invite-to-group bar, which is
+                            itself gated on `userGroups.length > 0` — so a swallowed failure was
+                            indistinguishable from "you administer no groups". Compact degrade notice:
+                            the friends list beside it is intact, so this must not blank it. */}
+                        {groupsErrorState.showError && (
+                            <div className="mb-4">
+                                <FetchErrorBanner state={groupsErrorState} compact />
+                            </div>
+                        )}
+                        {/* DECISION Phase 88-14 (Req 6 / Req 14, UI-SPEC §9.2): empty and failed-to-load
+                            are SEPARATE, mutually exclusive branches here. Before this, a failed fetch
+                            left `friends` at [] and fell through to the empty copy, so a network failure
+                            told the person they had no friends — the shipped walkthrough finding §9.2
+                            folds in. EmptyState means "nothing here yet" and nothing else; a fetch
+                            failure gets the error banner with its retry. Collapsing these back into one
+                            branch is a decision to re-introduce that lie, not a simplification. */}
                         {loadingFriends ? (
-                            <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
-                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
+                            <div role="status" aria-label="Loading your friends" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
+                                <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading friends...</span>
                             </div>
+                        ) : friendsErrorState.showError ? (
+                            <FetchErrorBanner
+                                state={friendsErrorState}
+                                title="Couldn't load your friends"
+                                reportContext="friends page — friends list fetch"
+                            />
                         ) : friends.length === 0 ? (
-                            <div className="text-center py-12">
-                                <p className="text-content-muted">No friends yet. Search for friends by email above!</p>
-                            </div>
+                            /* No CTA: the search field directly above IS the action (§9.2). */
+                            <EmptyState
+                                icon="UsersRound"
+                                heading="No friends yet"
+                                body="Search by email above to find the people you play with."
+                            />
                         ) : (
                             <div>
                                 {/* Group Invite Bulk Action Bar */}
                                 {userGroups.length > 0 && (
-                                    <div className="mb-4 p-4 md:p-6 card">
+                                    <div className="mb-4 p-3 md:p-6 card">
                                         <div className="flex flex-wrap items-center gap-3">
                                             <label htmlFor="group-invite-select" className="text-sm font-medium text-content-secondary">
                                                 Invite to Group:
                                             </label>
-                                            <select
+                                            <SelectControl
                                                 id="group-invite-select"
                                                 aria-label="Invite to group"
                                                 value={selectedGroupId}
                                                 onChange={(e) => setSelectedGroupId(e.target.value)}
-                                                className="flex-1 min-w-[180px] max-w-xs px-3 py-2 border border-line rounded-btn text-sm text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
+                                                className="flex-1 min-w-[180px] max-w-xs"
                                             >
                                                 <option value="" disabled>Select a group...</option>
                                                 {userGroups.map(group => (
@@ -578,14 +824,18 @@ function FriendsPage() {
                                                         {group.name}
                                                     </option>
                                                 ))}
-                                            </select>
+                                            </SelectControl>
                                             <button
                                                 onClick={handleBulkInvite}
                                                 disabled={!selectedGroupId || selectedFriends.size === 0 || bulkInviteLoading}
+                                                aria-busy={bulkInviteLoading || undefined}
                                                 className="btn btn-primary px-4 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                                             >
                                                 {bulkInviteLoading && (
-                                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                                                    <>
+                                                        <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                                                        <span className="sr-only">Sending invites...</span>
+                                                    </>
                                                 )}
                                                 Invite to Group
                                             </button>
@@ -596,8 +846,8 @@ function FriendsPage() {
                                             )}
                                         </div>
                                         {groupMembersLoading && (
-                                            <div className="mt-2 flex items-center gap-2 text-xs text-content-muted">
-                                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-content-muted" />
+                                            <div role="status" aria-label="Loading group members" className="mt-2 flex items-center gap-2 text-xs text-content-muted">
+                                                <div aria-hidden="true" className="animate-spin rounded-full h-3 w-3 border-b-2 border-content-muted" />
                                                 <span>Loading group members...</span>
                                             </div>
                                         )}
@@ -605,16 +855,16 @@ function FriendsPage() {
                                         {bulkInviteResult && (
                                             <div className={`mt-3 p-3 rounded-lg text-sm font-medium ${
                                                 bulkInviteResult.failCount === 0
-                                                    ? 'text-status-success border'
+                                                    ? 'bg-status-success-subtle text-status-success border border-status-success'
                                                     : bulkInviteResult.successCount > 0
-                                                        ? 'text-status-warning border'
-                                                        : 'text-status-error border'
+                                                        ? 'bg-status-warning-subtle text-status-warning border border-status-warning'
+                                                        : 'bg-status-error-subtle text-status-error border border-status-error'
                                             }`}>
                                                 {bulkInviteResult.failCount === 0
                                                     ? `Invited ${bulkInviteResult.successCount} friend(s) to ${getSelectedGroupName()}!`
                                                     : bulkInviteResult.successCount > 0
                                                         ? `Invited ${bulkInviteResult.successCount} friend(s), ${bulkInviteResult.failCount} failed`
-                                                        : 'Failed to send invites. Please try again.'
+                                                        : "We couldn't send those invites. Please try again."
                                                 }
                                             </div>
                                         )}
@@ -641,12 +891,14 @@ function FriendsPage() {
                                             >
                                                 <div className="flex items-center gap-3 flex-1">
                                                     <input
+                                                        id={`bulk-invite-${friendship.id}`}
+                                                        name={`bulk-invite-${friendship.id}`}
                                                         type="checkbox"
                                                         aria-label={`Select ${friend.username}`}
                                                         checked={isInGroup || selectedFriends.has(friendUserId)}
                                                         disabled={checkboxDisabled}
                                                         onChange={() => toggleFriendSelection(friendUserId)}
-                                                        className={`h-4 w-4 rounded-sm border-line text-btn-primary focus:ring-focus-ring ${
+                                                        className={`h-4 w-4 rounded-sm border-line text-btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
                                                             checkboxDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                                                         }`}
                                                     />
@@ -662,13 +914,48 @@ function FriendsPage() {
                                                         {/* Friend email is no longer exposed in the friends payload (Phase 83-06 PII default-deny); invites resolve it server-side by user_id. */}
                                                     </div>
                                                 </div>
-                                                <button
-                                                    onClick={() => handleRemove(friendship.id)}
-                                                    disabled={actionLoading[friendship.id] === 'remove'}
-                                                    className="text-status-error text-sm font-medium transition-colors disabled:opacity-50"
-                                                >
-                                                    {actionLoading[friendship.id] === 'remove' ? 'Removing...' : 'Remove'}
-                                                </button>
+                                                {(() => {
+                                                    const friendName = friend.username || 'this friend';
+                                                    const removing = actionLoading[friendship.id] === 'remove';
+                                                    const armed = removeFriendGate.isArmed(friendship.id);
+                                                    return (
+                                                        <button
+                                                            // targetId is the FRIENDSHIP id (what the API takes) and
+                                                            // targetLabel is the person — the live region names them,
+                                                            // so switching rows is a guaranteed re-announcement.
+                                                            {...removeFriendGate.triggerProps(
+                                                                friendship.id,
+                                                                friendName,
+                                                                `Remove ${friendName}`
+                                                            )}
+                                                            // Label-in-Name (WCAG 2.5.3) during the commit: the
+                                                            // visible label is "Removing...", so the accessible name
+                                                            // must contain it. The hook only owns resting-vs-armed.
+                                                            {...(removing ? { 'aria-label': `Removing ${friendName}` } : {})}
+                                                            disabled={removing}
+                                                            // DECISION Phase 88-27 (D-32 bucket D): the hover affordance
+                                                            // 87.7 stripped from here was a TEXT alpha (error text at
+                                                            // 80% on hover). It comes back as a subtle SURFACE, chosen
+                                                            // OVER re-adding the text alpha — that is the forbidden
+                                                            // mechanism — and OVER leaving the control with no hover
+                                                            // state at all, which would have been a silent downgrade
+                                                            // dressed up as a decision. A background cannot collide with
+                                                            // the armed state below it, which speaks in border and
+                                                            // weight. Same treatment on the two delete-pattern gates in
+                                                            // userProfile and on ParticipantRow's Remove, which reaches
+                                                            // it by the ordinary bucket-C rule.
+                                                            className={`min-h-11 px-3 rounded-btn border text-sm transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring text-status-error hover:bg-status-error-subtle ${
+                                                                armed
+                                                                    ? 'border-status-error font-semibold'
+                                                                    : 'border-transparent font-medium'
+                                                            }`}
+                                                        >
+                                                            {removing
+                                                                ? 'Removing...'
+                                                                : removeFriendGate.labelFor(friendship.id, 'Remove')}
+                                                        </button>
+                                                    );
+                                                })()}
                                             </div>
                                         );
                                     })}
@@ -690,13 +977,15 @@ function FriendsPage() {
                 {activeTab === 'requests' && (
                     <div>
                         {friendshipCtxLoading ? (
-                            <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
-                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
+                            <div role="status" aria-label="Loading your friend requests" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
+                                <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading requests...</span>
                             </div>
                         ) : receivedRequests.length === 0 ? (
                             <div className="text-center py-12">
-                                <p className="text-content-muted">No pending friend requests.</p>
+                                {/* D2 mini-formula rider (88-33 Task 7, Rule 2 — same class as the
+                                    sent-requests sibling below): + text-sm. */}
+                                <p className="text-content-muted text-sm">No pending friend requests.</p>
                             </div>
                         ) : (
                             <div className="space-y-3">
@@ -744,17 +1033,28 @@ function FriendsPage() {
                 {/* Sent Tab */}
                 {activeTab === 'sent' && (
                     <div>
-                        {sentError && (
-                            <p className="text-status-error text-sm mb-4">{sentError}</p>
-                        )}
+                        {/* DECISION Phase 88-25 (Req 14 / T-88-25-02, UI-SPEC 9.2): the Sent tab now
+                            splits empty from failed, the same way 88-14 split the Friends tab above.
+                            Before this, a failed fetch printed a bare red line AND fell through to
+                            "No sent friend requests." — so the person was told, in the same breath,
+                            that something went wrong and that they had sent nothing. The error branch
+                            is checked BEFORE the empty branch and that order is load-bearing: an
+                            errored fetch also has zero requests. */}
                         {loadingSent ? (
-                            <div className="flex items-center gap-2 text-content-secondary py-8 justify-center">
-                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
+                            <div role="status" aria-label="Loading your sent requests" className="flex items-center gap-2 text-content-secondary py-8 justify-center">
+                                <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-btn-primary" />
                                 <span>Loading sent requests...</span>
                             </div>
+                        ) : sentErrorState.showError ? (
+                            <FetchErrorBanner
+                                state={sentErrorState}
+                                title="Couldn't load your sent requests"
+                                reportContext="friends page — sent requests fetch"
+                            />
                         ) : sentRequests.length === 0 ? (
                             <div className="text-center py-12">
-                                <p className="text-content-muted">No sent friend requests.</p>
+                                {/* D2 mini-formula rider (88-33 Task 7, Rule 2): + text-sm. */}
+                                <p className="text-content-muted text-sm">No sent friend requests.</p>
                             </div>
                         ) : (
                             <div className="space-y-3">
@@ -775,7 +1075,7 @@ function FriendsPage() {
                                                     <p className="text-sm text-content-muted mt-0.5">{addressee.email}</p>
                                                 )}
                                             </div>
-                                            <span className="px-3 py-1 rounded-full text-xs font-semibold text-status-warning border">
+                                            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-status-warning-subtle text-status-warning border border-status-warning">
                                                 Pending
                                             </span>
                                         </div>

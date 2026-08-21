@@ -1,6 +1,15 @@
 'use client';
 import { useState } from 'react';
-import { getContrastColor } from '../../lib/colorUtils';
+import {
+  getSubtitleStyle,
+  getTextStyle,
+  isDarkBackground,
+  resolveGroupBackgroundColor,
+  SUBTEXT_MUTED_ON_LIGHT,
+  SUBTEXT_ON_LIGHT,
+  TEXT_ON_DARK,
+  TEXT_ON_LIGHT,
+} from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { formatTime, formatLongDate } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
@@ -8,6 +17,7 @@ import SafeImage from './SafeImage';
 import QRCodeModal from './QRCodeModal';
 import TimezoneNudgeBanner from './TimezoneNudgeBanner';
 import { eventsAPI } from '../../lib/api';
+import { Modal } from './Modal';
 
 export default function EventDayModal({
   selectedDay,
@@ -40,30 +50,25 @@ export default function EventDayModal({
   };
 
   return (
-    <div
-      className="modal-overlay"
-      onClick={onClose}
-    >
-      <div
-        className="modal-content max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Modal Header */}
-        <div className="modal-header">
-          <h3 className="text-xl font-bold text-content-primary">
-            {formatLongDate(selectedDay.date)}
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-content-muted hover:text-content-primary text-2xl font-bold"
-            title="Close"
-          >
-            ×
-          </button>
-        </div>
+    <>
+      {/* DECISION Phase 88-17 (Req 9): hosted on the shared <Modal> — the
+          hand-rolled backdrop, the `onClick={onClose}` / `stopPropagation` pair
+          and the untitled close glyph are GONE rather than ported. The glyph
+          carried only `title="Close"`, which is not an accessible name; the
+          header close affordance <Modal> supplies carries a real `aria-label`
+          (SPEC Req 4). The 80vh cap is deliberately preserved via className
+          (the primitive's default is 90vh) — this surface is a scrolling day
+          list and its shorter cap is a shipped choice, not a leftover.
 
-        {/* Modal Content */}
-        <div className="modal-body">
+          QRCodeModal moves OUT of the overlay to a SIBLING of <Modal>. It used
+          to live inside the backdrop div; nesting one Radix dialog inside
+          another's content would put the QR dialog inside this dialog's focus
+          scope. As siblings, each portals to <body> in mount order and the QR
+          dialog layers above the day list, which is the shipped behaviour.
+          Re-nesting it is a decision, not a cleanup. */}
+      <Modal open onClose={onClose} className="max-w-2xl max-h-[80vh]">
+        <Modal.Header>{formatLongDate(selectedDay.date)}</Modal.Header>
+        <Modal.Body>
           {/* Phase 62-02: nudge user to set profile TZ if not yet set so the
               displayed times below have a stable canonical reference. */}
           <TimezoneNudgeBanner />
@@ -89,17 +94,21 @@ export default function EventDayModal({
               {selectedDay.events.map(event => {
                 const eventDate = new Date(event.start_date);
                 const isPastEvent = eventDate < new Date();
-                const groupBgColor = event.Group?.background_color || '#ffffff';
+                // null when the group has no colour of its own (D-28).
+                const groupBgColor = resolveGroupBackgroundColor(event.Group?.background_color);
                 const groupProfilePic = event.Group?.profile_picture_url;
                 const groupBgImage = event.Group?.background_image_url;
+                // No image and no group colour: the row is on the themed
+                // surface, so the shared fallback resolution owns its text.
+                const isThemedRow = !groupBgImage && !groupBgColor;
 
                 return (
                   <div
                     key={event.id}
                     onClick={() => onEventClick(event)}
-                    className={`p-4 border rounded-lg transition-all hover:shadow-md cursor-pointer`}
+                    className={`p-4 border border-line rounded-lg transition-all hover:shadow-md cursor-pointer bg-surface-card`}
                     style={{
-                      backgroundColor: groupBgColor,
+                      ...(groupBgColor && { backgroundColor: groupBgColor }),
                       ...safeBgImageStyle(groupBgImage),
                       backgroundSize: 'cover',
                       backgroundPosition: 'center',
@@ -138,12 +147,12 @@ export default function EventDayModal({
                             <h4
                               className="font-semibold"
                               style={(() => {
+                                if (isThemedRow) return getTextStyle(false, null);
                                 const hasBgImage = !!groupBgImage;
-                                const textColor = hasBgImage ? '#1f2937' : getContrastColor(groupBgColor);
-                                const isDark = !hasBgImage && getContrastColor(groupBgColor) === '#ffffff';
+                                const isDark = !hasBgImage && isDarkBackground(groupBgColor);
 
                                 return {
-                                  color: textColor,
+                                  color: isDark ? TEXT_ON_DARK : TEXT_ON_LIGHT,
                                   textShadow: hasBgImage
                                     ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
                                     : (isDark
@@ -158,9 +167,14 @@ export default function EventDayModal({
                             <p
                               className="text-sm"
                               style={(() => {
+                                if (isThemedRow) return getSubtitleStyle(false, null);
                                 const hasBgImage = !!groupBgImage;
-                                const textColor = hasBgImage ? '#4b5563' : (getContrastColor(groupBgColor) === '#ffffff' ? 'rgba(255,255,255,0.9)' : '#6b7280');
-                                const isDark = !hasBgImage && getContrastColor(groupBgColor) === '#ffffff';
+                                const isDark = !hasBgImage && isDarkBackground(groupBgColor);
+                                const textColor = hasBgImage
+                                  ? SUBTEXT_ON_LIGHT
+                                  : isDark
+                                    ? 'rgba(255,255,255,0.9)'
+                                    : SUBTEXT_MUTED_ON_LIGHT;
 
                                 return {
                                   color: textColor,
@@ -214,8 +228,8 @@ export default function EventDayModal({
               })}
             </div>
           )}
-        </div>
-      </div>
+        </Modal.Body>
+      </Modal>
 
       {/* Game QR Code Modal */}
       <QRCodeModal
@@ -225,6 +239,6 @@ export default function EventDayModal({
         title="Game Night Invite QR"
         showReset={false}
       />
-    </div>
+    </>
   );
 }

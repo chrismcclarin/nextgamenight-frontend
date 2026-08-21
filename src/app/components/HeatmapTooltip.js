@@ -29,8 +29,9 @@
 //     <CellElement />                // single trigger child
 //   </HeatmapTooltip>
 //
-// triggerRef escape hatch: parent grids in Plan 02 (HeatmapGrid +
-// MergedHeatmapGrid) implement roving-tabindex arrow-key navigation and need to
+// triggerRef escape hatch: parent grids in Plan 02 (MergedHeatmapGrid, and the
+// legacy intensity read-grid deleted by 88-31) implement roving-tabindex
+// arrow-key navigation and need to
 // call `cellRefs.current[idx].focus()` without fighting floating-ui's internal
 // `refs.setReference` ref. The primitive merges floating-ui's ref with the
 // caller's `triggerRef` so both stay in sync. Honored on the disabled
@@ -333,10 +334,28 @@ function HeatmapTooltip({
             })}
             // z-index lives on the OUTER positioned element. The inner div's
             // z-50 was scoped to the outer's stacking context (`transform` on
-            // the outer creates one), so it couldn't lift the tooltip above
-            // modal-overlay (z-50) or FriendInvitePanel (z-70). Tooltips are
-            // always topmost — z-100 clears every existing overlay tier.
+            // the outer creates one), so it couldn't lift the tooltip above the
+            // legacy overlay tier (z-50) or FriendInvitePanel (z-70). Tooltips
+            // are always topmost — z-100 clears every existing overlay tier.
             // Plan 72-02 UAT regression.
+            //
+            // DECISION Phase 88-17 (Req 9): this tooltip is EXEMPT from the
+            // overlay migration and from Req 9's census, deliberately — three
+            // separate facts, all verified:
+            //   1. It is NOT a modal. It is a floating-ui hover/focus tooltip
+            //      with no backdrop, no focus trap and no dismiss semantics.
+            //      Hosting it on <Modal> would trap focus in a hover affordance.
+            //   2. It never carried the legacy overlay class. The only mention
+            //      of that class in this file has always been the prose above,
+            //      recording a z-order, never a className.
+            //   3. It is deliberately ABOVE the overlay tier (z-100 vs 50/70),
+            //      and it stays there after the fleet moves onto Radix: the
+            //      shared dialog content and its backdrop both sit at z-50, so
+            //      z-100 clears them by the same margin it always did.
+            // Plan 88-29's census gate filters comments, so the prose above does
+            // NOT need an allowlist entry — do not add one for this file. Making
+            // this a modal, lowering the z-index, or allowlisting it are all
+            // decisions, not cleanups.
             style={{ ...floatingStyles, zIndex: 100 }}
           >
             <div style={transitionStyles} className={toneClassName}>

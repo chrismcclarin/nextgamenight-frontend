@@ -4,12 +4,16 @@ import Link from 'next/link';
 import SafeImage from './SafeImage';
 import { formatDate } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Button } from '../../components/ui/Button';
+import { SelectControl } from '../../components/ui/Input';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
 function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, timezone }) {
     return (
         <Link
             href={`/gameDetail?game_id=${encodeURIComponent(game.id)}&group_id=${encodeURIComponent(groupId)}`}
-            className="block card p-4 md:p-6 hover:shadow-theme-lg transition-shadow hover:border-line-accent"
+            className="block card p-3 md:p-6 hover:shadow-theme-lg transition-shadow hover:border-line-accent"
         >
             <div className="flex items-start gap-4">
                 <SafeImage
@@ -53,7 +57,14 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
     );
 }
 
-export default function GroupGamesList({ games, groupId, onAddEvent, userRole, members }) {
+/**
+ * @param {Object} [props.errorState=null] - Phase 88-25 (Req 14 / DEF-88-18-01): the OWNER of the
+ *   games fetch (`groupHomePage/page.js`) passes its `useFetchErrorState` result here so a failed
+ *   load renders the shared error treatment instead of falling through to "no game nights logged
+ *   yet". This component does not fetch, so it cannot derive this itself. Same contract as
+ *   `UpcomingEventsCard` (88-18).
+ */
+export default function GroupGamesList({ games, groupId, onAddEvent, userRole, members, errorState = null }) {
     const { timezone } = useTimezone();
     const [sortBy, setSortBy] = useState('name');
     const [sortOrder, setSortOrder] = useState('asc');
@@ -236,20 +247,72 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
         return 'Players: Unknown';
     };
 
+    /* DECISION Phase 88-25 (Req 14 / DEF-88-18-01, T-88-18-01): the failed-fetch branch is checked
+       BEFORE the empty branch below. That ordering is load-bearing and is the whole fix — an
+       errored fetch also has zero games, so flipping these two silently restores the bug where a
+       group with years of history was told it had logged nothing. Do not merge them. */
+    if (errorState?.showError) {
+        return (
+            <div className="mt-8">
+                <h2 className="text-2xl font-bold text-content-primary mb-4">Group Games</h2>
+                <FetchErrorBanner
+                    state={errorState}
+                    title="We couldn't load this group's games"
+                    reportContext="Group games list (group home page)"
+                />
+            </div>
+        );
+    }
+
     if (!games || games.length === 0) {
         return (
-            <div className="text-center py-12 bg-surface-page rounded-card border-2 border-dashed border-line">
-                <p className="text-content-secondary text-lg mb-2">No games played yet</p>
-                <p className="text-content-muted mb-4">Start tracking your game sessions!</p>
-                {userRole && userRole !== 'pending' && (
-                    <button
-                        onClick={onAddEvent}
-                        className="btn btn-primary px-6 py-2 font-semibold"
-                    >
-                        Add Your First Game Event
-                    </button>
-                )}
-            </div>
+            /* DECISION Phase 88-18 (E-25): this copy is play-SESSION-HISTORY copy ("No game nights
+               logged yet"), chosen by the OWNER over UI-SPEC 9.2's originally-approved row for this
+               surface — "No games on the shelf yet" / "Add what the group actually owns — it's what we
+               suggest from on game night." / CTA "Add a game". That row described an owned-games
+               SHELF, which is not this surface: `GroupGamesList` renders games the group has PLAYED
+               (play_count, last_played, winners, pickers), and its CTA `onAddEvent` opens the
+               create-EVENT modal (groupHomePage/page.js passes `onAddEvent={toggleEventModal}`).
+               `GroupLibrary` is the shelf and carries its own 9.2 row and its own "This library is
+               empty" copy. The contract row had been written from this component's NAME, and shipping
+               it verbatim would have advertised a feature this surface does not have.
+
+               The owner ruled option-a at the plan's Task 1 checkpoint and approved these exact
+               strings; 9.2's row was amended to match, so contract and code now agree. A later phase
+               reconciling code against the contract will therefore find no discrepancy — but if an
+               older copy of that row surfaces, do NOT "restore" the shelf wording here. That is a
+               regression, not a cleanup.
+
+               The `userRole && userRole !== 'pending'` gate is unchanged and stays HERE at the call
+               site: `EmptyState.action` is a ReactNode precisely so the primitive never learns about
+               roles.
+
+               CLOSED by plan 88-25 (Req 14 / DEF-88-18-01). This paragraph previously read "not done
+               here, on purpose": the surface does not fetch, `games` arrived as a prop, and the
+               parent's catch did `setGamesList([])`, so a failed request landed in THIS empty branch.
+               88-25 took `groupHomePage/page.js` as scheduled, replaced that flattening with a
+               tracked `gamesError`, and passes an `errorState` prop checked in the branch ABOVE
+               this one. The warning survives the fix: this branch means "nothing here yet" and
+               NOTHING else — do not let a failure reach it again. */
+            <EmptyState
+                icon="Dices"
+                heading="No game nights logged yet"
+                body="Log a night you played and the group's history builds up here."
+                action={
+                    userRole && userRole !== 'pending' ? (
+                        /* 44px floor carried per-CTA, matching the other 88-18 adopters
+                           (87.8 D-13/D-14): no global `.btn` min-height, which would distort
+                           the shipped compact/icon buttons. */
+                        <Button
+                            variant="primary"
+                            className="min-h-11"
+                            onClick={onAddEvent}
+                        >
+                            Log a game night
+                        </Button>
+                    ) : undefined
+                }
+            />
         );
     }
 
@@ -262,19 +325,27 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                 <div className="flex items-center gap-2">
                     <label className="flex items-center gap-2">
                         <span className="text-sm font-medium text-content-secondary whitespace-nowrap">Sort by:</span>
-                        <select
+                        {/* DECISION Phase 88-21 (Req 1): `w-auto` overrides the primitive's
+                            `block w-full`. This select sits INLINE beside its "Sort by:" span on
+                            one toolbar row, unlike the two filter selects below it which are
+                            stacked and genuinely full-width. Taking the primitive default here
+                            would push the select onto its own line and break the toolbar. Same
+                            override 88-19 used for the reminder-window select. */}
+                        <SelectControl
+                            id="group-games-sort"
+                            name="group-games-sort"
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value)}
-                            className="px-3 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
+                            className="w-auto"
                         >
                             <option value="name">Name</option>
                             <option value="theme">Theme</option>
                             <option value="player_count">Player Count</option>
-                        </select>
+                        </SelectControl>
                     </label>
                     <button
                         onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                        className="px-3 py-2 border border-line rounded-btn text-sm text-content-primary hover:bg-surface-card-hover active:opacity-75 focus:outline-hidden focus:ring-2 focus:ring-focus-ring transition-colors"
+                        className="px-3 py-2 border border-line rounded-btn text-sm text-content-primary hover:bg-surface-card-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 transition-colors"
                         title={sortOrder === 'asc' ? 'Ascending (click to reverse)' : 'Descending (click to reverse)'}
                     >
                         {sortOrder === 'asc' ? '\u2191' : '\u2193'}
@@ -282,7 +353,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                 </div>
                 <button
                     onClick={() => setFilterOpen(prev => !prev)}
-                    className={`px-3 py-2 border rounded-btn text-sm active:opacity-75 transition-colors focus:outline-hidden focus:ring-2 focus:ring-focus-ring ${
+                    className={`px-3 py-2 border rounded-btn text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
                         (filterWinner || filterPicker)
                             ? 'border-line-accent bg-surface-card-hover text-accent hover:bg-surface-elevated'
                             : 'border-line text-content-secondary hover:bg-surface-card-hover'
@@ -297,10 +368,11 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                     <div className="flex flex-col sm:flex-row gap-3">
                         <label className="flex-1">
                             <span className="text-sm font-medium text-content-secondary block mb-1">Winner</span>
-                            <select
+                            <SelectControl
+                                id="group-games-filter-winner"
+                                name="group-games-filter-winner"
                                 value={filterWinner}
                                 onChange={(e) => setFilterWinner(e.target.value)}
-                                className="w-full px-3 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
                             >
                                 <option value="">All</option>
                                 {winnerOptions.map(opt => (
@@ -308,14 +380,15 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                                         {opt.username}{opt.is_custom ? ' (guest)' : ''} ({opt.totalCount} {opt.totalCount === 1 ? 'win' : 'wins'})
                                     </option>
                                 ))}
-                            </select>
+                            </SelectControl>
                         </label>
                         <label className="flex-1">
                             <span className="text-sm font-medium text-content-secondary block mb-1">Picker</span>
-                            <select
+                            <SelectControl
+                                id="group-games-filter-picker"
+                                name="group-games-filter-picker"
                                 value={filterPicker}
                                 onChange={(e) => setFilterPicker(e.target.value)}
-                                className="w-full px-3 py-2 border border-line rounded-btn text-sm bg-surface-input text-content-primary focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
                             >
                                 <option value="">All</option>
                                 {pickerOptions.map(opt => (
@@ -323,7 +396,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                                         {opt.username}{opt.is_custom ? ' (guest)' : ''} ({opt.totalCount} {opt.totalCount === 1 ? 'pick' : 'picks'})
                                     </option>
                                 ))}
-                            </select>
+                            </SelectControl>
                         </label>
                     </div>
                 </div>
@@ -342,7 +415,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                     <p className="text-content-secondary mb-3">No games match these filters</p>
                     <button
                         onClick={() => { setFilterWinner(''); setFilterPicker(''); }}
-                        className="text-content-link hover:text-content-link-hover active:opacity-75 text-sm font-medium"
+                        className="text-content-link hover:text-content-link-hover active:opacity-75 text-sm font-medium focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                     >
                         Clear filters
                     </button>

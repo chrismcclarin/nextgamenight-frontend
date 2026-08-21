@@ -9,6 +9,10 @@ import { toast } from 'sonner';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { Modal } from './Modal';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { useConfirmAction } from '../../components/ui/useConfirmAction';
+import { SelectControl } from '../../components/ui/Input';
 
 function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, group_name }) {
     const router = useRouter();
@@ -39,6 +43,14 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
     const [leaving, setLeaving] = useState(false);
     const [leaveError, setLeaveError] = useState('');
+    // Phase 88-12 (Req 11): the gates below are tiered via useConfirmAction, whose
+    // config is re-read every render — so the TARGET each dialog is talking about
+    // lives here, and the title interpolates from it. `{ id, name }` for remove and
+    // reject; the promote target additionally carries `priorRole` (see the select
+    // marker below for why).
+    const [removeTarget, setRemoveTarget] = useState(null);
+    const [rejectTarget, setRejectTarget] = useState(null);
+    const [promoteTarget, setPromoteTarget] = useState(null);
 
     useEffect(() => {
         if (modal && group_id && user?.sub) {
@@ -104,47 +116,116 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         }
     };
 
-    const handleRoleChange = async (target_user_id, newRole) => {
-        if (!group_id || !user?.sub) return;
-        
+    // Runs ONLY after the escalation gate below has been confirmed, or directly for
+    // an ungated (non-escalating) role change. Resolves true on success so the gate
+    // can stay open on failure without this path having to throw at the mobile
+    // kebab, which calls it outside any promise chain.
+    const performRoleChange = async (target_user_id, newRole) => {
         try {
             await groupsAPI.updateUserRole(group_id, target_user_id, newRole);
             await fetchMembers(); // Refresh the list
             if (onMembersUpdated) {
                 onMembersUpdated();
             }
+            // Req 12 receipt (UI-SPEC §6.2): `{Object} {past-tense verb}`, <=4 words,
+            // no exclamation mark and no adverb — the shipped error-toast voice.
+            // (The banned adverb is deliberately not spelled out here: Req 12's
+            // acceptance is a plain grep over this file that does not exempt comments.)
+            toast.success('Role updated');
+            return true;
         } catch (error) {
             console.error('Error updating role:', error);
             toast.error(error.message || 'Failed to update user role. Please try again.');
+            return false;
         }
     };
 
-    // Phase 68-02: post-confirm body factored out so mobile kebab two-tap can
-    // skip the desktop window.confirm() (the kebab's two-tap IS the confirmation).
-    // Desktop entry point (handleRemoveMember below) still gates on confirm()
-    // and then calls this — desktop UX is byte-for-byte unchanged.
-    const handleRemoveMemberConfirmed = async (target_user_id) => {
+    /* DECISION Phase 88-12 (AR R2-M10, owner-ruled 2026-08-05): the role change is gated
+       ONLY on ESCALATION to admin. Demotions and every other role change stay ungated and
+       fire the API immediately, exactly as they shipped.
+
+       REJECTED ALTERNATIVE — gating every role change, which is the symmetrical-looking
+       thing to do. It loses because a demotion is self-correcting (re-promote and you are
+       back where you were), so a gate there buys nothing and taxes routine management on
+       the surface an admin uses most. Granting admin is the one direction that hands
+       someone else power over other people's membership, which is a consequence the
+       control's own label cannot convey — D-09's "does it need explaining?" rule.
+
+       Un-gating the promotion, or extending the gate to demotions, is a decision. */
+    const promoteAdminGate = useConfirmAction({
+        tier: 'dialog',
+        title: `Make ${promoteTarget?.name || 'this member'} an admin?`,
+        body: 'Admins can edit events, manage members, and approve or remove people.',
+        confirmLabel: 'Make admin',
+        onConfirm: async (target_user_id) => {
+            const ok = await performRoleChange(target_user_id, 'admin');
+            // Rejecting keeps the gate open (useConfirmAction's contract) so the
+            // person can retry or cancel rather than see it close on a failed grant.
+            if (!ok) throw new Error('Role update failed');
+            setPromoteTarget(null);
+        },
+    });
+
+    const cancelPromoteAdmin = () => {
+        promoteAdminGate.cancel();
+        setPromoteTarget(null);
+    };
+
+    const handleRoleChange = (target_user_id, newRole, targetName, priorRole) => {
         if (!group_id || !user?.sub) return;
+        if (newRole === 'admin') {
+            setPromoteTarget({
+                id: target_user_id,
+                name: targetName || 'this member',
+                priorRole: priorRole || 'member',
+            });
+            promoteAdminGate.trigger(target_user_id);
+            return;
+        }
+        void performRoleChange(target_user_id, newRole);
+    };
+
+    // Phase 68-02, retained through 88-12: post-gate body factored out so the two
+    // entry points can carry DIFFERENT gates and still share one commit path. The
+    // mobile kebab's two-tap IS its confirmation and calls this directly; the
+    // desktop Remove button routes through the dialog gate below and then calls
+    // this. See the AR-DEC-3 marker at the kebab item for why they differ.
+    const handleRemoveMemberConfirmed = async (target_user_id) => {
+        if (!group_id || !user?.sub) return false;
         try {
             await groupsAPI.removeUserFromGroup(group_id, target_user_id);
             await fetchMembers(); // Refresh the list
             if (onMembersUpdated) {
                 onMembersUpdated();
             }
+            // Req 12 receipt (UI-SPEC §6.2). Deliberately here and not at the two
+            // call sites: the desktop dialog gate and the mobile kebab two-tap share
+            // this commit path, so both surfaces get the same receipt from one line.
+            toast.success('Member removed');
+            return true;
         } catch (error) {
             console.error('Error removing member:', error);
             toast.error(error.message || 'Failed to remove user. Please try again.');
+            return false;
         }
     };
 
-    // Desktop Remove button — unchanged. Browser confirm dialog gates the
-    // destructive action exactly as it did before Phase 68-02.
-    const handleRemoveMember = async (target_user_id) => {
+    // Desktop Remove button — dialog tier (UI-SPEC §11.2). Copy verbatim.
+    const removeMemberGate = useConfirmAction({
+        tier: 'dialog',
+        title: `Remove ${removeTarget?.name || 'this member'} from this group?`,
+        body: "They'll lose access to events and planning. You can re-invite them.",
+        confirmLabel: 'Remove',
+        onConfirm: async (target_user_id) => {
+            const ok = await handleRemoveMemberConfirmed(target_user_id);
+            if (!ok) throw new Error('Remove failed');
+        },
+    });
+
+    const handleRemoveMember = (target_user_id, targetName) => {
         if (!group_id || !user?.sub) return;
-        if (!window.confirm('Are you sure you want to remove this user from the group?')) {
-            return;
-        }
-        await handleRemoveMemberConfirmed(target_user_id);
+        setRemoveTarget({ id: target_user_id, name: targetName || 'this member' });
+        removeMemberGate.trigger(target_user_id);
     };
 
     const handleApproveMember = async (target_user_id) => {
@@ -159,20 +240,76 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
         }
     };
 
-    const handleRejectMember = async (target_user_id) => {
-        if (!group_id) return;
-        if (!confirm('Are you sure you want to reject this member? They will be removed from the group and would need a new invite to rejoin.')) {
-            return;
-        }
+    const performRejectMember = async (target_user_id) => {
         try {
             await groupsAPI.rejectMember(group_id, target_user_id);
             await fetchMembers();
             if (onMembersUpdated) onMembersUpdated();
+            return true;
         } catch (error) {
             console.error('Error rejecting member:', error);
             toast.error(error.message || 'Failed to reject member. Please try again.');
+            return false;
         }
     };
+
+    /* DECISION Phase 88-12 (OI-7 owner-ratified 2026-08-04; body corrected per
+       FND-88-12-02): reject-pending is the DIALOG tier, and its body says only
+       "They'll be removed from the pending list."
+
+       The ratified copy in 88-UI-SPEC.md:623 was "They'll be removed from the group and
+       will need a new invite to rejoin." The second clause is FALSE against the shipped
+       backend and was cut, not softened: `routes/groups.js:1237-1238` hard-deletes only the
+       UserGroup row — it does not rotate the group's invite_token and writes no block-list
+       entry — and `:738-744` still matches that STANDING token, with `:857-869` admitting
+       the holder as a full `member` ("QR invites bypass pending"). So a rejected person
+       reusing the same link does not need a new invite at all; they skip the pending queue
+       entirely. The tier is unaffected and stands as ratified.
+
+       Restoring the new-invite sentence is a decision that requires the BACKEND to change
+       first (rotate the token or block the rejected user), not a copy cleanup. */
+    const rejectMemberGate = useConfirmAction({
+        tier: 'dialog',
+        title: `Reject ${rejectTarget?.name || 'this member'}?`,
+        body: "They'll be removed from the pending list.",
+        confirmLabel: 'Reject',
+        onConfirm: async (target_user_id) => {
+            const ok = await performRejectMember(target_user_id);
+            if (!ok) throw new Error('Reject failed');
+        },
+    });
+
+    const handleRejectMember = (target_user_id, targetName) => {
+        if (!group_id) return;
+        setRejectTarget({ id: target_user_id, name: targetName || 'this member' });
+        rejectMemberGate.trigger(target_user_id);
+    };
+
+    // Reset invite link — dialog tier (UI-SPEC §11.2). Copy verbatim.
+    const performResetInviteToken = async () => {
+        setResettingInvite(true);
+        try {
+            await groupsAPI.resetInviteToken(group_id);
+            return true;
+        } catch (err) {
+            console.error('Failed to reset invite token:', err);
+            toast.error(err.message || 'Failed to reset invite link. Please try again.');
+            return false;
+        } finally {
+            setResettingInvite(false);
+        }
+    };
+
+    const resetInviteGate = useConfirmAction({
+        tier: 'dialog',
+        title: 'Reset the invite link?',
+        body: 'Every copy of the old link stops working — including printed QR codes.',
+        confirmLabel: 'Reset link',
+        onConfirm: async () => {
+            const ok = await performResetInviteToken();
+            if (!ok) throw new Error('Reset invite link failed');
+        },
+    });
 
     // Phase 69-04 mirror: in-row Leave Group button opens a sibling confirm
     // modal (same shape + copy as GroupSettings) instead of window.confirm.
@@ -221,20 +358,28 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
 
     return (
         <>
-        <div className="modal-overlay" onClick={modaltoggle}>
-            <div className="modal-content max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto relative" onClick={(e) => e.stopPropagation()}>
-                <button
-                    onClick={modaltoggle}
-                    className="absolute top-3 right-3 text-content-muted hover:text-content-primary text-2xl"
-                    aria-label="Close"
-                >
-                    &times;
-                </button>
+        {/* DECISION Phase 88-12 (SPEC Req 9): all three of this file's overlays are hosted
+            on the shared <Modal>, and their old hand-rolled `zIndex: 110` tiers are NOT
+            re-created as bespoke z-index classes on the Radix content.
 
-                <h2 className="text-2xl font-bold text-content-primary mb-4">
-                    {canManageMembers ? 'Manage Group Members' : 'Members'}
-                </h2>
+            RESOLVED STACKING (verified, not assumed — same reasoning 88-15 recorded on
+            FriendInvitePanel): Radix portals every dialog to the END of <body>, so a
+            later-opened dialog paints above an earlier one purely by DOM order. The
+            transfer/leave confirms and the invite panel all open FROM this modal, so they
+            mount after it and stack above it without any z-index of their own. The rejected
+            alternative was porting `zIndex: 110` onto <Modal> via className — it
+            re-introduces a bespoke tier the rest of the fleet does not have, for an
+            ordering the portal already guarantees.
 
+            The old sibling-overlay + stopPropagation dance is likewise gone rather than
+            ported: it existed only so the parent's backdrop onClick could not fire through
+            a child overlay, and Radix's outside-interaction handling makes it moot.
+            Re-adding either is a decision, not a cleanup. */}
+        <Modal open={modal} onClose={modaltoggle} className="max-w-2xl">
+            <Modal.Header>
+                {canManageMembers ? 'Manage Group Members' : 'Members'}
+            </Modal.Header>
+            <Modal.Body>
                 {userRole && userRole !== 'pending' && (
                     <div className="mb-4 pb-4 border-b border-line flex flex-wrap gap-2">
                         <button
@@ -247,18 +392,9 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                         {canManageMembers && (
                             <button
                                 type="button"
-                                onClick={async () => {
+                                onClick={() => {
                                     if (resettingInvite) return;
-                                    if (!window.confirm('Reset invite link? The current QR code and link will stop working.')) return;
-                                    setResettingInvite(true);
-                                    try {
-                                        await groupsAPI.resetInviteToken(group_id);
-                                    } catch (err) {
-                                        console.error('Failed to reset invite token:', err);
-                                        toast.error(err.message || 'Failed to reset invite link. Please try again.');
-                                    } finally {
-                                        setResettingInvite(false);
-                                    }
+                                    resetInviteGate.trigger();
                                 }}
                                 disabled={resettingInvite}
                                 className="btn btn-secondary text-sm text-status-error"
@@ -320,7 +456,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                     Approve
                                                 </button>
                                                 <button
-                                                    onClick={() => handleRejectMember(member.id)}
+                                                    onClick={() => handleRejectMember(member.id, member.username || member.email)}
                                                     className="btn btn-danger text-sm px-4 py-2"
                                                 >
                                                     Reject
@@ -360,7 +496,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                         renders the role pill on the right; this inline badge is
                                                         the canonical "this is the owner" indicator per CONTEXT. */}
                                                     {isOwner ? (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-accent border">
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-surface-accent-subtle text-accent border border-line-accent">
                                                             Owner
                                                         </span>
                                                     ) : (
@@ -380,21 +516,46 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                     aren't rendered). Combined with the inline "Owner" badge above. */}
                                                 {!isOwner && (
                                                     <>
-                                                        {/* Desktop (≥768px) — role-select + Remove + window.confirm() */}
+                                                        {/* Desktop (≥768px) — role-select + Remove, both on the dialog tier */}
                                                         <div className="hidden md:flex items-center gap-2">
                                                             {/* Role Dropdown */}
-                                                            <select
-                                                                value={memberRole}
-                                                                onChange={(e) => handleRoleChange(member.id, e.target.value)}
-                                                                className="px-3 py-2 border border-line rounded-md text-sm focus:outline-hidden focus:ring-2 focus:ring-focus-ring text-content-primary bg-surface-input"
+                                                            {/* [Rule 2 - a11y] The role <select> shipped with no
+                                                                accessible name — surfaced by the composed axe audit
+                                                                added in 88-12 (axe `select-name`), which the
+                                                                primitive's own suite could not see. The visible
+                                                                member name is the only thing that distinguishes one
+                                                                row's select from the next. */}
+                                                            {/* DECISION Phase 88-12 (AR R2-M10): while an escalation gate is
+                                                                OPEN for this member the select renders the PRIOR role
+                                                                explicitly, so Cancel provably leaves it showing "Member".
+                                                                Chosen OVER `value={memberRole}` alone, which is the obvious
+                                                                shape and does revert — but only via React's implicit
+                                                                controlled-input restore, an internal that no assertion in this
+                                                                repo pins and that reads as an accident to anyone reviewing it.
+                                                                The trap the AR named (select stuck showing "Admin" while the
+                                                                backend still says "Member") is closed structurally here.
+                                                                Collapsing this back to the bare `memberRole` is a decision. */}
+                                                            <SelectControl
+                                                                id={`member-role-${member.id}`}
+                                                                name={`member-role-${member.id}`}
+                                                                aria-label={`Role for ${member.username || member.email}`}
+                                                                value={promoteTarget?.id === member.id ? promoteTarget.priorRole : memberRole}
+                                                                onChange={(e) => handleRoleChange(
+                                                                    member.id,
+                                                                    e.target.value,
+                                                                    member.username || member.email,
+                                                                    memberRole
+                                                                )}
+                                                                className="w-auto"
                                                             >
                                                                 <option value="member">Member</option>
                                                                 <option value="admin">Admin</option>
-                                                            </select>
+                                                            </SelectControl>
 
-                                                            {/* Remove Button — desktop entry point uses window.confirm() inside handleRemoveMember */}
+                                                            {/* Remove Button — desktop entry point opens the dialog-tier
+                                                                gate inside handleRemoveMember (Req 11, UI-SPEC §11.2). */}
                                                             <button
-                                                                onClick={() => handleRemoveMember(member.id)}
+                                                                onClick={() => handleRemoveMember(member.id, member.username || member.email)}
                                                                 className="btn btn-danger text-sm px-4 py-2"
                                                                 title="Remove from group"
                                                             >
@@ -425,11 +586,11 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
 
                                                         {/* Mobile (<768px) — kebab collapses role swap + Remove (and
                                                             Transfer Ownership when viewer is owner) into one ⋮.
-                                                            Make admin/member is single-tap (reversible).
-                                                            Remove uses twoTap=true (Phase 65-02 destructive-confirm
-                                                            pattern) and routes to handleRemoveMemberConfirmed.
-                                                            Transfer Ownership opens the confirm modal (no twoTap —
-                                                            the modal IS the confirmation). */}
+                                                            "Make member" is single-tap (a demotion is reversible and
+                                                            ungated on both surfaces); "Make admin" routes to the same
+                                                            escalation gate the desktop select uses. Transfer Ownership
+                                                            opens its own modal (no twoTap — the modal IS the
+                                                            confirmation). */}
                                                         <div className="md:hidden">
                                                             <KebabMenu
                                                                 ariaLabel="Member actions"
@@ -438,9 +599,21 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                                         label: memberRole === 'admin' ? 'Make member' : 'Make admin',
                                                                         onClick: () => handleRoleChange(
                                                                             member.id,
-                                                                            memberRole === 'admin' ? 'member' : 'admin'
+                                                                            memberRole === 'admin' ? 'member' : 'admin',
+                                                                            member.username || member.email,
+                                                                            memberRole
                                                                         ),
                                                                     },
+                                                                    /* DECISION Phase 88 AR-DEC-3 (owner, 2026-08-05): keep
+                                                                       KebabMenu-internal two-tap OVER routing through
+                                                                       useConfirmAction — the hook tier cannot survive an
+                                                                       auto-closing menu item (D-07). The arming tap at
+                                                                       KebabMenu.js:76-86 is the ONLY tap that does not close
+                                                                       the menu; hook-routing either arms without ever
+                                                                       committing (silently breaking mobile remove) or closes
+                                                                       on the arming tap. UI-SPEC §11.2 lists this gate as
+                                                                       already shipped and tier-correct. Changing this is a
+                                                                       decision, not a cleanup. */
                                                                     {
                                                                         label: 'Remove',
                                                                         danger: true,
@@ -530,115 +703,128 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                     </div>
                 )}
 
-                <div className="mt-6 flex justify-end">
-                    <button
-                        onClick={modaltoggle}
-                        className="btn btn-secondary px-6"
-                    >
-                        Close
-                    </button>
-                </div>
-            </div>
-        </div>
+            </Modal.Body>
+            <Modal.Footer>
+                <Modal.Action variant="secondary" onClick={modaltoggle} className="px-6">
+                    Close
+                </Modal.Action>
+            </Modal.Footer>
+        </Modal>
 
-        {/* Transfer Ownership confirmation — Phase 69 GROUP-06 frontend.
-            Sibling overlay to ManageMembers (NOT nested inside it) so the
-            parent's backdrop onClick={modaltoggle} cannot fire when the
-            user clicks anywhere on the transfer confirm. zIndex: 110 stacks
-            above the parent modal (default ~100). Copy verbatim from CONTEXT
-            D-XFER-02. Backdrop click cancels (only when not in-flight). */}
-        {transferTarget && (
-            <div
-                className="modal-overlay"
-                style={{ zIndex: 110 }}
-                onClick={() => !transferring && setTransferTarget(null)}
-            >
-                <div
-                    className="modal-content max-w-md w-full mx-4 p-6"
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <h3 className="text-lg font-bold text-content-primary mb-3">
-                        Transfer ownership to {transferTarget.name}?
-                    </h3>
-                    <p className="text-content-secondary mb-6">
-                        You will become an admin. This cannot be undone.
-                    </p>
-                    <div className="flex justify-end gap-3">
-                        <button
-                            className="btn btn-secondary"
-                            disabled={transferring}
-                            onClick={() => setTransferTarget(null)}
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            className="btn btn-primary"
-                            disabled={transferring}
-                            onClick={async () => {
-                                setTransferring(true);
-                                try {
-                                    await groupsAPI.transferOwnership(group_id, transferTarget.id);
-                                    setTransferTarget(null);
-                                    if (onMembersUpdated) onMembersUpdated();
-                                    if (modaltoggle) modaltoggle(); // close ManageMembers — caller refetches role
-                                } catch (err) {
-                                    console.error('Transfer ownership failed:', err);
-                                    toast.error(err.message || 'Failed to transfer ownership. Please try again.');
-                                } finally {
-                                    setTransferring(false);
-                                }
-                            }}
-                        >
-                            {transferring ? 'Transferring…' : 'Transfer ownership'}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        )}
+        {/* Transfer Ownership confirmation — Phase 69 GROUP-06 frontend, migrated onto the
+            shared <Modal> in Phase 88-12. Copy verbatim from CONTEXT D-XFER-02.
 
-        {/* Leave Group confirmation — Phase 69-04 mirror.
-            Sibling overlay (NOT nested inside ManageMembers' modal-content) so
-            the parent's backdrop onClick={modaltoggle} cannot fire when the
-            user clicks anywhere on this confirm. zIndex 110 stacks above the
-            parent modal. Copy verbatim from CONTEXT D-LEAVE-04 / Plan 69-04. */}
-        {showLeaveConfirm && (
-            <div
-                className="modal-overlay"
-                style={{ zIndex: 110 }}
-                onClick={() => !leaving && setShowLeaveConfirm(false)}
-            >
-                <div
-                    className="modal-content max-w-md w-full mx-4 p-6"
-                    onClick={(e) => e.stopPropagation()}
+            DECISION Phase 88-12 (AR R2-M11): the shipped in-flight dismissal guard survives
+            as `dismissable={!transferring}` — the primitive's OWN expression of "an
+            accidental outside click must not discard this", which is exactly what the old
+            `onClick={() => !transferring && ...}` backdrop guard bought. Esc and the header
+            close affordance stay live while pending, per Modal.tsx's recorded contract
+            ("the keyboard close path is never trapped" — WCAG 2.1.2). The rejected
+            alternative was suppressing those too so the dialog is un-exitable in flight:
+            that reopens a shipped a11y call to defend against an EXPLICIT close, where the
+            guard was only ever about an accidental one. Changing this is a decision. */}
+        <Modal
+            open={!!transferTarget}
+            onClose={() => setTransferTarget(null)}
+            dismissable={!transferring}
+            className="max-w-md"
+        >
+            <Modal.Header>
+                Transfer ownership to {transferTarget?.name}?
+            </Modal.Header>
+            <Modal.Body>
+                <p className="text-content-secondary">
+                    You will become an admin. This cannot be undone.
+                </p>
+            </Modal.Body>
+            <Modal.Footer>
+                <Modal.Action
+                    variant="secondary"
+                    disabled={transferring}
+                    onClick={() => setTransferTarget(null)}
                 >
-                    <h3 className="text-lg font-bold text-content-primary mb-3">
-                        Leave <span className="text-accent">{group_name}</span>?
-                    </h3>
-                    <p className="text-content-secondary mb-4">
-                        You will lose access to events, library, and member-only content.
-                    </p>
-                    {leaveError && (
-                        <p className="text-status-error text-sm mb-4">{leaveError}</p>
-                    )}
-                    <div className="flex justify-end gap-3">
-                        <button
-                            className="btn btn-secondary"
-                            disabled={leaving}
-                            onClick={() => { setShowLeaveConfirm(false); setLeaveError(''); }}
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            className="btn btn-danger"
-                            disabled={leaving}
-                            onClick={handleLeaveGroupConfirmed}
-                        >
-                            {leaving ? 'Leaving…' : 'Confirm Leave'}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        )}
+                    Cancel
+                </Modal.Action>
+                <Modal.Action
+                    variant="primary"
+                    disabled={transferring}
+                    onClick={async () => {
+                        if (!transferTarget) return;
+                        setTransferring(true);
+                        try {
+                            await groupsAPI.transferOwnership(group_id, transferTarget.id);
+                            setTransferTarget(null);
+                            if (onMembersUpdated) onMembersUpdated();
+                            if (modaltoggle) modaltoggle(); // close ManageMembers — caller refetches role
+                        } catch (err) {
+                            console.error('Transfer ownership failed:', err);
+                            toast.error(err.message || 'Failed to transfer ownership. Please try again.');
+                        } finally {
+                            setTransferring(false);
+                        }
+                    }}
+                >
+                    {transferring ? 'Transferring…' : 'Transfer ownership'}
+                </Modal.Action>
+            </Modal.Footer>
+        </Modal>
+
+        {/* Leave Group confirmation — Phase 69-04 mirror, migrated onto the shared <Modal>
+            in Phase 88-12. Copy verbatim from CONTEXT D-LEAVE-04 / Plan 69-04.
+            `dismissable={!leaving}` carries the same in-flight guard as the transfer
+            confirm above — see the marker there for why Esc stays live. */}
+        <Modal
+            open={showLeaveConfirm}
+            onClose={() => { setShowLeaveConfirm(false); setLeaveError(''); }}
+            dismissable={!leaving}
+            className="max-w-md"
+        >
+            <Modal.Header>
+                Leave <span className="text-accent">{group_name}</span>?
+            </Modal.Header>
+            <Modal.Body>
+                <p className="text-content-secondary">
+                    You will lose access to events, library, and member-only content.
+                </p>
+                {leaveError && (
+                    <p className="text-status-error text-sm mt-4">{leaveError}</p>
+                )}
+            </Modal.Body>
+            <Modal.Footer>
+                <Modal.Action
+                    variant="secondary"
+                    disabled={leaving}
+                    onClick={() => { setShowLeaveConfirm(false); setLeaveError(''); }}
+                >
+                    Cancel
+                </Modal.Action>
+                <Modal.Action
+                    variant="danger"
+                    disabled={leaving}
+                    onClick={handleLeaveGroupConfirmed}
+                >
+                    {leaving ? 'Leaving…' : 'Confirm Leave'}
+                </Modal.Action>
+            </Modal.Footer>
+        </Modal>
+
+        {/* Req 11 tiered gates. Each is rendered UNCONDITIONALLY and exactly ONCE for the
+            whole roster — the hook owns which member is targeted, so a per-row copy would
+            mount one dialog per member. `statusNode` is likewise mounted once and always: a
+            conditionally-mounted live region announces nothing. All four are `dialog` tier
+            today, which renders `statusNode` silent — it is still mounted so that
+            retiering any of them to `two-tap` stays the one-word edit the primitive
+            promises. */}
+        <ConfirmDialog {...removeMemberGate.dialogProps} />
+        {removeMemberGate.statusNode}
+        <ConfirmDialog {...rejectMemberGate.dialogProps} />
+        {rejectMemberGate.statusNode}
+        <ConfirmDialog {...resetInviteGate.dialogProps} />
+        {resetInviteGate.statusNode}
+        {/* onCancel is overridden (and only here) so aborting also drops the pending
+            escalation target — that is what makes the select revert. */}
+        <ConfirmDialog {...promoteAdminGate.dialogProps} onCancel={cancelPromoteAdmin} />
+        {promoteAdminGate.statusNode}
 
         {/* Invite members modal — sibling overlay so it stacks above ManageMembers
             and clicking inside it doesn't trigger the parent's backdrop close. */}

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { apiFetch } from '../../lib/api';
 import { Modal } from './Modal';
+import { Input, Textarea, SelectControl } from '@/components/ui/Input';
 
 /**
  * StartPollModal — Phase 71.2 (POLL-01 / D-UI-01)
@@ -69,6 +70,8 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
   const [gameId, setGameId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  // 88-33 Task 4 (UAT row 291): initial-focus target.
+  const deadlineInputRef = useRef(null);
 
   // Reset form whenever the modal is re-opened — without this a closed-then-
   // re-opened modal would carry stale state (especially errors from a prior
@@ -163,7 +166,9 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
   // Cancel still close. The submit button lives in <Modal.Footer> (outside the
   // <form>) but stays wired to it via the `form="start-poll-form"` attribute.
   return (
-    <Modal open={isOpen} onClose={onClose} dismissable={false}>
+    /* 88-33 Task 4 (UAT row 291, fleet initial-focus policy): form-bearing modal —
+       focus opens on the first meaningful input (the deadline field). */
+    <Modal open={isOpen} onClose={onClose} dismissable={false} initialFocusRef={deadlineInputRef}>
       <Modal.Header>Start a check-in</Modal.Header>
       <Modal.Body>
         <p className="text-sm text-content-secondary mb-4">
@@ -171,7 +176,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
         </p>
 
         {error && (
-          <div className="mb-4 p-3 border rounded-btn">
+          <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
             <p className="text-status-error text-sm">{error}</p>
           </div>
         )}
@@ -181,12 +186,13 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
             <label className="block text-sm font-medium text-content-primary mb-1" htmlFor="poll-deadline">
               Deadline
             </label>
-            <input
+            <Input
+              ref={deadlineInputRef}
               id="poll-deadline"
+              name="poll-deadline"
               type="datetime-local"
               value={deadlineLocal}
               onChange={(e) => setDeadlineLocal(e.target.value)}
-              className="w-full px-3 py-2 bg-surface-card border border-line rounded-btn text-content-primary focus:outline-hidden focus:border-line-accent"
               required
             />
             <p className="text-xs text-content-muted mt-1">
@@ -198,12 +204,20 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
             <label className="block text-sm font-medium text-content-primary mb-1" htmlFor="poll-week">
               Week
             </label>
-            <input
+            {/* DECISION Phase 88-21 (Req 1): adopts `Input` but KEEPS the read-only skin as an
+                override — `bg-surface-card-hover` + `text-content-secondary` + `cursor-not-allowed`
+                are the only thing telling a sighted user this field is auto-computed and not
+                editable (it carries no visible disabled affordance otherwise). Chosen OVER
+                dropping the overrides for a "clean" bare primitive, which would render it
+                identically to the editable Deadline field above it. Same idiom 88-19 used for the
+                saving-state phone field. */}
+            <Input
               id="poll-week"
+              name="poll-week"
               type="text"
               value={weekDisplay ? `Week of ${weekDisplay} (${weekIdentifier})` : ''}
               readOnly
-              className="w-full px-3 py-2 bg-surface-card-hover border border-line rounded-btn text-content-secondary cursor-not-allowed"
+              className="bg-surface-card-hover text-content-secondary cursor-not-allowed"
             />
             <p className="text-xs text-content-muted mt-1">
               Auto-computed from the deadline using ISO weeks.
@@ -215,11 +229,11 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
               <label className="block text-sm font-medium text-content-primary mb-1" htmlFor="poll-game">
                 Game (optional)
               </label>
-              <select
+              <SelectControl
                 id="poll-game"
+                name="poll-game"
                 value={gameId}
                 onChange={(e) => setGameId(e.target.value)}
-                className="w-full px-3 py-2 bg-surface-card border border-line rounded-btn text-content-primary focus:outline-hidden focus:border-line-accent"
               >
                 <option value="">No specific game</option>
                 {availableGames.map((g) => (
@@ -227,7 +241,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
                     {g.name || g.title || 'Unnamed game'}
                   </option>
                 ))}
-              </select>
+              </SelectControl>
             </div>
           )}
 
@@ -235,14 +249,15 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
             <label className="block text-sm font-medium text-content-primary mb-1" htmlFor="poll-message">
               Custom message (optional)
             </label>
-            <textarea
+            <Textarea
               id="poll-message"
+              name="poll-message"
               value={customMessage}
               onChange={(e) => setCustomMessage(e.target.value)}
               maxLength={280}
               rows={3}
               placeholder="e.g. Let's try to lock in a date for the campaign next session."
-              className="w-full px-3 py-2 bg-surface-card border border-line rounded-btn text-content-primary focus:outline-hidden focus:border-line-accent resize-none"
+              className="resize-none"
             />
             <p className="text-xs text-content-muted mt-1">
               {customMessage.length}/280 characters

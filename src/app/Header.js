@@ -122,10 +122,25 @@ function Header(){
 
                         {/* Mobile menu button — `relative` parent lets the
                             MOB-08 unread-indicator dot absolutely position
-                            over the hamburger icon's top-right corner. */}
+                            over the hamburger icon's top-right corner.
+
+                            DECISION Phase 88-28 (Req 4): `p-2.5` chosen OVER `p-2` (10 + 24 + 10
+                            = 44x44, up from 8 + 24 + 8 = 40x40) and OVER the invisible
+                            `after:-inset-0.5` hit extension used at `ClickableMemberName` and
+                            `GameComboInput`. The pseudo-element technique exists for controls
+                            that must stay small TO THE EYE inside a text line; nothing here
+                            constrains this button's visible size — it has no background, so
+                            growing its padding is invisible — and the extension would leave the
+                            button's own box at 40x40, which a `boundingBox()` assertion (plan
+                            88-30) would read as still failing. Layout cost is 4px in a
+                            `justify-between` row inside an `h-16` header: the icon shifts 2px
+                            left of the container's `px-4` edge and nothing reflows.
+                            87.8-08 logged this as a "40x40 FAIL" by arithmetic and RESEARCH
+                            flagged it as assumption A7 (never measured in a browser); 88-30's
+                            e2e is what settles it. Going back to `p-2` is a decision. */}
                         <button
                             ref={triggerRef}
-                            className="relative md:hidden text-white p-2 hover:text-accent active:opacity-75 transition-colors"
+                            className="relative md:hidden text-white p-2.5 hover:text-accent active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                             aria-label="Toggle menu"
                             aria-expanded={mobileMenuOpen}
@@ -142,9 +157,13 @@ function Header(){
                                 - bg-red-500 matches NotificationBell badge token verbatim.
                                 - rounded-full matches the bell badge shape language.
                                 - h-2.5 w-2.5 (~10px) reads as a dot, not a numeric badge.
-                                - absolute top-1 right-1 positions inside the button's p-2
+                                - absolute top-1.5 right-1.5 positions inside the button's p-2.5
                                   padding so the dot sits at the hamburger icon's top-right
-                                  corner without overflowing the tap surface.
+                                  corner without overflowing the tap surface. Phase 88-28 moved
+                                  BOTH together (p-2 -> p-2.5, top-1/right-1 -> top-1.5/right-1.5):
+                                  the dot's offset is measured from the button's border box, so
+                                  raising the padding without raising the inset would push the
+                                  dot 2px further from the icon corner it is meant to sit on.
                                 - ring-2 ring-surface-header gives the dot a header-bg halo
                                   so it visually separates from the white hamburger lines
                                   (Slack/Discord/Linear pattern).
@@ -157,7 +176,7 @@ function Header(){
                                   instantly when count crosses 0). */}
                             {user && totalCount > 0 && (
                                 <span
-                                    className="absolute top-1 right-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-surface-header"
+                                    className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-surface-header"
                                     aria-hidden="true"
                                 />
                             )}
@@ -182,7 +201,7 @@ function Header(){
                                     {isLink ? (
                                         <Link
                                             href={href}
-                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover active:opacity-75 transition-colors"
+                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                                             onClick={() => setMobileMenuOpen(false)}
                                         >
                                             {label}
@@ -190,7 +209,7 @@ function Header(){
                                     ) : (
                                         <a
                                             href={href}
-                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover active:opacity-75 transition-colors"
+                                            className="block px-4 py-3 text-white hover:text-accent hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                                             onClick={() => setMobileMenuOpen(false)}
                                         >
                                             {label}

@@ -1,7 +1,19 @@
 // Behavior pins for the ReadCell presentational wrapper (PRIM-01 / 84-05).
 //
+// AMENDED BY PHASE 88-31 (SPEC "END-OF-PHASE DEAD-CODE GATE"): every pin below used to render
+// the DEFAULT (intensity) variant, because that was the shape with the fewest required props.
+// That variant and its colour ramp are deleted, so the pins moved to `variant="merged"`.
+//
+// They were CONVERTED, NOT DELETED, and the distinction matters: only one of the six was about
+// the dead ramp (a byte-identical class assertion, which the merged pin directly below it
+// already made for the surviving ramp — that one IS gone as a duplicate). The other five pin
+// arrow-key roving, the React.memo drag guarantee and passive `roving={false}` mode, all of
+// which are live behaviour of a live primitive and none of which depends on the colour
+// function. Deleting them because their fixture happened to use the dead variant would have
+// removed real coverage under cover of a dead-code gate.
+//
 // ReadCell is a thin React.memo wrapper over useHeatmapCell that renders a
-// read/intensity heatmap cell. It must:
+// read heatmap cell. It must:
 //   1. expose role="gridcell" with the verbatim availabilityColor class
 //   2. wire arrow-key roving through useHeatmapCell -> the grid onMove
 //   3. preserve TimeSlotCell's React.memo drag guarantee (a sibling value change
@@ -21,22 +33,6 @@ afterEach(() => {
 });
 
 describe('ReadCell — semantics + verbatim color', () => {
-  it('renders role="gridcell" with the byte-identical intensityColor class', () => {
-    render(
-      <ReadCell
-        row={0}
-        col={0}
-        rows={1}
-        cols={1}
-        participantCount={2}
-        preferredCount={1}
-        totalMembers={4}
-      />
-    );
-    const cell = screen.getByRole('gridcell');
-    expect(cell.className).toBe(colors.intensityColor(2, 1, 4));
-  });
-
   it('applies mergedCellColor verbatim for variant="merged"', () => {
     render(
       <ReadCell
@@ -64,8 +60,8 @@ describe('ReadCell — keyboard roving wired through useHeatmapCell', () => {
         cols={2}
         focused
         onMove={onMove}
-        participantCount={2}
-        preferredCount={1}
+        variant="merged"
+        availableCount={2}
         totalMembers={4}
       />
     );
@@ -88,8 +84,8 @@ describe('ReadCell — React.memo drag-render guarantee', () => {
           focused
           onMove={onMove}
           onSelect={onSelect}
-          participantCount={aCount}
-          preferredCount={0}
+          variant="merged"
+          availableCount={aCount}
           totalMembers={4}
         />
         <ReadCell
@@ -99,8 +95,8 @@ describe('ReadCell — React.memo drag-render guarantee', () => {
           cols={2}
           onMove={onMove}
           onSelect={onSelect}
-          participantCount={7}
-          preferredCount={0}
+          variant="merged"
+          availableCount={7}
           totalMembers={4}
         />
       </div>
@@ -108,15 +104,15 @@ describe('ReadCell — React.memo drag-render guarantee', () => {
   }
 
   it('changing one cell value does NOT re-render the sibling memoized cell', () => {
-    const spy = vi.spyOn(colors, 'intensityColor');
+    const spy = vi.spyOn(colors, 'mergedCellColor');
     const { rerender } = render(<TwoCells aCount={3} />);
     spy.mockClear();
     rerender(<TwoCells aCount={5} />);
-    const participantArgs = spy.mock.calls.map((c) => c[0]);
+    const availableArgs = spy.mock.calls.map((c) => c[0]);
     // Cell A re-rendered with its new value...
-    expect(participantArgs).toContain(5);
+    expect(availableArgs).toContain(5);
     // ...but cell B (value 7, stable handlers) was skipped by React.memo.
-    expect(participantArgs).not.toContain(7);
+    expect(availableArgs).not.toContain(7);
   });
 });
 
@@ -129,8 +125,8 @@ describe('ReadCell — roving={false} passive read-summary mode (72-02)', () => 
         rows={1}
         cols={1}
         roving={false}
-        participantCount={2}
-        preferredCount={0}
+        variant="merged"
+        availableCount={2}
         totalMembers={4}
       />
     );
@@ -147,8 +143,8 @@ describe('ReadCell — roving={false} passive read-summary mode (72-02)', () => 
         cols={2}
         roving={false}
         onMove={onMove}
-        participantCount={2}
-        preferredCount={0}
+        variant="merged"
+        availableCount={2}
         totalMembers={4}
       />
     );

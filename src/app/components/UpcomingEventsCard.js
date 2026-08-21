@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTimezone } from '../components/TimezoneProvider';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
 /**
  * Format event date/time in relative + compact format with timezone support.
@@ -102,8 +104,15 @@ function formatRelativeDateTime(dateStr, timezone) {
  *   Resolved at the parent via the shared useSelfIdentity() query (selfUuid);
  *   Phase 87.3-07 (D-02). When null/missing, no event is marked as guest
  *   (graceful default).
+ * @param {Object} [props.errorState=null] - Phase 88-18 (Req 6 / T-88-18-01):
+ *   the OWNER of the events fetch passes its `useFetchErrorState` result here so
+ *   a failed load renders the shared error treatment INSIDE this card instead of
+ *   falling through to "nothing on the calendar". The card does not fetch, so it
+ *   cannot derive this itself.
+ * @param {React.ReactNode} [props.action=null] - Optional caller-owned CTA for
+ *   the empty state, so any gating stays at the call site.
  */
-export default function UpcomingEventsCard({ events, showGroupName = false, loading = false, viewerDbUserId = null }) {
+export default function UpcomingEventsCard({ events, showGroupName = false, loading = false, viewerDbUserId = null, errorState = null, action = null }) {
   const router = useRouter();
   const { timezone } = useTimezone();
   const [expanded, setExpanded] = useState(false);
@@ -134,13 +143,47 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
   };
 
   return (
-    <div className="card p-4 md:p-6 mb-4">
+    <div className="card p-3 md:p-6 mb-4">
       <h3 className="font-medium text-content-primary">Upcoming Events</h3>
 
       {loading ? (
-        <p className="text-sm text-content-muted mt-2">Loading...</p>
+        /* 88-33 Task 1 (M1's in-page-spinner class, walk row "In-page loading states name
+           what is loading"): a named status, not a bare "Loading..." — the accessible name
+           is what a screen-reader user gets, and the walk's "empty main" readings came from
+           accessibility trees with nothing in them. */
+        <p
+          role="status"
+          aria-label="Loading your upcoming events"
+          className="text-sm text-content-muted mt-2"
+        >
+          Loading your upcoming events...
+        </p>
+      ) : errorState?.showError ? (
+        /* DECISION Phase 88-18 (Req 6 / T-88-18-01): a failed events fetch renders the shared
+           error treatment here, checked BEFORE the empty branch. The parent used to swallow the
+           failure in a `console.error` and hand this card an empty array, so the card printed
+           "No upcoming events" at someone whose calendar had simply failed to load. Empty and
+           failed are different facts (UI-SPEC 9.2). Ordering is load-bearing: an errored fetch
+           also has zero events, so flipping these two branches silently restores the bug. */
+        <div className="mt-2">
+          <FetchErrorBanner
+            state={errorState}
+            title="We couldn't load your upcoming events"
+            reportContext="Upcoming events card (home page)"
+          />
+        </div>
       ) : upcomingEvents.length === 0 ? (
-        <p className="text-sm text-content-muted mt-2">No upcoming events</p>
+        /* 88-33 Task 7 step 3 (M4 rider, UAT row 433's copy gap): the body NAMES the
+           7-day window — the card silently filters to it, and the walk's "no upcoming
+           events even though they created one for next week" misread came straight from
+           the undisclosed window. Heading stays warm; copy recorded in the SUMMARY for
+           §6.2.1 ratification at phase close. */
+        <EmptyState
+          icon="CalendarDays"
+          heading="Nothing on the calendar"
+          body="Nothing scheduled in the next 7 days — plan a game night and it'll show up here."
+          action={action ?? undefined}
+        />
       ) : (
         <div className="mt-2">
           {displayEvents.map(event => {

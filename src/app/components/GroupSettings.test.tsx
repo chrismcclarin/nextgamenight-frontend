@@ -1,10 +1,13 @@
 // Phase 88.2 plan 09 — component-level net over the rewritten Danger Zone.
+// Phase 88-13 (D-04) updated SPEC-REQ-6's pins in place: the typed gate now runs
+// on the shared `typed` tier and the stacked native prompt behind it is gone.
 //
 // Pins three things that are easy to break silently:
 //   SPEC-REQ-5  the real blast radius renders, sourced from the dedicated
 //               endpoint (D-06), with a route to the transfer flow;
-//   SPEC-REQ-6  the type-the-group-name gate and the native browser
-//               confirmation are behaviorally unchanged, and NO new gate exists;
+//   SPEC-REQ-6  the type-the-group-name gate is behaviorally unchanged (still
+//               exact-match-or-disabled), NO new gate exists, and NOTHING is
+//               stacked behind it — one prompt, once (88-13 / D-04);
 //   SPEC-REQ-7  nothing in the flow claims the delete is permanent — including
 //               on the degraded path where the impact fetch failed.
 //
@@ -39,6 +42,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import GroupSettings from './GroupSettings';
 import { groupsAPI } from '@/lib/api';
+import { toast } from 'sonner';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -81,6 +85,22 @@ function dangerZone(): HTMLElement {
   return screen.getByRole('heading', { name: 'Danger Zone' }).parentElement as HTMLElement;
 }
 
+/**
+ * The delete confirmation dialog, addressed BY ITS ACCESSIBLE NAME rather than
+ * `getByRole('dialog')`. Two dialogs are on screen once the settings surface
+ * itself is hosted on <Modal> (88-13 task 2), so an unnamed role query is
+ * ambiguous by construction.
+ */
+function deleteDialog(): HTMLElement {
+  return screen.getByRole('dialog', { name: `Delete ${GROUP_NAME}?` });
+}
+
+/** Open the typed gate. Returns the dialog. */
+async function openDeleteGate(): Promise<HTMLElement> {
+  fireEvent.click(await screen.findByRole('button', { name: 'Delete Group' }));
+  return await screen.findByRole('dialog', { name: `Delete ${GROUP_NAME}?` });
+}
+
 let confirmSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
@@ -94,6 +114,39 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+});
+
+describe('Phase 88-13 — the settings surface is on the shared Modal, and saving is audible', () => {
+  it('renders as a labelled dialog with no hand-rolled backdrop', async () => {
+    const { container } = renderSettings();
+    const dialog = await screen.findByRole('dialog', { name: 'Customize Group' });
+    expect(dialog).toBeInTheDocument();
+    // The hand-rolled overlay/backdrop pair is gone, not re-created inside.
+    expect(container.querySelector('.modal-overlay')).toBeNull();
+    expect(document.querySelector('.modal-overlay')).toBeNull();
+  });
+
+  it('fires the Settings saved receipt, in that exact register (Req 12 / §6.2)', async () => {
+    (groupsAPI.updateGroupSettings as Mock).mockResolvedValue({});
+    const onClose = vi.fn();
+    renderSettings({ onClose });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(toast.success as Mock).toHaveBeenCalledWith('Settings saved'));
+    // No exclamation, no "successfully" — and it must be fired BEFORE the
+    // unmount, or Sonner never shows it.
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const successOrder = (toast.success as Mock).mock.invocationCallOrder[0];
+    expect(successOrder).toBeLessThan(onClose.mock.invocationCallOrder[0]);
+  });
+
+  it('does not claim success when the save fails', async () => {
+    (groupsAPI.updateGroupSettings as Mock).mockRejectedValue(new Error('nope'));
+    renderSettings();
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(toast.error as Mock).toHaveBeenCalled());
+    expect(toast.success as Mock).not.toHaveBeenCalled();
+  });
 });
 
 describe('SPEC-REQ-5 — the Danger Zone states the real blast radius', () => {
@@ -139,21 +192,19 @@ describe('SPEC-REQ-5 — the Danger Zone states the real blast radius', () => {
 });
 
 describe('SPEC-REQ-7 — no permanence claim survives', () => {
-  it('the rendered Danger Zone and the confirmation string make no permanence claim', async () => {
+  it('the rendered Danger Zone and the confirmation dialog make no permanence claim', async () => {
     renderSettings();
     await waitFor(() => expect(dangerZone().textContent).toContain('37'));
     const text = (dangerZone().textContent ?? '').toLowerCase();
     for (const phrase of FORBIDDEN) expect(text).not.toContain(phrase);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete Group' }));
-    fireEvent.change(screen.getByPlaceholderText('Type group name to confirm'), {
-      target: { value: GROUP_NAME },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Delete Group' }));
-
-    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
-    const confirmArg = String(confirmSpy.mock.calls[0][0]).toLowerCase();
-    for (const phrase of FORBIDDEN) expect(confirmArg).not.toContain(phrase);
+    // 88-13: the copy the old native prompt carried now renders in the dialog
+    // body, so the SPEC-REQ-7 sweep follows it there.
+    const dialog = await openDeleteGate();
+    const dialogText = (dialog.textContent ?? '').toLowerCase();
+    for (const phrase of FORBIDDEN) expect(dialogText).not.toContain(phrase);
+    expect(dialogText).toMatch(/take it over/);
+    expect(dialogText).toContain('30 days');
   });
 
   it('M-5 — a sole-member group is told plainly the delete is final, with no false promise', async () => {
@@ -174,16 +225,13 @@ describe('SPEC-REQ-7 — no permanence claim survives', () => {
     expect(text).toMatch(/final/);
     for (const phrase of FORBIDDEN) expect(text).not.toContain(phrase);
 
-    // The confirm() string branches the same way.
-    fireEvent.click(screen.getByRole('button', { name: 'Delete Group' }));
-    fireEvent.change(screen.getByPlaceholderText('Type group name to confirm'), {
-      target: { value: GROUP_NAME },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Delete Group' }));
-    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
-    const confirmArg = String(confirmSpy.mock.calls[0][0]).toLowerCase();
-    expect(confirmArg).toContain('only member');
-    for (const phrase of FORBIDDEN) expect(confirmArg).not.toContain(phrase);
+    // The dialog body branches the same way the retired prompt string did.
+    const dialog = await openDeleteGate();
+    const dialogText = (dialog.textContent ?? '').toLowerCase();
+    expect(dialogText).toContain('only member');
+    expect(dialogText).toMatch(/final/);
+    expect(dialogText).not.toMatch(/emails them a link/);
+    for (const phrase of FORBIDDEN) expect(dialogText).not.toContain(phrase);
   });
 
   it('the DEGRADED path is also clean, and still makes a recoverability claim', async () => {
@@ -230,31 +278,53 @@ describe('D-06 — counts come from the endpoint, once, and only for the owner',
   });
 });
 
-describe('SPEC-REQ-6 — the existing friction is preserved, and nothing is added', () => {
+describe('SPEC-REQ-6 / 88-13 D-04 — one gate, at full strength, with nothing stacked', () => {
   it('the confirm button unlocks only on an exact group-name match', async () => {
     renderSettings();
     await waitFor(() => expect(dangerZone().textContent).toContain('37'));
-    fireEvent.click(screen.getByRole('button', { name: 'Delete Group' }));
+    const dialog = await openDeleteGate();
 
-    const input = screen.getByPlaceholderText('Type group name to confirm');
-    const confirmBtn = screen.getByRole('button', { name: 'Delete Group' });
+    const input = within(dialog).getByRole('textbox');
+    const confirmBtn = within(dialog).getByRole('button', { name: 'Delete' });
 
     expect(confirmBtn).toBeDisabled(); // empty
     fireEvent.change(input, { target: { value: 'Tuesday Night Crw' } });
     expect(confirmBtn).toBeDisabled(); // near miss
+    fireEvent.change(input, { target: { value: `${GROUP_NAME} ` } });
+    expect(confirmBtn).toBeDisabled(); // trailing space — exact equality, not trim
     fireEvent.change(input, { target: { value: GROUP_NAME } });
     expect(confirmBtn).toBeEnabled(); // exact
+  });
 
-    // ...and the native confirmation is still the second gate: a refusal there
-    // must stop the delete dead.
-    confirmSpy.mockReturnValue(false);
-    fireEvent.click(confirmBtn);
-    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
-    expect(groupsAPI.deleteGroup as Mock).not.toHaveBeenCalled();
+  it('confirming deletes exactly once, with NO second prompt behind it (D-04)', async () => {
+    renderSettings();
+    await waitFor(() => expect(dangerZone().textContent).toContain('37'));
+    const dialog = await openDeleteGate();
 
-    confirmSpy.mockReturnValue(true);
-    fireEvent.click(confirmBtn);
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: GROUP_NAME } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
     await waitFor(() => expect(groupsAPI.deleteGroup as Mock).toHaveBeenCalledWith(GROUP_ID));
+    expect(groupsAPI.deleteGroup as Mock).toHaveBeenCalledTimes(1);
+    // The stacked native prompt 88.2 shipped is GONE. This assertion is the
+    // regression net for it: re-adding one is a decision (see the DECISION
+    // marker in GroupSettings.js), and this line fails loudly if it happens.
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it('cancel aborts — nothing is deleted', async () => {
+    renderSettings();
+    await waitFor(() => expect(dangerZone().textContent).toContain('37'));
+    const dialog = await openDeleteGate();
+
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: GROUP_NAME } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: `Delete ${GROUP_NAME}?` })).toBeNull()
+    );
+    expect(groupsAPI.deleteGroup as Mock).not.toHaveBeenCalled();
+    expect(confirmSpy).not.toHaveBeenCalled();
   });
 
   it('a many-member group needs no extra acknowledgement step', async () => {
@@ -265,18 +335,28 @@ describe('SPEC-REQ-6 — the existing friction is preserved, and nothing is adde
     });
     renderSettings();
     await waitFor(() => expect(dangerZone().textContent).toContain('50'));
-    fireEvent.click(screen.getByRole('button', { name: 'Delete Group' }));
+    const dialog = await openDeleteGate();
 
-    const zone = dangerZone();
     // Exactly one input (the name field) and no checkbox / extra acknowledgement.
-    expect(within(zone).getAllByRole('textbox')).toHaveLength(1);
-    expect(within(zone).queryAllByRole('checkbox')).toHaveLength(0);
+    expect(within(dialog).getAllByRole('textbox')).toHaveLength(1);
+    expect(within(dialog).queryAllByRole('checkbox')).toHaveLength(0);
+    // D-06's counts ride ABOVE the input rather than behind another click.
+    expect(dialog.textContent).toContain('50');
+    expect(dialog.textContent).toContain('12');
 
-    fireEvent.change(screen.getByPlaceholderText('Type group name to confirm'), {
-      target: { value: GROUP_NAME },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Delete Group' }));
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: GROUP_NAME } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(groupsAPI.deleteGroup as Mock).toHaveBeenCalledWith(GROUP_ID));
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('never withholds the confirm control — the backend stays the authority (88.2)', async () => {
+    (groupsAPI.getDeletionImpact as Mock).mockRejectedValue(new Error('boom'));
+    renderSettings();
+    const dialog = await openDeleteGate();
+
+    // No blocker panel means no counts, but the gate is still completable: 88.2
+    // forbids this surface adding a refusal of its own.
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: GROUP_NAME } });
+    expect(within(dialog).getByRole('button', { name: 'Delete' })).toBeEnabled();
   });
 });

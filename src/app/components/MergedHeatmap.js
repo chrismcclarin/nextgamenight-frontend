@@ -164,7 +164,7 @@ export default function MergedHeatmap({
 
       {/* Members without data notice */}
       {membersWithoutData.length > 0 && !showSkeleton && (
-        <div className="border rounded-card p-3 text-sm text-content-secondary mb-4 flex items-start gap-2">
+        <div className="bg-surface-accent-subtle border border-line-accent rounded-card p-3 text-sm text-content-secondary mb-4 flex items-start gap-2">
           <svg
             className="w-4 h-4 mt-0.5 shrink-0 text-accent"
             fill="currentColor"
@@ -270,7 +270,7 @@ export default function MergedHeatmap({
 
       {/* Selected slot CTA */}
       {selectedSlot && (
-        <div className="border rounded-card p-3 text-content-primary font-medium mt-4 flex items-center justify-between">
+        <div className="bg-surface-accent-subtle border border-line-accent rounded-card p-3 text-content-primary font-medium mt-4 flex items-center justify-between">
           <span>Plan Session at {formatSlotLabel(selectedSlot)}</span>
           <button
             onClick={() => onSlotSelect(selectedSlot)}

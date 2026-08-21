@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { groupsAPI, eventsAPI, promptAPI } from '../../lib/api';
@@ -36,6 +36,7 @@ export default function GroupPlanningPage() {
     const prefillGameId = searchParams.get('prefillGameId');
 
     const [group, setGroup] = useState(null);
+    const [groupError, setGroupError] = useState(null);
     const [groupEvents, setGroupEvents] = useState([]);
 
     // Modal state for CreateEvent. When the URL carries prefill params we
@@ -83,6 +84,7 @@ export default function GroupPlanningPage() {
     const fetchGroup = async () => {
         if (!groupId) return;
         try {
+            setGroupError(null);
             const groupData = await groupsAPI.getGroup(groupId);
 
             // If Users are not included, fetch them separately
@@ -98,7 +100,20 @@ export default function GroupPlanningPage() {
             setGroup(groupData);
         } catch (error) {
             console.error('Error fetching group:', error);
-            alert('Failed to load group. Please try again.');
+            /* DECISION Phase 88-25 (Req 14 / Req 11, DEF-88-16-01): a failed group load renders
+               the shared fetch-error treatment with a retry, chosen OVER the native browser alert
+               this shipped with. A browser alert is unstyled, un-dismissable by keyboard
+               convention, blocks the whole page for a READ failure, and offers no way to retry —
+               the person's only recourse was a manual reload. It was also one of the six
+               native-alert sites DEF-88-16-01 censused, invisible to Req 11's confirm-only gate.
+               (The literal call is not written out here, comment included — that gate is a plain
+               grep and does not exempt comments. Same convention as 88-11's marker in gameDetail.)
+
+               Keep the ERROR object, not a flattened string: useFetchErrorState reads
+               `ApiError.code` off it to pick the right user-facing copy. */
+            setGroupError(
+                error instanceof Error ? error : new Error("The group request didn't complete.")
+            );
         }
     };
 
@@ -129,7 +144,10 @@ export default function GroupPlanningPage() {
             }
             setHeatmapPrompt(prompt);
         } catch (err) {
-            setHeatmapError(err.message || 'Failed to load poll data');
+            // Keep the ERROR object, not `err.message`: the raw upstream string used to be
+            // painted straight into the page below (T-88-25-01 / ASVS V7). The hook derives
+            // designed copy from `ApiError.code` instead.
+            setHeatmapError(err instanceof Error ? err : new Error("The poll request didn't complete."));
         } finally {
             setHeatmapLoading(false);
         }
@@ -150,6 +168,33 @@ export default function GroupPlanningPage() {
             console.error('Error fetching user role:', err);
         }
     };
+
+    /* Adapters onto the shared fetch-error pair, matching the shipped 88-14/88-18 shape
+       (friends/page.js, grouplist.js, GroupLibrary.js): the hook documents that it reads ONLY
+       `isError`/`error`/`refetch` (useFetchErrorState.ts). `refetch` must be STABLE — the hook
+       puts it in a useCallback dep AND in its refocus-recovery effect deps, so handing it a fresh
+       function each render would re-subscribe that listener on every render while erroring.
+       These two fetches are re-declared per render (they close over groupId/promptId), hence the
+       ref hop rather than a useCallback on the fetch itself. */
+    const fetchGroupRef = useRef(null);
+    const fetchHeatmapRef = useRef(null);
+    useEffect(() => {
+        fetchGroupRef.current = fetchGroup;
+        fetchHeatmapRef.current = fetchHeatmapData;
+    });
+    const retryGroup = useCallback(() => fetchGroupRef.current?.(), []);
+    const retryHeatmap = useCallback(() => fetchHeatmapRef.current?.(), []);
+
+    const groupErrorState = useFetchErrorState({
+        isError: Boolean(groupError),
+        error: groupError,
+        refetch: retryGroup,
+    });
+    const heatmapErrorState = useFetchErrorState({
+        isError: Boolean(heatmapError),
+        error: heatmapError,
+        refetch: retryHeatmap,
+    });
 
     // Phase 71.2 / Plan 03 hotfix — clear the email-CTA query params (prompt_id,
     // prefillDate, etc.) when the modal closes for any reason. Without this, a
@@ -235,6 +280,18 @@ export default function GroupPlanningPage() {
                 non-blocking degrade notice rather than fail silently (D-11). */}
             <FetchErrorBanner state={selfIdentityErrorState} compact />
 
+            {/* A failed GROUP load — the page keeps its generic "Plan Game Session" title and the
+                poll tooling below still works, so this is a banner rather than a dead-end page. */}
+            {groupErrorState.showError && (
+                <div className="mb-6">
+                    <FetchErrorBanner
+                        state={groupErrorState}
+                        title="We couldn't load this group"
+                        reportContext="Group planning page — group details fetch"
+                    />
+                </div>
+            )}
+
             {/* Availability Polls + Response Dashboard in one card */}
             <div className="card p-3 md:p-6 mb-6">
                 <h2 className="text-xl font-bold text-content-primary mb-4">Availability Polls</h2>
@@ -251,8 +308,21 @@ export default function GroupPlanningPage() {
                     <div className="mt-4 pt-4 border-t border-line">
                         {heatmapLoading ? (
                             <p className="text-center text-content-secondary py-4">Loading poll data...</p>
-                        ) : heatmapError ? (
-                            <p className="text-center text-status-error py-4">{heatmapError}</p>
+                        ) : heatmapErrorState.showError ? (
+                            /* DECISION Phase 88-25 (Req 14 / T-88-25-01): the poll-data failure gets the
+                               shared error treatment with a retry, checked BEFORE the "no active poll"
+                               branch below. Ordering is load-bearing: a failed request also leaves
+                               `heatmapPrompt` null, so flipping these branches tells someone whose
+                               request merely failed that their group has no poll running. This node
+                               previously rendered `err.message` verbatim — a raw upstream string in the
+                               DOM (ASVS V7). */
+                            <div className="py-4">
+                                <FetchErrorBanner
+                                    state={heatmapErrorState}
+                                    title="We couldn't load the poll responses"
+                                    reportContext="Group planning page — availability poll fetch"
+                                />
+                            </div>
                         ) : heatmapPrompt ? (
                             <>
                                 <h3 className="text-lg font-semibold text-content-primary mb-3">Poll Responses</h3>

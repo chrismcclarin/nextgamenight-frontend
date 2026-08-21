@@ -169,7 +169,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
         // on touch (Tailwind v4 hover media query), and inertness is not a defect.
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:opacity-75 transition-colors"
+          className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
           aria-label={label ? `${label} notifications` : 'Notifications'}
         >
           {bellIcon}
@@ -213,7 +213,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
               for the L-8 "no longer available" notice */}
           {confirmation && (
             <div className={`px-4 py-2 border-b border-line ${
-              confirmation.tone === 'success' ? '' : 'bg-surface-card-hover'
+              confirmation.tone === 'success' ? 'bg-status-success-subtle' : 'bg-surface-card-hover'
             }`}>
               <p className={`text-sm font-medium ${
                 confirmation.tone === 'success' ? 'text-status-success' : 'text-content-muted'

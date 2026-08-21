@@ -1,12 +1,12 @@
 // src/components/GroupList.js
 'use client'
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import GroupSettings from './GroupSettings';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { groupsAPI } from '../../lib/api';
-import { getTextStyle } from '../../lib/colorUtils';
+import { getTextStyle, resolveGroupBackgroundColor } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { formatDate } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
@@ -15,6 +15,8 @@ import ClickableMemberName from './ClickableMemberName';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Button } from '../../components/ui/Button';
 
 const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
   const router = useRouter();
@@ -31,6 +33,14 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
   const [loading, setLoading] = useState(true);
   const [settingsGroup, setSettingsGroup] = useState(null);
   const [userRoles, setUserRoles] = useState({});
+  /* DECISION Phase 88-18 (Req 6 / T-88-18-01): the getUserGroups failure is tracked as its own
+     state rather than being flattened into `setGroups([])`. That flatten is what made a failed
+     request render "No groups yet" — telling someone who may well own several groups that they
+     have none, on the app's landing surface. Empty and failed are different facts on different
+     surfaces (UI-SPEC 9.2). This is separate from `selfIdentityErrorState` above: that one is
+     the identity-resolution degrade (D-08/D-11), this one is the groups request itself. Do not
+     merge them, and do not go back to `setGroups([])` on catch. */
+  const [groupsError, setGroupsError] = useState(null);
 
   // selfUuid resolves ASYNC after this mount effect's first run, so it is in the
   // dependency array per the async-resolution rule — the fetch re-fires (and the
@@ -67,16 +77,36 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
 
     try {
       setLoading(true);
+      setGroupsError(null);
       // Use groupsAPI.getUserGroups which automatically includes Authorization header
       const groupsData = await groupsAPI.getUserGroups(selfUuid);
       setGroups(groupsData || []);
     } catch (error) {
       console.error('Error fetching groups:', error.message || 'Unknown error');
-      setGroups([]);
+      // Keep the ERROR object, not a flattened string: useFetchErrorState reads
+      // `ApiError.code` off it to pick the right user-facing copy.
+      setGroupsError(
+        error instanceof Error ? error : new Error("The groups request didn't complete.")
+      );
     } finally {
       setLoading(false);
     }
   };
+
+  // Adapter onto the shared fetch-error pair, matching the 88-14 friends-page
+  // pattern: the hook documents that it reads ONLY isError/error/refetch
+  // (useFetchErrorState.ts:89). `retry` must be stable — the hook puts it in a
+  // useCallback dep AND in its refocus-recovery effect deps.
+  const fetchGroupsRef = useRef(null);
+  useEffect(() => {
+    fetchGroupsRef.current = fetchGroups;
+  });
+  const retryGroups = useCallback(() => fetchGroupsRef.current?.(), []);
+  const groupsErrorState = useFetchErrorState({
+    isError: Boolean(groupsError),
+    error: groupsError,
+    refetch: retryGroups,
+  });
 
 
   const handleGroupClick = (group, e) => {
@@ -98,7 +128,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
           <h2 className="text-xl font-bold text-content-primary">Your Groups</h2>
           {onCreateGroup && (
-            /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA (error-state render branch of the same CTA below). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button. */
+            /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA (error-state render branch of the same CTA below). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup. */
             <button
               className="btn btn-primary text-sm whitespace-nowrap min-h-11"
               onClick={onCreateGroup}
@@ -142,7 +172,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
         <h2 className="text-xl font-bold text-content-primary">Your Groups</h2>
         {onCreateGroup && (
-          /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button. */
+          /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup. */
           <button
             className="btn btn-primary text-sm whitespace-nowrap min-h-11"
             onClick={onCreateGroup}
@@ -160,11 +190,39 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
       <FetchErrorBanner state={selfIdentityErrorState} compact />
 
       <div className="flex-1 overflow-y-auto surface-flat-phone md:p-4 pb-8 flex flex-col gap-4 max-md:max-h-[60vh]">
-        {groups.length === 0 ? (
-          <div className="text-center py-8 px-4 text-content-muted">
-            <p className="my-2">No groups yet!</p>
-            <p className="my-2">Create your first group to get started.</p>
-          </div>
+        {groupsErrorState.showError ? (
+          <FetchErrorBanner
+            state={groupsErrorState}
+            title="We couldn't load your groups"
+            reportContext="Your groups list (home page)"
+          />
+        ) : groups.length === 0 ? (
+          /* DECISION Phase 88-18 (Req 6): this EmptyState's CTA is rendered IN ADDITION to the
+             identical header button above, not instead of it — the opposite call to
+             OpenPollsList/PromptScheduleManager, which suppress theirs. The difference is where
+             the button lives: those two sit directly above the list body and read as a duplicate
+             a finger-width away, whereas this one is persistent panel chrome in the bordered
+             "Your Groups" header and is present in every state, including the error state.
+             Removing the header button when empty would make the panel header change shape.
+             The `data-tutorial="create-group-btn"` hook is DELIBERATELY not copied here — that
+             selector must resolve to one element. */
+          <EmptyState
+            icon="Users"
+            heading="No groups yet"
+            body="A group is your people plus the games you play. Make one and invite them."
+            action={
+              onCreateGroup ? (
+                <Button
+                  variant="primary"
+                  className="min-h-11"
+                  onClick={onCreateGroup}
+                  aria-label="Create new group"
+                >
+                  + Create New Group
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           groups.map((group) => {
             // Get users from the group (Users array from backend)
@@ -179,14 +237,25 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
               userRole = userMember?.UserGroup?.role || userMember?.role;
             }
             const canEdit = userRole === 'owner' || userRole === 'admin';
-            const bgColor = group.background_color || '#ffffff';
+            // null when the group has no colour of its own — the inline
+            // backgroundColor is then omitted so `bg-surface-card` wins (D-28).
+            const bgColor = resolveGroupBackgroundColor(group.background_color);
             const bgImage = group.background_image_url;
+            // Wave-12 review follow-up (owner-ruled fix, 2026-08-21): gate the
+            // overlay AND the white-text treatment on the VALIDATED style, not
+            // the raw string. safeBgImageStyle drops relative/invalid URLs
+            // (FSEC-03), so a truthy-but-invalid value used to render the 0.7
+            // dim + white text over NO image — a solid near-black card (the
+            // walk's /bgg-logo.png black-card mystery). Invalid URLs now
+            // degrade to the plain color card.
+            const bgImageStyle = safeBgImageStyle(bgImage);
+            const hasBgImage = !!bgImageStyle;
             const profilePic = group.profile_picture_url;
 
             return (
               <div
                 key={group.id}
-                className="bg-surface-card rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover hover:bg-surface-card-hover active:opacity-75 focus:outline-hidden focus:border-focus-ring"
+                className="bg-surface-card rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover hover:bg-surface-card-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                 onClick={(e) => handleGroupClick(group, e)}
                 role="button"
                 tabIndex={0}
@@ -196,23 +265,38 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   }
                 }}
                 style={{
-                  backgroundColor: bgColor,
-                  ...safeBgImageStyle(bgImage),
+                  ...(bgColor && { backgroundColor: bgColor }),
+                  ...bgImageStyle,
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
                 }}
               >
-                {bgImage && (
-                  // This overlay currently paints NOTHING — placeholder, kept
-                  // deliberately. Phase 73-02 gave it a semantic surface tint at
-                  // 85% so the bg image dims and text stays readable in both
-                  // themes; that slash-opacity was inert on v3's var()-backed
-                  // tokens and 87.7 D-18 stripped it rather than let v4 start
-                  // rendering it (a new visual). Do NOT re-add a dim here ad
-                  // hoc — Phase 88 owns the real treatment via its opacity
-                  // mechanism (census: 87.7-OPACITY-CENSUS.md). The div stays
-                  // so 88's fix is a class edit, not a structure change.
-                  <div className="absolute inset-0 z-0 rounded-card" />
+                {hasBgImage && (
+                  // Phase 73-02 gave this overlay a semantic surface tint at 85%
+                  // so the bg image dims and the title stays readable; that
+                  // slash-opacity was inert on v3's var()-backed tokens and
+                  // 87.7 D-18 stripped it rather than let v4 start rendering it
+                  // (census: 87.7-OPACITY-CENSUS.md). The div was kept so the
+                  // fix would be a class edit, not a structure change.
+                  //
+                  // DECISION Phase 88-27 (D-32 bucket D): the dim is now
+                  // `--color-bg-overlay`, one of the three UI-SPEC §10.3
+                  // exemplars. Chosen OVER restoring what 73-02 actually wrote —
+                  // 85% of the CARD colour, which is near-WHITE in light mode.
+                  // A group title over a background image is ALWAYS white text
+                  // with a dark shadow, in both themes, unconditionally
+                  // (colorUtils.js getTextStyle, the `hasBackgroundImage`
+                  // branch). So a card-coloured wash in light mode would have
+                  // put white text on a near-white ground — the overlay would
+                  // have caused the illegibility it exists to prevent.
+                  // `--color-bg-overlay` darkens in both themes, which is what
+                  // white text needs. Re-deriving this from the card surface is
+                  // a decision that breaks light mode, not a fidelity fix.
+                  //
+                  // The `{bgImage && …}` gate is deliberate and unchanged: this
+                  // never renders for colour-only cards, whose title takes a
+                  // contrast-computed pole instead and needs no dim.
+                  <div className="absolute inset-0 z-0 rounded-card bg-[var(--color-bg-overlay)]" />
                 )}
                 <div className="relative z-1">
                   {/* 87.8-13 walkthrough F-8: single row at ALL widths — the old
@@ -237,14 +321,22 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       )}
                       <h3
                         className="text-[1.1rem] font-semibold text-content-primary flex-1 min-w-0 wrap-break-word max-md:text-base"
-                        style={getTextStyle(bgImage, bgColor)}
+                        style={getTextStyle(hasBgImage, bgColor)}
                       >
                         {group.name}
                       </h3>
                     </div>
+                    {/* DECISION Phase 88-22 (D-28): the players pill does NOT take
+                        the group's text style, unlike its three siblings in this
+                        card. It paints its OWN surface (`bg-btn-primary`), so it
+                        must use that surface's paired token — the group style is
+                        computed against the CARD's ground, and applying it inline
+                        beat `text-btn-primary-text` and put slate text on purple
+                        for any colourless group. Chosen OVER keeping the sibling
+                        symmetry. Re-adding the inline style is a decision, not a
+                        cleanup. */}
                     <span
                       className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-semibold ml-2 shrink-0"
-                      style={getTextStyle(bgImage, bgColor)}
                     >
                       {groupUsers.length} {groupUsers.length === 1 ? 'player' : 'players'}
                     </span>
@@ -269,7 +361,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                 {/* 87.8-13 walkthrough F-9: name + date on ONE line (owner call —
                     the stacked date read as a stray row). flex-wrap keeps long
                     game names graceful: the date wraps as a unit, never mid-text. */}
-                <div className="border-t border-line pt-3" style={getTextStyle(bgImage, bgColor)}>
+                <div className="border-t border-line pt-3" style={getTextStyle(hasBgImage, bgColor)}>
                   <div className="flex flex-wrap items-baseline gap-x-2 text-content-secondary text-sm">
                     <span><strong className="text-content-primary">Last Game:</strong> {lastGame?.name || 'None'}</span>
                     <span className="text-content-muted text-xs">
@@ -286,7 +378,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         admin-only (D-INV-02). The settings cog below stays
                         admin-gated via `canEdit`. */}
                     {userRole && userRole !== 'pending' && (
-                      /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census — per-card primary CTA on the walked home surface. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `flex-1` full-row width. */
+                      /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census — per-card primary CTA on the walked home surface. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `flex-1` full-row width.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup. */
                       <button
                         className="btn btn-primary text-sm flex-1 shadow-md hover:shadow-lg transition-all min-h-11"
                         onClick={(e) => {
@@ -302,7 +394,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                     )}
                     {canEdit && (
                       <button
-                        className="px-3 py-1 bg-surface-elevated text-content-primary rounded-btn hover:bg-surface-card-hover active:opacity-75 text-sm shrink-0"
+                        className="px-3 py-1 bg-surface-elevated text-content-primary rounded-btn hover:bg-surface-card-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSettingsGroup(group);

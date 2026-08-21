@@ -1,0 +1,32 @@
+{
+  // Phase 88 plan 06 — resolver-only tsconfig for vite-tsconfig-paths.
+  //
+  // WHY THIS FILE EXISTS. The app is mid JS->TS migration, so `.tsx` tests
+  // routinely render `.js` components (see the `jsx-in-js` note in
+  // vitest.config.mts). When such a `.js` component imports through the `@/`
+  // alias, vite-tsconfig-paths refuses to resolve it: the plugin gates on
+  // whether the IMPORTER is matched by the tsconfig's `include` globs
+  // (`isIncludedRelative` in its dist/index.js), and the root tsconfig.json
+  // includes only `**/*.ts` / `**/*.tsx`. The import then falls through to
+  // Vite's default resolver and dies with "Failed to resolve import
+  // @/components/ui/UserChip from src/app/components/FriendInvitePanel.js".
+  //
+  // Note `loose: true` does NOT fix this — that option only bypasses the
+  // plugin's file-EXTENSION filter (`isImporterSupported`), which already
+  // passes here because the root config sets `allowJs: true`. The include-glob
+  // gate is a separate check.
+  //
+  // WHY NOT widen tsconfig.json's own `include`: adding `**/*.js` there puts
+  // the JSX-carrying `.js` files in front of `tsc --noEmit`, and TypeScript
+  // rejects JSX in a `.js` extension regardless of `checkJs: false` — it would
+  // break `npm run typecheck`. WHY NOT hand-write the alias into
+  // `resolve.alias`: vitest.config.mts explicitly forbids duplicating the alias
+  // map (82-RESEARCH.md Pattern 5, "Don't-Hand-Roll").
+  //
+  // This file is consumed ONLY by the resolver (vitest.config.mts passes it via
+  // `projects`). It is never compiled and never type-checks anything; it exists
+  // to tell the path plugin which importers are in-project.
+  "extends": "./tsconfig.json",
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"],
+  "exclude": ["node_modules", "e2e", ".next"]
+}

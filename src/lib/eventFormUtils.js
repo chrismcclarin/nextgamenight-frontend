@@ -43,7 +43,30 @@ export const resolveInitialHeatmapWeek = ({ prefillDate, promptId, minWeek, maxW
 // (87.3-10 #16: the old auth0_user_id "reference" field was dead — never read
 // or transmitted — and post-PR-C would have stored a UUID under a name
 // claiming it was the sub. Deleted.)
+/* DECISION Phase 88-33 Task 2 (WI-F2, UAT rows 510/520): every DRAFT participant row carries a
+   generated `_rowId`, and the list keys on it — chosen OVER `key={index}` (the shipped shape) and
+   OVER `custom-${username}` (the shape that shipped on gameDetail and collided outright for two
+   same-named guests).
+
+   Index keys mis-associate typed state when a MIDDLE row is removed: React reuses the DOM/state of
+   index N for what is now a different person, so a removed row donates its score/faction to its
+   neighbour. Name keys collide the moment duplicates are allowed — and fork 3 RULED that duplicates
+   ARE allowed.
+
+   `_rowId` is DRAFT-ONLY and never crosses the wire: `prepareEventData` builds its payloads by
+   picking fields explicitly, so a new draft-local field cannot leak into a request body. The
+   SUBMIT-side `custom_${index}_${username}` identifier is a SEPARATE contract and deliberately
+   still derives from array position at submit time (eventFormUtils.js's regex extracts only the
+   NAME, and createEvent's edit-form re-link matches by name) — do not "unify" the two. */
+let rowIdCounter = 0;
+export const nextRowId = () => `prow-${++rowIdCounter}`;
+
+/** Assign a stable draft id to any row that does not already have one. */
+export const withRowIds = (participants = []) =>
+  participants.map((p) => (p && p._rowId ? p : { ...p, _rowId: nextRowId() }));
+
 export const createParticipant = (user_id = "", username = "", isFromGroup = false) => ({
+  _rowId: nextRowId(), // draft-only stable identity (see the marker above)
   user_id: user_id, // User.id (UUID) for database
   username: username, // For display purposes
   score: null,
@@ -52,6 +75,32 @@ export const createParticipant = (user_id = "", username = "", isFromGroup = fal
   placement: null,
   isFromGroup: isFromGroup // Track if this is an auto-filled group member
 });
+
+/**
+ * Re-derive a `custom_<index>_<name>` winner/picked-by reference after the
+ * participant array has changed (a removal or an undo).
+ *
+ * The stored value embeds the position the row had in the SELECT's own list
+ * (EventResultFields filters to named participants), so removing an earlier row
+ * leaves the reference pointing at a position that no longer exists — the select
+ * falls back to blank and the attribution is silently lost. Returns the rebuilt
+ * reference, or null when the referenced name is no longer in the list.
+ *
+ * ACCEPTED-WITH-REASON (triage A1, owner-ruled 2026-08-20): with two same-named
+ * guests this matches the FIRST occurrence, exactly as the edit-form re-link
+ * (createEvent.js findIndex by username) already does. Duplicates are
+ * deliberately allowed and the display is name-based, so the ambiguity mirrors
+ * what the person sees; identity-keyed attribution is future schema work.
+ */
+export const remapCustomParticipantRef = (ref, participants = []) => {
+  if (typeof ref !== 'string' || !ref.startsWith('custom_')) return ref;
+  const match = ref.match(/^custom_\d+_(.+)$/);
+  if (!match) return ref;
+  const name = match[1];
+  const named = participants.filter(p => p.username && p.username.trim() !== '');
+  const idx = named.findIndex(p => !p.user_id && p.username === name);
+  return idx >= 0 ? `custom_${idx}_${name}` : null;
+};
 
 // Helper function to create initial event form
 export const createEventForm = (group_id, groupMembers = []) => ({

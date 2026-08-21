@@ -57,6 +57,21 @@ const MESSAGE_BY_CODE: Record<FetchErrorCode, string> = {
   owner_of_active_groups:
     'You still own active groups. Transfer ownership or delete them, then try again.',
   account_deleted: 'This account has already been deleted.',
+  // 88-CODE-REVIEW D2 (owner-ratified copy, 2026-08-06): generic fallback for a
+  // code-less 409 — surfaces override per outcome via byCode (friends, polls).
+  conflict: "That can't be done — it may already be settled. Refresh to see the latest state.",
+  // 88-33 Task 2 / Fork F (owner-ruled 2026-08-20): the two group-invite 409s
+  // from 88-34's ERROR_REGISTRY. This Record is EXHAUSTIVE over ApiErrorCode by
+  // design — widening the union without adding both entries is a TS2739 build
+  // failure, and widening the Record to Partial to dodge that error is
+  // FORBIDDEN: it would destroy the exhaustiveness guarantee for every other
+  // code too. This is the GENERIC query-fallback copy; the invite surface's own
+  // richer 'Invite pending' / 'Already a member' resting states take precedence
+  // whenever that surface is showing.
+  already_member: 'This person is already a member of the group',
+  // Copy = the wire string, byte-identical to ERROR_REGISTRY (wave-12 review
+  // MED #13 fixed a trailing-period drift here).
+  invite_pending: 'This person already has a pending invite',
   // Phase 88.2 group-restore codes. This map is the GENERIC fallback copy for a
   // query-driven fetch; the restore page owns its own cause-split copy, which is
   // richer than anything sensible here.
@@ -78,6 +93,44 @@ function deriveCode(error: unknown): FetchErrorCode {
   return 'unknown';
 }
 
+export interface FetchErrorMessageOptions {
+  /** Copy used when the failure carries no `ApiError.code` (i.e. `unknown`). */
+  fallback?: string;
+  /** Per-code copy overrides for a surface-specific outcome (e.g. `validation`). */
+  byCode?: Partial<Record<FetchErrorCode, string>>;
+}
+
+/* DECISION Phase 88-25 (Req 14 / T-88-25-01): user-facing failure copy is DERIVED from
+   `ApiError.code`, chosen OVER the `error.message || 'Failed to X'` idiom that shipped on ~20
+   ACTION-path sites (toasts and inline field errors) across gameDetail, userProfile, friends,
+   groupPlanning and OpenPollsList.
+
+   WHY THE SHIPPED IDIOM LOSES — it is an information-disclosure bug, not just a copy nit.
+   `ApiError.message` is `body.message ?? body.error ?? \`HTTP error! status: ${status}\``
+   (api.ts extractErrorMessage), so whatever the backend says lands verbatim in the DOM, and an
+   unhandled 500 paints a raw status string at the user. 88-19 closed the same hole on the
+   page-level branch by giving `ErrorFallback` NO error prop by contract; this is that ruling
+   applied to the action path, at the mechanism rather than string by string.
+
+   WHY THIS LIVES BESIDE THE HOOK: the hook and the toasts must not drift into two registers for
+   the same failure. `useFetchErrorState` now derives its own `message` through this function, so
+   MESSAGE_BY_CODE has exactly one reader.
+
+   `byCode` exists so a surface that genuinely needs a sharper outcome (e.g. a 400 on a username
+   change is "that name is taken", not the generic validation line) can say so in DESIGNED copy
+   without reopening the interpolation. Passing an upstream string into `fallback` or `byCode`
+   re-opens the hole and is the one thing this function cannot stop — do not do it. */
+export function getFetchErrorMessage(
+  error: unknown,
+  options: FetchErrorMessageOptions = {}
+): string {
+  const code = deriveCode(error);
+  const override = options.byCode?.[code];
+  if (override) return override;
+  if (code === 'unknown' && options.fallback) return options.fallback;
+  return MESSAGE_BY_CODE[code] ?? MESSAGE_BY_CODE.unknown;
+}
+
 export interface UseFetchErrorStateOptions {
   /** Override the derived copy (e.g. a surface-specific message). */
   fallbackMessage?: string;
@@ -96,10 +149,10 @@ export function useFetchErrorState<TData = unknown, TError = unknown>(
   const { isError, error, refetch } = query;
   const showError = Boolean(isError);
   const code = deriveCode(error);
-  const message =
-    options.fallbackMessage && code === 'unknown'
-      ? options.fallbackMessage
-      : MESSAGE_BY_CODE[code] ?? MESSAGE_BY_CODE.unknown;
+  // Single reader of MESSAGE_BY_CODE — see the marker on getFetchErrorMessage.
+  // Semantics are unchanged: `fallbackMessage` applies ONLY when the failure
+  // carries no ApiError code.
+  const message = getFetchErrorMessage(error, { fallback: options.fallbackMessage });
 
   const retry = React.useCallback(() => Promise.resolve(refetch()), [refetch]);
 

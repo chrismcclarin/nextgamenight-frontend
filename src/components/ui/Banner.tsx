@@ -22,12 +22,29 @@ import { cn } from '@/lib/cn';
 import { Icon, type IconName } from './Icon';
 import { StatusRegion } from './StatusRegion';
 
+/* DECISION Phase 88-26 (D-35): the base carries an EXPLICIT NEUTRAL colour, chosen OVER leaving
+   the three non-accent sides to the base-layer shim (which is what shipped, and which plan 88-31
+   deletes). Only `info` named a colour before this; on success/warning/error the accent utility
+   colours the LEFT edge and the top/right/bottom edges were falling through to the shim's
+   `--color-gray-200` (#e5e7eb) — a near-white hairline measuring 11.19:1 against the dark page.
+   Every non-info Banner in the app was glowing on three sides in dark mode.
+
+   Rejected: adding the neutral to each of the four tone variants instead. It reads as four
+   independent choices when it is one, and a fifth tone would silently reacquire the defect.
+
+   THE ACCENT STILL WINS ON THE LEFT, and that is a cascade fact, not a hope — verified against a
+   real Tailwind v4 build of this stylesheet: `.border-l-status-*` (border-left-color) is emitted
+   AFTER the neutral's shorthand rule, and equal specificity means source order decides.
+   `tailwind-merge` also keeps both (a shorthand does not conflict-eat a longhand). If you ever
+   see the accent stripe go neutral, that ordering is what changed. */
 const bannerVariants = cva(
-  'flex items-start gap-3 rounded-card border border-l-4 px-4 py-3 text-sm bg-surface-elevated text-content-primary',
+  'flex items-start gap-3 rounded-card border border-line border-l-4 px-4 py-3 text-sm bg-surface-elevated text-content-primary',
   {
     variants: {
       tone: {
-        info: 'border-line',
+        // `info`'s 4px left edge is deliberately the same neutral as the other three sides —
+        // "no accent stripe" is the design, not a missing token.
+        info: 'border-l-line',
         success: 'border-l-status-success',
         warning: 'border-l-status-warning',
         error: 'border-l-status-error',

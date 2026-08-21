@@ -11,6 +11,8 @@ import AvailabilityGrid from './AvailabilityGrid';
 // importers in tests. Matches the sibling ScheduleForm's import style.
 import { availabilityFormAPI } from '../../lib/api';
 import { useAppForm } from '../../lib/useAppForm';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { useConfirmAction } from '../../components/ui/useConfirmAction';
 
 /**
  * Zod schema with cross-field validation
@@ -147,16 +149,10 @@ export default function AvailabilityForm({
   };
 
   // Phase 81 Plan 02 (CHKIN-05) — pre-fill the grid from Google Calendar.
-  // Confirms before overwriting existing painted slots, paints fetched slots
-  // as 'preferred' preference, surfaces an inline auto-fade status message.
+  // Paints fetched slots as 'preferred' preference, surfaces an inline auto-fade
+  // status message. The overwrite confirmation lives in `replaceGate` below.
   // Pitfall 6 mitigation: backend uses { consume: false } — token survives.
-  const handleImportGcal = useCallback(async () => {
-    const currentSlots = watch('time_slots') || [];
-    if (currentSlots.length > 0) {
-      // window.confirm is the existing idiom (FriendInvitePanel, GroupSettings, ManageMembers)
-      if (!window.confirm('This will replace your current selections. Continue?')) return;
-    }
-
+  const performGcalPrefill = useCallback(async () => {
     setIsPrefilling(true);
     try {
       const { slot_ids, count } = await availabilityFormAPI.prefillFromGcal({
@@ -180,19 +176,14 @@ export default function AvailabilityForm({
     } finally {
       setIsPrefilling(false);
     }
-  }, [magicToken, weekStartIsoDate, timezone, watch, setValue]);
+  }, [magicToken, weekStartIsoDate, timezone, setValue]);
 
   // Phase 81 Plan 03 (CHKIN-06) — pre-fill the grid from the user's saved
   // availability (recurring patterns + specific overrides, override-beats-
-  // recurring). Mirrors handleImportGcal's confirm → fetch → paint → status
-  // flow. Backend filters source:'default' so users with zero saved patterns
+  // recurring). Mirrors the GCal fetch → paint → status flow behind the same
+  // gate. Backend filters source:'default' so users with zero saved patterns
   // get an empty result here, NOT the whole grid (research Pitfall 3).
-  const handleUseSaved = useCallback(async () => {
-    const currentSlots = watch('time_slots') || [];
-    if (currentSlots.length > 0) {
-      if (!window.confirm('This will replace your current selections. Continue?')) return;
-    }
-
+  const performSavedPrefill = useCallback(async () => {
     setIsPrefilling(true);
     try {
       const { slot_ids, count } = await availabilityFormAPI.prefillFromSaved({
@@ -214,9 +205,62 @@ export default function AvailabilityForm({
     } finally {
       setIsPrefilling(false);
     }
-  }, [magicToken, weekStartIsoDate, timezone, watch, setValue]);
+  }, [magicToken, weekStartIsoDate, timezone, setValue]);
+
+  // Phase 88-13 (Req 11, UI-SPEC §11.2): ONE dialog-tier gate serves both
+  // pre-fill buttons. They guard the identical consequence — the painted grid is
+  // overwritten — so they get identical copy from one config, and the committed
+  // source is carried by useConfirmAction's targetId rather than by a second,
+  // drift-prone config.
+  //
+  // Prior comment corrected rather than kept: this file used to record
+  // `window.confirm` as "the existing idiom (FriendInvitePanel, GroupSettings,
+  // ManageMembers)". That stopped being true this phase — every one of those
+  // surfaces now routes through useConfirmAction, and these two sites were the
+  // app's last native prompts. NOTE the one deliberate exception: FriendInvitePanel's
+  // reset uses the toast-action confirmation shipped in 86-07, which is a
+  // different idiom on purpose and is NOT part of this migration.
+  //
+  // The perform* callbacks report their own failures inline (prefillStatus.error)
+  // and never reject, so the gate closes after a failed fetch. That is intended:
+  // consent was given, and the failure surface is the status line under the
+  // buttons — not a dialog left hanging open.
+  const replaceGate = useConfirmAction({
+    tier: 'dialog',
+    title: 'Replace your current selections?',
+    body: "What you've painted so far will be overwritten.",
+    confirmLabel: 'Replace',
+    onConfirm: (source) =>
+      source === 'gcal' ? performGcalPrefill() : performSavedPrefill(),
+  });
+
+  // Pulled out of the object so the two callbacks below can depend on the STABLE
+  // `trigger` identity. Depending on `replaceGate` itself (what exhaustive-deps
+  // asks for) re-creates both handlers on every render — the hook returns a fresh
+  // object each time — for no behavioural gain.
+  const triggerReplace = replaceGate.trigger;
+
+  const handleImportGcal = useCallback(() => {
+    const currentSlots = watch('time_slots') || [];
+    // Nothing painted yet means nothing to lose — no gate (unchanged behaviour).
+    if (currentSlots.length > 0) {
+      triggerReplace('gcal');
+      return;
+    }
+    void performGcalPrefill();
+  }, [watch, performGcalPrefill, triggerReplace]);
+
+  const handleUseSaved = useCallback(() => {
+    const currentSlots = watch('time_slots') || [];
+    if (currentSlots.length > 0) {
+      triggerReplace('saved');
+      return;
+    }
+    void performSavedPrefill();
+  }, [watch, performSavedPrefill, triggerReplace]);
 
   return (
+    <>
     <form onSubmit={handleAppSubmit(onSubmit)} className="space-y-6">
       {/* Header Section */}
       <div className="border-b border-line pb-4">
@@ -245,7 +289,7 @@ export default function AvailabilityForm({
               type="button"
               onClick={handleImportGcal}
               disabled={isPrefilling || isUnavailable}
-              className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 font-medium transition-colors disabled:opacity-50"
+              className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 font-medium transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             >
               {isPrefilling && prefillStatus?.source !== 'saved' ? 'Importing…' : 'Import from Google Calendar'}
             </button>
@@ -255,7 +299,7 @@ export default function AvailabilityForm({
             onClick={handleUseSaved}
             disabled={!hasSavedAvailability || isPrefilling || isUnavailable}
             title={!hasSavedAvailability ? 'No saved availability for these dates' : undefined}
-            className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-line"
+            className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-line focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
           >
             {isPrefilling && prefillStatus?.source !== 'gcal' ? 'Loading…' : 'Use my saved availability'}
           </button>
@@ -290,8 +334,9 @@ export default function AvailabilityForm({
           className={`
             w-full flex items-center justify-center gap-3 px-4 py-3 rounded-btn font-medium
             active:opacity-75 transition-colors duration-200
+            focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2
             ${isUnavailable
-              ? 'border-2 border-status-error text-status-error'
+              ? 'bg-status-error-subtle border-2 border-status-error text-status-error'
               : 'bg-surface-card border-2 border-line text-content-secondary hover:border-line-strong'
             }
           `}
@@ -333,7 +378,7 @@ export default function AvailabilityForm({
 
       {/* Validation Error Display */}
       {errors.time_slots && (
-        <div className="border rounded-btn p-3">
+        <div className="bg-status-error-subtle border border-status-error rounded-btn p-3">
           <p className="text-sm text-status-error">
             {errors.time_slots.message}
           </p>
@@ -342,7 +387,7 @@ export default function AvailabilityForm({
 
       {/* Submission Error Display (inline submit-error UI) */}
       {submitError && (
-        <div className="border rounded-btn p-3">
+        <div className="bg-status-error-subtle border border-status-error rounded-btn p-3">
           <p role="alert" className="text-sm text-status-error">
             {submitError}
           </p>
@@ -351,7 +396,7 @@ export default function AvailabilityForm({
 
       {/* Submit Button */}
       <div className="pt-4 border-t border-line">
-        {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the availability-grid surface's primary CTA (~37px today: the `py-3` here is DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `w-full`. */}
+        {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the availability-grid surface's primary CTA (~37px today: the `py-3` here is DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `w-full`.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup. */}
         <button
           type="submit"
           disabled={isSubmitting}
@@ -371,6 +416,15 @@ export default function AvailabilityForm({
         </button>
       </div>
     </form>
+    {/* Deliberately a SIBLING of the <form>, not a child. A portalled dialog
+        still bubbles its events through the React tree, so mounting it inside
+        the form puts its controls one stray `type` attribute away from
+        submitting the availability response. `statusNode` is mounted always and
+        unconditionally (useConfirmAction's contract) — silent on the dialog
+        tier, still there so a retier stays a one-word edit. */}
+    <ConfirmDialog {...replaceGate.dialogProps} />
+    {replaceGate.statusNode}
+    </>
   );
 }
 

@@ -8,7 +8,7 @@ import ManageMembers from '../components/ManageMembers';
 import { listsAPI, groupsAPI, eventsAPI, API_BASE_URL } from '../../lib/api';
 import GroupGamesList from '../components/GroupGamesList';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
-import { getTextStyle, getSubtitleStyle } from '../../lib/colorUtils';
+import { getTextStyle, getSubtitleStyle, resolveGroupBackgroundColor } from '../../lib/colorUtils';
 import SafeImage from '../components/SafeImage';
 import EventCalendar from '../components/EventCalendar';
 import PendingMemberBanner from '../components/PendingMemberBanner';
@@ -34,6 +34,7 @@ function GroupHomePage(){
     const [Group, setGroup] = useState(null);
     const [UserList, setUserList] = useState(null);
     const [gamesList, setGamesList] = useState([]);
+    const [gamesError, setGamesError] = useState(null);
     const [eventModal, setEventModal] = useState(false);
     const [memberModal, setMemberModal] = useState(false);
     const [showGroupSettings, setShowGroupSettings] = useState(false);
@@ -173,6 +174,7 @@ function GroupHomePage(){
         if (!Router || !user?.sub || !selfUuid) return;
         try {
             setLoading(true);
+            setGamesError(null);
             const games = await listsAPI.getGroupGames(Router, selfUuid);
             setGamesList(games || []);
         } catch (error) {
@@ -184,12 +186,37 @@ function GroupHomePage(){
                 return;
             }
             console.error('Error fetching games:', error);
-            setGamesList([]);
+            /* DECISION Phase 88-25 (Req 14 / DEF-88-18-01, T-88-18-01): a failed games request is
+               TRACKED as a failure here and handed to GroupGamesList as an `errorState` prop —
+               chosen OVER the `setGamesList([])` this shipped with. GroupGamesList takes `games`
+               as a prop and does not fetch, so flattening the failure into an empty array arrived
+               at the component as a legitimately-empty list: a group with years of history was
+               told "No game nights logged yet" when its request had merely failed. Empty and
+               failed are different facts (UI-SPEC 9.2).
+
+               The removal-403 redirect above stays FIRST and is untouched — that path is a real
+               403 with a real meaning and must never reach the error banner.
+
+               Keep the ERROR object, not a flattened string: useFetchErrorState reads
+               `ApiError.code` off it to pick the right user-facing copy. Do NOT re-add
+               `setGamesList([])` here — the stale list is deliberately left alone so a refetch
+               failure does not blank a list the person is still looking at. */
+            setGamesError(
+                error instanceof Error ? error : new Error("The group games request didn't complete.")
+            );
         } finally {
             setLoading(false);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [Router, user?.sub, selfUuid]);
+
+    // getGamesForGroup is already a useCallback with a stable identity, so it can be handed to
+    // the hook directly — no ref hop needed here (unlike groupPlanning's per-render fetches).
+    const gamesErrorState = useFetchErrorState({
+        isError: Boolean(gamesError),
+        error: gamesError,
+        refetch: getGamesForGroup,
+    });
 
     // PR2-L11 (SPEC Req 7): getGroup + fetchGroupEvents do NOT depend on selfUuid,
     // so they live in an effect keyed only on [Router, user?.sub, ...] — they fire
@@ -279,6 +306,10 @@ function GroupHomePage(){
         );
     }
 
+    // null when the group has no colour of its own — the identity header then
+    // keeps its themed surface class instead of an inline override (D-28).
+    const headerBgColor = resolveGroupBackgroundColor(Group?.background_color);
+
     return (
         // POLL-02: FriendshipStatusProvider lifted to root layout — see
         // src/app/layout.js. Nested mount removed so NotificationBell +
@@ -304,10 +335,16 @@ function GroupHomePage(){
                 and full-bleeding it deletes that anchor. Padding is depth-2
                 (12px phone / 24px desktop) only. Removing this exemption is a decision, not a
                 cleanup. */}
+            {/* The old hardcoded near-black fallback here was a LOCAL patch of
+                the D-28 white-card bug: this one surface pinned a dark value
+                because the shared fallback resolved to white. Phase 88-22 fixed
+                the shared fallback, so the patch drops and the header falls back
+                to the themed elevated surface — which also makes it correct in
+                light mode, where a hardcoded near-black header was not. */}
             <div
-                className="mb-6 flex flex-col gap-4 p-3 md:p-6 rounded-lg relative overflow-visible"
+                className="mb-6 flex flex-col gap-4 p-3 md:p-6 rounded-lg relative overflow-visible bg-surface-elevated"
                 style={{
-                    backgroundColor: Group?.background_color || '#111418',
+                    ...(headerBgColor && { backgroundColor: headerBgColor }),
                     ...safeBgImageStyle(Group?.background_image_url),
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
@@ -320,7 +357,15 @@ function GroupHomePage(){
                     left: 0,
                     right: 0,
                     bottom: 0,
-                    backgroundColor: Group?.background_image_url ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.15)',
+                    // The dim exists to darken a user-chosen colour or cover
+                    // image so the title reads over it. With neither, the header
+                    // is on a themed surface that already has its contrast — a
+                    // wash there just muddies the token (D-28).
+                    backgroundColor: Group?.background_image_url
+                        ? 'rgba(0, 0, 0, 0.4)'
+                        : headerBgColor
+                            ? 'rgba(0, 0, 0, 0.15)'
+                            : 'transparent',
                     zIndex: 0,
                     borderRadius: 'inherit',
                 }} />
@@ -344,15 +389,24 @@ function GroupHomePage(){
                         </div>
                     )}
                     <div className="flex-1 min-w-0">
+                        {/* DECISION Phase 88-24 (Req 2 / UI-SPEC §4.1): the page title is
+                            `text-3xl` at EVERY width, chosen OVER the shipped
+                            `text-2xl md:text-3xl`. A heading that grows at a breakpoint is a
+                            second type scale — the same reasoning 88-19 recorded when it
+                            removed the md:-prefixed heading sizes from userProfile. This is a
+                            visible +6px on phone, and it is the intended direction: userProfile
+                            (:1268) and gameDetail (:1036) both already render their h1 at 30px
+                            unconditionally, so this surface was the last outlier. `wrap-break-word`
+                            is what keeps a long group name safe at 375px and must stay. */}
                         <h1
-                            className="text-2xl md:text-3xl font-bold wrap-break-word"
-                            style={getTextStyle(!!Group?.background_image_url, Group?.background_color || '#1f2937')}
+                            className="text-3xl font-bold wrap-break-word"
+                            style={getTextStyle(!!Group?.background_image_url, headerBgColor)}
                         >
                             {Group?.name || 'Group'}
                         </h1>
                         <p
                             className="mt-1"
-                            style={getSubtitleStyle(!!Group?.background_image_url, Group?.background_color || '#1f2937')}
+                            style={getSubtitleStyle(!!Group?.background_image_url, headerBgColor)}
                         >
                             {gamesList.length} {gamesList.length === 1 ? 'game' : 'games'} played
                             {UserList && UserList.length > 0 && (
@@ -378,33 +432,39 @@ function GroupHomePage(){
                     {userRole && userRole !== 'pending' && (
                         <button
                             onClick={() => setMemberModal(true)}
-                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap text-white border-2 border-white/30 rounded-btn backdrop-blur-xs hover:bg-white/20 transition-all"
+                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap text-white border-2 border-white/30 rounded-btn backdrop-blur-xs hover:bg-white/20 transition-all shadow-theme-md"
                             style={{
                                 backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
                             }}
                         >
                             Manage Members
                         </button>
                     )}
-                    {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the groupHomePage primary CTA (~37px: the px/py utilities here are DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text link. */}
+                    {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the groupHomePage primary CTA (~37px: the px/py utilities here are DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text link.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup. */}
                     <Link
                         href={`/groupPlanning?group_id=${Router}`}
-                        className="btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white/20 text-center min-h-11"
-                        style={{
-                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.15)',
-                        }}
+                        /* The inline boxShadow this replaces carried TWO halves: a
+                           pure-black drop shadow AND a 2px white ring. Req 3 moves
+                           the black half onto the warm `shadow-theme-lg` token —
+                           which this element already declared and the inline style
+                           was silently overriding — and the ring survives as
+                           `ring-2 ring-white/15`, the same 15% white at the same
+                           2px. Dropping the ring would still pass 88-29's
+                           zero-`rgba(0,0,0` gate while looking wrong. */
+                        className="btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white/20 text-center min-h-11 ring-2 ring-white/15"
                     >
                         Plan Game Session
                     </Link>
                     {userRole && userRole !== 'pending' && (
                         <button
                             onClick={toggleEventModal}
-                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap rounded-btn transition-all border-2 border-amber-400/40 hover:border-amber-400/60"
+                            /* Same two-half shadow as the CTA above: black half ->
+                               `shadow-theme-lg`, white ring half preserved as
+                               `ring-2 ring-white/15`. */
+                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap rounded-btn transition-all border-2 border-amber-400/40 hover:border-amber-400/60 shadow-theme-lg ring-2 ring-white/15"
                             style={{
                                 backgroundColor: 'var(--amber-600)',
                                 color: 'white',
-                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.15)',
                             }}
                         >
                             Add New Game Event
@@ -419,7 +479,7 @@ function GroupHomePage(){
             <div className="flex border-b border-line mb-4">
                 <button
                     onClick={() => setActiveTab('home')}
-                    className={`px-4 py-2 text-sm font-medium active:opacity-75 transition-colors ${
+                    className={`px-4 py-2 text-sm font-medium active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
                         activeTab === 'home'
                             ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
                             : 'text-content-secondary hover:text-content-primary'
@@ -429,7 +489,7 @@ function GroupHomePage(){
                 </button>
                 <button
                     onClick={() => setActiveTab('library')}
-                    className={`px-4 py-2 text-sm font-medium active:opacity-75 transition-colors ${
+                    className={`px-4 py-2 text-sm font-medium active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
                         activeTab === 'library'
                             ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
                             : 'text-content-secondary hover:text-content-primary'
@@ -466,6 +526,7 @@ function GroupHomePage(){
                     onAddEvent={toggleEventModal}
                     userRole={userRole}
                     members={UserList}
+                    errorState={gamesErrorState}
                 />
               </>
             )}

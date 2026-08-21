@@ -6,8 +6,10 @@ import { promptSettingsAPI } from '../../lib/api';
 import { DAYS_OF_WEEK, TOKEN_EXPIRY_OPTIONS, DEADLINE_DAY_OPTIONS, scheduleSchema } from '../../lib/scheduleFormSchema';
 import { useAppForm } from '../../lib/useAppForm';
 import { FormField } from './form/FormField';
+import { Input, SelectControl } from '@/components/ui/Input';
 import MemberSelector from './MemberSelector';
 import GameComboInput from './GameComboInput';
+import { Modal } from './Modal';
 
 /**
  * ScheduleForm - Form component for creating/editing prompt schedules
@@ -39,6 +41,9 @@ export default function ScheduleForm({
   // stop auto-overwriting it on day/time/game changes. The ref persists across
   // renders without triggering re-renders itself.
   const templateNameDirtyRef = useRef(false);
+  // 88-33 Task 4 (UAT row 291): initial-focus target — merged with the RHF register
+  // ref at the Day of Week SelectControl below.
+  const dayOfWeekRef = useRef(null);
 
   // Detect user's timezone using Intl API
   const userTimezone = typeof window !== 'undefined'
@@ -188,49 +193,78 @@ export default function ScheduleForm({
   // Get watched selected_member_ids for MemberSelector
   const selectedMemberIds = watch('selected_member_ids') || [];
 
-  return (
-    <div className="modal-overlay" style={{ zIndex: 100 }}
-         onClick={onCancel}>
-      <div className="modal-content p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
-           onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
-        <div className="modal-header mb-6">
-          <h2 className="text-2xl font-bold text-content-primary">
-            {isEditMode ? 'Edit Schedule' : 'Create Schedule'}
-          </h2>
-          {onCancel && (
-            <button
-              onClick={onCancel}
-              className="text-content-muted hover:text-content-primary text-2xl"
-              type="button"
-            >
-              &times;
-            </button>
-          )}
-        </div>
+  /* DECISION Phase 88-16 (SPEC Req 9): hosted on the shared <Modal>. The
+     bespoke backdrop, its `onClick`/`stopPropagation` pair and the NAMELESS
+     `&times;` button are gone rather than ported — that glyph was the SECOND of
+     the two nameless close buttons SPEC Req 4 names (no text, no `aria-label`,
+     not even a `title`), so screen readers announced "button". <Modal.Header>
+     supplies a close affordance with a real `aria-label="Close"`.
 
+     RESOLVED STACKING ORDER — the old inline `style={{ zIndex: 100 }}` is NOT
+     ported as a bespoke tier on the Radix content, and this is the point the
+     plan asked to be written down. Verified this session:
+       - The raised value existed because this form's own overlay had to clear
+         its PARENT. PromptScheduleManager renders ScheduleForm inside its own
+         surface, and in `variant="modal"` that surface was the legacy overlay
+         class at `z-index: 50` (globals.css). An equal 50 would have lost,
+         because both lived in the same in-page React tree.
+       - That parent is itself a <Modal> since 88-17 (PromptScheduleManager.js,
+         `<Modal open onClose={() => onClose?.()} size="lg">`). Radix portals
+         BOTH dialogs to the end of <body>, and the child opens second, so at an
+         identical z-50 this form still paints above its parent purely by DOM
+         order — measured for the stacked case in DEF/BLK-88-12-01 (outer dialog
+         goes `aria-hidden`, topmost stays live and hit-testable).
+       - HeatmapTooltip.js pins tooltips at z-index 100 as "always topmost"
+         (Plan 72-02 UAT decision). Pre-migration this form TIED that tier at
+         100 and won only by DOM order; it now sits cleanly below it, which is
+         the tooltip tier's stated intent and unreachable in practice anyway
+         (an open dialog inerts the heatmap behind it).
+     Re-adding a bespoke z-index here re-introduces a tier the rest of the modal
+     fleet does not have, to buy an ordering the portal already gives. That is a
+     decision, not a cleanup.
+
+     `onCancel` is OPTIONAL in this component's prop contract while <Modal>'s
+     `onClose` is mandatory, so it is called as `onCancel?.()` — passing it
+     straight through would throw a TypeError on Esc for a caller that omitted
+     it (pre-migration such a caller simply got an undismissable overlay).
+     Same idiom 88-17 used for PromptScheduleManager. Note the close affordance
+     in the header now renders unconditionally, where the old `&times;` was
+     gated on `onCancel` — for a caller without `onCancel` it is a no-op rather
+     than a dead-end, and no shipped caller omits it (PromptScheduleManager is
+     the only one). */
+  /* 88-33 Task 4 (UAT row 291, fleet initial-focus policy): form-bearing modal — focus
+     opens on the first meaningful field (Day of Week). react-hook-form owns the
+     control's ref, so the register ref and the focus ref are MERGED via a callback
+     ref; dropping either half breaks RHF registration or the initial focus. */
+  const dayOfWeekField = register('schedule_day_of_week', { valueAsNumber: true });
+
+  return (
+    <Modal open onClose={() => onCancel?.()} className="max-w-2xl" initialFocusRef={dayOfWeekRef}>
+      <Modal.Header>
+        {isEditMode ? 'Edit Schedule' : 'Create Schedule'}
+      </Modal.Header>
+      <Modal.Body>
         <form onSubmit={handleAppSubmit(onSubmit)}>
           {/* Day of Week */}
           <FormField label="Day of Week" error={errors.schedule_day_of_week?.message} className="mb-4">
-            <select
-              {...register('schedule_day_of_week', { valueAsNumber: true })}
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
+            <SelectControl
+              {...dayOfWeekField}
+              ref={(node) => {
+                dayOfWeekField.ref(node);
+                dayOfWeekRef.current = node;
+              }}
             >
               {DAYS_OF_WEEK.map((day) => (
                 <option key={day.value} value={day.value}>
                   {day.label}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </FormField>
 
           {/* Time */}
           <FormField label="Time" error={errors.schedule_time?.message} className="mb-4">
-            <input
-              type="time"
-              {...register('schedule_time')}
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
-            />
+            <Input type="time" {...register('schedule_time')} />
           </FormField>
 
           {/* Timezone */}
@@ -244,11 +278,10 @@ export default function ScheduleForm({
               </p>
             }
           >
-            <input
+            <Input
               type="text"
               {...register('schedule_timezone')}
               placeholder="America/New_York"
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
             />
           </FormField>
 
@@ -263,16 +296,13 @@ export default function ScheduleForm({
               </p>
             }
           >
-            <select
-              {...register('default_deadline_hours', { valueAsNumber: true })}
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
-            >
+            <SelectControl {...register('default_deadline_hours', { valueAsNumber: true })}>
               {DEADLINE_DAY_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </FormField>
 
           {/* Token Expiry */}
@@ -286,16 +316,13 @@ export default function ScheduleForm({
               </p>
             }
           >
-            <select
-              {...register('default_token_expiry_hours', { valueAsNumber: true })}
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
-            >
+            <SelectControl {...register('default_token_expiry_hours', { valueAsNumber: true })}>
               {TOKEN_EXPIRY_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </FormField>
 
           {/* Game Selection */}
@@ -332,7 +359,7 @@ export default function ScheduleForm({
               </p>
             }
           >
-            <input
+            <Input
               type="number"
               {...register('min_participants', {
                 valueAsNumber: true,
@@ -340,7 +367,6 @@ export default function ScheduleForm({
               })}
               min={1}
               placeholder="Leave blank to use game minimum"
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
             />
           </FormField>
 
@@ -355,12 +381,11 @@ export default function ScheduleForm({
               </p>
             }
           >
-            <input
+            <Input
               type="text"
               {...register('template_name')}
               onFocus={() => { templateNameDirtyRef.current = true; }}
               placeholder="Auto-generated from settings"
-              className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
             />
           </FormField>
 
@@ -387,14 +412,14 @@ export default function ScheduleForm({
 
           {/* Server Error (inline submit-error UI) */}
           {serverError && (
-            <div className="mb-4 p-3 border rounded-btn">
+            <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
               <p role="alert" className="text-status-error text-sm">{serverError}</p>
             </div>
           )}
 
           {/* Root Error (from setError) */}
           {errors.root && (
-            <div className="mb-4 p-3 border rounded-btn">
+            <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
               <p className="text-status-error text-sm">{errors.root.message}</p>
             </div>
           )}
@@ -423,8 +448,8 @@ export default function ScheduleForm({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </Modal.Body>
+    </Modal>
   );
 }
 

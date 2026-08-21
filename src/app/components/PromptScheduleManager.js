@@ -11,6 +11,9 @@ import {
 } from '../../lib/schemas/prompts';
 import ScheduleForm from './ScheduleForm';
 import ScheduleList from './ScheduleList';
+import { Modal } from './Modal';
+import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
 /**
  * PromptScheduleManager - Main container for schedule management
@@ -41,7 +44,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
   // The API only requires active membership (backend isActiveMember gate); the
   // Boolean(isAdmin) gate below is a deliberate FE/product choice (admin-only
   // manager surface), NOT an API constraint.
-  const { data, isPending } = useQuery({
+  const settingsQuery = useQuery({
     queryKey: promptKeys.settings(groupId),
     queryFn: softFailPromptQueryFn(
       promptSettingsSchema,
@@ -51,6 +54,15 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
     ),
     enabled: Boolean(groupId) && Boolean(isAdmin),
   });
+
+  const { data, isPending } = settingsQuery;
+  /* DECISION Phase 88-18 (Req 6 / T-88-18-01): a HARD settings-fetch failure renders the shared
+     fetch-error treatment here rather than being handed to ScheduleList as an empty array.
+     `softFailPromptQueryFn` soft-fails only a PARSE failure to EMPTY_PROMPT_SETTINGS; a network
+     or 4xx/5xx rejection leaves `data` undefined, and `schedules` fell through to ScheduleList's
+     "No schedules yet" — telling an admin their group had no schedules when the request had
+     simply failed. Do not re-merge the two branches. */
+  const settingsErrorState = useFetchErrorState(settingsQuery);
 
   const loading = isPending;
   const schedules = data?.schedules || [];
@@ -121,14 +133,19 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
     <>
       {/* Error message */}
       {error && (
-        <div className="mb-4 p-3 border rounded-btn">
+        <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
           <p className="text-status-error text-sm">{error}</p>
         </div>
       )}
 
-      {/* Create button (owner/admin only) */}
-      {canManageSchedules && !showForm && !loading && (
-        /* DECISION Phase 87.8 (D-13/D-14/AF-2): per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor — rejected because it would silently distort ~15 shipped compact/icon `.btn` sites (AF-2); 44px chosen OVER Material's 48dp, consciously declined (D-14). Global `.btn` sizing stays with Phase 88 (DEF-1) — a decision, not an oversight. No `min-w-11`: wide text button, 141px measured. */
+      {/* Create button (owner/admin only).
+          DECISION Phase 88-18 (Req 6): SUPPRESSED while the empty state is showing, chosen OVER
+          rendering both — ScheduleList's EmptyState carries the same create action a few lines
+          below, and two identical primary buttons a finger-width apart is noise on a phone. It
+          stays visible while loading and while erroring, so the action never vanishes mid-render.
+          Restoring the unconditional render is a decision, not a cleanup. */}
+      {canManageSchedules && !showForm && !loading && !settingsErrorState.showError && schedules.length > 0 && (
+        /* DECISION Phase 87.8 (D-13/D-14/AF-2): per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor — rejected because it would silently distort ~15 shipped compact/icon `.btn` sites (AF-2); 44px chosen OVER Material's 48dp, consciously declined (D-14). Global `.btn` sizing stays with Phase 88 (DEF-1) — a decision, not an oversight. No `min-w-11`: wide text button, 141px measured.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup. */
         <button
           onClick={handleCreate}
           className="mb-4 btn btn-primary min-h-11"
@@ -158,6 +175,12 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
         <div className="text-center py-12">
           <p className="text-content-muted">Loading schedules...</p>
         </div>
+      ) : settingsErrorState.showError ? (
+        <FetchErrorBanner
+          state={settingsErrorState}
+          title="We couldn't load your schedules"
+          reportContext="Recurring availability schedules (group planning)"
+        />
       ) : (
         // List view (the only view as of Phase 81 CHKIN-04)
         <ScheduleList
@@ -166,6 +189,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
           onEdit={canManageSchedules ? handleEdit : null}
           onToggle={canManageSchedules ? handleToggle : null}
           onDelete={canManageSchedules ? handleDelete : null}
+          onCreate={canManageSchedules ? handleCreate : null}
         />
       )}
 
@@ -197,31 +221,35 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
     );
   }
 
-  // Modal variant (default): full-screen backdrop with centered card
+  // Modal variant (default): hosted on the shared <Modal> (size="lg" == the
+  // legacy max-w-4xl; the 90vh cap is the primitive's own default).
+  /* DECISION Phase 88-17 (Req 9 / Req 4): the bespoke backdrop, the
+     `onClick={onClose}` + `stopPropagation` pair and the NAMELESS `&times;`
+     button are gone rather than ported. That glyph was one of the two nameless
+     close buttons SPEC Req 4 names: it carried neither text nor `aria-label`
+     (not even a `title`), so screen readers announced "button". <Modal.Header>
+     supplies a close affordance with a real `aria-label="Close"`, so no close
+     glyph survives here to need one.
+
+     The header drops from `text-2xl` (24px) to the dialog-title contract
+     (20px/700, UI-SPEC §4.2) because it is now a DialogTitle — chosen OVER
+     passing `text-2xl` through `<Modal.Header className>`, which would make
+     this the one dialog in the fleet with an off-contract title for no reason
+     other than matching its own pre-migration size. Restoring 24px here is a
+     decision, not a cleanup.
+
+     `onClose` is OPTIONAL in this component's prop contract while <Modal>'s is
+     mandatory, so the old `{onClose && ...}` guard survives as `onClose?.()`
+     rather than being dropped. Passing `onClose` straight through would throw a
+     TypeError on Esc for a caller that omitted it — pre-migration that same
+     caller simply got an overlay that could not be dismissed. Removing the
+     optional call re-introduces that crash path. */
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        {/* Header - pinned above scrollable content */}
-        <div className="modal-header p-6 pb-4 border-b border-line shrink-0">
-          <h2 className="text-2xl font-bold text-content-primary">Recurring Check-ins</h2>
-
-          {/* Close button */}
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="text-content-muted hover:text-content-primary active:opacity-75 text-2xl"
-              type="button"
-            >
-              &times;
-            </button>
-          )}
-        </div>
-
-        {/* Scrollable content area */}
-        <div className="p-6 pt-4 overflow-y-auto flex-1">
-          {renderContent()}
-        </div>
-      </div>
-    </div>
+    <Modal open onClose={() => onClose?.()} size="lg">
+      <Modal.Header>Recurring Check-ins</Modal.Header>
+      <Modal.Body className="pt-4 md:pt-4">
+        {renderContent()}
+      </Modal.Body>
+    </Modal>
   );
 }

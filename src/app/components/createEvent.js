@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { gamesAPI, eventsAPI, groupsAPI, ballotAPI, availabilityAPI, promptAPI, API_BASE_URL } from '../../lib/api';
 import { format, parseISO, differenceInMinutes, startOfWeek, addWeeks, subWeeks, isSameWeek } from 'date-fns';
@@ -9,14 +9,17 @@ import EventHeatmapBackground from './EventHeatmapBackground';
 import GameComboInput from './GameComboInput';
 import QuickSuggestions from './QuickSuggestions';
 import useSwipeNavigation from './useSwipeNavigation';
-import { createParticipant, createEventForm, prepareEventData, resolveInitialHeatmapWeek } from '../../lib/eventFormUtils';
+import { createParticipant, createEventForm, prepareEventData, resolveInitialHeatmapWeek, withRowIds, remapCustomParticipantRef } from '../../lib/eventFormUtils';
 import ParticipantRow from './ParticipantRow';
 import BallotOptionsEditor from './BallotOptionsEditor';
 import EventResultFields from './EventResultFields';
 import { useTimezone } from './TimezoneProvider';
 import { utcToWallClock, wallClockToUtc } from '../../lib/tzUtils';
 import TimezoneNudgeBanner from './TimezoneNudgeBanner';
+import { Modal } from './Modal';
 import { toast } from 'sonner';
+import { Input, Textarea } from '@/components/ui/Input';
+import { StatusRegion } from '@/components/ui/StatusRegion';
 
 function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId = null }) {
   // Identity: send the caller's resolved Users.id UUID to searchAll (via the two
@@ -203,11 +206,16 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       }) || [];
       
       // If no participants from event, use all group members
-      const finalParticipants = participants.length > 0 
-        ? participants 
-        : groupMembers.map(member => 
-            createParticipant(member.id, member.username, true)
-          );
+      // withRowIds: the inline objects built above from EventParticipations do
+      // NOT come from createParticipant, so they carry no draft id — assign one
+      // here or the list silently falls back to index keys (88-33 Task 2).
+      const finalParticipants = withRowIds(
+        participants.length > 0
+          ? participants
+          : groupMembers.map(member =>
+              createParticipant(member.id, member.username, true)
+            )
+      );
 
       // Handle winner and picked_by - check if they're custom (no id, just username)
       let winner_id = null;
@@ -403,8 +411,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   };
   // null sentinel = "use today's Monday" (page-load reset). Today button
   // returns to the null-state which the fetch effect resolves to today's
-  // actual Monday — label-accurate semantics consistent with HeatmapGrid
-  // and MergedHeatmap.
+  // actual Monday — label-accurate semantics consistent with MergedHeatmap.
+  // (A second grid was named here until plan 88-31 deleted it as dead code.)
   const handleToday = () => setCurrentWeekStart(null);
   const isOnTodayMonday = isSameWeek(effectiveMondayForUI, todayMonday, { weekStartsOn: 1 });
 
@@ -462,31 +470,183 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     });
   };
 
-  const handleParticipantChange = (index, field, value) => {
-    const updatedParticipants = [...newEvent.participants];
-    updatedParticipants[index] = {
-      ...updatedParticipants[index],
-      [field]: field === 'is_new_player' ? value : (value === '' ? null : value)
-    };
-    setNewEvent({...newEvent, participants: updatedParticipants});
-  };
+  /* DECISION Phase 88-33 Task 2 (M5, UAT row 497): participant edits go through FUNCTIONAL
+     setState AND accept a whole-object PATCH — chosen OVER the shipped
+     `(index, field, value)` + closure-read shape, and OVER "just" adding the updater form.
 
-  const toggleParticipant = (index) => {
-    // Instead of removing, we'll mark them as not participating
-    // Or we could remove them - let's remove for now
-    const updatedParticipants = newEvent.participants.filter((_, i) => i !== index);
-    // Keep at least one participant
-    if (updatedParticipants.length > 0) {
-      setNewEvent({...newEvent, participants: updatedParticipants});
-    }
-  };
-
-  const addParticipant = () => {
-    setNewEvent({
-      ...newEvent,
-      participants: [...newEvent.participants, createParticipant("", "", false)]
+     THE BUG THIS FIXES: ParticipantRow's name onChange fired TWO calls in one tick (username,
+     then user_id) and each rebuilt from the same STALE `newEvent` closure, so the second
+     clobbered the first — you could never type the last character of a member's name, and the
+     designed member re-link path was unusable. The updater form alone fixes the staleness; the
+     PATCH is what removes the two-calls-one-tick shape at its source, on BOTH branches (the
+     no-match branch double-fired too: set username + clear user_id). Reverting either half
+     re-opens M5. */
+  const handleParticipantChange = (index, fieldOrPatch, value) => {
+    const patch =
+      fieldOrPatch && typeof fieldOrPatch === 'object'
+        ? fieldOrPatch
+        : { [fieldOrPatch]: value };
+    setNewEvent(prev => {
+      const updatedParticipants = [...prev.participants];
+      const normalized = {};
+      for (const [key, raw] of Object.entries(patch)) {
+        normalized[key] = key === 'is_new_player' ? raw : (raw === '' ? null : raw);
+      }
+      updatedParticipants[index] = { ...updatedParticipants[index], ...normalized };
+      return { ...prev, participants: updatedParticipants };
     });
   };
+
+  /* DECISION Phase 88-33 Task 2 (fork 4, owner-ruled 2026-08-17): removing a draft row offers
+     UNDO — chosen OVER the two-tap gate the owner originally proposed (fork 4 explicitly rules
+     NO two-tap here) and OVER a 3-second auto-vanishing toast.
+
+     The placeholder is PERSISTENT, not timed: WCAG 2.2.1 (Timing Adjustable) is not satisfied by
+     an affordance that is only reachable inside a countdown, and the whole point is the owner's
+     "accidentally removed Bob, had to restart the modal" complaint. It clears when undone, when
+     another removal replaces it, or when the modal closes. Replacing it with a timed toast is a
+     decision, not a tidy-up. */
+  const [removedParticipant, setRemovedParticipant] = useState(null);
+  const undoButtonRef = useRef(null);
+  const pendingUndoFocus = useRef(false);
+  // 88-33 Task 4 (UAT row 291): initial-focus target — the game combo's text input.
+  const gameInputRef = useRef(null);
+
+  useEffect(() => {
+    if (pendingUndoFocus.current && undoButtonRef.current) {
+      pendingUndoFocus.current = false;
+      undoButtonRef.current.focus();
+    }
+  }, [removedParticipant]);
+
+  const toggleParticipant = (index) => {
+    // Wave-12 review MED #3: side effects (setRemovedParticipant, the focus
+    // ref) are hoisted OUT of the setNewEvent updater — updaters must be pure
+    // (StrictMode double-invokes them). Reading render-scope state here is
+    // consistent: this only runs from a user event.
+    const removed = newEvent.participants[index];
+    const remaining = newEvent.participants.filter((_, i) => i !== index);
+    // Keep at least one participant. This guard returns WITHOUT removing, so
+    // the undo affordance must not fire either — announcing an undo for a
+    // removal that never happened is a false affordance (r3 triage).
+    if (remaining.length === 0) return;
+
+    // Wave-12 review MED #1: capture the pre-removal attribution so Undo can
+    // restore it — removing the winner/picked-by nulls the ref below, and
+    // without the capture Undo brought the person back with attribution gone.
+    setRemovedParticipant({
+      row: removed,
+      index,
+      name: removed?.username || 'Participant',
+      priorWinnerId: newEvent.winner_id,
+      priorPickedById: newEvent.picked_by_id,
+    });
+    setUndoAnnouncement('');
+    pendingUndoFocus.current = true;
+    setNewEvent(prev => {
+      const updatedParticipants = prev.participants.filter((_, i) => i !== index);
+      if (updatedParticipants.length === 0) return prev;
+      return {
+        ...prev,
+        participants: updatedParticipants,
+        // Keep winner / picked-by attribution pointing at the same PERSON: the
+        // stored `custom_<index>_<name>` embeds a position that just shifted.
+        winner_id: remapCustomParticipantRef(prev.winner_id, updatedParticipants),
+        picked_by_id: remapCustomParticipantRef(prev.picked_by_id, updatedParticipants),
+      };
+    });
+  };
+
+  // Wave-12 review MED #21: a successful Undo was silent (the live region just
+  // emptied) and both Undo/Dismiss unmount the focused control, dropping
+  // keyboard focus to body. Announce the restore, and hand focus to the
+  // restored row's name input (Undo — the existing focusRowId mechanism) or
+  // the Add Participant button (Dismiss).
+  const [undoAnnouncement, setUndoAnnouncement] = useState('');
+  const addParticipantButtonRef = useRef(null);
+
+  const undoRemoveParticipant = () => {
+    const pending = removedParticipant;
+    if (!pending) return;
+    setNewEvent(prev => {
+      const restored = [...prev.participants];
+      // CLAMP to the current bounds — adds/removes may have happened since.
+      const at = Math.max(0, Math.min(pending.index, restored.length));
+      restored.splice(at, 0, pending.row);
+      // Wave-12 review MED #1: a ref the removal CLEARED (now null) is
+      // restored from the captured prior value; a ref the user re-pointed in
+      // the meantime is left alone — Undo must not clobber a newer choice.
+      const winnerRef = prev.winner_id == null && pending.priorWinnerId != null
+        ? pending.priorWinnerId : prev.winner_id;
+      const pickedByRef = prev.picked_by_id == null && pending.priorPickedById != null
+        ? pending.priorPickedById : prev.picked_by_id;
+      return {
+        ...prev,
+        participants: restored,
+        winner_id: remapCustomParticipantRef(winnerRef, restored),
+        picked_by_id: remapCustomParticipantRef(pickedByRef, restored),
+      };
+    });
+    setRemovedParticipant(null);
+    setUndoAnnouncement(`${pending.name} restored.`);
+    if (pending.row?._rowId != null) setFocusRowId(pending.row._rowId);
+  };
+
+  // 88-33 Task 4 (UAT row 542): after Add Participant, focus moves to the NEW row's
+  // name input (keyed on the draft `_rowId`, so it survives reorders) and the row is
+  // scrolled into view within Modal.Body. State, not a ref: the row must have RENDERED
+  // before ParticipantRow's focus effect can run against it.
+  const [focusRowId, setFocusRowId] = useState(null);
+  const handleRowFocusHandled = () => setFocusRowId(null);
+
+  // Wave-12 review MED #10/#12: FE counterpart to the BE
+  // MAX_CUSTOM_PARTICIPANTS=50 reject (middleware/validators.js) — guests are
+  // the rows WITHOUT a user_id; without this cap the 51st guest surfaced as a
+  // raw 400 on submit.
+  const MAX_GUEST_PARTICIPANTS = 50;
+  const guestCount = newEvent.participants.filter(
+    (p) => !p.user_id || String(p.user_id).trim() === ''
+  ).length;
+  const guestCapReached = guestCount >= MAX_GUEST_PARTICIPANTS;
+
+  const addParticipant = () => {
+    if (guestCapReached) return;
+    const row = createParticipant("", "", false);
+    setFocusRowId(row._rowId);
+    setNewEvent(prev => ({
+      ...prev,
+      participants: [...prev.participants, row]
+    }));
+  };
+
+  // Clear a stale undo offer whenever the modal opens/closes or the edited
+  // event changes — the row it would restore belongs to a different draft.
+  useEffect(() => {
+    setRemovedParticipant(null);
+    setUndoAnnouncement('');
+  }, [modal, editingEvent]);
+
+  /* DECISION Phase 88-33 Task 2 step 3b (triage A1, owner-ruled 2026-08-20): a duplicate
+     participant name shows a NON-BLOCKING inline hint — chosen OVER blocking submit and OVER
+     forced differentiation (the owner's original fork-3 proposal (b)). Fork 3 RULED that
+     duplicates are allowed: an all-Garys game night is legitimate, and the backend accepts it.
+     The hint is informational only; it never gates typing or submit. Turning it into a validation
+     error is a decision, not a hardening. */
+  const duplicateNameByIndex = useMemo(() => {
+    const seen = new Map(); // lowercased name -> count
+    for (const p of newEvent.participants) {
+      const name = (p.username || '').trim().toLowerCase();
+      if (!name) continue;
+      seen.set(name, (seen.get(name) || 0) + 1);
+    }
+    return newEvent.participants.map(p => {
+      if (p.isFromGroup) return null; // read-only rows have no input to hint under
+      const raw = (p.username || '').trim();
+      const name = raw.toLowerCase();
+      if (!name) return null;
+      return (seen.get(name) || 0) > 1 ? raw : null;
+    });
+  }, [newEvent.participants]);
 
   // Derive participant count for QuickSuggestions
   const participantCount = newEvent.participants.length;
@@ -611,6 +771,22 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         }
       }
 
+      /* DECISION Phase 88-16 (CONTEXT D-13, Req 12): the receipt fires HERE —
+         one statement BEFORE `modaltoggle()` — not after it. Sonner's <Toaster>
+         lives in the root layout and survives the SPA re-render/navigation that
+         closing this modal kicks off; queueing the toast on the far side of the
+         close is what loses it. The ORDER is the decision, not a formatting
+         choice: swapping these two lines is a regression, not a cleanup.
+         Copy is the D-12 terse-utility register ("{Object} {past-tense verb}"),
+         verbatim from the UI-SPEC §6.2 register — do not warm it up.
+         Verified this session that nothing between the API success and this line
+         can eat it: all five shipped `onEventCreated` consumers
+         (groupHomePage:509, groupPlanning:286, gameDetail:1221/2243/2258, and the
+         legacy read-grid at its :518 -> its parent) refetch or unmount; none
+         navigates. NOTE: that fifth consumer was deleted by plan 88-31's dead-code
+         gate, so the live count is now four — the claim is unaffected, but do not
+         re-verify it expecting five. */
+      toast.success(editingEvent ? 'Event updated' : 'Event created');
       modaltoggle();
       // Reset form. Phase 66-01: derivedSelectedSlot resets automatically
       // when newEvent.start_date is cleared by createEventForm — no separate
@@ -650,35 +826,66 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
   if (!modal) return null;
 
-  if (loading) {
-    return (
-      <div className="modal-overlay">
-        <div className="modal-content p-6">Loading group members...</div>
-      </div>
-    );
-  }
+  /* DECISION Phase 88-16 (SPEC Req 9 / Req 4): this component's TWO legacy
+     overlay wrappers — the pre-roster "Loading group members..." one and the
+     main form one — collapse onto ONE <Modal> host with a conditional body,
+     chosen OVER two sibling <Modal> elements that mirror the old early-return
+     shape. Two Modals would unmount one Radix dialog and mount another the
+     instant `loading` flips false: focus escapes back to the launcher, the open
+     animation replays, and a screen reader hears the dialog close and reopen —
+     none of which the pre-migration plain <div>s did, because they were not
+     dialogs. The two STATES are both still here and still distinct; only the
+     host is shared. Splitting them back apart is a decision, not a cleanup.
 
+     The loading state deliberately carries the SAME accessible name as the
+     loaded one ("Create Event" / "Edit Event") rather than a "Loading" title:
+     a dialog whose accessible name mutates underneath the user announces twice
+     for one open. Radix also REQUIRES a DialogTitle, so a title-less loading
+     dialog is not an option — leaving it unlabelled is what the old markup did.
+
+     Gone rather than ported: the backdrop `onClick`/`stopPropagation` pair
+     (Modal owns outside-dismiss) and the NAMELESS `×` button at the old `:674`
+     — one of the two nameless close glyphs SPEC Req 4 names. It carried neither
+     text nor `aria-label`, so screen readers announced "button". <Modal.Header>
+     supplies a close affordance with a real `aria-label="Close"`, so no close
+     glyph survives here that needs one. The header also drops from `text-2xl`
+     (24px) to the dialog-title contract (20px/700, UI-SPEC §4.2) because it is
+     now the DialogTitle — same call 88-17 made for PromptScheduleManager. */
+  /* 88-33 Task 4 (UAT row 291, fleet initial-focus policy): the game field is this
+     form's first meaningful input — focus lands there on open so the person can just
+     start typing. While the members fetch is still loading the input is not mounted;
+     applyInitialFocus then declines and Radix's default stands (graceful, recorded). */
   return (
-    <div className="modal-overlay" onClick={modaltoggle}>
-      <div className="modal-content max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        {/* DECISION Phase 87.8 DEC-3: p-3 at phone / p-6 at desktop on the modal BODY
-            wrapper — paired with the phone-scoped `.modal-overlay` 12px rule in
-            globals.css, this brings the Create Event chain under the SPEC R2 75px
-            budget (12+12 = 24/side = 48px; the nested heatmap p-3 box adds 12/side
-            → 72px, still under). The padding lives HERE (a layered utility on a
-            plain div) and NOT on the overlay div, where it would lose to the
-            unlayered `.modal-overlay` block. */}
-        <div className="p-3 md:p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold text-content-primary">{editingEvent ? 'Edit Event' : 'Create Event'}</h2>
-          <button
-            onClick={modaltoggle}
-            className="text-content-muted hover:text-content-primary active:opacity-75 text-2xl"
-          >
-            ×
-          </button>
-        </div>
-
+    <Modal open onClose={modaltoggle} size="lg" initialFocusRef={gameInputRef}>
+      <Modal.Header>{editingEvent ? 'Edit Event' : 'Create Event'}</Modal.Header>
+      {/* DECISION Phase 87.8 DEC-3, re-based by 88-16: `p-3` at phone / `p-6` at
+          desktop, now carried by <Modal.Body> (whose own default WAS a flat `p-6`
+          until 88-32 ruling 6 — see the AMENDED paragraph at the end)
+          instead of by a plain inner div. The 12px-per-side phone value is the
+          SAME number DEC-3 chose and for the same reason — it keeps the Create
+          Event chain under the SPEC R2 75px budget: 12 (this) + 12 (the phone
+          gutter that DEF-88-17-01 restored to Modal.tsx) = 24/side = 48px total,
+          exactly the pre-migration figure, with the nested heatmap `p-3` box
+          adding 12/side -> 72px, still under. DEC-3's original cascade caveat is
+          now MOOT and is deliberately not repeated: it warned that the padding
+          could not live on the overlay div because the unlayered legacy overlay
+          block would beat a layered utility. There is no such block in this
+          file's chain any more — Radix's content surface takes utilities
+          normally. Flattening this to the primitive's default `p-6` would put
+          24+12 = 36/side on a 375px phone and is a decision, not a cleanup.
+          AMENDED 2026-08-06 (Phase 88-32 owner ruling 6, DEF-88-30-03): that
+          decision was then made, the other way around — the PRIMITIVE's default
+          became `p-3 md:p-6` (see the marker in Modal.tsx), i.e. the fleet
+          converged onto DEC-3's value rather than DEC-3 flattening onto the
+          fleet's. The explicit className here was removed as redundant, NOT as
+          a rejection of DEC-3 — the rendered padding is byte-identical. If the
+          primitive default ever changes again, this modal must re-assert
+          `p-3 md:p-6` or the R2 75px budget arithmetic above breaks. */}
+      <Modal.Body>
+        {loading ? (
+          <p className="text-content-primary">Loading group members...</p>
+        ) : (
+          <>
         {/* Phase 62-02: nudge user to set profile TZ before editing/creating
             so saved start_date is stamped against a stable canonical TZ. */}
         <TimezoneNudgeBanner />
@@ -707,10 +914,15 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         <form onSubmit={onSubmit} data-testid="tw4-space-y-exemplar" className="space-y-4">
           {/* Game Selection */}
           <div>
-            <label className="block text-sm font-medium text-content-primary mb-1">
+            {/* 88-33 Task 8 (fork 5 / census class C): htmlFor associates this visible
+                label with the combobox's text input (id forwarded via GameComboInput). */}
+            <label htmlFor="event-game-name" className="block text-sm font-medium text-content-primary mb-1">
               Game
             </label>
             <GameComboInput
+              id="event-game-name"
+              name="event-game-name"
+              inputRef={gameInputRef}
               value={{ game_id: newEvent.game_id, game_name: newEvent.game_name }}
               onChange={({ game_id, game_name }) => {
                 setNewEvent(prev => ({ ...prev, game_id: game_id || '', game_name: game_name || '' }));
@@ -732,14 +944,19 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           {/* Time Selection */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-content-primary">
+              {/* 88-33 Task 8 (census class C): a SPAN, not a <label> — this titles the
+                  whole date/time SECTION (mode toggle + calendar or manual fields), so
+                  there is no single control to point htmlFor at; the manual inputs below
+                  carry their own real labels. Same treatment as the Participants section
+                  title (88-21). */}
+              <span className="block text-sm font-medium text-content-primary">
                 Date & Time <span className="text-red-500">*</span>
-              </label>
+              </span>
               {!hideVisualCalendar && (
                 <button
                   type="button"
                   onClick={() => setUseVisualCalendar(!useVisualCalendar)}
-                  className="text-xs text-content-link hover:text-content-link-hover active:opacity-75 underline"
+                  className="text-xs text-content-link hover:text-content-link-hover active:opacity-75 underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                 >
                   {useVisualCalendar ? 'Switch to Manual Entry' : 'Switch to Visual Calendar'}
                 </button>
@@ -806,7 +1023,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                           onClick={handlePrevWeek}
                           disabled={!canGoBack}
                           aria-label="Previous week"
-                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-card-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
+                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-card-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                         >
                           &lt;
                         </button>
@@ -819,7 +1036,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                             onClick={handleToday}
                             disabled={isOnTodayMonday}
                             aria-label="Jump to current week"
-                            className="px-2 py-1 text-xs rounded-sm bg-surface-elevated hover:bg-surface-card-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
+                            className="px-2 py-1 text-xs rounded-sm bg-surface-elevated hover:bg-surface-card-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                           >
                             Today
                           </button>
@@ -829,7 +1046,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                           onClick={handleNextWeek}
                           disabled={!canGoForward}
                           aria-label="Next week"
-                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-card-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary"
+                          className="px-2 py-1 text-sm rounded-sm bg-surface-elevated hover:bg-surface-card-hover active:opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-content-secondary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                         >
                           &gt;
                         </button>
@@ -858,13 +1075,12 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   <label htmlFor="start_date" className="block text-sm font-medium mb-1 text-content-primary">
                     Start Date & Time {!editingEvent && <span className="text-red-500">*</span>}
                   </label>
-                  <input
+                  <Input
                     type="datetime-local"
                     id="start_date"
                     value={newEvent.start_date}
                     onChange={handleChange}
                     required={!editingEvent}
-                    className="w-full p-2 border rounded-sm text-content-primary bg-surface-input"
                     max="9999-12-31T23:59"
                   />
                 </div>
@@ -882,12 +1098,12 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                     const durationOverMax = newEvent.duration_minutes && Number(newEvent.duration_minutes) > 720;
                     return (
                       <>
-                        <input
+                        <Input
                           type="number"
                           id="duration_minutes"
                           value={newEvent.duration_minutes || ''}
                           onChange={handleChange}
-                          className={`w-full p-2 border rounded-sm text-content-primary bg-surface-input ${durationOverMax ? 'border-status-error' : ''}`}
+                          className={durationOverMax ? 'border-status-error' : ''}
                           placeholder="Enter duration in minutes"
                           required={!editingEvent}
                           min="1"
@@ -911,12 +1127,11 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 RSVP Deadline
               </label>
               <p className="text-xs text-content-muted mb-1">Required for game voting ballot</p>
-              <input
+              <Input
                 type="datetime-local"
                 id="rsvp_deadline"
                 value={newEvent.rsvp_deadline || ''}
                 onChange={handleChange}
-                className="w-full p-2 border rounded-sm text-content-primary bg-surface-input"
                 max={newEvent.start_date && newEvent.start_date < '9999-12-31T23:59' ? newEvent.start_date : '9999-12-31T23:59'}
               />
             </div>
@@ -935,28 +1150,88 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
           {/* Participants Section */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-content-primary">
+            {/* DECISION Phase 88-21 (DEF-88-10-01, site 3 of 3): this became a `<span id>` +
+                `role="group" aria-labelledby`, NOT a `<label htmlFor>` like the other two sites
+                this plan closed in `ParticipantRow.js`. It names a SECTION of participant rows —
+                each row carries three controls of its own — so `htmlFor` would have had to point
+                at exactly one of them and would have announced "Participants" over (say) the
+                first row's Score box while leaving the section itself unnamed. Same treatment
+                88-10 gave "Days of Week" in `userProfile/page.js`. Converting this to `htmlFor`
+                to "match the other two" is a decision, not a cleanup. */}
+            <span
+              id="participants-section-label"
+              className="block text-sm font-medium mb-2 text-content-primary"
+            >
               Participants <span className="text-red-500">*</span>
-            </label>
-            <div className="space-y-2 max-h-60 overflow-y-auto border border-line p-2 rounded-sm bg-surface-input">
+            </span>
+            <div
+              role="group"
+              aria-labelledby="participants-section-label"
+              className="space-y-2 max-h-60 overflow-y-auto border border-line p-2 rounded-sm bg-surface-input"
+            >
               {newEvent.participants.map((participant, index) => (
                 <ParticipantRow
-                  key={index}
+                  key={participant._rowId ?? index}
                   participant={participant}
                   index={index}
                   groupMembers={groupMembers}
                   onParticipantChange={handleParticipantChange}
                   onToggleParticipant={toggleParticipant}
+                  duplicateOfName={duplicateNameByIndex[index] ?? null}
+                  requestNameFocus={participant._rowId != null && participant._rowId === focusRowId}
+                  onNameFocusHandled={handleRowFocusHandled}
                 />
               ))}
             </div>
+
+            {/* Undo-on-remove (fork 4). Persistent, not timed — see the marker on
+                toggleParticipant. Mounted right under the list so focus lands next to
+                where the row was. */}
+            <StatusRegion politeness="polite" className="sr-only">
+              {removedParticipant
+                ? `${removedParticipant.name} removed. Undo is available.`
+                : undoAnnouncement}
+            </StatusRegion>
+            {removedParticipant && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-sm border border-line bg-surface-page px-2 py-1.5 text-sm text-content-secondary">
+                <span>{removedParticipant.name} removed</span>
+                <button
+                  type="button"
+                  ref={undoButtonRef}
+                  onClick={undoRemoveParticipant}
+                  className="min-h-11 px-2 font-medium text-content-link underline hover:no-underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring"
+                >
+                  Undo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRemovedParticipant(null);
+                    // #21: this bar unmounts on dismiss — hand focus to the
+                    // Add Participant button instead of dropping it to body.
+                    addParticipantButtonRef.current?.focus();
+                  }}
+                  className="min-h-11 px-2 text-content-muted hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  aria-label={`Dismiss undo for ${removedParticipant.name}`}
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
             <button
               type="button"
+              ref={addParticipantButtonRef}
               onClick={addParticipant}
+              disabled={guestCapReached}
               className="mt-2 btn btn-primary text-sm"
             >
               + Add Participant
             </button>
+            {guestCapReached && (
+              <p className="mt-1 text-sm text-content-secondary">
+                Guest limit reached ({MAX_GUEST_PARTICIPANTS} per event).
+              </p>
+            )}
           </div>
 
           {/* Winner, Picked By, and Group Win - only show for past events */}
@@ -969,12 +1244,11 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             <label htmlFor="comments" className="block text-sm font-medium mb-1 text-content-primary">
               Comments
             </label>
-            <textarea
+            <Textarea
               id="comments"
               value={newEvent.comments}
               onChange={handleChange}
               rows="3"
-              className="w-full p-2 border rounded-sm text-content-primary bg-surface-input"
               placeholder="Optional notes about this game session"
             />
           </div>
@@ -988,7 +1262,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             >
               Cancel
             </button>
-            {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the Create Event surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button. */}
+            {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the Create Event surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup. */}
             <button
               type="submit"
               data-testid="create-event-submit"
@@ -998,9 +1272,10 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             </button>
           </div>
         </form>
-        </div>
-      </div>
-    </div>
+          </>
+        )}
+      </Modal.Body>
+    </Modal>
   );
 }
 

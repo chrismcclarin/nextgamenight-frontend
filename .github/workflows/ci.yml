@@ -5,9 +5,10 @@
 # The e2e job CROSS-REPO checks out the backend (chrismcclarin/nextgamenight-backend),
 # whose app lives at `backend/Sonnet/`.
 #
-# Two jobs (D-01/D-02):
-#   quality  — fast gate: lint + tsc --noEmit + born-.tsx git-diff block + vitest run
-#   e2e      — slow gate (needs: quality): real backend + Postgres + Playwright journeys
+# Three jobs (D-01/D-02 + the 88-32 ruling-5 gate):
+#   quality             — fast gate: lint + tsc --noEmit + born-.tsx git-diff block + vitest run
+#   drift-gate-registry — Phase 88 guard registry, its own job SO IT CAN BE A REQUIRED CHECK
+#   e2e                 — slow gate (needs: quality): real backend + Postgres + Playwright journeys
 name: CI
 
 on:
@@ -47,6 +48,18 @@ jobs:
 
       - name: Typecheck (hard tsc gate — not relying on `next build` alone)
         run: npm run typecheck # tsc --noEmit; checkJs:false keeps it sub-second
+
+      # DEF-88-30-02. `tsconfig.json` excludes `e2e/`, so the step above is structurally
+      # incapable of failing on a Playwright spec — three `verify` blocks in plan 88-30 alone
+      # were written as if it did. Probed both ways: a planted TS2322 in
+      # `e2e/route-fallbacks.spec.ts` exits 0 under the app config and exits 2 under this one.
+      #
+      # It runs in `quality`, not `e2e`, on purpose: it needs no build, no browsers, no
+      # database and no secrets, so it is the cheapest possible place to catch a broken spec —
+      # and catching it here means a spec that cannot compile fails in ~10s instead of after
+      # the e2e job has spent ten minutes standing up a backend to run it.
+      - name: Typecheck e2e specs (DEF-88-30-02 — tsconfig.json excludes e2e/)
+        run: npx tsc --noEmit -p tsconfig.e2e.json
 
       - name: Unit tests
         run: npx vitest run
@@ -168,6 +181,91 @@ jobs:
             exit 1
           fi
           echo "Permanence-copy gate passed — the group-delete flow makes no permanence claim."
+
+  # DECISION Phase 88-32 ruling 5 (DEF-88-29-03): the drift-gate registry is its OWN JOB,
+  # required in branch protection — over staying a step inside `quality`, and over a
+  # CODEOWNERS rule. The turtle this closes: a commit deleting the registry step AND its
+  # fixture suite left CI green, because `quality` reports green without them. As a job
+  # named in the repo's required-checks list (repo SETTINGS, not the tree), deleting the
+  # job leaves a required check unreported and the PR cannot merge — no commit can disarm
+  # it. CODEOWNERS was verified dead for this repo: one collaborator, owner-authored PRs,
+  # and GitHub never counts the author's own approval, so enforcement would deadlock every
+  # ci.yml-touching PR. Moving the step back inside `quality` is a decision, not a cleanup.
+  # ARMING: after the Phase 88 PR merges, add `drift-gate-registry` to the required checks
+  # beside quality+e2e (recorded in the 88-32 close-out checklist).
+  drift-gate-registry:
+    name: drift-gate-registry
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: "Drift-gate registry — Phase 88's source-scan guards must exist and stay armed"
+        # WHY THIS STEP EXISTS AT ALL (Phase 88 plan 29).
+        #
+        # Phase 88 recorded FOURTEEN defective grep gates across its own plans
+        # (DEF-88-16-01, DEF-88-19-01, DEF-88-21-01, DEF-88-24-04 x2, DEF-88-25-02 x3,
+        # DEF-88-26, DEF-88-27-01, DEF-88-28-01 x3). Every one was a `grep` matching a
+        # multi-token attribute against JSX, or matching a token it could not tell from a
+        # lookalike, or counting a SUPERSET of the population the plan cared about. The
+        # phase's answer was to replace them with source-scan TESTS, and DEF-88-21-01 asked
+        # 88-29 to do "one pass over the whole gate set rather than three separate fixes".
+        #
+        # That pass moved the phase's drift gates into vitest — which opened a NEW hole this
+        # step closes. `npx vitest run` above is green whether a suite passes or whether the
+        # file was DELETED. A guard you can disarm with `rm` is not a guard. Nothing else in
+        # this pipeline notices a missing test file.
+        #
+        # WHAT IT CLAIMS, AND WHAT IT DOES NOT.
+        # It claims each guard still EXISTS and has not been gutted to a stub. It does NOT
+        # claim the assertions inside are the right ones — every suite carries its own
+        # anti-vacuity guards for that, and duplicating them here would be a second copy to
+        # drift. Stating the limit is part of the point: a gate that overclaims is how this
+        # phase got fourteen of them.
+        #
+        # The counts are per-FILE and are FLOORS set at the current count. Per-file rather
+        # than a total, deliberately: a single "there are >= 100 guard assertions" number is
+        # DEF-88-28-01's threshold-on-a-superset defect exactly — deleting a whole suite
+        # would pass if another grew. Adding a test to a suite is never a red build; removing
+        # one is, and that is the intended asymmetry.
+        #
+        # The lockstep self-test `src/lib/ci-grep-gate.fixture.test.ts` parses THIS step's
+        # file list out of this workflow, located by the step name above, and asserts every
+        # listed file exists and really carries at least the stated number of assertions.
+        # Renaming this step without updating the name string there throws loudly.
+        run: |
+          FAIL=0
+          # <path>:<minimum assertion count>
+          for entry in \
+            "src/app/components/controlSizeFloor.test.tsx:5" \
+            "src/app/cardPaddingIdiom.test.ts:4" \
+            "src/app/typeScaleTouchedSurfaces.test.ts:7" \
+            "src/app/borderExplicitness.test.ts:12" \
+            "src/app/tintTreatment.test.ts:8" \
+            "src/app/fetchErrorTreatment.test.ts:8" \
+            "src/app/focusAndMotionTreatment.test.ts:18" \
+            "src/app/components/keyboardOperability.test.tsx:7" \
+            "src/app/components/availabilityGridColumns.test.ts:6" \
+            "src/app/decisionMarkers.test.ts:11" \
+            "src/app/rawColorValues.test.ts:7" \
+            "src/app/legacyOverlayClass.test.ts:5" \
+            "src/app/nativeDialogs.test.ts:7" \
+            "src/test-utils/sourceScan.ts:0" \
+          ; do
+            f="${entry%:*}"; min="${entry##*:}"
+            if [ ! -f "$f" ]; then
+              echo "::error::Drift gate MISSING: $f — a Phase 88 guard was deleted or renamed. Restore it, or delete its row here and record the decision in the phase's deferred-items ledger. Do not silently drop the row."
+              FAIL=1
+              continue
+            fi
+            n=$(grep -cE '^[[:space:]]*(it|test)\(' "$f" || true)
+            if [ "$n" -lt "$min" ]; then
+              echo "::error::Drift gate GUTTED: $f has $n assertions, expected at least $min. Assertions were removed from a Phase 88 drift guard."
+              FAIL=1
+            fi
+          done
+          [ "$FAIL" -eq 0 ] || exit 1
+          echo "Drift-gate registry passed — every Phase 88 source-scan guard is present and armed."
 
   e2e:
     name: e2e
@@ -307,6 +405,42 @@ jobs:
 
       - name: Frontend — production build (proves the green build, SC#1 / Open Q3)
         run: npm run build
+
+      - name: "CSS bundle guard — two-sided emitted-CSS assertion (Req 19)"
+        # Phase 88 plan 29. The durable replacement for 87.7's one-shot migration tools,
+        # which `.planning/deferred/phase-88.md` § "Durable CSS-bundle guard" records as
+        # "wired into nothing". `scripts/tw4-css-diff.mjs` cannot be the gate — its own
+        # header says it "always exits 0 and the human reading it is the gate".
+        #
+        # Placed HERE, in the e2e job immediately after its existing production build,
+        # chosen OVER adding a build to the `quality` job. The assertion needs emitted CSS,
+        # and `quality` is the deliberately fast lane (lint + tsc + vitest, no build);
+        # adding a ~90s Next build to it to run a 20ms check would slow every PR's first
+        # signal. e2e `needs: quality` and runs on every PR, so the guard still gates the
+        # merge. Moving it into `quality` means paying for a second build — that is a
+        # decision, not a cleanup.
+        #
+        # Both directions are load-bearing. Direction A alone (no fixture CSS in the bundle)
+        # is satisfied by a build that emits NOTHING, which would be a totally unstyled site
+        # waved through by its own guard — the "gate that cannot red" failure this phase
+        # recorded fourteen times. See the script for the sentinel's placement rationale and
+        # for why each required utility is pinned to the `@source` glob that is the only
+        # thing keeping it in the bundle.
+        #
+        # PROVEN, not assumed — four real builds, recorded in 88-29-SUMMARY.md:
+        #   remove `@source not '../lib/**/*.test.*'`   -> RED (direction A)
+        #   remove `source(none)`                        -> RED (direction A)
+        #   remove `@source './**'`      (app glob)      -> RED (direction B)
+        #   remove `@source '../components/**'`          -> RED (direction B)
+        #   restored                                     -> GREEN, both directions
+        #
+        # The post-88 baseline (DI-87.7-22: all chunks concatenated, sorted) lives at
+        # `scripts/baselines/post-88.css` and is regenerated with
+        # `node scripts/css-bundle-guard.mjs --write-baseline` after a build. It is
+        # deliberately NOT asserted here: a design change would then red every PR, and a
+        # gate people routinely refresh to make green is worse than no gate. It exists so a
+        # future phase diffs against Phase 88's design system rather than v3's.
+        run: node scripts/css-bundle-guard.mjs
 
       - name: Frontend — start (next start, :3000) and wait
         env:

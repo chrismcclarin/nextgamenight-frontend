@@ -2,8 +2,9 @@
 //
 // Headless heatmap-cell keyboard/roving engine (PRIM-01, D-04).
 //
-// Owns the COMPLETE roving-tabindex + nav-key state machine that today lives in
-// HeatmapGrid.js:227-267. Lifting it into one hook makes write-grid keyboard
+// Owns the COMPLETE roving-tabindex + nav-key state machine that used to live at
+// lines 227-267 of the legacy intensity read-grid (deleted by plan 88-31's dead-code
+// gate; recoverable from git history). Lifting it into one hook makes write-grid keyboard
 // parity true BY CONSTRUCTION instead of by copy-paste (the F-803/809 drift root
 // cause). The full eight-key nav set (arrows + Home/End/PageUp/PageDown) is ported
 // here and parity-tested BEFORE 84-10 deletes the grid-level handler, so the read
@@ -46,7 +47,7 @@ export interface HeatmapCellResult {
 /**
  * Headless roving-tabindex + nav-key + select keyboard hook for a heatmap cell.
  *
- * Nav-key model is lifted VERBATIM from HeatmapGrid.js:227-267 (clamping math
+ * Nav-key model is lifted VERBATIM from the legacy read-grid's :227-267 (clamping math
  * identical, just expressed in (row, col) instead of a flat index):
  *  - ArrowLeft  → col-1 (clamp >= 0)
  *  - ArrowRight → col+1 (clamp <= cols-1)

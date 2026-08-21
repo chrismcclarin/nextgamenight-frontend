@@ -63,6 +63,21 @@ describe('Modal', () => {
     expect(screen.getByRole('dialog')).toHaveClass('max-w-4xl');
   });
 
+  // DEF-88-17-01 (closed by 88-16). The 87.8 DEC-3 12px phone gutter used to be
+  // written ONLY in a `@media (width < 48rem)` rule keyed to the legacy overlay
+  // class, so it evaporated for each surface as it migrated onto this primitive.
+  // It now lives on the content surface itself. jsdom computes no layout, so the
+  // pin is on the class contract — which is also the thing a future "tidy" would
+  // delete. Both halves matter: the phone inset AND its `md:` neutraliser.
+  it('carries the 12px-per-side phone gutter and drops it at md (DEF-88-17-01)', () => {
+    renderModal();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveClass('w-[calc(100%-1.5rem)]');
+    expect(dialog).toHaveClass('md:w-full');
+    // A bare `w-full` at the phone tier is the regression this closes.
+    expect(dialog.className.split(/\s+/)).not.toContain('w-full');
+  });
+
   it('renders a single Close affordance with an accessible name that fires onClose', async () => {
     const user = userEvent.setup();
     const { onClose } = renderModal();
@@ -116,5 +131,55 @@ describe('Modal', () => {
     );
     const danger = screen.getByRole('button', { name: 'Delete' });
     expect(danger).toHaveClass('btn', 'btn-danger');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88-33 Task 3 (fork 6, UAT rows 299/308/317/313/333) — ONE shared
+// horizontal scale across header, body and footer.
+//
+// Assertions read the COMPUTED class list off a real render, not a regex over
+// the source: the phase's anti-pattern register records 17 defective
+// grep-shaped gates, several of which passed against JSX the regex could not
+// see. A render-based pin cannot be vacuous — if the element stops existing,
+// the query throws.
+// ---------------------------------------------------------------------------
+describe('Modal padding scale (fork 6)', () => {
+  /** Walk up from the title/body text to the padded container. */
+  function headerEl() {
+    return screen.getByText('Start a check-in').parentElement as HTMLElement;
+  }
+  function bodyEl() {
+    return screen.getByText('When are you free?').parentElement as HTMLElement;
+  }
+  function footerEl() {
+    return screen.getByRole('button', { name: 'Cancel' }).parentElement as HTMLElement;
+  }
+
+  it('header, body and footer share the SAME horizontal padding at both breakpoints', () => {
+    renderModal();
+    // Body is the reference scale (88-32 ruling 6: `p-3 md:p-6`).
+    expect(bodyEl().className).toContain('p-3');
+    expect(bodyEl().className).toContain('md:p-6');
+
+    for (const el of [headerEl(), footerEl()]) {
+      expect(el.className).toContain('px-3');
+      expect(el.className).toContain('md:px-6');
+      // The old flat scale is what indented the title past the body content.
+      expect(el.className).not.toMatch(/(^|\s)px-6(\s|$)/);
+    }
+  });
+
+  it('tightens the header vertically without touching the 44px close box', () => {
+    renderModal();
+    expect(headerEl().className).toContain('py-2');
+    expect(headerEl().className).toContain('md:py-3');
+    expect(headerEl().className).not.toMatch(/(^|\s)py-5(\s|$)/);
+
+    const close = screen.getByRole('button', { name: 'Close' });
+    expect(close.className).toContain('min-h-11');
+    expect(close.className).toContain('min-w-11');
+    // Optical centering of the glyph inside the taller box.
+    expect(close.className).toContain('leading-none');
   });
 });

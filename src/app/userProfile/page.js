@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
@@ -15,6 +15,8 @@ import { patchSelfCache } from '../../lib/hooks/selfIdentityCache';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import Link from 'next/link';
 import { formatDate, toLocalDateString } from '../../lib/dateUtils';
+// 88-33 Task 9 (fork 1, RULED 2026-08-17): pattern times print 12-hour everywhere.
+import { formatTime } from '../../lib/datetime';
 import SafeImage from '../components/SafeImage';
 import DangerZoneDeleteAccount from '../components/DangerZoneDeleteAccount';
 import { useTutorial } from '../components/tutorial/TutorialProvider';
@@ -25,8 +27,17 @@ import { useQuery } from '@tanstack/react-query';
 import { validatedQueryFn } from '../../lib/validatedQueryFn';
 import { AvailabilityPatternListSchema } from '../../lib/schemas/availability';
 import { availabilityKeys } from '../../lib/queryKeys/availabilityKeys';
-import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { Switch } from '../../components/ui/Switch';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Tabs';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { useConfirmAction } from '../../components/ui/useConfirmAction';
+import { Modal } from '../components/Modal';
+import { Combobox } from '../../components/ui/Combobox';
+import { StatusRegion } from '../../components/ui/StatusRegion';
+import { Input, SelectControl } from '../../components/ui/Input';
+import { ErrorFallback } from '../../components/ui/ErrorFallback';
 
 const NOTIFICATION_TYPES = [
     { key: 'event_created', label: 'New Event', description: 'When a game session is scheduled' },
@@ -41,6 +52,47 @@ const REMINDER_WINDOWS = [
     { value: 2, label: '2 hours before' },
     { value: 24, label: '1 day before' },
 ];
+
+/* DECISION Phase 88-19 (Req 2 / UI-SPEC §4.1 + §4.2): this surface renders THREE
+   type roles, not two — 30/700 for the page title, 20/700 (`text-xl font-bold`)
+   for the eight top-level section headings, and 16/700 (`text-base font-bold`)
+   for the six h3/h4 sub-headings that live INSIDE one of those sections.
+
+   The 16/700 rung is the deliberate part. It is chosen OVER promoting every h3
+   to §4.1's Heading role, which is the literal reading of "section headings to
+   text-xl" and is what a later reader will "correct" this to. It loses here
+   because this page nests three levels: "Availability Settings" (h2) contains
+   "Availability Schedules" (h3) which contains "New Schedule" (h4). Rendering
+   all three at 20px flattens a real hierarchy into one visual level, on the
+   surface with the most sections in the app. 16/700 keeps 30 > 20 > 16 legible
+   while staying inside the 4-size working set and never reaching for a fifth.
+
+   What is NOT negotiable in either shape: the weight. §4.2 states 700/400 as a
+   PROHIBITION on 600 ("never 600/400"), and D-01 gives 600 exactly one home,
+   the Button primitive. Every heading here was `font-semibold` or a bare
+   `font-semibold` with no size at all; none may go back.
+
+   `text-lg` (18) and `text-2xl` (24) both appeared on this surface and are gone
+   deliberately — they are not in the working set. So are the `md:`-prefixed
+   heading sizes: a heading that grows at a breakpoint is a second scale. */
+
+/**
+ * The status a notification ROW shows, derived from its two per-channel slots
+ * (DEF-88-10-02). The row has ONE indicator cell but two controls, so when both
+ * are live the more serious state wins — a failed SMS save is never hidden
+ * behind a successful email save. `reminder:window` is deliberately NOT in this
+ * list: it has its own indicator, and the old shape's row check ignored the
+ * channel, so a window save lit BOTH cells at once.
+ */
+const SAVE_STATUS_PRECEDENCE = ['guard', 'error', 'saving', 'saved'];
+/** Slots that are not a per-row channel and therefore have their own indicator. */
+const REMINDER_WINDOW_SLOT = 'reminder:window';
+const RESET_SLOT = 'all:reset';
+function rowSaveStatus(statuses, typeKey) {
+    return SAVE_STATUS_PRECEDENCE.find(
+        status => statuses[`${typeKey}:email`] === status || statuses[`${typeKey}:sms`] === status
+    ) ?? null;
+}
 
 const DEFAULT_PREFERENCES = {
     event_created: { email: true, sms: false },
@@ -75,6 +127,9 @@ function Profile(){
     const [bggSearching, setBggSearching] = useState(false);
     const [showBggSearch, setShowBggSearch] = useState(false);
     const [bggUsername, setBggUsername] = useState('');
+    // The BGG import's slow-operation prompt (D-10) — an informational Modal, not a
+    // destructive gate. See the marker on `handleImportCollectionClick`.
+    const [bggImportPromptOpen, setBggImportPromptOpen] = useState(false);
     const [importingCollection, setImportingCollection] = useState(false);
     const [importProgress, setImportProgress] = useState(null);
     const [googleCalendarConnected, setGoogleCalendarConnected] = useState(false);
@@ -170,7 +225,100 @@ function Profile(){
 
     // Notification preferences state
     const [preferences, setPreferences] = useState(null);
-    const [saveStatus, setSaveStatus] = useState(null); // { type, channel, status: 'saving'|'saved'|'error'|'guard' }
+
+    /* DECISION Phase 88-19 (DEF-88-10-02): the save status is a KEYED MAP with a
+       per-key clear timer, chosen OVER the single `{ type, channel, status }`
+       object this shipped with.
+
+       This is load-bearing precisely BECAUSE of D-14 two screens down. That
+       exemption says these toggles need no success toast, and the reason it
+       gives is that the row's own Saving/Saved indicator covers the round trip.
+       With one slot, that reason was false the moment a second toggle moved:
+       every writer set the slot wholesale, so flipping row B replaced row A's
+       state — row A's "Saving…" vanished with no receipt whatever its request
+       actually did, and if A then FAILED the switch rolled back with nothing
+       said. The 2s/3s clears were unkeyed too, so A's late timer could wipe B's
+       indicator early. A matrix is used by flipping several things in a row;
+       this was the ordinary path, not an edge case.
+
+       Collapsing this back to one slot is a decision that re-opens D-14, not a
+       simplification. */
+    const [saveStatuses, setSaveStatuses] = useState({}); // { [`${type}:${channel}`]: 'saving'|'saved'|'error'|'guard' }
+    const saveStatusTimersRef = useRef({});
+
+    /* 88-CODE-REVIEW MED#15: SR announcements for save OUTCOMES. The Radix Switch
+       announces the optimistic aria-checked flip immediately, so a failed save's
+       visual-only rollback left a screen-reader user believing the toggle took.
+       Two always-mounted sr-only regions (StatusRegion's empty-first contract):
+       polite for 'saved', assertive (role=alert) for 'error' and the guard —
+       they explain a rejected/reverted action. 'saving' is deliberately NOT
+       announced: transient, and the outcome announcement covers the round trip. */
+    const [politeSaveAnnouncement, setPoliteSaveAnnouncement] = useState('');
+    const [assertiveSaveAnnouncement, setAssertiveSaveAnnouncement] = useState('');
+    const saveSlotLabel = (key) => {
+        if (key === REMINDER_WINDOW_SLOT) return 'Reminder timing';
+        const [typeKey, channel] = key.split(':');
+        const t = NOTIFICATION_TYPES.find(x => x.key === typeKey);
+        return `${t?.label || typeKey} ${channel || ''} notifications`.replace(/\s+/g, ' ').trim();
+    };
+
+    const setSaveStatus = useCallback((key, status, clearAfterMs) => {
+        setSaveStatuses(prev => ({ ...prev, [key]: status }));
+        // Delta review 2026-08-06 (MED x2 on the MED#15 wiring):
+        //  - RESET_SLOT gets its own copy — the generic template produced the
+        //    garbled "all reset notifications" label, and its error line claimed
+        //    "the switch was reset" for an action that has no switch and did NOT
+        //    reset. Error copy mirrors the visible text at the reset button.
+        //  - Announcements are CLEARED by the same timer that clears the visual
+        //    status (below). aria-live fires on DOM CHANGE only, so a second
+        //    identical outcome (same toggle re-flipped; the guard hit twice) was
+        //    a React state bail-out — announced once, silent forever after.
+        if (status === 'saved') {
+            setPoliteSaveAnnouncement(
+                key === RESET_SLOT
+                    ? 'Notification preferences reset to defaults'
+                    : `${saveSlotLabel(key)}: saved`
+            );
+        } else if (status === 'error') {
+            setAssertiveSaveAnnouncement(
+                key === RESET_SLOT
+                    ? "Couldn't reset notification preferences — try again"
+                    : `${saveSlotLabel(key)}: save failed — the switch was reset`
+            );
+        } else if (status === 'guard') {
+            setAssertiveSaveAnnouncement('At least one notification must stay enabled');
+        }
+        const timers = saveStatusTimersRef.current;
+        // Cancel this key's own pending clear before arming a new one: without
+        // it, a 'saved' timer already in flight fires over the NEXT status this
+        // same control lands on.
+        if (timers[key]) {
+            clearTimeout(timers[key]);
+            delete timers[key];
+        }
+        if (!clearAfterMs) return; // 'saving' persists until it resolves.
+        timers[key] = setTimeout(() => {
+            delete timers[key];
+            // Empty the live regions with the visual clear — StatusRegion's
+            // empty-first contract; the next identical outcome is then a real
+            // DOM change and announces again.
+            setPoliteSaveAnnouncement('');
+            setAssertiveSaveAnnouncement('');
+            setSaveStatuses(prev => {
+                if (!(key in prev)) return prev;
+                const next = { ...prev };
+                delete next[key];
+                return next;
+            });
+        }, clearAfterMs);
+    }, []);
+
+    useEffect(() => {
+        const timers = saveStatusTimersRef.current;
+        return () => {
+            Object.values(timers).forEach(clearTimeout);
+        };
+    }, []);
 
     const { replayTutorial } = useTutorial();
     const { timezone, setTimezone } = useTimezone();
@@ -212,34 +360,66 @@ function Profile(){
         }
     }, [timezone]);
 
+    /* 88-CODE-REVIEW MED#11: the expensive BASE list is built once per open, not once
+       per keystroke. F-359's gate below protected first render only — while the picker
+       was open, every keystroke invalidated filteredTimezones, whose body rebuilt the
+       full IANA set (~800 Intl.DateTimeFormat constructions) before filtering.
+       Filtering ~400 strings per keystroke is cheap; constructing the list is not.
+       Delta review 2026-08-06 (LOW): cached across REOPENS too via ref — closing the
+       picker no longer evicts the built list. The F-359 page-load gate still holds
+       (nothing builds until the first open); the cache invalidates with the builder's
+       identity, which changes only when `timezone` does (its fallback branch). */
+    const tzListCacheRef = useRef({ builder: null, list: [] });
+    const allTimezones = useMemo(() => {
+        if (!tzPickerOpen) return []; // closed shape unchanged; the CACHE survives the close
+        if (tzListCacheRef.current.builder !== getTimezoneList) {
+            tzListCacheRef.current = { builder: getTimezoneList, list: getTimezoneList() };
+        }
+        return tzListCacheRef.current.list;
+    }, [tzPickerOpen, getTimezoneList]);
+
     const filteredTimezones = useCallback(() => {
-        const all = getTimezoneList();
-        if (!tzSearch.trim()) return all;
+        if (!tzSearch.trim()) return allTimezones;
         const query = tzSearch.toLowerCase().replace(/[_/]/g, ' ');
-        return all.filter(tz => {
+        return allTimezones.filter(tz => {
             const searchable = tz.label.toLowerCase().replace(/[_/]/g, ' ');
             return searchable.includes(query);
         });
-    }, [getTimezoneList, tzSearch]);
+    }, [allTimezones, tzSearch]);
 
-    // Group timezones by region prefix
-    const groupedTimezones = useCallback(() => {
-        const zones = filteredTimezones();
-        const groups = {};
-        zones.forEach(tz => {
-            const slashIndex = tz.value.indexOf('/');
-            const region = slashIndex > -1 ? tz.value.substring(0, slashIndex) : 'Other';
-            if (!groups[region]) groups[region] = [];
-            groups[region].push(tz);
-        });
-        return groups;
-    }, [filteredTimezones]);
-
-    const handleTimezoneSelect = (tz) => {
+    const handleTimezoneSelect = useCallback((tz) => {
         setTimezone(tz);
         setTzPickerOpen(false);
         setTzSearch('');
-    };
+    }, [setTimezone]);
+
+    /* DECISION Phase 88-10 (F-359): the option list is built ONLY while the picker is
+       open, chosen OVER the obvious `useMemo` keyed on the search text alone. Building
+       it runs two `Intl.DateTimeFormat` constructions per zone across the full IANA
+       set (~400+), so an ungated memo pays that on the first render of a page whose
+       picker most visits never touch. The gate is invisible — the list is only ever
+       READ while open. Dropping `tzPickerOpen` from the inputs below is a decision
+       about page-load cost, not a simplification. */
+    const timezoneItems = useMemo(() => {
+        if (!tzPickerOpen) return [];
+        return filteredTimezones().map(tz => {
+            const slashIndex = tz.value.indexOf('/');
+            return {
+                key: tz.value,
+                // Region heading — consecutive items sharing a `group` render under one
+                // labelled group, which is how the primitive reproduces the region
+                // sections the hand-rolled panel drew by hand.
+                group: slashIndex > -1 ? tz.value.substring(0, slashIndex) : 'Other',
+                label: (
+                    <span className={tz.value === timezone ? 'font-medium text-content-link' : undefined}>
+                        {tz.value.replace(/_/g, ' ')}
+                        {tz.abbr && <span className="text-content-muted ml-1">({tz.abbr}, {tz.offset})</span>}
+                    </span>
+                ),
+                onSelect: () => handleTimezoneSelect(tz.value),
+            };
+        });
+    }, [tzPickerOpen, filteredTimezones, timezone, handleTimezoneSelect]);
 
     // Get current timezone abbreviation for display
     const currentTzAbbr = useCallback(() => {
@@ -255,6 +435,36 @@ function Profile(){
         }
     }, [timezone]);
 
+    /* DECISION Phase 88-10 (F-359): the closed field shows the SELECTED timezone as its
+       VALUE, and the search text takes over only while the picker is open — chosen OVER
+       showing the selection as a placeholder, which is what a text-field-shaped control
+       invites. A placeholder renders muted and reads as "nothing chosen yet"; this is a
+       setting with a real current value, and the control it replaces displayed that
+       value in full-contrast text. Swapping this to a placeholder is a decision that
+       changes what the field claims, not a cleanup. */
+    const currentTimezoneLabel = useCallback(() => {
+        if (!timezone) return '';
+        const abbr = currentTzAbbr();
+        return abbr
+            ? `${timezone.replace(/_/g, ' ')} (${abbr})`
+            : timezone.replace(/_/g, ' ');
+    }, [timezone, currentTzAbbr]);
+
+    // Opening resets the search so the full list is offered; guarded so a click that
+    // merely re-focuses an ALREADY-open field does not wipe what was typed.
+    const openTimezonePicker = useCallback(() => {
+        if (tzPickerOpen) return;
+        setTzSearch('');
+        setTzPickerOpen(true);
+    }, [tzPickerOpen]);
+
+    // Closing (Esc, outside press, selection) drops the search text so the field falls
+    // back to displaying the current selection rather than a stale query.
+    const handleTimezonePickerOpenChange = useCallback((next) => {
+        setTzPickerOpen(next);
+        if (!next) setTzSearch('');
+    }, []);
+
     const handleReplayTutorial = async () => {
         if (!user?.sub) return;
         if (!selfUuid) {
@@ -267,7 +477,11 @@ function Profile(){
             replayTutorial();
         } catch (error) {
             console.error('Error replaying tutorial:', error);
-            toast.error('Failed to replay tutorial. Please try again.');
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't restart the tour. Please try again.",
+                })
+            );
         } finally {
             setReplayingTutorial(false);
         }
@@ -318,7 +532,12 @@ function Profile(){
             setPhoneState('verifying');
         } catch (error) {
             console.error('Error saving phone:', error);
-            setPhoneError(error.message || 'Failed to send verification code');
+            setPhoneError(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't send the code. Check the number and try again.",
+                    byCode: { validation: "That number wasn't accepted. Check it and try again." },
+                })
+            );
             setPhoneState('editing');
         }
     };
@@ -331,7 +550,17 @@ function Profile(){
         }
         try {
             setPhoneError(null);
-            await usersAPI.verifyPhone(selfUuid, verificationCode);
+            // 88-CODE-REVIEW H1: the wrong-code outcome is a 200 { verified: false }
+            // (routes/users.js:727-732 — the Twilio check not approving is a response,
+            // not a throw; only MALFORMED input 400s). apiFetch throws solely on
+            // !response.ok, so discarding this body took the success path on a wrong
+            // code: phone_verified true in local state + the immortal self cache while
+            // the DB row stayed false — SMS toggles enabled, SMS never sending.
+            const result = await usersAPI.verifyPhone(selfUuid, verificationCode);
+            if (!result?.verified) {
+                setPhoneError("That code didn't match. Check it and try again.");
+                return;
+            }
             setPhoneState('verified');
             setVerificationCode('');
             // Reflect the now-verified number locally (enables the SMS toggles,
@@ -342,7 +571,15 @@ function Profile(){
             patchSelfCache(queryClient, { phone: phoneInput, phone_verified: true });
         } catch (error) {
             console.error('Error verifying code:', error);
-            setPhoneError(error.message || 'Invalid verification code');
+            setPhoneError(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't check that code. Please try again.",
+                    // The 400 arm covers MALFORMED/missing input only (users.js:701-713)
+                    // — the actual wrong-code outcome is the 200 { verified: false }
+                    // branch above, which reuses the same ratified copy.
+                    byCode: { validation: "That code didn't match. Check it and try again." },
+                })
+            );
         }
     };
 
@@ -373,7 +610,11 @@ function Profile(){
             }, 1000);
         } catch (error) {
             console.error('Error resending code:', error);
-            setPhoneError(error.message || 'Failed to resend code');
+            setPhoneError(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't resend the code. Please try again.",
+                })
+            );
         }
     };
 
@@ -432,7 +673,11 @@ function Profile(){
             setSmsDisabledBannerDismissed(false); // Reset dismissal so banner shows fresh.
         } catch (error) {
             console.error('Error removing phone:', error);
-            setPhoneError(error.message || 'Failed to remove phone number');
+            setPhoneError(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't remove your number. Please try again.",
+                })
+            );
             // NOTE: do NOT set phoneJustRemoved on failure — banner only fires on success.
         }
     };
@@ -461,9 +706,9 @@ function Profile(){
         // guard placed just before the await would leave the UI showing an
         // un-sent change with no rollback (the catch's setPreferences rollback
         // never runs — no error is thrown). Fail loud via saveStatus 'error'.
+        const slot = `${notificationType}:${channel}`;
         if (!selfUuid) {
-            setSaveStatus({ type: notificationType, channel, status: 'error' });
-            setTimeout(() => setSaveStatus(null), 3000);
+            setSaveStatus(slot, 'error', 3000);
             return;
         }
         // Guard: at least one channel must be enabled globally across all notification types
@@ -476,8 +721,7 @@ function Profile(){
                 testPrefs[t.key]?.email || testPrefs[t.key]?.sms
             );
             if (!anyEnabled) {
-                setSaveStatus({ type: notificationType, channel, status: 'guard' });
-                setTimeout(() => setSaveStatus(null), 3000);
+                setSaveStatus(slot, 'guard', 3000);
                 return;
             }
         }
@@ -489,19 +733,17 @@ function Profile(){
             [notificationType]: { ...preferences[notificationType], [channel]: newValue }
         };
         setPreferences(updatedPrefs);
-        setSaveStatus({ type: notificationType, channel, status: 'saving' });
+        setSaveStatus(slot, 'saving');
 
         try {
             await usersAPI.updateNotificationPreferences(selfUuid, updatedPrefs);
             // Keep the immortal self cache coherent (SELF_IDENTITY_KEY contract).
             patchSelfCache(queryClient, { notification_preferences: updatedPrefs });
-            setSaveStatus({ type: notificationType, channel, status: 'saved' });
-            setTimeout(() => setSaveStatus(null), 2000);
+            setSaveStatus(slot, 'saved', 2000);
         } catch (error) {
             console.error('Error updating preference:', error);
             setPreferences(previousPrefs);
-            setSaveStatus({ type: notificationType, channel, status: 'error' });
-            setTimeout(() => setSaveStatus(null), 3000);
+            setSaveStatus(slot, 'error', 3000);
         }
     };
 
@@ -509,8 +751,7 @@ function Profile(){
     const handleReminderWindowChange = async (newWindowHours) => {
         // 87.5 Plan 09: identity guard BEFORE the optimistic setPreferences below.
         if (!selfUuid) {
-            setSaveStatus({ type: 'reminder', channel: 'window', status: 'error' });
-            setTimeout(() => setSaveStatus(null), 3000);
+            setSaveStatus(REMINDER_WINDOW_SLOT, 'error', 3000);
             return;
         }
         const previousPrefs = { ...preferences };
@@ -519,18 +760,16 @@ function Profile(){
             reminder: { ...preferences.reminder, window_hours: newWindowHours }
         };
         setPreferences(updatedPrefs);
-        setSaveStatus({ type: 'reminder', channel: 'window', status: 'saving' });
+        setSaveStatus(REMINDER_WINDOW_SLOT, 'saving');
 
         try {
             await usersAPI.updateNotificationPreferences(selfUuid, updatedPrefs);
             patchSelfCache(queryClient, { notification_preferences: updatedPrefs });
-            setSaveStatus({ type: 'reminder', channel: 'window', status: 'saved' });
-            setTimeout(() => setSaveStatus(null), 2000);
+            setSaveStatus(REMINDER_WINDOW_SLOT, 'saved', 2000);
         } catch (error) {
             console.error('Error updating reminder window:', error);
             setPreferences(previousPrefs);
-            setSaveStatus({ type: 'reminder', channel: 'window', status: 'error' });
-            setTimeout(() => setSaveStatus(null), 3000);
+            setSaveStatus(REMINDER_WINDOW_SLOT, 'error', 3000);
         }
     };
 
@@ -538,24 +777,21 @@ function Profile(){
     const handleResetPreferences = async () => {
         // 87.5 Plan 09: identity guard BEFORE the optimistic setPreferences below.
         if (!selfUuid) {
-            setSaveStatus({ type: 'all', channel: 'reset', status: 'error' });
-            setTimeout(() => setSaveStatus(null), 3000);
+            setSaveStatus(RESET_SLOT, 'error', 3000);
             return;
         }
         const previousPrefs = { ...preferences };
         setPreferences(DEFAULT_PREFERENCES);
-        setSaveStatus({ type: 'all', channel: 'reset', status: 'saving' });
+        setSaveStatus(RESET_SLOT, 'saving');
 
         try {
             await usersAPI.updateNotificationPreferences(selfUuid, DEFAULT_PREFERENCES);
             patchSelfCache(queryClient, { notification_preferences: DEFAULT_PREFERENCES });
-            setSaveStatus({ type: 'all', channel: 'reset', status: 'saved' });
-            setTimeout(() => setSaveStatus(null), 2000);
+            setSaveStatus(RESET_SLOT, 'saved', 2000);
         } catch (error) {
             console.error('Error resetting preferences:', error);
             setPreferences(previousPrefs);
-            setSaveStatus({ type: 'all', channel: 'reset', status: 'error' });
-            setTimeout(() => setSaveStatus(null), 3000);
+            setSaveStatus(RESET_SLOT, 'error', 3000);
         }
     };
 
@@ -578,7 +814,7 @@ function Profile(){
             // WR-03: the owned-games + calendar-status fetchers never run when
             // identity fails terminally (they gate on selfUuid), so their loading
             // flags would stay true forever ("Loading your collection..." /
-            // "Checking..."). Clear them here so those zones render their
+            // "Checking your calendar..."). Clear them here so those zones render their
             // degrade banner instead of an indefinite spinner.
             setLoadingGames(false);
             setCheckingCalendarStatus(false);
@@ -628,10 +864,15 @@ function Profile(){
             // verified phone vanish from the cached self for the session.
             patchSelfCache(queryClient, { username: updatedUser.username });
             setEditingUsername(false);
-            toast.success('Username updated successfully!');
+            toast.success('Username updated');
         } catch (error) {
             console.error('Error updating username:', error);
-            toast.error(`Failed to update username: ${error.message || 'Please try again.'}`);
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't save your username. Please try again.",
+                    byCode: { validation: "That username can't be used. Try a different one." },
+                })
+            );
         } finally {
             setSavingUsername(false);
         }
@@ -669,8 +910,16 @@ function Profile(){
             // Remove query param from URL
             window.history.replaceState({}, '', '/userProfile/');
         } else if (calendarStatus === 'error') {
-            const errorMessage = searchParams.get('message');
-            toast.error(`Failed to connect Google Calendar: ${errorMessage || 'Unknown error'}`);
+            /* DECISION Phase 88-25 (Req 14 / T-88-25-01): the toast is FIXED copy, chosen OVER
+               interpolating `searchParams.get('message')`. That value is an attacker-controllable
+               URL query parameter, so the shipped line let anyone who could get a person to open
+               `/userProfile?google_calendar=error&message=…` put arbitrary text in a toast on
+               their own profile page — a phishing surface, one class worse than the raw-backend-
+               message disclosure this plan is closing everywhere else. React escapes it, so it is
+               not injection; it is unbounded attacker-authored COPY, which is the part that
+               matters. Do not re-add the interpolation to "help with debugging" — the OAuth
+               failure reason is in the server log, not the person's screen. */
+            toast.error("We couldn't connect Google Calendar. Please try again.");
             setGoogleCalendarConnected(false);
             window.history.replaceState({}, '', '/userProfile/');
         }
@@ -697,23 +946,42 @@ function Profile(){
         window.location.href = '/api/auth/google-connect';
     };
 
-    const handleDisconnectGoogleCalendar = async () => {
+    const performDisconnectGoogleCalendar = async () => {
+        try {
+            await googleCalendarAPI.disconnect(selfUuid);
+            setGoogleCalendarConnected(false);
+            toast.success('Google Calendar disconnected');
+        } catch (error) {
+            console.error('Error disconnecting Google Calendar:', error);
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't disconnect Google Calendar. Please try again.",
+                })
+            );
+            // Rethrow so the gate stays OPEN (useConfirmAction's contract) rather
+            // than closing over a disconnect that never happened.
+            throw error;
+        }
+    };
+
+    // Dialog tier (UI-SPEC §11.2). Title and body are the ratified copy, verbatim —
+    // the body states what actually changes, and deliberately makes no "cannot be
+    // undone" claim, because reconnecting is a two-click round trip.
+    const disconnectCalendarGate = useConfirmAction({
+        tier: 'dialog',
+        title: 'Disconnect Google Calendar?',
+        body: 'Future events stop syncing. Events already on your calendar stay.',
+        confirmLabel: 'Disconnect',
+        onConfirm: performDisconnectGoogleCalendar,
+    });
+
+    const handleDisconnectGoogleCalendar = () => {
         if (!user?.sub) return;
         if (!selfUuid) {
             toast.error('Still loading your account — please try again in a moment.');
             return;
         }
-        if (!confirm('Are you sure you want to disconnect Google Calendar? Future events will not be automatically added to your calendar.')) {
-            return;
-        }
-        try {
-            await googleCalendarAPI.disconnect(selfUuid);
-            setGoogleCalendarConnected(false);
-            toast.success('Google Calendar disconnected successfully');
-        } catch (error) {
-            console.error('Error disconnecting Google Calendar:', error);
-            toast.error('Failed to disconnect Google Calendar. Please try again.');
-        }
+        disconnectCalendarGate.trigger();
     };
 
     const fetchOwnedGames = useCallback(async () => {
@@ -745,12 +1013,26 @@ function Profile(){
         } catch (error) {
             console.error('Error searching BGG:', error);
             setBggSearchResults([]);
-            const errorMessage = error.message || 'Failed to search BoardGameGeek';
-            if (errorMessage.includes('401') || errorMessage.includes('403') || errorMessage.includes('rate limiting')) {
-                toast.error('BoardGameGeek API is currently unavailable or rate-limited. Please try again in a few moments.');
-            } else {
-                toast.error(`Error searching BoardGameGeek: ${errorMessage}`);
-            }
+            /* DECISION Phase 88-25 (Req 14 / T-88-25-01): the BGG-unavailable case is selected by
+               `ApiError.code`, chosen OVER the shipped `errorMessage.includes('401')` /
+               `.includes('403')` / `.includes('rate limiting')` prose match. Two defects in one:
+               the else-branch interpolated the raw upstream message, and the prose match itself
+               was unreliable — it keyed on substrings of a message the backend is free to reword,
+               and 'rate limiting' would also fire on a game whose TITLE contained it. The codes
+               are the seam that exists for exactly this (api.ts mapErrorToCode). */
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't reach BoardGameGeek. Please try again in a few moments.",
+                    byCode: {
+                        rate_limited:
+                            'BoardGameGeek is rate-limiting us right now. Try again in a few moments.',
+                        unauthorized:
+                            "BoardGameGeek isn't accepting requests right now. Try again in a few moments.",
+                        forbidden:
+                            "BoardGameGeek isn't accepting requests right now. Try again in a few moments.",
+                    },
+                })
+            );
         } finally {
             setBggSearching(false);
         }
@@ -776,9 +1058,16 @@ function Profile(){
             setShowBggSearch(false);
             setBggSearchQuery('');
             setBggSearchResults([]);
+            // Req 12: this mutation closes the search panel it was started from, so
+            // without a receipt the only feedback is a panel vanishing.
+            toast.success('Game added');
         } catch (error) {
             console.error('Error adding game to collection:', error);
-            toast.error('Failed to add game to collection. Please try again.');
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't add that game. Please try again.",
+                })
+            );
         }
     };
 
@@ -788,15 +1077,42 @@ function Profile(){
             toast.error('Still loading your account — please try again in a moment.');
             return;
         }
-        if (!confirm('Are you sure you want to remove this game from your collection?')) return;
         try {
             await userGamesAPI.removeOwnedGame(selfUuid, game_id);
             await fetchOwnedGames();
+            toast.success('Game removed');
         } catch (error) {
             console.error('Error removing game from collection:', error);
-            toast.error('Failed to remove game from collection. Please try again.');
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't remove that game. Please try again.",
+                })
+            );
         }
     };
+
+    // Two-tap tier (UI-SPEC §11.2): personal and trivially re-added from the search
+    // directly above the list, so per D-09's tier rule the label already says
+    // everything a dialog body could. Viable here because the trigger is a
+    // persistent inline row button that survives the first tap — D-07's recorded
+    // limit (auto-closing menu items) does not bite.
+    const removeGameGate = useConfirmAction({
+        tier: 'two-tap',
+        // Dialog-tier copy, accepted and ignored by two-tap (superset config). It is
+        // authored anyway so a retier is genuinely the one-word edit above.
+        title: 'Remove this game from your collection?',
+        body: 'It drops off your collection. You can add it back from the search above.',
+        confirmLabel: 'Remove',
+        /* DECISION Phase 88-33 Task 5 (fork 7, RULED 2026-08-17, owner's own proposal):
+           a GLYPH resting state arms into the labeled verb 'Remove' — chosen OVER the
+           hook's default armed copy, which reads as instruction text and left the walk
+           unsure what the armed state would do. Applies where the resting label is a
+           bare ×; controls whose resting label is already 'Remove' keep the default
+           armed copy (gameDetail see-all). Reverting to the default here re-opens walk
+           row 381; that is a decision, not a consistency cleanup. */
+        armedLabel: 'Remove',
+        onConfirm: (gameId) => removeGameFromCollection(gameId),
+    });
 
     // The old hand-rolled patterns fetcher (silent-retry + window-refocus
     // listener) is GONE (PRIM-03): the useQuery above owns fetching + silent-
@@ -820,6 +1136,13 @@ function Profile(){
             toast.error('Please select at least one day.');
             return;
         }
+        // 88-CODE-REVIEW MED#7: client-side mirror of availability.js:130 — the code-less
+        // 400 this triggers maps to generic "refresh the page" copy that both hides the
+        // fix and discards the form. HH:MM strings compare correctly as strings.
+        if (recurringForm.startTime >= recurringForm.endTime) {
+            toast.error('Start time must be before end time.');
+            return;
+        }
         try {
             setSavingPattern(true);
             // Create one schedule per selected day
@@ -841,11 +1164,17 @@ function Profile(){
                 end_date: '',
                 timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
             });
-            const count = recurringForm.daysOfWeek.length;
-            toast.success(`${count} schedule${count > 1 ? 's' : ''} created successfully!`);
+            // §6.2's form is `{Object} {past-tense verb}`, <=4 words — so the count
+            // the old string carried is deliberately dropped rather than shortened
+            // into it. The created rows are visible in the list directly below.
+            toast.success('Schedules created');
         } catch (error) {
             console.error('Error creating schedule:', error);
-            toast.error(`Failed to create pattern: ${error.message || 'Please try again.'}`);
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't save that schedule. Please try again.",
+                })
+            );
         } finally {
             setSavingPattern(false);
         }
@@ -855,6 +1184,12 @@ function Profile(){
         // 87.4 Plan 10: gate on the resolved self identity, not user?.sub, so the
         // write cannot fire (and cannot send an empty self-param) before self resolves.
         if (!self?.id) return;
+        // 88-CODE-REVIEW MED#7: same client-side start<end mirror as the recurring form
+        // (availability.js:208 on this path).
+        if (specificForm.startTime >= specificForm.endTime) {
+            toast.error('Start time must be before end time.');
+            return;
+        }
         try {
             setSavingPattern(true);
             await availabilityAPI.createOverride(self.id, specificForm);
@@ -866,26 +1201,45 @@ function Profile(){
                 endTime: '17:00',
                 isAvailable: true,
             });
-            toast.success('Specific override created successfully!');
+            toast.success('Override created');
         } catch (error) {
             console.error('Error creating specific override:', error);
-            toast.error(`Failed to create override: ${error.message || 'Please try again.'}`);
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't save that override. Please try again.",
+                })
+            );
         } finally {
             setSavingPattern(false);
         }
     };
 
-    const handleDeletePattern = async (patternId) => {
-        if (!confirm('Are you sure you want to delete this availability pattern?')) return;
+    const performDeletePattern = async (patternId) => {
         try {
             await availabilityAPI.deleteAvailability(patternId);
             await patternsQuery.refetch();
-            toast.success('Pattern deleted successfully!');
+            toast.success('Pattern deleted');
         } catch (error) {
             console.error('Error deleting pattern:', error);
-            toast.error('Failed to delete pattern. Please try again.');
+            toast.error(
+                getFetchErrorMessage(error, {
+                    fallback: "We couldn't delete that entry. Please try again.",
+                })
+            );
         }
     };
+
+    // Two-tap tier (UI-SPEC §11.2): a pattern is re-creatable from the form directly
+    // above, and the button's own label says what it does. ONE gate serves BOTH lists
+    // (schedules and overrides) — the pattern id is the target key, so arming a row in
+    // one list and tapping a different row re-arms rather than committing (AR DEC-2).
+    const deletePatternGate = useConfirmAction({
+        tier: 'two-tap',
+        title: 'Delete this availability pattern?',
+        body: 'It stops counting towards your availability. You can add it again.',
+        confirmLabel: 'Delete',
+        onConfirm: (patternId) => performDeletePattern(patternId),
+    });
 
     const getDayName = (dayOfWeek) => {
         const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -893,20 +1247,39 @@ function Profile(){
     };
 
 
-    const importBGGCollection = async () => {
+    /* DECISION Phase 88-10 (D-10): the BGG import gate is an ORDINARY INFORMATIONAL
+       `<Modal>`, deliberately NOT `ConfirmDialog`/`useConfirmAction` like the three
+       gates above it — chosen OVER the obvious "finish the migration and put every
+       remaining gate on the ladder".
+
+       It is not a destructive gate. Nothing is lost or overwritten; the warning exists
+       because the import is SLOW ("this may take a few minutes"), and D-10 records that
+       ruling. Putting it on the destructive ladder would dress a progress warning up as
+       a consequence, and would make the ladder's own inventory a lie about how many
+       destructive gates this app has.
+
+       It still had to stop being the bare browser prompt, because 88-29's census gate
+       arms at ZERO native prompts in `src/` — leaving this one would make that gate
+       unarmable (AR R1-M1). Hence: dismissable Modal, Continue/Cancel, same message.
+
+       Moving this onto ConfirmDialog is a decision that reopens D-10, not a cleanup. */
+    const handleImportCollectionClick = () => {
         if (!user?.sub || !bggUsername.trim()) {
             toast.error('Please enter your BGG username');
             return;
         }
-        
+
         if (!selfUuid) {
             toast.error('Still loading your account — please try again in a moment.');
             return;
         }
 
-        if (!confirm(`This will import all games from your BoardGameGeek collection (username: ${bggUsername}). This may take a few minutes. Continue?`)) {
-            return;
-        }
+        setBggImportPromptOpen(true);
+    };
+
+    const importBGGCollection = async () => {
+        setBggImportPromptOpen(false);
+        if (!user?.sub || !bggUsername.trim() || !selfUuid) return;
 
         try {
             setImportingCollection(true);
@@ -916,7 +1289,7 @@ function Profile(){
             
             setImportProgress({
                 status: 'complete',
-                message: `Successfully imported ${result.imported} games!`,
+                message: `Imported ${result.imported} games`,
                 details: result
             });
             
@@ -932,15 +1305,44 @@ function Profile(){
             console.error('Error importing BGG collection:', error);
             setImportProgress({
                 status: 'error',
-                message: error.message || 'Failed to import BGG collection. Please try again.'
+                message: getFetchErrorMessage(error, {
+                    fallback: "We couldn't import that collection. Check the username and try again.",
+                })
             });
         } finally {
             setImportingCollection(false);
         }
     };
 
-    if (isLoading) return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
-    if (error) return <div className="flex items-center justify-center min-h-screen text-status-error">{error.message}</div>;
+    // §6.3: loading copy NAMES the thing. Worded identically to this route's own
+    // `loading.tsx` fallback so the boundary and the component do not greet the
+    // same person with two different sentences on one navigation.
+    if (isLoading) return <div className="flex items-center justify-center min-h-screen">Loading your profile...</div>;
+
+    /* DECISION Phase 88-19 (Req 7 / T-88-19-02): the session-error branch renders
+       the shared `ErrorFallback` — chosen OVER hand-writing a designed sentence
+       here, which is what this task's action literally asks for and what the
+       neighbouring branch above still does.
+
+       The primitive wins on two counts the copy fix alone would have missed.
+       (1) SECURITY: this branch rendered `{error.message}` — a raw upstream
+       message straight into the DOM (ASVS V7). `ErrorFallback` takes no error at
+       all BY CONTRACT, so the disclosure cannot be reintroduced by editing a
+       string; the detail goes to the console for a developer instead.
+       (2) It was a DEAD END: one red line, no retry, no reload, nothing to do.
+       The fallback ships both affordances.
+
+       Deliberately NOT worded "failed to load" — plan 88-25 arms a negative gate
+       on that phrase across this file. */
+    if (error) {
+        console.error('Auth0 session error on /userProfile:', error);
+        return (
+            <ErrorFallback
+                title="We couldn't load your profile"
+                body="Your session didn't come back. Reload the page, and sign in again if it keeps happening."
+            />
+        );
+    }
 
     return (
         user && (
@@ -975,7 +1377,7 @@ function Profile(){
                 </nav>
 
                 {/* Profile Header */}
-                <div className="card p-4 md:p-6 mb-6">
+                <div className="card p-3 md:p-6 mb-6">
                     {/* Avatar + Username zone — paint-gated (D-PAINT-01) so user.name (Auth0/Google)
                         never flashes before userData.username arrives. Skeleton on first paint;
                         real content (or Auth0 fallback on fetch failure) once profileLoaded flips. */}
@@ -987,12 +1389,30 @@ function Profile(){
                             <div className="min-w-0 flex-1">
                                 {editingUsername ? (
                                     <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                                        <input
-                                            type="text"
+                                        {/* DECISION Phase 88-19 (Req 1 + Req 2): the inline
+                                            username editor renders through the `Input`
+                                            PRIMITIVE at body size — chosen OVER keeping it
+                                            sized to MIRROR the <h1> it replaces, which is
+                                            what it shipped as (`text-lg md:text-xl
+                                            font-bold`).
+
+                                            Two reasons the mirror loses. (1) Task 2 moves
+                                            that <h1> to the Display role, 30px/700 — a
+                                            30px-tall text field is absurd on a 375px phone,
+                                            so the mirror was already going to break, and
+                                            "mirror it, but smaller" is a size nobody owns.
+                                            (2) §4.2 gives 700 to headings and 400 to body;
+                                            an input is body, and a control that renders like
+                                            a heading hides that it is editable at all.
+
+                                            Re-styling this to match the heading again is a
+                                            decision, not a cleanup. */}
+                                        <Input
+                                            aria-label="Username"
                                             value={username}
                                             onChange={(e) => setUsername(e.target.value)}
                                             maxLength={50}
-                                            className="flex-1 px-3 py-2 border border-line rounded-btn text-content-primary bg-surface-input text-lg md:text-xl font-bold"
+                                            className="flex-1"
                                             placeholder="Enter username"
                                             autoFocus
                                         />
@@ -1019,12 +1439,17 @@ function Profile(){
                                     </div>
                                 ) : (
                                     <div className="flex items-center gap-2">
-                                        <h1 className="text-xl md:text-2xl font-bold text-content-primary truncate">
+                                        <h1 className="text-3xl font-bold text-content-primary truncate">
                                             {userData?.username || user.name}
                                         </h1>
+                                        {/* §7.3: an icon-only control needs a real accessible
+                                            name; the pencil glyph is the whole content, so
+                                            without this the name announced was the emoji, and
+                                            a `title` does not count. */}
                                         <button
                                             onClick={() => setEditingUsername(true)}
                                             className="text-content-link hover:text-content-link-hover text-sm md:text-base"
+                                            aria-label="Edit username"
                                             title="Edit username"
                                         >
                                             ✏️
@@ -1063,16 +1488,31 @@ function Profile(){
                                     {(phoneState === 'idle' || phoneState === 'editing') && (
                                         <div className="flex flex-col sm:flex-row sm:items-start gap-2">
                                             <div className="flex-1 relative">
-                                                <input
+                                                {/* Named explicitly: this control has no visible
+                                                    label of any kind (a placeholder is not a
+                                                    name — axe `label`, WCAG 4.1.2 A). */}
+                                                <Input
                                                     type="tel"
+                                                    aria-label="Phone number"
                                                     value={phoneInput}
                                                     onChange={(e) => handlePhoneChange(e.target.value)}
                                                     placeholder="+1 555-123-4567"
-                                                    className={`w-full px-3 py-2 border rounded-btn text-sm bg-surface-input text-content-primary ${
+                                                    aria-invalid={
+                                                        phoneValidation.error || phoneError ? 'true' : undefined
+                                                    }
+                                                    aria-describedby={
+                                                        [
+                                                            phoneValidation.error ? 'phone-format-error' : null,
+                                                            phoneError ? 'phone-flow-error' : null,
+                                                        ]
+                                                            .filter(Boolean)
+                                                            .join(' ') || undefined
+                                                    }
+                                                    className={
                                                         phoneValidation.valid ? 'border-status-success' :
                                                         phoneValidation.error ? 'border-status-error' :
-                                                        'border-line'
-                                                    }`}
+                                                        ''
+                                                    }
                                                 />
                                                 {phoneValidation.valid && (
                                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-status-success">
@@ -1081,8 +1521,21 @@ function Profile(){
                                                         </svg>
                                                     </span>
                                                 )}
+                                                {/* Same DEF-88-19-04 gap, client-side half: this
+                                                    format message was equally silent to a screen
+                                                    reader. It types as you go, so it is POLITE
+                                                    (role="status") rather than assertive — an
+                                                    alert on every keystroke would talk over the
+                                                    person mid-entry. The submit-time failure
+                                                    above is the one that interrupts. */}
                                                 {phoneValidation.error && (
-                                                    <p className="text-status-error text-xs mt-1">{phoneValidation.error}</p>
+                                                    <p
+                                                        id="phone-format-error"
+                                                        role="status"
+                                                        className="text-status-error text-xs mt-1"
+                                                    >
+                                                        {phoneValidation.error}
+                                                    </p>
                                                 )}
                                             </div>
                                             <button
@@ -1097,11 +1550,12 @@ function Profile(){
 
                                     {phoneState === 'saving' && (
                                         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                                            <input
+                                            <Input
                                                 type="tel"
+                                                aria-label="Phone number"
                                                 value={phoneInput}
                                                 disabled
-                                                className="flex-1 px-3 py-2 border border-line rounded-btn text-sm bg-surface-card-hover text-content-primary"
+                                                className="flex-1 bg-surface-card-hover"
                                             />
                                             <button
                                                 disabled
@@ -1118,13 +1572,15 @@ function Profile(){
                                                 Code sent to <span className="font-medium">{phoneValidation.formatted || phoneInput}</span>
                                             </p>
                                             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                                                <input
-                                                    type="text"
+                                                <Input
+                                                    aria-label="Verification code"
                                                     value={verificationCode}
                                                     onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                                                     placeholder="Enter 6-digit code"
                                                     maxLength={6}
-                                                    className="w-32 px-3 py-2 border border-line rounded-btn text-sm text-center tracking-widest bg-surface-input text-content-primary"
+                                                    aria-invalid={phoneError ? 'true' : undefined}
+                                                    aria-describedby={phoneError ? 'phone-flow-error' : undefined}
+                                                    className="w-32 text-center tracking-widest"
                                                 />
                                                 <button
                                                     onClick={handleVerifyCode}
@@ -1179,8 +1635,39 @@ function Profile(){
                                         </div>
                                     )}
 
+                                    {/* DECISION Phase 88-25 (DEF-88-19-04): the phone flow's error
+                                        node gets `role="alert"` + `aria-describedby` wiring
+                                        DIRECTLY, chosen OVER routing it through `FormField`'s
+                                        error slot as DEF-88-19-04 suggested.
+
+                                        WHY FormField LOSES HERE: its contract is "exactly one
+                                        control element", which it clones to inject
+                                        `id`/`aria-invalid`/`aria-describedby`. This ONE error
+                                        node serves four different phone states — the tel input
+                                        (idle/editing), the disabled input (saving), the
+                                        verification-code input (verifying), and the VERIFIED row,
+                                        which has no control at all (the error there comes from
+                                        Remove). There is no single control to wrap, so adopting
+                                        FormField would mean either splitting `phoneError` into
+                                        per-state slots or wrapping a control that did not cause
+                                        the error. The a11y property DEF-88-19-04 actually names —
+                                        a screen-reader user is told when their submission fails —
+                                        is delivered in full here.
+
+                                        `role="alert"` is on a CONDITIONALLY-MOUNTED node, which
+                                        is normally the anti-pattern StatusRegion exists to stop.
+                                        It is correct in this one case: assertive alerts DO
+                                        announce on insertion, and the message must interrupt.
+                                        Do not "fix" this into a StatusRegion — that would make it
+                                        polite and it would be missed. */}
                                     {phoneError && (
-                                        <p className="text-status-error text-xs mt-1">{phoneError}</p>
+                                        <p
+                                            id="phone-flow-error"
+                                            role="alert"
+                                            className="text-status-error text-xs mt-1"
+                                        >
+                                            {phoneError}
+                                        </p>
                                     )}
                                 </div>
                     )}
@@ -1189,7 +1676,12 @@ function Profile(){
                     <div className="mt-4 pt-4 border-t border-line">
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                             <div>
-                                <h3 className="text-sm font-semibold text-content-primary mb-1">Google Calendar Integration</h3>
+                                {/* h2, not h3: this is a top-level section of the page and the
+                                    nearest preceding heading is the h1 username directly above,
+                                    so an h3 skipped a level (axe heading-order). The type role is
+                                    carried by the classes, which are unchanged — the tag moved,
+                                    the look did not. */}
+                                <h2 className="text-xl font-bold text-content-primary mb-1">Google Calendar Integration</h2>
                                 <p className="text-xs text-content-secondary">
                                     {googleCalendarConnected 
                                         ? 'Connected - Future game events will be automatically added to your calendar'
@@ -1199,10 +1691,10 @@ function Profile(){
                             {selfIdentityErrorState.showError ? (
                                 // WR-03: identity failed terminally — the status
                                 // check never ran; show the degrade notice, not a
-                                // stuck "Checking...".
+                                // stuck "Checking your calendar...".
                                 <FetchErrorBanner state={selfIdentityErrorState} compact />
                             ) : checkingCalendarStatus ? (
-                                <div className="text-sm text-content-muted">Checking...</div>
+                                <div className="text-sm text-content-muted">Checking your calendar...</div>
                             ) : googleCalendarConnected ? (
                                 <button
                                     onClick={handleDisconnectGoogleCalendar}
@@ -1215,11 +1707,27 @@ function Profile(){
                                     onClick={handleConnectGoogleCalendar}
                                     className="btn btn-primary px-4 py-2 text-sm whitespace-nowrap flex items-center gap-2"
                                 >
+                                    {/* DECISION Phase 88-22 (Req 2), re-affirmed 88-19: Google
+                                        LOGO ART — the four brand fills stay raw in every
+                                        theme, same exemption class as DieLogo.js. See the
+                                        fuller rationale on the identical mark in
+                                        LandingPage.js. Not a cleanup.
+
+                                        88-19 (Req 2) tagged each fill `TODO(88-29)` rather
+                                        than converting it. That is a REGISTRATION, not a
+                                        promise to convert: 88-29 arms the phase's raw-value
+                                        gate and needs an explicit exemption list, and a
+                                        silent survivor is indistinguishable from a miss.
+                                        The correct 88-29 outcome here is "exempt, brand
+                                        art", not a token. Tokenising these would repaint
+                                        Google's mark per theme, which their brand terms
+                                        forbid — and a theme-swapped Google logo is a
+                                        licensing problem, not a design one. */}
                                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>{/* TODO(88-29): brand-art hex, exempt — see marker above */}
+                                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>{/* TODO(88-29): brand-art hex, exempt — see marker above */}
+                                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>{/* TODO(88-29): brand-art hex, exempt — see marker above */}
+                                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>{/* TODO(88-29): brand-art hex, exempt — see marker above */}
                                     </svg>
                                     Connect Google Calendar
                                 </button>
@@ -1229,13 +1737,25 @@ function Profile(){
                 </div>
 
                 {/* Theme Setting */}
-                <div className="card p-4 md:p-6 mb-6">
-                    <h2 className="text-lg font-bold text-content-primary mb-1">Theme</h2>
+                <div className="card p-3 md:p-6 mb-6">
+                    <h2 className="text-xl font-bold text-content-primary mb-1">Theme</h2>
                     <p className="text-sm text-content-muted mb-3">Choose your preferred appearance</p>
+                    {/* DECISION Phase 88-10 (Req 5 / F-357): the two theme buttons carry
+                        `aria-pressed`, chosen OVER converting them to the `Switch`
+                        primitive like the notification toggles further down. A switch
+                        models ONE binary thing being on or off; this is a choice between
+                        two named appearances, each with its own icon and label, and a
+                        third (system) is the obvious future addition. Modelling that as
+                        a switch would force "Dark mode: off" to mean "light", which is
+                        not what the control says. Toggle-buttons are the right pattern
+                        and `aria-pressed` is their state attribute. Converting these to
+                        a Switch "for consistency with the toggles below" is a decision
+                        about what the control MEANS, not a cleanup. */}
                     {themeMounted ? (
                         <div className="flex gap-3">
                             <button
                                 onClick={() => setTheme('light')}
+                                aria-pressed={resolvedTheme === 'light'}
                                 className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
                                     resolvedTheme === 'light'
                                         ? 'border-amber-500 bg-amber-50 font-semibold text-content-primary'
@@ -1249,6 +1769,7 @@ function Profile(){
                             </button>
                             <button
                                 onClick={() => setTheme('dark')}
+                                aria-pressed={resolvedTheme === 'dark'}
                                 className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
                                     resolvedTheme === 'dark'
                                         ? 'border-amber-500 bg-purple-900 font-semibold text-white'
@@ -1267,69 +1788,51 @@ function Profile(){
                 </div>
 
                 {/* Timezone Setting */}
-                <div className="card p-4 md:p-6 mb-6">
-                    <h2 className="text-lg font-bold text-content-primary mb-1">Timezone</h2>
+                <div className="card p-3 md:p-6 mb-6">
+                    <h2 className="text-xl font-bold text-content-primary mb-1">Timezone</h2>
                     <p className="text-sm text-content-secondary mb-3">All event times and schedules use this timezone</p>
-                    <div className="relative">
-                        <button
-                            onClick={() => setTzPickerOpen(!tzPickerOpen)}
-                            className="w-full flex items-center justify-between px-3 py-2 border border-line rounded-btn text-sm text-content-primary bg-surface-input hover:border-line-accent transition-colors"
-                        >
-                            <span>
-                                {timezone ? timezone.replace(/_/g, ' ') : 'Select timezone'}
-                                {currentTzAbbr() && <span className="text-content-muted ml-2">({currentTzAbbr()})</span>}
-                            </span>
-                            <svg className={`w-4 h-4 text-content-muted transition-transform ${tzPickerOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
-                        </button>
-
-                        {tzPickerOpen && (
-                            <div className="absolute z-50 mt-1 w-full bg-surface-card border border-line rounded-card shadow-theme-lg">
-                                <div className="p-2 border-b border-line">
-                                    <input
-                                        type="text"
-                                        value={tzSearch}
-                                        onChange={(e) => setTzSearch(e.target.value)}
-                                        placeholder="Search timezones..."
-                                        className="w-full px-3 py-2 border border-line rounded-btn text-sm text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
-                                        autoFocus
-                                    />
-                                </div>
-                                <div className="max-h-64 overflow-y-auto">
-                                    {Object.entries(groupedTimezones()).map(([region, zones]) => (
-                                        <div key={region}>
-                                            <div className="px-3 py-1.5 text-xs font-semibold text-content-muted bg-surface-page sticky top-0">
-                                                {region}
-                                            </div>
-                                            {zones.map(tz => (
-                                                <button
-                                                    key={tz.value}
-                                                    onClick={() => handleTimezoneSelect(tz.value)}
-                                                    className={`w-full text-left px-3 py-2 text-sm hover:bg-surface-card-hover transition-colors ${
-                                                        tz.value === timezone ? 'bg-surface-card-hover text-content-link font-medium' : 'text-content-primary'
-                                                    }`}
-                                                >
-                                                    <span>{tz.value.replace(/_/g, ' ')}</span>
-                                                    {tz.abbr && <span className="text-content-muted ml-1">({tz.abbr}, {tz.offset})</span>}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    ))}
-                                    {filteredTimezones().length === 0 && (
-                                        <div className="px-3 py-4 text-sm text-content-muted text-center">No timezones match your search</div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                    {/* F-359: the picker is the `Combobox` primitive (88-08). Keyboard
+                        operation, Esc AND click-outside close, and focus restore all come
+                        from the primitive — the hand-rolled panel this replaces had none of
+                        them: it opened on click, closed only on a second click, and its
+                        option list was unreachable from the keyboard. Nothing here re-rolls
+                        any of that. */}
+                    <Combobox
+                        id="profile-timezone"
+                        name="profile-timezone"
+                        aria-label="Timezone"
+                        /* 88-CODE-REVIEW MED#2: this picker opens on FOCUS over the full
+                           alphabetized IANA list — with the default Enter-selects-first, a
+                           keyboard user tabbing in and pressing Enter silently committed
+                           "Africa/Abidjan" as their timezone. Enter is inert here until an
+                           option is highlighted (arrow keys) or the search narrows it. */
+                        selectFirstOnEnter={false}
+                        value={tzPickerOpen ? tzSearch : currentTimezoneLabel()}
+                        onValueChange={(next) => {
+                            setTzSearch(next);
+                            if (!tzPickerOpen) setTzPickerOpen(true);
+                        }}
+                        open={tzPickerOpen}
+                        onOpenChange={handleTimezonePickerOpenChange}
+                        onFocus={openTimezonePicker}
+                        onClick={openTimezonePicker}
+                        items={timezoneItems}
+                        listLabel="Timezones"
+                        emptyLabel="No timezones match your search"
+                    />
                 </div>
 
                 {/* Notification Preferences Section */}
                 {preferences && (
-                <div className="card p-4 md:p-6 mb-6">
-                    <h2 className="text-xl md:text-2xl font-bold text-content-primary mb-1">Notification Preferences</h2>
+                <div className="card p-3 md:p-6 mb-6">
+                    <h2 className="text-xl font-bold text-content-primary mb-1">Notification Preferences</h2>
                     <p className="text-sm text-content-secondary mb-4">Choose how you receive notifications</p>
+
+                    {/* 88-CODE-REVIEW MED#15: always-mounted sr-only outcome regions —
+                        see the setSaveStatus marker for the split and why 'saving' is
+                        not announced. The visible per-row spans stay as-is. */}
+                    <StatusRegion className="sr-only" message={politeSaveAnnouncement} />
+                    <StatusRegion className="sr-only" politeness="assertive" message={assertiveSaveAnnouncement} />
 
                     {/* SMS Consent Disclosure (TCPA / carrier compliance) */}
                     {userData?.sms_enabled && (
@@ -1344,6 +1847,23 @@ function Profile(){
                         </div>
                     )}
 
+                    {/* DECISION Phase 88-10 (D-14): the toggles in this matrix fire NO
+                        success toast, deliberately — chosen OVER giving every mutation on
+                        this page a receipt, which is what Req 12 does everywhere else and
+                        is therefore what a reader will assume is missing here.
+
+                        A switch that visibly flips is its own receipt: the control has
+                        already moved under the person's finger, and the row's own
+                        "Saving…"/"Saved" indicator to its right covers the round trip. A
+                        toast per flip turns a four-row matrix into a toast storm on the
+                        surface people tune most, and it re-announces a state change the
+                        screen reader has already read from the control itself.
+
+                        This exemption is recorded so a missing toast here reads as
+                        INTENTIONAL at UAT rather than as a defect. Adding one is a
+                        decision, not a consistency fix. The failure path is different and
+                        is already handled: a failed toggle rolls the switch back and shows
+                        "Error", because there the visible state would otherwise lie. */}
                     {/* Preferences Matrix */}
                     <div className="space-y-0">
                         {/* Verify-phone CTA — only shown to entitled users (sms_enabled=true)
@@ -1382,55 +1902,48 @@ function Profile(){
                                         <p className="text-xs text-content-muted">{type.description}</p>
                                     </div>
 
-                                    {/* Email Toggle */}
+                                    {/* Email Toggle — the `Switch` primitive (88-07). Its
+                                        widget semantics and checked-state attribute come
+                                        from Radix; nothing is hand-authored here, which is
+                                        the whole point of adopting it (F-353/357/362). */}
                                     <div className="w-16 flex justify-center">
-                                        <button
-                                            onClick={() => handleToggle(type.key, 'email', !preferences[type.key]?.email)}
-                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                                preferences[type.key]?.email ? 'bg-status-success' : 'bg-line-strong'
-                                            }`}
+                                        <Switch
+                                            checked={Boolean(preferences[type.key]?.email)}
+                                            onCheckedChange={(next) => handleToggle(type.key, 'email', next)}
                                             aria-label={`${type.label} email notifications`}
-                                        >
-                                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                                preferences[type.key]?.email ? 'translate-x-6' : 'translate-x-1'
-                                            }`} />
-                                        </button>
+                                        />
                                     </div>
 
                                     {/* SMS Toggle — only rendered for entitled users
                                         (sms_enabled=true). Within that, the toggle is
                                         disabled (greyed) until the user has verified their
-                                        phone number — three layers of defense: onClick
-                                        guard, native disabled prop, opacity-50 styling. */}
+                                        phone number — three layers of defense preserved
+                                        across the primitive swap: the handler guard, the
+                                        native disabled prop, and the primitive's own
+                                        `disabled:opacity-50`. */}
                                     {userData?.sms_enabled && (
                                         <div className="w-16 flex justify-center">
-                                            <button
-                                                onClick={() => userData?.phone_verified && handleToggle(type.key, 'sms', !preferences[type.key]?.sms)}
+                                            <Switch
+                                                checked={Boolean(preferences[type.key]?.sms)}
+                                                onCheckedChange={(next) => userData?.phone_verified && handleToggle(type.key, 'sms', next)}
                                                 disabled={!userData?.phone_verified}
-                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                                    preferences[type.key]?.sms ? 'bg-status-success' : 'bg-line-strong'
-                                                } ${!userData?.phone_verified ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                 aria-label={`${type.label} SMS notifications`}
-                                            >
-                                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                                    preferences[type.key]?.sms ? 'translate-x-6' : 'translate-x-1'
-                                                }`} />
-                                            </button>
+                                            />
                                         </div>
                                     )}
 
                                     {/* Status indicator */}
                                     <div className="w-20 text-right">
-                                        {saveStatus?.type === type.key && saveStatus.status === 'saving' && (
+                                        {rowSaveStatus(saveStatuses, type.key) === 'saving' && (
                                             <span className="text-xs text-content-muted">Saving...</span>
                                         )}
-                                        {saveStatus?.type === type.key && saveStatus.status === 'saved' && (
+                                        {rowSaveStatus(saveStatuses, type.key) === 'saved' && (
                                             <span className="text-xs text-status-success">Saved</span>
                                         )}
-                                        {saveStatus?.type === type.key && saveStatus.status === 'error' && (
+                                        {rowSaveStatus(saveStatuses, type.key) === 'error' && (
                                             <span className="text-xs text-status-error">Error</span>
                                         )}
-                                        {saveStatus?.type === type.key && saveStatus.status === 'guard' && (
+                                        {rowSaveStatus(saveStatuses, type.key) === 'guard' && (
                                             <span className="text-xs text-status-error">At least one notification must stay enabled</span>
                                         )}
                                     </div>
@@ -1440,32 +1953,57 @@ function Profile(){
                                 {type.key === 'reminder' && (
                                     <div className="mt-2 ml-0 sm:ml-4 flex items-center gap-2">
                                         <span className="text-xs text-content-muted">Remind me:</span>
-                                        <select
+                                        {/* The adjacent "Remind me:" span is NOT associated with
+                                            this control, so the select shipped with no accessible
+                                            name (axe select-name, WCAG 4.1.2 A) — the same
+                                            label-with-no-htmlFor idiom found on three other
+                                            surfaces this phase. Named explicitly here. */}
+                                        {/* `w-auto` is the ONLY geometry override: the primitive
+                                            is `block w-full` by design (88-03), which would
+                                            stretch this inline dropdown across the whole matrix
+                                            row and push its status indicator onto a second line
+                                            at phone width. Everything else — the 16px floor, the
+                                            44px phone touch height, the ring — comes from the
+                                            primitive and must not be re-inlined here. */}
+                                        <SelectControl
+                                            id="reminder-window"
+                                            name="reminder-window"
+                                            aria-label="Remind me"
                                             value={preferences.reminder?.window_hours ?? 1}
                                             onChange={(e) => handleReminderWindowChange(parseFloat(e.target.value))}
-                                            className="text-sm border border-line rounded-btn px-2 py-1 text-content-secondary bg-surface-input"
+                                            className="w-auto"
                                         >
                                             {REMINDER_WINDOWS.map(w => (
                                                 <option key={w.value} value={w.value}>{w.label}</option>
                                             ))}
-                                        </select>
-                                        {saveStatus?.type === 'reminder' && saveStatus.channel === 'window' && saveStatus.status === 'saving' && (
+                                        </SelectControl>
+                                        {saveStatuses[REMINDER_WINDOW_SLOT] === 'saving' && (
                                             <span className="text-xs text-content-muted">Saving...</span>
                                         )}
-                                        {saveStatus?.type === 'reminder' && saveStatus.channel === 'window' && saveStatus.status === 'saved' && (
+                                        {saveStatuses[REMINDER_WINDOW_SLOT] === 'saved' && (
                                             <span className="text-xs text-status-success">Saved</span>
                                         )}
                                         {/* ML-16 (87.5 review): the identity-guard and persist-failure
                                             paths both set status 'error' here — without this branch the
                                             dropdown silently snapped back with zero feedback. */}
-                                        {saveStatus?.type === 'reminder' && saveStatus.channel === 'window' && saveStatus.status === 'error' && (
+                                        {saveStatuses[REMINDER_WINDOW_SLOT] === 'error' && (
                                             <span className="text-xs text-status-error">Error</span>
                                         )}
                                     </div>
                                 )}
+                                {/* Reminder helper text — rewritten from the folded todo
+                                    2026-05-09 (UI-SPEC §6.3). It now names WHO is reminded
+                                    and WHEN, in one sentence, and covers BOTH systems this
+                                    single key drives: the pre-event reminder
+                                    (schedulers/reminderScheduler.js) and the check-in nudge
+                                    (workers/reminderWorker.js). The old copy described only
+                                    the second, in "poll deadline" jargon that predates the
+                                    check-in rename, and its second sentence claimed event
+                                    create/update/cancel are "always sent" — which reads as
+                                    false next to the three toggles directly above it. */}
                                 {type.key === 'reminder' && (
-                                    <p className="mt-2 ml-0 sm:ml-4 text-xs text-content-muted">
-                                        Controls availability reminders (50% / 90% of poll deadline). Event creation, updates, and cancellations are always sent.
+                                    <p className="mt-2 ml-0 sm:ml-4 text-sm text-content-secondary">
+                                        You&apos;ll get a reminder before events you&apos;re going to, and a nudge while your group is still waiting on your availability.
                                     </p>
                                 )}
                             </div>
@@ -1473,11 +2011,11 @@ function Profile(){
                     </div>
 
                     {/* Reset status */}
-                    {saveStatus?.type === 'all' && saveStatus.channel === 'reset' && (
+                    {saveStatuses[RESET_SLOT] && (
                         <div className="mt-2 text-center">
-                            {saveStatus.status === 'saving' && <span className="text-xs text-content-muted">Resetting...</span>}
-                            {saveStatus.status === 'saved' && <span className="text-xs text-status-success">Reset to defaults</span>}
-                            {saveStatus.status === 'error' && <span className="text-xs text-status-error">Failed to reset</span>}
+                            {saveStatuses[RESET_SLOT] === 'saving' && <span className="text-xs text-content-muted">Resetting...</span>}
+                            {saveStatuses[RESET_SLOT] === 'saved' && <span className="text-xs text-status-success">Reset to defaults</span>}
+                            {saveStatuses[RESET_SLOT] === 'error' && <span className="text-xs text-status-error">Couldn't reset — try again.</span>}
                         </div>
                     )}
 
@@ -1497,43 +2035,34 @@ function Profile(){
                 {/* id="availability-settings" — scroll target for the invited-branch
                     tutorial handoff (ONBD-04, Phase 73). Read by the
                     ?section=availability useEffect above. */}
-                <div id="availability-settings" className="card p-4 md:p-6 mb-6">
-                    <h2 className="text-xl md:text-2xl font-bold text-content-primary mb-4">Availability Settings</h2>
+                <div id="availability-settings" className="card p-3 md:p-6 mb-6">
+                    <h2 className="text-xl font-bold text-content-primary mb-4">Availability Settings</h2>
                     <p className="text-sm text-content-secondary mb-4">
                         Set the times when you are <strong>available</strong> (free) to help groups find the best time to schedule game sessions. 
                         {googleCalendarConnected && ' Your Google Calendar busy times will be automatically excluded from your availability.'}
                     </p>
 
-                    {/* Tabs */}
-                    <div className="flex gap-2 mb-4 border-b">
-                        <button
-                            onClick={() => setAvailabilityTab('recurring')}
-                            className={`px-4 py-2 font-medium text-sm ${
-                                availabilityTab === 'recurring'
-                                    ? 'border-b-2 border-btn-primary text-btn-primary'
-                                    : 'text-content-secondary hover:text-content-primary'
-                            }`}
-                        >
+                    {/* Tab strip — the `Tabs` compound (88-07). The strip's widget
+                        semantics, its selected-state attribute, the panel wiring and the
+                        arrow-key roving tabindex all come from Radix; the hand-rolled
+                        strip this replaces emitted none of them. `availabilityTab` stays
+                        the source of truth (controlled) so nothing else on the page moves. */}
+                    <Tabs value={availabilityTab} onValueChange={setAvailabilityTab}>
+                    <TabsList aria-label="Availability settings" className="mb-4">
+                        <TabsTrigger value="recurring">
                             Schedules
-                        </button>
-                        <button
-                            onClick={() => setAvailabilityTab('specific')}
-                            className={`px-4 py-2 font-medium text-sm ${
-                                availabilityTab === 'specific'
-                                    ? 'border-b-2 border-btn-primary text-btn-primary'
-                                    : 'text-content-secondary hover:text-content-primary'
-                            }`}
-                        >
+                        </TabsTrigger>
+                        <TabsTrigger value="specific">
                             Specific Dates
-                        </button>
-                    </div>
+                        </TabsTrigger>
+                    </TabsList>
 
                     {/* Schedules Tab */}
-                    {availabilityTab === 'recurring' && (
+                    <TabsContent value="recurring">
                         <div>
                             <div className="flex justify-between items-center mb-4">
                                 <div>
-                                    <h3 className="font-semibold text-content-primary">Availability Schedules</h3>
+                                    <h3 className="text-base font-bold text-content-primary">Availability Schedules</h3>
                                     <p className="text-xs text-content-secondary mt-1">Set your recurring availability schedule</p>
                                 </div>
                                 <button
@@ -1545,12 +2074,15 @@ function Profile(){
                             </div>
 
                             {showRecurringForm && (
-                                <div className="mb-6 p-4 border rounded-lg bg-surface-page">
-                                    <h4 className="font-semibold mb-3 text-content-primary">New Schedule</h4>
+                                <div className="mb-6 p-4 border border-line rounded-lg bg-surface-page">
+                                    <h4 className="text-base font-bold mb-3 text-content-primary">New Schedule</h4>
                                     <div className="space-y-3">
                                         <div>
-                                            <label className="block text-sm font-medium text-content-secondary mb-1">Days of Week</label>
-                                            <div className="flex flex-wrap gap-2 mt-1">
+                                            {/* Not a <label>: this names a GROUP of toggle
+                                                buttons, not a single form control, and a label
+                                                with no control is a label pointing at nothing. */}
+                                            <span id="days-of-week-label" className="block text-sm font-medium text-content-secondary mb-1">Days of Week</span>
+                                            <div role="group" aria-labelledby="days-of-week-label" className="flex flex-wrap gap-2 mt-1">
                                                 {[0, 1, 2, 3, 4, 5, 6].map(day => (
                                                     <button
                                                         key={day}
@@ -1589,43 +2121,43 @@ function Profile(){
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <label className="block text-sm font-medium text-content-secondary mb-1">Available From (Start Time)</label>
-                                                <input
+                                                <label htmlFor="recurring-start-time" className="block text-sm font-medium text-content-secondary mb-1">Available From (Start Time)</label>
+                                                <Input
+                                                    id="recurring-start-time"
                                                     type="time"
                                                     value={recurringForm.startTime}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, startTime: e.target.value })}
-                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
                                                 <p className="text-xs text-content-muted mt-1">When you become available</p>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium text-content-secondary mb-1">Available Until (End Time)</label>
-                                                <input
+                                                <label htmlFor="recurring-end-time" className="block text-sm font-medium text-content-secondary mb-1">Available Until (End Time)</label>
+                                                <Input
+                                                    id="recurring-end-time"
                                                     type="time"
                                                     value={recurringForm.endTime}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, endTime: e.target.value })}
-                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
                                                 <p className="text-xs text-content-muted mt-1">When you become unavailable</p>
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <label className="block text-sm font-medium text-content-secondary mb-1">Start Date</label>
-                                                <input
+                                                <label htmlFor="recurring-start-date" className="block text-sm font-medium text-content-secondary mb-1">Start Date</label>
+                                                <Input
+                                                    id="recurring-start-date"
                                                     type="date"
                                                     value={recurringForm.start_date}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, start_date: e.target.value })}
-                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium text-content-secondary mb-1">End Date (Optional)</label>
-                                                <input
+                                                <label htmlFor="recurring-end-date" className="block text-sm font-medium text-content-secondary mb-1">End Date (Optional)</label>
+                                                <Input
+                                                    id="recurring-end-date"
                                                     type="date"
                                                     value={recurringForm.end_date}
                                                     onChange={(e) => setRecurringForm({ ...recurringForm, end_date: e.target.value })}
-                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
                                             </div>
                                         </div>
@@ -1654,37 +2186,52 @@ function Profile(){
                                     {availabilityPatterns
                                         .filter(p => p.type === 'recurring_pattern')
                                         .map(pattern => (
-                                            <div key={pattern.id} className="p-3 border rounded-lg flex justify-between items-center">
+                                            <div key={pattern.id} className="p-3 border border-line rounded-lg flex justify-between items-center">
                                                 <div>
                                                     <p className="font-medium text-content-primary">
-                                                        {getDayName(pattern.pattern_data.dayOfWeek)}: {pattern.pattern_data.startTime} - {pattern.pattern_data.endTime}
+                                                        {getDayName(pattern.pattern_data.dayOfWeek)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
                                                     </p>
                                                     <p className="text-sm text-content-secondary">
                                                         {formatDate(pattern.start_date)} - {formatDate(pattern.end_date)}
                                                     </p>
                                                 </div>
-                                                <button
-                                                    onClick={() => handleDeletePattern(pattern.id)}
-                                                    className="text-status-error text-sm"
-                                                >
-                                                    Delete
-                                                </button>
+                                                {(() => {
+                                                    const patternLabel = `${getDayName(pattern.pattern_data.dayOfWeek)} schedule`;
+                                                    return (
+                                                        <button
+                                                            {...deletePatternGate.triggerProps(
+                                                                pattern.id,
+                                                                patternLabel,
+                                                                `Delete ${patternLabel}`
+                                                            )}
+                                                            // DECISION Phase 88-27 (D-32 bucket D): the stripped hover was a TEXT
+                                                            // alpha; it returns as a subtle SURFACE. Full reasoning at the twin
+                                                            // marker on friends/page.js's Remove-friend gate.
+                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                                deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
+                                                            }`}
+                                                        >
+                                                            {deletePatternGate.labelFor(pattern.id, 'Delete')}
+                                                        </button>
+                                                    );
+                                                })()}
                                             </div>
                                         ))}
                                     {availabilityPatterns.filter(p => p.type === 'recurring_pattern').length === 0 && (
-                                        <p className="text-content-secondary text-sm">No schedules set. Add one to get started!</p>
+                                        // D2 mini-formula (ruled 2026-08-15): muted, no "!".
+                                        <p className="text-content-muted text-sm">No schedules set. Add one to get started.</p>
                                     )}
                                 </div>
                             )}
                         </div>
-                    )}
+                    </TabsContent>
 
                     {/* Specific Dates Tab */}
-                    {availabilityTab === 'specific' && (
+                    <TabsContent value="specific">
                         <div>
                             <div className="flex justify-between items-center mb-4">
                                 <div>
-                                    <h3 className="font-semibold text-content-primary">Specific Date Overrides</h3>
+                                    <h3 className="text-base font-bold text-content-primary">Specific Date Overrides</h3>
                                     <p className="text-xs text-content-secondary mt-1">Override your schedules for specific dates</p>
                                 </div>
                                 <button
@@ -1696,42 +2243,52 @@ function Profile(){
                             </div>
 
                             {showSpecificForm && (
-                                <div className="mb-6 p-4 border rounded-lg bg-surface-page">
-                                    <h4 className="font-semibold mb-3 text-content-primary">New Specific Override</h4>
+                                <div className="mb-6 p-4 border border-line rounded-lg bg-surface-page">
+                                    <h4 className="text-base font-bold mb-3 text-content-primary">New Specific Override</h4>
                                     <div className="space-y-3">
                                         <div>
-                                            <label className="block text-sm font-medium text-content-secondary mb-1">Date</label>
-                                            <input
+                                            <label htmlFor="specific-date" className="block text-sm font-medium text-content-secondary mb-1">Date</label>
+                                            <Input
+                                                id="specific-date"
                                                 type="date"
                                                 value={specificForm.date}
                                                 onChange={(e) => setSpecificForm({ ...specificForm, date: e.target.value })}
-                                                className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                             />
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <label className="block text-sm font-medium text-content-secondary mb-1">Available From (Start Time)</label>
-                                                <input
+                                                <label htmlFor="specific-start-time" className="block text-sm font-medium text-content-secondary mb-1">Available From (Start Time)</label>
+                                                <Input
+                                                    id="specific-start-time"
                                                     type="time"
                                                     value={specificForm.startTime}
                                                     onChange={(e) => setSpecificForm({ ...specificForm, startTime: e.target.value })}
-                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
                                                 <p className="text-xs text-content-muted mt-1">When you become available</p>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium text-content-secondary mb-1">Available Until (End Time)</label>
-                                                <input
+                                                <label htmlFor="specific-end-time" className="block text-sm font-medium text-content-secondary mb-1">Available Until (End Time)</label>
+                                                <Input
+                                                    id="specific-end-time"
                                                     type="time"
                                                     value={specificForm.endTime}
                                                     onChange={(e) => setSpecificForm({ ...specificForm, endTime: e.target.value })}
-                                                    className="w-full p-2 border border-line rounded-btn text-content-primary bg-surface-input"
                                                 />
                                                 <p className="text-xs text-content-muted mt-1">When you become unavailable</p>
                                             </div>
                                         </div>
                                         <div>
                                             <label className="flex items-center gap-2">
+                                                {/* DECISION Phase 88-19 (Req 1): this stays a NATIVE
+                                                    checkbox and is deliberately NOT routed through
+                                                    the `Input` primitive like the seven date/time
+                                                    controls above it. iOS focus-zoom is a TEXT-ENTRY
+                                                    behaviour — a checkbox has no text to zoom — and
+                                                    the primitive's `block w-full p-2` would stretch
+                                                    the box across the whole form. Same exclusion, on
+                                                    the same grounds, as gameDetail's recommend
+                                                    checkbox (88-20). The Req 1 test pin excludes it
+                                                    BY TYPE, so adding it here would fail. */}
                                                 <input
                                                     type="checkbox"
                                                     checked={specificForm.isAvailable}
@@ -1766,21 +2323,35 @@ function Profile(){
                                     {availabilityPatterns
                                         .filter(p => p.type === 'specific_override')
                                         .map(pattern => (
-                                            <div key={pattern.id} className="p-3 border rounded-lg flex justify-between items-center">
+                                            <div key={pattern.id} className="p-3 border border-line rounded-lg flex justify-between items-center">
                                                 <div>
                                                     <p className="font-medium text-content-primary">
-                                                        {formatDate(pattern.pattern_data.date)}: {pattern.pattern_data.startTime} - {pattern.pattern_data.endTime}
+                                                        {formatDate(pattern.pattern_data.date)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
                                                     </p>
                                                     <p className="text-sm text-content-secondary">
                                                         {pattern.is_available ? 'Available' : 'Busy'}
                                                     </p>
                                                 </div>
-                                                <button
-                                                    onClick={() => handleDeletePattern(pattern.id)}
-                                                    className="text-status-error text-sm"
-                                                >
-                                                    Delete
-                                                </button>
+                                                {(() => {
+                                                    const patternLabel = `${formatDate(pattern.pattern_data.date)} override`;
+                                                    return (
+                                                        <button
+                                                            {...deletePatternGate.triggerProps(
+                                                                pattern.id,
+                                                                patternLabel,
+                                                                `Delete ${patternLabel}`
+                                                            )}
+                                                            // DECISION Phase 88-27 (D-32 bucket D): the stripped hover was a TEXT
+                                                            // alpha; it returns as a subtle SURFACE. Full reasoning at the twin
+                                                            // marker on friends/page.js's Remove-friend gate.
+                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                                deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
+                                                            }`}
+                                                        >
+                                                            {deletePatternGate.labelFor(pattern.id, 'Delete')}
+                                                        </button>
+                                                    );
+                                                })()}
                                             </div>
                                         ))}
                                     {availabilityPatterns.filter(p => p.type === 'specific_override').length === 0 && (
@@ -1789,12 +2360,13 @@ function Profile(){
                                 </div>
                             )}
                         </div>
-                    )}
+                    </TabsContent>
+                    </Tabs>
                 </div>
 
                 {/* Tutorial Section */}
-                <div className="card p-4 md:p-6 mb-6">
-                    <h2 className="text-lg font-bold text-content-primary mb-2">Tutorial</h2>
+                <div className="card p-3 md:p-6 mb-6">
+                    <h2 className="text-xl font-bold text-content-primary mb-2">Tutorial</h2>
                     <p className="text-sm text-content-secondary mb-4">
                         Need a refresher on how to use Next Game Night? Replay the onboarding tutorial to walk through the key features.
                     </p>
@@ -1808,9 +2380,14 @@ function Profile(){
                 </div>
 
                 {/* Owned Games Section */}
-                <div className="card p-4 md:p-6">
+                <div className="card p-3 md:p-6">
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-                        <h2 className="text-xl md:text-2xl font-bold text-content-primary">My Game Collection ({ownedGames.length})</h2>
+                        {/* 88-33 Task 7 step 2 (UAT row 272): the count renders only after the
+                            owned-games fetch resolves — "(0)" mid-fetch is an empty-vs-loading
+                            conflation on the count itself; an em-dash holds the slot meanwhile. */}
+                        <h2 className="text-xl font-bold text-content-primary">
+                            My Game Collection ({loadingGames ? '—' : ownedGames.length})
+                        </h2>
                         <div className="flex gap-2">
                             <button
                                 onClick={() => setShowBggSearch(!showBggSearch)}
@@ -1822,22 +2399,32 @@ function Profile(){
                     </div>
 
                     {/* BGG Collection Import */}
-                    <div className="mb-6 p-3 md:p-4 border rounded-lg bg-surface-page">
-                        <h3 className="font-semibold mb-2 text-content-primary text-sm md:text-base">Import Your Entire BGG Collection</h3>
+                    <div className="mb-6 p-3 md:p-4 border border-line rounded-lg bg-surface-page">
+                        <h3 className="text-base font-bold mb-2 text-content-primary">Import Your Entire BGG Collection</h3>
                         <p className="text-xs md:text-sm text-content-secondary mb-3">
                             Enter your BoardGameGeek username to import all games from your BGG collection at once.
                         </p>
                         <div className="flex flex-col sm:flex-row gap-2">
-                            <input
-                                type="text"
+                            {/* This and the BGG search field below shipped as 14px promoted
+                                to 16px at a breakpoint — the exact anti-pattern §8.2 names.
+                                `md` is the breakpoint phones sit BELOW, so the variant
+                                applied the un-zoomable size to desktop and the zooming size
+                                to the only viewport that suffers from it. The primitive
+                                carries 16px unconditionally and must not be re-variant-ed.
+                                (Spelled out in words rather than the utility itself so a
+                                grep-based gate does not match this comment.) */}
+                            <Input
+                                id="bgg-username"
+                                name="bgg-username"
+                                aria-label="BoardGameGeek username"
                                 value={bggUsername}
                                 onChange={(e) => setBggUsername(e.target.value)}
                                 placeholder="Your BGG username"
-                                className="flex-1 p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm md:text-base"
+                                className="flex-1"
                                 disabled={importingCollection}
                             />
                             <button
-                                onClick={importBGGCollection}
+                                onClick={handleImportCollectionClick}
                                 disabled={importingCollection || !bggUsername.trim()}
                                 className="btn btn-primary px-4 md:px-6 py-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base whitespace-nowrap"
                             >
@@ -1846,8 +2433,8 @@ function Profile(){
                         </div>
                         {importProgress && (
                             <div className={`mt-3 p-3 rounded-btn ${
-                                importProgress.status === 'error' ? 'text-status-error' :
-                                importProgress.status === 'complete' ? 'text-status-success' :
+                                importProgress.status === 'error' ? 'bg-status-error-subtle text-status-error' :
+                                importProgress.status === 'complete' ? 'bg-status-success-subtle text-status-success' :
                                 'bg-surface-card-hover text-content-link'
                             }`}>
                                 <p className="font-medium">{importProgress.message}</p>
@@ -1864,15 +2451,15 @@ function Profile(){
 
                     {/* BGG Search */}
                     {showBggSearch && (
-                        <div className="mb-6 p-3 md:p-4 border rounded-sm bg-surface-page">
+                        <div className="mb-6 p-3 md:p-4 border border-line rounded-sm bg-surface-page">
                             <div className="flex flex-col sm:flex-row gap-2 mb-3">
-                                <input
-                                    type="text"
+                                <Input
+                                    aria-label="Search BoardGameGeek"
                                     value={bggSearchQuery}
                                     onChange={(e) => setBggSearchQuery(e.target.value)}
                                     onKeyPress={(e) => e.key === 'Enter' && searchBGG()}
                                     placeholder="Search BoardGameGeek..."
-                                    className="flex-1 p-2 border border-line rounded-btn text-content-primary bg-surface-input text-sm md:text-base"
+                                    className="flex-1"
                                 />
                                 <button
                                     onClick={searchBGG}
@@ -1919,20 +2506,45 @@ function Profile(){
                     ) : ownedGames.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {ownedGames.map((game) => (
-                                <div key={game.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                                <div key={game.id} className="border border-line rounded-lg p-4 hover:shadow-md transition-shadow">
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="flex-1">
-                                            <h3 className="font-semibold text-content-primary">{game.name}</h3>
+                                            <h3 className="text-base font-bold text-content-primary">{game.name}</h3>
                                             {game.year_published && (
                                                 <p className="text-sm text-content-secondary">({game.year_published})</p>
                                             )}
                                         </div>
+                                        {/* Two-tap gate. The accessible name names the ACTION
+                                            and the OBJECT (F-369) — a bare glyph is not a
+                                            name, and the `title` it used to carry does not
+                                            count (§7.3). Armed state swaps the visible label
+                                            AND the name together (Label-in-Name, WCAG 2.5.3),
+                                            both from the hook.
+
+                                            88-33 Task 5 (fork 7): resting prominence (a real
+                                            affordance box, min-w-11) + armed 'Remove' label on
+                                            the error-subtle treatment. The invisible sizer span
+                                            reserves the ARMED label's width at rest so arming
+                                            never reflows the title next to it (walk row 573's
+                                            squeeze class). */}
                                         <button
-                                            onClick={() => removeGameFromCollection(game.id)}
-                                            className="text-status-error hover:text-red-700 text-sm"
-                                            title="Remove from collection"
+                                            {...removeGameGate.triggerProps(
+                                                game.id,
+                                                game.name,
+                                                `Remove ${game.name}`
+                                            )}
+                                            className={`inline-grid min-h-11 min-w-11 place-items-center whitespace-nowrap rounded-btn border px-2 text-sm text-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                removeGameGate.isArmed(game.id)
+                                                    ? 'bg-status-error-subtle border-status-error font-semibold'
+                                                    : 'border-status-error hover:bg-status-error-subtle'
+                                            }`}
                                         >
-                                            ×
+                                            <span aria-hidden="true" className="invisible col-start-1 row-start-1 font-semibold">
+                                                Remove
+                                            </span>
+                                            <span className="col-start-1 row-start-1">
+                                                {removeGameGate.labelFor(game.id, '×')}
+                                            </span>
                                         </button>
                                     </div>
                                     <SafeImage
@@ -1944,7 +2556,8 @@ function Profile(){
                             ))}
                         </div>
                     ) : (
-                        <p className="text-content-secondary">You don't have any games in your collection yet. Search BoardGameGeek to add games!</p>
+                        // D2 mini-formula (ruled 2026-08-15): muted + sm, no "!".
+                        <p className="text-content-muted text-sm">You don't have any games in your collection yet. Search BoardGameGeek to add games.</p>
                     )}
                 </div>
 
@@ -1954,6 +2567,41 @@ function Profile(){
                 <div className="mt-6">
                     <DangerZoneDeleteAccount />
                 </div>
+
+                {/* The three tiered gates, mounted ONCE at page level rather than per
+                    row: the hook holds the target id, so one dialog serves every row.
+                    Each `statusNode` is likewise mounted unconditionally and always —
+                    a live region that is conditionally mounted announces nothing. The
+                    two two-tap gates render a null dialog by design (88-05), and they
+                    are mounted anyway so retiering stays the one-word edit. */}
+                <ConfirmDialog {...disconnectCalendarGate.dialogProps} />
+                {disconnectCalendarGate.statusNode}
+                <ConfirmDialog {...removeGameGate.dialogProps} />
+                {removeGameGate.statusNode}
+                <ConfirmDialog {...deletePatternGate.dialogProps} />
+                {deletePatternGate.statusNode}
+
+                {/* Slow-operation warning, NOT a destructive gate (D-10) — see the
+                    marker on `handleImportCollectionClick`. Dismissable, and its
+                    primary action is the neutral verb the old prompt ended on. */}
+                <Modal open={bggImportPromptOpen} onClose={() => setBggImportPromptOpen(false)}>
+                    <Modal.Header>Import your BGG collection?</Modal.Header>
+                    <Modal.Body>
+                        <p className="text-base text-content-secondary">
+                            This imports every game from your BoardGameGeek collection (username:{' '}
+                            <span className="font-semibold text-content-primary">{bggUsername}</span>
+                            ). It may take a few minutes.
+                        </p>
+                    </Modal.Body>
+                    <Modal.Footer>
+                        <Modal.Action variant="secondary" onClick={() => setBggImportPromptOpen(false)}>
+                            Cancel
+                        </Modal.Action>
+                        <Modal.Action variant="primary" onClick={importBGGCollection}>
+                            Continue
+                        </Modal.Action>
+                    </Modal.Footer>
+                </Modal>
 
                 {/* PRIM-03: the patterns-fetch bug-report modal now lives inside
                     FetchErrorBanner (rendered per-tab), so the page-level mount is gone. */}

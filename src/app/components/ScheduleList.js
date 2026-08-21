@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { formatTime } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
 import KebabMenu from './KebabMenu';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Button } from '../../components/ui/Button';
 
 // Day of week helper
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -17,8 +19,11 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
  * @param {Function} props.onToggle - Callback when pause/resume clicked (passes schedule_id)
  * @param {Function} props.onDelete - Callback when delete clicked (passes schedule_id)
  * @param {Array} props.games - Array of games for displaying game names
+ * @param {Function} [props.onCreate] - Callback for the empty state's "Create a
+ *   schedule" CTA (Req 6). Null/absent for anyone who cannot manage schedules —
+ *   the gating stays at the call site, exactly like onEdit/onToggle/onDelete.
  */
-export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelete, games = [] }) {
+export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelete, games = [], onCreate }) {
   const { timezone } = useTimezone();
   const [deleteConfirm, setDeleteConfirm] = useState(null); // schedule_id to confirm deletion
 
@@ -35,12 +40,25 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
     setDeleteConfirm(null);
   };
 
-  // Empty state
+  // Empty state (Req 6 / UI-SPEC 9.2). This branch is "nothing here yet" ONLY —
+  // a failed settings fetch renders the shared error treatment in the parent
+  // (PromptScheduleManager) and never reaches this component.
   if (!schedules || schedules.length === 0) {
     return (
-      <div className="text-center py-12 text-content-muted">
-        <p className="text-lg">No schedules yet. Create one to start sending automated prompts.</p>
-      </div>
+      <EmptyState
+        icon="CalendarClock"
+        heading="No schedules yet"
+        body="Set one up and we'll ask the group when they're free, so you don't have to."
+        action={
+          onCreate ? (
+            /* 44px carried per-CTA, matching the 87.8 D-13/D-14 marker on the parent's
+               "+ New Schedule" button — same action, so the same touch target. */
+            <Button variant="primary" className="min-h-11" onClick={onCreate}>
+              Create a schedule
+            </Button>
+          ) : undefined
+        }
+      />
     );
   }
 
@@ -73,11 +91,11 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
                   <h3 className="text-lg font-semibold text-content-primary">{scheduleName}</h3>
                   {/* Status badge */}
                   {isActive ? (
-                    <span className="px-2 py-1 text-xs font-medium text-status-success rounded-full">
+                    <span className="px-2 py-1 text-xs font-medium bg-status-success-subtle text-status-success rounded-full">
                       Active
                     </span>
                   ) : (
-                    <span className="px-2 py-1 text-xs font-medium text-status-warning rounded-full">
+                    <span className="px-2 py-1 text-xs font-medium bg-status-warning-subtle text-status-warning rounded-full">
                       Paused
                     </span>
                   )}
@@ -123,8 +141,8 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
                   onClick={() => onToggle?.(schedule.id)}
                   className={`px-3 py-1.5 text-sm rounded-btn transition-colors ${
                     isActive
-                      ? 'text-status-warning'
-                      : 'text-status-success'
+                      ? 'bg-status-warning-subtle text-status-warning hover:bg-status-warning-subtle-hover'
+                      : 'bg-status-success-subtle text-status-success hover:bg-status-success-subtle-hover'
                   }`}
                   title={isActive ? 'Pause schedule' : 'Resume schedule'}
                 >
@@ -170,7 +188,7 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
 
             {/* Delete Confirmation Dialog */}
             {deleteConfirm === schedule.id && (
-              <div className="mt-4 p-3 md:p-4 border rounded-card">
+              <div className="mt-4 p-3 md:p-4 bg-status-error-subtle border border-status-error rounded-card">
                 <p className="text-status-error font-medium mb-3">
                   Delete {scheduleName}? This will stop sending prompts.
                 </p>

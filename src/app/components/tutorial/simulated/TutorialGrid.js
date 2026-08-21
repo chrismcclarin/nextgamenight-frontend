@@ -1,5 +1,7 @@
 'use client';
 
+import { cn } from '@/lib/cn';
+
 import { TUTORIAL_DAYS, TUTORIAL_TIME_SLOTS } from '../mockData';
 
 /**
@@ -41,9 +43,26 @@ export default function TutorialGrid({ renderCell }) {
             {TUTORIAL_DAYS.map((_, colIdx) => {
               const { className, content } = renderCell(rowIdx, colIdx);
               return (
+                /* DECISION Phase 88-26 (D-35): the cell's own neutral is the DEFAULT and the
+                   caller overrides it through `cn`, chosen OVER a plain template literal.
+                   The three demos all happen to return a coloured cell today, so this site was
+                   not visibly broken — but the contract did not require one, so the default was
+                   the base-layer shim that plan 88-31 deletes.
+
+                   `cn` (tailwind-merge) is LOAD-BEARING here, not a style preference. Both the
+                   default and every caller value are the same CSS property (border-color), so a
+                   template literal would leave the winner to stylesheet order — and in a real
+                   Tailwind v4 build of this app the neutral is emitted AFTER the palette colours,
+                   i.e. the default would have OVERPAINTED every caller's cell. tailwind-merge
+                   drops the earlier of two conflicting colours, so the caller wins deterministically
+                   and an empty caller value falls back to the neutral. Reverting to a template
+                   literal repaints the entire tutorial grid. */
                 <div
                   key={`${rowIdx}-${colIdx}`}
-                  className={`w-12 h-7 shrink-0 flex items-center justify-center text-[10px] font-medium rounded-xs m-0.5 border transition-all duration-300 ${className}`}
+                  className={cn(
+                    'w-12 h-7 shrink-0 flex items-center justify-center text-[10px] font-medium rounded-xs m-0.5 border border-line transition-all duration-300',
+                    className
+                  )}
                 >
                   {content}
                 </div>

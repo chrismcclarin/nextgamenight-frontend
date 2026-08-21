@@ -109,7 +109,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
             <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
           </div>
           <div className="p-4">
-            <div className="border rounded-card p-4 mb-3">
+            <div className="bg-status-success-subtle border border-status-success rounded-card p-4 mb-3">
               <div className="flex items-center gap-2">
                 <span className="text-lg font-bold text-status-success">Winner</span>
               </div>
@@ -133,8 +133,17 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
 
     if (needs_tie_break && isOrganizer) {
       return (
+        /* DECISION Phase 88-27 (D-32 bucket B): the header's `border-b` stays NEUTRAL, chosen
+           OVER re-pointing it to `border-status-warning` like the other 20 status containers this
+           plan converted. Two reasons, both local: the WRAPPER one line up already carries the
+           full-strength warning border, so the semantic is stated once; and the two structurally
+           identical "Game Vote" headers in this same component (the winner branch and the
+           non-organizer branch) both use `border-b border-line`, so colouring only this one would
+           split one header across two tokens. That is the inconsistency 88-26 refused to create
+           at these exact lines. The BACKGROUND does take the warning tint — it replaces the
+           siblings' `bg-surface-elevated`, which is where the state difference belongs. */
         <div className="mt-4 border border-status-warning rounded-card overflow-hidden">
-          <div className="px-4 py-3 border-b">
+          <div className="bg-status-warning-subtle px-4 py-3 border-b border-line">
             <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
           </div>
           <div className="p-4">
@@ -148,7 +157,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   key={opt.id}
                   type="button"
                   onClick={() => handleResolveTie(opt.id)}
-                  className="w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm font-medium text-content-primary cursor-pointer"
+                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm font-medium text-content-primary cursor-pointer"
                 >
                   {opt.game_name}
                 </button>
@@ -176,8 +185,10 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
 
     if (needs_fallback_pick && isOrganizer) {
       return (
+        /* DECISION Phase 88-27 (D-32 bucket B): neutral `border-b` on the header, same call and
+           same reasons as the tie-break branch ~50 lines above — see that marker. */
         <div className="mt-4 border border-status-warning rounded-card overflow-hidden">
-          <div className="px-4 py-3 border-b">
+          <div className="bg-status-warning-subtle px-4 py-3 border-b border-line">
             <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
           </div>
           <div className="p-4">
@@ -191,7 +202,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   key={opt.id}
                   type="button"
                   onClick={() => handleResolveTie(opt.id)}
-                  className="w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm font-medium text-content-primary cursor-pointer"
+                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm font-medium text-content-primary cursor-pointer"
                 >
                   {opt.game_name}
                 </button>
@@ -244,7 +255,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   disabled={!!votingOptionId}
                   className={`w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm font-medium cursor-pointer
                     ${isVoted
-                      ? 'border-accent text-content-primary'
+                      ? 'border-accent bg-surface-accent-subtle text-content-primary'
                       : 'border-line bg-surface-card text-content-primary hover:bg-surface-card-hover hover:border-line-strong'
                     }
                     ${isToggling ? 'opacity-70' : ''}

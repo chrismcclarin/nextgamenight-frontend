@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { userGamesAPI, eventBringsAPI } from '../../lib/api';
 import SafeImage from './SafeImage';
+import { Modal } from './Modal';
+import { Input } from '../../components/ui/Input';
 
 /**
  * BringGamePicker - Modal overlay for selecting games to bring to an event
@@ -109,12 +111,6 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
     }
   };
 
-  const handleBackdropClick = (e) => {
-    if (e.target === e.currentTarget) {
-      onClose();
-    }
-  };
-
   // Filter games by search query (case-insensitive)
   const filteredGames = ownedGames.filter(item => {
     const game = item.Game || item;
@@ -123,36 +119,36 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
   });
 
   return (
-    <div
-      className="modal-overlay p-4"
-      onClick={handleBackdropClick}
-    >
-      <div className="modal-content max-w-md w-full max-h-[80vh]">
-        {/* Header */}
-        <div className="modal-header">
-          <h3 className="text-lg font-semibold text-content-primary">Games to Bring</h3>
-          <button
-            onClick={onClose}
-            className="text-content-muted hover:text-content-secondary text-2xl leading-none"
-            aria-label="Close"
-          >
-            &times;
-          </button>
-        </div>
+    /* DECISION Phase 88-17 (Req 9): hosted on the shared <Modal>; the hand-rolled
+       backdrop + `handleBackdropClick` target-compare are gone rather than ported
+       (Radix owns outside-dismiss, Esc and the focus trap).
 
+       The overlay's `p-4` is DELETED, not relocated: it was ALWAYS dead. The
+       unlayered `.modal-overlay` block in globals.css (:1075) declares
+       `padding: 1rem` and an unlayered author rule beats every `@layer utilities`
+       rule — the 87.8 DEC-3 marker at globals.css:1086 cites THIS call site by
+       name as its live proof. So removing it is not a spacing change and must not
+       be read as one.
+
+       The search row stays PINNED above the scrolling list (Modal.Body is `p-0` +
+       flex column, the list owns the scroll with `min-h-0`). Collapsing it into a
+       single scrolling body would push the search field off-screen as soon as the
+       list scrolls — that is a decision, not a cleanup. */
+    <Modal open onClose={onClose} className="max-w-md max-h-[80vh]">
+      <Modal.Header>Games to Bring</Modal.Header>
+      <Modal.Body className="flex flex-col p-0 md:p-0">
         {/* Search */}
-        <div className="p-4 pb-2">
-          <input
+        <div className="shrink-0 p-4 pb-2">
+          <Input
             type="text"
             placeholder="Search your games..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-3 py-2 border border-line rounded-lg text-sm text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring focus:border-transparent"
           />
         </div>
 
         {/* Game List */}
-        <div className="flex-1 overflow-y-auto px-4 pb-2">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2">
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent"></div>
@@ -227,24 +223,24 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
             </div>
           )}
         </div>
+      </Modal.Body>
 
-        {/* Footer */}
-        <div className="modal-footer justify-between">
-          <button
-            onClick={onClose}
-            className="text-sm text-content-muted hover:text-content-secondary transition-colors"
-          >
-            Skip for now
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="btn btn-primary text-sm"
-          >
-            {saving ? 'Saving...' : 'Save'}
-          </button>
-        </div>
-      </div>
-    </div>
+      {/* Footer */}
+      <Modal.Footer className="justify-between">
+        <button
+          onClick={onClose}
+          className="text-sm text-content-muted hover:text-content-secondary transition-colors"
+        >
+          Skip for now
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="btn btn-primary text-sm"
+        >
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+      </Modal.Footer>
+    </Modal>
   );
 }

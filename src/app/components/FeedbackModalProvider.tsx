@@ -17,11 +17,22 @@ import { usePathname } from 'next/navigation';
  *
  * Owns ONLY the open/close TRANSITION state: `isOpen`, the pathname-derived
  * `category` seed, and focus management (the element that invoked `open()` is
- * recorded and focus returns to it on `close()`, T-87.8-22). This lets the
+ * recorded and focus returns to it via the modal's `onCloseAutoFocus`,
+ * T-87.8-22). This lets the
  * TRIGGER live in the Header (the mobile nav "Send feedback" row) while the
- * modal itself stays mounted at the layout root — never inside the header
- * dropdown, whose computed `translate` would capture a position:fixed
- * `.modal-overlay` as its containing block (RESEARCH Pitfall 1).
+ * modal itself stays mounted at the layout root.
+ *
+ * Phase 88-17 (Req 9) moved that modal from the hand-rolled `.modal-overlay`
+ * markup onto the shared `<Modal>` primitive, which portals to `<body>`. That
+ * retires the ORIGINAL reason for the split — RESEARCH Pitfall 1, where the
+ * header dropdown's computed `translate` became the containing block for a
+ * position:fixed overlay and clipped it to the dropdown's height. A portalled
+ * dialog cannot hit that. The split is still load-bearing for a SECOND, verified
+ * reason, which is why it stays: the dropdown is rendered unconditionally and
+ * hidden by class toggle, and its closed state carries `pointer-events-none`
+ * (Header.js:176). The row tap closes the menu in the SAME transition that opens
+ * the modal, so a modal rendered inside that subtree would open inert. Moving
+ * the modal into the Header is a decision, not a cleanup.
  *
  * Deliberately does NOT own `text` / `error` / `submitted`: those stay LOCAL
  * to the modal-owning FeedbackButton instance so a keystroke in the textarea
@@ -78,6 +89,8 @@ interface FeedbackModalContextValue {
   category: FeedbackCategory;
   open: (invoker?: HTMLElement | null) => void;
   close: () => void;
+  /** Wire onto the modal's `onCloseAutoFocus` — see the note on `close`. */
+  onCloseAutoFocus: (event: Event) => void;
   setCategory: Dispatch<SetStateAction<FeedbackCategory>>;
 }
 
@@ -86,6 +99,7 @@ const FeedbackModalContext = createContext<FeedbackModalContextValue>({
   category: 'General',
   open: () => {},
   close: () => {},
+  onCloseAutoFocus: () => {},
   setCategory: () => {},
 });
 
@@ -115,10 +129,21 @@ export function FeedbackModalProvider({ children }: { children: ReactNode }) {
 
   const close = useCallback(() => {
     setIsOpen(false);
-    if (invokerRef.current && typeof invokerRef.current.focus === 'function') {
-      invokerRef.current.focus();
-    }
+  }, []);
+
+  // The T-87.8-22 restore lives HERE, not in close(): since 88-17 hosted the
+  // modal on <Modal> (Radix), Radix moves focus after the dialog unmounts, so a
+  // restore performed inside close() ran first and was then clobbered — the FAB
+  // ended up unfocused (caught by feedback-stacking.spec.ts in the first CI
+  // run). preventDefault() only when there is an invoker to restore to; with
+  // none, Radix's default is the right fallback.
+  const onCloseAutoFocus = useCallback((event: Event) => {
+    const invoker = invokerRef.current;
     invokerRef.current = null;
+    if (invoker && typeof invoker.focus === 'function') {
+      event.preventDefault();
+      invoker.focus();
+    }
   }, []);
 
   // Memoized so the context value keeps a stable identity across provider
@@ -126,8 +151,8 @@ export function FeedbackModalProvider({ children }: { children: ReactNode }) {
   // FeedbackButton instances) only re-render on an actual open/close/category
   // change, never on unrelated parent renders.
   const value = useMemo<FeedbackModalContextValue>(
-    () => ({ isOpen, category, open, close, setCategory }),
-    [isOpen, category, open, close],
+    () => ({ isOpen, category, open, close, onCloseAutoFocus, setCategory }),
+    [isOpen, category, open, close, onCloseAutoFocus],
   );
 
   return (

@@ -63,9 +63,15 @@ export default function RootLayout({ children }) {
                         the desktop FAB drive the SAME modal instance. The
                         modal itself stays mounted HERE at the layout root
                         (the <FeedbackButton /> below) — never inside the
-                        header dropdown, whose computed `translate` would
-                        capture a position:fixed .modal-overlay as its
-                        containing block. */}
+                        header dropdown. Originally that was a containing-block
+                        hazard: the dropdown's computed `translate` would
+                        capture a position:fixed overlay. Phase 88-17 (Req 9)
+                        moved the modal onto the shared, PORTALLED <Modal>, so
+                        that specific hazard is gone — but the mount point does
+                        NOT move, because the dropdown's closed state carries
+                        `pointer-events-none` (Header.js:176) and a modal
+                        rendered there would open inert. See
+                        FeedbackModalProvider.tsx for the full record. */}
                     <FeedbackModalProvider>
                       {/* 87.8-13 walkthrough F-10: classic sticky footer — the
                           WRAPPER is viewport-tall and main grows to fill, so on

@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { rsvpAPI } from '../../lib/api';
 import ClickableMemberName from './ClickableMemberName';
+import { Textarea } from '../../components/ui/Input';
 
 /**
  * RsvpSection - RSVP interface for a single event
@@ -118,18 +119,18 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
     yes: {
       label: "You're going!",
       textColor: 'text-status-success',
-      activeBg: '',
+      activeBg: 'bg-status-success-subtle',
       activeBorder: 'border-status-success',
-      hoverBg: '',
+      hoverBg: 'hover:bg-status-success-subtle',
       buttonText: 'Yes',
       sectionTitle: 'Going',
     },
     maybe: {
       label: "You're a maybe",
       textColor: 'text-status-warning',
-      activeBg: '',
+      activeBg: 'bg-status-warning-subtle',
       activeBorder: 'border-status-warning',
-      hoverBg: '',
+      hoverBg: 'hover:bg-status-warning-subtle',
       buttonText: 'Maybe',
       sectionTitle: 'Maybe',
     },
@@ -138,7 +139,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
       textColor: 'text-content-secondary',
       activeBg: 'bg-surface-elevated',
       activeBorder: 'border-line-strong',
-      hoverBg: '',
+      hoverBg: 'hover:bg-status-error-subtle',
       buttonText: 'No',
       sectionTitle: "Can't Make It",
     },
@@ -200,7 +201,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                   key={status}
                   onClick={() => handleStatusClick(status)}
                   disabled={!!submitting}
-                  className={`flex-1 px-3 py-2 text-sm font-medium active:opacity-75 transition-colors
+                  className={`flex-1 px-3 py-2 text-sm font-medium active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset
                     ${idx > 0 ? 'border-l border-line' : ''}
                     ${isActive
                       ? `${config.activeBg} ${config.activeBorder} border-2 text-content-primary`
@@ -223,7 +224,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
         {/* Note field */}
         {!isPastEvent && selectedStatus && (
           <div className="space-y-2">
-            <textarea
+            <Textarea
               value={note}
               onChange={(e) => {
                 if (e.target.value.length <= 500) {
@@ -232,7 +233,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
               }}
               placeholder="Add a note (optional)"
               rows={2}
-              className="w-full border border-line rounded-card px-3 py-2 text-sm bg-surface-input text-content-primary focus:outline-hidden focus:ring-2 ring-focus-ring resize-none"
+              className="resize-none"
             />
             <div className="flex items-center justify-between">
               <span className="text-xs text-content-muted">{note.length}/500</span>

@@ -1,6 +1,15 @@
 'use client';
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
-import { getContrastColor } from '../../lib/colorUtils';
+import {
+  getSubtitleStyle,
+  getTextStyle,
+  isDarkBackground,
+  resolveGroupBackgroundColor,
+  SUBTEXT_MUTED_ON_LIGHT,
+  SUBTEXT_ON_LIGHT,
+  TEXT_ON_DARK,
+  TEXT_ON_LIGHT,
+} from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { formatTime, formatWithTzAbbr } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
@@ -284,7 +293,7 @@ export default function CalendarListView({
         >
           <div className="space-y-3">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="border rounded-lg p-4 animate-pulse">
+              <div key={i} className="border border-line rounded-lg p-4 animate-pulse">
                 <div className="h-4 w-1/3 bg-surface-elevated rounded-sm mb-2" />
                 <div className="h-3 w-1/4 bg-surface-elevated rounded-sm" />
               </div>
@@ -376,7 +385,15 @@ const TodayDivider = forwardRef(function TodayDivider({ label }, ref) {
       aria-label={label}
       className="relative flex items-center justify-center py-2"
     >
-      <div className="absolute inset-x-0 top-1/2 border-t-2" aria-hidden="true" />
+      {/* DECISION Phase 88-27 (D-32 bucket B): the rule takes the NEUTRAL, chosen OVER
+          `border-content-link` at full strength (which is what 87.7 stripped from here, at 40%).
+          It is `aria-hidden` decoration and the pill beside it is already `bg-content-link` at
+          full strength — a 2px link-coloured line across the whole viewport would compete with the
+          thing it exists to frame. This is D-32's own "or `border-line` where the tint was purely
+          decorative" exception. It also closes a shim dependency 88-26's census could not see:
+          its lexer fires on a BARE border token, so `border-t-2` with no colour was invisible to
+          it, and 88-31 deletes that shim. Removing the colour re-opens both. */}
+      <div className="absolute inset-x-0 top-1/2 border-t-2 border-line" aria-hidden="true" />
       <span className="relative z-10 inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-content-link text-white shadow-theme-sm">
         {label}
       </span>
@@ -422,37 +439,46 @@ function DateGroup({ group, formatDayHeader, timezone, onEventClick }) {
  * view on first paint.
  */
 const EventRow = forwardRef(function EventRow({ event, timezone, onClick }, ref) {
-  const groupBgColor = event.Group?.background_color || '#ffffff';
+  // null when the group has no colour of its own (D-28).
+  const groupBgColor = resolveGroupBackgroundColor(event.Group?.background_color);
   const groupBgImage = event.Group?.background_image_url;
   const groupProfilePic = event.Group?.profile_picture_url;
 
   const hasBgImage = !!groupBgImage;
-  const titleColor = hasBgImage ? '#1f2937' : getContrastColor(groupBgColor);
-  const isDark = !hasBgImage && getContrastColor(groupBgColor) === '#ffffff';
+  // No image and no group colour: the row sits on the app's themed surface, so
+  // the SHARED fallback resolution owns it. This row's bespoke contrast maths
+  // below is computed against a coloured ground and produces dark-on-dark here.
+  const isThemed = !hasBgImage && !groupBgColor;
+  const isDark = !hasBgImage && !isThemed && isDarkBackground(groupBgColor);
 
-  const titleStyle = {
-    color: titleColor,
-    textShadow: hasBgImage
-      ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
-      : isDark
-        ? '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)'
-        : '1px 1px 2px rgba(255, 255, 255, 0.9)',
-    WebkitTextStroke: isDark ? '0.5px rgba(0, 0, 0, 0.9)' : 'none',
-  };
-  const subtitleColor = hasBgImage
-    ? '#4b5563'
-    : getContrastColor(groupBgColor) === '#ffffff'
-      ? 'rgba(255,255,255,0.9)'
-      : '#6b7280';
-  const subtitleStyle = {
-    color: subtitleColor,
-    textShadow: hasBgImage
-      ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
-      : isDark
-        ? '1px 1px 3px rgba(0, 0, 0, 0.8)'
-        : '1px 1px 2px rgba(255, 255, 255, 0.9)',
-    WebkitTextStroke: isDark ? '0.3px rgba(0, 0, 0, 0.9)' : 'none',
-  };
+  const titleStyle = isThemed
+    ? getTextStyle(false, null)
+    : {
+        // isDark already implies !hasBgImage, so the image case falls through
+        // to the dark pole: the row washes the image white at 0.85 below.
+        color: isDark ? TEXT_ON_DARK : TEXT_ON_LIGHT,
+        textShadow: hasBgImage
+          ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
+          : isDark
+            ? '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)'
+            : '1px 1px 2px rgba(255, 255, 255, 0.9)',
+        WebkitTextStroke: isDark ? '0.5px rgba(0, 0, 0, 0.9)' : 'none',
+      };
+  const subtitleStyle = isThemed
+    ? getSubtitleStyle(false, null)
+    : {
+        color: hasBgImage
+          ? SUBTEXT_ON_LIGHT
+          : isDark
+            ? 'rgba(255,255,255,0.9)'
+            : SUBTEXT_MUTED_ON_LIGHT,
+        textShadow: hasBgImage
+          ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
+          : isDark
+            ? '1px 1px 3px rgba(0, 0, 0, 0.8)'
+            : '1px 1px 2px rgba(255, 255, 255, 0.9)',
+        WebkitTextStroke: isDark ? '0.3px rgba(0, 0, 0, 0.9)' : 'none',
+      };
 
   const eventTitle = event.title || event.Game?.name || 'Game Night';
   const startTime = formatTime(event.start_date, timezone);
@@ -472,9 +498,9 @@ const EventRow = forwardRef(function EventRow({ event, timezone, onClick }, ref)
       }}
       role="button"
       tabIndex={0}
-      className="p-3 sm:p-4 border rounded-lg transition-all hover:shadow-md cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-content-link"
+      className="p-3 sm:p-4 border border-line rounded-lg transition-all hover:shadow-md cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 bg-surface-card"
       style={{
-        backgroundColor: groupBgColor,
+        ...(groupBgColor && { backgroundColor: groupBgColor }),
         ...safeBgImageStyle(groupBgImage),
         backgroundSize: 'cover',
         backgroundPosition: 'center',

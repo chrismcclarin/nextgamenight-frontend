@@ -21,17 +21,17 @@ const STATUS_CONFIG = {
   yes: {
     heading: "You're in!",
     messageTemplate: (name, date) => `See you at ${name} on ${date}.`,
-    accent: 'text-status-success',
+    accent: 'bg-status-success-subtle text-status-success',
     border: 'border-status-success',
-    iconBg: '',
+    iconBg: 'bg-status-success-subtle',
     iconColor: 'text-status-success',
   },
   maybe: {
     heading: 'Got it!',
     messageTemplate: (name, date) => `You're a maybe for ${name} on ${date}.`,
-    accent: 'text-status-warning',
+    accent: 'bg-status-warning-subtle text-status-warning',
     border: 'border-status-warning',
-    iconBg: '',
+    iconBg: 'bg-status-warning-subtle',
     iconColor: 'text-status-warning',
   },
   no: {
@@ -182,7 +182,7 @@ export default function RsvpPage() {
     return (
       <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
-          <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 bg-status-warning-subtle rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-status-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -212,7 +212,7 @@ export default function RsvpPage() {
   return (
     <div className="min-h-screen bg-surface-page flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-surface-card rounded-card shadow-theme-lg p-8 text-center">
-        <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+        <div className="w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center mx-auto mb-4">
           <svg className="w-8 h-8 text-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
           </svg>

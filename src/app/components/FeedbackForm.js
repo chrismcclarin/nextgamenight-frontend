@@ -2,6 +2,9 @@
 import { useState, useRef } from 'react';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { feedbackAPI } from '../../lib/api';
+import { DialogTitle } from '../../components/ui/dialog';
+import { Modal } from './Modal';
+import { Input, Textarea, SelectControl } from '@/components/ui/Input';
 
 const MAX_FILE_SIZE_MB = 2;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -15,6 +18,8 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
   const [screenshotError, setScreenshotError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  // 88-33 Task 4 (UAT row 291): initial-focus target — see the note at the Modal below.
+  const subjectInputRef = useRef(null);
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
 
@@ -112,61 +117,77 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
     }
   };
 
+  /* DECISION Phase 88-17 (Req 9): BOTH states are hosted on the shared <Modal>,
+     and they stay TWO distinct returns rather than being collapsed into one
+     modal with a conditional body. The success panel is a different surface: it
+     is header-less and self-dismissing (the submit handler's 2s timer calls
+     onClose), so giving it the form's header would put a close affordance on a
+     panel that is already closing itself, and merging the returns would tie the
+     two together for a future edit. Collapsing them is a decision, not a cleanup.
+
+     The success panel's "Thank You!" h2 is rendered as the DialogTitle — the
+     QRCodeModal.js idiom — so the header-less dialog still has an accessible
+     name (a Radix dialog without a DialogTitle has none, and warns). The form
+     state's title moves to <Modal.Header>, which drops it from 24px to the
+     20px/700 dialog-title contract (UI-SPEC §4.2); the STRING is unchanged
+     because e2e/feedback-stacking.spec.ts looks it up by exact text. */
   if (submitted) {
     return (
-      <div className="modal-overlay"
-           onClick={onClose}>
-        <div className="modal-content max-w-md w-full mx-4 p-6"
-             onClick={(e) => e.stopPropagation()}>
+      <Modal open onClose={onClose} className="max-w-md">
+        <Modal.Body>
           <div className="text-center">
             <div className="text-status-success text-5xl mb-4">✓</div>
-            <h2 className="text-2xl font-bold text-content-primary mb-2">Thank You!</h2>
+            <DialogTitle className="text-xl font-bold text-content-primary mb-2">Thank You!</DialogTitle>
             <p className="text-content-secondary">Your feedback has been submitted successfully.</p>
           </div>
-        </div>
-      </div>
+        </Modal.Body>
+      </Modal>
     );
   }
 
   return (
-    <div className="modal-overlay"
-         onClick={onClose}>
-      <div className="modal-content max-w-md w-full mx-4 p-6 max-h-[90vh] overflow-y-auto"
-           onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold text-content-primary">Report Bug or Suggest Feature</h2>
-          <button onClick={onClose} className="text-content-muted hover:text-content-primary text-2xl" aria-label="Close">
-            ×
-          </button>
-        </div>
-
+    /* 88-33 Task 4 (UAT row 291, fleet initial-focus policy): form-bearing modal — focus
+       opens on the SUBJECT input, not the Type select above it: the select ships
+       pre-defaulted ("Bug Report") and describing the issue is the form's task, so the
+       typing surface is the first MEANINGFUL input here. */
+    <Modal open onClose={onClose} className="max-w-md" initialFocusRef={subjectInputRef}>
+      <Modal.Header>Report Bug or Suggest Feature</Modal.Header>
+      <Modal.Body>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Type */}
+          {/* Type.
+              Phase 88-17 (Rule 2, SPEC Req 4): `htmlFor`/`id` added throughout
+              this form. The labels were rendered ADJACENT to their controls with
+              no association, so the select had NO accessible name at all — a
+              live axe `select-name` violation this plan's composed audit caught
+              (FeedbackModals.test.tsx). Real <label> associations are used
+              rather than `aria-label` so the visible text and the accessible
+              name cannot drift apart. */}
           <div>
-            <label className="block text-sm font-medium text-content-secondary mb-2">Type</label>
-            <select
+            <label htmlFor="feedback-form-type" className="block text-sm font-medium text-content-secondary mb-2">Type</label>
+            <SelectControl
+              id="feedback-form-type"
               value={type}
               onChange={(e) => setType(e.target.value)}
-              className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
               required
             >
               <option value="bug">Bug Report</option>
               <option value="suggestion">Suggestion</option>
               <option value="feature">Feature Request</option>
-            </select>
+            </SelectControl>
           </div>
 
           {/* Subject */}
           <div>
-            <label className="block text-sm font-medium text-content-secondary mb-2">
+            <label htmlFor="feedback-form-subject" className="block text-sm font-medium text-content-secondary mb-2">
               Subject <span className="text-red-500">*</span>
             </label>
-            <input
+            <Input
+              ref={subjectInputRef}
+              id="feedback-form-subject"
               type="text"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               placeholder="Brief description of the issue or suggestion"
-              className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring"
               required
               maxLength={200}
             />
@@ -174,15 +195,16 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-content-secondary mb-2">
+            <label htmlFor="feedback-form-description" className="block text-sm font-medium text-content-secondary mb-2">
               Description <span className="text-red-500">*</span>
             </label>
-            <textarea
+            <Textarea
+              id="feedback-form-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Please provide as much detail as possible..."
               rows={6}
-              className="w-full p-2 border border-line rounded-md text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring resize-none"
+              className="resize-none"
               required
               maxLength={2000}
             />
@@ -259,7 +281,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </Modal.Body>
+    </Modal>
   );
 }

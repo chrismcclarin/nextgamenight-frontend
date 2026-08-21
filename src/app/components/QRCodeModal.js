@@ -25,9 +25,19 @@ function QRCodeModal({ isOpen, onClose, url, title, onReset = null, showReset = 
   return (
     <Modal open={isOpen} onClose={onClose} size="sm">
       <Modal.Body className="relative">
+        {/* Delta review 2026-08-06 (MED): same 44px real-box idiom as Modal.tsx's
+            ModalHeader DialogClose — this headerless modal was the one fleet member
+            the D1 fix missed.
+            88-33 Task 3 (fork 6, UAT row 333): TWO corrections. (1) `leading-none` was
+            missing, so the glyph rode the `text-2xl` line-box and sat visibly LOWER than
+            the fleet's — that is the walk's "sits LOWER" sighting, and it is why the
+            class is here rather than assumed from the shared idiom. (2) The insets move
+            from top-1/right-1 to the SAME edge the fleet header's box lands on
+            (`px-3 md:px-6` / `py-2 md:py-3`), so a headerless modal's close is not on a
+            different edge from every other modal's. */}
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 text-content-muted hover:text-content-primary text-2xl"
+          className="absolute top-2 right-3 md:top-3 md:right-6 inline-flex min-h-11 min-w-11 items-center justify-center text-content-muted hover:text-content-primary text-2xl leading-none"
           aria-label="Close"
         >
           &times;

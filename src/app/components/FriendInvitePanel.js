@@ -6,8 +6,17 @@ import { QRCodeSVG } from 'qrcode.react';
 import { toast } from 'sonner';
 import { UserChip } from '@/components/ui/UserChip';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { DialogClose, DialogTitle } from '../../components/ui/dialog';
+import { Modal } from './Modal';
+import { Input } from '@/components/ui/Input';
 
-function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = false }) {
+// `openedFrom` is the entry point this panel was opened from: 'create' is the
+// auto-open immediately after a group is created (createGroup.js) and swaps in
+// the context copy of UI-SPEC §6.3; every other entry point keeps the generic
+// header. Deliberately a plain comment, NOT a JSDoc `@param` block — under
+// checkJs a partial @param list becomes the component's whole props type and
+// every other prop then fails to typecheck at the call sites.
+function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = false, openedFrom = 'default' }) {
     const { user } = useUser();
     // FE-18 cutover: exclude-self keys on the resolved Users.id UUID (async).
     const { selfUuid } = useSelfIdentity();
@@ -115,6 +124,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
 
         let successCount = 0;
         let failCount = 0;
+        let alreadyCount = 0;
 
         for (const friendUserId of selectedFriends) {
             // Skip anyone already in the group; otherwise invite by user_id.
@@ -123,12 +133,23 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
             try {
                 await invitesAPI.sendFriendInvite(group.id, friendUserId);
                 successCount++;
-            } catch {
-                failCount++;
+            } catch (err) {
+                // Wave-12 review MED #9: fork-F contract — a terminal 409
+                // (already a member / invite pending) is not a FAILURE; count
+                // it separately instead of collapsing into failCount.
+                const code = err?.code;
+                const message = String(err?.message || '').toLowerCase();
+                const isTerminal409 = code === 'already_member' || code === 'invite_pending'
+                    || (err?.status === 409 && (message.includes('already a member') || message.includes('pending invite')));
+                if (isTerminal409) {
+                    alreadyCount++;
+                } else {
+                    failCount++;
+                }
             }
         }
 
-        setInviteResult({ successCount, failCount });
+        setInviteResult({ successCount, failCount, alreadyCount });
         setSelectedFriends(new Set());
         setInviting(false);
 
@@ -186,10 +207,15 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                 // User not found or search failed — no prompt, that's fine
             }
         } catch (err) {
-            const message = err.message || '';
-            if (message.includes('already a member')) {
+            // Wave-12 review MED #9: migrated onto the fork-F contract — branch
+            // on the BE envelope code first (88-34 ERROR_REGISTRY), keep the
+            // prose match as the pre-88-34-deploy fallback (a code-less wire
+            // 409 arrives as code 'conflict' via apiFetch's statusToCode).
+            const code = err?.code;
+            const message = String(err?.message || '').toLowerCase();
+            if (code === 'already_member' || message.includes('already a member')) {
                 setEmailError('This person is already a member of the group');
-            } else if (message.includes('pending invite') || message.includes('already been invited')) {
+            } else if (code === 'invite_pending' || message.includes('pending invite') || message.includes('already been invited')) {
                 setEmailError('This person already has a pending invite');
             } else {
                 setEmailError('Failed to send invite');
@@ -254,7 +280,28 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
         });
     };
 
-    if (!open) return null;
+    /* DECISION Phase 88-15 (SPEC Req 7 / §6.3, owner deferral 2026-08-04): the
+       create path gets its OWN header and lead-in; every other entry point keeps
+       the generic "Invite Members". The owner himself misread the auto-opened
+       panel as an accidental click-through because a generic header gives no
+       hint it is a follow-on step of "create a group".
+
+       The rejected alternative was changing the header everywhere (one string,
+       no prop) — it loses because the copy only makes sense straight after a
+       creation, and reads as a non-sequitur from ManageMembers / userHome. The
+       auto-open itself is deliberately KEPT (owner: "keep the flow, fix the
+       legibility") — removing it is a decision, not a cleanup.
+
+       T-88-15-01: `group.name` is user-supplied and is interpolated into the
+       header. It is rendered as a JSX text child, so React escapes it. Never
+       build this header through `dangerouslySetInnerHTML` or an HTML string. */
+    const fromCreate = openedFrom === 'create' && Boolean(group?.name);
+    const headerTitle = fromCreate
+        ? `${group.name} is live — who's in?`
+        : 'Invite Members';
+    const headerLeadIn = fromCreate
+        ? 'Invite the people you actually play with. You can always add more later.'
+        : (group?.name ? `to ${group.name}` : null);
 
     const availableFriends = friends.filter(f => f.friend);
     const selectableCount = availableFriends.filter(f => !groupMemberIds.includes(f.friend.id)).length;
@@ -268,9 +315,12 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                         </h3>
 
                         {loadingFriends || loadingMembers ? (
-                            <div className="flex items-center gap-2 text-content-muted py-6 justify-center">
-                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent" />
-                                <span>Loading...</span>
+                            /* 88-33 Task 1: generic "Loading..." named per the walk's
+                               in-page-loading-states row — the heading above says what section
+                               this is, but the status itself said nothing to a screen reader. */
+                            <div role="status" aria-label="Loading your friends" className="flex items-center gap-2 text-content-muted py-6 justify-center">
+                                <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent" />
+                                <span>Loading your friends...</span>
                             </div>
                         ) : availableFriends.length === 0 ? (
                             <div className="text-center py-6">
@@ -300,11 +350,13 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                             }`}
                                         >
                                             <input
+                                                id={`invite-friend-${friend.id}`}
+                                                name={`invite-friend-${friend.id}`}
                                                 type="checkbox"
                                                 checked={isInGroup || selectedFriends.has(friend.id)}
                                                 disabled={isInGroup}
                                                 onChange={() => toggleFriend(friend.id)}
-                                                className="h-4 w-4 rounded-sm border-line text-accent focus:ring-focus-ring disabled:opacity-40"
+                                                className="h-4 w-4 rounded-sm border-line text-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 disabled:opacity-40"
                                             />
                                             <div className="flex-1 min-w-0">
                                                 <p className={`font-medium truncate ${isInGroup ? 'text-content-muted' : 'text-content-primary'}`}>
@@ -329,10 +381,11 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                 <button
                                     onClick={handleBulkInvite}
                                     disabled={selectedFriends.size === 0 || inviting}
+                                    aria-busy={inviting || undefined}
                                     className="w-full btn btn-primary py-2.5 flex items-center justify-center gap-2"
                                 >
                                     {inviting && (
-                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                                        <div aria-hidden="true" className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
                                     )}
                                     {inviting
                                         ? 'Sending...'
@@ -342,15 +395,31 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                 </button>
 
                                 {inviteResult && (
+                                    /* DECISION Phase 88-27 (D-32 buckets A/B): only the first branch
+                                       is a censused tint row. The other two were converged anyway,
+                                       chosen OVER touching just the censused one — that would have
+                                       left `bg-amber-50 text-amber-700 border-amber-200` and
+                                       `bg-red-50 …` beside a token-based sibling, and those raw
+                                       literals are light-only values on a card that flips to
+                                       `#232d3e`, so they were already wrong in dark mode. The
+                                       IDENTICAL bulk-invite result block at friends/page.js:740-743
+                                       already uses status tokens on all three branches, so this
+                                       converges the outlier onto shipped precedent rather than
+                                       inventing a treatment. Reverting to raw palette is a
+                                       decision, not a cleanup. */
                                     <div className={`mt-2 p-3 rounded-lg text-sm font-medium ${
                                         inviteResult.failCount === 0
-                                            ? 'text-status-success border border-line'
+                                            ? 'bg-status-success-subtle text-status-success border border-status-success'
                                             : inviteResult.successCount > 0
-                                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                : 'bg-red-50 text-red-700 border border-red-200'
+                                                ? 'bg-status-warning-subtle text-status-warning border border-status-warning'
+                                                : 'bg-status-error-subtle text-status-error border border-status-error'
                                     }`}>
                                         {inviteResult.failCount === 0
-                                            ? `Invited ${inviteResult.successCount} friend${inviteResult.successCount !== 1 ? 's' : ''}!`
+                                            ? (inviteResult.alreadyCount > 0
+                                                ? (inviteResult.successCount > 0
+                                                    ? `Invited ${inviteResult.successCount} — ${inviteResult.alreadyCount} already invited or a member`
+                                                    : 'Everyone selected was already invited or a member')
+                                                : `Invited ${inviteResult.successCount} friend${inviteResult.successCount !== 1 ? 's' : ''}!`)
                                             : inviteResult.successCount > 0
                                                 ? `Invited ${inviteResult.successCount}, ${inviteResult.failCount} failed`
                                                 : 'Failed to send invites. Please try again.'}
@@ -371,11 +440,17 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
 
                     {/* Email invite section */}
                     <div className="p-5">
-                        <h3 className="text-sm font-semibold text-content-muted uppercase tracking-wide mb-3">
+                        <h3 id="invite-by-email-heading" className="text-sm font-semibold text-content-muted uppercase tracking-wide mb-3">
                             Invite by Email
                         </h3>
                         <form onSubmit={handleEmailInvite} className="flex gap-2">
-                            <input
+                            {/* 88-33 Task 8 (fork 5): id/name for the autofill heuristic; the
+                                visible "Invite by Email" heading IS the label — associated via
+                                aria-labelledby rather than duplicating it as a second label. */}
+                            <Input
+                                id="invite-email"
+                                name="invite-email"
+                                aria-labelledby="invite-by-email-heading"
                                 type="email"
                                 value={email}
                                 onChange={(e) => {
@@ -386,7 +461,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                 placeholder="user@example.com"
                                 required
                                 disabled={emailLoading}
-                                className="flex-1 px-3 py-2.5 border border-line rounded-lg text-sm text-content-primary bg-surface-input focus:outline-hidden focus:ring-2 focus:ring-focus-ring focus:border-accent disabled:opacity-50"
+                                className="flex-1 disabled:opacity-50"
                             />
                             <button
                                 type="submit"
@@ -445,9 +520,9 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                     Share QR Code
                                 </h3>
                                 {tokenLoading ? (
-                                    <div className="flex items-center gap-2 text-content-muted py-6 justify-center">
-                                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent" />
-                                        <span>Loading...</span>
+                                    <div role="status" aria-label="Loading QR code" className="flex items-center gap-2 text-content-muted py-6 justify-center">
+                                        <div aria-hidden="true" className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent" />
+                                        <span>Loading QR code...</span>
                                     </div>
                                 ) : inviteUrl ? (
                                     <div className="flex flex-col items-center">
@@ -486,62 +561,78 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
         </>
     );
 
+    /* DECISION Phase 88-15 (SPEC Req 9): this panel is hosted on the shared
+       <Modal> primitive, and its old bespoke backdrop/panel tiers (a hand-rolled
+       `fixed inset-0 bg-black/50` backdrop one step above `.modal-overlay`, plus
+       a slide-in sheet one step above that) are NOT re-created as custom z-index
+       classes on the Radix content.
+
+       This component was the twelfth bespoke modal and the one the Req 9
+       `.modal-overlay` class census structurally CANNOT see — it was bespoke via
+       its own backdrop, not the shared class — which is why the migration is
+       proven by explicit dialog-role / Esc / focus-trap pins in
+       FriendInvitePanel.test.tsx rather than by the grep gate.
+
+       RESOLVED STACKING ORDER (verified, not assumed — this panel deliberately
+       sits ABOVE other overlays and BELOW the tooltip tier):
+         - `.modal-overlay` is `z-index: 50` and renders inside the React tree
+           (globals.css:1075-1078). ManageMembers.js:645 opens this panel as a
+           sibling of that overlay, and grouplist/userHome open it standalone.
+         - Radix portals this dialog to the END of <body>, so at an equal
+           z-index 50 it still paints above `.modal-overlay` purely by DOM order.
+           The stacking relationship the old bespoke value bought is therefore
+           preserved structurally, without a bespoke tier.
+         - HeatmapTooltip.js:334-340 pins tooltips at z-index 100 as "always
+           topmost" (a shipped Plan 72-02 UAT decision). That tier is untouched
+           and still clears this dialog.
+
+       The rejected alternative was porting the old numbers onto <Modal> via
+       `className`: it re-introduces a bespoke tier the rest of the modal fleet
+       does not have, and it is unnecessary because the portal already resolves
+       the order. Changing this is a decision, not a cleanup.
+
+       The right-hand slide-in sheet chrome is deliberately replaced by the
+       fleet's centered dialog chrome (the panel keeps its `max-w-md` width).
+       Reverting to a sheet is a decision, not a cleanup. */
     return (
-        <>
-            {/* Backdrop — z-60 so it stacks above .modal-overlay (z-50) when
-                opened from inside another modal (e.g. ManageMembers). Clicking
-                the backdrop closes only this panel; the parent modal's overlay
-                no longer receives the click. */}
-            <div
-                className="fixed inset-0 bg-black/50 z-60 transition-opacity"
-                onClick={onClose}
-            />
-
-            {/* Sliding panel — z-70 above its own backdrop. */}
-            <div className="fixed inset-y-0 right-0 w-full max-w-md bg-surface-card shadow-xl z-70 flex flex-col animate-slide-in-right">
-                {/* Header */}
-                <div className="flex items-center justify-between p-5 border-b border-line">
-                    <div>
-                        <h2 className="text-xl font-bold text-content-primary">Invite Members</h2>
-                        {group?.name && (
-                            <p className="text-sm text-content-muted mt-0.5">to {group.name}</p>
-                        )}
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="text-content-muted hover:text-content-secondary text-2xl leading-none p-1"
-                    >
-                        &times;
-                    </button>
+        <Modal open={open} onClose={onClose} className="max-w-md">
+            {/* Freeform header (the QRCodeModal idiom): <Modal.Header> renders a
+                single-line DialogTitle, and this panel's header is a two-line
+                stack. The chrome mirrors <Modal.Header> 1:1 so it matches the
+                fleet, and the title is still the DialogTitle so Radix keeps
+                auto-wiring `aria-labelledby`. */}
+            <div className="flex items-start justify-between gap-3 border-b border-border px-6 py-5">
+                <div className="min-w-0">
+                    <DialogTitle className="text-xl font-bold text-content-primary">
+                        {headerTitle}
+                    </DialogTitle>
+                    {headerLeadIn && (
+                        <p className="text-sm text-content-muted mt-0.5">{headerLeadIn}</p>
+                    )}
                 </div>
-
-                {/* Body */}
-                <div className="flex-1 overflow-y-auto">
-                    {body}
-                </div>
-
-                {/* Footer */}
-                <div className="p-4 border-t border-line">
-                    <button
-                        onClick={onClose}
-                        className="w-full btn btn-secondary py-2.5"
-                    >
-                        Done
-                    </button>
-                </div>
+                {/* 88-CODE-REVIEW D1 (2026-08-06): same 44px real-box fix as Modal.tsx's
+                    ModalHeader DialogClose — this is the one freeform copy of that idiom. */}
+                <DialogClose
+                    aria-label="Close"
+                    className="inline-flex min-h-11 min-w-11 items-center justify-center shrink-0 text-2xl leading-none text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                    &times;
+                </DialogClose>
             </div>
 
-            {/* Slide-in animation */}
-            <style jsx>{`
-                @keyframes slideInRight {
-                    from { transform: translateX(100%); }
-                    to { transform: translateX(0); }
-                }
-                .animate-slide-in-right {
-                    animation: slideInRight 0.25s ease-out;
-                }
-            `}</style>
-        </>
+            {/* p-0: every body section below carries its own `p-5`. */}
+            <Modal.Body className="p-0 md:p-0">{body}</Modal.Body>
+
+            <Modal.Footer>
+                <Modal.Action
+                    variant="secondary"
+                    onClick={onClose}
+                    className="w-full py-2.5"
+                >
+                    Done
+                </Modal.Action>
+            </Modal.Footer>
+        </Modal>
     );
 }
 

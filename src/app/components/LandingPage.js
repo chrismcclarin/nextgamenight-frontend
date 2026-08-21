@@ -28,8 +28,16 @@ export default function LandingPage() {
             </a>
             <a
               href="/api/auth/login?connection=google-oauth2"
-              className="bg-white/20 hover:bg-white/30 active:opacity-75 border border-white/30 text-white px-8 py-4 rounded-btn text-lg font-semibold transition-all w-full sm:w-auto text-center flex items-center justify-center gap-3"
+              className="bg-white/20 hover:bg-white/30 active:opacity-75 border border-white/30 text-white px-8 py-4 rounded-btn text-lg font-semibold transition-all w-full sm:w-auto text-center flex items-center justify-center gap-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
             >
+              {/* DECISION Phase 88-22 (Req 2): the four fills below stay RAW,
+                  chosen OVER converting them to semantic tokens with the rest of
+                  this file. They are Google's LOGO ART — the brand blue, green,
+                  yellow and red that Google's sign-in branding guidelines
+                  require be reproduced exactly, in every theme. This is the same
+                  exemption class as DieLogo.js, which the SPEC already names.
+                  Tokenizing them would recolour a third party's trademark on a
+                  surface tied to our OAuth verification. Not a cleanup. */}
               <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                 <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -49,7 +57,7 @@ export default function LandingPage() {
             Everything your group needs
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="card p-6 hover:shadow-theme-md transition-all border border-line hover:border-line-accent">
+            <div className="card p-3 md:p-6 hover:shadow-theme-md transition-all border border-line hover:border-line-accent">
               <div className="text-4xl mb-4">🎲</div>
               <h3 className="text-xl font-bold mb-2 text-content-primary">Track Sessions</h3>
               <p className="text-content-secondary">
@@ -57,7 +65,7 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="card p-6 hover:shadow-theme-md transition-all border border-line hover:border-line-accent">
+            <div className="card p-3 md:p-6 hover:shadow-theme-md transition-all border border-line hover:border-line-accent">
               <div className="text-4xl mb-4">👥</div>
               <h3 className="text-xl font-bold mb-2 text-content-primary">Gather Your Crew</h3>
               <p className="text-content-secondary">
@@ -65,7 +73,7 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="card p-6 hover:shadow-theme-md transition-all border border-line hover:border-line-accent">
+            <div className="card p-3 md:p-6 hover:shadow-theme-md transition-all border border-line hover:border-line-accent">
               <div className="text-4xl mb-4">⭐</div>
               <h3 className="text-xl font-bold mb-2 text-content-primary">Rate &amp; Remember</h3>
               <p className="text-content-secondary">

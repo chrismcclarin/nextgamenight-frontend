@@ -11,6 +11,11 @@ import {
 } from '../../lib/schemas/prompts';
 import KebabMenu from './KebabMenu';
 import StartPollModal from './StartPollModal';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Button } from '../../components/ui/Button';
+import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
+import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { toast } from 'sonner';
 
 /**
  * OpenPollsList — Phase 71.2 (POLL-01 / D-UI-01..04)
@@ -38,7 +43,7 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
   // (F-826: 2x → 1x). Role gate mirrors the parent's pending exclusion (the
   // backend GET /prompts/open requires active membership) and is Boolean-wrapped
   // so `enabled` is never undefined.
-  const { data, isPending } = useQuery({
+  const openPollsQuery = useQuery({
     queryKey: promptKeys.openPolls(groupId),
     queryFn: softFailPromptQueryFn(
       openPromptsSchema,
@@ -49,8 +54,17 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
     enabled: Boolean(groupId) && Boolean(userRole) && userRole !== 'pending',
   });
 
+  const { data, isPending } = openPollsQuery;
   const loading = isPending;
   const prompts = data?.prompts || [];
+
+  /* DECISION Phase 88-18 (Req 6 / T-88-18-01, UI-SPEC 9.2): a HARD fetch failure now renders the
+     shared fetch-error treatment instead of falling through to the empty state. `softFailPromptQueryFn`
+     only soft-fails a PARSE failure to EMPTY_OPEN_PROMPTS — a network/4xx/5xx rejection still rejects,
+     leaving `data` undefined and `prompts` at [], which used to print "no active check-ins" at someone
+     whose request had failed. Empty and failed are different facts and get different surfaces; do not
+     re-merge these two branches. */
+  const pollsErrorState = useFetchErrorState(openPollsQuery);
 
   // Post-write cache invalidation replaces the old loadPrompts() refetch — keeps
   // the open-polls list fresh after a direct-API write (A1/A4).
@@ -70,18 +84,55 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
       // GET /prompts/open query refetches and drops it from the list.
       await invalidateOpenPolls();
     } catch (err) {
-      const msg = err?.message || 'Unknown error';
-      // Match the existing PromptScheduleManager pattern (alert on close-action
-      // failure). KebabMenu has already closed by this point.
-      // eslint-disable-next-line no-alert
-      alert(`Failed to end check-in: ${msg}`);
+      /* No `console.error` here on purpose: this file is NOT on `.eslintrc.json`'s legacy
+         `no-console: off` allow-list, and adding it to that list to keep a log line would widen
+         a deliberate deny. The failure is already reported to the person by the toast below and
+         to Sentry by the global handler. */
+      /* DECISION Phase 88-25 (Req 14 / Req 11, DEF-88-16-01, T-88-25-01): this is a toast with
+         DERIVED copy, chosen OVER the native browser alert with an interpolated upstream message that
+         shipped here. Three defects in one line: a browser alert is unstyled and blocks the page;
+         the raw upstream message was painted at the user (ASVS V7); and it was one of the six
+         native-alert sites DEF-88-16-01 censused as invisible to Req 11's confirm-only gate. (The
+         literal calls are not written out here, comment included — those gates are plain greps
+         and do not exempt comments; same convention as 88-11's marker in gameDetail.)
+
+         It no longer "matches the existing PromptScheduleManager pattern" as the old comment
+         said — that file still has two native alerts of its own and is NOT in this plan's scope.
+         DEF-88-16-01 tracks the remaining four. Do not restore the alert for consistency with
+         them; the debt runs the other way. */
+      toast.error(
+        getFetchErrorMessage(err, {
+          fallback: "We couldn't end that check-in. Please try again.",
+          // 88-CODE-REVIEW D2: 'conflict' ADDED, 'forbidden' KEPT — the remedy check
+          // flagged that replacing this map would silently drop the forbidden copy
+          // (a real, reachable 403 with no test pin at the time). The pins live in
+          // useFetchErrorState.test.tsx: a mechanism pin over an identical byCode
+          // literal, plus a SOURCE pin asserting this file still carries both arms
+          // (delta-review correction 2026-08-06 — the mechanism pin alone could not
+          // see this map drift). The 409 body can also read "Poll is already
+          // converted"; the closed copy is the ratified approximate for both.
+          byCode: {
+            conflict: 'This check-in is already closed.',
+            forbidden: 'Only the poll creator and group admins can end a check-in.',
+          },
+        })
+      );
     }
   };
 
+  const showEmptyState = !loading && !pollsErrorState.showError && prompts.length === 0;
+
   return (
     <div>
-      {canCreate && (
-        /* DECISION Phase 87.8 (D-13/D-14/AF-2): per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor — the global floor was considered and REJECTED because it would silently distort ~15 shipped compact/icon `.btn` sites (AF-2, e.g. BrowseMoreModal's 32x32 squares); 44px chosen OVER Material's 48dp, surfaced and consciously declined (D-14). The global `.btn` sizing question (all 210 sites) stays with Phase 88 (DEF-1) — this is a decision, not an oversight. No `min-w-11`: this wide text button already exceeds 44px rendered width (151px measured). */
+      {/* DECISION Phase 88-18 (Req 6): this header CTA is SUPPRESSED while the empty state is
+          showing, chosen OVER rendering both — the EmptyState carries the very same
+          "+ Start a check-in" action six lines below it, and two identical primary buttons a
+          finger-width apart is noise on a 375px phone. It is NOT suppressed while loading or
+          erroring, so the action never disappears from under someone mid-render. grouplist.js
+          deliberately keeps BOTH, because its button lives in a persistent panel header rather
+          than directly above the list body. Restoring the unconditional render is a decision. */}
+      {canCreate && !showEmptyState && (
+        /* DECISION Phase 87.8 (D-13/D-14/AF-2): per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor — the global floor was considered and REJECTED because it would silently distort ~15 shipped compact/icon `.btn` sites (AF-2, e.g. BrowseMoreModal's 32x32 squares); 44px chosen OVER Material's 48dp, surfaced and consciously declined (D-14). The global `.btn` sizing question (all 210 sites) stays with Phase 88 (DEF-1) — this is a decision, not an oversight. No `min-w-11`: this wide text button already exceeds 44px rendered width (151px measured).  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup. */
         <button
           type="button"
           onClick={() => setShowStartPoll(true)}
@@ -93,11 +144,33 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
 
       {loading ? (
         <p className="text-content-muted text-sm py-4 text-center">Loading check-ins...</p>
+      ) : pollsErrorState.showError ? (
+        <FetchErrorBanner
+          state={pollsErrorState}
+          title="We couldn't load the check-ins"
+          reportContext="Open availability check-ins list (group page)"
+        />
       ) : prompts.length === 0 ? (
-        // D-UI-03: unified empty-state copy for ALL roles (admin/member alike).
-        <p className="text-content-muted text-sm py-8 text-center">
-          No active check-ins. Start one to find a time that works for everyone.
-        </p>
+        // D-UI-03: unified empty-state COPY for ALL roles (admin/member alike);
+        // only the CTA is role-gated, and that gate stays here at the call site.
+        <EmptyState
+          icon="Vote"
+          heading="No check-ins running"
+          body="Start one and everyone picks the nights that work — you'll see the overlap."
+          action={
+            canCreate ? (
+              /* 44px floor carried per-CTA, matching the 87.8 D-13/D-14 marker on the
+                 header button above — same action, same touch target. */
+              <Button
+                variant="primary"
+                className="min-h-11"
+                onClick={() => setShowStartPoll(true)}
+              >
+                + Start a check-in
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <ul className="space-y-2">
           {prompts.map((p) => (

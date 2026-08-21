@@ -119,6 +119,19 @@ describe('GAP6 — retry predicate truth table (D-13, T-84-08)', () => {
     expect(shouldRetry(0, new ApiError('x', 'gone', 410))).toBe(false);
   });
 
+  // 88-33 Task 2 / Fork F: one dedicated row PER new group-invite 409 code
+  // (88-34 Task 4's ERROR_REGISTRY entries). A verified-terminal conflict is
+  // never retried — 88-CODE-REVIEW D2. Deliberately NOT folded into the
+  // `it.each` above: these two are the codes the plan requires proof for, and a
+  // row that disappears into a shared list is a row nobody notices losing.
+  it('never retries already_member (409 terminal conflict — D2)', () => {
+    expect(shouldRetry(0, new ApiError('x', 'already_member', 409))).toBe(false);
+  });
+
+  it('never retries invite_pending (409 terminal conflict — D2)', () => {
+    expect(shouldRetry(0, new ApiError('x', 'invite_pending', 409))).toBe(false);
+  });
+
   it('retries a transient failure at most once', () => {
     const networkErr = new ApiError('down', 'network', 0);
     expect(shouldRetry(0, networkErr)).toBe(true);

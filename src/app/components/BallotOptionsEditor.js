@@ -35,7 +35,16 @@ export default function BallotOptionsEditor({ ballotOptions, setBallotOptions, b
               onClick={() => {
                 setBallotOptions(ballotOptions.filter((_, i) => i !== index));
               }}
-              className="text-status-error hover:text-status-error text-lg px-2 py-1 shrink-0"
+              className="text-status-error hover:text-status-error text-lg px-2 py-1 shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              /* DECISION Phase 88-28 (Req 4, UI-SPEC §7.3): the `aria-label` is the accessible
+                 name and the `title` is KEPT only for the desktop tooltip — a bare `title` does
+                 NOT satisfy §7.3 (not reliably exposed by screen readers, invisible on touch).
+                 The name states the ACTION and its object, not the glyph. This was the ONLY
+                 unnamed icon-only control left in the repo when 88-28 swept: the two `&times;`
+                 buttons SPEC Req 4 enumerated (createEvent, PromptScheduleManager) had already
+                 been removed by the 88-16/88-17 Modal migrations. Dropping either attribute —
+                 or "deduplicating" them to one — is a decision, not a cleanup. */
+              aria-label={`Remove game option ${index + 1}`}
               title="Remove option"
             >
               &times;

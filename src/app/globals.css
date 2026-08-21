@@ -89,6 +89,37 @@
    the pinned ^4.3.3 (landed 4.1). */
 @source not '../lib/**/*.test.{js,ts,jsx,tsx}';
 @source not '../lib/__fixtures__';
+/* DECISION Phase 88-29 (Req 19): the SAME exclusion for the other two globs, which the 87.7
+   block above closed only for `../lib/**`. The hazard it describes was not hypothetical and was
+   not confined to lib — MEASURED on this tree, before these two lines existed, a production
+   build shipped:
+
+     .bg-status-error\/10{background-color:var(--color-error)}
+     .bg-status-error\/10{background-color:color-mix(in oklab,var(--color-error) 10%,transparent)}
+
+   Its ONLY source in the repo is `src/app/tintTreatment.test.ts`, the Req 17 guard written to
+   prove that class is never used. So writing the proof shipped the thing being disproved — and
+   it shipped in exactly the two-branch form 87.7 D-18 stripped the token to avoid: an
+   alpha-DROPPING fallback that paints a solid status-coloured block, plus a `color-mix()`
+   branch. Dead CSS today (nothing applies the class), which is why nobody noticed.
+
+   Found by the two-sided guard this plan armed — `scripts/css-bundle-guard.mjs`, whose whole
+   job is this leak class. Verified with `scripts/tw4-css-diff.mjs` (87.7's own review tool)
+   rather than asserted: adding these two lines drops 28 selectors and 3,793 bytes, ADDS
+   nothing (ONLY-IN-B: 0), and every one of the 28 was checked token-exact against non-test
+   source and is unused there. The list is all test fixtures — `border-[tblrxy]`,
+   `bg-status-error/10`, `border-status-error/30`, eleven `focus:*` probe utilities,
+   `h-11`/`isolate`/`border-solid`/`translate-y-1/2` (source uses `min-h-11` and
+   `-translate-y-1/2`, which are different classes and still emit) — plus `.paused`, which came
+   from a `animation-play-state: paused` line in `focusAndMotionTreatment.test.ts`'s docblock.
+   The differ's CHANGED section is its own documented duplicate-selector AGGREGATION ordering,
+   not a declaration change; `translate-y-[-50%]`, `min-h-11`, `rounded-btn`,
+   `bg-surface-accent-subtle` and `ring-white/15` were each confirmed still emitted after.
+
+   Deleting either line re-opens the leak with no build error and no visible diff in the
+   `@source` block above. That is a decision, not a cleanup. */
+@source not './**/*.test.{js,ts,jsx,tsx}';
+@source not '../components/**/*.test.{js,ts,jsx,tsx}';
 
 /* ===== TAILWIND v4: DARK VARIANT =====
    Replaces the JS config's `darkMode: 'class'`. `next-themes` toggles the class on <html>.
@@ -122,10 +153,22 @@
      converted back from OKLCH — after Plan 02 replaced node_modules, that capture is the ONLY
      surviving source of the v3 values.
 
-     THIS BLOCK IS DELIBERATELY REVERSIBLE AND PHASE 88 OWNS DROPPING IT. It is a migration
-     compatibility surface, not a design decision about what colour anything should be — Phase 88's
-     colour redesign deletes it in one block as an intentional act. Removing it earlier, or
-     trimming "unused-looking" keys out of it, is a VISUAL CHANGE, not a cleanup.
+     SUPERSEDED BY PHASE 88 (D-31) — READ THIS BEFORE ACTING ON ANYTHING BELOW. This paragraph
+     used to say "THIS BLOCK IS DELIBERATELY REVERSIBLE AND PHASE 88 OWNS DROPPING IT... Phase 88's
+     colour redesign deletes it in one block as an intentional act." PHASE 88 DECIDED THE OPPOSITE.
+     The ruling is SHRINK, THEN KEEP THE RESIDUE: Req 2's token migration retires most raw-palette
+     USAGE at the call sites, and what remains pinned here is then KEPT and re-read as the app's
+     DESIGNED PALETTE — no longer migration debt, and no longer scheduled for deletion by anyone.
+
+     REJECTED ALTERNATIVE, recorded because it is the thing a future reader will reach for: a
+     deliberate OKLCH recolour of the palette. Not rejected forever — DEFERRED to after Phase 88.3
+     (which owns light mode), on the reasoning that the recolour gets strictly cheaper once Req 2
+     has made the call sites token-driven, because at that point it is a token-value change rather
+     than a sweep across 38 files. Doing it before that inverts the cost.
+
+     SO: DELETING THIS BLOCK IS NOW A DECISION, NOT A CLEANUP — and it is a decision that no
+     currently-scheduled phase is authorised to take. Trimming "unused-looking" keys out of it is
+     still a VISUAL CHANGE, exactly as before.
 
      TRAP FOR FUTURE PHASES — the one thing you would not otherwise infer: this block pins only the
      keys censused at the time of writing. A NEW raw-palette class introduced later — an unlisted
@@ -275,6 +318,10 @@
   --color-surface-nav-hover: var(--color-bg-nav-hover);
   --color-surface-header: var(--color-bg-header);
   --color-surface-header-hover: var(--color-bg-header-hover);
+  /* Phase 88-04 (D-15 / UI-SPEC §9.1): the EmptyState glyph circle's accent tint. Bridged like
+     every other surface — theme key here, runtime property `--color-bg-accent-subtle` in the
+     :root/.dark blocks, so the two names never collide. */
+  --color-surface-accent-subtle: var(--color-bg-accent-subtle);
 
   /* content   (tailwind.config.js:41-48) */
   --color-content-primary: var(--color-text-primary);
@@ -327,6 +374,17 @@
   --color-status-success: var(--color-success);
   --color-status-error: var(--color-error);
   --color-status-warning: var(--color-warning);
+
+  /* status tints (Phase 88 D-33) -- 6 collision keys, aliased. These resolve through the bare
+     `--status-*-subtle` aliases in the shadcn bridge block below, NOT through their own names;
+     see the DECISION marker at those aliases for why a direct self-reference is not an option.
+     No `info` entry: D-33 forbids a fifth status family. */
+  --color-status-success-subtle: var(--status-success-subtle);
+  --color-status-success-subtle-hover: var(--status-success-subtle-hover);
+  --color-status-error-subtle: var(--status-error-subtle);
+  --color-status-error-subtle-hover: var(--status-error-subtle-hover);
+  --color-status-warning-subtle: var(--status-warning-subtle);
+  --color-status-warning-subtle-hover: var(--status-warning-subtle-hover);
 
   /* focus     (tailwind.config.js:105-107) -- 1 collision key, aliased */
   --color-focus-ring: var(--ring);
@@ -392,45 +450,49 @@
    The practical conclusion is unchanged and now better supported: keep the scoping. "Restoring"
    the unscoped v3 form would give disabled controls a pointer cursor that v3 never showed. The
    reasoning is corrected rather than deleted so a reader who remembers the old text can find it. */
+/* DECISION Phase 88-31 (DES-02 / D-35): THE v3 BORDER-COLOUR SHIM IS GONE. It used to sit at the
+   top of the `@layer base` block below and read
+
+     *, ::after, ::before, ::backdrop, ::file-selector-button {
+       <a border-colour default, read from the raw-palette grey-200 key, falling back to
+        the current colour>
+     }
+
+   The declaration is DESCRIBED rather than quoted on purpose (88-11's marker convention, and the
+   comment-blindness recorded in DEF-88-25-02 / DEF-88-27-01 / DEF-88-28-01). This plan's own verify
+   gate is `! grep "border-color: var(--color-gray-200" globals.css`, so a marker quoting the rule
+   it just deleted would hold that gate permanently red on a CORRECT tree — the exact defect the
+   phase has now recorded fifteen times. The property is instead armed as a real, comment-stripping
+   assertion in `src/app/borderExplicitness.test.ts` (test 10), which is what actually stops the
+   shim coming back.
+
+   The 87.7 marker it replaced said, in terms, that giving all 43 unpaired sites an explicit border
+   colour and then deleting this rule WAS Phase 88's scheduled work — "not accepted-forever". Plans
+   88-26 and 88-27 did the sites; this plan did the deletion. That is now DONE and this paragraph is
+   the record, kept rather than deleted so a reader who remembers the old text finds where it went.
+
+   WHY IT MATTERED (kept, because it is what a reader needs to NOT re-introduce it): v4's preflight
+   dropped v3's `border:0 solid #e5e7eb` colour, so every element naming a border WIDTH but no
+   border COLOUR fell through to this rule and painted #e5e7eb — 11.19:1 against the dark page where
+   the neutral token is 1.78:1. A near-white hairline in dark mode, app-wide.
+
+   THE ORDER WAS LOAD-BEARING AND STILL IS, IN REVERSE. With the shim gone, an uncoloured border no
+   longer paints the wrong SHADE — it paints `currentColor`, i.e. the element's own text colour.
+   That renders, so it hides. `src/app/borderExplicitness.test.ts` is the standing guard and its
+   trigger was widened by this plan (DEF-88-27-02) to catch an uncoloured border WIDTH utility
+   (`border-2`, `border-t-4`) as well as a bare `border`, because both depended on this rule
+   identically. RE-ADDING A GLOBAL BORDER-COLOUR DEFAULT would silently disarm that guard's whole
+   premise — that is a decision, not a cleanup.
+
+   Historical note kept from 87.7 for whoever greps DI-87.7-20: the rule's one dependency was
+   `--color-gray-200`, which in the v4 build is `oklch(92.8% .006 264.531)` and round-trips to
+   #e5e7eb exactly. The residual that entry recorded (it stayed right only while upstream's OKLCH
+   grey ramp did) is now moot — nothing in this stylesheet reads that key. The 43 sites are still
+   enumerated with file:line in
+   .planning/phases/87.7-tailwind-v4-migration-inserted-2026-07-25/87.7-STYLE-AUDIT.md
+   (path written un-globbed on purpose — DI-87.7-12), and their converged state in
+   .planning/phases/88-fe-wave-3-design-system-a11y/88-BORDER-CENSUS.md. */
 @layer base {
-  /* DECISION Phase 87.7 (Plan 08, R4): the border-colour rule below is KEPT for this phase, chosen
-     OVER giving every unpaired site an explicit border colour and deleting this rule. It reproduces
-     v3's default EXACTLY, so all 43 unpaired sites render byte-identically to v3 and the migration
-     diff stays minimal. Proven, not assumed, from the two built stylesheets:
-
-       v3 preflight (the only e5e7eb in the whole v3 baseline):
-         *,:after,:before { box-sizing:border-box; border:0 solid #e5e7eb }
-       v4 preflight (colour DROPPED — this is the regression this rule repairs):
-         *,::backdrop,:after,:before { box-sizing:border-box; border:0 solid; margin:0; padding:0 }
-
-     THIS RULE'S ONLY DEPENDENCY IS --color-gray-200, AND THAT IS THE INTERESTING PART. In the v4
-     build it is NOT a hex — it is v4's re-derived OKLCH palette value,
-     oklch(92.8% .006 264.531), and v4's OKLCH re-derivation moved other palette entries by as much
-     as 56/255 (RESEARCH Pitfall 3). It was therefore converted rather than eyeballed: it
-     round-trips to rgb(229,231,235) = #e5e7eb, delta 0,0,0 on all three channels, in gamut.
-
-     It is also the ONE raw-palette key this app depends on that Plan 04's pin block does NOT pin —
-     correctly so, since that census scans component class strings and this dependency lives here,
-     in CSS. No pin was added because the value is provably right today; the residual (it stays
-     right only while upstream's OKLCH grey ramp does) is recorded as DI-87.7-20 and named here so
-     it is greppable. If you are about to "tidy" --color-gray-200 out of this line, that is the
-     thing you would be breaking.
-
-     The 43 sites are enumerated with file:line in
-     .planning/phases/87.7-tailwind-v4-migration-inserted-2026-07-25/87.7-STYLE-AUDIT.md
-     (path written un-globbed on purpose — DI-87.7-12).
-
-     GIVING THOSE 43 SITES EXPLICIT COLOURS AND DELETING THIS RULE IS PHASE 88's WORK, scheduled,
-     not accepted-forever. Deleting it before then is a VISUAL CHANGE across 43 sites, not a
-     cleanup. */
-  *,
-  ::after,
-  ::before,
-  ::backdrop,
-  ::file-selector-button {
-    border-color: var(--color-gray-200, currentcolor);
-  }
-
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
@@ -490,6 +552,14 @@
   --color-bg-elevated: #ffffff;
   --color-bg-overlay: rgba(0, 0, 0, 0.5);
   --color-bg-input: #ffffff;
+  /* DECISION Phase 88-04 (D-15 / UI-SPEC §9.1): the EmptyState glyph circle gets its OWN accent
+     tint token rather than reusing `--color-status-warning-subtle` (#f9ebda light / #423e36 dark,
+     88-01 D-33). Rejected alternative — and it is the near-miss a future reader would "simplify"
+     into — because the warning tint is a STATUS colour: reusing it would say "something is wrong"
+     on a surface whose whole message is "nothing here yet" (§9.2 forbids conflating empty with
+     error). The values are UI-SPEC §9.1's: light amber-100, dark a warm amber-over-purple-900
+     literal with no palette step to point at. */
+  --color-bg-accent-subtle: var(--amber-100);
 
   /* Brand / Navigation */
   --color-bg-nav: var(--purple-900);
@@ -509,8 +579,31 @@
   --color-accent-text: var(--purple-950);
 
   /* Borders */
+  /* DECISION Phase 88-01 (D-34 / UI-SPEC §5.5 FINDING-1, §10.2): the HAIRLINE contrast fix is
+     applied to `--color-border-strong` ONLY — light darkened warm-300 -> warm-500 (#8c7a6a), dark
+     darkened purple-600 -> purple-500 (#6b7fa3) at its own declaration in the `.dark` block below.
+     Measured (WCAG 2.x relative luminance, sRGB, from the literal hex): dark 4.18:1 vs page /
+     3.42:1 vs card; light 3.88:1 vs page / 4.11:1 vs white card. Both clear the 1.4.11 3:1 floor
+     that the shipped values missed (light 1.51:1, dark 2.99:1 — dark missed by 0.01).
+
+     TWO ALTERNATIVES WERE REJECTED, and the rejection is the load-bearing part:
+       (a) darken `--color-line` / `--color-border` globally — REJECTED as a re-theme. That token
+           is consumed at 280 sites across 65 files, and the warm palette has no adjacent passing
+           step, so "fixing" it recolours every decorative and paired separator in the app.
+       (b) mint a third `line-contrast` token — REJECTED as idiom proliferation. `border-strong`
+           already exists for exactly this job and 11 JSX sites already point at it; a third
+           hairline name would leave three overlapping ways to draw the same 1px line.
+     `--color-border` and `--color-line` are therefore deliberately UNCHANGED here. Sole-separator
+     hairlines get pointed at `border-strong` by the wave-2+ surface plans; that is the migration,
+     not a token edit.
+
+     THE LIGHT VALUE IS PROVISIONAL, owned by Phase 88.3 (light-mode design). Phase 88 is a
+     dark-first pass; 88.3 re-derives the light ramp wholesale and may move this. Re-measure
+     in-browser per the 87.8-01 method before treating either number as final.
+     Changing either value, or "simplifying" this back onto `--color-line`, is a decision, not a
+     cleanup. */
   --color-border: var(--warm-200);
-  --color-border-strong: var(--warm-300);
+  --color-border-strong: var(--warm-500);
   --color-border-accent: var(--amber-600);
 
   /* Shadows */
@@ -529,9 +622,24 @@
      Moving them into any `@theme` block turns them into THEME KEYS carrying built-in names, at
      which point they hijack the built-in scale for the whole app -- silently, since nothing
      fails. Moving them is a DECISION, not a cleanup. */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+
+  /* DECISION Phase 88-01 (OI-1 / UI-SPEC §2.4): the three LIGHT shadow tokens are re-tinted from
+     cold black to the design reference's WARM hue (rgb 120/80/40), keeping the SHIPPED GEOMETRY
+     byte-for-byte (1px/2px, 4px/6px, 10px/15px). Chosen OVER two alternatives:
+       (a) adopt the reference's geometry too (4px/8px, 12px/24px) — REJECTED: a blur/offset change
+           is a re-theme, which this phase's SPEC forbids at `:212`. Hue-only is the consistency
+           fix; geometry is a redesign.
+       (b) leave the tokens cold and let Req 3 move inline shadows onto them anyway — REJECTED, and
+           this is the reason the change is here at all: `88-SPEC.md:86` tells the adoption plans to
+           move inline shadows onto "the warm-tinted tokens". They were not warm-tinted. Executing
+           that literally turns a grep gate green while the reference's rule stays violated.
+     THE THREE DARK OVERRIDES BELOW ARE DELIBERATELY UNCHANGED. Dark mode signals elevation with
+     rings (dark `--shadow-sm` is `none`; `-md`/`-lg` are 1px rings), a shipped choice from the original
+     design system — warming a shadow that does not render is a no-op at best. Re-tinting dark, or
+     "finishing the job" by re-tinting it for symmetry, is a decision, not a cleanup. */
+  --shadow-sm: 0 1px 2px rgba(120, 80, 40, 0.06);
+  --shadow-md: 0 4px 6px rgba(120, 80, 40, 0.08);
+  --shadow-lg: 0 10px 15px rgba(120, 80, 40, 0.10);
 
   /* Status / Role Badges */
   --color-badge-owner-bg: var(--purple-100);
@@ -557,12 +665,54 @@
   --color-error: #dc2626;
   --color-warning: #d97706;
 
+  /* ===== Status TINTS (Phase 88 D-32/D-33, UI-SPEC §10.3) =====
+     DECISION Phase 88-01 (D-33): status tints are HAND-PICKED OPAQUE per-theme values. Two
+     mechanisms were rejected, and both rejections are load-bearing:
+       (a) Tailwind `/N` slash-opacity modifiers (`bg-status-success/10`) — REJECTED. That is
+           precisely what the `DECISION Phase 87.7 D-18` markers stripped out, on a MEASURED
+           defect: v4 emits a two-branch `color-mix()` with an `@supports` fallback, and the
+           fallback branch paints a SOLID status block on browsers without relative-colour
+           support. Re-adding the modifiers reverses a shipped decision.
+       (b) authoring the tints with `color-mix()` here — REJECTED: it surrenders hand-control of
+           the dark values, which is the half of the palette this app is actually judged on.
+
+     THREE RULES A READER WOULD NOT OTHERWISE INFER:
+       (i)  THESE TINTS ASSUME THE CARD SURFACE. Each value is `round((1-t)*card + t*hue)` per
+            channel — t=0.15 resting, t=0.24 hover — against the CARD ground (`#ffffff` light,
+            `#232d3e` dark), NOT the page. Painting one straight onto the page ground is a
+            contrast change, not a reskin; re-derive against the page if you ever need that.
+       (ii) THERE IS DELIBERATELY NO FIFTH `info` FAMILY (D-33). Informational surfaces reuse
+            Banner's shipped treatment — `border-line` on the container, `text-content-secondary`
+            on the glyph. Minting an info colour is a decision, not a completion of the set.
+       (iii) THE LIGHT VALUES BELOW ARE PROVISIONAL, owned by Phase 88.3 (light-mode design), on
+            the same footing as the light `border-strong` value above. The DARK values are the
+            ratified ones (§10.3); measured on `#234443`, `--color-content-primary` reads 10.01:1
+            and success text reads 4.66:1.
+
+     Bucket B (resting BORDER tints) reuses the full-strength `--color-success/-error/-warning`
+     above, and bucket D (overlay dims / text-alpha) reuses `--color-bg-overlay` and
+     `--color-text-muted`. Neither gets a token — minting one for them was rejected as vocabulary
+     that nothing would consume. */
+  --color-status-success-subtle: #dcf1e4;
+  --color-status-success-subtle-hover: #c7e9d4;
+  --color-status-error-subtle: #fadede;
+  --color-status-error-subtle-hover: #f7cbcb;
+  --color-status-warning-subtle: #f9ebda;
+  --color-status-warning-subtle-hover: #f6dec3;
+
   /* Header (warm neutral, NOT purple) */
   --color-bg-header: var(--warm-800);
   --color-bg-header-hover: var(--warm-700);
   --color-border-header: var(--warm-600);
 
   /* Focus ring */
+  /* DEFERRED, not overlooked — Phase 88.3 / OI-2 (UI-SPEC §5.5 FINDING-2, recorded in
+     `.planning/deferred/phase-88.3.md`): this LIGHT value measures 2.65:1 vs the page and 2.81:1
+     vs the white card, under WCAG 2.4.11's 3:1 floor. Dark (amber-400, below) passes at 10.13:1,
+     which is why a dark-first app never caught it. Phase 88 deliberately did NOT repair it while
+     repairing `--color-border-strong` above: 88.3 owns the light ramp wholesale and the measured
+     one-line candidate (purple-600, 5.34:1 vs page / 5.66:1 vs white card) is recorded there.
+     Leaving this at purple-400 is a scheduled deferral, not an oversight. */
   --color-focus-ring: var(--purple-400);
 
   /* Transitions */
@@ -577,6 +727,10 @@
   --color-bg-elevated: var(--purple-800);
   --color-bg-overlay: rgba(0, 0, 0, 0.7);
   --color-bg-input: var(--purple-800);
+  /* Phase 88-04 (D-15 / UI-SPEC §9.1) — OPAQUE literal, matching 88-01's D-32/D-33 treatment of
+     the status tints: an `rgba()` amber over the card would shift with whatever sits behind it.
+     See the full DECISION marker at the light declaration above. */
+  --color-bg-accent-subtle: #3a3320;
 
   --color-bg-nav: var(--purple-950);
   --color-bg-nav-hover: var(--purple-900);
@@ -593,7 +747,10 @@
   --color-accent-text: var(--purple-950);
 
   --color-border: var(--purple-700);
-  --color-border-strong: var(--purple-600);
+  /* DECISION Phase 88-01 (D-34): darkened one step for the 1.4.11 hairline floor — see the full
+     marker (and the two rejected alternatives) at the light declaration above. `--color-border`
+     directly above stays put on purpose. */
+  --color-border-strong: var(--purple-500);
   --color-border-accent: var(--amber-500);
 
   /* Dark mode: minimal shadows, replaced by borders/glow */
@@ -621,6 +778,18 @@
   --color-success: #22c55e;
   --color-error: #ef4444;
   --color-warning: #f59e0b;
+
+  /* Status tints — the RATIFIED half (Phase 88 D-33, UI-SPEC §10.3). Derived, not eyeballed:
+     `round((1-t)*card + t*hue)` per channel against the dark card `#232d3e`, t=0.15 resting /
+     t=0.24 hover. See the full marker at the light declarations above for the two rejected
+     mechanisms and the card-surface rule. Nudging one of these by eye desynchronises it from that
+     formula and from its hover step — a decision, not a cleanup. */
+  --color-status-success-subtle: #234443;
+  --color-status-success-subtle-hover: #235146;
+  --color-status-error-subtle: #42303f;
+  --color-status-error-subtle-hover: #54333f;
+  --color-status-warning-subtle: #423e36;
+  --color-status-warning-subtle-hover: #554832;
 
   /* Header (warm neutral) */
   --color-bg-header: var(--warm-900);
@@ -727,6 +896,48 @@
   --accent-hover: var(--color-accent-hover);
   --primary-hover: var(--color-btn-primary-hover);
   --secondary-hover: var(--color-btn-secondary-hover);
+
+  /* DECISION Phase 88-01 (D-33, applying the 87.7 D-01/D-02 rule directly above): the six aliases
+     below are COLLISION-BREAKERS for the new status-tint tokens, not new design values. They exist
+     for exactly the reason the three aliases above exist.
+
+     THE COLLISION. The `-subtle` runtime properties are declared in the `:root`/`.dark` blocks
+     under the names `--color-status-*-subtle`, and those are ALSO the theme keys v4 needs in
+     `@theme inline` to emit the `bg-status-*-subtle` utilities. Writing the bridge entry directly
+     would produce a literal self-reference — `--color-X: var(--color-X)` — which the marker above
+     records as invalid at computed-value time and rendering today only by cascade-layer luck.
+     Pointing each theme key at a DIFFERENTLY-NAMED alias removes that form. This raises the count
+     of colliding keys this file breaks from nine to fifteen.
+
+     PROVEN, not assumed: compiling this file against its own tailwindcss@4.3.3 emits
+     `.bg-status-success-subtle{background-color:var(--status-success-subtle)}` (and the five
+     siblings, plus their `hover:` variants), and a scan of the emitted CSS for the
+     `--color-X: var(--color-X)` form returns zero.
+
+     THE RESIDUAL, stated so it is greppable: v4 DOES emit each `@theme inline` key into
+     `@layer theme`'s `:root`, so the output contains a layered
+     `--color-status-*-subtle: var(--status-*-subtle)` alongside the unlayered literal hex below.
+     The unlayered one wins, which is why the chain terminates. If anything ever moves this file's
+     `:root`/`.dark` blocks INTO a layer, the layered copy starts winning and these two lines close
+     into a two-step reference cycle — the same cascade-layer dependency the marker above records
+     for the original nine, one hop longer and therefore harder to spot. Do not layer these blocks.
+
+     REJECTED ALTERNATIVE: name the runtime properties `--color-success-subtle` (mirroring the
+     shipped `--color-success` -> `--color-status-success` pattern, which collides with nothing).
+     Cleaner in isolation, but it splits the tint vocabulary from the name the adoption plans, the
+     UI-SPEC §10.3 table and the 87.7 opacity census all already write, so the alias is paid once
+     here instead of at 136 call sites. If a later phase does the `--sem-*` runtime rename that the
+     marker above calls the structurally cleaner end state, these six lines go with the other three.
+
+     `:root` ONLY, deliberately — same reason as above: their targets are what flips under `.dark`,
+     and `.dark` is the same element as `:root`, so the aliases follow the theme for free. Adding
+     `.dark` copies would create a second place to keep in sync. */
+  --status-success-subtle: var(--color-status-success-subtle);
+  --status-success-subtle-hover: var(--color-status-success-subtle-hover);
+  --status-error-subtle: var(--color-status-error-subtle);
+  --status-error-subtle-hover: var(--color-status-error-subtle-hover);
+  --status-warning-subtle: var(--color-status-warning-subtle);
+  --status-warning-subtle-hover: var(--color-status-warning-subtle-hover);
 }
 
 /* ===== DESIGN SYSTEM: Theme Transition ===== */
@@ -774,11 +985,21 @@ body {
    The neighbouring UNLAYERED blocks — the `.rbc-*` overrides, the `:root` palette
    blocks (guardrail comment above), `.btn`, `.btn-*` and `.modal-overlay` — MUST STAY
    unlayered; their cascade position is a measured 87.7 decision and nothing needs to
-   override them. Only `.card` moves. Moving it back is a decision, not a cleanup. */
+   override them. Only `.card` moves. Moving it back is a decision, not a cleanup.
+   AMENDED BY PHASE 88-31: `.modal-overlay` is no longer in that list because the rule no
+   longer exists — the dialog fleet moved onto the `<Modal>` primitive and its CSS was
+   deleted here (see the amended DEC-3 marker below, where `.modal-overlay` used to sit).
+   The sentence is amended rather than rewritten so a reader who remembers the original
+   four-item list can see which item went and why. The unlayered requirement stands
+   unchanged for every remaining item. */
 @utility card {
   background-color: var(--color-bg-card);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-md);
+  /* DECISION Phase 88-24: this 24px is the FALLBACK, not the shipped value. All 28
+     `.card` call sites author `p-3 md:p-6` (12px phone / 24px desktop) and every one
+     of them is load-bearing — deleting a call site's `p-*` silently doubles its phone
+     padding to this value. Full reasoning at the marker in gameDetail/page.js. */
   padding: 1.5rem;
   transition: var(--theme-transition);
 
@@ -819,9 +1040,18 @@ body {
      0.7 reads as disabled against `.btn:disabled` opacity 0.5 (above). 0.75 sits clear of both.
    Zero new colour values, deliberately — a slash-opacity tint would collide with the D-18
    token strip and Phase 88's tint boundary. D-12 covers ONLY this press rule; the 44px
-   touch-floor decision lives per-CTA at the SPEC R4 call sites (D-13/D-14/AF-2), NOT here —
-   `.btn` deliberately carries no global min-height (that question is Phase 88's, DEF-1).
-   Removing or retuning this is a decision, not a cleanup. */
+   touch-floor decision lives per-CTA at the SPEC R4 call sites (D-13/D-14/AF-2), NOT here.
+
+   UPDATED BY PHASE 88 (D-36) — this paragraph previously read "`.btn` deliberately carries no
+   global min-height (that question is Phase 88's, DEF-1)". DEF-1 IS NOW ANSWERED, and the answer
+   is a PARTIAL yes: `.btn` now carries a 44px floor at PHONE WIDTHS ONLY, authored unlayered after
+   the `.btn-*` family below, with an unlayered `.btn-compact` opt-out for the two `w-8 h-8`
+   steppers (`BrowseMoreModal.js:206,230`, which take the opt-out in plan 88-17). A global
+   all-viewport floor stays REJECTED for exactly that reason — it deforms square-by-design
+   controls — so DESKTOP is still deliberately floorless at ~37px until the Button migration sets
+   each height with intent. The full derivation lives at the media block's own marker below; the
+   old sentence is amended rather than deleted so a reader who remembers it can find where it went.
+   Removing or retuning this press rule is a decision, not a cleanup. */
 .btn:active:not(:disabled) {
   opacity: 0.75;
 }
@@ -853,74 +1083,88 @@ body {
   opacity: 0.9;
 }
 
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: var(--color-bg-overlay);
-  padding: 1rem;
-}
+/* DECISION Phase 88-01 (D-36, UI-SPEC §3.2 exception 2): `.btn` takes a 44px touch floor at PHONE
+   WIDTHS ONLY, resolving the question the 87.8 D-12 marker above deliberately left open (DEF-1).
+   `.btn`'s shipped padding (`0.5rem 1rem` + 0.875rem/600 text) computes to roughly 37px tall — under
+   the 44x44 floor on the surface this app is actually used on (a phone at game night).
 
-/* DECISION Phase 87.8 DEC-3: phone-scoped `.modal-overlay` padding (12px < 48rem, 16px
-   desktop via the base rule above), applied GLOBALLY to all 16 overlay call sites across
-   12 components — chosen OVER a per-instance Tailwind utility on the Create Event overlay
-   div. The per-instance utility was REJECTED because it silently does nothing: this block
-   is UNLAYERED (deliberately — see the guardrail note above `@utility card`), and unlayered
-   author styles beat every `@layer utilities` rule regardless of specificity — the exact
-   cascade defect DEC-2 fixed for `.btn`/the feedback button. BringGamePicker.js's
-   `modal-overlay p-4` is live proof: its `p-4` has always been dead against this rule.
-   The global blast radius was justified by a full call-site census + computed-padding
-   spot-check, recorded in 87.8-MODAL-CENSUS.md (planning repo, phase 87.8 dir) — a 12px
-   overlay gutter at phone width is uniform across all modals by design. Scoping a regressed site
-   individually is fine; reverting the global rule is a decision, not a cleanup. */
+   REJECTED — a global, all-viewport `min-height` on `.btn`. It deforms controls that are square by
+   design: `BrowseMoreModal.js:206` and `:230` are `w-8 h-8` (32px) player-count steppers wearing
+   `.btn`, and a 44px floor stretches them into 32x44 lozenges. Desktop is therefore deliberately
+   LEFT AT ~37px until the Req 5 Button migration reaches each call site and sets the height there
+   with intent — a phone-only floor is the smallest change that fixes the surface that matters,
+   which is also why this mirrors the `.modal-overlay` phone-scoped precedent directly below rather
+   than inventing an idiom.
+   AMENDED BY PHASE 88-31: that precedent is no longer "directly below" — the `.modal-overlay` rules
+   were deleted once the dialog fleet moved onto the `<Modal>` primitive. The precedent itself still
+   holds and is not lost: the same 12px/48rem phone scoping now lives in `Modal.tsx` as a width
+   inset (`w-[calc(100%-1.5rem)] md:w-full`), and the amended DEC-3 marker below — where the CSS
+   used to be — carries the full trail. The pointer is corrected rather than deleted so the
+   reasoning for the phone-only shape here still has something to point at.
+
+   BOTH RULES ARE UNLAYERED, AND THE AUTHORING ORDER IS LOAD-BEARING — this is the part that is not
+   obvious and that a tidy-up would break:
+     - `.btn` is unlayered (see the guardrail note above `@utility card`), and an unlayered author
+       rule beats EVERY `@layer utilities` rule regardless of specificity. So a Tailwind `min-h-0`
+       utility at a call site CANNOT opt out of this floor. It would silently do nothing — the exact
+       cascade defect 87.8 DEC-2/DEC-3 already hit twice on this same pair of rules.
+     - `.btn-compact` is therefore also unlayered, and is authored AFTER the media block so it wins
+       the tie on source order. Moving it above, or putting either rule inside `@layer`, re-breaks
+       the opt-out with no build error.
+   Changing the breakpoint, layering either rule, reordering them, or promoting the floor to all
+   viewports is a decision, not a cleanup. */
 @media (width < 48rem) {
-  .modal-overlay {
-    padding: 0.75rem;
+  .btn {
+    min-height: 2.75rem;
   }
 }
 
-.modal-content {
-  background-color: var(--color-bg-card);
-  border-radius: 12px;
-  box-shadow: var(--shadow-lg);
-  width: 100%;
-  max-height: 90vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
+.btn-compact {
+  min-height: 0;
 }
 
-.modal-header {
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid var(--color-border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
+/* DECISION Phase 87.8 DEC-3 — AMENDED BY PHASE 88-31: THE `.modal-overlay` RULES ARE GONE, AND
+   THE 12px PHONE GUTTER THEY CARRIED NOW LIVES IN `src/app/components/Modal.tsx`.
 
-.modal-header h2,
-.modal-header h3 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
+   What used to be here: an unlayered `.modal-overlay` base rule (fixed inset-0, z-index 50, flex
+   centring, `var(--color-bg-overlay)`, 16px padding) plus a `@media (width < 48rem)` companion
+   dropping that padding to 0.75rem. DEC-3's own text described the 12px phone gutter as "uniform
+   across all modals by design", applied globally to all 16 overlay call sites across 12 components.
 
-.modal-body {
-  padding: 1.5rem;
-  overflow-y: auto;
-  flex: 1;
-}
+   Why they are gone: Phase 88's Req 9 migrated the whole dialog fleet onto the shared `<Modal>`
+   primitive (Radix), which supplies the backdrop, the focus trap, the accessible name and
+   Esc-to-dismiss. The census condition the SPEC set for this deletion was met and re-verified
+   immediately before it: `grep -rn "modal-overlay" src` returns 14 lines and ZERO are a
+   class-attribute usage — every one is a DECISION marker recording the migration, plus this
+   stylesheet. `src/app/legacyOverlayClass.test.ts` is the standing guard on that property, and it
+   deliberately asserts nothing about this stylesheet so it survives the deletion.
 
-.modal-footer {
-  padding: 1rem 1.5rem;
-  border-top: 1px solid var(--color-border);
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-}
+   THE 12px NUMBER SURVIVED THE MIGRATION AND IS NOT REDERIVABLE FROM HERE ANY MORE. Deleting the
+   overlay CSS without saying this would have destroyed the last stylesheet record of DEC-3.
+   `Modal.tsx` reproduces it exactly, as `w-[calc(100%-1.5rem)] md:w-full` — 1.5rem total = 0.75rem
+   per side = this rule's value, at this rule's breakpoint (`md` = 48rem), so desktop geometry is
+   untouched. That is a WIDTH INSET, not padding, because the gutter is space OUTSIDE the card;
+   implementing it as padding would inset the card's contents and stack with `Modal.Body`'s own.
+   The full derivation, the rejected alternatives and the test pins live at the `DECISION Phase
+   88-16` marker in `Modal.tsx`, and the e2e padding budget measures it (88-30 taught
+   `measurePaddingChain` to count the outside gap, and asserts `outsideGap > 0`).
+
+   REJECTED — keeping these two rules as dead CSS "in case something still needs them". A rule
+   nothing references is a rule the next census has to re-adjudicate, and a `querySelector` written
+   against the legacy DOM shape would go silently null rather than throw. The census is the gate;
+   it was zero.
+
+   What was NOT deleted by 88-31, deliberately: `.modal-content` and its `.modal-header` /
+   `.modal-body` / `.modal-footer` neighbours, which sat directly below. Their class census was
+   also zero, but they were not in that SPEC's enumerated deletion list, so they were routed to
+   88-RESIDUAL-CENSUS.md §7.9 with an owner rather than removed under cover of the overlay ruling.
+
+   AMENDED 2026-08-06 (Phase 88-32 owner ruling, census §7.9): NOW DELETED, all four rules, on the
+   owner's explicit word after a fresh repo-wide census (zero live references — every surviving
+   mention is a comment or docstring). The legacy values are not lost: `Modal.tsx`'s docstrings
+   record each rule's numbers as the primitive's derivation source, and the dialog-title 20px/700
+   contract lives in UI-SPEC §4.2. Same reasoning as the overlay deletion above — a rule nothing
+   references is a rule every future census re-adjudicates. */
 
 /* ===== DESIGN SYSTEM: React Big Calendar Restyle ===== */
 
@@ -1140,5 +1384,88 @@ body {
       padding-block-start: 1rem;
       margin-block-start: 1rem;
     }
+  }
+}
+
+/* ===== PHASE 88-28: REDUCED-MOTION CONTRACT (Req 4 / UI-SPEC §7.1) ===== */
+
+/* DECISION Phase 88-28 (Req 4, UI-SPEC §7.1): motion is CUT to <=100ms, never KILLED with a
+   global `animation: none`. Before this block the repo had ZERO `prefers-reduced-motion` and
+   zero `motion-reduce:` handling — a person with the OS setting on got the full 250ms theme
+   transition, the 700ms tutorial fill-in, the header slide and 15 pulsing skeletons.
+
+   Four choices are encoded here, each rejecting a more obvious alternative:
+
+   (1) DURATION CUT chosen OVER the common animation-kill idiom (the `animation` shorthand
+       forced to `none` across a wildcard). Killing the shorthand removes the animation from
+       the element entirely, so `animationend` never fires — and Radix's `Presence` (which
+       every modal in the fleet now goes through, ui/dialog.tsx) waits on exactly that event
+       to unmount exit-animating content. That would leave dialogs mounted. Cutting
+       `animation-duration` keeps the event.
+       (The forbidden declaration is deliberately NOT quoted verbatim anywhere in this file:
+       the Req 4 verify gate greps for that exact literal, and 88-25/88-26 both recorded
+       gates going permanently red on the marker that documented the decision. 88-11's
+       convention — describe it, do not write it — is followed here.)
+
+   (2) UNLAYERED, chosen OVER `@layer utilities`. For `!important` declarations the cascade
+       layer order INVERTS, and unlayered `!important` outranks every layered `!important` —
+       so this is the only placement from which the block reliably beats a Tailwind
+       `duration-700` utility. MEASURED in `.next/static/css/*.css` after a real `next build`,
+       not reasoned from the spec (this file's own history records two prior cascade calls
+       that went the opposite way to the intuition). The walk over the emitted stylesheet
+       reports this block at nesting depth 0 with an EMPTY layer stack, i.e. genuinely
+       unlayered, while `.animate-spin` / `.animate-pulse` / `.duration-700` all sit inside
+       `@layer utilities`. Note also what the utilities emit: `.animate-spin{animation:
+       var(--animate-spin)}` — the SHORTHAND, whose duration and `infinite` are overridden by
+       the longhands below because an important longhand beats a normal shorthand. Moving this
+       block into a layer would silently invert all of that.
+
+   (3) `.animate-spin` is EXEMPTED and explicitly SLOWED to 1.5s, chosen OVER letting the
+       wildcard reach it. This is the trap in the naive implementation: the 29 `animate-spin`
+       sites are functional status indicators, and a blanket 100ms `animation-duration` would
+       not calm them — it would make every spinner rotate TEN TIMES A SECOND, i.e. turn an
+       accessibility accommodation into a strobe for the exact users who asked for less
+       motion. §7.1 says spinners may slow and must not stop; 1.5s is slower than the 1s
+       default, and still unmistakably moving.
+       `.animate-pulse` (the 15 skeleton "shimmer" bars, §7.1's disable-outright case) instead
+       gets `animation-iteration-count: 1`: one 100ms pass and then static. The keyframe
+       returns to opacity 1, so the bar stays VISIBLE — a skeleton that vanished would read as
+       a broken load.
+
+   (4) NO global `transform: none`. §7.1 asks for scale/translate transitions to be disabled
+       outright, and this block delivers that as the <=100ms cut instead — deliberately.
+       `transform` is not only used for motion here: `ui/dialog.tsx:64` centres EVERY modal
+       with `translate-x-[-50%] translate-y-[-50%]`, and `AvailabilityGrid`'s sticky axis and
+       the tutorial grid also carry static transforms. A `transform: none !important` under
+       reduced motion would throw every dialog in the app half a viewport off-centre for
+       precisely the users least able to cope with it. Targeting Tailwind's escaped class
+       names (`.hover\:-translate-y-0\.5`) from an unlayered rule instead would be the
+       fragile-selector hack this project forbids. The residue is small and honest: a hover
+       lift and the header slide still move, in <=100ms.
+
+   Re-widening the wildcard, or "simplifying" either exception away, is a decision. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 100ms !important;
+    transition-delay: 0ms !important;
+    animation-duration: 100ms !important;
+    animation-delay: 0ms !important;
+  }
+
+  html {
+    scroll-behavior: auto !important;
+  }
+
+  /* (3) above — functional, must keep moving. Specificity 0,1,0 beats the 0,0,0 wildcard
+     within the same unlayered !important origin. */
+  .animate-spin {
+    animation-duration: 1.5s !important;
+  }
+
+  /* (3) above — decorative shimmer. One pass, then static and still visible. */
+  .animate-pulse {
+    animation-iteration-count: 1 !important;
   }
 }
