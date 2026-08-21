@@ -91,6 +91,18 @@ describe('FeedbackButton — Req 9 modal migration proof', () => {
     const dialog = await screen.findByRole('dialog');
     expect(await axe(dialog)).toHaveNoViolations();
   });
+
+  it('returns focus to the FAB on close (T-87.8-22 — restore must ride onCloseAutoFocus)', async () => {
+    // Regression pin for the first CI run of PR #22: the provider restored the
+    // invoker inside close(), which Radix's own close-autofocus then clobbered
+    // after unmount. The restore now rides Modal's onCloseAutoFocus with
+    // preventDefault(), so it is the LAST focus move of the transition.
+    const user = await openFeedbackModal();
+    await screen.findByRole('dialog');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Send feedback' })).toHaveFocus();
+  });
 });
 
 describe('FeedbackForm — Req 9 modal migration proof (both states)', () => {

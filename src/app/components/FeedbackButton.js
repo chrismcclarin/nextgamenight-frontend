@@ -27,7 +27,7 @@ import { Textarea, SelectControl } from '@/components/ui/Input';
 export default function FeedbackButton({ variant = 'floating', label, onOpen }) {
   const { user } = useUser();
   const pathname = usePathname();
-  const { isOpen, category, open, close, setCategory } = useFeedbackModal();
+  const { isOpen, category, open, close, onCloseAutoFocus, setCategory } = useFeedbackModal();
 
   // Form state stays LOCAL to the modal-owning instance (never in context) so
   // typing in the textarea re-renders only this instance, not Header.
@@ -229,7 +229,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
           backdrop click, and D-09's non-dismissable lever is for the surfaces
           that lose long-form input, not this one. */}
       {isOpen && (
-        <Modal open onClose={close} className="max-w-md">
+        <Modal open onClose={close} onCloseAutoFocus={onCloseAutoFocus} className="max-w-md">
           <Modal.Header>Send Feedback</Modal.Header>
           <Modal.Body>
             {submitted ? (

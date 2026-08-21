@@ -100,6 +100,14 @@ export interface ModalProps {
    * Omit for the default behaviour.
    */
   initialFocusRef?: React.RefObject<HTMLElement | null>;
+  /**
+   * Radix close-autofocus pass-through. Radix moves focus AFTER the dialog
+   * unmounts, so a caller that restores focus itself (FeedbackModalProvider's
+   * invoker restore, T-87.8-22) must do it HERE with `event.preventDefault()`
+   * — restoring in a close() handler runs first and is then clobbered by
+   * Radix's default. Omit for the default behaviour.
+   */
+  onCloseAutoFocus?: (event: Event) => void;
   /** Extra classes merged onto the dialog content surface. */
   className?: string;
   children?: React.ReactNode;
@@ -111,6 +119,7 @@ function ModalRoot({
   size = 'default',
   dismissable = true,
   initialFocusRef,
+  onCloseAutoFocus,
   className,
   children,
 }: ModalProps) {
@@ -141,6 +150,7 @@ function ModalRoot({
       <DialogContent
         hideCloseButton
         onOpenAutoFocus={handleOpenAutoFocus}
+        onCloseAutoFocus={onCloseAutoFocus}
         // This Radix build does not emit aria-modal on Content; set it
         // explicitly so the dialog advertises modality to assistive tech.
         aria-modal="true"
