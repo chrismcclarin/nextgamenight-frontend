@@ -130,13 +130,20 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                 the whole time. `text-3xl` was dead code, not a size decision, so
                 nothing is being silently demoted here.
 
-                The named red "Close" button below deliberately SURVIVES beside
-                <Modal.Header>'s `×`. What this phase removes is NAMELESS close
-                glyphs (SPEC Req 4); this one carries real text, is the dialog's
-                only visible dismissal, and sits where the person's eye already
-                is. It is the same shape as createEvent keeping its "Cancel"
-                under a Modal header. Deleting it as a "duplicate" is a UX
-                change, not a migration cleanup.
+                AMENDED (88-33 Task 9, D-39 house style): the red "Close" button is now
+                REMOVED — the owner reopened this decision on the 2026-08-13 walk (UAT
+                row 283, routed 2026-08-15): "I think we can get rid of the red close
+                button as we have the x in the top left. Maybe make the x red?" The
+                header × takes the error color (closeClassName) as its replacement, and
+                remains the dialog's one named close affordance. ORIGINAL MARKER,
+                verbatim (kept per the amendment rule): "The named red 'Close' button
+                below deliberately SURVIVES beside <Modal.Header>'s `×`. What this phase
+                removes is NAMELESS close glyphs (SPEC Req 4); this one carries real
+                text, is the dialog's only visible dismissal, and sits where the
+                person's eye already is. It is the same shape as createEvent keeping its
+                'Cancel' under a Modal header. Deleting it as a 'duplicate' is a UX
+                change, not a migration cleanup." That UX change has now been made — as
+                an owner decision, not a cleanup. Restoring the button reopens row 283.
 
                 The old `{modal && (…)}` guard is dropped rather than kept
                 alongside `open={modal}`: two sources of truth for one dialog's
@@ -150,7 +157,14 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                 opens with focus on its first meaningful input — here the group name — so
                 the person can just start typing. */}
             <Modal open={modal} onClose={handleClose} size="sm" initialFocusRef={nameInputRef}>
-                <Modal.Header closeDisabled={submitting}>Create a new Group</Modal.Header>
+                {/* Red ×: the owner-ruled replacement for the removed red Close button
+                    (UAT row 283) — see the amended marker above. */}
+                <Modal.Header
+                    closeDisabled={submitting}
+                    closeClassName="text-status-error hover:text-status-error"
+                >
+                    Create a new Group
+                </Modal.Header>
                 <Modal.Body className="p-0 md:p-0">
                     <form onSubmit={onSubmit} autoComplete="off" className="p-6" aria-busy={submitting || undefined}>
                         <div className="mb-3 pt-0">
@@ -213,19 +227,11 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                             {submitting ? 'Creating group...' : ''}
                         </StatusRegion>
                     </form>
-                    {/* 88-33 Task 4 rider (a): this close affordance routes through the SAME
-                        guarded handleClose as Esc/×/outside-click, so the mid-create inert
-                        window covers every close path that exists right now. Task 9 removes
-                        this button entirely (UAT row 283); until that lands it must not be
-                        the one affordance that bypasses the guard. */}
-                    <button
-                        className="text-status-error background-transparent font-bold uppercase px-6 py-2 text-sm outline-hidden focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 active:opacity-75 mr-1 mb-1 ease-linear transition-all duration-150 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-                        type="button"
-                        aria-disabled={submitting || undefined}
-                        onClick={handleClose}
-                    >
-                        Close
-                    </button>
+                    {/* (88-33 Task 9, UAT row 283: the red "Close" button that lived here is
+                        REMOVED — owner preference; the header × is now red and is the one
+                        named close affordance. See the amended marker above. Task 4's
+                        submitting guard now has one fewer affordance to cover: Esc, the
+                        red ×, and outside-click all route through the guarded onClose.) */}
                 </Modal.Body>
             </Modal>
 

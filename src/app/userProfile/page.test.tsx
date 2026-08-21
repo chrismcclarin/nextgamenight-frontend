@@ -1501,3 +1501,14 @@ describe('userProfile collection loading/empty truthfulness (WI-F7)', () => {
     );
   });
 });
+
+// 88-33 Task 9 (fork 1, UAT row 590): pattern times print 12-hour.
+describe('pattern times print 12-hour (fork 1)', () => {
+  it('renders an HH:MM pattern range as 12-hour, never raw 24h', async () => {
+    h.patterns = PATTERNS;
+    renderProfile();
+    await screen.findByRole('button', { name: 'Delete Monday schedule' });
+    expect(document.body.textContent).toContain('6:00 PM - 10:00 PM');
+    expect(document.body.textContent).not.toContain('18:00');
+  });
+});

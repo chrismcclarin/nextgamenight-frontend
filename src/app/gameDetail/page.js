@@ -313,6 +313,72 @@ export default function GameDetailPage() {
     const [titleExpanded, setTitleExpanded] = useState(false);
     const [descExpanded, setDescExpanded] = useState(false);
 
+    // 88-33 Task 9 (UAT row 326): the expand affordances render only when the
+    // clamped text ACTUALLY overflows — measured post-layout, not assumed.
+    // Perf hygiene (r2/r3 triage): measure only while clamped (an expanded
+    // block never overflows its own height, and measuring it would flap
+    // observer -> setState -> reflow), and equality-guard the setState so the
+    // ResizeObserver can never loop.
+    // CALLBACK refs held in STATE, not useRef: the clamped blocks mount LATER
+    // than the game data lands (the loading flag flips in a separate commit),
+    // so a plain ref object would be null at the only dep-driven effect re-run
+    // and the affordance would never appear — a real mount-timing bug the test
+    // suite caught. Node-in-state makes node attachment itself a dependency.
+    const [descNode, setDescNode] = useState(null);
+    const [titleNode, setTitleNode] = useState(null);
+    const [descOverflows, setDescOverflows] = useState(false);
+    const [titleOverflows, setTitleOverflows] = useState(false);
+
+    useEffect(() => {
+        if (!descNode || descExpanded) return;
+        const measure = () => {
+            const overflows = descNode.scrollHeight > descNode.clientHeight;
+            setDescOverflows(prev => (prev === overflows ? prev : overflows));
+        };
+        measure();
+        if (typeof ResizeObserver === 'undefined') return;
+        const ro = new ResizeObserver(measure);
+        ro.observe(descNode);
+        return () => ro.disconnect();
+    }, [descNode, descExpanded, game?.description]);
+
+    useEffect(() => {
+        if (!titleNode || titleExpanded) return;
+        const measure = () => {
+            const overflows = titleNode.scrollHeight > titleNode.clientHeight;
+            setTitleOverflows(prev => (prev === overflows ? prev : overflows));
+        };
+        measure();
+        if (typeof ResizeObserver === 'undefined') return;
+        const ro = new ResizeObserver(measure);
+        ro.observe(titleNode);
+        return () => ro.disconnect();
+    }, [titleNode, titleExpanded, game?.name]);
+
+    // 88-33 Task 9 (UAT row 334): Esc collapses the expanded description on the
+    // MAIN page. Bail conditions (r1/r3 triage): a dialog is open (the modal
+    // owns Esc), the event originates in an editable control, or something
+    // upstream already handled it.
+    useEffect(() => {
+        if (!descExpanded) return;
+        const onKeyDown = (event) => {
+            if (event.key !== 'Escape' || event.defaultPrevented) return;
+            const target = event.target;
+            if (
+                target &&
+                (target.tagName === 'INPUT' ||
+                    target.tagName === 'TEXTAREA' ||
+                    target.isContentEditable)
+            ) {
+                return;
+            }
+            if (document.querySelector('[role="dialog"]')) return;
+            setDescExpanded(false);
+        };
+        document.addEventListener('keydown', onKeyDown);
+        return () => document.removeEventListener('keydown', onKeyDown);
+    }, [descExpanded]);
+
     // Session filtering and pagination state
     const [visibleSessions, setVisibleSessions] = useState(3);
     const [filteredEvents, setFilteredEvents] = useState([]);
@@ -457,9 +523,8 @@ export default function GameDetailPage() {
             // URL would skip the groupMembers fetch entirely and render with
             // userScope='none' (no participants strip, no Leave kebab).
             const derivedGroupId = group_id || eventData?.group_id || eventData?.Group?.id;
-            if (derivedGroupId && !group_id) {
-                console.log('[gameDetail] derived group_id from event response:', derivedGroupId);
-            }
+            // (88-33 Task 9, UAT row 371 / T-88-33-02: the debug console.log that
+            // printed the derived group UUID here is deleted — info disclosure.)
             setEffectiveGroupId(derivedGroupId || null);
 
             if (derivedGroupId && user?.sub) {
@@ -1882,6 +1947,16 @@ export default function GameDetailPage() {
                                 </div>
                             );
                         })}
+                        {/* 88-33 Task 9 (UAT row 530 FE half, mini-formula tier): honest
+                            disclosure of the removal boundary — the 65-02 Remove works only
+                            on member rows; guests (no DB user) and your own row go through
+                            Edit Event. The remove-any-participant CAPABILITY is a recorded
+                            backlog item (needs a new BE delete path), not this phase. */}
+                        {(userRole === 'owner' || userRole === 'admin') && (
+                            <p className="text-content-muted text-sm">
+                                Guests and your own row are removed via Edit Event.
+                            </p>
+                        )}
                         {/* 88-33 Task 5: the armed-state live region MUST live INSIDE this
                             dialog — Radix aria-hides everything outside an open modal, so a
                             page-level mount would leave the two-tap arm silently
@@ -2064,15 +2139,23 @@ export default function GameDetailPage() {
                             almost always have null bgg_id — fallback renders plain text. */}
                         {/* Phase 76 EVT-09: mobile-only line-clamp + one-shot expand.
                             First mobile tap expands; subsequent taps fall through to
-                            the BGG <a> (when bgg_id present). */}
+                            the BGG <a> (when bgg_id present).
+                            88-33 Task 9 (row 326 twin, r1 triage): the tap fires only when
+                            the title ACTUALLY overflows, and a visually-hidden-until-focused
+                            button gives keyboard users the same expand (the tap was
+                            pointer-only; role="button" on an h1 wrapping a link is invalid).
+                            The ONE-SHOT semantics (expand only, no re-collapse) are Phase 76's
+                            recorded design and are preserved. */}
                         <h1
+                            ref={setTitleNode}
+                            id="game-title"
                             onClick={(e) => {
-                                if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches && !titleExpanded) {
+                                if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches && !titleExpanded && titleOverflows) {
                                     e.preventDefault();
                                     setTitleExpanded(true);
                                 }
                             }}
-                            className={`text-3xl font-bold text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} ${titleExpanded ? 'md:cursor-auto' : 'cursor-pointer md:cursor-auto'}`}
+                            className={`text-3xl font-bold text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} ${titleExpanded || !titleOverflows ? 'md:cursor-auto' : 'cursor-pointer md:cursor-auto'}`}
                         >
                             {game.bgg_id ? (
                                 <a
@@ -2087,6 +2170,17 @@ export default function GameDetailPage() {
                                 game.name
                             )}
                         </h1>
+                        {!titleExpanded && titleOverflows && (
+                            <button
+                                type="button"
+                                onClick={() => setTitleExpanded(true)}
+                                aria-expanded={false}
+                                aria-controls="game-title"
+                                className="md:hidden sr-only focus:not-sr-only text-sm text-content-link font-medium"
+                            >
+                                Show full title
+                            </button>
+                        )}
                         {game.theme && (
                             <p className="text-content-secondary mb-2">Theme: {game.theme}</p>
                         )}
@@ -2107,15 +2201,19 @@ export default function GameDetailPage() {
                                 when bgg_id is null (rare on this branch). */}
                             {/* Phase 76 EVT-09: mobile-only line-clamp + one-shot expand.
                                 First mobile tap expands; subsequent taps fall through to
-                                the BGG <a>. Desktop renders full text + native link click. */}
+                                the BGG <a>. Desktop renders full text + native link click.
+                                88-33 Task 9: overflow-gated + keyboard path — see the
+                                custom-branch twin's comment above; same treatment. */}
                             <h1
+                                ref={setTitleNode}
+                                id="game-title"
                                 onClick={(e) => {
-                                    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches && !titleExpanded) {
+                                    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches && !titleExpanded && titleOverflows) {
                                         e.preventDefault();
                                         setTitleExpanded(true);
                                     }
                                 }}
-                                className={`text-3xl font-bold text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} ${titleExpanded ? 'md:cursor-auto' : 'cursor-pointer md:cursor-auto'}`}
+                                className={`text-3xl font-bold text-content-primary mb-2 ${titleExpanded ? '' : 'line-clamp-2 md:line-clamp-none'} ${titleExpanded || !titleOverflows ? 'md:cursor-auto' : 'cursor-pointer md:cursor-auto'}`}
                             >
                                 {game.bgg_id ? (
                                     <a
@@ -2130,6 +2228,17 @@ export default function GameDetailPage() {
                                     game.name
                                 )}
                             </h1>
+                            {!titleExpanded && titleOverflows && (
+                                <button
+                                    type="button"
+                                    onClick={() => setTitleExpanded(true)}
+                                    aria-expanded={false}
+                                    aria-controls="game-title"
+                                    className="md:hidden sr-only focus:not-sr-only text-sm text-content-link font-medium"
+                                >
+                                    Show full title
+                                </button>
+                            )}
                             {game.year_published && (
                                 <p className="text-content-secondary mb-2">Published: {game.year_published}</p>
                             )}
@@ -2145,18 +2254,30 @@ export default function GameDetailPage() {
                                 <p className="text-content-secondary mb-2">Playing Time: {game.playing_time} minutes</p>
                             )}
                             {game.description && (
-                                /* Phase 76 EVT-09: mobile-only line-clamp + inline expand. Desktop (md:) renders full text exactly as before. */
+                                /* Phase 76 EVT-09: mobile-only line-clamp + inline expand. Desktop (md:) renders full text exactly as before.
+                                   88-33 Task 9 (UAT row 326): the toggle renders only when the clamped
+                                   paragraph ACTUALLY overflows (or is currently expanded — it must stay
+                                   reachable to collapse), with aria-expanded/aria-controls disclosure
+                                   semantics. */
                                 <div className="mt-4">
-                                    <p className={`text-content-secondary ${descExpanded ? '' : 'line-clamp-3 md:line-clamp-none'}`}>
+                                    <p
+                                        ref={setDescNode}
+                                        id="game-description"
+                                        className={`text-content-secondary ${descExpanded ? '' : 'line-clamp-3 md:line-clamp-none'}`}
+                                    >
                                         {game.description}
                                     </p>
-                                    <button
-                                        type="button"
-                                        onClick={() => setDescExpanded((v) => !v)}
-                                        className="md:hidden mt-1 text-sm text-content-link hover:text-content-link-hover font-medium"
-                                    >
-                                        {descExpanded ? 'Show Less' : 'Show More'}
-                                    </button>
+                                    {(descOverflows || descExpanded) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setDescExpanded((v) => !v)}
+                                            aria-expanded={descExpanded}
+                                            aria-controls="game-description"
+                                            className="md:hidden mt-1 text-sm text-content-link hover:text-content-link-hover font-medium"
+                                        >
+                                            {descExpanded ? 'Show Less' : 'Show More'}
+                                        </button>
+                                    )}
                                 </div>
                             )}
                         </div>

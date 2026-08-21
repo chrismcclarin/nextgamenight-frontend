@@ -64,6 +64,9 @@ vi.mock('@auth0/nextjs-auth0/client', () => ({
 }));
 
 // Received requests live in the shared provider (POLL-02), not in page state.
+// `refreshFriendships` is hoisted so tests can assert the unfriend mutation
+// refreshes the provider (88-33 Task 9, UAT row 553).
+const providerCtx = vi.hoisted(() => ({ refreshFriendships: vi.fn() }));
 vi.mock('@/app/components/FriendshipStatusProvider', () => ({
   useFriendshipStatus: () => ({
     receivedRequests: [],
@@ -71,6 +74,7 @@ vi.mock('@/app/components/FriendshipStatusProvider', () => ({
     declineRequest: vi.fn().mockResolvedValue({}),
     loading: false,
     getStatus: () => 'none',
+    refreshFriendships: providerCtx.refreshFriendships,
   }),
 }));
 
@@ -369,6 +373,9 @@ describe('remove friend (two-tap tier)', () => {
     );
     expect(friendshipsAPI.removeFriend as Mock).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.queryByText('Dana')).not.toBeInTheDocument());
+    // 88-33 Task 9 (UAT row 553): the shared provider refreshes so friend
+    // pills on every other surface drop the severed relationship too.
+    expect(providerCtx.refreshFriendships).toHaveBeenCalled();
   });
 
   it('reverts to the resting label once the arm window lapses', async () => {

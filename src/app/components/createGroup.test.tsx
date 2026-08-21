@@ -101,13 +101,15 @@ describe('createGroup — Req 9 migration proof', () => {
     expect(modaltoggle).toHaveBeenCalled();
   });
 
-  it('exposes a NAMED close affordance (SPEC Req 4 — no nameless glyphs)', () => {
+  it('exposes exactly ONE named close affordance — the error-red × (UAT row 283)', () => {
     renderCreateGroup();
-    // Two by design: <Modal.Header>'s `aria-label="Close"` × and the shipped
-    // red "Close" text button 88-16 deliberately kept. Both are NAMED, which is
-    // the requirement; the count is asserted so silently dropping the visible
-    // one reads as a decision rather than a passing test.
-    expect(screen.getAllByRole('button', { name: /close/i })).toHaveLength(2);
+    // 88-33 Task 9: the red "Close" text button is REMOVED by owner decision
+    // (row 283); the header × takes the error color as its replacement. The
+    // count is asserted so silently RESTORING the second button reads as a
+    // decision rather than a passing test.
+    const closes = screen.getAllByRole('button', { name: /close/i });
+    expect(closes).toHaveLength(1);
+    expect(closes[0].className).toContain('text-status-error');
   });
 
   it('renders nothing at all when `modal` is false', () => {
@@ -280,7 +282,7 @@ describe('createGroup in-flight guard (UAT row 447)', () => {
     // Mid-create: every close affordance is inert AND presents as unavailable.
     await user.keyboard('{Escape}');
     const closeButtons = screen.getAllByRole('button', { name: /close/i });
-    expect(closeButtons).toHaveLength(2); // header × + the red Close (until Task 9 removes it)
+    expect(closeButtons).toHaveLength(1); // the red × (Task 9 removed the text button)
     for (const button of closeButtons) {
       await user.click(button);
       expect(button).toHaveAttribute('aria-disabled', 'true');

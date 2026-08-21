@@ -37,6 +37,10 @@ function FriendsPage() {
         acceptRequest: ctxAcceptRequest,
         declineRequest: ctxDeclineRequest,
         loading: friendshipCtxLoading,
+        // 88-33 Task 9 (UAT row 553): the provider-wide refresh — called after a
+        // successful unfriend so friend pills EVERYWHERE update without a manual
+        // reload (the local optimistic filter below only fixes THIS page's list).
+        refreshFriendships,
     } = useFriendshipStatus();
 
     // Tab state
@@ -356,6 +360,9 @@ function FriendsPage() {
                     return next;
                 });
             }
+            // 88-33 Task 9 (row 553): refresh the shared provider so friendship
+            // pills on every other surface reflect the removal immediately.
+            refreshFriendships?.();
         } catch (err) {
             console.error('Error removing friend:', err);
             setRemoveError(

@@ -34,7 +34,7 @@
 // * The D-40 session-delete gate extends `describe('role-gated session
 //   affordances')` — the roster plumbing it needs is already here.
 import * as React from 'react';
-import { render, screen, within, cleanup, waitFor, act } from '@testing-library/react';
+import { render, screen, within, cleanup, waitFor, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -1015,5 +1015,109 @@ describe('gameDetail plan-a-game-night CTA', () => {
     expect(
       await screen.findAllByRole('button', { name: 'Plan a game night with this' })
     ).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 88-33 Task 9 (WI-F9) — expand affordances + the guest-removal disclosure.
+// ---------------------------------------------------------------------------
+describe('gameDetail expand affordances (rows 326/334)', () => {
+  const GAME_WITH_DESC = {
+    ...GAME,
+    description: 'A very long description of a very good bird game. '.repeat(10),
+  };
+
+  // jsdom performs no layout: scrollHeight/clientHeight are 0. Shadow them on
+  // HTMLElement.prototype to simulate a clamped paragraph that overflows.
+  const setMeasuredOverflow = (scroll: number, client: number) => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get: () => scroll,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get: () => client,
+    });
+  };
+  afterEach(() => {
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollHeight;
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientHeight;
+  });
+
+  it('hides Show More when the clamped description does not overflow (row 326)', async () => {
+    renderGameDetail({ game: GAME_WITH_DESC }); // default jsdom: 0/0 — no overflow
+    await screen.findByRole('heading', { name: 'Game Sessions (1)' });
+    expect(screen.queryByRole('button', { name: 'Show More' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Show full title' })).toBeNull();
+  });
+
+  it('shows the toggle with disclosure semantics when it overflows; Esc collapses; editable-origin Esc does not (rows 326+334)', async () => {
+    const user = userEvent.setup();
+    setMeasuredOverflow(100, 50);
+    renderGameDetail({ game: GAME_WITH_DESC });
+
+    const toggle = await screen.findByRole('button', { name: 'Show More' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveAttribute('aria-controls', 'game-description');
+
+    fireEvent.click(toggle);
+    expect(screen.getByRole('button', { name: 'Show Less' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+
+    // Esc arriving FROM an editable control bails (r1 triage).
+    await user.click(screen.getByRole('button', { name: /Show Filters/ }));
+    fireEvent.keyDown(screen.getByLabelText('Min Duration (min)'), { key: 'Escape' });
+    expect(screen.getByRole('button', { name: 'Show Less' })).toBeInTheDocument();
+
+    // A plain Esc on the main page collapses back to Show More.
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Show More' })).toBeInTheDocument()
+    );
+  });
+
+  it('Esc while a dialog is open leaves the expanded description alone (row 334)', async () => {
+    setMeasuredOverflow(100, 50);
+    renderGameDetail({ game: GAME_WITH_DESC });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Show More' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Review' }));
+    await screen.findByRole('dialog');
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(screen.getByRole('button', { name: 'Show Less' })).toBeInTheDocument();
+  });
+
+  it('the title twin gains a keyboard-reachable expand when clamped and overflowing', async () => {
+    setMeasuredOverflow(100, 50);
+    renderGameDetail({ game: GAME_WITH_DESC });
+
+    const titleButton = await screen.findByRole('button', { name: 'Show full title' });
+    expect(titleButton).toHaveAttribute('aria-controls', 'game-title');
+    fireEvent.click(titleButton);
+    // One-shot expand (Phase 76 design preserved): the affordance leaves once expanded.
+    expect(screen.queryByRole('button', { name: 'Show full title' })).toBeNull();
+  });
+});
+
+describe('gameDetail guest-removal disclosure (row 530 FE half)', () => {
+  it('tells admins the removal boundary in the participants modal', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
+    const dialog = await openParticipantsModal(user);
+    expect(
+      within(dialog).getByText('Guests and your own row are removed via Edit Event.')
+    ).toBeInTheDocument();
+  });
+
+  it('renders no disclosure for plain members (they have no Remove affordance)', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'member', participants: SIX_PARTICIPANTS });
+    const dialog = await openParticipantsModal(user);
+    expect(
+      within(dialog).queryByText('Guests and your own row are removed via Edit Event.')
+    ).toBeNull();
   });
 });

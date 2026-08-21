@@ -15,6 +15,8 @@ import { patchSelfCache } from '../../lib/hooks/selfIdentityCache';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import Link from 'next/link';
 import { formatDate, toLocalDateString } from '../../lib/dateUtils';
+// 88-33 Task 9 (fork 1, RULED 2026-08-17): pattern times print 12-hour everywhere.
+import { formatTime } from '../../lib/datetime';
 import SafeImage from '../components/SafeImage';
 import DangerZoneDeleteAccount from '../components/DangerZoneDeleteAccount';
 import { useTutorial } from '../components/tutorial/TutorialProvider';
@@ -2187,7 +2189,7 @@ function Profile(){
                                             <div key={pattern.id} className="p-3 border border-line rounded-lg flex justify-between items-center">
                                                 <div>
                                                     <p className="font-medium text-content-primary">
-                                                        {getDayName(pattern.pattern_data.dayOfWeek)}: {pattern.pattern_data.startTime} - {pattern.pattern_data.endTime}
+                                                        {getDayName(pattern.pattern_data.dayOfWeek)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
                                                     </p>
                                                     <p className="text-sm text-content-secondary">
                                                         {formatDate(pattern.start_date)} - {formatDate(pattern.end_date)}
@@ -2324,7 +2326,7 @@ function Profile(){
                                             <div key={pattern.id} className="p-3 border border-line rounded-lg flex justify-between items-center">
                                                 <div>
                                                     <p className="font-medium text-content-primary">
-                                                        {formatDate(pattern.pattern_data.date)}: {pattern.pattern_data.startTime} - {pattern.pattern_data.endTime}
+                                                        {formatDate(pattern.pattern_data.date)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
                                                     </p>
                                                     <p className="text-sm text-content-secondary">
                                                         {pattern.is_available ? 'Available' : 'Busy'}

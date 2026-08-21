@@ -200,10 +200,17 @@ export interface ModalHeaderProps {
    * @default false
    */
   closeDisabled?: boolean;
+  /**
+   * PRESENTATION ONLY (88-33 Task 9): extra classes merged onto the close `×`
+   * button. Exists for consumers whose × carries a deliberate accent (createGroup's
+   * error-red ×, UAT row 283 — the owner's replacement for its removed red Close
+   * button). Never grows behavior.
+   */
+  closeClassName?: string;
 }
 
 /** `.modal-header`: 1.25rem 1.5rem padding, 1px bottom border, title 20px/700. */
-function ModalHeader({ children, className, closeDisabled = false }: ModalHeaderProps) {
+function ModalHeader({ children, className, closeDisabled = false, closeClassName }: ModalHeaderProps) {
   return (
     <div
       /* DECISION Phase 88-33 Task 3 (fork 6, RULED 2026-08-17; UAT rows 299/308/313): the header
@@ -241,7 +248,8 @@ function ModalHeader({ children, className, closeDisabled = false }: ModalHeader
           // Unavailable presentation only — stays focusable (a real `disabled`
           // would drop keyboard focus mid-interaction); the consumer's onClose
           // guard is what makes the click inert. See `closeDisabled` doc above.
-          closeDisabled && 'cursor-not-allowed opacity-50 hover:text-content-muted'
+          closeDisabled && 'cursor-not-allowed opacity-50 hover:text-content-muted',
+          closeClassName
         )}
       >
         &times;
