@@ -178,6 +178,26 @@ test.describe('phone: feedback trigger moves into the nav menu (R3, D-09)', () =
     // Containing-block regression guard (see measureModalSurface's contract):
     // the modal's fixed geometry must resolve against the viewport, never
     // against the nav dropdown's `translate`.
+    //
+    // SETTLE FIRST: DialogContent's enter animation (zoom-in-95 +
+    // slide-in-from-left-1/2, dialog.tsx:64, 200ms) translates the surface
+    // while it runs — PR #22 round 2 measured centre X at 113px on a 375px
+    // viewport mid-animation and reported a phantom containing-block offset.
+    // A settled rect distinguishes the real bug (a PERSISTENT offset from a
+    // transformed ancestor) from the transient enter transform.
+    const dialogSurface = page.getByRole('dialog');
+    let prevRect = await dialogSurface.boundingBox();
+    for (let i = 0; i < 40; i += 1) {
+      await page.waitForTimeout(100);
+      const nextRect = await dialogSurface.boundingBox();
+      if (
+        prevRect && nextRect &&
+        Math.abs(prevRect.x - nextRect.x) < 0.01 &&
+        Math.abs(prevRect.y - nextRect.y) < 0.01 &&
+        Math.abs(prevRect.width - nextRect.width) < 0.01
+      ) break;
+      prevRect = nextRect;
+    }
     const viewport = page.viewportSize();
     expect(viewport).not.toBeNull();
     const surface = await measureModalSurface(page);
