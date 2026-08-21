@@ -2176,7 +2176,7 @@ export default function GameDetailPage() {
                                 onClick={() => setTitleExpanded(true)}
                                 aria-expanded={false}
                                 aria-controls="game-title"
-                                className="md:hidden sr-only focus:not-sr-only text-sm text-content-link font-medium"
+                                className="md:hidden sr-only focus-visible:not-sr-only text-sm text-content-link font-medium"
                             >
                                 Show full title
                             </button>
@@ -2234,7 +2234,7 @@ export default function GameDetailPage() {
                                     onClick={() => setTitleExpanded(true)}
                                     aria-expanded={false}
                                     aria-controls="game-title"
-                                    className="md:hidden sr-only focus:not-sr-only text-sm text-content-link font-medium"
+                                    className="md:hidden sr-only focus-visible:not-sr-only text-sm text-content-link font-medium"
                                 >
                                     Show full title
                                 </button>
