@@ -2346,12 +2346,15 @@ export default function GameDetailPage() {
                 )}
             </div>
 
-            {/* Upcoming — fork G's split section (Task 7 step 1b): future events of this
-                game render HERE with their interactive RSVP/Ballot/Bring surfaces; the
-                Game Sessions card below is history-only. When the upcoming partition is
-                empty the whole section is OMITTED rather than rendering an empty box
-                (recorded choice — an "Upcoming (0)" shell would just push the history
-                content down for nothing). */}
+            {/* DECISION Phase 88-33 Task 7 step 1b rider (owner-RATIFIED 2026-08-21 at phase
+                close): fork G's split section — future events of this game render HERE with
+                their interactive RSVP/Ballot/Bring surfaces; the Game Sessions card below is
+                history-only. When the upcoming partition is empty the whole section is
+                OMITTED, chosen OVER always rendering the header with an empty-state line —
+                most games have nothing scheduled most of the time, and a permanent
+                "Upcoming (0)" shell would push real content down on every game page
+                (worst at phone width). The section appearing IS the signal. Adding an
+                always-on empty state here is a decision, not a completeness fix. */}
             {upcomingEvents.length > 0 && (
                 <div className="card p-3 md:p-6 mb-6">
                     <h2 className="w-full text-xl leading-tight font-bold text-content-primary mb-4">
