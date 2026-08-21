@@ -16,8 +16,10 @@
  *
  * Visual contract (UI-SPEC §8.7): title 20px/700 (`Modal.Header`), body 16px/400
  * `content-secondary`, confirm on the `danger` Button variant labelled with the
- * VERB ALONE, Cancel on `secondary` and focused on open, 12px radius inherited
- * from `.modal-content`.
+ * VERB ALONE, Cancel on `secondary`, 12px radius inherited from `.modal-content`.
+ * Opening focus: Cancel on button-only tiers; the TYPED tier focuses its
+ * type-to-confirm input instead (88-33 Task 4, walk rows 431/439 — see the
+ * DECISION marker at the Modal mount below).
  *
  * **Copy rule, and it is enforced elsewhere (§6.1):** bodies state CONCRETE
  * consequences in counts — "its 4 members are emailed a takeover link", not a
@@ -136,6 +138,7 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const inputId = React.useId();
   const cancelRef = React.useRef<HTMLButtonElement>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
   /* DECISION Phase 88-05 (AR R2-M16): the type-to-confirm value is state HERE, not in
      `useConfirmAction`. Chosen OVER holding it in the hook, which is where a reader would
@@ -151,9 +154,26 @@ export function ConfirmDialog({
     if (!open) setTyped('');
   }, [open]);
 
+  const isTyped = tier === 'typed';
+  const typedInputRendered = isTyped && !blocked;
+
+  /* Failed-commit focus restore (88-33 Task 4, r3 triage): while `pending` is true the
+     typed input is disabled, so the browser drops focus to <body>. If the commit FAILS
+     the gate stays open (see useConfirmAction.runConfirm) with focus stranded — restore
+     it to the input so retry/cancel stay keyboard-reachable. On SUCCESS `open` flips
+     false in the same commit as `pending`, so this effect never refocuses a closing
+     dialog. */
+  const prevPendingRef = React.useRef(pending);
+  React.useEffect(() => {
+    const wasPending = prevPendingRef.current;
+    prevPendingRef.current = pending;
+    if (wasPending && !pending && open && typedInputRendered) {
+      inputRef.current?.focus();
+    }
+  }, [pending, open, typedInputRendered]);
+
   if (tier === 'two-tap' || !open) return null;
 
-  const isTyped = tier === 'typed';
   const committedValue = isTyped ? typed : undefined;
 
   return (
@@ -161,7 +181,18 @@ export function ConfirmDialog({
       open={open}
       onClose={onCancel}
       dismissable={isDismissableTier(tier)}
-      initialFocusRef={cancelRef}
+      /* DECISION Phase 88-33 Task 4 (UAT rows 431/439, owner walk ruling 2026-08-13):
+         the TYPED tier opens with focus on the type-to-confirm INPUT — overriding, for
+         this tier only, the Cancel-first safe destructive default recorded at
+         Modal.tsx's initialFocusRef doc and pinned by the dialog-tier focus test.
+         Button-only tiers KEEP Cancel-first. Rationale: on the typed tier you must
+         type the phrase anyway before the confirm control enables, so focus-to-input
+         is not a destructive hazard there — it is the task; Cancel-first exists to
+         keep a stray Enter from confirming, and the typed gate already guarantees
+         that (Enter is inert until the phrase matches exactly). Reverting the typed
+         tier to Cancel-first re-opens walk row 439; that is a decision, not a
+         consistency cleanup. */
+      initialFocusRef={typedInputRendered ? inputRef : cancelRef}
       className={className}
     >
       <Modal.Header>{title}</Modal.Header>
@@ -184,9 +215,20 @@ export function ConfirmDialog({
                 below:
               </label>
               <Input
+                ref={inputRef}
                 id={inputId}
                 value={typed}
                 onChange={(event) => setTyped(event.target.value)}
+                // Enter submits IFF the committed value matches — the SAME
+                // predicate that enables the confirm button (UAT row 431).
+                // A non-matching Enter does nothing: there is deliberately no
+                // <form> element here, so Enter has no implicit submit to fall
+                // through to, and the typed gate's exact-match guarantee holds.
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter') return;
+                  event.preventDefault();
+                  if (!confirmDisabled(typed)) onConfirm(typed);
+                }}
                 disabled={pending}
                 placeholder={expectedPhrase}
                 autoComplete="off"

@@ -1,9 +1,10 @@
 'use client'
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { groupsAPI } from '../../lib/api';
 import FriendInvitePanel from './FriendInvitePanel';
 import { Modal } from './Modal';
 import { Input } from '../../components/ui/Input';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 
 function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
 
@@ -14,6 +15,25 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
     const [newGroup, setNewGroup] = useState(groupForm)
     const [errorMessage, setErrorMessage] = useState('')
     const [createdGroup, setCreatedGroup] = useState(null)
+    const [submitting, setSubmitting] = useState(false)
+    const nameInputRef = useRef(null)
+
+    /* DECISION Phase 88-33 Task 4 (UAT row 447): while a create request is IN FLIGHT the
+       dialog is genuinely non-dismissible — Esc, the header ×, and outside-click are ALL
+       inert, because every one of them routes through this single guarded onClose (Radix
+       funnels Esc/×/outside into onOpenChange -> onClose; see Modal.tsx handleOpenChange).
+       Chosen OVER `dismissable={false}`, which suppresses ONLY outside-click and would
+       have left Esc and the × able to dismiss mid-create — the exact walk failure ("pressed
+       enter... I was able to press escape and exit the modal before the friends modal came
+       up"). This is a BOUNDED pending-window exception to WCAG 2.1.2 No Keyboard Trap, not
+       a trap: the window spans only the in-flight request and every outcome exits it
+       automatically — success closes the modal via the normal handoff, and failure
+       re-enables closability in onSubmit's finally. Trapping this at the Modal primitive
+       instead was rejected (fleet-wide keyboard trap for one consumer's transient need). */
+    const handleClose = () => {
+        if (submitting) return;
+        modaltoggle();
+    }
 
     const handleChange = (event) => {
         setNewGroup({...newGroup, [event.target.id]: event.target.value})
@@ -25,6 +45,9 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
 
     const onSubmit = async (e) => {
         e.preventDefault();
+        // Double-submit guard: Enter + a fast second click during the same
+        // in-flight request must not create two groups (UAT row 447).
+        if (submitting) return;
         if (!newGroup.name.trim()) {
             // DECISION Phase 88-29 (Req 11 / DEF-88-16-01): this validation failure reports
             // through the component's OWN inline error slot, chosen OVER the browser
@@ -43,6 +66,7 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
         }
         try {
             setErrorMessage(''); // Clear any previous errors
+            setSubmitting(true);
             const data = await createNewGroup(newGroup);
             setNewGroup(groupForm);
             modaltoggle();
@@ -53,6 +77,10 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
             // Show the actual error message from the API
             const errorMsg = error.message || 'Failed to create group. Please try again.';
             setErrorMessage(errorMsg);
+        } finally {
+            // Re-enable close on EVERY settle: success closes via modaltoggle above;
+            // failure must not leave the person stuck in an undismissable dialog.
+            setSubmitting(false);
         }
     }
 
@@ -118,13 +146,17 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                 is unchanged. `Modal.Body` is `p-0` with the padding pushed onto
                 the <form>, because the "Close" button below is OUTSIDE the form
                 and was outside the padded body before the migration too. */}
-            <Modal open={modal} onClose={modaltoggle} size="sm">
-                <Modal.Header>Create a new Group</Modal.Header>
+            {/* 88-33 Task 4 (UAT row 291, fleet initial-focus policy): a form-bearing modal
+                opens with focus on its first meaningful input — here the group name — so
+                the person can just start typing. */}
+            <Modal open={modal} onClose={handleClose} size="sm" initialFocusRef={nameInputRef}>
+                <Modal.Header closeDisabled={submitting}>Create a new Group</Modal.Header>
                 <Modal.Body className="p-0 md:p-0">
-                    <form onSubmit={onSubmit} autoComplete="off" className="p-6">
+                    <form onSubmit={onSubmit} autoComplete="off" className="p-6" aria-busy={submitting || undefined}>
                         <div className="mb-3 pt-0">
                             <div className="relative">
                                 <Input
+                                    ref={nameInputRef}
                                     id="name"
                                     name="group-name-create"
                                     onChange={handleChange}
@@ -168,17 +200,29 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                             the fleet footer is a decision, not a cleanup. */}
                         <div className="flex justify-center pt-1">
                             <button
-                                className="btn btn-primary font-bold uppercase text-sm px-6 py-3 shadow-sm hover:shadow-lg min-h-11"
+                                className="btn btn-primary font-bold uppercase text-sm px-6 py-3 shadow-sm hover:shadow-lg min-h-11 disabled:opacity-50"
                                 type="submit"
+                                disabled={submitting}
                             >
-                                Create Group
+                                {submitting ? 'Creating...' : 'Create Group'}
                             </button>
                         </div>
+                        {/* The submit label swap alone is silent to screen readers — announce the
+                            in-flight state via a live region (empty-first, StatusRegion contract). */}
+                        <StatusRegion politeness="polite" className="sr-only">
+                            {submitting ? 'Creating group...' : ''}
+                        </StatusRegion>
                     </form>
+                    {/* 88-33 Task 4 rider (a): this close affordance routes through the SAME
+                        guarded handleClose as Esc/×/outside-click, so the mid-create inert
+                        window covers every close path that exists right now. Task 9 removes
+                        this button entirely (UAT row 283); until that lands it must not be
+                        the one affordance that bypasses the guard. */}
                     <button
-                        className="text-status-error background-transparent font-bold uppercase px-6 py-2 text-sm outline-hidden focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 active:opacity-75 mr-1 mb-1 ease-linear transition-all duration-150"
+                        className="text-status-error background-transparent font-bold uppercase px-6 py-2 text-sm outline-hidden focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 active:opacity-75 mr-1 mb-1 ease-linear transition-all duration-150 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
                         type="button"
-                        onClick={modaltoggle}
+                        aria-disabled={submitting || undefined}
+                        onClick={handleClose}
                     >
                         Close
                     </button>

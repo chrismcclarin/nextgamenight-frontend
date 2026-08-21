@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { apiFetch } from '../../lib/api';
 import { Modal } from './Modal';
 import { Input, Textarea, SelectControl } from '@/components/ui/Input';
@@ -70,6 +70,8 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
   const [gameId, setGameId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  // 88-33 Task 4 (UAT row 291): initial-focus target.
+  const deadlineInputRef = useRef(null);
 
   // Reset form whenever the modal is re-opened — without this a closed-then-
   // re-opened modal would carry stale state (especially errors from a prior
@@ -164,7 +166,9 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
   // Cancel still close. The submit button lives in <Modal.Footer> (outside the
   // <form>) but stays wired to it via the `form="start-poll-form"` attribute.
   return (
-    <Modal open={isOpen} onClose={onClose} dismissable={false}>
+    /* 88-33 Task 4 (UAT row 291, fleet initial-focus policy): form-bearing modal —
+       focus opens on the first meaningful input (the deadline field). */
+    <Modal open={isOpen} onClose={onClose} dismissable={false} initialFocusRef={deadlineInputRef}>
       <Modal.Header>Start a check-in</Modal.Header>
       <Modal.Body>
         <p className="text-sm text-content-secondary mb-4">
@@ -183,6 +187,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
               Deadline
             </label>
             <Input
+              ref={deadlineInputRef}
               id="poll-deadline"
               type="datetime-local"
               value={deadlineLocal}

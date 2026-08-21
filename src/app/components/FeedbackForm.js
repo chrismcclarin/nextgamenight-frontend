@@ -18,6 +18,8 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
   const [screenshotError, setScreenshotError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  // 88-33 Task 4 (UAT row 291): initial-focus target — see the note at the Modal below.
+  const subjectInputRef = useRef(null);
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
 
@@ -144,7 +146,11 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
   }
 
   return (
-    <Modal open onClose={onClose} className="max-w-md">
+    /* 88-33 Task 4 (UAT row 291, fleet initial-focus policy): form-bearing modal — focus
+       opens on the SUBJECT input, not the Type select above it: the select ships
+       pre-defaulted ("Bug Report") and describing the issue is the form's task, so the
+       typing surface is the first MEANINGFUL input here. */
+    <Modal open onClose={onClose} className="max-w-md" initialFocusRef={subjectInputRef}>
       <Modal.Header>Report Bug or Suggest Feature</Modal.Header>
       <Modal.Body>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -176,6 +182,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
               Subject <span className="text-red-500">*</span>
             </label>
             <Input
+              ref={subjectInputRef}
               id="feedback-form-subject"
               type="text"
               value={subject}

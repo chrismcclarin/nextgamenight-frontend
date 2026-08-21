@@ -1,9 +1,9 @@
 'use client';
-import { useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { Input } from '@/components/ui/Input';
 import { StatusRegion } from '@/components/ui/StatusRegion';
 
-export default function ParticipantRow({ participant, index, groupMembers, onParticipantChange, onToggleParticipant, duplicateOfName = null }) {
+export default function ParticipantRow({ participant, index, groupMembers, onParticipantChange, onToggleParticipant, duplicateOfName = null, requestNameFocus = false, onNameFocusHandled = undefined }) {
   /* DECISION Phase 88-21 (DEF-88-10-01): control ids come from `useId`, NOT from the `index`
      prop. Chosen OVER `participant-${index}-score`, which is the obvious shape and is what the
      surrounding code already has in hand. Index-derived ids are only unique WITHIN one list, and
@@ -11,6 +11,22 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
      ids and `htmlFor` would then resolve to whichever control the browser saw first — silently
      mislabelling the second list. Re-deriving these from `index` is a decision, not a cleanup. */
   const rowId = useId();
+
+  // 88-33 Task 4 (UAT row 542): when the parent flags this row as freshly added,
+  // focus its name input and scroll it into view within the modal's scroll region.
+  // `scrollIntoView` is guarded — jsdom does not implement it.
+  const nameInputRef = useRef(null);
+  useEffect(() => {
+    if (!requestNameFocus) return;
+    const node = nameInputRef.current;
+    if (!node) return;
+    node.focus();
+    if (typeof node.scrollIntoView === 'function') {
+      node.scrollIntoView({ block: 'nearest' });
+    }
+    onNameFocusHandled?.();
+  }, [requestNameFocus, onNameFocusHandled]);
+
   const nameId = `${rowId}-name`;
   const scoreId = `${rowId}-score`;
   const factionId = `${rowId}-faction`;
@@ -62,6 +78,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
           // Editable input for custom participants
           <div className="flex items-center gap-2">
             <Input
+              ref={nameInputRef}
               id={nameId}
               name={nameId}
               type="text"

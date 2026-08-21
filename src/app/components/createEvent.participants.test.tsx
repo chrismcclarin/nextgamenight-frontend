@@ -241,3 +241,18 @@ describe('stable row identity + undo (UAT rows 510, 557)', () => {
     });
   });
 });
+
+// 88-33 Task 4 (UAT row 542): "+ Add Participant" moves focus into the fresh
+// row's name input so the person can type the name immediately — the walk found
+// the new row appended off-screen with focus still on the button.
+describe('add-participant focus (UAT row 542)', () => {
+  it("moves focus to the freshly added row's name input", async () => {
+    await renderModal();
+    fireEvent.click(screen.getByRole('button', { name: '+ Add Participant' }));
+
+    const inputs = nameInputs();
+    const fresh = inputs[inputs.length - 1]; // new rows append at the end
+    expect(fresh.value).toBe('');
+    await waitFor(() => expect(fresh).toHaveFocus());
+  });
+});

@@ -41,6 +41,9 @@ export default function ScheduleForm({
   // stop auto-overwriting it on day/time/game changes. The ref persists across
   // renders without triggering re-renders itself.
   const templateNameDirtyRef = useRef(false);
+  // 88-33 Task 4 (UAT row 291): initial-focus target — merged with the RHF register
+  // ref at the Day of Week SelectControl below.
+  const dayOfWeekRef = useRef(null);
 
   // Detect user's timezone using Intl API
   const userTimezone = typeof window !== 'undefined'
@@ -229,8 +232,14 @@ export default function ScheduleForm({
      gated on `onCancel` — for a caller without `onCancel` it is a no-op rather
      than a dead-end, and no shipped caller omits it (PromptScheduleManager is
      the only one). */
+  /* 88-33 Task 4 (UAT row 291, fleet initial-focus policy): form-bearing modal — focus
+     opens on the first meaningful field (Day of Week). react-hook-form owns the
+     control's ref, so the register ref and the focus ref are MERGED via a callback
+     ref; dropping either half breaks RHF registration or the initial focus. */
+  const dayOfWeekField = register('schedule_day_of_week', { valueAsNumber: true });
+
   return (
-    <Modal open onClose={() => onCancel?.()} className="max-w-2xl">
+    <Modal open onClose={() => onCancel?.()} className="max-w-2xl" initialFocusRef={dayOfWeekRef}>
       <Modal.Header>
         {isEditMode ? 'Edit Schedule' : 'Create Schedule'}
       </Modal.Header>
@@ -238,7 +247,13 @@ export default function ScheduleForm({
         <form onSubmit={handleAppSubmit(onSubmit)}>
           {/* Day of Week */}
           <FormField label="Day of Week" error={errors.schedule_day_of_week?.message} className="mb-4">
-            <SelectControl {...register('schedule_day_of_week', { valueAsNumber: true })}>
+            <SelectControl
+              {...dayOfWeekField}
+              ref={(node) => {
+                dayOfWeekField.ref(node);
+                dayOfWeekRef.current = node;
+              }}
+            >
               {DAYS_OF_WEEK.map((day) => (
                 <option key={day.value} value={day.value}>
                   {day.label}

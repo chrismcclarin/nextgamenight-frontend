@@ -19,7 +19,7 @@
 // `.tsx` is mandatory: vitest.config.mts only includes `.ts`/`.tsx`, and the
 // config's `jsx-in-js` pre-transform handles the `.js` component under test.
 import * as React from 'react';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -218,5 +218,88 @@ describe('createGroup create-path handoff (88-15 wiring survives the 88-16 shell
     // ...and the celebratory invite hand-off must not fire for a group that
     // was never created.
     expect(screen.queryByTestId('invite-panel')).toBeNull();
+  });
+});
+
+// 88-33 Task 4 (UAT row 447): in-flight feedback + the mid-create dismiss guard.
+// The walk failure: "pressed enter... nothing happened, and I was able to press
+// escape and exit the modal before the friends modal came up". Every close path
+// (Esc, the header ×, the red Close button) routes through ONE guarded onClose,
+// so all are inert while the create request is in flight — and work again the
+// moment it settles.
+describe('createGroup in-flight guard (UAT row 447)', () => {
+  function deferCreate() {
+    let resolve!: (v: unknown) => void;
+    let reject!: (e: unknown) => void;
+    (groupsAPI.createGroup as unknown as Mock).mockImplementationOnce(
+      () =>
+        new Promise((res, rej) => {
+          resolve = res;
+          reject = rej;
+        })
+    );
+    return {
+      resolve: (v: unknown = CREATED_GROUP) => resolve(v),
+      reject: (e: unknown) => reject(e),
+    };
+  }
+
+  it('cannot double-submit: the button disables, swaps its label, and a forced re-submit is inert', async () => {
+    const user = userEvent.setup();
+    const deferred = deferCreate();
+    renderCreateGroup();
+
+    await user.type(screen.getByPlaceholderText('Group Name'), 'Tuesday Night Crew');
+    const submit = screen.getByRole('button', { name: /create group/i });
+    await user.click(submit);
+
+    // In-flight presentation: disabled + label swap, announced via a live region.
+    const creating = screen.getByRole('button', { name: /creating/i });
+    expect(creating).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Creating group...');
+
+    // Belt-and-braces: even a submit EVENT that bypasses the disabled button
+    // (Enter re-dispatch, programmatic submit) must not fire a second request.
+    fireEvent.submit(creating.closest('form')!);
+    expect(groupsAPI.createGroup as unknown as Mock).toHaveBeenCalledTimes(1);
+
+    deferred.resolve();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /create group/i })).toBeEnabled()
+    );
+  });
+
+  it('Esc, the header ×, and the red Close are ALL inert mid-create; Esc closes again after an error settle', async () => {
+    const user = userEvent.setup();
+    const deferred = deferCreate();
+    const { modaltoggle } = renderCreateGroup();
+
+    await user.type(screen.getByPlaceholderText('Group Name'), 'Crew');
+    await user.click(screen.getByRole('button', { name: /create group/i }));
+
+    // Mid-create: every close affordance is inert AND presents as unavailable.
+    await user.keyboard('{Escape}');
+    const closeButtons = screen.getAllByRole('button', { name: /close/i });
+    expect(closeButtons).toHaveLength(2); // header × + the red Close (until Task 9 removes it)
+    for (const button of closeButtons) {
+      await user.click(button);
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+    }
+    expect(modaltoggle).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // The request FAILS: closability must come back — the person is not stuck.
+    deferred.reject(new Error('Group name already taken'));
+    expect(await screen.findByText('Group name already taken')).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(modaltoggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('focuses the group name input on open (UAT row 291 fleet policy)', async () => {
+    renderCreateGroup();
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText('Group Name')).toHaveFocus()
+    );
   });
 });

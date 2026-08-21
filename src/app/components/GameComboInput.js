@@ -19,7 +19,11 @@ import { Combobox } from '@/components/ui/Combobox';
  * This file stays `.js`: the born-`.tsx` CI gate applies to NEW files, and converting a
  * shipped surface is a separate migration, not part of this adoption.
  */
-export default function GameComboInput({ value, onChange, groupId, userId, placeholder }) {
+// `inputRef` (88-33 Task 4, UAT row 291): optional external ref to the underlying text
+// input, so a hosting modal can point `initialFocusRef` at it (createEvent focuses the
+// game field on open). Merged with the internal ref — internal focus management keeps
+// working whether or not a caller passes one.
+export default function GameComboInput({ value, onChange, groupId, userId, placeholder, inputRef: externalInputRef }) {
   const [inputValue, setInputValue] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [localResults, setLocalResults] = useState([]);
@@ -171,7 +175,10 @@ export default function GameComboInput({ value, onChange, groupId, userId, place
 
   return (
     <Combobox
-      ref={inputRef}
+      ref={(node) => {
+        inputRef.current = node;
+        if (externalInputRef) externalInputRef.current = node;
+      }}
       items={items}
       value={inputValue}
       onValueChange={handleInputChange}

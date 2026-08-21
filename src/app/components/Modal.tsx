@@ -188,10 +188,22 @@ export interface ModalHeaderProps {
   /** Title content — rendered as the DialogTitle (drives `aria-labelledby`). */
   children: React.ReactNode;
   className?: string;
+  /**
+   * PRESENTATION ONLY (88-33 Task 4, createGroup pending-window): renders the
+   * close `×` as unavailable — `aria-disabled` + dimmed styling — while a
+   * consumer's own `onClose` guard is suppressing close. The click still routes
+   * through Radix -> onClose exactly as before; nothing is gated HERE. The
+   * actual close suppression lives in the consumer (createGroup.js gates its
+   * onClose while a create is in flight) so Esc/×/outside-click stay uniform.
+   * This prop must never grow behavior: trapping close at the primitive would
+   * reopen the WCAG 2.1.2 No Keyboard Trap decision for all ~37 call sites.
+   * @default false
+   */
+  closeDisabled?: boolean;
 }
 
 /** `.modal-header`: 1.25rem 1.5rem padding, 1px bottom border, title 20px/700. */
-function ModalHeader({ children, className }: ModalHeaderProps) {
+function ModalHeader({ children, className, closeDisabled = false }: ModalHeaderProps) {
   return (
     <div
       /* DECISION Phase 88-33 Task 3 (fork 6, RULED 2026-08-17; UAT rows 299/308/313): the header
@@ -223,7 +235,14 @@ function ModalHeader({ children, className }: ModalHeaderProps) {
           2.5.8's 24px, on all 37 Modal.Header call sites. Header grows ~68px -> ~84px. */}
       <DialogClose
         aria-label="Close"
-        className="inline-flex min-h-11 min-w-11 items-center justify-center text-2xl leading-none text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+        aria-disabled={closeDisabled || undefined}
+        className={cn(
+          'inline-flex min-h-11 min-w-11 items-center justify-center text-2xl leading-none text-content-muted transition-colors hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring',
+          // Unavailable presentation only — stays focusable (a real `disabled`
+          // would drop keyboard focus mid-interaction); the consumer's onClose
+          // guard is what makes the click inert. See `closeDisabled` doc above.
+          closeDisabled && 'cursor-not-allowed opacity-50 hover:text-content-muted'
+        )}
       >
         &times;
       </DialogClose>

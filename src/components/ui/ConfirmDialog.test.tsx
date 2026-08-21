@@ -613,6 +613,60 @@ describe('ConfirmDialog — typed tier', () => {
     expect(onConfirm).toHaveBeenCalledWith('Tuesday Crew');
   });
 
+  // 88-33 Task 4 (walk rows 439/431, owner-ruled 2026-08-13): the TYPED tier opens with
+  // focus on the type-to-confirm input and submits on Enter once the value matches.
+  // Button-only tiers keep Cancel-first — pinned by the dialog-tier focus test above.
+  it('focuses the type-to-confirm input on open (typed tier only — walk row 439)', async () => {
+    renderConfirmDialog({ ...typedProps, confirmDisabled: () => true });
+    await waitFor(() =>
+      expect(screen.getByLabelText(/To confirm, type/i)).toHaveFocus()
+    );
+  });
+
+  it('Enter submits once the typed value matches (walk row 431)', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderConfirmDialog({
+      ...typedProps,
+      confirmDisabled: (value?: string) => value !== 'Tuesday Crew',
+    });
+
+    const input = screen.getByLabelText(/To confirm, type/i);
+    await user.type(input, 'Tuesday Crew{Enter}');
+
+    expect(onConfirm).toHaveBeenCalledWith('Tuesday Crew');
+  });
+
+  it('Enter with a non-matching value does nothing (same predicate as the button)', async () => {
+    const user = userEvent.setup();
+    const { onConfirm, onCancel } = renderConfirmDialog({
+      ...typedProps,
+      confirmDisabled: (value?: string) => value !== 'Tuesday Crew',
+    });
+
+    const input = screen.getByLabelText(/To confirm, type/i);
+    await user.type(input, 'Tuesday Cre{Enter}');
+
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it('restores focus to the input after a FAILED commit (r3 triage — the disabled window drops focus)', async () => {
+    const shared = {
+      ...typedProps,
+      onCancel: vi.fn(),
+      onConfirm: vi.fn(),
+      confirmDisabled: () => true,
+    };
+    const { rerender } = render(<ConfirmDialog {...shared} open pending />);
+
+    // The commit settles as a FAILURE: the gate stays open, pending clears.
+    rerender(<ConfirmDialog {...shared} open pending={false} />);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/To confirm, type/i)).toHaveFocus()
+    );
+  });
+
   it('renders the caller-supplied pre-flight blocker panel above the input', () => {
     renderConfirmDialog({
       ...typedProps,

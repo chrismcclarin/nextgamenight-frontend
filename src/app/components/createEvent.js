@@ -509,6 +509,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   const [removedParticipant, setRemovedParticipant] = useState(null);
   const undoButtonRef = useRef(null);
   const pendingUndoFocus = useRef(false);
+  // 88-33 Task 4 (UAT row 291): initial-focus target — the game combo's text input.
+  const gameInputRef = useRef(null);
 
   useEffect(() => {
     if (pendingUndoFocus.current && undoButtonRef.current) {
@@ -557,10 +559,19 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     setRemovedParticipant(null);
   };
 
+  // 88-33 Task 4 (UAT row 542): after Add Participant, focus moves to the NEW row's
+  // name input (keyed on the draft `_rowId`, so it survives reorders) and the row is
+  // scrolled into view within Modal.Body. State, not a ref: the row must have RENDERED
+  // before ParticipantRow's focus effect can run against it.
+  const [focusRowId, setFocusRowId] = useState(null);
+  const handleRowFocusHandled = () => setFocusRowId(null);
+
   const addParticipant = () => {
+    const row = createParticipant("", "", false);
+    setFocusRowId(row._rowId);
     setNewEvent(prev => ({
       ...prev,
-      participants: [...prev.participants, createParticipant("", "", false)]
+      participants: [...prev.participants, row]
     }));
   };
 
@@ -795,8 +806,12 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
      glyph survives here that needs one. The header also drops from `text-2xl`
      (24px) to the dialog-title contract (20px/700, UI-SPEC §4.2) because it is
      now the DialogTitle — same call 88-17 made for PromptScheduleManager. */
+  /* 88-33 Task 4 (UAT row 291, fleet initial-focus policy): the game field is this
+     form's first meaningful input — focus lands there on open so the person can just
+     start typing. While the members fetch is still loading the input is not mounted;
+     applyInitialFocus then declines and Radix's default stands (graceful, recorded). */
   return (
-    <Modal open onClose={modaltoggle} size="lg">
+    <Modal open onClose={modaltoggle} size="lg" initialFocusRef={gameInputRef}>
       <Modal.Header>{editingEvent ? 'Edit Event' : 'Create Event'}</Modal.Header>
       {/* DECISION Phase 87.8 DEC-3, re-based by 88-16: `p-3` at phone / `p-6` at
           desktop, now carried by <Modal.Body> (whose own default WAS a flat `p-6`
@@ -858,6 +873,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
               Game
             </label>
             <GameComboInput
+              inputRef={gameInputRef}
               value={{ game_id: newEvent.game_id, game_name: newEvent.game_name }}
               onChange={({ game_id, game_name }) => {
                 setNewEvent(prev => ({ ...prev, game_id: game_id || '', game_name: game_name || '' }));
@@ -1108,6 +1124,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   onParticipantChange={handleParticipantChange}
                   onToggleParticipant={toggleParticipant}
                   duplicateOfName={duplicateNameByIndex[index] ?? null}
+                  requestNameFocus={participant._rowId != null && participant._rowId === focusRowId}
+                  onNameFocusHandled={handleRowFocusHandled}
                 />
               ))}
             </div>
