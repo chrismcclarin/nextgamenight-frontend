@@ -298,8 +298,11 @@ export default function GameDetailPage() {
     const [showGameQR, setShowGameQR] = useState(false);
     const [gameInviteUrl, setGameInviteUrl] = useState('');
     const [qrLoading, setQrLoading] = useState(false);
-    const [removeConfirmingId, setRemoveConfirmingId] = useState(null); // participant.user_id of confirming row
-    const removeConfirmTimerRef = useRef(null);
+    // 88-33 Task 5 (fork 7): the hand-rolled removeConfirmingId/timer pair that lived here
+    // is gone — the see-all Remove now rides `removeParticipantGate` (useConfirmAction,
+    // two-tap tier) below, which owns the armed id, the 3s revert timer, and its cleanup.
+    // The 65-02 EVT-08 two-tap INTERACTION is unchanged; see the amended marker at the
+    // handler site.
 
     // Phase 76 EVT-09: mobile-only inline expand for title (2-line clamp) and
     // description (3-line clamp). Two independent pieces per CONTEXT D-EVT-09
@@ -539,12 +542,9 @@ export default function GameDetailPage() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [showActionsMenu]);
 
-    // Phase 65-02: clean up the second-click confirm timer on unmount.
-    useEffect(() => {
-        return () => {
-            if (removeConfirmTimerRef.current) clearTimeout(removeConfirmTimerRef.current);
-        };
-    }, []);
+    // (88-33 Task 5: the 65-02 "clean up the second-click confirm timer on unmount"
+    // effect that lived here is gone with the hand-rolled timer — useConfirmAction
+    // performs the same unmount cleanup internally, absorbed from KebabMenu.js:63-71.)
 
     // Phase 65-02: cancel-event handler invoked from the kebab menu.
     // Single click cancels and redirects — no modal, no second confirm. The
@@ -641,33 +641,26 @@ export default function GameDetailPage() {
         }
     };
 
-    // Phase 65-02 EVT-08 frontend: second-click-confirm Remove handler.
-    // First click arms a 3s revert timer. Second click within the window
-    // calls eventsAPI.removeParticipation (Plan 65-01 backend) which
-    // hard-destroys the EventParticipation row and writes an audit-log row;
-    // a subsequent QR re-join is silent (no welcome email) per EVT-08.
-    const handleRemoveClick = async (participant) => {
-        // participant.user_id is User.id (UUID) post-flatten — the value the
-        // DELETE endpoint expects. Custom participants have user_id === null
-        // and the Remove button is hidden for them at render time.
-        const targetUserDbId = participant.user_id;
+    /* DECISION Phase 88-33 Task 5 (fork 7, RULED 2026-08-17) — AMENDMENT, D-39 house style.
+       The hand-rolled second-click handler below is CONVERGED onto `useConfirmAction`
+       (two-tap tier): the hook now owns the armed id, the 3s revert window, cross-target
+       re-arm safety and the SR announcement; the divergent click-again armed copy this
+       control carried (deliberately not spelled out here, so a convergence gate cannot
+       match this comment) converges onto the fleet default. The 65-02 EVT-08 INTERACTION — an inline
+       second click, never a modal — is preserved exactly; only the implementation moved.
+       Reopened by: owner walk 2026-08-13 (affordance-prominence rows) -> fork 7 ruling
+       2026-08-17. ORIGINAL MARKER, verbatim: "Phase 65-02 EVT-08 frontend:
+       second-click-confirm Remove handler. First click arms a 3s revert timer. Second
+       click within the window calls eventsAPI.removeParticipation (Plan 65-01 backend)
+       which hard-destroys the EventParticipation row and writes an audit-log row; a
+       subsequent QR re-join is silent (no welcome email) per EVT-08."
+       Re-hand-rolling this, or promoting it to a ConfirmDialog, is a decision, not a
+       cleanup. */
+    const performRemoveParticipation = async (targetUserDbId) => {
+        // targetUserDbId is User.id (UUID) post-flatten — the value the DELETE
+        // endpoint expects. Custom participants have user_id === null and the
+        // Remove button is hidden for them at render time.
         if (!targetUserDbId) return;
-
-        // First click: arm confirm + 3s revert timer.
-        if (removeConfirmingId !== targetUserDbId) {
-            if (removeConfirmTimerRef.current) clearTimeout(removeConfirmTimerRef.current);
-            setRemoveConfirmingId(targetUserDbId);
-            removeConfirmTimerRef.current = setTimeout(() => {
-                setRemoveConfirmingId(null);
-                removeConfirmTimerRef.current = null;
-            }, 3000);
-            return;
-        }
-
-        // Second click within 3s — actually remove.
-        clearTimeout(removeConfirmTimerRef.current);
-        removeConfirmTimerRef.current = null;
-        setRemoveConfirmingId(null);
         try {
             await eventsAPI.removeParticipation(singleEvent.id, targetUserDbId);
             // Optimistically drop the row. No toast (per CONTEXT decision).
@@ -682,6 +675,17 @@ export default function GameDetailPage() {
             );
         }
     };
+
+    // Two-tap tier (fork 7): persistent inline row button, so D-07's auto-closing-menu
+    // limit does not bite. Dialog-tier copy authored anyway (superset config) so a
+    // retier stays the one-word edit.
+    const removeParticipantGate = useConfirmAction({
+        tier: 'two-tap',
+        title: 'Remove this participant?',
+        body: 'They are removed from this event for everyone. A QR re-join is silent.',
+        confirmLabel: 'Remove',
+        onConfirm: (targetUserDbId) => performRemoveParticipation(targetUserDbId),
+    });
 
     const fetchGameData = async () => {
         if (!game_id) return;
@@ -1453,7 +1457,12 @@ export default function GameDetailPage() {
                     trap, which is where it always should have been. Promoting it to a
                     ConfirmDialog because it happens to sit in a dialog now would re-open an
                     owner ruling: the inline second click IS the friction, and a modal on top
-                    of a modal is worse on a phone. That is a decision, not a cleanup. */}
+                    of a modal is worse on a phone. That is a decision, not a cleanup.
+
+                    88-33 Task 5 amendment (fork 7): "UNCHANGED" now refers to the
+                    INTERACTION — the implementation converged onto useConfirmAction
+                    (see the amended handler marker); it is still an inline second
+                    click, never a modal. */}
                 <Modal open={showAllParticipants} onClose={() => setShowAllParticipants(false)}>
                     <Modal.Header>Participants ({participants.length})</Modal.Header>
                     <Modal.Body className="space-y-2">
@@ -1475,7 +1484,8 @@ export default function GameDetailPage() {
                             // Req 15: same gate object the strip chip uses, so the two
                             // surfaces cannot disagree about who is invitable.
                             const canInvite = canInviteGuest(p, userRole);
-                            const isConfirming = removeConfirmingId === p.user_id;
+                            // 88-33 Task 5 (fork 7): armed state now comes from the gate.
+                            const isConfirming = removeParticipantGate.isArmed(p.user_id);
                             // Phase 76 SOCL-06: compute friendship status at the modal call site so the
                             // trailing-slot affordance matches the per-row relationship. SOCL-06 is a
                             // DESKTOP-ONLY bug per CONTEXT — mobile participants modal is already correct
@@ -1587,16 +1597,25 @@ export default function GameDetailPage() {
                                             <GuestInviteButton groupId={effectiveGroupId} userId={p.user_id} />
                                         )}
                                         {canRemove && (
+                                            /* 88-33 Task 5 (fork 7): converged onto the gate —
+                                               fleet armed copy via labelFor, 44px floor
+                                               (min-h-11 — this control sat at ~26px), and
+                                               destructive resting prominence (status-error
+                                               box, was muted border-line). The accessible
+                                               name names the TARGET, not a bare 'Remove'. */
                                             <button
-                                                type="button"
-                                                onClick={() => handleRemoveClick(p)}
-                                                className={`text-xs px-2 py-1 border rounded-sm transition-colors shrink-0 ${
+                                                {...removeParticipantGate.triggerProps(
+                                                    p.user_id,
+                                                    p.username || 'this participant',
+                                                    `Remove ${p.username || 'this participant'} from this event`
+                                                )}
+                                                className={`inline-flex min-h-11 items-center text-xs px-2 py-1 border rounded-sm transition-colors shrink-0 ${
                                                     isConfirming
                                                         ? 'bg-status-error-subtle border-status-error text-status-error font-semibold'
-                                                        : 'border-line text-content-muted hover:bg-surface-card-hover'
+                                                        : 'border-status-error text-status-error hover:bg-status-error-subtle'
                                                 }`}
                                             >
-                                                {isConfirming ? 'Click again to remove' : 'Remove'}
+                                                {removeParticipantGate.labelFor(p.user_id, 'Remove')}
                                             </button>
                                         )}
                                     </div>
@@ -1604,6 +1623,12 @@ export default function GameDetailPage() {
                                 </div>
                             );
                         })}
+                        {/* 88-33 Task 5: the armed-state live region MUST live INSIDE this
+                            dialog — Radix aria-hides everything outside an open modal, so a
+                            page-level mount would leave the two-tap arm silently
+                            unannounced exactly where the control renders. Mounted after
+                            the list, sr-only, empty-first (StatusRegion contract). */}
+                        {removeParticipantGate.statusNode}
                     </Modal.Body>
                 </Modal>
 
@@ -2565,6 +2590,13 @@ export default function GameDetailPage() {
                 announces nothing. */}
             <ConfirmDialog {...deleteSessionGate.dialogProps} />
             {deleteSessionGate.statusNode}
+
+            {/* 88-33 Task 5 (fork 7): see-all Remove gate. Two-tap renders a null
+                dialog by design (88-05) — mounted anyway so a retier stays the
+                one-word edit. Its statusNode is deliberately NOT here: it must
+                render INSIDE the participants Modal (see the mount there), because
+                Radix aria-hides page-level content while that dialog is open. */}
+            <ConfirmDialog {...removeParticipantGate.dialogProps} />
 
             {/* Edit Event Modal */}
             {editEventModal && (

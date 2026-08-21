@@ -559,20 +559,45 @@ describe('gameDetail overlays are Modal-hosted (Req 9)', () => {
 // migration could have broken it silently — Radix's focus trap re-parents the
 // subtree, and the arm/revert is a timer on component state. Both halves of the
 // gate are pinned: it must ARM without deleting, and it must REVERT on its own.
+// 88-33 Task 5 (fork 7): the hand-rolled handler converged onto useConfirmAction.
+// Contract shifts pinned here: the resting accessible name now NAMES THE TARGET
+// ("Remove Player 0 from this event", was a bare 'Remove'); the armed copy is the
+// fleet default ('Tap again to confirm', was the divergent click-again wording);
+// the control meets the 44px floor. The 65-02 INTERACTION — inline second click,
+// 3s revert, never a modal — is unchanged and re-pinned below.
+const RESTING_REMOVE = /^Remove .+ from this event$/;
+const ARMED_REMOVE = 'Tap again to confirm';
+
 describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)', () => {
-  it('arms on the first click and deletes nothing yet', async () => {
+  it('arms on the first click and deletes nothing yet, announcing the target', async () => {
     const user = userEvent.setup();
     (eventsAPI.removeParticipation as Mock).mockResolvedValue({});
     renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
 
     const dialog = await openParticipantsModal(user);
-    const removes = within(dialog).getAllByRole('button', { name: 'Remove' });
+    const removes = within(dialog).getAllByRole('button', { name: RESTING_REMOVE });
     await user.click(removes[0]);
 
     expect(
-      within(dialog).getByRole('button', { name: 'Click again to remove' })
+      within(dialog).getByRole('button', { name: ARMED_REMOVE })
     ).toBeInTheDocument();
     expect(eventsAPI.removeParticipation).not.toHaveBeenCalled();
+    // The statusNode announces the armed state — convergence without it would
+    // silently delete the announcement (Task 5 step 3).
+    const statuses = screen.getAllByRole('status');
+    expect(
+      statuses.some((s) => (s.textContent ?? '').includes('Press again to confirm: Remove Player 0'))
+    ).toBe(true);
+  });
+
+  it('meets the 44px floor and destructive resting prominence', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
+
+    const dialog = await openParticipantsModal(user);
+    const resting = within(dialog).getAllByRole('button', { name: RESTING_REMOVE })[0];
+    expect(resting.className).toContain('min-h-11');
+    expect(resting.className).toContain('border-status-error');
   });
 
   it('removes the armed participant on the second click', async () => {
@@ -581,8 +606,8 @@ describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)',
     renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
 
     const dialog = await openParticipantsModal(user);
-    await user.click(within(dialog).getAllByRole('button', { name: 'Remove' })[0]);
-    await user.click(within(dialog).getByRole('button', { name: 'Click again to remove' }));
+    await user.click(within(dialog).getAllByRole('button', { name: RESTING_REMOVE })[0]);
+    await user.click(within(dialog).getByRole('button', { name: ARMED_REMOVE }));
 
     expect(eventsAPI.removeParticipation).toHaveBeenCalledTimes(1);
     expect(eventsAPI.removeParticipation).toHaveBeenCalledWith(EVENT_ID, 'p-0');
@@ -602,18 +627,18 @@ describe('gameDetail two-tap participant remove inside the Modal (Phase 65-02)',
       renderEventDetail({ role: 'owner', participants: SIX_PARTICIPANTS });
 
       const dialog = await openParticipantsModal(user);
-      await user.click(within(dialog).getAllByRole('button', { name: 'Remove' })[0]);
-      within(dialog).getByRole('button', { name: 'Click again to remove' });
+      await user.click(within(dialog).getAllByRole('button', { name: RESTING_REMOVE })[0]);
+      within(dialog).getByRole('button', { name: ARMED_REMOVE });
 
       await act(async () => {
         vi.advanceTimersByTime(3100);
       });
 
       expect(
-        within(dialog).queryByRole('button', { name: 'Click again to remove' })
+        within(dialog).queryByRole('button', { name: ARMED_REMOVE })
       ).toBeNull();
       // Every row is back at rest — none of the six is self, so all six are removable.
-      expect(within(dialog).getAllByRole('button', { name: 'Remove' })).toHaveLength(
+      expect(within(dialog).getAllByRole('button', { name: RESTING_REMOVE })).toHaveLength(
         SIX_PARTICIPANTS.length
       );
       expect(eventsAPI.removeParticipation).not.toHaveBeenCalled();

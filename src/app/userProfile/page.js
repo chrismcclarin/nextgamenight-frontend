@@ -1101,6 +1101,14 @@ function Profile(){
         title: 'Remove this game from your collection?',
         body: 'It drops off your collection. You can add it back from the search above.',
         confirmLabel: 'Remove',
+        /* DECISION Phase 88-33 Task 5 (fork 7, RULED 2026-08-17, owner's own proposal):
+           a GLYPH resting state arms into the labeled verb 'Remove' — chosen OVER the
+           hook's default armed copy, which reads as instruction text and left the walk
+           unsure what the armed state would do. Applies where the resting label is a
+           bare ×; controls whose resting label is already 'Remove' keep the default
+           armed copy (gameDetail see-all). Reverting to the default here re-opens walk
+           row 381; that is a decision, not a consistency cleanup. */
+        armedLabel: 'Remove',
         onConfirm: (gameId) => removeGameFromCollection(gameId),
     });
 
@@ -2497,18 +2505,32 @@ function Profile(){
                                             name, and the `title` it used to carry does not
                                             count (§7.3). Armed state swaps the visible label
                                             AND the name together (Label-in-Name, WCAG 2.5.3),
-                                            both from the hook. */}
+                                            both from the hook.
+
+                                            88-33 Task 5 (fork 7): resting prominence (a real
+                                            affordance box, min-w-11) + armed 'Remove' label on
+                                            the error-subtle treatment. The invisible sizer span
+                                            reserves the ARMED label's width at rest so arming
+                                            never reflows the title next to it (walk row 573's
+                                            squeeze class). */}
                                         <button
                                             {...removeGameGate.triggerProps(
                                                 game.id,
                                                 game.name,
                                                 `Remove ${game.name}`
                                             )}
-                                            className={`inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-btn px-2 text-sm text-status-error hover:text-red-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
-                                                removeGameGate.isArmed(game.id) ? 'font-semibold' : ''
+                                            className={`inline-grid min-h-11 min-w-11 place-items-center whitespace-nowrap rounded-btn border px-2 text-sm text-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                removeGameGate.isArmed(game.id)
+                                                    ? 'bg-status-error-subtle border-status-error font-semibold'
+                                                    : 'border-status-error hover:bg-status-error-subtle'
                                             }`}
                                         >
-                                            {removeGameGate.labelFor(game.id, '×')}
+                                            <span aria-hidden="true" className="invisible col-start-1 row-start-1 font-semibold">
+                                                Remove
+                                            </span>
+                                            <span className="col-start-1 row-start-1">
+                                                {removeGameGate.labelFor(game.id, '×')}
+                                            </span>
                                         </button>
                                     </div>
                                     <SafeImage

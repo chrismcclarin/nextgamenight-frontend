@@ -549,10 +549,35 @@ describe('userProfile destructive gates (Req 11)', () => {
     // Armed: aria-pressed appears (F-357) and the live region names the target.
         expect(armedAnnouncement()).toContain('Catan');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
+    // 88-33 Task 5 (fork 7, walk row 381): the GLYPH control arms into the
+    // labeled verb 'Remove' — not the default instruction copy.
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
     await waitFor(() =>
       expect(userGamesAPI.removeOwnedGame).toHaveBeenCalledWith(SELF_UUID, 'game-catan')
     );
+  });
+
+  // 88-33 Task 5 (fork 7): resting prominence + no-reflow reservation on the
+  // collection glyph control — a real affordance box at the 44px floor, with the
+  // armed label's width reserved at rest so arming cannot squeeze the title.
+  it('collection remove is a 44px affordance box whose armed width is pre-reserved', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as ReturnType<typeof vi.fn>).mockResolvedValue(OWNED_GAMES);
+
+    renderProfile();
+    const trigger = await screen.findByRole('button', { name: 'Remove Catan' });
+    expect(trigger.className).toContain('min-h-11');
+    expect(trigger.className).toContain('min-w-11');
+    expect(trigger.className).toContain('border');
+    // The invisible sizer carries the armed label so the box is armed-width at rest.
+    const sizer = trigger.querySelector('[aria-hidden="true"]');
+    expect(sizer?.textContent).toBe('Remove');
+    expect(sizer?.className).toContain('invisible');
+
+    // Armed: visible label swaps to 'Remove' on the error-subtle treatment.
+    fireEvent.click(trigger);
+    const armed = screen.getByRole('button', { name: 'Remove' });
+    expect(armed.className).toContain('bg-status-error-subtle');
   });
 
   // AR DEC-2: the armed state is keyed by TARGET, not a boolean. Without that,
@@ -566,8 +591,8 @@ describe('userProfile destructive gates (Req 11)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove Brass' }));
 
     expect(userGamesAPI.removeOwnedGame).not.toHaveBeenCalled();
-    // The new target is armed, the old one is back at rest.
-    expect(screen.getByRole('button', { name: 'Tap again to confirm' })).toBeInTheDocument();
+    // The new target is armed (labeled 'Remove' — fork 7), the old one is back at rest.
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remove Catan' })).toBeInTheDocument();
     expect(armedAnnouncement()).toContain('Brass');
   });
@@ -747,7 +772,7 @@ describe('userProfile two-tap armed state (F-357)', () => {
       );
 
       fireEvent.click(screen.getByRole('button', { name: 'Remove Catan' }));
-      expect(screen.getByRole('button', { name: 'Tap again to confirm' })).toHaveAttribute(
+      expect(screen.getByRole('button', { name: 'Remove' })).toHaveAttribute(
         'aria-pressed',
         'true'
       );
@@ -825,7 +850,7 @@ describe('userProfile toast register (OI-5)', () => {
 
     renderProfile();
     fireEvent.click(await screen.findByRole('button', { name: 'Remove Catan' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Tap again to confirm' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
 
     await waitFor(() => expect(toastMock().success).toHaveBeenCalledWith('Game removed'));
   });
