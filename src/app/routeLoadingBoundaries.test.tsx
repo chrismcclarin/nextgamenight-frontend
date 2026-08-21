@@ -1,3 +1,10 @@
+/// <reference types="vite/client" />
+// ^ import.meta.glob is a Vite transform: vitest resolves it at run time, but the
+//   repo's HARD tsc gate (npm run typecheck, main tsconfig) knows nothing of Vite
+//   unless this file pulls the types in itself — round 3 of PR #22 went red on
+//   exactly that (TS2339 on `glob`). Per-file reference, not a tsconfig `types`
+//   addition: the app source has no business seeing Vite's ambient API.
+//
 // Fleet render pins for the route `loading.tsx` boundaries (Req 3 / D-19, plan 88-09).
 //
 // REPLACES the e2e loading-boundary probe deleted from route-fallbacks.spec.ts on
