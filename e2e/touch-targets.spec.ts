@@ -208,9 +208,27 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await guardResolved(startCheckin, 'the "+ Start a check-in" CTA (OpenPollsList.js census row 1)');
     await assertMin44(startCheckin, '"+ Start a check-in"');
 
+    /* Census row 2 is STATE-DEPENDENT since 88-18 (DECISION marker on
+       PromptScheduleManager.js's create button): with zero schedules the
+       "+ New Schedule" button is SUPPRESSED and the EmptyState's "Create a
+       schedule" Button carries the action instead — two identical primary
+       CTAs a finger-width apart were ruled noise on a phone. The CI fixture
+       group seeds no schedules, so EITHER affordance may be the live one;
+       exactly ONE must render (both = the 88-18 suppression regressed,
+       neither = fixture/locator failure), and whichever renders is measured. */
     const newSchedule = page.getByRole('button', { name: /new schedule/i });
-    await guardResolved(newSchedule, 'the "+ New Schedule" CTA (PromptScheduleManager.js census row 2, inline variant)');
-    await assertMin44(newSchedule, '"+ New Schedule"');
+    const emptyCreate = page.getByRole('button', { name: /create a schedule/i });
+    await expect(
+      newSchedule.or(emptyCreate).first(),
+      'no schedule-create affordance rendered at all — fixture or locator failure, never a pass',
+    ).toBeVisible();
+    const bothCount = (await newSchedule.count()) + (await emptyCreate.count());
+    expect(
+      bothCount,
+      `${bothCount} schedule-create affordances resolved (expected exactly 1) — two means the 88-18 empty-state suppression regressed; zero means the fixture/locator broke`,
+    ).toBe(1);
+    const liveCreate = (await newSchedule.count()) === 1 ? newSchedule : emptyCreate;
+    await assertMin44(liveCreate, 'the schedule-create CTA (census row 2 — "+ New Schedule" or the EmptyState\'s "Create a schedule")');
 
     await assertPressedOpacity(page, startCheckin, '"+ Start a check-in"');
   });

@@ -166,8 +166,12 @@ test.describe('phone: feedback trigger moves into the nav menu (R3, D-09)', () =
     await expect(modalHeading(page)).toBeVisible();
     // The menu must already be closed by the time the modal is visible — not
     // a separate later step (task 2b's combined transition regression guard).
+    // includeHidden: while the Radix modal is open it aria-hides everything
+    // outside the dialog (Header included), so the role query must opt into
+    // hidden nodes or it resolves 0 and this asserts against nothing — the
+    // same accommodation the desktop FAB assertions in this file already make.
     await expect(
-      menuButton,
+      page.getByRole('button', { name: 'Toggle menu', includeHidden: true }),
       'mobile menu must be closed (aria-expanded=false) by the time the modal is visible — the row tap closes the menu in the same transition that opens the modal',
     ).toHaveAttribute('aria-expanded', 'false');
 

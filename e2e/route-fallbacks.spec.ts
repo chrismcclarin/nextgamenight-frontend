@@ -169,9 +169,31 @@ test.describe('SPEC Req 3 — route boundaries render designed surfaces, not tex
         await route.continue();
         return;
       }
+      // Prefetches PASS THROUGH — this is the half the first CI run got wrong.
+      // Next prefetches a dynamic route only up to its loading.js, and that
+      // prefetched payload is the very fallback this test asserts on: holding
+      // the prefetch too starves the router of the boundary, so the old page
+      // simply persists in the transition and the fallback never appears.
+      // Only the on-click navigation fetch (no prefetch header) is held. If
+      // the route is ever STATIC in a prod build, the click resolves entirely
+      // from the prefetch cache, nothing is held, and the anti-vacuity holds
+      // assertion below fails loudly — that failure means the mechanism cannot
+      // force this boundary any more, not that the boundary broke.
+      const headers = await route.request().allHeaders();
+      if (headers['next-router-prefetch'] !== undefined || headers['purpose'] === 'prefetch') {
+        await route.continue();
+        return;
+      }
       holds += 1;
       await held;
-      await route.continue();
+      try {
+        await route.continue();
+      } catch {
+        // Released during teardown (the finally below runs release() before
+        // unroute): the request is already handled or gone. Swallowing this is
+        // correct — the alternative is the "Route is already handled!" noise
+        // that masked the real failure in the first CI run.
+      }
     });
 
     try {

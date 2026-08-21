@@ -13,12 +13,16 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
  * viewport (iPhone SE (3rd gen), 375x667 — D-06).
  *
  * SCOPE OF WHAT THIS SPEC MAY EVER DRIVE: the initial "Delete Group" tap only
- * REVEALS the type-the-group-name gate (setShowDeleteConfirm(true) — no network
- * call). The actual delete requires typing the exact group name AND passing a
- * native confirm() (DECISION Phase 88.2 SPEC-REQ-6, accepted-forever — both gates
- * stay, GroupSettings.js Danger Zone render). This spec never types the group name
- * and never accepts a dialog, so it can never delete the fixture group. Do NOT
- * "extend" it to exercise the delete: that gate is 88.2's, not layout.
+ * OPENS the typed-confirmation dialog — no network call. ——— AMENDED Phase 88
+ * (original kept as history): the gate used to be an INLINE reveal
+ * (setShowDeleteConfirm) stacked with a native confirm() (88.2 SPEC-REQ-6); 88-13
+ * removed the native confirm (D-04, COLLISION-1) and 88-33 moved the typed gate
+ * + Cancel into <ConfirmDialog> (see the comment above GroupSettings.js's
+ * Delete Group button). ONE typed gate now stands, in a Radix dialog titled
+ * "Delete {group.name}?" with a bare "Delete" confirm (UI-SPEC §8.7 verb-alone).
+ * This spec still never types the group name, so it can never delete the
+ * fixture group. Do NOT "extend" it to exercise the delete: that gate is layout
+ * out-of-scope here.
  *
  * ENTRY PATH (the way a user reaches it): groupHomePage title-row kebab
  * ("Group actions", CONTEXT D-LEAVE-01 — groupHomePage/page.js:362-371) →
@@ -46,6 +50,27 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 // fallback convention as e2e/tailwind-v4-styles.spec.ts:49. Param is `id`, not
 // `groupId` (tailwind-v4-styles.spec.ts:64-65).
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
+
+/** The settings surface lives inside the shared Radix modal since 88-13, and
+ *  DialogContent animates `zoom-in-95` over 200ms on open (dialog.tsx:64). A
+ *  boundingBox taken mid-animation reads height x scale — the first CI run of
+ *  PR #22 measured a true-44px control at 43.565px (= 44 x 0.99) exactly this
+ *  way. Settle: poll until two consecutive reads agree, THEN measure. */
+async function settleGeometry(locator: Locator): Promise<void> {
+  let prev = await locator.boundingBox();
+  for (let i = 0; i < 40; i += 1) {
+    await locator.page().waitForTimeout(100);
+    const next = await locator.boundingBox();
+    if (
+      prev && next &&
+      Math.abs(prev.height - next.height) < 0.01 &&
+      Math.abs(prev.width - next.width) < 0.01 &&
+      Math.abs(prev.y - next.y) < 0.01
+    ) return;
+    prev = next;
+  }
+  throw new Error('geometry never settled after 4s — is an animation looping on this surface?');
+}
 
 /** Vacuity guard (tailwind-v4-styles.spec.ts:139-143 idiom): a zero-count locator
  *  makes every geometry assertion after it vacuous — that is a failure of the
@@ -157,6 +182,7 @@ test.describe('Phase 87.8 R7 — GroupSettings Danger Zone at phone width (phone
     // Controls 1 + 2: the better-path affordance and the initial destructive entry.
     const transferBtn = zone.getByRole('button', { name: /transfer ownership instead/i });
     await guardResolved(transferBtn, 'the "Transfer ownership instead" button');
+    await settleGeometry(transferBtn); // settings modal zoom-in — see the helper
     await assertMinHeight44(transferBtn, '"Transfer ownership instead"');
     await assertHorizontallyContained(transferBtn, '"Transfer ownership instead"', viewportWidth);
 
@@ -165,14 +191,18 @@ test.describe('Phase 87.8 R7 — GroupSettings Danger Zone at phone width (phone
     await assertMinHeight44(deleteEntryBtn, 'the initial "Delete Group" button');
     await assertHorizontallyContained(deleteEntryBtn, 'the initial "Delete Group" button', viewportWidth);
 
-    // Reveal the confirm UI. This is NOT the delete: it only swaps the button for
-    // the type-the-group-name gate (see the header note on scope).
+    // Open the confirm dialog. This is NOT the delete: the typed gate lives in
+    // <ConfirmDialog> since 88-33 (see the amended header note on scope).
     await deleteEntryBtn.click();
+    const dialog = page.getByRole('dialog', { name: /^Delete .*\?$/ });
+    await expect(dialog, 'the typed-confirmation dialog must open on Delete Group').toBeVisible();
 
     // Control 3: the type-the-group-name input — reachable and focusable without
-    // horizontal scrolling.
-    const confirmInput = zone.getByPlaceholder(/type group name to confirm/i);
+    // horizontal scrolling. The typed tier focuses its input on open (ConfirmDialog
+    // contract), and its placeholder is the expected phrase (the group name).
+    const confirmInput = dialog.getByRole('textbox');
     await guardResolved(confirmInput, 'the type-the-group-name input');
+    await settleGeometry(confirmInput); // the confirm dialog runs its own zoom-in
     await assertMinHeight44(confirmInput, 'the type-the-group-name input');
     await assertHorizontallyContained(confirmInput, 'the type-the-group-name input', viewportWidth);
     await confirmInput.click();
@@ -182,43 +212,65 @@ test.describe('Phase 87.8 R7 — GroupSettings Danger Zone at phone width (phone
     ).toBeFocused();
     // Nothing is typed — the destructive confirm button stays disabled.
 
-    // Controls 4 + 5: the stacked action pair.
-    const cancelBtn = zone.getByRole('button', { name: /cancel/i });
-    await guardResolved(cancelBtn, 'the Danger Zone "Cancel" button');
-    await assertMinHeight44(cancelBtn, 'the Danger Zone "Cancel" button');
-    await assertHorizontallyContained(cancelBtn, 'the Danger Zone "Cancel" button', viewportWidth);
+    // Controls 4 + 5: the dialog's action pair (Cancel + the verb-alone "Delete").
+    const cancelBtn = dialog.getByRole('button', { name: 'Cancel' });
+    await guardResolved(cancelBtn, 'the confirm dialog "Cancel" button');
+    await assertMinHeight44(cancelBtn, 'the confirm dialog "Cancel" button');
+    await assertHorizontallyContained(cancelBtn, 'the confirm dialog "Cancel" button', viewportWidth);
 
-    const confirmDeleteBtn = zone.getByRole('button', { name: /delete group/i });
-    await guardResolved(confirmDeleteBtn, 'the confirm-stage "Delete Group" button');
-    await assertMinHeight44(confirmDeleteBtn, 'the confirm-stage "Delete Group" button');
-    await assertHorizontallyContained(confirmDeleteBtn, 'the confirm-stage "Delete Group" button', viewportWidth);
+    const confirmDeleteBtn = dialog.getByRole('button', { name: 'Delete', exact: true });
+    await guardResolved(confirmDeleteBtn, 'the confirm-stage "Delete" button');
+    await assertMinHeight44(confirmDeleteBtn, 'the confirm-stage "Delete" button');
+    await assertHorizontallyContained(confirmDeleteBtn, 'the confirm-stage "Delete" button', viewportWidth);
   });
 
-  test('the two confirm actions stack vertically, not side by side, at 375px', async ({ page }) => {
+  test('the confirm actions are uncramped and fully reachable at 375px', async ({ page }) => {
+    /* ——— AMENDED Phase 88 (original intent kept as history): this test used to pin
+       the INLINE confirm pair stacking vertically (`flex flex-col sm:flex-row` in
+       GroupSettings.js) — two side-by-side targets at 375px were cramped because
+       both were w-full. 88-33 moved the pair into <ConfirmDialog>, whose
+       Modal.Footer renders the fleet-standard side-by-side `justify-end gap-3`
+       row of intrinsic-width buttons at every viewport (~37 modals share it).
+       The stacking pin therefore no longer has a subject; what SURVIVES of the
+       87.8 R7 intent is pinned instead: both actions on the 44px floor, fully
+       inside the viewport, destructive verb separated from Cancel by a real gap.
+       If the owner wants the dialog footer to stack at phone width, that is a
+       Modal.Footer (fleet) decision, not a re-pin here. */
+    const viewportWidth = page.viewportSize()?.width ?? 375;
     const zone = dangerZone(page);
 
-    // Reveal the confirm UI (see the header note — this is not the delete).
+    // Open the confirm dialog (see the header note — this is not the delete).
     const deleteEntryBtn = zone.getByRole('button', { name: /delete group/i });
     await guardResolved(deleteEntryBtn, 'the initial "Delete Group" button');
     await deleteEntryBtn.click();
+    const dialog = page.getByRole('dialog', { name: /^Delete .*\?$/ });
+    await expect(dialog, 'the typed-confirmation dialog must open on Delete Group').toBeVisible();
 
-    const cancelBtn = zone.getByRole('button', { name: /cancel/i });
-    const confirmDeleteBtn = zone.getByRole('button', { name: /delete group/i });
-    await guardResolved(cancelBtn, 'the Danger Zone "Cancel" button');
-    await guardResolved(confirmDeleteBtn, 'the confirm-stage "Delete Group" button');
+    const cancelBtn = dialog.getByRole('button', { name: 'Cancel' });
+    const confirmDeleteBtn = dialog.getByRole('button', { name: 'Delete', exact: true });
+    await guardResolved(cancelBtn, 'the confirm dialog "Cancel" button');
+    await guardResolved(confirmDeleteBtn, 'the confirm-stage "Delete" button');
+    await settleGeometry(cancelBtn); // dialog zoom-in — see the helper
+
+    await assertMinHeight44(cancelBtn, 'the confirm dialog "Cancel" button');
+    await assertMinHeight44(confirmDeleteBtn, 'the confirm-stage "Delete" button');
+    await assertHorizontallyContained(cancelBtn, 'the confirm dialog "Cancel" button', viewportWidth);
+    await assertHorizontallyContained(confirmDeleteBtn, 'the confirm-stage "Delete" button', viewportWidth);
 
     const cancelBox = await cancelBtn.boundingBox();
     const deleteBox = await confirmDeleteBtn.boundingBox();
     expect(cancelBox, 'Cancel boundingBox() returned null').not.toBeNull();
-    expect(deleteBox, 'Delete Group boundingBox() returned null').not.toBeNull();
+    expect(deleteBox, 'Delete boundingBox() returned null').not.toBeNull();
     if (!cancelBox || !deleteBox) return;
 
-    // Pins what the `flex flex-col sm:flex-row` stacking in GroupSettings.js
-    // already intends: two side-by-side targets at 375px are cramped, and one of
-    // them is destructive. The destructive button must sit fully BELOW Cancel.
+    // The destructive verb must not abut Cancel: an adjacent-edge gap below 8px
+    // makes a mis-tap on the destructive action a one-pixel matter on a phone.
+    const gap = deleteBox.x >= cancelBox.x + cancelBox.width
+      ? deleteBox.x - (cancelBox.x + cancelBox.width)
+      : deleteBox.y - (cancelBox.y + cancelBox.height);
     expect(
-      deleteBox.y,
-      `the confirm-stage "Delete Group" button (top edge ${deleteBox.y}px) does not sit below "Cancel" (bottom edge ${cancelBox.y + cancelBox.height}px) — the pair rendered side by side at phone width instead of stacking`,
-    ).toBeGreaterThanOrEqual(cancelBox.y + cancelBox.height);
+      gap,
+      `the gap between "Cancel" and the destructive "Delete" is ${gap}px — under 8px, a phone mis-tap lands on the destructive action (Modal.Footer contract is gap-3 = 12px)`,
+    ).toBeGreaterThanOrEqual(8);
   });
 });
