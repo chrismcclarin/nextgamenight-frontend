@@ -486,8 +486,13 @@ describe('gameDetail role-gated session affordances', () => {
       renderGameDetail({ role });
       const sessions = await sessionsSection();
 
-      // Desktop layout: ghost-demoted, still visible.
-      const desktopEdit = within(sessions).getByRole('button', { name: 'Edit' });
+      // Desktop layout: ghost-demoted, still visible. findByRole on the FIRST
+      // row query: sessionsSection() resolves on the heading alone, and the
+      // session rows land a tick later — under CI/full-suite load the sync
+      // getByRole raced them ("No sessions match your filters." still in the
+      // DOM; flaked 2026-08-21 on PR #23 and once locally). Once Edit exists
+      // the row is committed, so the sibling queries stay sync.
+      const desktopEdit = await within(sessions).findByRole('button', { name: 'Edit' });
       const desktopDelete = within(sessions).getByRole('button', { name: 'Delete' });
       expect(desktopEdit).toBeInTheDocument();
       expect(desktopDelete).toBeInTheDocument();
