@@ -520,16 +520,31 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   }, [removedParticipant]);
 
   const toggleParticipant = (index) => {
-    setNewEvent(prev => {
-      const removed = prev.participants[index];
-      const updatedParticipants = prev.participants.filter((_, i) => i !== index);
-      // Keep at least one participant. This guard returns WITHOUT removing, so
-      // the undo affordance must not fire either — announcing an undo for a
-      // removal that never happened is a false affordance (r3 triage).
-      if (updatedParticipants.length === 0) return prev;
+    // Wave-12 review MED #3: side effects (setRemovedParticipant, the focus
+    // ref) are hoisted OUT of the setNewEvent updater — updaters must be pure
+    // (StrictMode double-invokes them). Reading render-scope state here is
+    // consistent: this only runs from a user event.
+    const removed = newEvent.participants[index];
+    const remaining = newEvent.participants.filter((_, i) => i !== index);
+    // Keep at least one participant. This guard returns WITHOUT removing, so
+    // the undo affordance must not fire either — announcing an undo for a
+    // removal that never happened is a false affordance (r3 triage).
+    if (remaining.length === 0) return;
 
-      setRemovedParticipant({ row: removed, index, name: removed?.username || 'Participant' });
-      pendingUndoFocus.current = true;
+    // Wave-12 review MED #1: capture the pre-removal attribution so Undo can
+    // restore it — removing the winner/picked-by nulls the ref below, and
+    // without the capture Undo brought the person back with attribution gone.
+    setRemovedParticipant({
+      row: removed,
+      index,
+      name: removed?.username || 'Participant',
+      priorWinnerId: newEvent.winner_id,
+      priorPickedById: newEvent.picked_by_id,
+    });
+    pendingUndoFocus.current = true;
+    setNewEvent(prev => {
+      const updatedParticipants = prev.participants.filter((_, i) => i !== index);
+      if (updatedParticipants.length === 0) return prev;
       return {
         ...prev,
         participants: updatedParticipants,
@@ -549,11 +564,18 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       // CLAMP to the current bounds — adds/removes may have happened since.
       const at = Math.max(0, Math.min(pending.index, restored.length));
       restored.splice(at, 0, pending.row);
+      // Wave-12 review MED #1: a ref the removal CLEARED (now null) is
+      // restored from the captured prior value; a ref the user re-pointed in
+      // the meantime is left alone — Undo must not clobber a newer choice.
+      const winnerRef = prev.winner_id == null && pending.priorWinnerId != null
+        ? pending.priorWinnerId : prev.winner_id;
+      const pickedByRef = prev.picked_by_id == null && pending.priorPickedById != null
+        ? pending.priorPickedById : prev.picked_by_id;
       return {
         ...prev,
         participants: restored,
-        winner_id: remapCustomParticipantRef(prev.winner_id, restored),
-        picked_by_id: remapCustomParticipantRef(prev.picked_by_id, restored),
+        winner_id: remapCustomParticipantRef(winnerRef, restored),
+        picked_by_id: remapCustomParticipantRef(pickedByRef, restored),
       };
     });
     setRemovedParticipant(null);
@@ -566,7 +588,18 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   const [focusRowId, setFocusRowId] = useState(null);
   const handleRowFocusHandled = () => setFocusRowId(null);
 
+  // Wave-12 review MED #10/#12: FE counterpart to the BE
+  // MAX_CUSTOM_PARTICIPANTS=50 reject (middleware/validators.js) — guests are
+  // the rows WITHOUT a user_id; without this cap the 51st guest surfaced as a
+  // raw 400 on submit.
+  const MAX_GUEST_PARTICIPANTS = 50;
+  const guestCount = newEvent.participants.filter(
+    (p) => !p.user_id || String(p.user_id).trim() === ''
+  ).length;
+  const guestCapReached = guestCount >= MAX_GUEST_PARTICIPANTS;
+
   const addParticipant = () => {
+    if (guestCapReached) return;
     const row = createParticipant("", "", false);
     setFocusRowId(row._rowId);
     setNewEvent(prev => ({
@@ -1171,10 +1204,16 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             <button
               type="button"
               onClick={addParticipant}
+              disabled={guestCapReached}
               className="mt-2 btn btn-primary text-sm"
             >
               + Add Participant
             </button>
+            {guestCapReached && (
+              <p className="mt-1 text-sm text-content-secondary">
+                Guest limit reached ({MAX_GUEST_PARTICIPANTS} per event).
+              </p>
+            )}
           </div>
 
           {/* Winner, Picked By, and Group Win - only show for past events */}
