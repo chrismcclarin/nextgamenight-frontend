@@ -243,8 +243,12 @@ describe('D-32/D-33 tint treatment (Req 17)', () => {
 
     const grouplist = fs.readFileSync(path.join(SRC, 'app/components/grouplist.js'), 'utf8');
     expect(grouplist).toMatch(/bg-\[var\(--color-bg-overlay\)\]/);
-    // the image-only gate is part of the contract — a colour-only card must not get a dim
-    expect(grouplist).toMatch(/\{bgImage && \(/);
+    // the image-only gate is part of the contract — a colour-only card must not get a dim.
+    // Wave-12 follow-up (owner-ruled 2026-08-21): the gate keys on the VALIDATED style
+    // (hasBgImage = !!safeBgImageStyle(...)), not the raw string — a truthy-but-invalid
+    // URL must not render the dim over no image (the walk's solid-black-card edge).
+    expect(grouplist).toMatch(/\{hasBgImage && \(/);
+    expect(grouplist).toMatch(/const hasBgImage = !!bgImageStyle/);
 
     const member = fs.readFileSync(path.join(SRC, 'app/components/ClickableMemberName.js'), 'utf8');
     expect(member).toMatch(/rounded-full bg-surface-card-hover text-btn-primary/);

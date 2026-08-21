@@ -241,6 +241,15 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             // backgroundColor is then omitted so `bg-surface-card` wins (D-28).
             const bgColor = resolveGroupBackgroundColor(group.background_color);
             const bgImage = group.background_image_url;
+            // Wave-12 review follow-up (owner-ruled fix, 2026-08-21): gate the
+            // overlay AND the white-text treatment on the VALIDATED style, not
+            // the raw string. safeBgImageStyle drops relative/invalid URLs
+            // (FSEC-03), so a truthy-but-invalid value used to render the 0.7
+            // dim + white text over NO image — a solid near-black card (the
+            // walk's /bgg-logo.png black-card mystery). Invalid URLs now
+            // degrade to the plain color card.
+            const bgImageStyle = safeBgImageStyle(bgImage);
+            const hasBgImage = !!bgImageStyle;
             const profilePic = group.profile_picture_url;
 
             return (
@@ -257,12 +266,12 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                 }}
                 style={{
                   ...(bgColor && { backgroundColor: bgColor }),
-                  ...safeBgImageStyle(bgImage),
+                  ...bgImageStyle,
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
                 }}
               >
-                {bgImage && (
+                {hasBgImage && (
                   // Phase 73-02 gave this overlay a semantic surface tint at 85%
                   // so the bg image dims and the title stays readable; that
                   // slash-opacity was inert on v3's var()-backed tokens and
@@ -312,7 +321,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       )}
                       <h3
                         className="text-[1.1rem] font-semibold text-content-primary flex-1 min-w-0 wrap-break-word max-md:text-base"
-                        style={getTextStyle(bgImage, bgColor)}
+                        style={getTextStyle(hasBgImage, bgColor)}
                       >
                         {group.name}
                       </h3>
@@ -352,7 +361,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                 {/* 87.8-13 walkthrough F-9: name + date on ONE line (owner call —
                     the stacked date read as a stray row). flex-wrap keeps long
                     game names graceful: the date wraps as a unit, never mid-text. */}
-                <div className="border-t border-line pt-3" style={getTextStyle(bgImage, bgColor)}>
+                <div className="border-t border-line pt-3" style={getTextStyle(hasBgImage, bgColor)}>
                   <div className="flex flex-wrap items-baseline gap-x-2 text-content-secondary text-sm">
                     <span><strong className="text-content-primary">Last Game:</strong> {lastGame?.name || 'None'}</span>
                     <span className="text-content-muted text-xs">
