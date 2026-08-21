@@ -541,6 +541,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       priorWinnerId: newEvent.winner_id,
       priorPickedById: newEvent.picked_by_id,
     });
+    setUndoAnnouncement('');
     pendingUndoFocus.current = true;
     setNewEvent(prev => {
       const updatedParticipants = prev.participants.filter((_, i) => i !== index);
@@ -555,6 +556,14 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       };
     });
   };
+
+  // Wave-12 review MED #21: a successful Undo was silent (the live region just
+  // emptied) and both Undo/Dismiss unmount the focused control, dropping
+  // keyboard focus to body. Announce the restore, and hand focus to the
+  // restored row's name input (Undo — the existing focusRowId mechanism) or
+  // the Add Participant button (Dismiss).
+  const [undoAnnouncement, setUndoAnnouncement] = useState('');
+  const addParticipantButtonRef = useRef(null);
 
   const undoRemoveParticipant = () => {
     const pending = removedParticipant;
@@ -579,6 +588,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       };
     });
     setRemovedParticipant(null);
+    setUndoAnnouncement(`${pending.name} restored.`);
+    if (pending.row?._rowId != null) setFocusRowId(pending.row._rowId);
   };
 
   // 88-33 Task 4 (UAT row 542): after Add Participant, focus moves to the NEW row's
@@ -612,6 +623,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   // event changes — the row it would restore belongs to a different draft.
   useEffect(() => {
     setRemovedParticipant(null);
+    setUndoAnnouncement('');
   }, [modal, editingEvent]);
 
   /* DECISION Phase 88-33 Task 2 step 3b (triage A1, owner-ruled 2026-08-20): a duplicate
@@ -1178,7 +1190,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             <StatusRegion politeness="polite" className="sr-only">
               {removedParticipant
                 ? `${removedParticipant.name} removed. Undo is available.`
-                : ''}
+                : undoAnnouncement}
             </StatusRegion>
             {removedParticipant && (
               <div className="mt-2 flex flex-wrap items-center gap-2 rounded-sm border border-line bg-surface-page px-2 py-1.5 text-sm text-content-secondary">
@@ -1193,7 +1205,12 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 </button>
                 <button
                   type="button"
-                  onClick={() => setRemovedParticipant(null)}
+                  onClick={() => {
+                    setRemovedParticipant(null);
+                    // #21: this bar unmounts on dismiss — hand focus to the
+                    // Add Participant button instead of dropping it to body.
+                    addParticipantButtonRef.current?.focus();
+                  }}
                   className="min-h-11 px-2 text-content-muted hover:text-content-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring"
                   aria-label={`Dismiss undo for ${removedParticipant.name}`}
                 >
@@ -1203,6 +1220,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             )}
             <button
               type="button"
+              ref={addParticipantButtonRef}
               onClick={addParticipant}
               disabled={guestCapReached}
               className="mt-2 btn btn-primary text-sm"

@@ -27,6 +27,7 @@ import { Button } from '../../components/ui/Button';
 import { Input, Textarea, SelectControl } from '../../components/ui/Input';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
+import { StatusRegion } from '../../components/ui/StatusRegion';
 import KebabMenu from '../components/KebabMenu';
 import { toast } from 'sonner';
 
@@ -171,7 +172,20 @@ function GuestInviteButton({ groupId, userId }) {
     };
     const settled = status === 'sent' || status === 'pending' || status === 'member' || status === 'already';
 
+    /* Wave-12 review MED #19: the outcome label swaps on a control that just
+       became disabled — silent to screen readers. Announce the settled outcome
+       through the StatusRegion contract (always mounted, empty-first). */
+    const outcomeMessage =
+        status === 'sent' ? 'Invite sent'
+        : status === 'pending' ? 'This person already has a pending invite'
+        : status === 'member' ? 'This person is already a member of the group'
+        : status === 'already' ? 'This guest is already invited or a member'
+        : status === 'error' ? 'The invite failed to send. Use the Retry button to try again.'
+        : '';
+
     return (
+        <>
+        <StatusRegion className="sr-only" message={outcomeMessage} />
         <button
             onClick={handleInvite}
             disabled={status === 'sending' || settled}
@@ -179,7 +193,10 @@ function GuestInviteButton({ groupId, userId }) {
                it — same call, same measured cascade fact, as the marker at ParticipantRow.js:204.
                `.border-status-*` is emitted after `.border-line` in the built stylesheet, and there
                is no tailwind-merge on this template literal. */
-            className={`text-xs px-2 py-0.5 rounded-sm border border-line transition-colors ${
+            /* Wave-12 review MED #18: inline-flex min-h-11 — the 44px floor this
+               plan imposed on the sibling row controls (ParticipantRow Remove,
+               the min-h-11 sweep in this file); this control sat at ~22px. */
+            className={`inline-flex min-h-11 items-center text-xs px-2 py-1 rounded-sm border border-line transition-colors ${
                 status === 'sent'
                     ? 'bg-status-success-subtle border-status-success text-status-success'
                     : status === 'pending' || status === 'member' || status === 'already'
@@ -208,6 +225,7 @@ function GuestInviteButton({ groupId, userId }) {
             {status === 'error' && 'Retry'}
             {!status && 'Invite to group'}
         </button>
+        </>
     );
 }
 
@@ -2154,6 +2172,7 @@ export default function GameDetailPage() {
                         <h1
                             ref={setTitleNode}
                             id="game-title"
+                            tabIndex={-1}
                             onClick={(e) => {
                                 if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches && !titleExpanded && titleOverflows) {
                                     e.preventDefault();
@@ -2178,7 +2197,13 @@ export default function GameDetailPage() {
                         {!titleExpanded && titleOverflows && (
                             <button
                                 type="button"
-                                onClick={() => setTitleExpanded(true)}
+                                onClick={() => {
+                                    setTitleExpanded(true);
+                                    /* Wave-12 review LOW #22: this one-shot button unmounts on
+                                       activation — move focus to the now-expanded title
+                                       (tabIndex -1) instead of dropping it to body. */
+                                    document.getElementById('game-title')?.focus();
+                                }}
                                 aria-expanded={false}
                                 aria-controls="game-title"
                                 className="md:hidden sr-only focus-visible:not-sr-only text-sm text-content-link font-medium"
@@ -2212,6 +2237,7 @@ export default function GameDetailPage() {
                             <h1
                                 ref={setTitleNode}
                                 id="game-title"
+                                tabIndex={-1}
                                 onClick={(e) => {
                                     if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches && !titleExpanded && titleOverflows) {
                                         e.preventDefault();
@@ -2236,7 +2262,13 @@ export default function GameDetailPage() {
                             {!titleExpanded && titleOverflows && (
                                 <button
                                     type="button"
-                                    onClick={() => setTitleExpanded(true)}
+                                    onClick={() => {
+                                        setTitleExpanded(true);
+                                        /* Wave-12 review LOW #22: this one-shot button unmounts on
+                                           activation — move focus to the now-expanded title
+                                           (tabIndex -1) instead of dropping it to body. */
+                                        document.getElementById('game-title')?.focus();
+                                    }}
                                     aria-expanded={false}
                                     aria-controls="game-title"
                                     className="md:hidden sr-only focus-visible:not-sr-only text-sm text-content-link font-medium"

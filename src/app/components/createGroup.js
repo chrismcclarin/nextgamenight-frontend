@@ -1,5 +1,5 @@
 'use client'
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { groupsAPI } from '../../lib/api';
 import FriendInvitePanel from './FriendInvitePanel';
 import { Modal } from './Modal';
@@ -17,6 +17,18 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
     const [createdGroup, setCreatedGroup] = useState(null)
     const [submitting, setSubmitting] = useState(false)
     const nameInputRef = useRef(null)
+    // Wave-12 review MED #20: the real `disabled` during the pending window
+    // drops keyboard focus to body; on a FAILED settle the dialog stays open,
+    // so return focus to the re-enabled submit. On success the modal closes
+    // and the ref is gone — the focus call no-ops.
+    const submitButtonRef = useRef(null)
+    const wasSubmitting = useRef(false)
+    useEffect(() => {
+        if (wasSubmitting.current && !submitting) {
+            submitButtonRef.current?.focus();
+        }
+        wasSubmitting.current = submitting;
+    }, [submitting])
 
     /* DECISION Phase 88-33 Task 4 (UAT row 447): while a create request is IN FLIGHT the
        dialog is genuinely non-dismissible — Esc, the header ×, and outside-click are ALL
@@ -214,6 +226,7 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                             the fleet footer is a decision, not a cleanup. */}
                         <div className="flex justify-center pt-1">
                             <button
+                                ref={submitButtonRef}
                                 className="btn btn-primary font-bold uppercase text-sm px-6 py-3 shadow-sm hover:shadow-lg min-h-11 disabled:opacity-50"
                                 type="submit"
                                 disabled={submitting}
