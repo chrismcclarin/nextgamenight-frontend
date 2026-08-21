@@ -180,7 +180,7 @@ function GuestInviteButton({ groupId, userId }) {
         : status === 'pending' ? 'This person already has a pending invite'
         : status === 'member' ? 'This person is already a member of the group'
         : status === 'already' ? 'This guest is already invited or a member'
-        : status === 'error' ? 'The invite failed to send. Use the Retry button to try again.'
+        : status === 'error' ? 'Something went wrong sending the invite. Use the Retry button to try again.'
         : '';
 
     return (
