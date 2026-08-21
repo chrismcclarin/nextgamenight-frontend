@@ -2212,7 +2212,8 @@ function Profile(){
                                             </div>
                                         ))}
                                     {availabilityPatterns.filter(p => p.type === 'recurring_pattern').length === 0 && (
-                                        <p className="text-content-secondary text-sm">No schedules set. Add one to get started!</p>
+                                        // D2 mini-formula (ruled 2026-08-15): muted, no "!".
+                                        <p className="text-content-muted text-sm">No schedules set. Add one to get started.</p>
                                     )}
                                 </div>
                             )}
@@ -2375,7 +2376,12 @@ function Profile(){
                 {/* Owned Games Section */}
                 <div className="card p-3 md:p-6">
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-                        <h2 className="text-xl font-bold text-content-primary">My Game Collection ({ownedGames.length})</h2>
+                        {/* 88-33 Task 7 step 2 (UAT row 272): the count renders only after the
+                            owned-games fetch resolves — "(0)" mid-fetch is an empty-vs-loading
+                            conflation on the count itself; an em-dash holds the slot meanwhile. */}
+                        <h2 className="text-xl font-bold text-content-primary">
+                            My Game Collection ({loadingGames ? '—' : ownedGames.length})
+                        </h2>
                         <div className="flex gap-2">
                             <button
                                 onClick={() => setShowBggSearch(!showBggSearch)}
@@ -2542,7 +2548,8 @@ function Profile(){
                             ))}
                         </div>
                     ) : (
-                        <p className="text-content-secondary">You don't have any games in your collection yet. Search BoardGameGeek to add games!</p>
+                        // D2 mini-formula (ruled 2026-08-15): muted + sm, no "!".
+                        <p className="text-content-muted text-sm">You don't have any games in your collection yet. Search BoardGameGeek to add games.</p>
                     )}
                 </div>
 

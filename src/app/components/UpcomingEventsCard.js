@@ -173,10 +173,15 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
           />
         </div>
       ) : upcomingEvents.length === 0 ? (
+        /* 88-33 Task 7 step 3 (M4 rider, UAT row 433's copy gap): the body NAMES the
+           7-day window — the card silently filters to it, and the walk's "no upcoming
+           events even though they created one for next week" misread came straight from
+           the undisclosed window. Heading stays warm; copy recorded in the SUMMARY for
+           §6.2.1 ratification at phase close. */
         <EmptyState
           icon="CalendarDays"
           heading="Nothing on the calendar"
-          body="Plan a game night and it'll show up here."
+          body="Nothing scheduled in the next 7 days — plan a game night and it'll show up here."
           action={action ?? undefined}
         />
       ) : (

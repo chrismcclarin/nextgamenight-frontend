@@ -1458,3 +1458,46 @@ describe('delta-review consumer pins', () => {
     expect(availabilityAPI.createOverride).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 88-33 Task 7 (WI-F7) — truthful loading/empty states on this page.
+// ---------------------------------------------------------------------------
+
+describe('userProfile collection loading/empty truthfulness (WI-F7)', () => {
+  it('never renders "(0)" while the owned-games fetch is pending (UAT row 272)', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    (userGamesAPI.getOwnedGames as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {}) // never resolves — pins the mid-fetch state
+    );
+    renderProfile();
+    const heading = await screen.findByRole('heading', { name: /My Game Collection/ });
+    expect(heading.textContent).toContain('—'); // the em-dash placeholder
+    expect(heading.textContent).not.toContain('(0)');
+  });
+
+  it('collection + schedules empties ride the D2 mini-formula (muted + sm, no "!")', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    // Re-set explicitly: the pending-promise implementation from the previous
+    // test persists across vi.clearAllMocks() (it clears calls, not impls).
+    (userGamesAPI.getOwnedGames as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    renderProfile(); // no patterns
+
+    const collectionEmpty = await screen.findByText(
+      /You don't have any games in your collection yet/
+    );
+    expect(collectionEmpty.className).toContain('text-content-muted');
+    expect(collectionEmpty.className).toContain('text-sm');
+    expect(collectionEmpty.textContent).not.toContain('!');
+
+    const schedulesEmpty = await screen.findByText('No schedules set. Add one to get started.');
+    expect(schedulesEmpty.className).toContain('text-content-muted');
+    expect(schedulesEmpty.className).toContain('text-sm');
+
+    // ...and once the fetch has resolved, the REAL count renders.
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { name: 'My Game Collection (0)' })
+      ).toBeInTheDocument()
+    );
+  });
+});

@@ -15,6 +15,18 @@
  * `render` escape hatch is the documented seam for a bespoke inline SVG (D-18)
  * and stays deliberately unused this phase.
  *
+ * DECISION Phase 88-33 Task 7 (D2, owner-ruled 2026-08-15): this full formula is
+ * PAGE-LEVEL ONLY. Section-level empties (a list inside an already-populated
+ * page) deliberately do NOT adopt EmptyState — they stay one line of prose on
+ * the recorded MINI-FORMULA: `text-content-muted text-sm`, "state the empty +
+ * point at the path", no exclamation mark. Rationale: the section's action
+ * control is already adjacent (a CTA block would duplicate it), and the
+ * icon+heading weight is disproportionate inside a populated page. Converged
+ * sites: userProfile collection + schedules, gameDetail sessions + reviews,
+ * friends sent/received requests, BringGamePicker (the original reference).
+ * "Upgrading" a section empty to this component is a decision that reopens D2,
+ * not a consistency cleanup.
+ *
  * What it deliberately does NOT do:
  * - **No error copy.** `EmptyState` is "nothing here yet"; a failed load is
  *   `FetchErrorBanner`/`FetchErrorState`. UI-SPEC §9.2 forbids conflating them —

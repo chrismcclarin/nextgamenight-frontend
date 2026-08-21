@@ -90,10 +90,18 @@ vi.mock('@/app/components/FriendshipStatusProvider', () => ({
 // Heavy / self-fetching children stubbed. `FetchErrorBanner` is deliberately kept
 // REAL — it renders null while the identity query is healthy, so stubbing it
 // would only mask a regression in the degrade path.
-vi.mock('@/app/components/RsvpSection', () => ({ default: () => null }));
-vi.mock('@/app/components/BallotSection', () => ({ default: () => null }));
+// Testid markers, not bare nulls (88-33 Task 7): the fork G split asserts WHERE
+// these mount (Upcoming cards yes, history cards no), which a null stub can't pin.
+vi.mock('@/app/components/RsvpSection', () => ({
+  default: () => <div data-testid="rsvp-section" />,
+}));
+vi.mock('@/app/components/BallotSection', () => ({
+  default: () => <div data-testid="ballot-section" />,
+}));
 vi.mock('@/app/components/BringGamePicker', () => ({ default: () => null }));
-vi.mock('@/app/components/BringSummary', () => ({ default: () => null }));
+vi.mock('@/app/components/BringSummary', () => ({
+  default: () => <div data-testid="bring-summary" />,
+}));
 vi.mock('@/app/components/createEvent', () => ({ default: () => null }));
 vi.mock('@/app/components/GameSuggestionCard', () => ({ default: () => null }));
 vi.mock('@/app/components/QRCodeModal', () => ({ default: () => null }));
@@ -343,6 +351,89 @@ describe('gameDetail render harness', () => {
 // D-39 / F-6b. The "of" is the ONLY signal that a filter is hiding sessions, so
 // the two states are pinned separately: its absence at rest is as load-bearing as
 // its presence while filtering.
+// ---------------------------------------------------------------------------
+// 88-33 Task 7 step 1b/1c — the fork G Upcoming/history split (owner-ruled
+// 2026-08-20): future events render in a dedicated "Upcoming" section ABOVE
+// Game Sessions with their RSVP/Ballot/Bring surfaces intact; Game Sessions
+// renders ONLY the history partition, as pure session records.
+// ---------------------------------------------------------------------------
+const FUTURE_SESSION = {
+  id: 'evt-future',
+  game_id: GAME_ID,
+  group_id: GROUP_ID,
+  // Always in the future relative to the test run.
+  start_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+  duration_minutes: 120,
+  comments: 'The upcoming night',
+  EventParticipations: [],
+};
+
+describe('gameDetail Upcoming/history split (fork G, 88-33 Task 7)', () => {
+  it('renders a future event in the Upcoming section WITH its RSVP surface, never in Game Sessions', async () => {
+    renderGameDetail({ events: [SESSION, FUTURE_SESSION] });
+
+    const upcomingHeading = await screen.findByRole('heading', { name: 'Upcoming (1)' });
+    // History count excludes the future event.
+    expect(
+      screen.getByRole('heading', { name: 'Game Sessions (1)' })
+    ).toBeInTheDocument();
+
+    // The future event's card lives inside the Upcoming card, with the
+    // interactive surfaces mounted.
+    const upcomingCard = upcomingHeading.closest('.card')!;
+    expect(within(upcomingCard as HTMLElement).getByText('The upcoming night')).toBeInTheDocument();
+    expect(within(upcomingCard as HTMLElement).getByTestId('rsvp-section')).toBeInTheDocument();
+    expect(within(upcomingCard as HTMLElement).getByTestId('ballot-section')).toBeInTheDocument();
+    expect(within(upcomingCard as HTMLElement).getByTestId('bring-summary')).toBeInTheDocument();
+
+    // ...and the Game Sessions card does NOT contain it.
+    const sessionsCard = screen
+      .getByRole('heading', { name: 'Game Sessions (1)' })
+      .closest('.card')!;
+    expect(within(sessionsCard as HTMLElement).queryByText('The upcoming night')).toBeNull();
+  });
+
+  it('renders a past event as a pure session record — no RSVP/ballot/bring UI, no Upcoming section', async () => {
+    renderGameDetail({ events: [SESSION] });
+
+    await screen.findByRole('heading', { name: 'Game Sessions (1)' });
+    expect(screen.getByText(SESSION.comments)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^Upcoming/ })).toBeNull();
+    // Step 1c: history cards mount none of the three interactive surfaces.
+    expect(screen.queryByTestId('rsvp-section')).toBeNull();
+    expect(screen.queryByTestId('ballot-section')).toBeNull();
+    expect(screen.queryByTestId('bring-summary')).toBeNull();
+  });
+
+  it('fires the per-event RSVP-status fetch for UPCOMING events only (the N+1 kill, step 1c)', async () => {
+    renderGameDetail({ events: [SESSION, { ...SESSION, id: 'evt-old-2' }, FUTURE_SESSION] });
+
+    await screen.findByRole('heading', { name: 'Upcoming (1)' });
+    await waitFor(() => expect(rsvpAPI.getEventRsvps).toHaveBeenCalled());
+    expect(rsvpAPI.getEventRsvps).toHaveBeenCalledTimes(1);
+    expect(rsvpAPI.getEventRsvps).toHaveBeenCalledWith('evt-future');
+  });
+
+  it('a group with ONLY a future event gets the ruled D2 empty copy, never the filters copy', async () => {
+    renderGameDetail({ events: [FUTURE_SESSION] });
+
+    const empty = await screen.findByText(
+      "No game sessions yet — they'll show up here after your group plays this game."
+    );
+    // D2 mini-formula classes.
+    expect(empty.className).toContain('text-content-muted');
+    expect(empty.className).toContain('text-sm');
+    expect(screen.queryByText('No sessions match your filters.')).toBeNull();
+  });
+
+  it('reviews empty rider converges onto the mini-formula', async () => {
+    renderGameDetail({ events: [SESSION], reviews: [] });
+    const empty = await screen.findByText('No reviews yet. Be the first to review this game.');
+    expect(empty.className).toContain('text-content-muted');
+    expect(empty.className).toContain('text-sm');
+  });
+});
+
 describe('gameDetail sessions header (D-39)', () => {
   it('renders a bare count when no filter is hiding anything', async () => {
     renderGameDetail({ events: [SESSION, { ...SESSION, id: 'evt-2' }] });

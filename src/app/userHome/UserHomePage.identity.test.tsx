@@ -103,7 +103,8 @@ describe('M2 — Upcoming Events while identity is still resolving', () => {
 
     expect(screen.queryByText('Nothing on the calendar')).not.toBeInTheDocument();
     expect(
-      screen.queryByText("Plan a game night and it'll show up here.")
+      // 88-33 Task 7: current empty-body copy (7-day window disclosed).
+      screen.queryByText(/Nothing scheduled in the next 7 days/)
     ).not.toBeInTheDocument();
   });
 

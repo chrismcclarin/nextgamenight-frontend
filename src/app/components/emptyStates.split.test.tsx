@@ -112,6 +112,18 @@ describe('UpcomingEventsCard empty vs failed (§9.2 / T-88-18-01)', () => {
     expect(screen.queryByText('No upcoming events')).toBeNull();
   });
 
+  // 88-33 Task 7 step 3 (M4 rider): the empty body DISCLOSES the 7-day window
+  // the card silently filters to. Pinned exactly — recorded for §6.2.1
+  // ratification at phase close.
+  it('disclosed the 7-day window in the empty body copy', () => {
+    render(<UpcomingEventsCard {...anyProps({ events: [] })} />);
+    expect(
+      screen.getByText(
+        "Nothing scheduled in the next 7 days — plan a game night and it'll show up here."
+      )
+    ).toBeInTheDocument();
+  });
+
   it('renders the error treatment and NOT the empty heading when the fetch failed', () => {
     render(
       <UpcomingEventsCard

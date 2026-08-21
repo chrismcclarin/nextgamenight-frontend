@@ -969,7 +969,9 @@ function FriendsPage() {
                             </div>
                         ) : receivedRequests.length === 0 ? (
                             <div className="text-center py-12">
-                                <p className="text-content-muted">No pending friend requests.</p>
+                                {/* D2 mini-formula rider (88-33 Task 7, Rule 2 — same class as the
+                                    sent-requests sibling below): + text-sm. */}
+                                <p className="text-content-muted text-sm">No pending friend requests.</p>
                             </div>
                         ) : (
                             <div className="space-y-3">
@@ -1037,7 +1039,8 @@ function FriendsPage() {
                             />
                         ) : sentRequests.length === 0 ? (
                             <div className="text-center py-12">
-                                <p className="text-content-muted">No sent friend requests.</p>
+                                {/* D2 mini-formula rider (88-33 Task 7, Rule 2): + text-sm. */}
+                                <p className="text-content-muted text-sm">No sent friend requests.</p>
                             </div>
                         ) : (
                             <div className="space-y-3">

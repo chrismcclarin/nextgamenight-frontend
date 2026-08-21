@@ -426,3 +426,22 @@ describe('remove friend (two-tap tier)', () => {
     expect(screen.getByText('Dana')).toBeInTheDocument();
   });
 });
+
+// 88-33 Task 7 (WI-F7, Rule-2 riders): the requests/sent section empties ride
+// the D2 mini-formula — one muted text-sm line.
+describe('friends request-tab empties (D2 mini-formula riders)', () => {
+  it('sent + received empties are muted text-sm one-liners', async () => {
+    renderFriends({ sent: [] });
+    await screen.findByText('Dana'); // page settled
+
+    fireEvent.click(screen.getByRole('button', { name: /Requests/ }));
+    const received = await screen.findByText('No pending friend requests.');
+    expect(received.className).toContain('text-content-muted');
+    expect(received.className).toContain('text-sm');
+
+    fireEvent.click(screen.getByRole('button', { name: /Sent/ }));
+    const sentEmpty = await screen.findByText('No sent friend requests.');
+    expect(sentEmpty.className).toContain('text-content-muted');
+    expect(sentEmpty.className).toContain('text-sm');
+  });
+});

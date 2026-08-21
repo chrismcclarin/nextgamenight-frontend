@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
@@ -725,9 +725,22 @@ export default function GameDetailPage() {
                 // per-event my-RSVP derive keys on selfUuid vs nested User.id.
                 // While selfUuid is unresolved, skip it (indeterminate); the
                 // fetch effect's selfUuid dep re-runs this once identity resolves.
-                if (selfUuid && gameEvents.length > 0) {
+                //
+                // 88-33 Task 7 step 1c (owner-ruled 2026-08-20): the fan-out is
+                // scoped to the UPCOMING partition only — history cards render the
+                // session record without RSVP/ballot UI (see the DECISION marker at
+                // the history render), so fetching per-event RSVP for all history
+                // was an N+1 over deep history with zero readers (r1#15/r3#18).
+                // Same partition predicate as the render's useMemo split.
+                const rsvpFanoutNow = new Date();
+                const upcomingGameEvents = gameEvents.filter(evt =>
+                    evt.status !== 'cancelled' &&
+                    evt.start_date &&
+                    new Date(evt.start_date) > rsvpFanoutNow
+                );
+                if (selfUuid && upcomingGameEvents.length > 0) {
                     const rsvpStatusMap = {};
-                    await Promise.all(gameEvents.map(async (evt) => {
+                    await Promise.all(upcomingGameEvents.map(async (evt) => {
                         try {
                             const rsvpData = await rsvpAPI.getEventRsvps(evt.id);
                             const myRsvp = (rsvpData.rsvps || []).find(r => r.User?.id === selfUuid);
@@ -951,9 +964,39 @@ export default function GameDetailPage() {
         return '★'.repeat(fullStars) + (hasHalfStar ? '½' : '') + '☆'.repeat(emptyStars);
     };
 
-    // Filter and sort events
+    /* DECISION Phase 88-33 Task 7 step 1b (fork G, owner-ruled 2026-08-20; supersedes fork B's
+       filter-out mechanism): the mixed-route events SPLIT into an Upcoming section (rendered
+       ABOVE Game Sessions, RSVP/Ballot/BringSummary intact) and a history-only Game Sessions
+       list — chosen OVER (a) filtering the shared per-event map down to history-only, which
+       would have silently deleted the game view's ONLY interactive RSVP/voting/bring UI for
+       future events (those components render inside this map; the only other mount is the
+       event_id view), and OVER (b) a BE-side filter, rejected because the shared route also
+       feeds RSVP/Ballot, which need future events. Owner's words: "upcoming games should be at
+       the top in their own section, then a history section of all the previous games played."
+       Memoized: this is a ~2500-line component — an inline sort/partition on every render is a
+       churn hazard (r2/r3 triage). Partition contract matches 88-34 Task 2's BE sweep:
+       upcoming = start_date > now && status !== 'cancelled'; history = start_date <= now &&
+       status !== 'cancelled', sorted start_date DESC. Collapsing the two sections back into
+       one filtered list is a decision, not a cleanup. */
+    const { upcomingEvents, historyEvents } = useMemo(() => {
+        const now = new Date();
+        const upcoming = [];
+        const history = [];
+        for (const evt of events) {
+            if (evt.status === 'cancelled') continue;
+            if (evt.start_date && new Date(evt.start_date) > now) upcoming.push(evt);
+            else history.push(evt);
+        }
+        upcoming.sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
+        history.sort((a, b) => new Date(b.start_date) - new Date(a.start_date));
+        return { upcomingEvents: upcoming, historyEvents: history };
+    }, [events]);
+
+    // Filter and sort events — the user-facing filters apply to the HISTORY
+    // partition only (Game Sessions is history-only post-split; the Upcoming
+    // section has no filters).
     useEffect(() => {
-        let filtered = [...events];
+        let filtered = [...historyEvents];
         
         // Date range filter
         if (filters.dateFrom) {
@@ -1047,7 +1090,7 @@ export default function GameDetailPage() {
         
         setFilteredEvents(filtered);
         setVisibleSessions(3); // Reset visible count when filters change
-    }, [events, filters]);
+    }, [historyEvents, filters]);
 
     const handleFilterChange = (key, value) => {
         setFilters(prev => ({ ...prev, [key]: value }));
@@ -1073,6 +1116,213 @@ export default function GameDetailPage() {
     };
 
     const displayedEvents = filteredEvents.slice(0, visibleSessions);
+
+    // Shared per-event card renderer for the Upcoming and Game Sessions sections
+    // (88-33 Task 7 step 1b — the card is defined ONCE; `interactive` controls
+    // whether the RSVP/Ballot/BringSummary surfaces mount, see the marker there).
+    const renderSessionCard = (event, index, { interactive }) => (
+                            <div key={event.id} className={`pl-4 py-2 ${index > 0 ? 'border-t-2 border-line-strong pt-4' : ''}`} style={{ borderLeft: '4px solid var(--color-btn-primary-bg)' }}>
+                                <div className="flex items-start justify-between gap-4 mb-2">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <p className="font-semibold text-content-primary">
+                                                {formatDate(event.start_date, timezone)}
+                                            </p>
+                                            {event.duration_minutes && (
+                                                <span className="text-sm text-content-secondary">
+                                                    • {formatDuration(event.duration_minutes)}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {event.is_group_win ? (
+                                            <p className="text-sm text-status-success font-semibold mb-1">
+                                                ✓ Group Win
+                                            </p>
+                                        ) : event.Winner && (
+                                            <p className="text-sm text-content-secondary mb-1">
+                                                Winner: <span className="font-semibold text-content-link">
+                                                    {event.Winner.is_custom ? (
+                                                        <>{event.Winner.username || event.Winner.name || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
+                                                    ) : (
+                                                        <ClickableMemberName userId={event.Winner.id} username={event.Winner.username || 'Unknown'} />
+                                                    )}
+                                                </span>
+                                            </p>
+                                        )}
+                                        {event.comments && (
+                                            <p className="text-content-secondary mt-1 text-sm italic">{event.comments}</p>
+                                        )}
+                                    </div>
+                                    {/* DECISION Phase 88-11 (D-40, F-6c/F-6d): ONE role gate wraps BOTH
+                                        breakpoint renderings — chosen OVER duplicating the
+                                        `userRole === 'owner' || userRole === 'admin'` test inside each
+                                        branch. Splitting the gate is what lets the two drift, and a
+                                        phone-only leak would be invisible to a desktop walkthrough; the
+                                        gate must keep mirroring the backend's owner/admin 403 on
+                                        PUT/DELETE /events/:id for both. Collapsing the two renderings
+                                        back into one always-visible cluster is a decision, not a
+                                        cleanup — the solid primary/danger pair is exactly the hierarchy
+                                        inversion F-6c recorded. */}
+                                    {(userRole === 'owner' || userRole === 'admin') && (
+                                        <>
+                                            {/* Phone: collapse both actions into the shipped kebab,
+                                                matching ScheduleList/ManageMembers, so the date, winner
+                                                and comment reclaim the full row width (F-6d). */}
+                                            <div className="md:hidden">
+                                                <KebabMenu
+                                                    ariaLabel="Session actions"
+                                                    items={[
+                                                        {
+                                                            label: 'Edit',
+                                                            onClick: () => handleEditEvent(event),
+                                                        },
+                                                        {
+                                                            label: 'Delete',
+                                                            onClick: () => handleDeleteEvent(event.id),
+                                                            danger: true,
+                                                            // D-40 + D-07: explicitly NOT the two-tap tier.
+                                                            // The menu unmounts the armed item on the first
+                                                            // click, so the second tap could never reach it —
+                                                            // this Delete routes to the dialog tier instead.
+                                                            twoTap: false,
+                                                        },
+                                                    ]}
+                                                />
+                                            </div>
+                                            {/* Desktop: still visible, demoted to ghost so they stop
+                                                outranking the plain-text content they act on (F-6c). */}
+                                            <div className="hidden md:flex gap-2 shrink-0">
+                                                <Button
+                                                    variant="ghost"
+                                                    onClick={() => handleEditEvent(event)}
+                                                    className="px-3 py-1 text-sm"
+                                                    title="Edit this session"
+                                                >
+                                                    Edit
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    onClick={() => handleDeleteEvent(event.id)}
+                                                    className="px-3 py-1 text-sm"
+                                                    title="Delete this session"
+                                                >
+                                                    Delete
+                                                </Button>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                                {event.EventParticipations && event.EventParticipations.length > 0 && (
+                                    <div className="text-sm mt-3 pt-2 border-t border-line">
+                                        <p className="font-semibold mb-2 text-content-primary">Participants:</p>
+                                        <div className="space-y-2">
+                                            {event.EventParticipations.map((participation, idx) => (
+                                                <div key={idx} className="flex items-center gap-2 flex-wrap">
+                                                    <span className="bg-surface-card-hover text-content-primary px-3 py-1 rounded-sm border border-line inline-flex items-center gap-2">
+                                                        <span className="font-medium">
+                                                            {participation.is_custom ? (
+                                                                <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
+                                                            ) : (
+                                                                // Phase 87.3-06: SANCTIONED flat read. Past-events participation
+                                                                // rows come through formatEventWithCustomParticipants (events.js),
+                                                                // which replaces EventParticipations with flat entries
+                                                                // `{ user_id: ep.User?.id }` — already the Users.id UUID, with NO
+                                                                // nested User to source from. The dead `participation.User?.user_id`
+                                                                // prefix is dropped; `participation.user_id` here is UUID-keyed
+                                                                // (unlike every other flat user_id site) and is allowlisted in the
+                                                                // plan-06 residue grep.
+                                                                <ClickableMemberName userId={participation.user_id} username={participation.User?.username || participation.username || 'Unknown'} />
+                                                            )}
+                                                        </span>
+                                                        {participation.is_guest && (
+                                                            <span className="text-xs bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded-full font-medium">
+                                                                Guest
+                                                            </span>
+                                                        )}
+                                                        {participation.is_new_player && (
+                                                            <span className="text-xs bg-surface-card-hover text-content-link px-1.5 py-0.5 rounded-sm font-semibold">
+                                                                New Player
+                                                            </span>
+                                                        )}
+                                                        {participation.faction && (
+                                                            <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm">
+                                                                {participation.faction}
+                                                            </span>
+                                                        )}
+                                                        {participation.score !== null && (
+                                                            <span className="text-xs font-semibold text-content-secondary">
+                                                                Score: {participation.score}
+                                                            </span>
+                                                        )}
+                                                        {participation.placement && (
+                                                            <span className="text-xs text-content-muted">
+                                                                #{participation.placement}
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                    {participation.is_guest && (userRole === 'owner' || userRole === 'admin') && participation.user_id && (
+                                                        <GuestInviteButton groupId={group_id} userId={participation.user_id} />
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                {/* DECISION Phase 88-33 Task 7 step 1c (owner-ruled 2026-08-20, resolving
+                                    triage A2 as a FIX): HISTORY cards are pure session records —
+                                    RsvpSection/BallotSection/BringSummary mount ONLY on
+                                    Upcoming-partition cards (`interactive`). Chosen OVER rendering
+                                    read-only RSVP/ballot strips on history: nobody consults RSVP
+                                    intent after the night happened (owner: "I don't really care who
+                                    RSVPed or not on games that has already happened. I only care who
+                                    was there"), and fetching it for all history is the N+1 the
+                                    scoped fan-out in fetchGameData kills at its cause. The event_id
+                                    single-event view keeps its full record view (out of scope).
+                                    Re-mounting these on history cards is a decision, not a
+                                    consistency cleanup. */}
+                                {interactive && (
+                                    <>
+                                        {/* RSVP Section - interactive for future events */}
+                                        <RsvpSection
+                                            key={`${event.id}-${rsvpRefreshKey}`}
+                                            eventId={event.id}
+                                            self={self}
+                                            eventDate={event.start_date}
+                                            onRsvpChange={(status) => {
+                                                const prevStatus = eventRsvpStatuses[event.id];
+                                                setEventRsvpStatuses(prev => ({ ...prev, [event.id]: status }));
+                                                // NO rsvpByUserId patch here: that map is
+                                                // single-event data (fetched/read only by the
+                                                // event view's strip + See-all) — a per-user
+                                                // write from the multi-event view would flatten
+                                                // per-event state into a map with no event
+                                                // dimension (plan-10 review #2).
+                                                if (status === 'yes' && prevStatus !== 'yes') {
+                                                    setBringPickerEventId(event.id);
+                                                    setShowBringPicker(true);
+                                                }
+                                                setBringRefreshKey(k => k + 1);
+                                            }}
+                                        />
+                                        {/* Ballot Section - game voting */}
+                                        <BallotSection
+                                            eventId={event.id}
+                                            eventDate={event.start_date}
+                                            userRole={userRole}
+                                            userRsvpStatus={eventRsvpStatuses[event.id] || null}
+                                        />
+                                        {/* Bring Summary - who is bringing which games */}
+                                        <BringSummary
+                                            eventId={event.id}
+                                            groupId={group_id}
+                                            self={self}
+                                            refreshKey={bringRefreshKey}
+                                            onEditClick={() => { setBringPickerEventId(event.id); setShowBringPicker(true); }}
+                                        />
+                                    </>
+                                )}
+                            </div>
+    );
 
     if (!game_id && !event_id) {
         return (
@@ -1938,6 +2188,23 @@ export default function GameDetailPage() {
                 )}
             </div>
 
+            {/* Upcoming — fork G's split section (Task 7 step 1b): future events of this
+                game render HERE with their interactive RSVP/Ballot/Bring surfaces; the
+                Game Sessions card below is history-only. When the upcoming partition is
+                empty the whole section is OMITTED rather than rendering an empty box
+                (recorded choice — an "Upcoming (0)" shell would just push the history
+                content down for nothing). */}
+            {upcomingEvents.length > 0 && (
+                <div className="card p-3 md:p-6 mb-6">
+                    <h2 className="w-full text-xl leading-tight font-bold text-content-primary mb-4">
+                        Upcoming ({upcomingEvents.length})
+                    </h2>
+                    <div className="space-y-0">
+                        {upcomingEvents.map((event, index) => renderSessionCard(event, index, { interactive: true }))}
+                    </div>
+                </div>
+            )}
+
             {/* Game Sessions */}
             <div className="card p-3 md:p-6 mb-6">
                 {/* DECISION Phase 88-11 (D-39, F-6b): the count is CONDITIONAL — "(7)" at rest,
@@ -1954,9 +2221,12 @@ export default function GameDetailPage() {
                     is untouched by that ruling and still stands. */}
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
                     <h2 className="w-full text-xl leading-tight font-bold text-content-primary">
-                        Game Sessions ({filteredEvents.length === events.length
-                            ? events.length
-                            : `${filteredEvents.length} of ${events.length}`})
+                        {/* Post-split (Task 7 step 1b): counts key on the HISTORY partition —
+                            keying on raw `events` would show "3 of 5" with no filter active
+                            whenever upcoming events exist. */}
+                        Game Sessions ({filteredEvents.length === historyEvents.length
+                            ? historyEvents.length
+                            : `${filteredEvents.length} of ${historyEvents.length}`})
                     </h2>
                     <button
                         onClick={() => setShowFilters(!showFilters)}
@@ -2154,197 +2424,18 @@ export default function GameDetailPage() {
                             separator's visual weight comes from border-t-2 + pt-4, which is
                             unchanged and always did the work. Whether these cards SHOULD be spaced
                             further apart is a design question and belongs to Phase 88. */}
-                        {displayedEvents.map((event, index) => (
-                            <div key={event.id} className={`pl-4 py-2 ${index > 0 ? 'border-t-2 border-line-strong pt-4' : ''}`} style={{ borderLeft: '4px solid var(--color-btn-primary-bg)' }}>
-                                <div className="flex items-start justify-between gap-4 mb-2">
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <p className="font-semibold text-content-primary">
-                                                {formatDate(event.start_date, timezone)}
-                                            </p>
-                                            {event.duration_minutes && (
-                                                <span className="text-sm text-content-secondary">
-                                                    • {formatDuration(event.duration_minutes)}
-                                                </span>
-                                            )}
-                                        </div>
-                                        {event.is_group_win ? (
-                                            <p className="text-sm text-status-success font-semibold mb-1">
-                                                ✓ Group Win
-                                            </p>
-                                        ) : event.Winner && (
-                                            <p className="text-sm text-content-secondary mb-1">
-                                                Winner: <span className="font-semibold text-content-link">
-                                                    {event.Winner.is_custom ? (
-                                                        <>{event.Winner.username || event.Winner.name || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
-                                                    ) : (
-                                                        <ClickableMemberName userId={event.Winner.id} username={event.Winner.username || 'Unknown'} />
-                                                    )}
-                                                </span>
-                                            </p>
-                                        )}
-                                        {event.comments && (
-                                            <p className="text-content-secondary mt-1 text-sm italic">{event.comments}</p>
-                                        )}
-                                    </div>
-                                    {/* DECISION Phase 88-11 (D-40, F-6c/F-6d): ONE role gate wraps BOTH
-                                        breakpoint renderings — chosen OVER duplicating the
-                                        `userRole === 'owner' || userRole === 'admin'` test inside each
-                                        branch. Splitting the gate is what lets the two drift, and a
-                                        phone-only leak would be invisible to a desktop walkthrough; the
-                                        gate must keep mirroring the backend's owner/admin 403 on
-                                        PUT/DELETE /events/:id for both. Collapsing the two renderings
-                                        back into one always-visible cluster is a decision, not a
-                                        cleanup — the solid primary/danger pair is exactly the hierarchy
-                                        inversion F-6c recorded. */}
-                                    {(userRole === 'owner' || userRole === 'admin') && (
-                                        <>
-                                            {/* Phone: collapse both actions into the shipped kebab,
-                                                matching ScheduleList/ManageMembers, so the date, winner
-                                                and comment reclaim the full row width (F-6d). */}
-                                            <div className="md:hidden">
-                                                <KebabMenu
-                                                    ariaLabel="Session actions"
-                                                    items={[
-                                                        {
-                                                            label: 'Edit',
-                                                            onClick: () => handleEditEvent(event),
-                                                        },
-                                                        {
-                                                            label: 'Delete',
-                                                            onClick: () => handleDeleteEvent(event.id),
-                                                            danger: true,
-                                                            // D-40 + D-07: explicitly NOT the two-tap tier.
-                                                            // The menu unmounts the armed item on the first
-                                                            // click, so the second tap could never reach it —
-                                                            // this Delete routes to the dialog tier instead.
-                                                            twoTap: false,
-                                                        },
-                                                    ]}
-                                                />
-                                            </div>
-                                            {/* Desktop: still visible, demoted to ghost so they stop
-                                                outranking the plain-text content they act on (F-6c). */}
-                                            <div className="hidden md:flex gap-2 shrink-0">
-                                                <Button
-                                                    variant="ghost"
-                                                    onClick={() => handleEditEvent(event)}
-                                                    className="px-3 py-1 text-sm"
-                                                    title="Edit this session"
-                                                >
-                                                    Edit
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    onClick={() => handleDeleteEvent(event.id)}
-                                                    className="px-3 py-1 text-sm"
-                                                    title="Delete this session"
-                                                >
-                                                    Delete
-                                                </Button>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                                {event.EventParticipations && event.EventParticipations.length > 0 && (
-                                    <div className="text-sm mt-3 pt-2 border-t border-line">
-                                        <p className="font-semibold mb-2 text-content-primary">Participants:</p>
-                                        <div className="space-y-2">
-                                            {event.EventParticipations.map((participation, idx) => (
-                                                <div key={idx} className="flex items-center gap-2 flex-wrap">
-                                                    <span className="bg-surface-card-hover text-content-primary px-3 py-1 rounded-sm border border-line inline-flex items-center gap-2">
-                                                        <span className="font-medium">
-                                                            {participation.is_custom ? (
-                                                                <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
-                                                            ) : (
-                                                                // Phase 87.3-06: SANCTIONED flat read. Past-events participation
-                                                                // rows come through formatEventWithCustomParticipants (events.js),
-                                                                // which replaces EventParticipations with flat entries
-                                                                // `{ user_id: ep.User?.id }` — already the Users.id UUID, with NO
-                                                                // nested User to source from. The dead `participation.User?.user_id`
-                                                                // prefix is dropped; `participation.user_id` here is UUID-keyed
-                                                                // (unlike every other flat user_id site) and is allowlisted in the
-                                                                // plan-06 residue grep.
-                                                                <ClickableMemberName userId={participation.user_id} username={participation.User?.username || participation.username || 'Unknown'} />
-                                                            )}
-                                                        </span>
-                                                        {participation.is_guest && (
-                                                            <span className="text-xs bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded-full font-medium">
-                                                                Guest
-                                                            </span>
-                                                        )}
-                                                        {participation.is_new_player && (
-                                                            <span className="text-xs bg-surface-card-hover text-content-link px-1.5 py-0.5 rounded-sm font-semibold">
-                                                                New Player
-                                                            </span>
-                                                        )}
-                                                        {participation.faction && (
-                                                            <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm">
-                                                                {participation.faction}
-                                                            </span>
-                                                        )}
-                                                        {participation.score !== null && (
-                                                            <span className="text-xs font-semibold text-content-secondary">
-                                                                Score: {participation.score}
-                                                            </span>
-                                                        )}
-                                                        {participation.placement && (
-                                                            <span className="text-xs text-content-muted">
-                                                                #{participation.placement}
-                                                            </span>
-                                                        )}
-                                                    </span>
-                                                    {participation.is_guest && (userRole === 'owner' || userRole === 'admin') && participation.user_id && (
-                                                        <GuestInviteButton groupId={group_id} userId={participation.user_id} />
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                                {/* RSVP Section - interactive for future events, read-only for past */}
-                                <RsvpSection
-                                    key={`${event.id}-${rsvpRefreshKey}`}
-                                    eventId={event.id}
-                                    self={self}
-                                    eventDate={event.start_date}
-                                    onRsvpChange={(status) => {
-                                        const prevStatus = eventRsvpStatuses[event.id];
-                                        setEventRsvpStatuses(prev => ({ ...prev, [event.id]: status }));
-                                        // NO rsvpByUserId patch here: that map is
-                                        // single-event data (fetched/read only by the
-                                        // event view's strip + See-all) — a per-user
-                                        // write from the multi-event view would flatten
-                                        // per-event state into a map with no event
-                                        // dimension (plan-10 review #2).
-                                        if (status === 'yes' && prevStatus !== 'yes') {
-                                            setBringPickerEventId(event.id);
-                                            setShowBringPicker(true);
-                                        }
-                                        setBringRefreshKey(k => k + 1);
-                                    }}
-                                />
-                                {/* Ballot Section - game voting */}
-                                <BallotSection
-                                    eventId={event.id}
-                                    eventDate={event.start_date}
-                                    userRole={userRole}
-                                    userRsvpStatus={eventRsvpStatuses[event.id] || null}
-                                />
-                                {/* Bring Summary - who is bringing which games */}
-                                <BringSummary
-                                    eventId={event.id}
-                                    groupId={group_id}
-                                    self={self}
-                                    refreshKey={bringRefreshKey}
-                                    onEditClick={() => { setBringPickerEventId(event.id); setShowBringPicker(true); }}
-                                />
-                            </div>
-                        ))}
+                        {displayedEvents.map((event, index) => renderSessionCard(event, index, { interactive: false }))}
                     </div>
                 ) : (
-                    <p className="text-content-muted">
-                        {events.length === 0 ? 'No game sessions recorded yet.' : 'No sessions match your filters.'}
+                    /* D2 mini-formula (ruled 2026-08-15) + the r1 discriminator fix: the
+                       empty-vs-filtered split keys on the HISTORY partition (pre-user-filters),
+                       NEVER the raw fetch — a group with only a future event has events.length
+                       > 0 but genuinely no history, and must get the ruled empty copy, not
+                       'No sessions match your filters.'. */
+                    <p className="text-content-muted text-sm">
+                        {historyEvents.length === 0
+                            ? "No game sessions yet — they'll show up here after your group plays this game."
+                            : 'No sessions match your filters.'}
                     </p>
                 )}
                 
@@ -2504,7 +2595,9 @@ export default function GameDetailPage() {
                             })}
                     </div>
                 ) : (
-                    <p className="text-content-muted">No reviews yet. Be the first to review this game!</p>
+                    // D2 mini-formula rider (Rule 2, same-class as the 4 ruled sites):
+                    // muted + text-sm, no "!", state + path.
+                    <p className="text-content-muted text-sm">No reviews yet. Be the first to review this game.</p>
                 )}
             </div>
 
