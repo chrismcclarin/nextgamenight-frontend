@@ -146,21 +146,20 @@ function GuestInviteButton({ groupId, userId }) {
                the same thing whether the person was already a member (nothing to do, ever) or had
                an invite in flight (they just have not answered yet).
 
-               Branches on the BE envelope `code` from 88-34's ERROR_REGISTRY, with a STRING
-               fallback that stays live until that backend change merges — production will keep
-               sending code-less 409s until then, so removing the string branch before the merge
-               silently reverts this to the generic error state. The bare `status === 409` arm below
-               remains the final safety net. */
+               Branches on the BE envelope `code` from 88-34's ERROR_REGISTRY. The bare
+               `status === 409` arm below remains the final safety net.
+
+               AMENDED (wave-12 HIGH #1, then post-deploy cleanup 2026-08-21): this arm once
+               carried a prose fallback (`(code === 'conflict' || !code) &&
+               message.includes(...)`) for the FE-first deploy window in which production
+               emitted code-less 409s. The 88-34 backend is CONFIRMED live (ERROR_REGISTRY
+               codes on the wire — invites.js:379/:399), so the owner-ruled removal condition
+               is met and the prose arms are gone. Re-adding prose matching is a decision, not
+               a hardening: an unrecognized 409 belongs in the safety-net arm below. */
             const code = err?.code;
-            const message = String(err?.message || '').toLowerCase();
-            /* AMENDED (wave-12 review HIGH #1, owner-approved 2026-08-21): the fallback guard was
-               `!code && ...` — dead in production, because apiFetch ALWAYS populates code: a
-               code-less 409 wire body maps to 'conflict' (api.ts statusToCode). The live fallback
-               is `code === 'conflict'`; `!code` is kept deliberately as belt-and-braces for
-               non-ApiError throws, an explicit choice — not a leftover to simplify away. */
-            if (code === 'already_member' || ((code === 'conflict' || !code) && message.includes('already a member'))) {
+            if (code === 'already_member') {
                 setStatus('member');
-            } else if (code === 'invite_pending' || ((code === 'conflict' || !code) && message.includes('pending invite'))) {
+            } else if (code === 'invite_pending') {
                 setStatus('pending');
             } else if (err?.status === 409) {
                 // 409 with no recognisable code — terminal either way, so never "Retry".

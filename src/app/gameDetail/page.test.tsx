@@ -486,8 +486,13 @@ describe('gameDetail role-gated session affordances', () => {
       renderGameDetail({ role });
       const sessions = await sessionsSection();
 
-      // Desktop layout: ghost-demoted, still visible.
-      const desktopEdit = within(sessions).getByRole('button', { name: 'Edit' });
+      // Desktop layout: ghost-demoted, still visible. findByRole on the FIRST
+      // row query: sessionsSection() resolves on the heading alone, and the
+      // session rows land a tick later — under CI/full-suite load the sync
+      // getByRole raced them ("No sessions match your filters." still in the
+      // DOM; flaked 2026-08-21 on PR #23 and once locally). Once Edit exists
+      // the row is committed, so the sibling queries stay sync.
+      const desktopEdit = await within(sessions).findByRole('button', { name: 'Edit' });
       const desktopDelete = within(sessions).getByRole('button', { name: 'Delete' });
       expect(desktopEdit).toBeInTheDocument();
       expect(desktopDelete).toBeInTheDocument();
@@ -856,21 +861,12 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
     expect(await screen.findByRole('button', { name: 'Already a member' })).toBeInTheDocument();
   });
 
-  // Wave-12 review HIGH #1: apiFetch can NEVER throw a bare object with no
-  // code — a code-less production 409 arrives as ApiError(code 'conflict')
-  // via mapErrorToCode's statusToCode fallback. The previous mock (a bare
-  // { status, message } object) was false coverage: it pinned a branch that
-  // was unreachable in production. This is the REAL pre-88-34 wire shape.
-  it('still tells them apart from a CODE-LESS 409 (production, pre-88-34)', async () => {
-    const user = userEvent.setup();
-    (invitesAPI.sendParticipantInvite as Mock).mockRejectedValue(
-      new ApiError('This person already has a pending invite', 'conflict', 409)
-    );
-    renderEventDetail({ role: 'owner', participants: [GUEST_WITH_ACCOUNT] });
-
-    await user.click(await screen.findByRole('button', { name: INVITE }));
-    expect(await screen.findByRole('button', { name: 'Invite pending' })).toBeInTheDocument();
-  });
+  // The "CODE-LESS 409 (production, pre-88-34)" test that lived here was
+  // deleted 2026-08-21 with the prose fallback it pinned: once the 88-34
+  // backend deploy was confirmed live, that wire shape stopped existing
+  // (owner-ruled removal condition — see the amended DECISION in page.js's
+  // GuestInviteButton). The bare-409 safety net stays pinned by the
+  // "UNCODED conflict" test above.
 });
 
 // ---------------------------------------------------------------------------
