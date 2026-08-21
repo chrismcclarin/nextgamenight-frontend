@@ -69,7 +69,9 @@ const MESSAGE_BY_CODE: Record<FetchErrorCode, string> = {
   // richer 'Invite pending' / 'Already a member' resting states take precedence
   // whenever that surface is showing.
   already_member: 'This person is already a member of the group',
-  invite_pending: 'This person already has a pending invite.',
+  // Copy = the wire string, byte-identical to ERROR_REGISTRY (wave-12 review
+  // MED #13 fixed a trailing-period drift here).
+  invite_pending: 'This person already has a pending invite',
   // Phase 88.2 group-restore codes. This map is the GENERIC fallback copy for a
   // query-driven fetch; the restore page owns its own cause-split copy, which is
   // richer than anything sensible here.

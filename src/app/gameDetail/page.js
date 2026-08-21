@@ -152,9 +152,14 @@ function GuestInviteButton({ groupId, userId }) {
                remains the final safety net. */
             const code = err?.code;
             const message = String(err?.message || '').toLowerCase();
-            if (code === 'already_member' || (!code && message.includes('already a member'))) {
+            /* AMENDED (wave-12 review HIGH #1, owner-approved 2026-08-21): the fallback guard was
+               `!code && ...` — dead in production, because apiFetch ALWAYS populates code: a
+               code-less 409 wire body maps to 'conflict' (api.ts statusToCode). The live fallback
+               is `code === 'conflict'`; `!code` is kept deliberately as belt-and-braces for
+               non-ApiError throws, an explicit choice — not a leftover to simplify away. */
+            if (code === 'already_member' || ((code === 'conflict' || !code) && message.includes('already a member'))) {
                 setStatus('member');
-            } else if (code === 'invite_pending' || (!code && message.includes('pending invite'))) {
+            } else if (code === 'invite_pending' || ((code === 'conflict' || !code) && message.includes('pending invite'))) {
                 setStatus('pending');
             } else if (err?.status === 409) {
                 // 409 with no recognisable code — terminal either way, so never "Retry".

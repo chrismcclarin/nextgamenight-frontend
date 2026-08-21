@@ -124,6 +124,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
 
         let successCount = 0;
         let failCount = 0;
+        let alreadyCount = 0;
 
         for (const friendUserId of selectedFriends) {
             // Skip anyone already in the group; otherwise invite by user_id.
@@ -132,12 +133,23 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
             try {
                 await invitesAPI.sendFriendInvite(group.id, friendUserId);
                 successCount++;
-            } catch {
-                failCount++;
+            } catch (err) {
+                // Wave-12 review MED #9: fork-F contract — a terminal 409
+                // (already a member / invite pending) is not a FAILURE; count
+                // it separately instead of collapsing into failCount.
+                const code = err?.code;
+                const message = String(err?.message || '').toLowerCase();
+                const isTerminal409 = code === 'already_member' || code === 'invite_pending'
+                    || (err?.status === 409 && (message.includes('already a member') || message.includes('pending invite')));
+                if (isTerminal409) {
+                    alreadyCount++;
+                } else {
+                    failCount++;
+                }
             }
         }
 
-        setInviteResult({ successCount, failCount });
+        setInviteResult({ successCount, failCount, alreadyCount });
         setSelectedFriends(new Set());
         setInviting(false);
 
@@ -195,10 +207,15 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                 // User not found or search failed — no prompt, that's fine
             }
         } catch (err) {
-            const message = err.message || '';
-            if (message.includes('already a member')) {
+            // Wave-12 review MED #9: migrated onto the fork-F contract — branch
+            // on the BE envelope code first (88-34 ERROR_REGISTRY), keep the
+            // prose match as the pre-88-34-deploy fallback (a code-less wire
+            // 409 arrives as code 'conflict' via apiFetch's statusToCode).
+            const code = err?.code;
+            const message = String(err?.message || '').toLowerCase();
+            if (code === 'already_member' || message.includes('already a member')) {
                 setEmailError('This person is already a member of the group');
-            } else if (message.includes('pending invite') || message.includes('already been invited')) {
+            } else if (code === 'invite_pending' || message.includes('pending invite') || message.includes('already been invited')) {
                 setEmailError('This person already has a pending invite');
             } else {
                 setEmailError('Failed to send invite');
@@ -398,7 +415,11 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                                 : 'bg-status-error-subtle text-status-error border border-status-error'
                                     }`}>
                                         {inviteResult.failCount === 0
-                                            ? `Invited ${inviteResult.successCount} friend${inviteResult.successCount !== 1 ? 's' : ''}!`
+                                            ? (inviteResult.alreadyCount > 0
+                                                ? (inviteResult.successCount > 0
+                                                    ? `Invited ${inviteResult.successCount} — ${inviteResult.alreadyCount} already invited or a member`
+                                                    : 'Everyone selected was already invited or a member')
+                                                : `Invited ${inviteResult.successCount} friend${inviteResult.successCount !== 1 ? 's' : ''}!`)
                                             : inviteResult.successCount > 0
                                                 ? `Invited ${inviteResult.successCount}, ${inviteResult.failCount} failed`
                                                 : 'Failed to send invites. Please try again.'}

@@ -856,12 +856,16 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
     expect(await screen.findByRole('button', { name: 'Already a member' })).toBeInTheDocument();
   });
 
+  // Wave-12 review HIGH #1: apiFetch can NEVER throw a bare object with no
+  // code — a code-less production 409 arrives as ApiError(code 'conflict')
+  // via mapErrorToCode's statusToCode fallback. The previous mock (a bare
+  // { status, message } object) was false coverage: it pinned a branch that
+  // was unreachable in production. This is the REAL pre-88-34 wire shape.
   it('still tells them apart from a CODE-LESS 409 (production, pre-88-34)', async () => {
     const user = userEvent.setup();
-    (invitesAPI.sendParticipantInvite as Mock).mockRejectedValue({
-      status: 409,
-      message: 'This person already has a pending invite',
-    });
+    (invitesAPI.sendParticipantInvite as Mock).mockRejectedValue(
+      new ApiError('This person already has a pending invite', 'conflict', 409)
+    );
     renderEventDetail({ role: 'owner', participants: [GUEST_WITH_ACCOUNT] });
 
     await user.click(await screen.findByRole('button', { name: INVITE }));
