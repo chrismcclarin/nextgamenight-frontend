@@ -136,11 +136,13 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
             } catch (err) {
                 // Wave-12 review MED #9: fork-F contract — a terminal 409
                 // (already a member / invite pending) is not a FAILURE; count
-                // it separately instead of collapsing into failCount.
+                // it separately instead of collapsing into failCount. Prose
+                // fallback removed post-88-34 deploy (2026-08-21, owner-ruled):
+                // the ERROR_REGISTRY codes are on the wire, so the code checks
+                // are the whole contract here — an unrecognized 409 stays in
+                // failCount rather than being silently counted "already".
                 const code = err?.code;
-                const message = String(err?.message || '').toLowerCase();
-                const isTerminal409 = code === 'already_member' || code === 'invite_pending'
-                    || (err?.status === 409 && (message.includes('already a member') || message.includes('pending invite')));
+                const isTerminal409 = code === 'already_member' || code === 'invite_pending';
                 if (isTerminal409) {
                     alreadyCount++;
                 } else {
@@ -207,15 +209,15 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                 // User not found or search failed — no prompt, that's fine
             }
         } catch (err) {
-            // Wave-12 review MED #9: migrated onto the fork-F contract — branch
-            // on the BE envelope code first (88-34 ERROR_REGISTRY), keep the
-            // prose match as the pre-88-34-deploy fallback (a code-less wire
-            // 409 arrives as code 'conflict' via apiFetch's statusToCode).
+            // Wave-12 review MED #9: fork-F contract — branch on the BE envelope
+            // code (88-34 ERROR_REGISTRY). The pre-88-34-deploy prose fallback
+            // (message.includes arms, incl. the long-dead 'already been invited'
+            // string no BE code emits) was removed 2026-08-21 once the deploy
+            // was confirmed live — the owner-ruled removal condition.
             const code = err?.code;
-            const message = String(err?.message || '').toLowerCase();
-            if (code === 'already_member' || message.includes('already a member')) {
+            if (code === 'already_member') {
                 setEmailError('This person is already a member of the group');
-            } else if (code === 'invite_pending' || message.includes('pending invite') || message.includes('already been invited')) {
+            } else if (code === 'invite_pending') {
                 setEmailError('This person already has a pending invite');
             } else {
                 setEmailError('Failed to send invite');
