@@ -195,6 +195,9 @@ export default function GroupLibrary({ groupId }) {
       {/* Search bar */}
       <div className="mb-3">
         <Input
+          id="group-library-search"
+          name="group-library-search"
+          aria-label="Search games"
           type="text"
           placeholder="Search games..."
           value={searchQuery}
@@ -209,6 +212,8 @@ export default function GroupLibrary({ groupId }) {
           {/* `w-auto`: inline beside its "Sort:" span on a toolbar row — same shape as
               GroupGamesList's sort select. See the marker there. */}
           <SelectControl
+            id="group-library-sort"
+            name="group-library-sort"
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
             className="w-auto"

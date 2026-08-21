@@ -235,6 +235,8 @@ export default function BrowseMoreModal({
                 −
               </button>
               <input
+                id="bm-player-count"
+                name="bm-player-count"
                 type="number"
                 min="1"
                 value={playerCount === '' || playerCount == null ? '' : playerCount}
@@ -310,6 +312,7 @@ export default function BrowseMoreModal({
               </label>
               <select
                 id="bm-sort"
+                name="bm-sort"
                 value={sortKey}
                 onChange={handleSortKeyChange}
                 /* `text-base` in place, not the primitive — same reason as the player-count

@@ -54,9 +54,19 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             phone-only twin of the sm:+ checkbox below; same state, so the two
             never disagree. */}
         <div className="flex items-center justify-between mb-1">
-          <label htmlFor={nameId} className="text-xs text-content-secondary block">Participant Name</label>
+          {/* 88-33 Task 8 (census class B — the 3 red-tag broken label[for]): member rows
+              render a read-only DIV, so a label[for] here pointed at a nonexistent form
+              element — an actively wrong association. The <label> renders ONLY when the
+              input it names actually exists (custom rows); member rows get a span. */}
+          {participant.isFromGroup ? (
+            <span className="text-xs text-content-secondary block">Participant Name</span>
+          ) : (
+            <label htmlFor={nameId} className="text-xs text-content-secondary block">Participant Name</label>
+          )}
           <label className="flex items-center gap-1 sm:hidden">
             <input
+              id={`${newPlayerId}-phone`}
+              name={`${newPlayerId}-phone`}
               type="checkbox"
               checked={participant.is_new_player || false}
               onChange={(e) => onParticipantChange(index, 'is_new_player', e.target.checked)}
@@ -162,6 +172,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
               vertically, which the tuning never constrained. */}
           <Input
             id={scoreId}
+            name={scoreId}
             type="number"
             step="0.01"
             value={participant.score || ''}
@@ -175,6 +186,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
           <label htmlFor={factionId} className="text-xs text-content-primary block sm:inline">Faction</label>
           <Input
             id={factionId}
+            name={factionId}
             type="text"
             value={participant.faction || ''}
             onChange={(e) => onParticipantChange(index, 'faction', e.target.value)}
@@ -193,6 +205,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
               site is not on its list of 14. */}
           <input
             id={newPlayerId}
+            name={newPlayerId}
             type="checkbox"
             checked={participant.is_new_player || false}
             onChange={(e) => onParticipantChange(index, 'is_new_player', e.target.checked)}

@@ -23,7 +23,10 @@ import { Combobox } from '@/components/ui/Combobox';
 // input, so a hosting modal can point `initialFocusRef` at it (createEvent focuses the
 // game field on open). Merged with the internal ref — internal focus management keeps
 // working whether or not a caller passes one.
-export default function GameComboInput({ value, onChange, groupId, userId, placeholder, inputRef: externalInputRef }) {
+// `id`/`name` (88-33 Task 8, fork 5 house rule): forwarded to the underlying text input
+// so the caller's visible label can associate via htmlFor and the autofill heuristic
+// (DevTools "form field should have an id or name") is satisfied.
+export default function GameComboInput({ value, onChange, groupId, userId, placeholder, inputRef: externalInputRef, id, name }) {
   const [inputValue, setInputValue] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [localResults, setLocalResults] = useState([]);
@@ -179,6 +182,8 @@ export default function GameComboInput({ value, onChange, groupId, userId, place
         inputRef.current = node;
         if (externalInputRef) externalInputRef.current = node;
       }}
+      id={id}
+      name={name}
       items={items}
       value={inputValue}
       onValueChange={handleInputChange}

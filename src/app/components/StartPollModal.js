@@ -189,6 +189,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
             <Input
               ref={deadlineInputRef}
               id="poll-deadline"
+              name="poll-deadline"
               type="datetime-local"
               value={deadlineLocal}
               onChange={(e) => setDeadlineLocal(e.target.value)}
@@ -212,6 +213,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
                 saving-state phone field. */}
             <Input
               id="poll-week"
+              name="poll-week"
               type="text"
               value={weekDisplay ? `Week of ${weekDisplay} (${weekIdentifier})` : ''}
               readOnly
@@ -229,6 +231,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
               </label>
               <SelectControl
                 id="poll-game"
+                name="poll-game"
                 value={gameId}
                 onChange={(e) => setGameId(e.target.value)}
               >
@@ -248,6 +251,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
             </label>
             <Textarea
               id="poll-message"
+              name="poll-message"
               value={customMessage}
               onChange={(e) => setCustomMessage(e.target.value)}
               maxLength={280}

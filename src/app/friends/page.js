@@ -620,7 +620,12 @@ function FriendsPage() {
                 <div className="card p-3 md:p-6 mb-6">
                     <h2 className="text-xl font-bold text-content-primary mb-3">Add Friend</h2>
                     <form onSubmit={handleSearch} className="flex gap-3">
+                        {/* 88-33 Task 8 (fork 5): id/name + explicit name — the section
+                            heading ("Add Friend") names the card, not the field. */}
                         <Input
+                            id="add-friend-email"
+                            name="add-friend-email"
+                            aria-label="Friend's email address"
                             type="email"
                             value={searchEmail}
                             onChange={(e) => setSearchEmail(e.target.value)}
@@ -879,6 +884,8 @@ function FriendsPage() {
                                             >
                                                 <div className="flex items-center gap-3 flex-1">
                                                     <input
+                                                        id={`bulk-invite-${friendship.id}`}
+                                                        name={`bulk-invite-${friendship.id}`}
                                                         type="checkbox"
                                                         aria-label={`Select ${friend.username}`}
                                                         checked={isInGroup || selectedFriends.has(friendUserId)}

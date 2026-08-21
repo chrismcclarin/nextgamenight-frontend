@@ -160,6 +160,13 @@ describe('Req 14 — the shared fetch-error treatment on 88-25 surfaces', () => 
         contains: "} else if (err.message && err.message.includes('No user found'))",
         why: 'same search outcome, prose variant. Never displayed.',
       },
+      {
+        file: 'app/gameDetail/page.js',
+        contains: "const message = String(err?.message || '').toLowerCase();",
+        why:
+          '88-33 Task 2 (Fork F): invite-409 string FALLBACK until 88-34 ships envelope ' +
+          'codes — branches already_member/invite_pending to a status, never displayed.',
+      },
     ];
 
     const violations = scan(

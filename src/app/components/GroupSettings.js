@@ -401,9 +401,12 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
 
           {/* Custom URL */}
           <div>
-            <p className="text-sm text-content-secondary mb-2">Or enter a custom image URL:</p>
+            {/* 88-33 Task 8 (fork 5): real <label htmlFor> + id/name (census class A). */}
+            <label htmlFor="group-picture-url" className="block text-sm text-content-secondary mb-2">Or enter a custom image URL:</label>
             <div className="flex gap-2">
               <Input
+                id="group-picture-url"
+                name="group-picture-url"
                 type="text"
                 value={customPictureUrl}
                 onChange={(e) => setCustomPictureUrl(e.target.value)}
@@ -457,9 +460,12 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
 
           {/* Custom Background URL */}
           <div>
-            <p className="text-sm text-content-secondary mb-2">Or enter a custom background image URL:</p>
+            {/* 88-33 Task 8 (fork 5): real <label htmlFor> + id/name (census class A). */}
+            <label htmlFor="group-background-url" className="block text-sm text-content-secondary mb-2">Or enter a custom background image URL:</label>
             <div className="flex gap-2">
               <Input
+                id="group-background-url"
+                name="group-background-url"
                 type="text"
                 value={customBackgroundUrl}
                 onChange={(e) => setCustomBackgroundUrl(e.target.value)}

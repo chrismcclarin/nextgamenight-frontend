@@ -1796,6 +1796,8 @@ function Profile(){
                         option list was unreachable from the keyboard. Nothing here re-rolls
                         any of that. */}
                     <Combobox
+                        id="profile-timezone"
+                        name="profile-timezone"
                         aria-label="Timezone"
                         /* 88-CODE-REVIEW MED#2: this picker opens on FOCUS over the full
                            alphabetized IANA list — with the default Enter-selects-first, a
@@ -1962,6 +1964,8 @@ function Profile(){
                                             44px phone touch height, the ring — comes from the
                                             primitive and must not be re-inlined here. */}
                                         <SelectControl
+                                            id="reminder-window"
+                                            name="reminder-window"
                                             aria-label="Remind me"
                                             value={preferences.reminder?.window_hours ?? 1}
                                             onChange={(e) => handleReminderWindowChange(parseFloat(e.target.value))}
@@ -2408,6 +2412,8 @@ function Profile(){
                                 (Spelled out in words rather than the utility itself so a
                                 grep-based gate does not match this comment.) */}
                             <Input
+                                id="bgg-username"
+                                name="bgg-username"
                                 aria-label="BoardGameGeek username"
                                 value={bggUsername}
                                 onChange={(e) => setBggUsername(e.target.value)}

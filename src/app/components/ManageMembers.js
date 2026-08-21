@@ -536,6 +536,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                                 backend still says "Member") is closed structurally here.
                                                                 Collapsing this back to the bare `memberRole` is a decision. */}
                                                             <SelectControl
+                                                                id={`member-role-${member.id}`}
+                                                                name={`member-role-${member.id}`}
                                                                 aria-label={`Role for ${member.username || member.email}`}
                                                                 value={promoteTarget?.id === member.id ? promoteTarget.priorRole : memberRole}
                                                                 onChange={(e) => handleRoleChange(

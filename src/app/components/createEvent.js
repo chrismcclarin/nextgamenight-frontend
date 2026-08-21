@@ -869,10 +869,14 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         <form onSubmit={onSubmit} data-testid="tw4-space-y-exemplar" className="space-y-4">
           {/* Game Selection */}
           <div>
-            <label className="block text-sm font-medium text-content-primary mb-1">
+            {/* 88-33 Task 8 (fork 5 / census class C): htmlFor associates this visible
+                label with the combobox's text input (id forwarded via GameComboInput). */}
+            <label htmlFor="event-game-name" className="block text-sm font-medium text-content-primary mb-1">
               Game
             </label>
             <GameComboInput
+              id="event-game-name"
+              name="event-game-name"
               inputRef={gameInputRef}
               value={{ game_id: newEvent.game_id, game_name: newEvent.game_name }}
               onChange={({ game_id, game_name }) => {
@@ -895,9 +899,14 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           {/* Time Selection */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-content-primary">
+              {/* 88-33 Task 8 (census class C): a SPAN, not a <label> — this titles the
+                  whole date/time SECTION (mode toggle + calendar or manual fields), so
+                  there is no single control to point htmlFor at; the manual inputs below
+                  carry their own real labels. Same treatment as the Participants section
+                  title (88-21). */}
+              <span className="block text-sm font-medium text-content-primary">
                 Date & Time <span className="text-red-500">*</span>
-              </label>
+              </span>
               {!hideVisualCalendar && (
                 <button
                   type="button"

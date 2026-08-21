@@ -332,6 +332,8 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                             would push the select onto its own line and break the toolbar. Same
                             override 88-19 used for the reminder-window select. */}
                         <SelectControl
+                            id="group-games-sort"
+                            name="group-games-sort"
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value)}
                             className="w-auto"
@@ -367,6 +369,8 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                         <label className="flex-1">
                             <span className="text-sm font-medium text-content-secondary block mb-1">Winner</span>
                             <SelectControl
+                                id="group-games-filter-winner"
+                                name="group-games-filter-winner"
                                 value={filterWinner}
                                 onChange={(e) => setFilterWinner(e.target.value)}
                             >
@@ -381,6 +385,8 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                         <label className="flex-1">
                             <span className="text-sm font-medium text-content-secondary block mb-1">Picker</span>
                             <SelectControl
+                                id="group-games-filter-picker"
+                                name="group-games-filter-picker"
                                 value={filterPicker}
                                 onChange={(e) => setFilterPicker(e.target.value)}
                             >

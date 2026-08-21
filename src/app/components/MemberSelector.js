@@ -16,13 +16,18 @@ export default function MemberSelector({
 
   return (
     <div className="mb-6">
-      <label className="block text-sm font-medium text-content-secondary mb-2">
+      {/* 88-33 Task 8 (census class C): a SPAN naming the SECTION via role="group",
+          not an orphan <label> — there is no single control for htmlFor to point at
+          (same treatment as createEvent's Participants title, 88-21). */}
+      <span id="member-selector-label" className="block text-sm font-medium text-content-secondary mb-2">
         Send to Members
-      </label>
-      <div className="border border-line rounded-card p-3 max-h-48 overflow-y-auto">
+      </span>
+      <div role="group" aria-labelledby="member-selector-label" className="border border-line rounded-card p-3 max-h-48 overflow-y-auto">
         {/* Select All */}
         <label className="flex items-center mb-2 pb-2 border-b border-line">
           <input
+            id="member-select-all"
+            name="member-select-all"
             type="checkbox"
             checked={allMembersSelected}
             onChange={(e) => onSelectAllMembers(e.target.checked)}
@@ -40,6 +45,8 @@ export default function MemberSelector({
             render={({ field }) => (
               <label className="flex items-center py-1">
                 <input
+                  id={`member-select-${member.id}`}
+                  name={`member-select-${member.id}`}
                   type="checkbox"
                   // 87.4 PR-2 (D-02): the PR-1 both-keys tolerance is collapsed to
                   // UUID-only. selected_member_ids now stores member.id (the

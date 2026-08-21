@@ -333,6 +333,8 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                             }`}
                                         >
                                             <input
+                                                id={`invite-friend-${friend.id}`}
+                                                name={`invite-friend-${friend.id}`}
                                                 type="checkbox"
                                                 checked={isInGroup || selectedFriends.has(friend.id)}
                                                 disabled={isInGroup}
@@ -417,11 +419,17 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
 
                     {/* Email invite section */}
                     <div className="p-5">
-                        <h3 className="text-sm font-semibold text-content-muted uppercase tracking-wide mb-3">
+                        <h3 id="invite-by-email-heading" className="text-sm font-semibold text-content-muted uppercase tracking-wide mb-3">
                             Invite by Email
                         </h3>
                         <form onSubmit={handleEmailInvite} className="flex gap-2">
+                            {/* 88-33 Task 8 (fork 5): id/name for the autofill heuristic; the
+                                visible "Invite by Email" heading IS the label — associated via
+                                aria-labelledby rather than duplicating it as a second label. */}
                             <Input
+                                id="invite-email"
+                                name="invite-email"
+                                aria-labelledby="invite-by-email-heading"
                                 type="email"
                                 value={email}
                                 onChange={(e) => {

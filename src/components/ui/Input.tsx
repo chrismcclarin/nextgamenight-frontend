@@ -8,6 +8,16 @@
  * repo's `cn()` + `forwardRef` + `displayName` idiom established by {@link Card} and
  * {@link Banner}; semantic tokens only.
  *
+ * HOUSE RULE (88-33 Task 8, fork 5 — owner-ruled 2026-08-17): every form field carries
+ * **`id` + `name` + an associated label** (`htmlFor`, a wrapping `<label>`, or
+ * `aria-labelledby` to visible text). `aria-label` alone is acceptable ONLY where a
+ * visible label genuinely cannot exist. `id`/`name` are required even when an
+ * `aria-label` already names the control — the browser autofill heuristic (DevTools
+ * "form field should have an id or name attribute") does not read ARIA. Section
+ * TITLES over multiple controls are `<span>` + `role="group"`/`aria-labelledby`,
+ * never an orphan `<label>` (the 88-21 Participants idiom). 88.6's composed axe
+ * audits are the recurrence backstop.
+ *
  * What these deliberately do NOT do (the composition contract — `useFetchErrorState.ts`
  * is the model for this section):
  * - **No label.** A visible label is required (UI-SPEC §8.2) but it is `FormField`'s to
