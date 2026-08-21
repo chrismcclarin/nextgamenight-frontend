@@ -1510,10 +1510,18 @@ export default function GameDetailPage() {
                                     /* Row-id key — see the DECISION marker on the strip's
                                        ParticipantChip above (88-33 Task 2, UAT row 520). */
                                     key={p.id ?? p.user_id ?? `row-${idx}`}
-                                    className="flex items-center justify-between gap-3 px-3 py-2 rounded-sm border border-line bg-surface-card"
+                                    /* 88-33 Task 6 layout (fork 2 / UAT rows 390+573, folded per the
+                                       row's own routing note): `flex-wrap` lets the action cluster
+                                       DROP TO ITS OWN ROW when the name is long — so an armed
+                                       two-tap's wider label pushes the buttons down instead of
+                                       squeezing the name into truncation. */
+                                    className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 rounded-sm border border-line bg-surface-card"
                                 >
-                                    <div className="flex items-center gap-2 flex-wrap min-w-0">
-                                        <span className="font-medium text-content-primary truncate">
+                                    {/* INLINE flow (not flex): pills ride after the LAST WORD of the
+                                        name like text; the name wraps IN FULL — display never
+                                        truncates a person's name (fork 2's agreed direction). */}
+                                    <div className="min-w-0 flex-1 basis-48 space-x-1.5 break-words">
+                                        <span className="font-medium text-content-primary">
                                             {p.is_custom ? (
                                                 <>{p.username || 'Guest'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
                                             ) : isSelfRow ? (
@@ -1545,7 +1553,7 @@ export default function GameDetailPage() {
                                             // (Owner=purple, Admin=blue) while staying distinguishable from
                                             // Owner's purple. Self is a viewer-perspective indicator, not a
                                             // role, but the visual family is the closest existing pattern.
-                                            <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-semibold">
+                                            <span className="align-middle text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-semibold">
                                                 You
                                             </span>
                                         )}
@@ -1557,15 +1565,15 @@ export default function GameDetailPage() {
                                             // through ClickableMemberName above. Emerald color echoes the
                                             // text-status-success used by that mobile inline indicator for
                                             // visual continuity across viewports.
-                                            <span className="hidden md:inline-flex items-center text-[10px] uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-semibold">
+                                            <span className="hidden md:inline-flex items-center align-middle text-[10px] uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-semibold">
                                                 Friend
                                             </span>
                                         )}
                                         {role === 'owner' && (
-                                            <span className="text-[10px] uppercase tracking-wide bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm font-semibold">Owner</span>
+                                            <span className="align-middle text-[10px] uppercase tracking-wide bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm font-semibold">Owner</span>
                                         )}
                                         {role === 'admin' && (
-                                            <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-semibold">Admin</span>
+                                            <span className="align-middle text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-semibold">Admin</span>
                                         )}
                                         {/* Phase 71.1 GAMP-12: render Guest badge for is_guest=true rows
                                             when viewer is a full group member. Skips render for game-only
@@ -1575,7 +1583,7 @@ export default function GameDetailPage() {
                                             can decide who to onboard via admin-initiated invite. */}
                                         {p.is_guest && userScope === 'group-member' && (
                                             <span
-                                                className="inline-flex items-center px-1.5 py-0.5 text-[10px] uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
+                                                className="inline-flex items-center align-middle px-1.5 py-0.5 text-[10px] uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
                                                 title="Joined via game-invite QR (not a group member)"
                                             >
                                                 Guest
@@ -1586,7 +1594,8 @@ export default function GameDetailPage() {
                                         )}
                                     </div>
                                     {(canInvite || canRemove) && (
-                                    <div className="flex items-center gap-2 shrink-0">
+                                    /* ml-auto: stays right-aligned when it drops to its own row. */
+                                    <div className="flex items-center gap-2 shrink-0 ml-auto">
                                         {/* Req 15: the invite sits BEFORE Remove, not after.
                                             Both act on the same guest row, and putting the
                                             constructive action first keeps the destructive

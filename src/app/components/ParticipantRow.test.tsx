@@ -98,3 +98,41 @@ describe('the dead invite affordance is gone (step 4b disposition)', () => {
     expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
   });
 });
+
+// 88-33 Task 6 (fork 2, RULED 2026-08-17): entry-time cap + wrap-not-truncate layout.
+describe('name cap + long-name layout (WI-F6)', () => {
+  const FIFTY = 'A'.repeat(50);
+
+  it('caps the participant name input at 50 characters (fork 2 — person cap)', () => {
+    renderRow();
+    expect(screen.getByLabelText('Participant Name')).toHaveAttribute('maxlength', '50');
+  });
+
+  it('renders a max-length member name in FULL — inline flow, no truncation class', () => {
+    renderRow({
+      participant: {
+        user_id: 'uuid-alice',
+        username: FIFTY,
+        is_guest: true,
+        isFromGroup: true,
+      },
+    });
+    const nameNode = screen.getByText(FIFTY, { exact: false });
+    // Wrap-in-full, never truncate: the display container breaks words and
+    // carries NO truncate/ellipsis class anywhere up the chain.
+    const container = nameNode.closest('div')!;
+    expect(container.className).toContain('break-words');
+    expect(container.className).not.toContain('truncate');
+    // Inline flow (not flex): the Guest pill is a text-flow sibling that rides
+    // after the last word instead of dropping to its own flex line.
+    expect(container.className).not.toContain('flex');
+    const pill = screen.getByText('Guest');
+    expect(pill.parentElement).toBe(container);
+    expect(pill.className).toContain('align-middle');
+  });
+
+  it('the action cluster meets the 44px floor (min-h-11 — same-plan consistency with Task 5)', () => {
+    renderRow();
+    expect(screen.getByRole('button', { name: 'Remove' }).className).toContain('min-h-11');
+  });
+});

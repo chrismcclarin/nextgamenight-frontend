@@ -65,11 +65,15 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
           </label>
         </div>
         {participant.isFromGroup ? (
-          // Read-only display for group members
-          <div className="p-2 border border-line rounded-sm bg-surface-elevated text-content-primary text-sm flex items-center gap-2">
+          // Read-only display for group members.
+          // 88-33 Task 6 (fork 2 layout, UAT row 390): INLINE flow, not flex — the
+          // pill rides after the LAST WORD of the name like text, so a long name
+          // wraps in full (never truncated) and the pill never strands alone on
+          // its own line. `break-words` covers a 50-char unbroken name.
+          <div className="p-2 border border-line rounded-sm bg-surface-elevated text-content-primary text-sm break-words">
             {participant.username || `Participant ${index + 1}`}
             {participant.is_guest && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+              <span className="ml-1.5 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 align-middle">
                 Guest
               </span>
             )}
@@ -107,6 +111,11 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
                 });
               }}
               placeholder="Type name (group member or custom)"
+              // 88-33 Task 6 (fork 2, RULED 2026-08-17): person names cap at 50 AT
+              // ENTRY (matches the username cap in userProfile); display always
+              // wraps in full — never truncates. Group name keeps its own 40.
+              // BE mirror: 88-34 Task 4.
+              maxLength={50}
             />
             {participant.is_guest && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 shrink-0">
@@ -238,10 +247,15 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
             Remove stays outermost right: destructive control at the end of the row, matching the
             session-row Edit/Delete side (owner call 2026-08-04). sm:+ keeps the original flow. */}
         <div className="flex gap-2 ml-auto sm:ml-0">
+          {/* 88-33 Task 6: min-h-11 — Task 5 imposes the 44px floor on the
+              equivalent controls elsewhere in this plan; leaving this one below
+              it would be a same-plan inconsistency (r2/r3 triage). Grows the row
+              vertically only, which the one-line layout tuning above never
+              constrained (same reasoning as the Score input's recorded floor). */}
           <button
             type="button"
             onClick={() => onToggleParticipant(index)}
-            className="text-status-error hover:text-status-error text-sm px-2 py-1 border border-status-error rounded-sm hover:bg-status-error-subtle"
+            className="inline-flex min-h-11 items-center text-status-error hover:text-status-error text-sm px-2 py-1 border border-status-error rounded-sm hover:bg-status-error-subtle"
             title="Remove participant"
           >
             Remove
