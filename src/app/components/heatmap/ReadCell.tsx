@@ -78,6 +78,38 @@ interface ReadCellBaseProps {
   fill?: boolean;
   /** Cell content rendered inside the colored div (e.g. the participant-count badge). */
   children?: React.ReactNode;
+  /**
+   * Opt-in colour-resolution override. THREE states, and the distinction is the point:
+   *   - omitted (`undefined`) — today's behavior: `mergedCellColor` resolves the class, exactly
+   *     as it always has. This path must stay BYTE-IDENTICAL; `EventHeatmapBackground.js:262-277`
+   *     is the only live consumer and it is owner-passed at 375px under the locked 72-02 decision.
+   *   - `null` — emit NO colour class at all (the cell renders only its structural `className`,
+   *     with no trailing whitespace). This is the scheduler's empty slot: `calendarWashColor`
+   *     returns `undefined` for zero availability BY DESIGN, and a cell that inherits
+   *     `bg-surface-elevated` would paint an opaque layer over the gridlines underneath.
+   *   - a string — use that class string VERBATIM as the colour segment (shared pattern S2: no
+   *     `cn`, no tailwind-merge). This is the rebuilt scheduler's TRANSLUCENT WASH case.
+   *
+   * DECISION Phase 88.1-02 (C3): an additive optional colour-resolution OVERRIDE, chosen OVER
+   * (a) a `style`-only passthrough and (b) a second `variant` union arm.
+   *
+   * WHY NOT style-only: it cannot suppress an opaque class. `calendarWashColor` deliberately
+   * returns `undefined` for the empty case (`availabilityColor.ts:165-170` — an explicit
+   * transparent fill "would still stack a paint layer over the gridlines"), and an inline style
+   * with no `backgroundColor` leaves `bg-surface-elevated` painting anyway. Style-only also drags
+   * `text-green-*` onto cells whose only content is a self-coloured badge, and an appended `bg-*`
+   * beats `bg-surface-accent-subtle` in the same class string — a real render bug on the today
+   * cell and a red gate in `tintTreatment.test.ts:143-149,229-237`.
+   *
+   * WHY NOT a new variant: the DECISION Phase 88-31 marker below states in capitals that
+   * re-adding a second colour scheme "IS A DESIGN DECISION, NOT A CONVENIENCE." An additive
+   * optional prop does not re-open that; a second union arm does.
+   *
+   * WHAT RE-OPENS IT: a consumer that needs a genuinely different RAMP (not a restatement of the
+   * canonical one) — that is the design decision 88-31 guards, and it belongs in `availabilityColor`,
+   * not here.
+   */
+  colorClass?: string | null;
 }
 
 export interface MergedReadCellProps extends ReadCellBaseProps {
@@ -126,6 +158,7 @@ export const ReadCell = memo(function ReadCell(props: ReadCellProps) {
     style,
     fill = true,
     children = null,
+    colorClass,
   } = props;
 
   // Hook is called unconditionally (rules of hooks). In passive mode we simply
@@ -144,11 +177,20 @@ export const ReadCell = memo(function ReadCell(props: ReadCellProps) {
   const tabIndex = roving ? rovingTabIndex : disabled ? -1 : staticTabIndex;
   const onKeyDown = roving ? rovingKeyDown : undefined;
 
-  const colorClass = resolveColor(props);
+  // The override intercepts BEFORE resolveColor runs (so an overriding consumer never pays for,
+  // nor is affected by, the ramp lookup). `undefined` = resolve as always; `null` = no colour
+  // class; a string = that string, verbatim.
+  const resolvedColorClass = colorClass === undefined ? resolveColor(props) : (colorClass ?? '');
   // Color string applied VERBATIM (no cn/tailwind-merge). When the consumer
   // supplies structural classes they are PREPENDED, so the color substring
   // survives byte-identical and the no-className path stays exactly the color.
-  const fullClassName = className ? `${className} ${colorClass}` : colorClass;
+  // The empty-colour case (colorClass={null}) must not leave a trailing space, so the
+  // structural class alone is the whole className rather than `${className} `.
+  const fullClassName = className
+    ? resolvedColorClass
+      ? `${className} ${resolvedColorClass}`
+      : className
+    : resolvedColorClass;
 
   const cell = (
     <div
