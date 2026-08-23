@@ -38,6 +38,38 @@ describe('WeekGrid — ARIA grid scaffold', () => {
   });
 });
 
+// Plan 88.1-02 Task 2 (C12): ONE grid template sizes headers AND body cells.
+//
+// This asserts the AUTHORED style string, not rendered pixels — jsdom has no layout engine
+// (PATTERNS P7), so a width assertion here would be vacuous. The discriminating part is that the
+// `days` count reaches the template: a hardcoded `repeat(7, 1fr)` would fail the days={3} case.
+describe('WeekGrid — CSS-grid geometry (88.1-02 C12)', () => {
+  it('sizes columns from one gridTemplateColumns carrying the day count and the gutter', () => {
+    render(
+      <WeekGrid variant="read" days={3} slots={2} getCell={readCell} ariaLabel="geometry" />
+    );
+    expect(screen.getByRole('grid')).toHaveStyle({
+      gridTemplateColumns: '24px repeat(3, 1fr)',
+    });
+  });
+
+  it('gutterPx overrides the gutter track without touching the day tracks', () => {
+    render(
+      <WeekGrid variant="read" days={7} slots={1} gutterPx={40} getCell={readCell} ariaLabel="geometry" />
+    );
+    expect(screen.getByRole('grid')).toHaveStyle({
+      gridTemplateColumns: '40px repeat(7, 1fr)',
+    });
+  });
+
+  it('row wrappers use display:contents so role="row" does not break the single grid', () => {
+    render(<WeekGrid variant="read" days={2} slots={2} getCell={readCell} ariaLabel="geometry" />);
+    for (const row of screen.getAllByRole('row')) {
+      expect(row).toHaveClass('contents');
+    }
+  });
+});
+
 describe('WeekGrid — arrow keys move REAL DOM focus (D-06)', () => {
   it('ArrowRight then ArrowDown walk document.activeElement across cells', () => {
     render(

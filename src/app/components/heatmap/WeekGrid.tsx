@@ -61,8 +61,19 @@ interface WeekGridBaseProps {
   ariaLabel?: string;
   /** Disable all cells. */
   disabled?: boolean;
-  /** Override the per-cell wrapper class (dims/border). */
+  /**
+   * Override the per-cell wrapper class (row height / border / any non-width styling).
+   * WIDTHS NO LONGER COME FROM HERE — since the 88.1-02 CSS-grid conversion the column widths
+   * are owned by `gridTemplateColumns` on the grid container, so header and body cannot desync.
+   * Passing `w-*` utilities here does nothing useful; change `gutterPx` or `days` instead.
+   */
   cellClassName?: string;
+  /**
+   * Width of the time-axis gutter column, in px. Default 24 — the value 87.8-13 F-2 recorded as
+   * fitting the widest compact label ("12p" at 10px mono) at 375px, where the old 40px "read as
+   * dead left padding". The day columns take `1fr` each, so the grid always fits its container.
+   */
+  gutterPx?: number;
 }
 
 export interface ReadWeekGridProps extends WeekGridBaseProps {
@@ -81,10 +92,48 @@ export interface WriteWeekGridProps extends WeekGridBaseProps {
 
 export type WeekGridProps = ReadWeekGridProps | WriteWeekGridProps;
 
-const DEFAULT_CELL_CLASS = 'w-24 sm:w-28 h-12 sm:h-14 shrink-0 border border-line';
+// Row height + border only. The width utilities (`w-24 sm:w-28`) and `shrink-0` that used to live
+// here were deleted by the 88.1-02 CSS-grid conversion — see the DECISION marker at the geometry
+// site below.
+const DEFAULT_CELL_CLASS = 'h-12 sm:h-14 border border-line';
 
+/**
+ * DECISION Phase 88.1-02 (C12 / UI-SPEC "S1 desktop geometry"): ONE CSS grid with
+ * `gridTemplateColumns: \`${gutterPx}px repeat(${days}, 1fr)\`` sizes the header row AND the body
+ * cells — chosen OVER keeping the flex + fixed-width idiom and letting consumers pass
+ * `cellClassName`.
+ *
+ * WHY the rejected option was rejected: four widths had to agree by hand — the gutter header
+ * (`w-16 sm:w-20`), the day header (`w-24 sm:w-28`), the row gutter (`w-16 sm:w-20`) and
+ * `DEFAULT_CELL_CLASS` — and only the LAST of those was overridable. So passing `cellClassName`
+ * silently desynced the header row from the body, and nothing in the prop name told the next
+ * reader that. The old defaults also came to 7 x 96px + 64px = 736px, which at 375px turned the
+ * grid into the horizontal-scroll surface D-03 explicitly rejected; `1fr` columns fit-to-width at
+ * both target geometries (~117px columns in the create-event modal's real 896px `max-w-4xl`).
+ *
+ * The idiom is copied from the owner-passed sibling `EventHeatmapBackground.js:210-212`, including
+ * `className="contents"` on the per-row wrapper (`:235`) so keeping `role="row"` does not break the
+ * single grid.
+ *
+ * NOT AN OVERRIDE OF ANYTHING PRIOR: `DECISION Phase 88-31` above guards the read-data UNION, not
+ * the layout. WeekGrid had zero live consumers and `WeekGrid.test.tsx` had no geometry assertions
+ * when this was done, which is why it was free now and would not have been later.
+ *
+ * WHAT RE-OPENS IT: a consumer that genuinely needs fixed-width columns wider than its container
+ * (a print/export view, say). That wants a `columnPx` prop alongside `1fr`, not a return to four
+ * hand-synced width utilities.
+ */
 export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
-  const { days, slots, dayLabels, slotLabels, ariaLabel, disabled = false, cellClassName } = props;
+  const {
+    days,
+    slots,
+    dayLabels,
+    slotLabels,
+    ariaLabel,
+    disabled = false,
+    cellClassName,
+    gutterPx = 24,
+  } = props;
 
   const [focusedCoord, setFocusedCoord] = useState({ row: 0, col: 0 });
 
@@ -215,20 +264,22 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
   return (
     <div className="overflow-x-auto pb-2" onPointerUp={endPaint} onPointerLeave={endPaint}>
       <div
-        className="min-w-max"
+        className="grid gap-px"
+        style={{ gridTemplateColumns: `${gutterPx}px repeat(${days}, 1fr)` }}
         role="grid"
         aria-label={ariaLabel}
         onPointerDown={handleGridPointerDown}
         onPointerOver={handleGridPointerOver}
       >
-        {/* Day header row */}
-        <div className="flex" role="row">
-          <div className="w-16 sm:w-20 shrink-0" role="columnheader" />
+        {/* Day header row. `contents` keeps role="row" without breaking the single grid
+            (EventHeatmapBackground.js:235). */}
+        <div className="contents" role="row">
+          <div role="columnheader" />
           {Array.from({ length: days }, (_, col) => (
             <div
               key={`h-${col}`}
               role="columnheader"
-              className="w-24 sm:w-28 shrink-0 text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
+              className="text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
             >
               {dayLabels?.[col] ?? ''}
             </div>
@@ -237,8 +288,11 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
 
         {/* Time-slot rows */}
         {Array.from({ length: slots }, (_, row) => (
-          <div key={`r-${row}`} className="flex" role="row">
-            <div className="w-16 sm:w-20 shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium">
+          <div key={`r-${row}`} className="contents" role="row">
+            {/* pr-1 (not the old pr-2) because the gutter is now 24px, not 64-80px — 8px of
+                right padding would leave 16px for the label. Matches the owner-passed
+                EventHeatmapBackground.js:238 gutter at the same width. */}
+            <div className="flex items-center justify-end pr-1 text-xs sm:text-sm text-content-secondary font-medium">
               {slotLabels?.[row] ?? ''}
             </div>
             {Array.from({ length: days }, (_, col) => (
