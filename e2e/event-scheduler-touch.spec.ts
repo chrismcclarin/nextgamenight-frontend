@@ -1,5 +1,19 @@
 import { test, expect, type CDPSession, type Locator, type Page } from '@playwright/test';
 
+/** Arm-trace sample collected in-page by the plan 88.1-12 deviation-3 flash probe. */
+interface ArmSample {
+  t: number;
+  headers: number;
+  tabs: number;
+  toggle: number;
+}
+
+declare global {
+  interface Window {
+    __schedulerArmTrace?: ArmSample[];
+  }
+}
+
 /**
  * Phase 88.1 plan 14 — the VISUAL create-event scheduler, exercised end to end.
  *
@@ -700,6 +714,262 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
       roundTripped.text,
       `the "Selected Time:" panel came back as "${roundTripped.text}" after a visual -> manual -> visual round-trip, was "${visual.text}" — the scheduler is not a pure projection of the parent's canonical fields (Phase 66-01)`,
     ).toBe(visual.text);
+  });
+});
+
+// =============================================================================
+
+/**
+ * MEASURED GEOMETRY AT 375x667 — the C6 coverage gap plan 88.1-02 handed forward
+ * IN WRITING, and the second half of plan 88.1-12's deviation 4.
+ *
+ * Every number the phone arm is built on — 46.7px strip cells against the 44px
+ * floor, the ~305px day-column budget, "there is genuinely something for
+ * `scrollToTime` to scroll" — is asserted in the vitest layers only as an
+ * AUTHORED CLASS or CONSTANT, because jsdom reports every box as zero (pitfall
+ * P7). Those pins say the right tree renders; they say nothing about the
+ * rendered box. This describe is the only place in the phase where layout is
+ * real, so a geometry claim is asserted here or it is unasserted.
+ */
+test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 (phone project)', () => {
+  test.skip(({ isMobile }) => !isMobile, 'the 44px floor and the phone column budget are phone-tenet requirements — phone project only');
+
+  test('the 44px touch floor holds on every strip cell and every day-column cell', async ({ page }) => {
+    await openVisualScheduler(page);
+
+    // (a) The strip. 327px of content at 375px is 46.7px per cell against the
+    // 44px floor — 2.7px of margin, total. `SchedulerWeekStrip`'s container
+    // comment calls a padding "tidy-up" here a regression precisely because this
+    // measurement is the only thing that can see it.
+    const tabs = dialog(page).getByRole('tab');
+    await guardResolved(tabs, 'the phone week strip\'s day tabs', 7);
+    const tabBoxes = await tabs.evaluateAll((els) =>
+      els.map((el, i) => {
+        const r = el.getBoundingClientRect();
+        return { i, width: r.width, height: r.height };
+      }),
+    );
+    for (const b of tabBoxes) {
+      expect(
+        b.width,
+        `strip cell ${b.i} measures ${b.width}px wide against the 44px floor — the strip's whole budget is 2.7px, so container padding, a per-cell border or a gap larger than gap-px each breach it (T-88.1-34)`,
+      ).toBeGreaterThanOrEqual(44);
+      expect(
+        b.height,
+        `strip cell ${b.i} measures ${b.height}px tall against the 44px floor — h-14 (56px) is the authored value`,
+      ).toBeGreaterThanOrEqual(44);
+    }
+
+    // (b) The day column. WeekGrid's cells are `h-12` at phone (sm: starts at
+    // 640px), and days=1 makes each one the full column width.
+    const cellBoxes = await page.evaluate(() => {
+      const grid = document.querySelector('[role="dialog"] [role="grid"]');
+      return Array.from(grid?.querySelectorAll('[data-coord]') ?? []).map((el) => {
+        const r = (el as HTMLElement).getBoundingClientRect();
+        return { coord: el.getAttribute('data-coord') ?? '', width: r.width, height: r.height };
+      });
+    });
+    expect(
+      cellBoxes.length,
+      'no day-column cells resolved — a zero-length measurement set makes this floor assertion vacuous',
+    ).toBeGreaterThan(0);
+    const tooSmall = cellBoxes.filter((c) => c.width < 44 || c.height < 44);
+    expect(
+      tooSmall.slice(0, 5),
+      `${tooSmall.length} of ${cellBoxes.length} day-column cells measure under 44px on one axis — the interactive slot target breached the touch floor`,
+    ).toEqual([]);
+  });
+
+  test('day labels render complete — nothing is clipped at 375px (the M-03 failure)', async ({ page }) => {
+    await openVisualScheduler(page);
+
+    // The strip cell is `overflow-hidden`, so a label that no longer fits is
+    // clipped SILENTLY — scrollWidth vs clientWidth is what makes that visible.
+    // The stacked single-letter-over-date shape (copied verbatim from
+    // EventHeatmapBackground.js:216-226) is the M-03 fix; this is its gate.
+    const clipping = await page.evaluate(() => {
+      const root = document.querySelector('[role="dialog"]');
+      const measure = (el: Element, what: string) => ({
+        what,
+        text: (el.textContent ?? '').trim(),
+        scrollWidth: (el as HTMLElement).scrollWidth,
+        clientWidth: (el as HTMLElement).clientWidth,
+      });
+      const out: Array<ReturnType<typeof measure>> = [];
+      root?.querySelectorAll('[role="tab"]').forEach((tab, i) => {
+        out.push(measure(tab, `strip cell ${i}`));
+        tab.querySelectorAll('span').forEach((span, j) => out.push(measure(span, `strip cell ${i} span ${j}`)));
+      });
+      root?.querySelectorAll('[role="columnheader"]').forEach((h, i) => out.push(measure(h, `day header ${i}`)));
+      return out;
+    });
+    expect(
+      clipping.length,
+      'no strip cells or day headers resolved — the truncation check would be vacuous',
+    ).toBeGreaterThan(0);
+    const clipped = clipping.filter((c) => c.clientWidth > 0 && c.scrollWidth > c.clientWidth + 1);
+    expect(
+      clipped,
+      `these labels are clipped at 375px (scrollWidth > clientWidth) — the M-03 truncation failure the stacked single-letter-over-date format exists to fix has regressed: ${JSON.stringify(clipped)}`,
+    ).toEqual([]);
+
+    // Positive half: the day column's header carries the full `dd EEE` text
+    // (plan 88.1-07's uneditable Layer-3 contract), not an ellipsised fragment.
+    await expect(
+      dialog(page).getByRole('columnheader'),
+      'the day column header is not the complete "dd EEE" string — a clipped header passes a scrollWidth check when the text itself was shortened',
+    ).toHaveText(/^\d{2} (Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/);
+  });
+
+  test('the day column scrolls INTERNALLY rather than growing the modal', async ({ page }) => {
+    await openVisualScheduler(page);
+
+    // The modal stays inside its own `max-h-[90vh]` budget (Modal.tsx:186).
+    const modalBox = await dialog(page).boundingBox();
+    expect(modalBox, 'the create-event dialog has no boundingBox').not.toBeNull();
+    const viewportHeight = await page.evaluate(() => window.innerHeight);
+    expect(
+      modalBox!.height,
+      `the create-event modal measures ${modalBox!.height}px tall against its max-h-[90vh] budget (${viewportHeight * 0.9}px) — the day column grew the modal instead of scrolling inside it, which re-opens DEF-88-17-01 / 88-32 ruling 6`,
+    ).toBeLessThanOrEqual(viewportHeight * 0.9 + 1);
+
+    // ...and there is GENUINELY something to scroll. This is the half jsdom
+    // cannot see: it reports scrollHeight and clientHeight as 0, so plan
+    // 88.1-02's pins could only assert the authored `maxBodyHeight` class.
+    const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
+    expect(
+      geo.gridCount,
+      'more than one role=grid inside the dialog — the phone fork rendered both arms, so every arm assertion in this file is measuring the wrong tree',
+    ).toBe(1);
+    expect(
+      geo.scroller.clientHeight,
+      `the day column's scroll container measures ${geo.scroller.clientHeight}px of client height — a zero (or unbounded) value means WeekGrid's maxBodyHeight seam is not applying and the internal scroll is not the thing that moves`,
+    ).toBeGreaterThan(100);
+    expect(
+      geo.scroller.scrollHeight,
+      `the day column's content (${geo.scroller.scrollHeight}px) does not exceed its client box (${geo.scroller.clientHeight}px) — the column is not scrolling internally, which makes both the edge-auto-scroll case and the scrollToTime case below vacuous`,
+    ).toBeGreaterThan(geo.scroller.clientHeight + 10);
+  });
+
+  test('scrollToTime lands the column on peak availability, not at the top', async ({ page }) => {
+    /* ASSERTED UNCONDITIONALLY, and that is the point (2026-08-22 adversarial
+       review). This is the phase's ONLY behavioural check of `scrollToTime` —
+       plan 88.1-01's Layer-2 pin only asserts "mounts without throwing", because
+       in jsdom `offsetTop` is 0 and the effect is an inert no-op by design
+       (EventScheduler.tsx:546-564 says so in its own words). A skip-if-absent
+       version of this case would be green forever against any fixture.
+
+       A NULL PEAK IS A FIXTURE FAILURE, NOT A PASS: `peakScrollTime` is null
+       whenever the group has no availability (createEvent.js:81-85, :109), so a
+       silent skip here would mean the fixture stopped seeding and nobody found
+       out. `scripts/e2e-fixtures.js` owns that invariant — see the block it
+       added for this case. */
+    await openVisualScheduler(page);
+
+    const landing = await page.evaluate(() => {
+      const grid = document.querySelector('[role="dialog"] [role="grid"]') as HTMLElement | null;
+      const scroller = grid?.parentElement as HTMLElement | null;
+      if (!grid || !scroller) return null;
+      return {
+        scrollTop: scroller.scrollTop,
+        maxScroll: scroller.scrollHeight - scroller.clientHeight,
+        // `offsetTop` is relative to WeekGrid's positioned body — exactly the
+        // value the scrollToTime effect assigns (`container.scrollTop =
+        // cell.offsetTop`), so an exact match proves THAT effect ran.
+        rowOffsets: Array.from(grid.querySelectorAll('[data-coord$=":0"]')).map((el) => ({
+          row: Number((el.getAttribute('data-coord') ?? '').split(':')[0]),
+          offsetTop: (el as HTMLElement).offsetTop,
+        })),
+      };
+    });
+    const l = must(landing, "the day column's scroll landing");
+
+    await expect
+      .poll(() => columnScrollTop(page), {
+        message:
+          'the day column opened at the top — either `peakScrollTime` was null (the CI fixture group has no availability data: a FIXTURE failure, owned by scripts/e2e-fixtures.js, never a pass) or the scrollToTime effect no longer resolves its row. The user opens onto roughly six of 28 rows, so landing on peak availability is what makes those six the right six.',
+        timeout: 10_000,
+      })
+      .toBeGreaterThan(0);
+
+    const scrollTop = await columnScrollTop(page);
+    const landedOnRow = l.rowOffsets.find((r) => r.row > 0 && Math.abs(r.offsetTop - scrollTop) <= 1);
+    const clampedAtBottom = Math.abs(scrollTop - l.maxScroll) <= 1;
+    expect(
+      Boolean(landedOnRow) || clampedAtBottom,
+      `the column scrolled to ${scrollTop}px, which is neither a row's offsetTop nor the container's max scroll (${l.maxScroll}px) — something other than the scrollToTime effect moved it. Row offsets: ${JSON.stringify(l.rowOffsets.slice(0, 6))}...`,
+    ).toBe(true);
+  });
+
+  test('characterizes the desktop-arm first frame (plan 88.1-12 deviation 3)', async ({ page }) => {
+    /* THE ONE DEFECT PLAN 88.1-12 KNOWINGLY SHIPPED, measured here because it is
+       unobservable anywhere else. `isPhoneViewport` starts FALSE and is corrected
+       in a mount effect, so the phone arm's FIRST painted frame is the desktop
+       one — the seven-column grid at 375px that D-03 exists to avoid.
+
+       NOT FIXED HERE, and the obvious fix is NOT available: plan 88.1-12's
+       recommendation was a lazy `useState(() => window.matchMedia(...).matches)`
+       initializer, but `createEvent.js` and `EventScheduler.tsx` are both
+       `'use client'`, which in the App Router STILL server-renders — the lazy
+       initializer would throw on the server or become a hydration mismatch.
+       Plan 88.1-11's marker fixed the initial value deliberately for exactly
+       that reason. So this case CHARACTERIZES rather than gates: it records the
+       trace in the CI log for plan 88.1-15's owner walkthrough, and fails only
+       if the desktop arm lingers long enough to be perceptible.
+
+       Every locator resolves too late to see this — the swap is done before the
+       first `expect` settles — so the observer is installed BEFORE the modal
+       mounts and samples the DOM on every mutation. */
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    await page.evaluate(() => {
+      const trace: ArmSample[] = [];
+      window.__schedulerArmTrace = trace;
+      const t0 = performance.now();
+      const sample = () => {
+        const root = document.querySelector('[role="dialog"]');
+        if (!root) return;
+        const entry: ArmSample = {
+          t: Math.round(performance.now() - t0),
+          headers: root.querySelectorAll('[role="columnheader"]').length,
+          tabs: root.querySelectorAll('[role="tab"]').length,
+          toggle: root.querySelectorAll('[role="group"][aria-label="Calendar view"]').length,
+        };
+        const last = trace[trace.length - 1];
+        if (!last || last.headers !== entry.headers || last.tabs !== entry.tabs || last.toggle !== entry.toggle) {
+          trace.push(entry);
+        }
+      };
+      new MutationObserver(sample).observe(document.body, { childList: true, subtree: true });
+      sample();
+    });
+
+    await page.getByRole('button', { name: /add new game event/i }).click();
+    await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
+    // Settle on the phone arm before reading the trace.
+    await expect(dialog(page).getByRole('tab')).toHaveCount(7);
+
+    const trace = (await page.evaluate(() => window.__schedulerArmTrace ?? [])) as ArmSample[];
+    expect(trace.length, 'the arm-trace observer recorded nothing — the probe never saw the dialog and this characterization is vacuous').toBeGreaterThan(0);
+
+    const desktopFrame = trace.find((s) => s.headers === 7 || s.toggle === 1);
+    const phoneFrame = trace.find((s) => s.tabs === 7 && s.headers === 1);
+    // eslint-disable-next-line no-console -- the recorded evidence is this case's product; plan 88.1-15's walkthrough reads it out of the CI log.
+    console.log(
+      `[88.1-14 FLASH PROBE] desktop-arm first frame ${desktopFrame ? 'OBSERVED' : 'not observed'}; trace=${JSON.stringify(trace)}`,
+    );
+
+    expect(
+      phoneFrame,
+      `the scheduler never settled on the phone arm (7 strip tabs + 1 day column). Trace: ${JSON.stringify(trace)}`,
+    ).toBeTruthy();
+
+    if (desktopFrame) {
+      const lingerMs = (phoneFrame as ArmSample).t - desktopFrame.t;
+      expect(
+        lingerMs,
+        `the desktop arm (7 day columns and the week/day toggle at 375px) stayed on screen for ${lingerMs}ms before the phone arm replaced it — that is long enough to be seen, so the flash has stopped being a sub-frame artefact and is now a visible defect. Trace: ${JSON.stringify(trace)}`,
+      ).toBeLessThan(250);
+    }
   });
 });
 

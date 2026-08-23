@@ -12,10 +12,12 @@ import { defineConfig, devices } from '@playwright/test';
  * count went stale twice: Phase 87.7 D-16, then again when Plan 10 added its spec).
  *
  * THREE projects since Phase 87.7: `setup`, `journeys` (desktop) and `phone`
- * (MOB-03; iPhone SE (3rd gen) as of Phase 87.8 D-06). The `phone` project does NOT
- * run on pull requests yet — ci.yml pins the PR lane to `--project=setup
- * --project=journeys` (D-13/D-15); plan 87.8-12 lands the arming edit. See the
- * marker on the project itself.
+ * (MOB-03; iPhone SE (3rd gen) as of Phase 87.8 D-06). The `phone` project IS armed
+ * on pull requests — plan 87.8-12 landed the arming edit, and ci.yml:519 now runs
+ * `--project=setup --project=journeys --project=phone` on every trigger. (Corrected
+ * Phase 88.1 plan 14: this paragraph still claimed the D-13/D-15 pre-arm state,
+ * which the project's own marker at :80-88 had already superseded.) See that marker
+ * for the arming evidence and for why removing `--project=phone` is a decision.
  *
  * Credentials come from CI env (`E2E_AUTH0_USER`/`E2E_AUTH0_PASS`, GitHub secrets
  * wired in Plan 05). They are intentionally absent locally — this suite is designed
