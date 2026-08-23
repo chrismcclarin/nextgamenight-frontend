@@ -8,11 +8,13 @@
 // Req 2, and it is why there is no second component for the day arm.
 //
 // WHAT IS DELIBERATELY NOT HERE (so a future reader does not read absence as an oversight):
-//   - The drag RANGE machine and its live selection rectangle are plan 88.1-11. The `overlay`
-//     seam and its DECISION marker are scaffolded below, unpopulated, on purpose.
 //   - The phone strip geometry is plan 88.1-12.
 //   - Removing the calendar dependency from package.json is plan 88.1-16 (SPEC sequencing:
 //     removal only AFTER parity is verified).
+//
+// PLAN 88.1-11 ADDED: the drag RANGE machine (`usePaintGesture` in `'range'` mode) and the live
+// selection rectangle it draws into WeekGrid's `overlay` seam, plus the gesture-accurate prompt
+// copy fork. That closes the one capability the calendar library supplied for free.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -28,6 +30,12 @@ import {
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { calendarWashColor, CALENDAR_WASH_RAMP } from '../../lib/availabilityColor';
 import { WeekGrid, type WeekGridReadData } from './heatmap/WeekGrid';
+import {
+  usePaintGesture,
+  pointResolver,
+  type GestureBounds,
+  type EdgeScrollTargets,
+} from './heatmap/usePaintGesture';
 
 // ---------------------------------------------------------------------------
 // Grid geometry — 30-minute slots over 10:00-23:59, i.e. 28 rows. Carried verbatim from the
@@ -110,6 +118,23 @@ function slotStartFor(day: Date, row: number): Date {
   );
 }
 
+/**
+ * WeekGrid identifies a cell by the `data-coord="row:col"` attribute on its cell wrapper
+ * (`WeekGrid.tsx:474`). The gesture machine resolves targets to that raw string and hands it
+ * straight back, so this is the ONE place the format is decoded. A malformed value resolves to
+ * null and every caller treats that as "not a cell" — never a throw.
+ */
+function parseCoord(coord: string): { row: number; col: number } | null {
+  const [row, col] = coord.split(':').map(Number);
+  return Number.isInteger(row) && Number.isInteger(col) ? { row, col } : null;
+}
+
+/**
+ * The breakpoint the prompt copy forks on — Tailwind's `md`, so "md and below" is
+ * `max-width: 767px`. Same query and same shape as `gameDetail/page.js:2176`.
+ */
+const PHONE_MEDIA_QUERY = '(max-width: 767px)';
+
 /** Compact gutter label — hours only, sized for the 24px gutter (87.8-13 F-2). */
 const SLOT_LABELS: string[] = Array.from({ length: SLOT_ROWS }, (_, row) => {
   if (row % 2 !== 0) return '';
@@ -182,6 +207,32 @@ export default function EventScheduler({
       setCurrentDate(initialDate);
     }
   }, [initialDate]);
+
+  /* DECISION Phase 88.1-11: the prompt's breakpoint fork is a matchMedia STATE fork, chosen OVER
+     rendering both strings and hiding one with responsive utility classes.
+
+     WHY THE CSS FORK LOSES: it puts BOTH instructions in the DOM at once, and jsdom applies no
+     stylesheet — so no vitest pin could tell the two arms apart, and the plan's requirement to
+     assert the RENDERED STRING (P7 forbids reading layout) would be unsatisfiable. It also ships
+     two contradictory instructions to any consumer that reads the DOM rather than the cascade.
+
+     The shape is the repo's own: `useState(false)` + a mount effect, exactly as
+     `createEvent.js:47-55` and `MergedHeatmapGrid.js:85-96` detect `(hover: none)`. Starting
+     FALSE is deliberate — this is an SSR'd client component, so the initial render must match the
+     server's, and the desktop string is the safe pre-measurement state. */
+  const [isPhoneViewport, setIsPhoneViewport] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
+    const mq = window.matchMedia(PHONE_MEDIA_QUERY);
+    setIsPhoneViewport(mq.matches);
+    const handler = (event: MediaQueryListEvent) => setIsPhoneViewport(event.matches);
+    if (mq.addEventListener) {
+      mq.addEventListener('change', handler);
+      return () => mq.removeEventListener('change', handler);
+    }
+    mq.addListener(handler);
+    return () => mq.removeListener(handler);
+  }, []);
 
   // Phase 72-02 UAT: identify the viewing user so we can render a self-conflict line in the
   // per-slot tooltip. 87.4 PR-2 (D-02): UUID-only compare against selfUuid.
@@ -265,56 +316,35 @@ export default function EventScheduler({
   const goToday = useCallback(() => navigateTo(new Date()), [navigateTo]);
 
   // ---------------------------------------------------------------------------
-  // Commit. A tap or a keyboard select commits ONE 30-minute slot through `onTimeSelected`.
-  // The range machine is plan 88.1-11.
+  // Commit. ONE derivation serves the keyboard select, a tap and a drag range: the earlier row
+  // opens the range and the later row closes it, so a BACKWARDS drag normalizes instead of
+  // emitting a negative duration (threat T-88.1-29). A single-slot commit is just the degenerate
+  // case where both rows are the same.
   //
-  // `commitRef` is a latest-prop mirror so the pointer handlers and the keyboard seam below can
+  // `commitRef` is a latest-prop mirror so the gesture callbacks and the keyboard seam below can
   // be created ONCE. WeekGrid memoizes ~196 cells and hands them stable callbacks; a fresh
   // handler identity on every week change would be a re-render the engine explicitly guards.
   // ---------------------------------------------------------------------------
-  const commitSlot = useCallback(
-    (row: number, col: number) => {
+  const commitRows = useCallback(
+    (rowA: number, rowB: number, col: number) => {
       const day = columnDates[col];
       if (!day) return;
-      const start = slotStartFor(day, row);
-      const end = slotStartFor(day, row + 1);
+      const first = Math.min(rowA, rowB);
+      const last = Math.max(rowA, rowB);
+      const start = slotStartFor(day, first);
+      const end = slotStartFor(day, last + 1);
       if (onTimeSelected) onTimeSelected(start, end);
     },
     [columnDates, onTimeSelected]
   );
-  const commitRef = useRef(commitSlot);
-  commitRef.current = commitSlot;
+  const commitRef = useRef(commitRows);
+  commitRef.current = commitRows;
 
   // SPEC Req 6: keyboard commit runs through `useHeatmapCell`'s EXISTING Enter/Space branch,
   // routed by WeekGrid's seam 5. There is no second keyboard handler in this file, and adding
   // one would be the regression that seam exists to prevent.
   const handleCellSelect = useCallback((row: number, col: number) => {
-    commitRef.current(row, col);
-  }, []);
-
-  // Tap commit. Anchor on pointerdown, commit on pointerup at the SAME cell, so a stray drag
-  // across cells does not silently commit the wrong one. Plan 88.1-11 replaces this with the
-  // range machine on the same seam.
-  const pointerAnchor = useRef<string | null>(null);
-  const gestureHandlers = useMemo(() => {
-    const coordFromEvent = (e: React.PointerEvent): string | null =>
-      (e.target as HTMLElement).closest('[data-coord]')?.getAttribute('data-coord') ?? null;
-    return {
-      onPointerDown: (e: React.PointerEvent) => {
-        pointerAnchor.current = coordFromEvent(e);
-      },
-      onPointerUp: (e: React.PointerEvent) => {
-        const coord = coordFromEvent(e);
-        if (coord && coord === pointerAnchor.current) {
-          const [row, col] = coord.split(':').map(Number);
-          commitRef.current(row, col);
-        }
-        pointerAnchor.current = null;
-      },
-      onPointerCancel: () => {
-        pointerAnchor.current = null;
-      },
-    };
+    commitRef.current(row, row, col);
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -339,10 +369,185 @@ export default function EventScheduler({
   }, [scrollToTime, currentView, currentDate]);
 
   // ---------------------------------------------------------------------------
-  // Per-cell read data.
+  // DRAG RANGE SELECTION (plan 88.1-11, SPEC Req 5 / Req 3).
+  //
+  // This is the one capability the calendar library supplied for free: its `selectable` +
+  // `onSelectSlot` reported a start/end PAIR. WeekGrid has per-cell paint, which is a different
+  // gesture, so the pair machine is `usePaintGesture` in `'range'` mode — anchor on pointerdown,
+  // extend on movement, commit ONCE on release. Nothing commits mid-drag.
+  //
+  // DECISION Phase 88.1-11 (AMENDED, C2): the long-press threshold moves 250ms -> 300ms.
+  // PREMISE RE-VERIFIED this session, not inherited: the deleted Phase 68-03 MOB-07 machine held
+  // 250ms (`EventScheduler.js:214`, recorded in 88.1-09's SUMMARY as it was removed), and it had
+  // NO slop cancellation and NO edge auto-scroll. The replacement is the single owner-ruled
+  // 87.8-14 model (ruling 2026-08-02, model (a): long-press paints, plain drag scrolls natively,
+  // tap commits one slot) at that model's 300ms, chosen OVER re-tuning the shared hook down to
+  // the scheduler's old number — one model, one threshold, two consumers. The OWNER RULING IS
+  // UNCHANGED; only this surface's conformance to it is new. Re-pointing this at 250ms would
+  // fork the two grids' feel again, which is the thing 87.8-14 fixed. Per pitfall P5 no pin
+  // asserts either number: gesture TIMING is the Playwright layer's (plan 88.1-14).
+  //
+  // DECISION Phase 88.1-11 (range shape): a drag commits on the ANCHOR's DAY COLUMN, with only
+  // the ROWS normalized — chosen OVER letting a horizontal drag span days. A cross-day pair
+  // would reach `createEvent.js:982-1000` as a `duration_minutes` measured in days, which the
+  // manual 1-720 minute field it round-trips through cannot express and no backend contract
+  // accepts; the grid's own client-side bound is one day's 10:00-23:59 window (threat
+  // T-88.1-29). Multi-day event ranges are a feature with a design, not a drag affordance.
   // ---------------------------------------------------------------------------
-  const getCell = useCallback(
-    (row: number, col: number): WeekGridReadData => {
+  const [dragRect, setDragRect] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  // The injected resolver (RESEARCH C11). WeekGrid marks cells with `data-coord`;
+  // AvailabilityGrid marks its own with a different attribute — injecting the name is precisely
+  // why neither consumer had to change and why `e2e/availability-grid-touch.spec.ts` stays
+  // untouched (D-02). Built once: the hook keeps every returned handler stable only if what it
+  // is given is stable too.
+  const resolvePoint = useMemo(() => pointResolver('data-coord'), []);
+
+  /**
+   * Measure the live selection rectangle against the POSITIONED GRID BODY.
+   *
+   * Called from the gesture callbacks (a committed-DOM read in an event handler), never during
+   * render and never from a layout effect: `onExtend` only fires when the resolved CELL changes,
+   * so this runs a few dozen times per drag rather than once per pointermove, and folding the
+   * measurement into the same state update keeps that one render instead of two.
+   *
+   * Offsets are used rather than client rects on purpose — `offsetTop`/`offsetLeft` are relative
+   * to the grid body (WeekGrid's `relative` container is the offsetParent), which is exactly the
+   * box the overlay layer is `inset-0` of, so the rectangle travels WITH the scroll instead of
+   * sticking to the viewport during edge auto-scroll.
+   */
+  const measureDragRect = useCallback((anchorCoord: string, currentCoord: string) => {
+    const container = scrollContainerRef.current;
+    const anchor = parseCoord(anchorCoord);
+    const current = parseCoord(currentCoord);
+    if (!container || !anchor || !current) return null;
+    const first = Math.min(anchor.row, current.row);
+    const last = Math.max(anchor.row, current.row);
+    const firstEl = container.querySelector<HTMLElement>(`[data-coord="${first}:${anchor.col}"]`);
+    const lastEl = container.querySelector<HTMLElement>(`[data-coord="${last}:${anchor.col}"]`);
+    if (!firstEl || !lastEl) return null;
+    return {
+      top: firstEl.offsetTop,
+      left: firstEl.offsetLeft,
+      width: firstEl.offsetWidth,
+      height: lastEl.offsetTop + lastEl.offsetHeight - firstEl.offsetTop,
+    };
+  }, []);
+
+  const handleExtend = useCallback(
+    (anchorCoord: string, currentCoord: string) => {
+      setDragRect(measureDragRect(anchorCoord, currentCoord));
+    },
+    [measureDragRect]
+  );
+
+  const handleRangeCommit = useCallback((anchorCoord: string, currentCoord: string) => {
+    setDragRect(null);
+    const anchor = parseCoord(anchorCoord);
+    const current = parseCoord(currentCoord);
+    if (!anchor || !current) return;
+    commitRef.current(anchor.row, current.row, anchor.col);
+  }, []);
+
+  /**
+   * Edge auto-scroll targets (RESEARCH C10 / pitfall P4 / threat T-88.1-32).
+   *
+   * BOTH axes are pointed at the grid's own scroll container, and the edge bands are measured
+   * from its rect. The hook's documented VERTICAL DEFAULT is the page — correct for the
+   * full-page check-in grid it was extracted from, wrong here: this grid lives inside a Radix
+   * dialog whose content is `overflow-hidden` (`Modal.tsx:186`) with the body `overflow-y-auto`
+   * (`Modal.tsx:289`), so a page-level scroll is either inert or scrolls the page BEHIND the
+   * modal. The symptom of getting this wrong is a paint that works but stops dead at the visible
+   * edge — the exact owner-reported symptom 87.8-14 was written to fix, reappearing in a new
+   * host. Built once so the hook's handlers stay referentially stable.
+   */
+  const edgeScroll = useMemo<EdgeScrollTargets>(
+    () => ({
+      scrollVerticalBy: (dy: number) => {
+        const el = scrollContainerRef.current;
+        if (el) el.scrollTop += dy;
+      },
+      scrollHorizontalBy: (dx: number) => {
+        const el = scrollContainerRef.current;
+        if (el) el.scrollLeft += dx;
+      },
+      getBounds: (): GestureBounds => {
+        const el = scrollContainerRef.current;
+        // No container = no edge band anywhere, which stops the rAF loop on its next tick
+        // rather than spinning it against a degenerate zero rect.
+        if (!el) {
+          return {
+            top: Number.NEGATIVE_INFINITY,
+            left: Number.NEGATIVE_INFINITY,
+            bottom: Number.POSITIVE_INFINITY,
+            right: Number.POSITIVE_INFINITY,
+          };
+        }
+        const rect = el.getBoundingClientRect();
+        return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right };
+      },
+    }),
+    []
+  );
+
+  const { handlers: gestureHandlers, gestureRef } = usePaintGesture<string>({
+    // REQUIRED discriminator, and deliberately so (88.1-03): omitting it would compile to
+    // per-cell paint callbacks and silently re-create the P6 defect the range arm prevents.
+    mode: 'range',
+    resolvePoint,
+    onExtend: handleExtend,
+    onCommit: handleRangeCommit,
+    edgeScroll,
+  });
+
+  /**
+   * One node, two consumers: `scrollContainerRef` (scrollToTime parity + the edge-scroll
+   * targets above) and the hook's `gestureRef`, which installs the CONDITIONAL non-passive
+   * touchmove suppressor on the SCROLLING element. Both must point at the same element, so they
+   * are merged into one stable callback ref rather than WeekGrid growing a second seam.
+   *
+   * Suppression is that listener, gated on the painting state — never a static CSS pan-blocker
+   * (the property is deliberately not named anywhere in this file so plan 88.1-11's grep gate
+   * can prove it is absent). A static blocker is evaluated at gesture start and cannot be
+   * conditional, so it kills native scrolling across the whole surface (threat T-88.1-30).
+   */
+  const setScrollContainer = useCallback(
+    (node: HTMLDivElement | null) => {
+      scrollContainerRef.current = node;
+      gestureRef(node);
+    },
+    [gestureRef]
+  );
+
+  // ---------------------------------------------------------------------------
+  // Per-cell read data.
+  //
+  // DECISION Phase 88.1-11 (memo pressure, the obligation 88.1-09 handed forward IN WRITING):
+  // the payloads are CACHED per coordinate for the life of their inputs, chosen OVER returning
+  // a fresh object per call as this function did when it was written.
+  //
+  // WHY IT MATTERS NOW AND DID NOT BEFORE: `tooltipContent`, `style` and `children` are freshly
+  // constructed objects/elements, so `ReadCell`'s `React.memo` — a shallow compare — sees three
+  // changed props on EVERY cell every time WeekGrid re-renders. Before this plan WeekGrid
+  // re-rendered on nav, view toggle, selection and heatmap load; 88.1-09 recorded that as
+  // "harmless at this re-render frequency but NOT harmless once a drag re-renders". A drag now
+  // re-renders WeekGrid each time the selection rectangle crosses a cell boundary, and an
+  // uncached payload turns each of those into ~196 cell re-renders — what
+  // `AvailabilityGrid.js:368-373` calls "the smooth/janky boundary on a phone, not a
+  // micro-optimization".
+  //
+  // The cache is created INSIDE the memo, so its lifetime is exactly the inputs' lifetime and
+  // there is no second invalidation rule to keep in sync with the dependency array. Returning a
+  // fresh object per call again is a decision to re-introduce the drag re-render, not a cleanup.
+  // ---------------------------------------------------------------------------
+  const getCell = useMemo(() => {
+    const cache = new Map<string, WeekGridReadData>();
+    const compute = (row: number, col: number): WeekGridReadData => {
       const day = columnDates[col];
       const start = slotStartFor(day, row);
       const end = slotStartFor(day, row + 1);
@@ -458,9 +663,17 @@ export default function EventScheduler({
             </>
           ) : undefined,
       };
-    },
-    [columnDates, heatmapLookup, conflictLookup, totalMembers, selfUuid, selectedSlot]
-  );
+    };
+    return (row: number, col: number): WeekGridReadData => {
+      const key = `${row}:${col}`;
+      let data = cache.get(key);
+      if (!data) {
+        data = compute(row, col);
+        cache.set(key, data);
+      }
+      return data;
+    };
+  }, [columnDates, heatmapLookup, conflictLookup, totalMembers, selfUuid, selectedSlot]);
 
   const renderDayHeader = useCallback(
     (col: number) => {
@@ -474,17 +687,30 @@ export default function EventScheduler({
     [columnDates]
   );
 
-  /* DECISION Phase 88-27 (D-32 bucket A) — carried, re-recorded at its new home. The DRAG
-     selection rectangle deliberately gets NO FILL, chosen OVER the bucket-A default of a
-     `-subtle` surface token: every mechanism D-33 allows is OPAQUE, and an opaque fill would
-     hide the grid cells the drag is selecting — the opposite of what a selection rectangle is
-     for. A 2px border carries it alone. A translucent selection wash is the one legitimate use
-     of alpha in the whole census and is a Phase 88.3 question. Adding a fill is a decision, not
-     a completion.
-     The overlay seam is scaffolded here UNPOPULATED on purpose: plan 88.1-11 draws into it, and
-     the marker is planted now so it cannot be lost in the gap between the two plans. This is NOT
-     the committed-selection block — that one IS filled, see the marker in `getCell` above. */
-  const dragOverlay: React.ReactNode = null;
+  /* DECISION Phase 88-27 (D-32 bucket A) — carried, re-recorded at its new home, and POPULATED
+     by plan 88.1-11 exactly as the marker was planted for. The DRAG selection rectangle
+     deliberately gets NO FILL, chosen OVER the bucket-A default of a `-subtle` surface token:
+     every mechanism D-33 allows is OPAQUE, and an opaque fill would hide the grid cells the drag
+     is selecting — the opposite of what a selection rectangle is for. A 2px border carries it
+     alone. A translucent selection wash is the one legitimate use of alpha in the whole census
+     and is a Phase 88.3 question. Adding a fill is a decision, not a completion.
+     This is NOT the committed-selection block — that one IS filled, see the marker in `getCell`
+     above. The two states are drawn at two sites so they cannot be merged by accident.
+     `pointer-events-none` is load-bearing too: a layer that consumed pointer events would
+     swallow the very drag it is drawing. */
+  const dragOverlay: React.ReactNode = dragRect ? (
+    <div
+      aria-hidden="true"
+      data-testid="scheduler-drag-rect"
+      className="absolute pointer-events-none border-2 border-btn-primary rounded-sm z-10"
+      style={{
+        top: dragRect.top,
+        left: dragRect.left,
+        width: dragRect.width,
+        height: dragRect.height,
+      }}
+    />
+  ) : null;
 
   const viewLabel =
     currentView === 'day'
@@ -550,7 +776,7 @@ export default function EventScheduler({
           overlay={dragOverlay}
           gestureHandlers={gestureHandlers}
           onCellSelect={handleCellSelect}
-          scrollContainerRef={scrollContainerRef}
+          scrollContainerRef={setScrollContainer}
           maxBodyHeight={GRID_MAX_HEIGHT}
         />
       </div>
@@ -598,8 +824,17 @@ export default function EventScheduler({
 
       {!selectedSlot && (
         <div className="p-4 bg-surface-page rounded-card border border-line">
+          {/* DECISION Phase 88.1-11 (UI-SPEC Copywriting, PRESCRIBED CHANGE — not a parity
+              carry): the prompt names the gesture THE DEVICE CAN ACTUALLY PERFORM. The shipped
+              string says "Click and drag" on a surface whose primary device is a phone at
+              somebody's kitchen table; Req 5 ships long-press-to-paint there, and an instruction
+              naming a mouse gesture on a touch device is a phone-forward failure, not a wording
+              nit. Both strings are kept — the desktop one is verbatim
+              (`EventScheduler.js:582`) and is what the plan-01 pin locates. */}
           <p className="text-sm text-content-secondary">
-            Click and drag on the calendar to select a time slot for your event.
+            {isPhoneViewport
+              ? 'Tap and hold on a day to pick a time.'
+              : 'Click and drag on the calendar to select a time slot for your event.'}
           </p>
         </div>
       )}
