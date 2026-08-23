@@ -464,9 +464,18 @@ describe('EventScheduler — the ARIA scaffold survives the rebuild (Req 6)', ()
  * A GREEN RUN HERE IS NOT EVIDENCE ABOUT THE PHONE ARM. Plan 88.1-12's acceptance carries the
  * obligation to re-run axe against the shipped phone composition (strip + single-day column);
  * do not report Req 6 as met on this pin alone.
+ *
+ * PLAN 88.1-12 (wave 5), DISCHARGING THE ABOVE: the fork now exists, so the phone entry is added
+ * below exactly as the note was written for — no rewrite of the pin, one table row. The phone arm
+ * it audits is the SHIPPED composition: `SchedulerWeekStrip`'s tablist above a single-day column
+ * carrying `role="tabpanel"`, with no week/day toggle. The obligation is therefore discharged
+ * HERE and not before; a run of this file from plan 88.1-09 or 88.1-11 still proves only desktop.
  */
 type AxeViewport = { name: string; hoverNone: boolean; maxWidth: number };
-const AXE_VIEWPORTS: AxeViewport[] = [{ name: 'desktop', hoverNone: false, maxWidth: 1280 }];
+const AXE_VIEWPORTS: AxeViewport[] = [
+  { name: 'desktop', hoverNone: false, maxWidth: 1280 },
+  { name: 'phone', hoverNone: true, maxWidth: 375 },
+];
 
 /** Answer the media queries the fork will branch on, per viewport. */
 function stubMatchMedia({ hoverNone, maxWidth }: AxeViewport) {
@@ -886,6 +895,175 @@ describe('EventScheduler — the prompt names the gesture the DEVICE can perform
         restore();
         cleanup();
       }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// PLAN 88.1-12: the phone geometry fork (CONTEXT D-03 / D-04, SPEC Req 7).
+//
+// Every pin below drives the arm through the matchMedia stub, NEVER by measuring anything: jsdom
+// has no layout, so the 46.7px strip cell, the 44px touch floor and the day column's internal
+// scroll are all asserted for real in plan 88.1-14's Playwright spec at 375x667. What is
+// answerable here is WHICH TREE renders, and that is what these assert.
+// ---------------------------------------------------------------------------------------------
+
+/** Render an arm with matchMedia stubbed, and hand back a restore fn for the finally block. */
+function renderAtViewport(viewport: AxeViewport, ui: React.ReactElement) {
+  const restore = stubMatchMedia(viewport);
+  const utils = render(ui);
+  return { ...utils, restore };
+}
+const PHONE: AxeViewport = { name: 'phone', hoverNone: true, maxWidth: 375 };
+const DESKTOP: AxeViewport = { name: 'desktop', hoverNone: false, maxWidth: 1280 };
+
+describe('EventScheduler — the PHONE arm is a week strip over a single-day column', () => {
+  it('renders seven strip cells and exactly ONE day column', () => {
+    const { restore } = renderAtViewport(
+      PHONE,
+      <EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} />
+    );
+    try {
+      expect(screen.getByRole('tablist', { name: /choose a day/i })).toBeInTheDocument();
+      expect(screen.getAllByRole('tab')).toHaveLength(7);
+      // ONE interactive day column — the 7-column grid D-03 rejected at this width is not here.
+      expect(columnHeaders()).toHaveLength(1);
+      expect(gridcells()).toHaveLength(SLOT_ROWS);
+    } finally {
+      restore();
+    }
+  });
+
+  it('renders NO week/day toggle (D-04 — the strip IS the week view at phone)', () => {
+    const { restore } = renderAtViewport(PHONE, <EventScheduler initialDate={WEEK_N} />);
+    try {
+      expect(screen.queryByRole('group', { name: /calendar view/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^week$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^day$/i })).not.toBeInTheDocument();
+      // …while the nav affordances the rebuild promised parity on all survive.
+      expect(screen.getByRole('button', { name: /^back$/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^today$/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^next$/i })).toBeInTheDocument();
+    } finally {
+      restore();
+    }
+  });
+
+  it('names the day column from the SELECTED strip cell, so the tabs point at something real', () => {
+    const { restore } = renderAtViewport(PHONE, <EventScheduler initialDate={WEEK_N} />);
+    try {
+      const panel = screen.getByRole('tabpanel');
+      const selected = screen.getAllByRole('tab').find((t) => t.getAttribute('aria-selected') === 'true');
+      expect(selected).toBeDefined();
+      expect(panel).toHaveAttribute('aria-labelledby', selected!.id);
+      // WEEK_N is Wednesday 22 July 2026.
+      expect(selected!.getAttribute('aria-label')).toMatch(/wednesday 22/i);
+    } finally {
+      restore();
+    }
+  });
+
+  it('carries the day aggregate — the MAX over that day’s slots — onto the strip cell', () => {
+    // The fixture puts availableCount 3 (of 4) on ONE slot of Wednesday 22 July; every other day
+    // has nothing. A mean or a sum over the day would not read 3.
+    const { restore } = renderAtViewport(
+      PHONE,
+      <EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} />
+    );
+    try {
+      expect(screen.getByRole('tab', { name: /wednesday 22, 3 of 4 available/i })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /monday 20, 0 of 4 available/i })).toBeInTheDocument();
+    } finally {
+      restore();
+    }
+  });
+
+  it('opens focused on the target date for BOTH day-entry producers (CAL-05 and ?date=)', () => {
+    // groupHomePage's CAL-05 path and gameDetail's `?date=` path (DECISION Phase 65-03 EVT-05)
+    // both reach here as `defaultView="day"` plus an `initialDate` on the tapped day. At phone
+    // there is no view to switch to, so "opens in day mode" has to mean "opens with that day
+    // selected in the strip" — pinned at the prop, because asserting one caller leaves the other
+    // unguarded.
+    const target = addDays(WEEK_N, 2); // Friday 24 July
+    const { restore } = renderAtViewport(
+      PHONE,
+      <EventScheduler initialDate={target} defaultView="day" />
+    );
+    try {
+      const selected = screen.getAllByRole('tab').find((t) => t.getAttribute('aria-selected') === 'true');
+      expect(selected!.getAttribute('aria-label')).toMatch(/friday 24/i);
+      expect(columnHeaders()).toEqual([format(target, 'dd EEE')]);
+    } finally {
+      restore();
+    }
+  });
+
+  it('selecting a strip cell changes which day the column shows', () => {
+    const onWeekChange = vi.fn();
+    const { restore } = renderAtViewport(
+      PHONE,
+      <EventScheduler initialDate={WEEK_N} onWeekChange={onWeekChange} />
+    );
+    try {
+      expect(columnHeaders()).toEqual([format(WEEK_N, 'dd EEE')]);
+
+      fireEvent.click(screen.getByRole('tab', { name: /friday 24/i }));
+
+      expect(columnHeaders()).toEqual([format(addDays(WEEK_N, 2), 'dd EEE')]);
+      // It bubbles as an ordinary same-week navigation; the parent's resolveWeekNav skips it.
+      expect(isoDay(onWeekChange.mock.calls[0][0] as Date)).toBe(isoDay(addDays(WEEK_N, 2)));
+      expect(mondayOf(onWeekChange.mock.calls[0][0] as Date)).toBe(mondayOf(WEEK_N));
+    } finally {
+      restore();
+    }
+  });
+
+  it('follows Back/Next with the strip — the selected cell moves, and the week follows it', () => {
+    const { restore } = renderAtViewport(PHONE, <EventScheduler initialDate={WEEK_N} />);
+    try {
+      // Wed 22 -> Thu 23: one DAY, because the visible column is a day.
+      fireEvent.click(button(/^next$/i));
+      expect(columnHeaders()).toEqual([format(addDays(WEEK_N, 1), 'dd EEE')]);
+      const selected = () =>
+        screen.getAllByRole('tab').find((t) => t.getAttribute('aria-selected') === 'true')!;
+      expect(selected().getAttribute('aria-label')).toMatch(/thursday 23/i);
+      // Still the same week in the strip.
+      expect(screen.getAllByRole('tab')[0].getAttribute('aria-label')).toMatch(/monday 20/i);
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe('EventScheduler — the DESKTOP arm is untouched by the fork', () => {
+  it('keeps the seven-column grid and the week/day toggle', () => {
+    const { restore } = renderAtViewport(
+      DESKTOP,
+      <EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} />
+    );
+    try {
+      expect(columnHeaders()).toHaveLength(7);
+      expect(screen.getByRole('group', { name: /calendar view/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^week$/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^day$/i })).toBeInTheDocument();
+      // No strip, and no dangling tabpanel role on the grid container.
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+      expect(screen.queryByRole('tabpanel')).not.toBeInTheDocument();
+    } finally {
+      restore();
+    }
+  });
+
+  it('still toggles to a single day column through the button group', () => {
+    const { restore } = renderAtViewport(DESKTOP, <EventScheduler initialDate={WEEK_N} />);
+    try {
+      fireEvent.click(button(/^day$/i));
+      expect(columnHeaders()).toEqual([format(WEEK_N, 'dd EEE')]);
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+      fireEvent.click(button(/^week$/i));
+      expect(columnHeaders()).toHaveLength(7);
+    } finally {
+      restore();
     }
   });
 });

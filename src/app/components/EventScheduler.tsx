@@ -8,15 +8,19 @@
 // Req 2, and it is why there is no second component for the day arm.
 //
 // WHAT IS DELIBERATELY NOT HERE (so a future reader does not read absence as an oversight):
-//   - The phone strip geometry is plan 88.1-12.
+//   - The today treatment in the strip's header zone is plan 88.1-13.
 //   - Removing the calendar dependency from package.json is plan 88.1-16 (SPEC sequencing:
 //     removal only AFTER parity is verified).
 //
 // PLAN 88.1-11 ADDED: the drag RANGE machine (`usePaintGesture` in `'range'` mode) and the live
 // selection rectangle it draws into WeekGrid's `overlay` seam, plus the gesture-accurate prompt
 // copy fork. That closes the one capability the calendar library supplied for free.
+//
+// PLAN 88.1-12 ADDED: the phone geometry fork — below `md` the seven-column grid is replaced by
+// `SchedulerWeekStrip` (day-granularity week scan) above a full-width single-day column, and the
+// week/day toggle does not render. See the DECISION marker on `effectiveView` below.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   addDays,
   differenceInMinutes,
@@ -30,6 +34,8 @@ import {
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { calendarWashColor, CALENDAR_WASH_RAMP } from '../../lib/availabilityColor';
 import { WeekGrid, type WeekGridReadData } from './heatmap/WeekGrid';
+import { maxAvailabilityPerDay } from './heatmap/dayAggregate';
+import SchedulerWeekStrip, { stripTabId } from './SchedulerWeekStrip';
 import {
   usePaintGesture,
   pointResolver,
@@ -45,6 +51,22 @@ const START_HOUR = 10;
 const SLOT_MINUTES = 30;
 const SLOT_ROWS = 28;
 const GRID_MAX_HEIGHT = '600px'; // parity with the outgoing h-[600px] container
+
+/**
+ * The phone day column's height budget (UI-SPEC "Measured geometry budget", read from source):
+ * 600px of modal (`Modal.tsx:186` `max-h-[90vh]` at 667px tall) − ~61px header − 24px
+ * `Modal.Body p-3` − ~150px of mode toggle, legend and selected-time panel ≈ 365px for the strip
+ * plus the column; the strip takes 56px (`h-14`) and 4px of separation, leaving ~305px.
+ *
+ * That is about SIX of the 28 30-minute rows, which is precisely why WeekGrid's scroll-container
+ * seam is mandatory here rather than optional, and why `scrollToTime` must land on peak
+ * availability — the user opens onto six rows and they had better be the right six.
+ *
+ * The three inputs above are fixed by prior decisions (`Modal`'s `max-h-[90vh]`, its phone gutter
+ * `w-[calc(100%-1.5rem)]`, and `Modal.Body`'s `p-3`). They are inputs to this number, NOT
+ * variables — overriding any of them to buy height here re-opens DEF-88-17-01 / 88-32 ruling 6.
+ */
+const PHONE_GRID_MAX_HEIGHT = '305px';
 
 export interface HeatmapMember {
   user_id?: string;
@@ -130,8 +152,14 @@ function parseCoord(coord: string): { row: number; col: number } | null {
 }
 
 /**
- * The breakpoint the prompt copy forks on — Tailwind's `md`, so "md and below" is
- * `max-width: 767px`. Same query and same shape as `gameDetail/page.js:2176`.
+ * The breakpoint the prompt copy (88.1-11) AND the geometry fork (88.1-12) branch on — Tailwind's
+ * `md`, so "md and below" is `max-width: 767px`. Same query and same shape as
+ * `gameDetail/page.js:2176`.
+ *
+ * A VIEWPORT breakpoint, not a container query, and deliberately so: `md` is this codebase's
+ * phone/desktop line and every sibling on these surfaces switches on it (`UserHomePage.js`,
+ * `FeedbackButton.js`, `CalendarListView.js`). A container query would be the repo's first and
+ * would need its own decision, not a drive-by adoption inside a rebuild.
  */
 const PHONE_MEDIA_QUERY = '(max-width: 767px)';
 
@@ -272,16 +300,66 @@ export default function EventScheduler({
   const membersWithoutDataCount = heatmapData?.membersWithoutDataCount || 0;
   const totalGroupMembers = heatmapData?.totalGroupMembers || 0;
 
+  /* DECISION Phase 88.1-12 (CONTEXT D-03 / D-04): below `md` the scheduler renders a week STRIP
+     over a full-width SINGLE-DAY column, and `currentView` stops being consulted — there is no
+     week/day toggle at phone because strip-plus-day IS the phone rendering. At `md` and above
+     nothing changes: the seven-column fit-to-width grid and its toggle are exactly plan 88.1-11's.
+
+     THE FORK IS matchMedia STATE, NOT `md:hidden` CLASSES — the same choice, for the same reasons,
+     that plan 88.1-11 recorded on `isPhoneViewport` below, and it weighs far more here than it did
+     for a sentence of copy. A CSS fork puts BOTH renderings in the DOM: two grids (~196 cells plus
+     28), two `role="grid"`s, a `tablist` that is visually absent on desktop but still announced,
+     and a week/day toggle that Req 7 says must not exist at phone yet would be present to every
+     consumer reading the DOM rather than the cascade. It is also unassertable — jsdom applies no
+     stylesheet, so no vitest pin could tell the two arms apart, and the arm pins this plan requires
+     ("no toggle at phone", "exactly one day column") would all be vacuous.
+     KNOWN COST, disclosed rather than hidden: `isPhoneViewport` starts false and is corrected in a
+     mount effect, so the phone arm can paint one desktop frame first. Plan 88.1-11's marker fixed
+     that initial value deliberately (SSR parity), so it is left alone here rather than quietly
+     re-opened; see this plan's SUMMARY.
+
+     `currentView` is still real state and is still the desktop toggle's — it is deliberately NOT
+     cleared when the viewport narrows, so rotating a phone to landscape past `md` returns you to
+     the arm you were in rather than resetting you to week.
+     `effectiveView` is the ONE place the two inputs combine. Reading `currentView` directly
+     anywhere below this line is the bug this variable exists to prevent. */
+  const effectiveView: 'week' | 'day' = isPhoneViewport ? 'day' : currentView;
+
   // ---------------------------------------------------------------------------
   // Columns. Monday week start is kept — the outgoing localizer was never its only carrier
   // (`createEvent.js:337,975` and the extracted `resolveWeekNav` both use weekStartsOn: 1).
+  //
+  // The week is computed unconditionally now: the day arm needs it too, because the phone strip
+  // shows the week CONTAINING the displayed day. Both arrays are separately memoized and selected
+  // by a ternary so `columnDates` keeps a stable identity — `getCell`'s per-coordinate cache is
+  // keyed on it and a fresh array every render would defeat WeekGrid's ~196-cell memo.
   // ---------------------------------------------------------------------------
-  const days = currentView === 'day' ? 1 : 7;
-  const columnDates = useMemo(() => {
-    if (currentView === 'day') return [startOfDay(currentDate)];
+  const days = effectiveView === 'day' ? 1 : 7;
+  const weekDates = useMemo(() => {
     const monday = startOfWeek(currentDate, { weekStartsOn: 1 });
     return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
-  }, [currentView, currentDate]);
+  }, [currentDate]);
+  const dayDates = useMemo(() => [startOfDay(currentDate)], [currentDate]);
+  const columnDates = effectiveView === 'day' ? dayDates : weekDates;
+
+  // Which strip cell is the displayed day. Monday-first, so Sunday is index 6.
+  const selectedDayIndex = useMemo(() => {
+    const target = startOfDay(currentDate).getTime();
+    const found = weekDates.findIndex((d) => d.getTime() === target);
+    return found >= 0 ? found : 0;
+  }, [weekDates, currentDate]);
+
+  // Per-day aggregate for the strip: the MAX over each day's slots (see `dayAggregate.ts` for why
+  // MAX and not a mean). Keyed on the same `${localDate}_${localHour}` map the grid cells read, so
+  // the strip and the column can never disagree about the same day.
+  const stripAggregates = useMemo(
+    () =>
+      maxAvailabilityPerDay(
+        heatmapLookup,
+        weekDates.map((d) => format(d, 'yyyy-MM-dd'))
+      ),
+    [heatmapLookup, weekDates]
+  );
 
   // ---------------------------------------------------------------------------
   // Navigation. The per-arm STEP SIZE is the parity detail: the outgoing host inherited
@@ -298,7 +376,10 @@ export default function EventScheduler({
     [onWeekChange]
   );
 
-  const stepDays = currentView === 'day' ? 1 : 7;
+  // Step granularity follows the DISPLAYED arm, so at phone Back/Next move one day — the strip
+  // then re-renders on the week containing it, which is how you cross a week boundary there. Both
+  // arms still bubble through `onWeekChange`, so the parent's same-week skip does the de-duping.
+  const stepDays = effectiveView === 'day' ? 1 : 7;
   const goBack = useCallback(
     () => navigateTo(addDays(currentDate, -stepDays)),
     [navigateTo, currentDate, stepDays]
@@ -314,6 +395,18 @@ export default function EventScheduler({
      and Back, so the parent sees an ordinary navigation and `resolveWeekNav` skips it when today
      is already inside the displayed week. Removing it is a decision, not a cleanup. */
   const goToday = useCallback(() => navigateTo(new Date()), [navigateTo]);
+
+  // A strip tap is NAVIGATION at day granularity, so it routes through `navigateTo` rather than
+  // becoming a third writer of `currentDate` (the two-writer rule at the top of this component is
+  // load-bearing). It always lands inside the displayed week, so the parent's `resolveWeekNav`
+  // recognises it as a same-week move and skips the refetch.
+  const handleStripSelect = useCallback(
+    (index: number) => {
+      const day = weekDates[index];
+      if (day) navigateTo(day);
+    },
+    [weekDates, navigateTo]
+  );
 
   // ---------------------------------------------------------------------------
   // Commit. ONE derivation serves the keyboard select, a tap and a drag range: the earlier row
@@ -366,7 +459,7 @@ export default function EventScheduler({
     const cell = container.querySelector(`[data-coord="${row}:0"]`) as HTMLElement | null;
     if (!cell) return;
     container.scrollTop = cell.offsetTop;
-  }, [scrollToTime, currentView, currentDate]);
+  }, [scrollToTime, effectiveView, currentDate]);
 
   // ---------------------------------------------------------------------------
   // DRAG RANGE SELECTION (plan 88.1-11, SPEC Req 5 / Req 3).
@@ -713,9 +806,13 @@ export default function EventScheduler({
   ) : null;
 
   const viewLabel =
-    currentView === 'day'
+    effectiveView === 'day'
       ? format(columnDates[0], 'EEEE, MMMM d, yyyy')
       : `${format(columnDates[0], 'MMM d')} - ${format(columnDates[columnDates.length - 1], 'MMM d, yyyy')}`;
+
+  // Namespaces the strip's per-cell ids so the day column's `aria-labelledby` resolves even if two
+  // schedulers ever mount in one document.
+  const stripId = useId();
 
   /* DECISION Phase 88.1-09 (premise correction, VERIFIED): the week/day toggle is a pair of
      PRESSED-state buttons in a labelled group, chosen OVER the shipped `Tabs` primitive that the
@@ -757,28 +854,60 @@ export default function EventScheduler({
           </button>
         </div>
         <span className="text-sm font-medium text-content-primary">{viewLabel}</span>
-        <div className="flex items-center gap-2" role="group" aria-label="Calendar view">
-          {viewToggleButton('week', 'Week')}
-          {viewToggleButton('day', 'Day')}
-        </div>
+        {/* D-04: no week/day toggle at phone. The strip IS the week view there, so a control
+            offering to switch to it would be offering a state that does not exist. */}
+        {!isPhoneViewport && (
+          <div className="flex items-center gap-2" role="group" aria-label="Calendar view">
+            {viewToggleButton('week', 'Week')}
+            {viewToggleButton('day', 'Day')}
+          </div>
+        )}
       </div>
 
-      <div className="bg-surface-card rounded-card border border-line">
-        <WeekGrid
-          variant="read"
-          days={days}
-          slots={SLOT_ROWS}
-          slotLabels={SLOT_LABELS}
-          ariaLabel="Group availability by day and time"
-          getCell={getCell}
-          renderDayHeader={renderDayHeader}
-          gutterHeaderRole="presentation"
-          overlay={dragOverlay}
-          gestureHandlers={gestureHandlers}
-          onCellSelect={handleCellSelect}
-          scrollContainerRef={setScrollContainer}
-          maxBodyHeight={GRID_MAX_HEIGHT}
-        />
+      {/* 4px between the strip and the column, per the measured budget — the root's `space-y-4`
+          would spend 16px of the ~365px the two of them share. Inert at desktop, where this
+          wrapper has a single child. */}
+      <div className="space-y-1">
+        {isPhoneViewport && (
+          <SchedulerWeekStrip
+            dates={weekDates}
+            aggregates={stripAggregates}
+            totalMembers={totalMembers}
+            selectedIndex={selectedDayIndex}
+            onSelectDay={handleStripSelect}
+            idPrefix={stripId}
+          />
+        )}
+        <div
+          className="bg-surface-card rounded-card border border-line"
+          // The tab/tabpanel relationship is REAL, not decorative: the strip's tabs switch which
+          // day this panel shows, and naming the panel from the selected tab is what stops the
+          // strip being seven tabs pointing at nothing.
+          role={isPhoneViewport ? 'tabpanel' : undefined}
+          aria-labelledby={
+            isPhoneViewport ? stripTabId(stripId, selectedDayIndex) : undefined
+          }
+        >
+          <WeekGrid
+            variant="read"
+            days={days}
+            slots={SLOT_ROWS}
+            slotLabels={SLOT_LABELS}
+            ariaLabel="Group availability by day and time"
+            getCell={getCell}
+            renderDayHeader={renderDayHeader}
+            gutterHeaderRole="presentation"
+            overlay={dragOverlay}
+            gestureHandlers={gestureHandlers}
+            onCellSelect={handleCellSelect}
+            scrollContainerRef={setScrollContainer}
+            // The phone budget is ~305px, not 600px — see PHONE_GRID_MAX_HEIGHT. Without the
+            // smaller bound the column would run past the modal's own scroll region and the
+            // internal scroll the budget depends on would silently stop being the thing that
+            // moves.
+            maxBodyHeight={isPhoneViewport ? PHONE_GRID_MAX_HEIGHT : GRID_MAX_HEIGHT}
+          />
+        </div>
       </div>
 
       {totalMembers > 0 && (
