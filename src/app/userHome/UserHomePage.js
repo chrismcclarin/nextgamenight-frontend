@@ -6,6 +6,10 @@ import GroupList from '../components/grouplist';
 import EventCalendar from '../components/EventCalendar';
 import FriendInvitePanel from '../components/FriendInvitePanel';
 import UpcomingEventsCard from '../components/UpcomingEventsCard';
+// Req 11a (88.1-08): the phone-only Upcoming Events surface — a bottom bar plus
+// the bottom sheet it opens. The desktop right column below is untouched.
+import PhoneEventBar from '../components/PhoneEventBar';
+import { BottomSheet } from '../../components/ui/BottomSheet';
 import { eventsAPI } from '../../lib/api';
 // Phase 87.3-07 (D-02): the viewer's User.id UUID resolves via the shared
 // ['users','self'] query instead of an ad-hoc getUser self-fetch.
@@ -39,6 +43,9 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
        fires at all; both are needed and they are checked in that order at the render site. */
     const [upcomingError, setUpcomingError] = useState(null);
     const [upcomingRetryKey, setUpcomingRetryKey] = useState(0);
+    // Req 11a: the phone sheet's open state. The page owns it because the bar
+    // (the invoker) and the sheet are siblings, not parent/child.
+    const [upcomingSheetOpen, setUpcomingSheetOpen] = useState(false);
 
     // GROUP-05 (display half): show soft acknowledgment banner when arriving from
     // a 403 redirect set by Plan 69-04 (router.push('/?removedFrom=...')).
@@ -145,7 +152,16 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     };
 
     return (
-        <div className="user-home-container p-4 md:p-6">
+        /* Req 11a bottom clearance for THIS page's own content: `pb-14` (56px) below `md`
+           clears the fixed bar. The desktop override is `md:pb-6` and must NEVER be zeroed:
+           Tailwind emits `padding-bottom` utilities AFTER the `md:p-6` shorthand, so a
+           zeroed desktop bottom-padding override would win the cascade
+           and silently drop desktop bottom padding from 1.5rem to 0, contradicting this
+           plan's own "at >=768px the layout is pixel-identical" acceptance with no gate to
+           catch it (padding-budget.spec.ts is phone-only). The FOOTER's clearance is a
+           separate problem solved in Footer.js — Footer is a sibling of <main>, so no amount
+           of padding here can reach it. */
+        <div className="user-home-container p-4 md:p-6 pb-14 md:pb-6">
             {removedBannerVisible && removedFromName && (
                 <div
                     role="status"
@@ -212,6 +228,58 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     )}
                 </div>
             </div>
+
+            {/* Req 11a (UI-SPEC S3): the phone-only Upcoming Events surface. `PhoneEventBar`
+                carries its own `md:hidden` gate on its root, so the viewport gate lives with
+                the element it hides. The sheet deliberately does NOT carry one: `BottomSheet`
+                portals to <body>, so a hidden wrapper would not reach it anyway, and hiding an
+                OPEN Radix dialog's content leaves a visible overlay plus a focus trap on
+                invisible content. It can only ever be opened by the bar, which is phone-only.
+
+                The bar is wired to the SAME pending/error values the desktop card gets. That
+                wiring is load-bearing, not boilerplate: per DECISION Phase 88-33 below, the
+                identity-resolution window is indistinguishable from a truthful zero unless the
+                caller tells the bar which one it is. Dropping `pending` here makes the bar
+                claim "none in the next 7 days" before the fetch has fired. */}
+            <PhoneEventBar
+                events={upcomingEvents}
+                pending={upcomingPending}
+                identityErrorState={selfIdentityErrorState}
+                eventsErrorState={upcomingErrorState}
+                onOpen={() => setUpcomingSheetOpen(true)}
+            />
+            <BottomSheet
+                open={upcomingSheetOpen}
+                onClose={() => setUpcomingSheetOpen(false)}
+                /* Matches the bar's visible label so the tap has an obvious destination. */
+                title="Upcoming events"
+                height="content"
+            >
+                {/* ML-17, re-hosted verbatim: the upcoming-events fetch gates on selfUuid, so
+                    on TERMINAL identity failure it never fires — degrade with the compact
+                    banner instead of the misleading empty state. Checked FIRST, exactly as in
+                    the desktop column; flipping this with the card's own branches silently
+                    restores a shipped bug (DECISION Phase 88-18, UpcomingEventsCard.js:154-160). */}
+                {selfIdentityErrorState.showError ? (
+                    <FetchErrorBanner state={selfIdentityErrorState} compact />
+                ) : (
+                    /* DECISION Phase 88-18, CARRIED INTO THE SHEET (Req 11a): like the desktop
+                       call site above, this card is deliberately given NO CTA prop, so its empty
+                       state ships without the contract row's "Plan Game Session" button. Every
+                       planning route needs a group_id (`groupPlanning/page.js:59-68`) and
+                       UserHome has none in scope, so a CTA here could only link to a group-less
+                       groupPlanning page that renders empty sections. Do NOT "complete" this by
+                       wiring a bare /groupPlanning link — if a group picker ever lands on this
+                       surface, pass the CTA in from here. */
+                    <UpcomingEventsCard
+                        events={upcomingEvents}
+                        loading={upcomingPending}
+                        showGroupName={true}
+                        viewerDbUserId={selfUuid ?? null}
+                        errorState={upcomingErrorState}
+                    />
+                )}
+            </BottomSheet>
 
             <FriendInvitePanel
                 group={selectedGroup}
