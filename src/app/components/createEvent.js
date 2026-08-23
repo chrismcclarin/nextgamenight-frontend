@@ -9,7 +9,7 @@ import EventHeatmapBackground from './EventHeatmapBackground';
 import GameComboInput from './GameComboInput';
 import QuickSuggestions from './QuickSuggestions';
 import useSwipeNavigation from './useSwipeNavigation';
-import { createParticipant, createEventForm, prepareEventData, resolveInitialHeatmapWeek, withRowIds, remapCustomParticipantRef } from '../../lib/eventFormUtils';
+import { createParticipant, createEventForm, prepareEventData, resolveInitialHeatmapWeek, resolveWeekNav, withRowIds, remapCustomParticipantRef } from '../../lib/eventFormUtils';
 import ParticipantRow from './ParticipantRow';
 import BallotOptionsEditor from './BallotOptionsEditor';
 import EventResultFields from './EventResultFields';
@@ -967,17 +967,16 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
               <>
                 <EventScheduler
                 onWeekChange={(date) => {
-                  // Bubble react-big-calendar nav into currentWeekStart so the
-                  // heatmap fetch re-fires for the navigated week. Skip the
-                  // update when the date is in the same week we already have
-                  // (day-view nav within a week shouldn't trigger a refetch),
-                  // and clamp to the same -3/+12 bounds the manual-mode nav
-                  // buttons enforce so the backend doesn't 400 on out-of-range
-                  // weeks.
-                  const navMonday = startOfWeek(date, { weekStartsOn: 1 });
-                  if (isSameWeek(navMonday, effectiveMondayForUI, { weekStartsOn: 1 })) return;
-                  if (navMonday < minWeek || navMonday > maxWeek) return;
-                  setCurrentWeekStart(navMonday);
+                  // The skip + clamp rule lives in `resolveWeekNav` (lib/eventFormUtils)
+                  // as a pure, unit-tested function — null means "no-op". See its doc
+                  // block for why (88.1-01 D-08 Layer 1).
+                  const next = resolveWeekNav({
+                    date,
+                    currentMonday: effectiveMondayForUI,
+                    minWeek,
+                    maxWeek,
+                  });
+                  if (next) setCurrentWeekStart(next);
                 }}
                 onTimeSelected={(start, end) => {
                   // Phase 66-01: write canonical fields only. The visual

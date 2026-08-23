@@ -1,4 +1,4 @@
-import { parseISO, startOfWeek } from 'date-fns';
+import { isSameWeek, parseISO, startOfWeek } from 'date-fns';
 
 /**
  * Resolve which week the create-event heatmap should FETCH when the modal opens.
@@ -36,6 +36,50 @@ export const resolveInitialHeatmapWeek = ({ prefillDate, promptId, minWeek, maxW
   if (maxWeek && prefillMonday > maxWeek) return null;
 
   return prefillMonday;
+};
+
+/**
+ * Resolve which week the create-event heatmap should FETCH in response to a calendar
+ * navigation event.
+ *
+ * Returns the Monday `Date` to move to, or `null` meaning "no-op — leave the current
+ * anchor alone". The caller keeps `setCurrentWeekStart`, exactly as
+ * `resolveInitialHeatmapWeek` above keeps its setter at the call site.
+ *
+ * DECISION Phase 88.1-01 D-08 Layer 1: extracted out of `createEvent.js`'s inline
+ * `onWeekChange` prop body so the week-anchor rule is unit-testable — chosen OVER leaving
+ * it inline and covering it only through a component test. Req 4's regression (a broken
+ * nav handler) is INVISIBLE to any test that does not exercise nav, and the whole
+ * scheduler beneath this prop is being swapped from react-big-calendar to WeekGrid in this
+ * phase. A pure function survives that swap; an inline closure does not. Same reasoning
+ * that put `resolveInitialHeatmapWeek` here, and that Phase 82 used for `availabilityColor`
+ * / `tzUtils` / `datetime`.
+ *
+ * Behavior is a verbatim transcription of the shipped handler — bubble calendar nav into
+ * `currentWeekStart` so the heatmap fetch re-fires for the navigated week, but:
+ *   - skip the update when the date is in the same week we already have (day-view nav
+ *     WITHIN a week must not trigger a refetch), and
+ *   - clamp to the SAME -3/+12 bounds the manual-mode nav buttons enforce, so the backend
+ *     does not 400 on an out-of-range week.
+ *
+ * The clamp is a client-side UX guard, not an authorization control — the backend remains
+ * the authority on the requested `weekStart` (threat T-88.1-01).
+ *
+ * @param date - the date the calendar navigated to (any weekday within the target week)
+ * @param currentMonday - the Monday currently anchoring the UI (`effectiveMondayForUI`)
+ * @param minWeek - earliest allowed Monday (todayMonday - 3 weeks)
+ * @param maxWeek - latest allowed Monday (todayMonday + 12 weeks)
+ * @returns the target Monday Date, or null for "no-op"
+ */
+export const resolveWeekNav = ({ date, currentMonday, minWeek, maxWeek }) => {
+  const navMonday = startOfWeek(date, { weekStartsOn: 1 });
+
+  // Day-view nav within the week we already show: same data, no refetch.
+  if (isSameWeek(navMonday, currentMonday, { weekStartsOn: 1 })) return null;
+
+  if (navMonday < minWeek || navMonday > maxWeek) return null;
+
+  return navMonday;
 };
 
 // Helper function to create a participant object

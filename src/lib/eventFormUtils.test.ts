@@ -12,9 +12,10 @@
 // exactly why it shipped. The first test below is the one that would have failed.
 
 import { describe, it, expect } from 'vitest';
-import { addWeeks, startOfWeek, subWeeks } from 'date-fns';
+import { addWeeks, parseISO, startOfWeek, subWeeks } from 'date-fns';
 import {
   resolveInitialHeatmapWeek,
+  resolveWeekNav,
   createParticipant,
   withRowIds,
   prepareEventData,
@@ -89,6 +90,97 @@ describe('resolveInitialHeatmapWeek — paths that must keep returning null', ()
 
   it('returns null when both are absent', () => {
     expect(resolve(null, null)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.1-01 (D-08 Layer 1) — resolveWeekNav
+//
+// THE REGRESSION THESE EXIST TO CATCH: the week-nav rule shipped as an inline closure
+// inside createEvent's `onWeekChange` prop, so NOTHING exercised it — ROADMAP's own note
+// said the existing pins "will NOT catch a broken nav handler". Phase 88.1 swaps the
+// calendar under that prop from react-big-calendar to WeekGrid; if the skip rule or the
+// clamp is lost in the rewrite, the symptom is either a refetch storm on every day-view
+// tap or a backend 400 on an out-of-range weekStart — neither visible to any other test.
+//
+// Same fixed-clock constants as above, so these never drift with the wall clock:
+// TODAY_MONDAY = 2026-07-20, MIN_WEEK = 2026-06-29 (-3w), MAX_WEEK = 2026-10-12 (+12w).
+// ---------------------------------------------------------------------------
+const nav = (dateStr: string | Date, currentMonday: Date = TODAY_MONDAY) =>
+  resolveWeekNav({
+    date: typeof dateStr === 'string' ? parseISO(dateStr) : dateStr,
+    currentMonday,
+    minWeek: MIN_WEEK,
+    maxWeek: MAX_WEEK,
+  });
+
+describe('resolveWeekNav — moves the anchor to the navigated week', () => {
+  it('returns the target week\'s Monday when navigating to a DIFFERENT week', () => {
+    // 2026-08-05 is a Wednesday; its Monday is 2026-08-03.
+    expect(iso(nav('2026-08-05'))).toBe('2026-08-03');
+  });
+
+  it('honours Monday-start: a Sunday resolves to the PRECEDING Monday', () => {
+    // 2026-08-09 is a Sunday. With weekStartsOn:1 it belongs to the 2026-08-03 week,
+    // NOT the 2026-08-10 one — an off-by-one here shifts the whole heatmap fetch.
+    expect(iso(nav('2026-08-09'))).toBe('2026-08-03');
+  });
+
+  it('normalises any weekday of the target week to the same Monday', () => {
+    const monday = iso(nav('2026-08-03'));
+    expect(iso(nav('2026-08-06'))).toBe(monday);
+    expect(iso(nav('2026-08-09'))).toBe(monday);
+  });
+});
+
+describe('resolveWeekNav — same-week no-op (day-view nav must not refetch)', () => {
+  it('returns null for a mid-week date inside the current week (the day-view case)', () => {
+    // Stepping Tue -> Wed in day view fires onWeekChange with a new DATE but the same
+    // WEEK. Re-anchoring here would refire the heatmap fetch on every day tap.
+    expect(nav('2026-07-22')).toBeNull();
+  });
+
+  it('returns null for the current Monday itself', () => {
+    expect(nav(TODAY_MONDAY)).toBeNull();
+  });
+
+  it('returns null for the Sunday that closes the current week', () => {
+    // 2026-07-26 is the Sunday of the 2026-07-20 week under weekStartsOn:1.
+    expect(nav('2026-07-26')).toBeNull();
+  });
+
+  it('is relative to the CURRENT anchor, not to today', () => {
+    // When the user has already navigated forward, "same week" means the week they are
+    // looking at. Navigating back to today's week from there IS a real change.
+    const augustMonday = parseISO('2026-08-03');
+    expect(nav('2026-08-05', augustMonday)).toBeNull();
+    expect(iso(nav('2026-07-22', augustMonday))).toBe(iso(TODAY_MONDAY));
+  });
+});
+
+describe('resolveWeekNav — clamping (must not send an out-of-range weekStart)', () => {
+  it('returns null for a week before the -3 week floor', () => {
+    expect(nav('2026-01-14')).toBeNull();
+  });
+
+  it('returns null for a week after the +12 week ceiling', () => {
+    expect(nav('2027-06-02')).toBeNull();
+  });
+
+  it('accepts the exact boundary weeks', () => {
+    // Off-by-one on a clamp is the failure mode — both edges must be INSIDE.
+    expect(iso(nav(MIN_WEEK))).toBe(iso(MIN_WEEK));
+    expect(iso(nav(MAX_WEEK))).toBe(iso(MAX_WEEK));
+  });
+
+  it('rejects the weeks immediately outside each boundary', () => {
+    expect(nav(subWeeks(MIN_WEEK, 1))).toBeNull();
+    expect(nav(addWeeks(MAX_WEEK, 1))).toBeNull();
+  });
+
+  it('accepts a mid-week date that resolves INTO a boundary week', () => {
+    // 2026-07-05 is the Sunday of the MIN_WEEK (2026-06-29) week.
+    expect(iso(nav('2026-07-05'))).toBe(iso(MIN_WEEK));
   });
 });
 
