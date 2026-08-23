@@ -768,13 +768,60 @@ export default function EventScheduler({
     };
   }, [columnDates, heatmapLookup, conflictLookup, totalMembers, selfUuid, selectedSlot]);
 
+  /* DECISION Phase 88.1-13 (SPEC Req 8; UI-SPEC "Where the today tint lands"). Three choices,
+     recorded together because the second and third only exist because of the first.
+
+     (1) THE TREATMENT LANDS ON THE DAY HEADER, NOT THE COLUMN BODY. This is a NAMED NARROWING of
+         SPEC Req 8's literal "today-COLUMN tint", chosen OVER filling the day's cells, on three
+         grounds:
+           - it is the surface the owner ACTUALLY JUDGED. `.planning/deferred/phase-88.1.md:52,57-59`
+             records "the today-column HEADER tint" plus a live dark-375px measurement —
+             rgb(47,59,80) on the today header against rgb(35,45,62) on the other six. The D3 bar
+             ("noticeable at a glance, not merely distinguishable on inspection") was set against a
+             header cell;
+           - A BODY FILL WOULD CORRUPT THE DATA LAYER. `calendarWashColor` is TRANSLUCENT green and
+             paints over each cell's own background; amber under rgba(34,197,94,a) reads olive, and
+             nothing may outrank the painted heatmap. The shipped `.rbc-today` this replaces was
+             purple — a COOL tint under green — so moving the hue to amber turns that stacking from
+             acceptable to muddy. It is not the same change at a new hue;
+           - the paired ternary survives INTACT, at full measured strength, on a clean surface.
+         THE ALTERNATIVE, if the owner wants column-wide at the 88.1-15 checkpoint: a 2px
+         `--color-line-accent` column EDGE RULE, never a fill. That re-opens
+         `DECISION Phase 88-27 D-32 bucket B` (`CalendarListView.js:388-395`, which ruled a NEUTRAL
+         rule OVER a coloured one), so it is a decision to raise, not a tweak to apply.
+
+     (2) THE TWO TERNARIES ARE PAIRED AND MUTUALLY EXCLUSIVE — surface and day text switch together
+         or not at all. The idiom is the §10.3 exemplar's, carried verbatim in shape from
+         `MergedHeatmapGrid.js:139,145` (plan 88.1-16 re-points `tintTreatment.test.ts` test 4 from
+         that file to this site). COLLAPSING EITHER HALF INTO ONE STATIC CLASS PLUS AN INTERPOLATED
+         TINT TURNS THE TINT OFF; it does not simplify. There is no tailwind-merge on this template
+         literal, so two same-specificity background rules resolve by STYLESHEET ORDER, and MEASURED
+         in a real `next build` of this app `.bg-surface-accent-subtle` is emitted BEFORE
+         `.bg-surface-card` — the plain card wins and the tint renders NOTHING.
+         The non-today text value moves from plan 88.1-09's inherited secondary to the exemplar's
+         explicit primary, so the two branches are a genuine pair rather than "accent or whatever
+         the cell happened to inherit".
+
+     (3) THE SURFACE HALF FULL-BLEEDS the header cell via `block -my-2 py-2`, chosen OVER adding a
+         `dayHeaderClassName` seam to WeekGrid. WeekGrid owns the header cell and hardcodes
+         `bg-surface-card` and `py-2` on it (`WeekGrid.tsx:457`); this seam hands back that cell's
+         CONTENT, and `WeekGrid.tsx:93-96` says in its own words that a ReactNode is required here
+         BECAUSE "the scheduler's header is a paired today ternary". The negative margin cancels the
+         cell's padding so the tint covers the whole header rather than a chip around the label —
+         a chip does not clear the D3 bar. A new seam would change a shared engine with other
+         consumers to style one of them. Removing the bleed shrinks the treatment: a decision. */
   const renderDayHeader = useCallback(
     (col: number) => {
       const day = columnDates[col];
-      // Paired with MergedHeatmapGrid's today treatment: the accent lands on the label itself,
-      // which is the part this seam owns (the header cell's own background belongs to WeekGrid).
+      const today = isToday(day);
       return (
-        <span className={isToday(day) ? 'text-accent' : undefined}>{format(day, 'dd EEE')}</span>
+        <span
+          className={`block -my-2 py-2 ${today ? 'bg-surface-accent-subtle' : 'bg-surface-card'}`}
+        >
+          <span className={today ? 'text-accent' : 'text-content-primary'}>
+            {format(day, 'dd EEE')}
+          </span>
+        </span>
       );
     },
     [columnDates]

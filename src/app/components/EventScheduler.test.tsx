@@ -1067,3 +1067,139 @@ describe('EventScheduler — the DESKTOP arm is untouched by the fork', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// PLAN 88.1-13: the today treatment (SPEC Req 8, UI-SPEC "Where the today tint lands").
+//
+// THESE ARE CLASS-CONTRACT ASSERTIONS, AND THAT IS THE POINT — not a lapse from the file's
+// role/label/text discipline. What Req 8 actually contracts is that the treatment is a PAIRED
+// ternary of MUTUALLY EXCLUSIVE branches rather than one static class plus an interpolated tint,
+// and that shape is only observable in the emitted class string: the two renderings differ in
+// nothing else, because the defect they guard against is resolved by STYLESHEET ORDER, which jsdom
+// never applies. A role/text locator cannot tell a working tint from a silently dropped one.
+//
+// So: nothing here claims the tint is VISIBLE, legible, or strong enough — that is plan 88.1-14's
+// Playwright run and plan 88.1-15's owner walk. What is answerable here is that both halves are
+// present on today and absent everywhere else, and that no colliding colour class ships beside
+// them (threat T-88.1-39).
+//
+// The clock is FIXED because `isToday` reads the wall clock: without that, "today" is whatever day
+// the suite happens to run on and the pin either lands on a different column or, at a week
+// boundary, on none of the rendered seven.
+// ---------------------------------------------------------------------------------------------
+
+describe('EventScheduler — today carries BOTH halves of the paired ternary (Req 8)', () => {
+  // Wednesday 2026-07-22 — index 2 of a Monday-first week, so a pin that silently lands on the
+  // first or last column would fail rather than pass by position.
+  const TODAY = new Date(2026, 6, 22, 12, 0, 0);
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(TODAY);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** The colour utilities the paired ternary may emit on one element — exactly one is allowed. */
+  const colourClassesOf = (el: Element) =>
+    el.className.split(/\s+/).filter((c) => /^text-(accent|content-[a-z]+)$/.test(c));
+
+  it('desktop: the today day header carries the tint AND the accent label; the other six carry neither', () => {
+    const { restore } = renderAtViewport(DESKTOP, <EventScheduler initialDate={TODAY} />);
+    try {
+      const headers = screen.getAllByRole('columnheader');
+      expect(headers).toHaveLength(7);
+
+      const todayIndex = headers.findIndex((h) => h.textContent === format(TODAY, 'dd EEE'));
+      expect(todayIndex).toBe(2);
+
+      headers.forEach((header, index) => {
+        const html = header.innerHTML;
+        if (index === todayIndex) {
+          // BOTH halves, and NEITHER of the non-today values — a half-applied treatment (tint
+          // without the accent label, or the reverse) is the regression this pairs against.
+          expect(html).toContain('bg-surface-accent-subtle');
+          expect(html).toContain('text-accent');
+          expect(html).not.toContain('bg-surface-card');
+          expect(html).not.toContain('text-content-primary');
+        } else {
+          expect(html).toContain('bg-surface-card');
+          expect(html).toContain('text-content-primary');
+          expect(html).not.toContain('bg-surface-accent-subtle');
+          expect(html).not.toContain('text-accent');
+        }
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  it('desktop: the tint and the plain surface are never emitted in the SAME class string', () => {
+    // The collapse the exemplar's in-file warning describes (`MergedHeatmapGrid.js:130-138`):
+    // a static `bg-surface-card` with the tint appended renders NOTHING, because
+    // `.bg-surface-accent-subtle` is emitted BEFORE `.bg-surface-card` in a real build. It looks
+    // identical to a working treatment in every role/text assertion, so it is pinned here.
+    const { restore } = renderAtViewport(DESKTOP, <EventScheduler initialDate={TODAY} />);
+    try {
+      for (const header of screen.getAllByRole('columnheader')) {
+        for (const el of header.querySelectorAll('[class]')) {
+          const classes = el.className.split(/\s+/);
+          expect(
+            classes.includes('bg-surface-accent-subtle') && classes.includes('bg-surface-card')
+          ).toBe(false);
+        }
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  it('phone: the today strip cell carries the tint AND the accent date number; the other six carry neither', () => {
+    const { restore } = renderAtViewport(PHONE, <EventScheduler initialDate={TODAY} />);
+    try {
+      const tabs = screen.getAllByRole('tab');
+      expect(tabs).toHaveLength(7);
+
+      const todayTab = tabs.find((t) => t.getAttribute('aria-current') === 'date');
+      expect(todayTab).toBeDefined();
+      // The accessible half (plan 88.1-12) and the visual half (this plan) point at the SAME day —
+      // a treatment that tinted a different cell than `aria-current` names would be worse than none.
+      expect(todayTab!.getAttribute('aria-label')).toMatch(/wednesday 22/i);
+
+      expect(todayTab!.innerHTML).toContain('bg-surface-accent-subtle');
+      expect(todayTab!.innerHTML).toContain('text-accent');
+
+      for (const tab of tabs.filter((t) => t !== todayTab)) {
+        expect(tab.innerHTML).toContain('bg-surface-card');
+        expect(tab.innerHTML).not.toContain('bg-surface-accent-subtle');
+        expect(tab.innerHTML).not.toContain('text-accent');
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  it('phone: the date-number span carries EXACTLY ONE text-colour class per branch (T-88.1-39)', () => {
+    // The collision this guards: plan 88.1-12 copied a static muted colour onto this span, and
+    // this plan's ternary owns that slot. If both ever ship in one class string, stylesheet order
+    // decides — and the static class would silently outrank `text-accent` on today's cell no
+    // matter which one appears later in the JSX. Counting the classes is the only way to see it.
+    const { restore } = renderAtViewport(PHONE, <EventScheduler initialDate={TODAY} />);
+    try {
+      const tabs = screen.getAllByRole('tab');
+      const todayTab = tabs.find((t) => t.getAttribute('aria-current') === 'date');
+
+      for (const tab of tabs) {
+        const dayNumber = within(tab).getByTestId('strip-day-number');
+        const colours = colourClassesOf(dayNumber);
+        expect(colours).toHaveLength(1);
+        // Non-today keeps M-03 parity with the sibling idiom directly above it — deliberately NOT
+        // the desktop header's non-today value. See the DECISION marker at the site.
+        expect(colours[0]).toBe(tab === todayTab ? 'text-accent' : 'text-content-muted');
+      }
+    } finally {
+      restore();
+    }
+  });
+});

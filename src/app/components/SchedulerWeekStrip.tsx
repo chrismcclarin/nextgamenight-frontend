@@ -109,6 +109,7 @@ function StripDayCell({
   });
 
   const background = calendarWashColor(aggregate, totalMembers);
+  const today = isToday(date);
 
   // The rendered cell is three unlabelled fragments ("M", "22", "4"). The full name is assembled
   // from the SAME values the cell renders, so the aggregate is never colour-plus-bare-number to a
@@ -126,9 +127,10 @@ function StripDayCell({
       id={id}
       ref={registerRef}
       aria-selected={selected}
-      // Today is exposed to assistive tech HERE, not by tint alone — plan 88.1-13 owns the VISUAL
-      // today treatment in this same header zone, and that treatment is colour-only.
-      aria-current={isToday(date) ? 'date' : undefined}
+      // Today is exposed to assistive tech HERE, not by tint alone — the VISUAL today treatment
+      // in the header zone below (plan 88.1-13) is colour-only, so this is what carries the state
+      // where colour does not reach. Both halves ship; neither is a substitute for the other.
+      aria-current={today ? 'date' : undefined}
       aria-label={`${dayName}, ${availability}`}
       tabIndex={tabIndex}
       onKeyDown={onKeyDown}
@@ -143,15 +145,48 @@ function StripDayCell({
           : undefined
       }
     >
-      {/* Header zone. Shape copied VERBATIM from the owner-passed sibling
+      {/* Header zone. Sizing/stacking/leading copied VERBATIM from the owner-passed sibling
           `EventHeatmapBackground.js:216-226` — the M-03 truncation fix, already judged at 375px,
-          which CONTEXT D-03 mandates the strip reuse rather than re-invent. Plan 88.1-13's today
-          treatment lands in this zone. */}
-      <span aria-hidden="true" className="text-xs font-medium text-content-muted block leading-tight">
-        {format(date, 'EEEEE')}
-      </span>
-      <span aria-hidden="true" className="text-[10px] text-content-muted">
-        {format(date, 'd')}
+          which CONTEXT D-03 mandates the strip reuse rather than re-invent.
+
+          DECISION Phase 88.1-13 (SPEC Req 8, threat T-88.1-39), two choices at this one zone:
+
+          (1) THE TODAY TERNARY BELOW IS THE SOLE OWNER OF THE DATE-NUMBER SPAN'S TEXT-COLOUR SLOT.
+              It REPLACES the static muted class plan 88.1-12 put there; it does not sit beside it.
+              Chosen OVER leaving that class in place and appending the accent, because
+              same-specificity Tailwind utilities on ONE element resolve by STYLESHEET ORDER, not
+              by class-attribute order and with no tailwind-merge on this template literal — so a
+              leftover static colour would silently outrank `text-accent` on today's cell no matter
+              which class was written last. That is the exact failure the §10.3 exemplar's own
+              in-file warning describes (`MergedHeatmapGrid.js:130-138`, measured in a real
+              `next build`). Read plan 88.1-12's "verbatim in shape" as covering this span's
+              SIZING and STACKING only; the colour slot is this ternary's.
+
+          (2) THE NON-TODAY VALUE IS THE MUTED TOKEN, chosen OVER the brighter value the DESKTOP day
+              header's twin ternary uses. The desktop header is its own surface with its own
+              sibling; this span's sibling is the M-03 idiom directly above it, and matching that
+              sibling is the whole point of copying it. Converging the two sites onto one non-today
+              value is a decision that breaks M-03 parity, not a consistency fix.
+
+          The SURFACE half wraps both lines rather than landing on the button: the button's lower
+          zone carries the availability wash, and a cell-wide amber would sit UNDER a translucent
+          green on days that have availability and stand alone on days that do not — the same
+          data-layer corruption the desktop marker rejects a column-body fill for.
+
+          Collapsing either ternary into one static class plus an interpolated tint turns the tint
+          OFF (stylesheet order again); it is a decision, not a simplification. */}
+      <span className={today ? 'bg-surface-accent-subtle' : 'bg-surface-card'}>
+        <span aria-hidden="true" className="text-xs font-medium text-content-muted block leading-tight">
+          {format(date, 'EEEEE')}
+        </span>
+        <span
+          aria-hidden="true"
+          // Hooked for the T-88.1-39 pin, which asserts exactly ONE colour class per branch here.
+          data-testid="strip-day-number"
+          className={`text-[10px] ${today ? 'text-accent' : 'text-content-muted'}`}
+        >
+          {format(date, 'd')}
+        </span>
       </span>
       {/* Tint zone. The NUMBER is the mandatory secondary non-colour cue, not decoration:
           colour-only encoding of availability fails the ~8% of men with colour-vision deficiency,
