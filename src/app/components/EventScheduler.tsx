@@ -8,9 +8,10 @@
 // Req 2, and it is why there is no second component for the day arm.
 //
 // WHAT IS DELIBERATELY NOT HERE (so a future reader does not read absence as an oversight):
-//   - The today treatment in the strip's header zone is plan 88.1-13.
 //   - Removing the calendar dependency from package.json is plan 88.1-16 (SPEC sequencing:
 //     removal only AFTER parity is verified).
+//   - The today COLUMN BODY carries no fill. That is a recorded narrowing with an alternative,
+//     not an omission — see the DECISION marker on `renderDayHeader`.
 //
 // PLAN 88.1-11 ADDED: the drag RANGE machine (`usePaintGesture` in `'range'` mode) and the live
 // selection rectangle it draws into WeekGrid's `overlay` seam, plus the gesture-accurate prompt
@@ -19,6 +20,11 @@
 // PLAN 88.1-12 ADDED: the phone geometry fork — below `md` the seven-column grid is replaced by
 // `SchedulerWeekStrip` (day-granularity week scan) above a full-width single-day column, and the
 // week/day toggle does not render. See the DECISION marker on `effectiveView` below.
+//
+// PLAN 88.1-13 ADDED: the today treatment (SPEC Req 8) as a paired ternary on the desktop day
+// header, plus a TEMPORARY tint-strength A/B that plan 88.1-15 resolves and deletes. Everything
+// belonging to that A/B carries the token `TODAY_TINT_AB_88_1_13`; grep must return 0 before the
+// phase closes.
 
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
@@ -31,6 +37,8 @@ import {
   startOfDay,
   startOfWeek,
 } from 'date-fns';
+// TODAY_TINT_AB_88_1_13 — TEMPORARY import for the Req 8 tint A/B. DELETE WITH THAT BLOCK.
+import { useTheme } from 'next-themes';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { calendarWashColor, CALENDAR_WASH_RAMP } from '../../lib/availabilityColor';
 import { WeekGrid, type WeekGridReadData } from './heatmap/WeekGrid';
@@ -190,6 +198,70 @@ const NAV_BUTTON_CLASS =
   'transition-colors duration-200 ease-out ' +
   'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
 
+/* ============================================================================================
+   TODAY_TINT_AB_88_1_13 — TEMPORARY. Phase 88.1 Req 8 tint A/B. DELETE AT PHASE CLOSE.
+
+   THE DELETION GATE, which plan 88.1-15 runs after the owner picks an arm:
+       grep -rn TODAY_TINT_AB_88_1_13 periodictabletop/src     ->     must return 0.
+   Every line this scaffolding owns carries that token, including the `next-themes` import at the
+   top of this file AND the temporary hex exemption in `src/app/rawColorValues.test.ts`. Nothing
+   else in the codebase uses the string.
+   THE SUITE ENFORCES THE DELETION TOO, so it does not rest on someone remembering the grep: that
+   exemption is checked for STALENESS (`rawColorValues.test.ts` test 4), so removing this block
+   without removing the exemption goes red, and removing the exemption without removing this block
+   goes red on test 1. The two can only be deleted together.
+
+   WHAT IT IS FOR: the owner judges the two MEASURED tint strengths on the REAL component at 375px
+   in BOTH themes, not on a mockup. The previous D3 round went wrong precisely by judging the wrong
+   surface from reasoning instead of looking (`.planning/deferred/phase-88.1.md:46-61`), which is
+   why this is a live toggle.
+
+   DECISION Phase 88.1-13 (A/B mechanism; UI-SPEC "PRESCRIBED toggle mechanism"): the arm overrides
+   the TOKEN VALUE on the scheduler root, chosen OVER branching the class strings and OVER editing
+   `globals.css`.
+     - Branching the classes would break `DECISION Phase 88-27 D-32` literally ("token VALUE only,
+       never the ternary shape") and would mean the owner compares two different code shapes rather
+       than two colours — the arms stop being pixel-comparable.
+     - Editing `globals.css` would move ~20 unrelated consumers of the same token, so it would stop
+       being an A/B of THIS surface. `git diff src/app/globals.css` is empty by design.
+     - Overriding one inherited custom property on one element makes the removal a single-prop
+       deletion, and makes the default (no override) render byte-identical to what ships.
+
+   THE OVERRIDDEN PROPERTY IS `--color-bg-accent-subtle`, AND OVERRIDING THE `surface-*` NAME
+   INSTEAD IS INERT. This was settled by MEASURING a real `next build` of this app, not by reading
+   `globals.css`: the source declares the `@theme` key as
+   `--color-surface-accent-subtle: var(--color-bg-accent-subtle)` (`globals.css:324`), which reads
+   as though either name would work — but Tailwind v4 RESOLVES that one-level alias when it emits
+   the utility, and the shipped rule is literally
+       .bg-surface-accent-subtle{background-color:var(--color-bg-accent-subtle)}
+   so a descendant override of the `surface-*` name is never consulted by anything.
+   (Same build, same run: `.bg-surface-accent-subtle` is emitted at offset 39771 and
+   `.bg-surface-card` at 39844 — the tint still precedes the plain surface, so the exemplar's
+   stylesheet-order warning that the paired ternary exists to satisfy is still true today.)
+   Re-pointing this override at the `surface-*` name would leave a toggle that flips cleanly, logs
+   nothing, and changes no pixel — a silent no-op, which is the worst possible failure for a
+   mechanism whose entire job is to be looked at.
+
+   THE VALUES ARE REUSED, NOT RE-DERIVED (`.planning/deferred/phase-88.1.md:68-73`, measured
+   2026-08-21). Arm A is the CURRENT token value in both themes, so it is expressed as NO OVERRIDE
+   — that is what keeps the default render honest.
+     light   arm A `amber-100 #fef3c7`   arm B `amber-200 #fde68a`
+     dark    arm A `#3a3320`             arm B `#513902`
+   CONTRAST, stated so the owner is choosing with it rather than around it: the day-number
+   `text-accent` on the LIGHT arm measures 1.93:1 (A) and 1.72:1 (B) against the 4.5:1 AA floor —
+   BOTH FAIL, and the stronger arm is the worse of the two. That failure is Phase 88.3-owned (the
+   ~15-site `text-accent`-on-light census) and is recorded as coordinated by plan 88.1-06, never
+   silently shipped. Dark passes either way: 5.84:1 (A) -> 5.05:1 (B).
+   ============================================================================================ */
+const TODAY_TINT_AB_88_1_13_PARAM = 'todayTintAB';
+const TODAY_TINT_AB_88_1_13_ARM_B = {
+  /** amber-200 #fde68a — one step up from the current light amber-100 #fef3c7. */
+  light: 'var(--amber-200)',
+  /** #513902 — twice the current #3a3320 tint's delta from the purple-900 card, the same step the
+      amber-100 -> amber-200 move makes in light. */
+  dark: '#513902',
+} as const;
+
 export default function EventScheduler({
   onTimeSelected,
   initialDate,
@@ -261,6 +333,36 @@ export default function EventScheduler({
     mq.addListener(handler);
     return () => mq.removeListener(handler);
   }, []);
+
+  /* TODAY_TINT_AB_88_1_13 — TEMPORARY, see the block above this component. DELETE AT PHASE CLOSE.
+     Opt in with `?todayTintAB=1`; with no param nothing renders and no override is applied, so the
+     production default is untouched and arm A is what ships if this never runs.
+     The param is read from `window.location.search` in a mount effect rather than through
+     `useSearchParams`, deliberately: that hook opts the whole route into a CSR bailout / Suspense
+     boundary, which is a real architectural change to carry for throwaway scaffolding.
+     The theme comes from `next-themes` because the two arms have DIFFERENT literals per theme and
+     an inline style cannot branch on the `.dark` class; reading it reactively means the owner can
+     flip themes mid-comparison without reopening the modal. */
+  const { resolvedTheme } = useTheme();
+  const [tintAbEnabled, setTintAbEnabled] = useState(false);
+  const [tintAbArm, setTintAbArm] = useState<'A' | 'B'>('A');
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setTintAbEnabled(
+      new URLSearchParams(window.location.search).has(TODAY_TINT_AB_88_1_13_PARAM)
+    );
+  }, []);
+  const tintAbStyle =
+    tintAbEnabled && tintAbArm === 'B'
+      ? ({
+          // `--color-bg-accent-subtle`, NOT the `surface-*` alias — see the block above; the
+          // shipped utility resolves the alias at build time, so the other name is a no-op.
+          '--color-bg-accent-subtle':
+            resolvedTheme === 'dark'
+              ? TODAY_TINT_AB_88_1_13_ARM_B.dark
+              : TODAY_TINT_AB_88_1_13_ARM_B.light,
+        } as React.CSSProperties)
+      : undefined;
 
   // Phase 72-02 UAT: identify the viewing user so we can render a self-conflict line in the
   // per-slot tooltip. 87.4 PR-2 (D-02): UUID-only compare against selfUuid.
@@ -887,7 +989,22 @@ export default function EventScheduler({
   );
 
   return (
-    <div className="space-y-4">
+    // TODAY_TINT_AB_88_1_13 — the `style` is the A/B's ENTIRE scope and is `undefined` unless the
+    // param is present, so React emits no attribute at all by default. DELETE AT PHASE CLOSE.
+    <div className="space-y-4" style={tintAbStyle}>
+      {/* TODAY_TINT_AB_88_1_13 — TEMPORARY control. DELETE AT PHASE CLOSE (plan 88.1-15). */}
+      {tintAbEnabled && (
+        <div className="flex items-center gap-2 text-xs text-content-muted">
+          <span>Today tint A/B (temporary):</span>
+          <button
+            type="button"
+            onClick={() => setTintAbArm((arm) => (arm === 'A' ? 'B' : 'A'))}
+            className={NAV_BUTTON_CLASS}
+          >
+            {tintAbArm === 'A' ? 'Arm A — current' : 'Arm B — one step stronger'}
+          </button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <button type="button" onClick={goBack} className={NAV_BUTTON_CLASS}>
