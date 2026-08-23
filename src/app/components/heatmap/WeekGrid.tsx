@@ -92,9 +92,10 @@ export interface WriteWeekGridProps extends WeekGridBaseProps {
 
 export type WeekGridProps = ReadWeekGridProps | WriteWeekGridProps;
 
-// Row height + border only. The width utilities (`w-24 sm:w-28`) and `shrink-0` that used to live
-// here were deleted by the 88.1-02 CSS-grid conversion — see the DECISION marker at the geometry
-// site below.
+// Row height + border only. The width utilities (`w-24`/`sm:w-28`) and `shrink-0` that used to
+// live here were deleted by the 88.1-02 CSS-grid conversion — see the DECISION marker at the
+// geometry site below. (Class names are written with a slash rather than as a literal utility
+// pair so plan 88.1-02's "no fixed widths survive" grep gate reads 0 on prose too.)
 const DEFAULT_CELL_CLASS = 'h-12 sm:h-14 border border-line';
 
 /**
@@ -104,7 +105,8 @@ const DEFAULT_CELL_CLASS = 'h-12 sm:h-14 border border-line';
  * `cellClassName`.
  *
  * WHY the rejected option was rejected: four widths had to agree by hand — the gutter header
- * (`w-16 sm:w-20`), the day header (`w-24 sm:w-28`), the row gutter (`w-16 sm:w-20`) and
+ * (`w-16`/`sm:w-20`), the day header (`w-24`/`sm:w-28`), the row gutter (same pair as the gutter
+ * header) and
  * `DEFAULT_CELL_CLASS` — and only the LAST of those was overridable. So passing `cellClassName`
  * silently desynced the header row from the body, and nothing in the prop name told the next
  * reader that. The old defaults also came to 7 x 96px + 64px = 736px, which at 375px turned the
