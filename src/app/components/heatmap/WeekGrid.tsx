@@ -39,6 +39,11 @@ const coordKey = (row: number, col: number) => `${row}:${col}`;
  * `ReadCell` no longer accepts, and the build would have said so. It is recorded here because
  * the next person auditing that list against what actually shipped will otherwise read this as
  * scope drift.
+ *
+ * SEAM 1 (plan 88.1-02, D-01): `colorClass`, `style` and `children` are additive optional FIELDS
+ * on this surviving `merged` arm. Adding FIELDS is not what DECISION Phase 88-31 forbids — adding
+ * a second `variant` arm is. The rebuilt scheduler needs all three: a translucent wash class that
+ * is NOT the opaque ramp, per-cell inline style, and a participant-count badge as cell content.
  */
 export type WeekGridReadData = {
   variant: 'merged';
@@ -46,6 +51,16 @@ export type WeekGridReadData = {
   totalMembers: number;
   ariaLabel?: string;
   tooltipContent?: React.ReactNode;
+  /**
+   * Opt-in colour override forwarded to `ReadCell.colorClass` (88.1-02 Task 1). Omit for today's
+   * ramp; `null` to emit no colour class (the scheduler's empty slot); a string to use verbatim
+   * (the scheduler's translucent wash).
+   */
+  colorClass?: string | null;
+  /** Inline style forwarded to the cell (e.g. an rgba wash the class system cannot express). */
+  style?: React.CSSProperties;
+  /** Cell content forwarded to the cell (e.g. the participant-count badge). */
+  children?: React.ReactNode;
 };
 
 interface WeekGridBaseProps {
@@ -74,12 +89,88 @@ interface WeekGridBaseProps {
    * dead left padding". The day columns take `1fr` each, so the grid always fits its container.
    */
   gutterPx?: number;
+  /**
+   * SEAM 2 (88.1-02, D-01) — custom day headers. Rendered INSIDE the existing
+   * `role="columnheader"` element; when omitted, falls back to `dayLabels?.[col] ?? ''`.
+   * A ReactNode is required because the scheduler's header is a paired today ternary (S3) and the
+   * phone strip's is a two-line date stack — neither is expressible as a string.
+   *
+   * MEMO-STABILITY: pass a stable callback (`useCallback`). Every seam value that reaches a cell
+   * must be referentially stable across a drag or it defeats the `React.memo` on ~196 cells that
+   * `AvailabilityGrid.js:368-373` calls "the smooth/janky boundary on a phone, not a
+   * micro-optimization."
+   */
+  renderDayHeader?: (col: number) => React.ReactNode;
+  /**
+   * SEAM 3 (88.1-02, D-01) — overlay slot. Rendered as the LAST child of the grid body, which
+   * carries `relative`, so absolutely-positioned content resolves against the full-size scrolled
+   * content and travels with the scroll rather than sticking to the viewport.
+   *
+   * This hosts the drag-selection rectangle. Selection cannot be expressed as tinted cells:
+   * manual mode legitimately produces OFF-GRID ranges (`createEvent.js:64-74` derives
+   * `selectedSlot` from a free-form datetime-local plus a 1-720 minute field — e.g. 19:15-20:00
+   * on a 30-minute grid).
+   */
+  overlay?: React.ReactNode;
+  /**
+   * SEAM 4a (88.1-02, D-01/C10) — ref to the SCROLLING element (the wrapper). One ref serves three
+   * consumers: `scrollToTime` parity (plan 88.1-09 owns the scrollTop calculation), the rAF edge
+   * auto-scroll (plan 88.1-03), and the internal-scroll requirement the phone height budget forces.
+   * Only meaningful together with `maxBodyHeight` — without it the wrapper scrolls horizontally
+   * only and there is nothing vertical to scroll.
+   */
+  scrollContainerRef?: React.Ref<HTMLDivElement>;
 }
 
 export interface ReadWeekGridProps extends WeekGridBaseProps {
   variant: 'read';
   /** Returns the read/intensity data for a given coord. */
   getCell: (row: number, col: number) => WeekGridReadData;
+  /**
+   * SEAM 4b (88.1-02, D-01) — external pointer handlers spread onto the grid BODY, for the
+   * consumer's drag-to-select gesture.
+   *
+   * READ ARM ONLY, and that is enforced by this type rather than by a comment: the write arm's
+   * internal delegated paint handlers are authoritative and must not be silently replaced. The
+   * spread is applied AFTER the internal handlers, so on the read arm (where those internal
+   * handlers early-return anyway) the consumer's `onPointerDown` wins outright.
+   *
+   * MEMO-STABILITY: pass stable callbacks.
+   */
+  gestureHandlers?: Pick<
+    React.DOMAttributes<HTMLDivElement>,
+    'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onPointerCancel'
+  >;
+  /**
+   * SEAM 4c (88.1-02, added by adversarial review) — height-bound the grid into a SINGLE both-axes
+   * scroller. A CSS length, e.g. `'600px'`.
+   *
+   * WHY THIS EXISTS: today's wrapper is `overflow-x-auto` — horizontal only, with NO height bound.
+   * The shipped RBC scheduler gets its vertical scrolling from RBC's own internal scroller inside a
+   * `h-[600px] … overflow-hidden` container (`EventScheduler.js:478`). Without this prop the
+   * rebuilt grid would simply clip inside the modal, `scrollToTime` parity would silently become a
+   * no-op (nothing to scroll), and the phone height budget could not be met — while every pre-e2e
+   * gate stayed green, because the only pin is "mounts without throwing".
+   *
+   * ONE SCROLLER, NOT TWO — chosen OVER a split vertical-only inner scroller. A split would
+   * decouple the overlay/badge coordinate space from the horizontal scroll and break the very
+   * coupling seam 3 establishes. Omitting this prop is byte-identical to the pre-88.1-02 behavior
+   * (`overflow-x-auto`, unbounded height).
+   */
+  maxBodyHeight?: string;
+  /**
+   * SEAM 5 (88.1-02, SPEC Req 6) — keyboard/read-arm select passthrough. Called with the cell's
+   * coordinate when Enter/Space commits on a focused read cell.
+   *
+   * This is NOT a new keyboard handler and must never become one: `useHeatmapCell.ts:101-105`
+   * already maps Enter/Space to `onSelect`, and `ReadCell` has accepted an `onSelect` prop all
+   * along — WeekGrid's read arm simply never populated it, so a keyboard commit on a read cell
+   * resolved to `noop`. This seam closes that missing link, and nothing else.
+   *
+   * MEMO-STABILITY: routed through the same per-coordinate callback cache the write arm uses, so
+   * the memoized cells receive a stable identity regardless of how often `onCellSelect` changes.
+   */
+  onCellSelect?: (row: number, col: number) => void;
 }
 
 export interface WriteWeekGridProps extends WeekGridBaseProps {
@@ -135,7 +226,15 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
     disabled = false,
     cellClassName,
     gutterPx = 24,
+    renderDayHeader,
+    overlay,
+    scrollContainerRef,
   } = props;
+
+  // Read-arm-only seams. Narrowed here (not destructured above) so the write arm cannot reach them.
+  const gestureHandlers = props.variant === 'read' ? props.gestureHandlers : undefined;
+  const maxBodyHeight = props.variant === 'read' ? props.maxBodyHeight : undefined;
+  const onCellSelect = props.variant === 'read' ? props.onCellSelect : undefined;
 
   const [focusedCoord, setFocusedCoord] = useState({ row: 0, col: 0 });
 
@@ -168,13 +267,27 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
-  // Stable per-coord onSelect callbacks (keyboard cycle persistence).
-  const selectCallbacks = useRef(new Map<string, (next: Preference) => void>());
+  // Same latest-prop mirror for the read arm's select seam (88.1-02 seam 5), so the per-coord
+  // callbacks below never churn with `onCellSelect`'s identity.
+  const onCellSelectRef = useRef(onCellSelect);
+  onCellSelectRef.current = onCellSelect;
+
+  // Stable per-coord onSelect callbacks, shared by BOTH arms — write-arm keyboard cycle
+  // persistence AND the read arm's Req 6 coordinate commit. Generalizing this one cache was chosen
+  // OVER building a second read-arm cache: two caches would be two places to get memo stability
+  // right, and the read arm would inevitably drift from the write arm's guarantee.
+  //
+  // The two dispatches are mutually exclusive at runtime — a grid is one variant, so exactly one
+  // of the two refs is ever populated.
+  const selectCallbacks = useRef(new Map<string, (next?: Preference) => void>());
   const getOnSelect = useCallback((row: number, col: number) => {
     const key = coordKey(row, col);
     let cb = selectCallbacks.current.get(key);
     if (!cb) {
-      cb = (next: Preference) => onChangeRef.current?.(row, col, next);
+      cb = (next?: Preference) => {
+        onChangeRef.current?.(row, col, next ?? null);
+        onCellSelectRef.current?.(row, col);
+      };
       selectCallbacks.current.set(key, cb);
     }
     return cb;
@@ -231,6 +344,12 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
         disabled,
         onMove,
         triggerRef: getCellRef(key),
+        // SEAM 5 (Req 6): the callback this arm used to omit. `useHeatmapCell`'s existing
+        // Enter/Space branch calls it — that is the ONLY keyboard-commit handler in play, and no
+        // second one may be added. Always forwarded (not conditionally on `onCellSelect`), because
+        // the cached callback is stable either way and no-ops when the seam is unused; a
+        // conditional would hand the memoized cells a changing prop.
+        onSelect: getOnSelect(row, col),
       };
       // One read variant since 88-31 (see `WeekGridReadData` above); the branch that used to
       // sit here rendered the deleted intensity cell.
@@ -242,7 +361,11 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
           totalMembers={data.totalMembers}
           ariaLabel={data.ariaLabel}
           tooltipContent={data.tooltipContent}
-        />
+          colorClass={data.colorClass}
+          style={data.style}
+        >
+          {data.children}
+        </ReadCell>
       );
     }
 
@@ -263,27 +386,49 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
     );
   };
 
+  // SEAM 4c: with `maxBodyHeight` the wrapper becomes ONE both-axes scroller and is the element
+  // `scrollContainerRef` points at; without it, byte-identical to pre-88.1-02 (`overflow-x-auto`,
+  // unbounded height).
+  const scrollerClassName = maxBodyHeight ? 'overflow-auto pb-2' : 'overflow-x-auto pb-2';
+
   return (
-    <div className="overflow-x-auto pb-2" onPointerUp={endPaint} onPointerLeave={endPaint}>
+    <div
+      ref={scrollContainerRef}
+      className={scrollerClassName}
+      style={maxBodyHeight ? { maxHeight: maxBodyHeight } : undefined}
+      onPointerUp={endPaint}
+      onPointerLeave={endPaint}
+    >
       <div
-        className="grid gap-px"
+        // `relative` (SEAM 3) makes this the positioned ancestor for the overlay rectangle and the
+        // absolutely-positioned count badges. It lives INSIDE the scroller, so both resolve against
+        // the full-size scrolled CONTENT and travel with the scroll instead of sticking to the
+        // viewport. Harmless when no overlay is passed — there is nothing absolute to resolve.
+        className="grid gap-px relative"
         style={{ gridTemplateColumns: `${gutterPx}px repeat(${days}, 1fr)` }}
         role="grid"
         aria-label={ariaLabel}
         onPointerDown={handleGridPointerDown}
         onPointerOver={handleGridPointerOver}
+        // SEAM 4b spread LAST on purpose: on the read arm the internal paint handlers above
+        // early-return, so the consumer's gesture wins; on the write arm this is `undefined` by
+        // construction (read-arm-only type), so the internal handlers stay authoritative.
+        {...gestureHandlers}
       >
         {/* Day header row. `contents` keeps role="row" without breaking the single grid
-            (EventHeatmapBackground.js:235). */}
+            (EventHeatmapBackground.js:235) — which is also why `sticky` has to live on the header
+            CELLS: a display:contents element cannot itself stick. RBC keeps the day names fixed
+            while the slots scroll, and this is that parity. Backgrounds are required, not
+            decorative: a sticky element with no background lets the scrolled cells show through. */}
         <div className="contents" role="row">
-          <div role="columnheader" />
+          <div role="columnheader" className="sticky top-0 left-0 z-30 bg-surface-card" />
           {Array.from({ length: days }, (_, col) => (
             <div
               key={`h-${col}`}
               role="columnheader"
-              className="text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
+              className="sticky top-0 z-20 bg-surface-card text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
             >
-              {dayLabels?.[col] ?? ''}
+              {renderDayHeader ? renderDayHeader(col) : (dayLabels?.[col] ?? '')}
             </div>
           ))}
         </div>
@@ -294,7 +439,7 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
             {/* pr-1 (not the old pr-2) because the gutter is now 24px, not 64-80px — 8px of
                 right padding would leave 16px for the label. Matches the owner-passed
                 EventHeatmapBackground.js:238 gutter at the same width. */}
-            <div className="flex items-center justify-end pr-1 text-xs sm:text-sm text-content-secondary font-medium">
+            <div className="sticky left-0 z-10 bg-surface-card flex items-center justify-end pr-1 text-xs sm:text-sm text-content-secondary font-medium">
               {slotLabels?.[row] ?? ''}
             </div>
             {Array.from({ length: days }, (_, col) => (
@@ -304,6 +449,17 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
             ))}
           </div>
         ))}
+
+        {/* SEAM 3 — overlay layer, last child of the positioned body.
+            DECISION Phase 88.1-02: the node is wrapped in an `absolute inset-0 pointer-events-none`
+            layer, chosen OVER rendering it bare. Bare, a non-absolutely-positioned overlay node
+            would become a GRID ITEM and shift the last row — the container is a CSS grid, not a
+            block; and a pointer-events-consuming layer over the cells would swallow the very
+            drag it is drawing. A consumer needing an interactive overlay child sets
+            `pointer-events-auto` on that child. */}
+        {overlay ? (
+          <div className="absolute inset-0 pointer-events-none">{overlay}</div>
+        ) : null}
       </div>
     </div>
   );
