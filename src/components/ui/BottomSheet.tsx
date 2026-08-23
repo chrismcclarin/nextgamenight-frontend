@@ -5,10 +5,13 @@
  *
  * A bottom-anchored variant of the shipped Radix dialog, built from the parts
  * `src/components/ui/dialog.tsx` already exports. Radix Dialog supplies the
- * focus trap, `role="dialog"`, Esc-to-close, focus restore and the
- * `aria-labelledby` wiring from {@link DialogTitle} — none of it is
- * re-implemented here (`Modal.tsx:5-10` records the hand-rolled `.modal-*`
- * fleet was 0/16 on axe before Radix).
+ * focus trap, `role="dialog"`, Esc-to-close and the `aria-labelledby` wiring
+ * from {@link DialogTitle} — none of it is re-implemented here (`Modal.tsx:5-10`
+ * records the hand-rolled `.modal-*` fleet was 0/16 on axe before Radix).
+ *
+ * Focus RESTORE is the one exception: Radix restores to a `DialogTrigger`, and
+ * these sheets open from a plain bottom-bar button, so the sheet records its own
+ * invoker and puts focus back — see the FOCUS-RESTORE DECISION below.
  *
  * Zero new dependencies: D-05 rejects `vaul` (stale since 2024-12, a second
  * overlay engine, and a new dep in the phase that deletes one). Everything used
@@ -95,9 +98,12 @@ export interface BottomSheetProps {
   /** Height preset — see {@link HEIGHT_CLASS}. @default 'content' */
   height?: BottomSheetHeight;
   /**
-   * Radix close-autofocus pass-through, matching `Modal.tsx`'s prop of the same
-   * name: a caller that restores focus itself must do it HERE, because Radix
-   * moves focus AFTER the sheet unmounts. Omit for the default behaviour.
+   * Radix close-autofocus override, matching `Modal.tsx`'s prop of the same
+   * name: a caller that wants focus somewhere OTHER than the element that
+   * opened the sheet must place it HERE, because Radix moves focus AFTER the
+   * sheet unmounts. Supplying this REPLACES the invoker restore documented at
+   * {@link BottomSheet} — call `event.preventDefault()` inside it, or Radix's
+   * own default (which focuses nothing here) runs instead.
    */
   onCloseAutoFocus?: (event: Event) => void;
   /** Extra classes merged onto the sheet surface. */
@@ -145,6 +151,47 @@ const BottomSheet = React.forwardRef<
     [onClose]
   );
 
+  /* FOCUS-RESTORE DECISION (Phase 88.1 plan 04, T-88.1-08 / T-87.8-22): the sheet records
+     its invoker itself and puts focus back on it, chosen OVER "Radix handles focus restore"
+     — which is true for `DialogTrigger` consumers and FALSE for ours.
+
+     VERIFIED IN THE INSTALLED DIST: the modal content's own close-autofocus handler
+     (`@radix-ui/react-dialog/dist/index.mjs:148-151`) calls `event.preventDefault()` and then
+     `context.triggerRef.current?.focus()`. That preventDefault also cancels FocusScope's
+     previously-focused-element restore (`react-focus-scope/dist/index.mjs:93-95`). Both sheet
+     consumers open from a plain bottom-bar button, not a `DialogTrigger`, so `triggerRef` is
+     null, the optional call is a no-op, and a keyboard user is dropped on `<body>` at the top
+     of the document every time the sheet closes.
+
+     `document.activeElement` is captured in the OPEN handler because that fires before
+     FocusScope moves focus (`react-focus-scope/dist/index.mjs:74-79`); reading it from an
+     effect would return the Close button instead. Deleting this restores the bug silently —
+     `Modal.tsx`'s `onCloseAutoFocus` doc records the same Radix behaviour from 87.8. */
+  const invokerRef = React.useRef<HTMLElement | null>(null);
+
+  const handleOpenAutoFocus = React.useCallback(() => {
+    const active = document.activeElement;
+    invokerRef.current =
+      active instanceof HTMLElement && active !== document.body ? active : null;
+  }, []);
+
+  const handleCloseAutoFocus = React.useCallback(
+    (event: Event) => {
+      if (onCloseAutoFocus) {
+        onCloseAutoFocus(event);
+        return;
+      }
+      const invoker = invokerRef.current;
+      invokerRef.current = null;
+      // Nothing to restore to (or it has since unmounted): leave Radix's own
+      // handler to run rather than fighting it.
+      if (!invoker || !invoker.isConnected) return;
+      event.preventDefault();
+      invoker.focus();
+    },
+    [onCloseAutoFocus]
+  );
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogPortal>
@@ -158,7 +205,8 @@ const BottomSheet = React.forwardRef<
           // The accessible name comes from the DialogTitle below. No description
           // is required, so opt out of Radix's describedby warning.
           aria-describedby={undefined}
-          onCloseAutoFocus={onCloseAutoFocus}
+          onOpenAutoFocus={handleOpenAutoFocus}
+          onCloseAutoFocus={handleCloseAutoFocus}
           className={cn(
             // Bottom-anchored, full width, 12px top corners. `border-t` only —
             // the other three edges are flush with the viewport.
