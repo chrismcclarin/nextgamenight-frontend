@@ -120,6 +120,30 @@ interface WeekGridBaseProps {
    * only and there is nothing vertical to scroll.
    */
   scrollContainerRef?: React.Ref<HTMLDivElement>;
+  /**
+   * SEAM 6 (88.1-09) — role of the EMPTY top-left corner cell above the time gutter.
+   *
+   * DECISION Phase 88.1-09: an opt-in override defaulting to `'columnheader'` (today's shape,
+   * byte-identical when omitted), chosen OVER unconditionally changing the corner to
+   * `'presentation'`.
+   *
+   * WHY THE OVERRIDE EXISTS AT ALL: the corner labels no column — it is the intersection of the
+   * header row and the time gutter — so a consumer whose contract is "N day columns means N
+   * column headers" cannot live with it. The rebuilt scheduler is exactly that consumer: BOTH
+   * halves of its acceptance harness locate day columns as `getAllByRole('columnheader')` and
+   * assert `toHaveLength(7)` / `[0] === '24 Mon'` (`EventScheduler.test.tsx:99-100,137` and
+   * `createEvent.integration.test.tsx:109,137,184`), and both files are contractually UNEDITABLE.
+   *
+   * WHY NOT change it for everyone: `WeekGrid.test.tsx:171,181` pins the corner AS a columnheader
+   * ("headers[0] is the gutter corner; the day headers follow") and indexes the day headers from
+   * 1. Flipping the default would edit a pin to make a different pin pass — the thing this phase's
+   * harness rules forbid. Both readings of a blank corner are ARIA-legal; this makes the choice
+   * the consumer's.
+   *
+   * WHAT RE-OPENS IT: giving the corner real content (a timezone abbreviation, say). Content means
+   * it is describing something, and the whole question changes.
+   */
+  gutterHeaderRole?: 'columnheader' | 'presentation';
 }
 
 export interface ReadWeekGridProps extends WeekGridBaseProps {
@@ -229,6 +253,7 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
     renderDayHeader,
     overlay,
     scrollContainerRef,
+    gutterHeaderRole = 'columnheader',
   } = props;
 
   // Read-arm-only seams. Narrowed here (not destructured above) so the write arm cannot reach them.
@@ -421,7 +446,10 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
             while the slots scroll, and this is that parity. Backgrounds are required, not
             decorative: a sticky element with no background lets the scrolled cells show through. */}
         <div className="contents" role="row">
-          <div role="columnheader" className="sticky top-0 left-0 z-30 bg-surface-card" />
+          {/* SEAM 6: the blank corner. `columnheader` by default (unchanged); `presentation` when
+              the consumer's contract is "one columnheader per day column" — see the DECISION on
+              `gutterHeaderRole`. */}
+          <div role={gutterHeaderRole} className="sticky top-0 left-0 z-30 bg-surface-card" />
           {Array.from({ length: days }, (_, col) => (
             <div
               key={`h-${col}`}
