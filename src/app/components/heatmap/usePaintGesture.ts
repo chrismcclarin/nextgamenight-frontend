@@ -76,6 +76,40 @@
 // "finish the job" by re-pointing `AvailabilityGrid.js` at this hook outside that phase: that
 // grid is owner-walked and verified, and 88.1's SPEC scopes it out. The one substantive change
 // from the shipped copy is the C10 scroll-target/bounds parameterization described above.
+//
+// -----------------------------------------------------------------------------------------
+// TWO COMMIT SHAPES, ONE MACHINE (`mode`) — RESEARCH P6 / A4.
+//
+// The shipped scheduler got mouse drag-select for free from react-big-calendar's
+// `selectable` + `onSelectSlot` (`EventScheduler.js:501-502`), which reports a start/end PAIR
+// and feeds the Phase 66-01 contract `onTimeSelected(start, end)` — one canonical `start_date`
+// plus `duration_minutes` (`createEvent.js:64-95`). WeekGrid has only per-cell PAINT
+// (`WeekGrid.tsx` delegated pointer handlers), which is a different gesture: paint commits per
+// cell, range-select commits a pair. Dropping RBC without building the range machine would
+// silently leave desktop drag broken, so it is front-loaded here:
+//
+//   - `mode: 'range'` — pointerdown ANCHORS, movement EXTENDS and reports the live
+//     `(anchor, current)` pair through `onExtend` so the consumer can draw a selection
+//     rectangle, pointerup COMMITS once through `onCommit`. No per-cell callback fires.
+//   - `mode: 'paint'` — what the check-in grid does today: each newly-entered target fires
+//     `onEnter` and the commit is implicit. Kept verbatim so the Phase 92 re-point is a swap.
+//
+// RESEARCH A4 (MEDIUM confidence) said "mouse drag-select is genuinely absent from WeekGrid" —
+// a read of intent, not of a missing function. Confirmed on inspection while writing this arm:
+// WeekGrid's paint path calls `cyclePreference` per entered coord and has no notion of an
+// anchor, so it cannot express a range; this arm is the resolution, not a second mechanism.
+//
+// `mode` is REQUIRED rather than defaulted to 'paint' — a scheduler wiring that forgot it would
+// otherwise compile, fire per-cell callbacks and quietly re-create exactly the P6 defect this
+// arm exists to prevent. A missing discriminator must be a type error, not a runtime surprise.
+//
+// AMENDED (C2, a deliberate BEHAVIOR CHANGE, not parity): the shipped scheduler long-press is
+// 250ms (`EventScheduler.js:214`, Phase 68-03 MOB-07); adopting the owner-ruled 87.8-14 model
+// moves it to the 300ms threshold above. The shipped 250ms machine also has NO slop cancellation
+// and NO edge auto-scroll, so the swap is a strict improvement — but it is still a change, and
+// per pitfall P5 NO characterization pin may assert either timer value. Pins assert behavior
+// relative to the threshold (before/after), never the number.
+// -----------------------------------------------------------------------------------------
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
@@ -123,20 +157,36 @@ export interface EdgeScrollTargets {
   getBounds?: () => GestureBounds;
 }
 
+/**
+ * Which commit shape the consumer wants. See "TWO COMMIT SHAPES, ONE MACHINE" in the file header.
+ * - `'paint'` — per-cell: every newly-entered target fires `onEnter`.
+ * - `'range'` — anchor → extend → commit: `onExtend` reports the live pair, `onCommit` ends it.
+ */
+export type PaintGestureMode = 'paint' | 'range';
+
 export interface PaintGestureArgs<T> {
+  /** Commit shape. Required on purpose — see the header note on why it is not defaulted. */
+  mode: PaintGestureMode;
   /**
    * Resolve the client point (x, y) to a consumer-defined target, or null for "not a cell".
    * A null resolution is always a no-op, never an error. Build one with `pointResolver`.
    */
   resolvePoint: (x: number, y: number) => T | null;
   /**
-   * Called for each newly-entered target while the gesture is active, including the anchor at
-   * entry and the single target of a tap. This is the paint half of the commit contract.
+   * PAINT MODE ONLY. Called for each newly-entered target while the gesture is active, including
+   * the anchor at entry and the single target of a tap. Never fires in range mode.
    */
   onEnter?: (target: T) => void;
   /**
+   * RANGE MODE ONLY. Called with the live `(anchor, current)` pair each time the extended range
+   * changes — including once at entry, where anchor and current are the same target — so the
+   * consumer can render a selection rectangle. Never fires in paint mode.
+   */
+  onExtend?: (anchor: T, current: T) => void;
+  /**
    * Called EXACTLY ONCE at the end of a gesture that resolved at least one target, with the
-   * anchor and the last-resolved target. Never called on `pointercancel`.
+   * anchor and the last-resolved target. Never called on `pointercancel`. This is the range
+   * mode's commit; a paint consumer may ignore it or use it as a "drag finished" signal.
    */
   onCommit?: (anchor: T, current: T) => void;
   /**
@@ -262,17 +312,19 @@ export function usePaintGesture<T>(args: PaintGestureArgs<T>): PaintGestureResul
 
   /**
    * Report a resolved target. Sets the anchor on first resolution, dedupes repeats (the rAF loop
-   * re-resolves every frame at a stationary finger) and fires the paint callback.
+   * re-resolves every frame at a stationary finger) and dispatches to the mode's callback: paint
+   * reports the entered cell, range reports the extended pair.
    */
   const applyTarget = useCallback((next: T | null) => {
     const st = stateRef.current;
     if (!st || !st.active || next == null) return;
-    const { onEnter, isSameTarget } = argsRef.current;
+    const { mode, onEnter, onExtend, isSameTarget } = argsRef.current;
     const same = isSameTarget ?? Object.is;
     if (st.current != null && same(st.current, next)) return;
     st.current = next;
     if (st.anchor == null) st.anchor = next;
-    onEnter?.(next);
+    if (mode === 'range') onExtend?.(st.anchor, next);
+    else onEnter?.(next);
   }, []);
 
   /**
