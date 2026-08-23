@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import GroupList from '../components/grouplist';
 import EventCalendar from '../components/EventCalendar';
@@ -9,7 +9,12 @@ import UpcomingEventsCard from '../components/UpcomingEventsCard';
 // Req 11a (88.1-08): the phone-only Upcoming Events surface — a bottom bar plus
 // the bottom sheet it opens. The desktop right column below is untouched.
 import PhoneEventBar from '../components/PhoneEventBar';
+// Req 11b (88.1-10): the phone calendar surface hosts the BARE list view — see
+// the DECISION marker at its mount for why it is not the calendar component.
+import CalendarListView from '../components/CalendarListView';
 import { BottomSheet } from '../../components/ui/BottomSheet';
+import { Button } from '../../components/ui/Button';
+import { Icon } from '../../components/ui/Icon';
 import { eventsAPI } from '../../lib/api';
 // Phase 87.3-07 (D-02): the viewer's User.id UUID resolves via the shared
 // ['users','self'] query instead of an ad-hoc getUser self-fetch.
@@ -23,6 +28,7 @@ import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 // List of all the groups for the logged in User
 function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, groupListRefreshKey, onMemberAdded: onMemberAddedProp }) {
     const { user } = Auth();
+    const router = useRouter();
     const searchParams = useSearchParams();
     // Phase 71.1 GAMP-07: viewer's User.id UUID (NOT Auth0 string), used by
     // UpcomingEventsCard to match EventParticipations rows for game-only-event
@@ -46,6 +52,9 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     // Req 11a: the phone sheet's open state. The page owns it because the bar
     // (the invoker) and the sheet are siblings, not parent/child.
     const [upcomingSheetOpen, setUpcomingSheetOpen] = useState(false);
+    // Req 11b: the phone calendar sheet's open state, owned here for the same
+    // reason as the 11a sheet above — the button and the sheet are siblings.
+    const [calendarSheetOpen, setCalendarSheetOpen] = useState(false);
 
     // GROUP-05 (display half): show soft acknowledgment banner when arriving from
     // a 403 redirect set by Plan 69-04 (router.push('/?removedFrom=...')).
@@ -122,6 +131,31 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
        `upcomingLoading` back in is a decision to restore the lie, not a simplification. */
     const upcomingPending = upcomingLoading || (!selfUuid && !selfIdentityErrorState.showError);
 
+    /* Req 11b event tap. The CLOSE ORDERING IS THE POINT and is not incidental style:
+       `setCalendarSheetOpen(false)` runs on the line BEFORE `router.push`, copying
+       `EventCalendar.js:241-243` (`setSelectedDay(null)` then `onEmptyDayClick(dateStr)`).
+
+       Chosen OVER the navigate-then-close order that its own sibling handler eleven lines up
+       (`EventCalendar.js:233-236`) ships. Navigating first leaves an open Radix dialog — overlay,
+       focus trap and all — mounted across the route transition, so the destination page renders
+       behind a scrim the person has to dismiss before they can use it. Reversing these two lines
+       is a decision, not a tidy-up. (That the two shipped calendar handlers disagree with each
+       other is a real divergence; resolving it is NOT this phase's job and is recorded in this
+       plan's SUMMARY instead of being fixed here.)
+
+       The destination logic mirrors `EventCalendar.js:94-101` so a tap from the phone sheet and a
+       tap from the desktop calendar land on the same screen: a FUTURE event (or one with no game)
+       opens by event id, a past event with a game opens by game id. */
+    const handleCalendarSheetEventClick = (event) => {
+        setCalendarSheetOpen(false);
+        const isFutureEvent = event?.start_date && new Date(event.start_date) >= new Date();
+        if (isFutureEvent || !event?.game_id) {
+            router.push(`/gameDetail?event_id=${event?.id}&group_id=${event?.group_id}`);
+        } else {
+            router.push(`/gameDetail?game_id=${event.game_id}&group_id=${event.group_id}`);
+        }
+    };
+
     const handleGroupSelect = (group) => {
         setSelectedGroup(group);
         setInvitePanelOpen(true);
@@ -180,6 +214,31 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 </div>
             )}
             <div className="flex flex-col md:flex-row gap-4 md:gap-6">
+                {/* Req 11b (UI-SPEC S4): the phone-only entry point to the calendar, above the
+                    group list. It lives HERE and not inside `grouplist.js`, because desktop
+                    renders that component too and its header already carries a CTA.
+
+                    DECISION Phase 88.1 (plan 10, Req 11b): `variant="secondary"`, chosen OVER
+                    `variant="primary"`. UI-SPEC's one-anchor rule gives a 375px viewport exactly
+                    one accent element, and this page already spends it on "+ Create New Group"
+                    (`grouplist.js:133,177`) — a second accent here makes the page fail the rule.
+                    "Making it stand out more" re-opens that rule. The explicit `min-h-11 min-w-11`
+                    pair is the 44px touch floor in BOTH dimensions: `.btn`'s phone floor (88-01
+                    D-36) sets height only, so a narrow control would pass at full height and still
+                    fail R4. */}
+                <div className="md:hidden">
+                    <Button
+                        variant="secondary"
+                        onClick={() => setCalendarSheetOpen(true)}
+                        aria-haspopup="dialog"
+                        className="min-h-11 min-w-11 gap-2"
+                    >
+                        {/* Decorative — the visible label below is the accessible name. */}
+                        <Icon name="CalendarDays" size={20} />
+                        Calendar
+                    </Button>
+                </div>
+
                 <div className="w-full md:w-auto md:shrink-0 md:flex-[0_0_400px] md:relative">
                     <div className="md:absolute md:inset-0">
                     <GroupList
@@ -277,6 +336,69 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                         showGroupName={true}
                         viewerDbUserId={selfUuid ?? null}
                         errorState={upcomingErrorState}
+                    />
+                )}
+            </BottomSheet>
+
+            {/* Req 11b (UI-SPEC S4): the phone calendar sheet.
+
+                DECISION Phase 88.1 (plan 10, D-06) — FOUR choices are recorded here, three of
+                them owner-accepted cons that would otherwise read as oversights:
+
+                1. IT HOSTS THE BARE LIST VIEW, chosen OVER mounting the calendar component that
+                   the desktop column mounts. The calendar persists its view preference through a
+                   `saveCalendarPrefs(scope, …)` effect that fires ON MOUNT
+                   (`EventCalendar.js:64-66`), so a SECOND mount at the same `scope='home'` would
+                   silently overwrite the user's saved desktop view (month vs list, and the month
+                   they were looking at) every time this phone sheet rendered. "Simplifying" this
+                   into a second calendar mount is the pitfall, not the cleanup.
+
+                2. ERROR AND EMPTY ARE WIRED BY HAND, in that ORDER, because the bare list view
+                   does not bring the calendar's built-in WR-03 banner along with it. Identity
+                   failure first (ML-17), then the events-fetch failure, then the list. An errored
+                   fetch ALSO has zero events, so flipping any of these branches shows "No events"
+                   at someone whose request failed — the exact `DECISION Phase 88-18` bug in a new
+                   host (T-88.1-27).
+
+                3. PHONE ROWS CARRY NO RSVP COUNTS, BY CONSTRUCTION. This page's fetch omits
+                   `includeRsvpSummary` (the calendar's own fetch sets it), so the counts would be
+                   empty if shown. Inert today because the row's RSVP block is md-gated and this
+                   sheet is phone-only — un-gating one without the other is what makes it visible.
+
+                4. THERE IS NO MONTH/LIST TOGGLE INSIDE THE SHEET. Its only destination at 375px is
+                   the ~49px-per-cell month grid that truncates game names to 3-5 characters, which
+                   is the rendering Req 11b exists to avoid.
+
+                Two mount paths for the list view now exist — desktop through the calendar
+                component, phone through this sheet. That is accepted, not accidental.
+
+                Like the 11a sheet above, this mount deliberately carries NO `md:hidden`: it
+                portals to <body>, and hiding an OPEN dialog's content leaves a visible overlay
+                plus a focus trap on invisible content. The BUTTON carries the viewport gate. */}
+            <BottomSheet
+                open={calendarSheetOpen}
+                onClose={() => setCalendarSheetOpen(false)}
+                /* Matches the button label so the tap has an obvious destination. */
+                title="Calendar"
+                height="full"
+                /* The list view manages its own scroll region; the sheet body only
+                   needs to hand it the full height to flex into. */
+                bodyClassName="flex min-h-0 flex-col overflow-hidden"
+            >
+                {selfIdentityErrorState.showError ? (
+                    <FetchErrorBanner state={selfIdentityErrorState} compact />
+                ) : upcomingErrorState.showError ? (
+                    <FetchErrorBanner
+                        state={upcomingErrorState}
+                        title="We couldn't load your calendar"
+                        reportContext="Calendar sheet (home page, phone)"
+                    />
+                ) : (
+                    <CalendarListView
+                        events={upcomingEvents}
+                        onEventClick={handleCalendarSheetEventClick}
+                        loading={upcomingPending}
+                        variant="sheet"
                     />
                 )}
             </BottomSheet>
