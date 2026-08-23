@@ -24,7 +24,7 @@
 import * as React from 'react';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { addDays, addWeeks, format, parseISO, startOfWeek, subDays } from 'date-fns';
+import { addDays, addMinutes, addWeeks, format, parseISO, startOfWeek, subDays } from 'date-fns';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const GROUP_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
@@ -248,5 +248,98 @@ describe('CreateEvent + real EventScheduler — the poll-CTA week anchor (Phase 
 
     await waitFor(() => expect(api.getPromptHeatmap).toHaveBeenCalledTimes(1));
     expect(api.getGroupHeatmap).not.toHaveBeenCalled();
+  });
+});
+
+/* DECISION Phase 88.1-07 Task 2 (D-08 Layer 3): the round-trip below is driven from the
+   MANUAL side — type the canonical fields, then read the visual panel — chosen OVER driving
+   it from a slot gesture in the visual calendar, which is NOT DRIVABLE IN JSDOM AT ALL.
+   Probed during execution against the shipped react-big-calendar 1.12.1: its `Selection`
+   module calls `document.elementFromPoint` (Selection.js:27, via `isOverContainer`), which
+   jsdom does not implement, so the pointer path throws before any date is ever computed.
+   Stubbing `elementFromPoint` only moves the failure one step: `closestSlotFromPoint`
+   divides by the height of a zero-height rect, which is RESEARCH P7's "silently passes on
+   zeroes" trap — a green pin asserting a slot nobody could have clicked.
+
+   So the GESTURE half (drag/tap -> `onTimeSelected`) belongs to the Playwright spec in plan
+   88.1-14, and the STATE half is pinned here. What these tests actually exercise is the
+   whole Phase 66-01 mechanism: the parent owns `start_date` + `duration_minutes`,
+   `derivedSelectedSlot` (createEvent.js:64-74) is a pure projection of them, and the
+   scheduler is CONTROLLED through the `selectedSlot` prop. Both modes read and write the
+   same two fields, so entering from manual traverses exactly the same wire as entering from
+   a drag would. Do not "complete" this by mocking geometry — that is a decision, not a
+   cleanup. */
+describe('CreateEvent + real EventScheduler — the Phase 66-01 controlled round-trip', () => {
+  // A Thursday of next week at 19:00 — always in the future, so the modal stays on its
+  // create-path branches, and stable to format.
+  const slotStart = addMinutes(addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), 10), 19 * 60);
+  const slotEnd = addMinutes(slotStart, 150);
+  const START_VALUE = format(slotStart, "yyyy-MM-dd'T'HH:mm");
+
+  const manualToggle = () => screen.getByRole('button', { name: 'Switch to Manual Entry' });
+  const visualToggle = () => screen.getByRole('button', { name: 'Switch to Visual Calendar' });
+  const startInput = () => screen.getByLabelText(/Start Date & Time/) as HTMLInputElement;
+  const durationInput = () => screen.getByLabelText(/Duration \(minutes\)/) as HTMLInputElement;
+
+  /** Type a slot into the manual fields (the shipped controls, by their real labels). */
+  function enterSlotManually() {
+    fireEvent.change(startInput(), { target: { value: START_VALUE } });
+    fireEvent.change(durationInput(), { target: { value: '150' } });
+  }
+
+  it('projects the parent-owned slot into the scheduler summary panel', async () => {
+    await renderAndSettle();
+    expect(screen.queryByText('Selected Time:')).not.toBeInTheDocument();
+
+    fireEvent.click(manualToggle());
+    enterSlotManually();
+    fireEvent.click(visualToggle());
+
+    // Verbatim parity carry — the whole harness keys on this string. Do not reword it.
+    const panel = (await screen.findByText('Selected Time:')).closest('div') as HTMLElement;
+    expect(panel.textContent).toContain(format(slotStart, 'EEEE, MMMM d, h:mm a'));
+    expect(panel.textContent).toContain(format(slotEnd, 'h:mm a'));
+    expect(panel.textContent).toContain('(2h 30m)');
+  });
+
+  it('round-trips visual -> manual -> visual without losing the selection', async () => {
+    await renderAndSettle();
+
+    fireEvent.click(manualToggle());
+    enterSlotManually();
+    fireEvent.click(visualToggle());
+    await screen.findByText('Selected Time:');
+
+    // Back to manual: the SAME canonical values are still in the shipped inputs. This is
+    // the leg that proves the parent owns the state — a scheduler holding its own copy
+    // would leave these blank.
+    fireEvent.click(manualToggle());
+    expect(startInput().value).toBe(START_VALUE);
+    expect(durationInput().value).toBe('150');
+
+    // …and forward again: the highlight comes back from parent state, not from anything
+    // the scheduler remembered across its own unmount.
+    fireEvent.click(visualToggle());
+    const panel = (await screen.findByText('Selected Time:')).closest('div') as HTMLElement;
+    expect(panel.textContent).toContain(format(slotStart, 'EEEE, MMMM d, h:mm a'));
+  });
+
+  it('clears the highlight when the canonical field is cleared (no local slot state)', async () => {
+    // Phase 66-01's actual contract: there is NO separate `selectedTimeSlot` local state.
+    // Clearing the parent's field must empty the panel; a scheduler with its own copy of
+    // the selection would keep showing the stale one.
+    await renderAndSettle();
+
+    fireEvent.click(manualToggle());
+    enterSlotManually();
+    fireEvent.click(visualToggle());
+    await screen.findByText('Selected Time:');
+
+    fireEvent.click(manualToggle());
+    fireEvent.change(startInput(), { target: { value: '' } });
+    fireEvent.click(visualToggle());
+
+    await waitFor(() => expect(screen.queryByText('Selected Time:')).not.toBeInTheDocument());
+    expect(screen.getByText(/select a time slot for your event/i)).toBeInTheDocument();
   });
 });
