@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useTimezone } from '../components/TimezoneProvider';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { selectUpcomingWithin7Days } from '../../lib/upcomingEvents';
 
 /**
  * Format event date/time in relative + compact format with timezone support.
@@ -117,23 +118,15 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
   const { timezone } = useTimezone();
   const [expanded, setExpanded] = useState(false);
 
-  // Defensive: treat null/undefined as empty array
-  const safeEvents = events || [];
-
-  // Filter: future events, within 7 days, scheduled or in_progress only
-  const now = new Date();
-  const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-  const upcomingEvents = safeEvents
-    .filter(event => {
-      const startDate = new Date(event.start_date);
-      if (startDate <= now) return false;
-      if (startDate > sevenDaysLater) return false;
-      const status = event.status || 'scheduled';
-      if (status !== 'scheduled' && status !== 'in_progress') return false;
-      return true;
-    })
-    .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
+  /* DECISION Phase 88.1-05 (Req-11, PATTERNS S5): the 7-day window + status filter + sort
+     that used to live inline HERE now lives in the shared `selectUpcomingWithin7Days`
+     selector — chosen OVER keeping the predicate in this component. The page owner passes
+     the RAW list (UserHomePage.js: "UpcomingEventsCard does its own filter+sort"), so the
+     phone bottom bar's upcoming-count pill (plan 88.1-08) has to derive its NUMBER from the
+     same predicate this body derives its ROWS from, or the bar advertises a count the sheet
+     does not show. Re-inlining it here is a decision, not a cleanup. The selector tolerates
+     null/undefined, which is why the old `safeEvents` guard is gone rather than lost. */
+  const upcomingEvents = selectUpcomingWithin7Days(events);
 
   const displayEvents = expanded ? upcomingEvents : upcomingEvents.slice(0, 3);
   const overflowCount = upcomingEvents.length - 3;
