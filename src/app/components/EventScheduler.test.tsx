@@ -32,6 +32,11 @@
 //     zero, so column widths and the strip cell height are Playwright assertions, never
 //     vitest ones.
 //
+// PLAN 88.1-11 ADDITIONS (last section): the mouse drag RANGE machine — one commit per gesture,
+// backwards-drag normalization, nothing committed mid-drag — plus the live selection rectangle's
+// presence/class contract and the gesture-accurate prompt copy fork. Its own preamble explains
+// how a drag is driven in jsdom and, more importantly, what that does NOT prove.
+//
 // PLAN 88.1-09 ADDITIONS (below the plan-01 pins): SPEC Req 6 — roving keyboard navigation with
 // REAL focus movement, keyboard commit, the ARIA scaffold, an axe run, both-direction day-arm
 // stepping, the carried Today control, and the committed-selection block on the grid.
@@ -43,7 +48,7 @@
 // `toHaveLength(7)` in this file and in the Layer-3 suite would have read 8.
 import * as React from 'react';
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { addDays, format, startOfDay, startOfWeek } from 'date-fns';
 
@@ -617,5 +622,270 @@ describe('EventScheduler — the committed selection is a FILLED block ON the gr
     render(<EventScheduler initialDate={WEEK_N} selectedSlot={{ start, end }} />);
     expect(screen.getByText('Selected Time:')).toBeInTheDocument();
     expect(screen.getAllByTestId('scheduler-selected-block').length).toBeGreaterThan(0);
+  });
+});
+
+// =========================================================================================
+// Plan 88.1-11 — the drag RANGE machine, the live rectangle, and the gesture-accurate prompt.
+// =========================================================================================
+
+/*
+ * WHY THESE PINS EXIST AT ALL — RESEARCH P6, stated plainly: the calendar library supplied
+ * mouse drag-select for free (`selectable` + `onSelectSlot` gave a start/end PAIR). WeekGrid
+ * supplies per-cell paint, which is a different gesture. Building only the touch arm would leave
+ * DESKTOP DRAG SILENTLY BROKEN and nothing else in the suite would notice — every other pin here
+ * commits through the keyboard or through the controlled `selectedSlot` prop.
+ *
+ * HOW A DRAG IS DRIVEN IN JSDOM, and what that does and does NOT prove.
+ *
+ * `document.elementFromPoint` is NOT IMPLEMENTED by jsdom (probed this session: it is
+ * `undefined`), and the gesture machine resolves every target through it. So the pins below
+ * install a resolver stub that maps a synthetic client point to a chosen cell — `clientX` is the
+ * COLUMN index and `clientY` is the ROW index, by construction.
+ *
+ * This is deliberately NOT the trap `DECISION Phase 88.1-07 Task 2` warns about in
+ * `createEvent.integration.test.tsx:254-269`. That warning is about stubbing geometry and then
+ * letting a slot be DERIVED from it — the library divided by the height of a zero-height rect,
+ * so the pin would have "passed" on a slot no user could have clicked. Nothing here reads
+ * layout: `pointResolver` walks `closest('[data-coord]')` and reads an attribute this repo
+ * authored. The point-to-cell mapping is stated by the test rather than measured, so what is
+ * pinned is the STATE MACHINE and the coordinate->time derivation — anchor, extend, normalize,
+ * commit once — and nothing about pixels.
+ *
+ * WHAT IS THEREFORE NOT PINNED HERE, and where it lives instead (plan 88.1-14, at 375x667):
+ *   - that a real finger at a real pixel lands on the cell under it;
+ *   - the rectangle's POSITION and SIZE (P7 — every box in jsdom is zero, so a geometry
+ *     assertion here would pass on zeroes and prove nothing). Its PRESENCE and its class
+ *     contract are pinned; its behaviour is Playwright's.
+ *   - all gesture TIMING (P5). No pin below asserts the long-press threshold, or any other
+ *     duration. The shipped 250ms and the owner-ruled 300ms differ ON PURPOSE, and a pin on the
+ *     number would go red and invite someone to "fix" the rebuild backwards.
+ */
+
+/** Map a synthetic client point to a grid cell: clientX = column, clientY = row. */
+function stubPointResolution() {
+  const doc = document as Document & {
+    elementFromPoint?: (x: number, y: number) => Element | null;
+  };
+  const original = doc.elementFromPoint;
+  doc.elementFromPoint = (x: number, y: number) =>
+    document.querySelector(`[data-coord="${y}:${x}"]`);
+  return () => {
+    doc.elementFromPoint = original;
+  };
+}
+
+const POINTER = { pointerId: 1, pointerType: 'mouse' } as const;
+const grid = () => screen.getByRole('grid');
+
+/** Fire one pointer event at the cell (row, col) — see the coordinate convention above. */
+function pointerAt(
+  kind: 'pointerDown' | 'pointerMove' | 'pointerUp' | 'pointerCancel',
+  row: number,
+  col: number
+) {
+  fireEvent[kind](grid(), { ...POINTER, clientX: col, clientY: row });
+}
+
+describe('EventScheduler — mouse drag selects a RANGE and commits once (P6 regression guard)', () => {
+  let restoreResolver: () => void;
+  beforeEach(() => {
+    restoreResolver = stubPointResolution();
+  });
+  afterEach(() => restoreResolver());
+
+  const monday = startOfWeek(WEEK_N, { weekStartsOn: 1 });
+  /** Wall-clock time of grid row `row` on day column `col` (10:00 start, 30-minute slots). */
+  const slotTime = (row: number, col: number) =>
+    new Date(addDays(monday, col).setHours(10 + Math.floor(row / 2), (row % 2) * 30, 0, 0));
+
+  it('commits ONE start/end pair spanning every crossed slot', () => {
+    const onTimeSelected = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onTimeSelected={onTimeSelected} />);
+
+    pointerAt('pointerDown', 4, 2); // Wed 12:00
+    pointerAt('pointerMove', 5, 2);
+    pointerAt('pointerMove', 7, 2); // …through Wed 13:30
+    pointerAt('pointerUp', 7, 2);
+
+    expect(onTimeSelected).toHaveBeenCalledTimes(1);
+    const [start, end] = onTimeSelected.mock.calls[0] as [Date, Date];
+    expect(start).toEqual(slotTime(4, 2));
+    // The range CLOSES the last crossed slot rather than starting it — 13:30 + 30 min.
+    expect(end).toEqual(slotTime(8, 2));
+  });
+
+  it('normalizes a BACKWARDS drag to start < end (T-88.1-29)', () => {
+    const onTimeSelected = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onTimeSelected={onTimeSelected} />);
+
+    pointerAt('pointerDown', 7, 2); // anchor LATE…
+    pointerAt('pointerMove', 4, 2); // …drag EARLIER
+    pointerAt('pointerUp', 4, 2);
+
+    expect(onTimeSelected).toHaveBeenCalledTimes(1);
+    const [start, end] = onTimeSelected.mock.calls[0] as [Date, Date];
+    expect(start).toEqual(slotTime(4, 2));
+    expect(end).toEqual(slotTime(8, 2));
+    expect(start.getTime()).toBeLessThan(end.getTime());
+  });
+
+  it('commits NOTHING mid-drag — not per cell, not on the anchor', () => {
+    const onTimeSelected = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onTimeSelected={onTimeSelected} />);
+
+    pointerAt('pointerDown', 4, 2);
+    expect(onTimeSelected).not.toHaveBeenCalled();
+
+    for (const row of [5, 6, 7, 8]) {
+      pointerAt('pointerMove', row, 2);
+      expect(onTimeSelected).not.toHaveBeenCalled();
+    }
+
+    pointerAt('pointerUp', 8, 2);
+    expect(onTimeSelected).toHaveBeenCalledTimes(1);
+  });
+
+  it('a click with no movement still commits the single slot under the pointer', () => {
+    // The tap path must survive the range machine: this is what plan 88.1-09 shipped and what a
+    // user does most often. Degenerate range = one slot.
+    const onTimeSelected = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onTimeSelected={onTimeSelected} />);
+
+    pointerAt('pointerDown', 6, 3);
+    pointerAt('pointerUp', 6, 3);
+
+    expect(onTimeSelected).toHaveBeenCalledTimes(1);
+    const [start, end] = onTimeSelected.mock.calls[0] as [Date, Date];
+    expect(start).toEqual(slotTime(6, 3));
+    expect(end).toEqual(slotTime(7, 3));
+  });
+
+  it('pointercancel commits nothing (the browser took the gesture)', () => {
+    const onTimeSelected = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onTimeSelected={onTimeSelected} />);
+
+    pointerAt('pointerDown', 4, 2);
+    pointerAt('pointerMove', 7, 2);
+    pointerAt('pointerCancel', 7, 2);
+
+    expect(onTimeSelected).not.toHaveBeenCalled();
+  });
+
+  it('a drag that starts off-grid (the gutter, a header) commits nothing', () => {
+    const onTimeSelected = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onTimeSelected={onTimeSelected} />);
+
+    // Column -1 resolves to no `[data-coord]` element at all.
+    pointerAt('pointerDown', 4, -1);
+    pointerAt('pointerUp', 4, -1);
+
+    expect(onTimeSelected).not.toHaveBeenCalled();
+  });
+});
+
+describe('EventScheduler — the live selection rectangle (DECISION Phase 88-27, D-32 bucket A)', () => {
+  let restoreResolver: () => void;
+  beforeEach(() => {
+    restoreResolver = stubPointResolution();
+  });
+  afterEach(() => restoreResolver());
+
+  const rect = () => screen.queryByTestId('scheduler-drag-rect');
+
+  it('appears while the drag is live and disappears on commit', () => {
+    render(<EventScheduler initialDate={WEEK_N} />);
+    expect(rect()).not.toBeInTheDocument();
+
+    pointerAt('pointerDown', 4, 2);
+    expect(rect()).toBeInTheDocument();
+
+    pointerAt('pointerMove', 7, 2);
+    expect(rect()).toBeInTheDocument();
+
+    pointerAt('pointerUp', 7, 2);
+    expect(rect()).not.toBeInTheDocument();
+  });
+
+  it('has a 2px border and NO FILL, and never eats the drag it is drawing', () => {
+    // The class contract, not the geometry (P7). The no-fill half is the load-bearing one: an
+    // opaque fill would hide the very cells the drag is selecting, which is what D-32 bucket A
+    // rejected. A future "completion" that adds a background makes this pin red on purpose.
+    render(<EventScheduler initialDate={WEEK_N} />);
+    pointerAt('pointerDown', 4, 2);
+
+    const el = rect() as HTMLElement;
+    expect(el.className).toContain('border-2');
+    expect(el.className).toContain('border-btn-primary');
+    expect(el.className).toContain('pointer-events-none');
+    expect(el.style.backgroundColor).toBe('');
+    expect(el.getAttribute('aria-hidden')).toBe('true');
+
+    pointerAt('pointerUp', 4, 2);
+  });
+
+  it('is a DIFFERENT surface from the committed selection block', () => {
+    // Two states, two treatments: in-progress = border only, committed = filled. Merging them is
+    // the regression both DECISION markers exist to prevent.
+    render(
+      <EventScheduler
+        initialDate={WEEK_N}
+        selectedSlot={{ start: new Date(2026, 6, 22, 19, 0, 0), end: new Date(2026, 6, 22, 19, 30, 0) }}
+      />
+    );
+    expect(screen.getAllByTestId('scheduler-selected-block').length).toBeGreaterThan(0);
+    expect(rect()).not.toBeInTheDocument();
+  });
+});
+
+describe('EventScheduler — the prompt names the gesture the DEVICE can perform (Req 5, UI-SPEC)', () => {
+  // Asserted on the RENDERED STRING, never on a viewport measurement (P7: jsdom has no layout).
+  // The fork is a matchMedia state fork precisely so this is answerable at all — see the
+  // DECISION marker at `isPhoneViewport`.
+  const PHONE_COPY = 'Tap and hold on a day to pick a time.';
+  const DESKTOP_COPY = 'Click and drag on the calendar to select a time slot for your event.';
+
+  it('says tap-and-hold at md and below', () => {
+    const restore = stubMatchMedia({ name: 'phone', hoverNone: true, maxWidth: 375 });
+    try {
+      render(<EventScheduler initialDate={WEEK_N} />);
+      expect(screen.getByText(PHONE_COPY)).toBeInTheDocument();
+      expect(screen.queryByText(DESKTOP_COPY)).not.toBeInTheDocument();
+    } finally {
+      restore();
+    }
+  });
+
+  it('keeps the shipped click-and-drag sentence above md', () => {
+    const restore = stubMatchMedia({ name: 'desktop', hoverNone: false, maxWidth: 1280 });
+    try {
+      render(<EventScheduler initialDate={WEEK_N} />);
+      expect(screen.getByText(DESKTOP_COPY)).toBeInTheDocument();
+      expect(screen.queryByText(PHONE_COPY)).not.toBeInTheDocument();
+    } finally {
+      restore();
+    }
+  });
+
+  it('shows no prompt at all once a slot is selected, on either arm', () => {
+    for (const viewport of [
+      { name: 'phone', hoverNone: true, maxWidth: 375 },
+      { name: 'desktop', hoverNone: false, maxWidth: 1280 },
+    ]) {
+      const restore = stubMatchMedia(viewport);
+      try {
+        render(
+          <EventScheduler
+            initialDate={WEEK_N}
+            selectedSlot={{ start: new Date(2026, 6, 22, 19, 0, 0), end: new Date(2026, 6, 22, 21, 30, 0) }}
+          />
+        );
+        expect(screen.queryByText(PHONE_COPY)).not.toBeInTheDocument();
+        expect(screen.queryByText(DESKTOP_COPY)).not.toBeInTheDocument();
+      } finally {
+        restore();
+        cleanup();
+      }
+    }
   });
 });
