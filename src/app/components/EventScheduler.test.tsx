@@ -31,10 +31,21 @@
 //   - P7, anything geometric. jsdom has no layout — element boxes and scroll extents are all
 //     zero, so column widths and the strip cell height are Playwright assertions, never
 //     vitest ones.
+//
+// PLAN 88.1-09 ADDITIONS (below the plan-01 pins): SPEC Req 6 — roving keyboard navigation with
+// REAL focus movement, keyboard commit, the ARIA scaffold, an axe run, both-direction day-arm
+// stepping, the carried Today control, and the committed-selection block on the grid.
+//
+// NOT ONE PLAN-01 PIN WAS EDITED. The rebuild passes all fifteen unchanged, including the
+// `columnHeaders()` helper — which mattered more than it looks: WeekGrid renders a blank corner
+// cell above the time gutter, and it is only NOT a `columnheader` here because the rebuilt
+// scheduler opts out through WeekGrid's `gutterHeaderRole` seam. Had it not, every
+// `toHaveLength(7)` in this file and in the Layer-3 suite would have read 8.
 import * as React from 'react';
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { startOfWeek } from 'date-fns';
+import { axe } from 'vitest-axe';
+import { addDays, format, startOfDay, startOfWeek } from 'date-fns';
 
 // Synthetic identity only (threat T-88.1-02): no real user data in fixtures. The component
 // reads `selfUuid` to mark self-conflicts in the per-slot tooltip; mocked so the suite needs
@@ -296,5 +307,315 @@ describe('EventScheduler — initialDate re-syncs the visible week AFTER mount',
     const headers = columnHeaders();
     expect(headers).toHaveLength(1);
     expect(headers[0]).toContain('05');
+  });
+});
+
+// =========================================================================================
+// Plan 88.1-09 — SPEC Req 6 (keyboard + ARIA) and the rebuilt chrome.
+// =========================================================================================
+
+/** The grid is 28 rows (30-minute slots over 10:00-23:59) by `days` columns. */
+const SLOT_ROWS = 28;
+const gridcells = () => screen.getAllByRole('gridcell');
+/** Cell at (row, col) in DOM order — the grid renders row-major. */
+const cellAt = (row: number, col: number, cols: number) => gridcells()[row * cols + col];
+
+const button = (name: RegExp) => screen.getByRole('button', { name });
+
+describe('EventScheduler — roving keyboard navigation moves REAL DOM focus (Req 6)', () => {
+  // The `WeekGrid.test.tsx:78-100` idiom, on the composed scheduler: focus a gridcell, fire a
+  // nav key, assert `document.activeElement` actually MOVED. A tabIndex shuffle is not the
+  // guarantee — the guarantee is that a keyboard user's focus ring is on the cell they navigated
+  // to. The handler under test is `useHeatmapCell`'s; this proves the rebuild WIRED it, which is
+  // exactly what the outgoing implementation never did.
+  it('walks the full eight-key set across the WEEK arm', () => {
+    render(<EventScheduler initialDate={WEEK_N} />);
+    const cols = 7;
+
+    cellAt(0, 0, cols).focus();
+    expect(document.activeElement).toBe(cellAt(0, 0, cols));
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(cellAt(0, 1, cols));
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(cellAt(1, 1, cols));
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowLeft' });
+    expect(document.activeElement).toBe(cellAt(1, 0, cols));
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(cellAt(0, 0, cols));
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'End' });
+    expect(document.activeElement).toBe(cellAt(0, cols - 1, cols));
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Home' });
+    expect(document.activeElement).toBe(cellAt(0, 0, cols));
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'PageDown' });
+    expect(document.activeElement).toBe(cellAt(SLOT_ROWS - 1, 0, cols));
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'PageUp' });
+    expect(document.activeElement).toBe(cellAt(0, 0, cols));
+  });
+
+  it('walks the vertical keys in the DAY arm, and the horizontal keys correctly do not move', () => {
+    // The day arm is ONE column, so ArrowLeft/ArrowRight/Home/End have nowhere to go. That is the
+    // hook's clamp behaving, not a gap: asserting focus STAYS is the honest contract for a
+    // single-column grid, and it is what catches a rebuild that lets focus escape the grid.
+    render(<EventScheduler initialDate={WEEK_N} defaultView="day" />);
+    const cols = 1;
+    expect(gridcells()).toHaveLength(SLOT_ROWS);
+
+    cellAt(0, 0, cols).focus();
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(cellAt(1, 0, cols));
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'PageDown' });
+    expect(document.activeElement).toBe(cellAt(SLOT_ROWS - 1, 0, cols));
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(cellAt(SLOT_ROWS - 2, 0, cols));
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'PageUp' });
+    expect(document.activeElement).toBe(cellAt(0, 0, cols));
+
+    for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End']) {
+      fireEvent.keyDown(document.activeElement as HTMLElement, { key });
+      expect(document.activeElement).toBe(cellAt(0, 0, cols));
+    }
+  });
+});
+
+describe('EventScheduler — keyboard commit reaches onTimeSelected (Req 6)', () => {
+  it('Enter on a focused cell commits that 30-minute slot in the WEEK arm', () => {
+    const onTimeSelected = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onTimeSelected={onTimeSelected} />);
+
+    // (row 2, col 2) = the third half-hour slot (11:00) on the Wednesday of WEEK_N's Monday week.
+    cellAt(2, 2, 7).focus();
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Enter' });
+
+    expect(onTimeSelected).toHaveBeenCalledTimes(1);
+    const [start, end] = onTimeSelected.mock.calls[0] as [Date, Date];
+    const monday = startOfWeek(WEEK_N, { weekStartsOn: 1 });
+    expect(start).toEqual(new Date(addDays(monday, 2).setHours(11, 0, 0, 0)));
+    expect(end).toEqual(new Date(addDays(monday, 2).setHours(11, 30, 0, 0)));
+  });
+
+  it('Space commits in the DAY arm, on the displayed day', () => {
+    const onTimeSelected = vi.fn();
+    render(
+      <EventScheduler initialDate={WEEK_N} defaultView="day" onTimeSelected={onTimeSelected} />
+    );
+
+    cellAt(1, 0, 1).focus();
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: ' ' });
+
+    const [start, end] = onTimeSelected.mock.calls[0] as [Date, Date];
+    expect(start).toEqual(new Date(startOfDay(WEEK_N).setHours(10, 30, 0, 0)));
+    expect(end).toEqual(new Date(startOfDay(WEEK_N).setHours(11, 0, 0, 0)));
+  });
+
+  it('a non-select key commits nothing', () => {
+    const onTimeSelected = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onTimeSelected={onTimeSelected} />);
+    cellAt(0, 0, 7).focus();
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'a' });
+    expect(onTimeSelected).not.toHaveBeenCalled();
+  });
+});
+
+describe('EventScheduler — the ARIA scaffold survives the rebuild (Req 6)', () => {
+  it('exposes grid / row / columnheader / gridcell, and every cell is named', () => {
+    render(<EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} />);
+
+    expect(screen.getByRole('grid')).toBeInTheDocument();
+    // Header row + 28 slot rows.
+    expect(screen.getAllByRole('row')).toHaveLength(SLOT_ROWS + 1);
+    expect(screen.getAllByRole('columnheader')).toHaveLength(7);
+
+    const cells = gridcells();
+    expect(cells).toHaveLength(SLOT_ROWS * 7);
+    for (const cell of cells) {
+      expect(cell.getAttribute('aria-label')).toBeTruthy();
+    }
+  });
+});
+
+/*
+ * COVERAGE NOTE 2026-08-22 (adversarial review, carried into the code): this axe pin executes in
+ * WAVE 3 — two waves before the phone fork and `SchedulerWeekStrip` exist (plan 88.1-12, wave 5).
+ * As of today it audits the DESKTOP arm only, while SPEC Req 6's target is "both views" and the
+ * phone arm is the primary surface under the phone-forward tenet.
+ *
+ * It is therefore written PARAMETERIZED OVER THE FORK rather than as a single desktop render:
+ * plan 88.1-12 adds `{ name: 'phone', hoverNone: true, maxWidth: 375 }` to the table below and
+ * this pin takes the phone composition with no rewrite. A phone entry is deliberately NOT added
+ * now — with no fork in the component it would render the identical desktop tree and read as
+ * phone coverage that does not exist.
+ *
+ * A GREEN RUN HERE IS NOT EVIDENCE ABOUT THE PHONE ARM. Plan 88.1-12's acceptance carries the
+ * obligation to re-run axe against the shipped phone composition (strip + single-day column);
+ * do not report Req 6 as met on this pin alone.
+ */
+type AxeViewport = { name: string; hoverNone: boolean; maxWidth: number };
+const AXE_VIEWPORTS: AxeViewport[] = [{ name: 'desktop', hoverNone: false, maxWidth: 1280 }];
+
+/** Answer the media queries the fork will branch on, per viewport. */
+function stubMatchMedia({ hoverNone, maxWidth }: AxeViewport) {
+  const original = window.matchMedia;
+  window.matchMedia = ((query: string) => {
+    const widthMatch = /max-width:\s*(\d+)px/.exec(query);
+    const matches = widthMatch
+      ? maxWidth <= Number(widthMatch[1])
+      : query.includes('hover: none')
+        ? hoverNone
+        : false;
+    return {
+      matches,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    } as unknown as MediaQueryList;
+  }) as typeof window.matchMedia;
+  return () => {
+    window.matchMedia = original;
+  };
+}
+
+describe.each(AXE_VIEWPORTS)('EventScheduler — axe on the $name arm (Req 6)', (viewport) => {
+  it('reports no violations across the grid, the nav controls and the view toggle', async () => {
+    const restore = stubMatchMedia(viewport);
+    try {
+      const { container } = render(
+        <EventScheduler
+          initialDate={WEEK_N}
+          heatmapData={heatmapFixture}
+          selectedSlot={{
+            start: new Date(2026, 6, 22, 19, 0, 0),
+            end: new Date(2026, 6, 22, 21, 30, 0),
+          }}
+        />
+      );
+      expect(await axe(container)).toHaveNoViolations();
+    } finally {
+      restore();
+    }
+  }, 30000);
+});
+
+describe('EventScheduler — day-arm navigation steps ONE day, in both directions', () => {
+  // The plan-01 and plan-07 pins only ever exercised the WEEK arm forwards and backwards, plus a
+  // single forward day step inside the Layer-3 same-week case. This closes the asymmetry: the day
+  // arm must step by a day in BOTH directions and bubble each step, so the parent's
+  // `resolveWeekNav` gets the chance to skip (same week) or re-fetch (crossed a boundary).
+  it('next renders the FOLLOWING day and reports it', () => {
+    const onWeekChange = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} defaultView="day" onWeekChange={onWeekChange} />);
+    expect(columnHeaders()).toEqual([format(WEEK_N, 'dd EEE')]);
+
+    fireEvent.click(button(/^next$/i));
+
+    expect(columnHeaders()).toEqual([format(addDays(WEEK_N, 1), 'dd EEE')]);
+    expect(onWeekChange).toHaveBeenCalledTimes(1);
+    expect(isoDay(onWeekChange.mock.calls[0][0] as Date)).toBe(isoDay(addDays(WEEK_N, 1)));
+  });
+
+  it('previous renders the PRIOR day and reports it', () => {
+    const onWeekChange = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} defaultView="day" onWeekChange={onWeekChange} />);
+
+    fireEvent.click(button(/^(back|previous|prev)$/i));
+
+    expect(columnHeaders()).toEqual([format(addDays(WEEK_N, -1), 'dd EEE')]);
+    expect(isoDay(onWeekChange.mock.calls[0][0] as Date)).toBe(isoDay(addDays(WEEK_N, -1)));
+  });
+
+  it('toggling week -> day -> week keeps the stepped-to date (the toggle never writes it)', () => {
+    render(<EventScheduler initialDate={WEEK_N} defaultView="day" />);
+
+    fireEvent.click(button(/^next$/i)); // Thu 23 Jul
+    fireEvent.click(button(/^week$/i));
+
+    // The displayed week is the one CONTAINING the stepped-to day, not a reset to `initialDate`.
+    expect(columnHeaders()).toHaveLength(7);
+    expect(columnHeaders()[0]).toBe(format(startOfWeek(addDays(WEEK_N, 1), { weekStartsOn: 1 }), 'dd EEE'));
+
+    fireEvent.click(button(/^day$/i));
+    expect(columnHeaders()).toEqual([format(addDays(WEEK_N, 1), 'dd EEE')]);
+  });
+});
+
+describe('EventScheduler — the carried Today control returns to the current week/day', () => {
+  // DECISION Phase 88.1-09 (owner ruling 2026-08-22): the outgoing toolbar rendered a Today
+  // control for free, so it is in shipped UI and must not silently vanish in a rebuild whose
+  // promise is parity. It routes through the same nav path as Next/Back, so the parent sees an
+  // ordinary navigation.
+  const todayMonday = () => format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'dd EEE');
+
+  it('returns the WEEK arm from a navigated-away week and reports today', () => {
+    const onWeekChange = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onWeekChange={onWeekChange} />);
+    fireEvent.click(button(/^next$/i));
+    expect(columnHeaders()[0]).not.toBe(todayMonday());
+
+    fireEvent.click(button(/^today$/i));
+
+    expect(columnHeaders()[0]).toBe(todayMonday());
+    const reported = onWeekChange.mock.calls.at(-1)?.[0] as Date;
+    expect(isoDay(reported)).toBe(isoDay(new Date()));
+  });
+
+  it('returns the DAY arm to today and reports it', () => {
+    const onWeekChange = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} defaultView="day" onWeekChange={onWeekChange} />);
+    expect(columnHeaders()).toEqual([format(WEEK_N, 'dd EEE')]);
+
+    fireEvent.click(button(/^today$/i));
+
+    expect(columnHeaders()).toEqual([format(new Date(), 'dd EEE')]);
+    expect(isoDay(onWeekChange.mock.calls.at(-1)?.[0] as Date)).toBe(isoDay(new Date()));
+  });
+});
+
+describe('EventScheduler — the committed selection is a FILLED block ON the grid', () => {
+  /* The outgoing implementation rendered the committed slot as a filled block via its event
+     styler (primary background, white text). That block is a LIVE surface — the user's visual
+     confirmation of the time they picked — and the plan-01 pin on the `Selected Time:` panel is a
+     DIFFERENT element that stays green whether or not the block exists. So it gets its own pin.
+
+     It is asserted by test id + its background TOKEN rather than by class-string equality, and
+     deliberately NOT by geometry (jsdom has no layout — P7). The count of covered cells is the
+     discriminating part: a block rendered once, or over the whole column, fails. */
+  const start = new Date(2026, 6, 22, 19, 0, 0); // Wed 19:00
+  const end = new Date(2026, 6, 22, 21, 30, 0); // -> 21:30, i.e. five 30-minute cells
+
+  it('fills exactly the cells the selected range covers, on the primary token', () => {
+    render(<EventScheduler initialDate={WEEK_N} selectedSlot={{ start, end }} />);
+
+    const blocks = screen.getAllByTestId('scheduler-selected-block');
+    expect(blocks).toHaveLength(5);
+    for (const block of blocks) {
+      expect(block.style.backgroundColor).toBe('var(--color-btn-primary-bg)');
+    }
+    // The block sits inside the cell for 19:00 on the Wednesday column (row 18, col 2).
+    expect(cellAt(18, 2, 7)).toContainElement(blocks[0]);
+  });
+
+  it('renders no block at all when nothing is selected', () => {
+    render(<EventScheduler initialDate={WEEK_N} />);
+    expect(screen.queryAllByTestId('scheduler-selected-block')).toHaveLength(0);
+  });
+
+  it('is a SEPARATE surface from the "Selected Time:" panel, not a substitute for it', () => {
+    render(<EventScheduler initialDate={WEEK_N} selectedSlot={{ start, end }} />);
+    expect(screen.getByText('Selected Time:')).toBeInTheDocument();
+    expect(screen.getAllByTestId('scheduler-selected-block').length).toBeGreaterThan(0);
   });
 });
