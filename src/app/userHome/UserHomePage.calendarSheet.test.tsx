@@ -105,14 +105,18 @@ vi.mock('@/app/components/TimezoneProvider', () => ({
 // Siblings that own their own fetches are out of scope for these pins. The calendar
 // stub COUNTS ITS MOUNTS — that count is the T-88.1-28 pin, not decoration.
 vi.mock('@/app/components/grouplist', () => ({ default: () => <div>group list</div> }));
-vi.mock('@/app/components/EventCalendar', () => ({
-  default: () => {
+vi.mock('@/app/components/EventCalendar', () => {
+  // Named (and capitalised) on purpose: an inline `default: () => {...}` that calls a
+  // hook trips react-hooks/rules-of-hooks, which is an ERROR in this repo's lint config
+  // and fails `next build` — not just a test-file warning.
+  function MockEventCalendar() {
     React.useEffect(() => {
       h.calendarMounts += 1;
     }, []);
     return <div>desktop calendar</div>;
-  },
-}));
+  }
+  return { default: MockEventCalendar };
+});
 vi.mock('@/app/components/FriendInvitePanel', () => ({ default: () => null }));
 
 vi.mock('@/lib/api', async (importOriginal) => {
