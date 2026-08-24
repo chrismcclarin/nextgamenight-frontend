@@ -7,7 +7,7 @@
  *
  * Grid is intentionally smaller than production (5pm-8:30pm × 7 days = 7×8)
  * so the demo is legible inside the tutorial overlay. Density matches the
- * real AvailabilityGrid / MergedHeatmap.
+ * real AvailabilityGrid (and, until plan 88.1-16 deleted it, MergedHeatmap).
  */
 
 // 8 time slots: 5:00, 5:30, 6:00, 6:30, 7:00, 7:30, 8:00, 8:30 PM
@@ -46,7 +46,9 @@ export const AVAILABILITY_DRAG_PATH = [
 /**
  * Group merged availability for Step 3 (HeatmapDemo).
  *
- * Density values 0-5 matching the real MergedHeatmap LEGEND_ITEMS scale:
+ * Density values 0-5 matching the canonical availability ramp (`mergedCellColor` in
+ * `lib/availabilityColor.ts`), which is what MergedHeatmap's LEGEND_ITEMS was before plan
+ * 88.1-16 deleted that component:
  *   0 -> bg-surface-elevated (nobody)
  *   1 -> bg-green-100
  *   2 -> bg-green-200

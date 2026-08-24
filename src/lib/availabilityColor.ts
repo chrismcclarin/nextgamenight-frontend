@@ -26,7 +26,8 @@
  *
  * Re-verified before deleting rather than trusted from the 2026-07-25 note: the census was run
  * WORD-BOUNDED, because the SPEC's own bare pattern is a substring of the LIVE
- * `MergedHeatmapGrid` and matches ~10 live files. Every surviving hit was a comment, a type arm
+ * `MergedHeatmapGrid` (itself live at the time; DELETED by plan 88.1-16) and matches ~10 live
+ * files. Every surviving hit was a comment, a type arm
  * or a test mention; not one was a live import or call.
  *
  * Deleted together, as one commit, because they only typecheck together: this function, its

@@ -73,7 +73,10 @@ interface ReadCellBaseProps {
   /**
    * Fill the parent (width/height 100%). Default `true` for the WeekGrid
    * sized-wrapper pattern. Prod div-grids that size the cell via `className`
-   * (e.g. `MergedHeatmapGrid`'s w-24/h-12 cells) pass `fill={false}`.
+   * pass `fill={false}`. The worked example used to be `MergedHeatmapGrid`'s w-24/h-12 cells;
+   * that file was DELETED by plan 88.1-16, so the prop currently has no in-repo consumer — it is
+   * kept because the sized-wrapper/self-sized split is a real API distinction, not because a
+   * caller happens to exist. Removing it is a decision.
    */
   fill?: boolean;
   /** Cell content rendered inside the colored div (e.g. the participant-count badge). */

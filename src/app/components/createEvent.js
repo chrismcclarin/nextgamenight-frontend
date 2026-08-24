@@ -411,8 +411,10 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   };
   // null sentinel = "use today's Monday" (page-load reset). Today button
   // returns to the null-state which the fetch effect resolves to today's
-  // actual Monday — label-accurate semantics consistent with MergedHeatmap.
-  // (A second grid was named here until plan 88-31 deleted it as dead code.)
+  // actual Monday — label-accurate semantics, matching the convention the (now-deleted)
+  // MergedHeatmap grid used. (A second grid was named here until plan 88-31 deleted it as dead
+  // code; MergedHeatmap itself went in plan 88.1-16. The convention is what survives, not the
+  // component — see `dayAggregate.ts` / `WeekGrid` for where the week now starts on Monday.)
   const handleToday = () => setCurrentWeekStart(null);
   const isOnTodayMonday = isSameWeek(effectiveMondayForUI, todayMonday, { weekStartsOn: 1 });
 

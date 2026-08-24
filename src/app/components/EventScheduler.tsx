@@ -211,8 +211,9 @@ const NAV_BUTTON_CLASS =
    for nothing outside it. Chosen OVER three alternatives, each rejected for a different reason:
      - BUMPING the global `--color-bg-accent-subtle` in `globals.css`. Rejected on a MEASURED
        census: that token has ~13 other consumers (five invite/restore pages, `BallotSection`,
-       `PendingMemberBanner`, `ManageMembers`, `EmptyState`, plus the MergedHeatmap pair plan
-       88.1-16 deletes). The owner judged ONE surface; a global bump repaints nine he never saw.
+       `PendingMemberBanner`, `ManageMembers`, `EmptyState`, plus the MergedHeatmap pair — since
+       DELETED by plan 88.1-16). The owner judged ONE surface; a global bump repaints nine he
+       never saw. The deletion only LOWERS that count; it does not re-open this alternative.
      - BRANCHING THE CLASS STRINGS (a `bg-surface-today-tint` utility on the today arm of each
        ternary). Rejected: `DECISION Phase 88-27 D-32` is literal — "token VALUE only, never the
        ternary shape" — and the paired-ternary shape is what `tintTreatment.test.ts` and four
@@ -304,7 +305,9 @@ export default function EventScheduler({
      two contradictory instructions to any consumer that reads the DOM rather than the cascade.
 
      The shape is the repo's own: `useState(false)` + a mount effect, exactly as
-     `createEvent.js:47-55` and `MergedHeatmapGrid.js:85-96` detect `(hover: none)`. Starting
+     `createEvent.js:47-55` detects `(hover: none)` (the second precedent,
+     `MergedHeatmapGrid.js:85-96`, was DELETED by plan 88.1-16 — the idiom stands, the
+     citation is archival). Starting
      FALSE is deliberate — this is an SSR'd client component, so the initial render must match the
      server's, and the desktop string is the safe pre-measurement state. */
   const [isPhoneViewport, setIsPhoneViewport] = useState(false);
@@ -851,8 +854,10 @@ export default function EventScheduler({
 
      (2) THE TWO TERNARIES ARE PAIRED AND MUTUALLY EXCLUSIVE — surface and day text switch together
          or not at all. The idiom is the §10.3 exemplar's, carried verbatim in shape from
-         `MergedHeatmapGrid.js:139,145` (plan 88.1-16 re-points `tintTreatment.test.ts` test 4 from
-         that file to this site). COLLAPSING EITHER HALF INTO ONE STATIC CLASS PLUS AN INTERPOLATED
+         `MergedHeatmapGrid.js:139,145` — a file plan 88.1-16 has since DELETED, having first
+         re-pointed `tintTreatment.test.ts` test 4's third exemplar off it and onto THIS site in
+         the same commit. THIS IS NOW THE CANONICAL §10.3 EXEMPLAR; there is no other copy to
+         fall back on. COLLAPSING EITHER HALF INTO ONE STATIC CLASS PLUS AN INTERPOLATED
          TINT TURNS THE TINT OFF; it does not simplify. There is no tailwind-merge on this template
          literal, so two same-specificity background rules resolve by STYLESHEET ORDER, and MEASURED
          in a real `next build` of this app `.bg-surface-accent-subtle` is emitted BEFORE

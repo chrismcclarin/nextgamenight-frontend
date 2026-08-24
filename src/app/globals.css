@@ -565,9 +565,10 @@
      chosen OVER the two alternatives the owner's pick left on the table:
        (a) BUMPING `--color-bg-accent-subtle` above to amber-200. Rejected: measured census, that
            token has ~13 other consumers (five invite/restore pages, `BallotSection`,
-           `PendingMemberBanner`, `ManageMembers`, `EmptyState`, the MergedHeatmap pair plan
-           88.1-16 deletes) — none of which the owner judged. A one-surface pick must not repaint
-           nine unrelated surfaces.
+           `PendingMemberBanner`, `ManageMembers`, `EmptyState`, and the MergedHeatmap pair —
+           since DELETED by plan 88.1-16) — none of which the owner judged. A one-surface pick
+           must not repaint nine unrelated surfaces. That deletion only LOWERS the count; it does
+           not re-open this rejected alternative.
        (b) A RAW `#513902` LITERAL in `EventScheduler.tsx`. Rejected: `rawColorValues.test.ts`
            test 1 (Phase 88 DES-01) forbids hex in components, and that suite's own TEMPORARY
            exemption said in words that minting this token is "precisely the decision the owner

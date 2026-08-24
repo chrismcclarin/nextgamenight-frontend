@@ -8,7 +8,7 @@ import { TUTORIAL_DAYS, TUTORIAL_TIME_SLOTS } from '../mockData';
  * TutorialGrid — shared grid primitive for the tutorial demo steps.
  *
  * Renders a 7-day × 8-slot grid with the same visual grammar as the production
- * AvailabilityGrid and MergedHeatmap so users recognize the real surfaces
+ * AvailabilityGrid and the scheduler's heatmap so users recognize the real surfaces
  * when they arrive. Each cell is rendered by the caller's `renderCell` prop
  * so the same grid serves availability painting, heatmap density, and the
  * schedule drag-select with no extra abstractions.

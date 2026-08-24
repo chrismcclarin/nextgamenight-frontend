@@ -158,7 +158,8 @@ function StripDayCell({
               by class-attribute order and with no tailwind-merge on this template literal — so a
               leftover static colour would silently outrank `text-accent` on today's cell no matter
               which class was written last. That is the exact failure the §10.3 exemplar's own
-              in-file warning describes (`MergedHeatmapGrid.js:130-138`, measured in a real
+              in-file warning describes (was `MergedHeatmapGrid.js:130-138`, deleted by plan
+              88.1-16; the warning now lives at `EventScheduler.tsx` — measured in a real
               `next build`). Read plan 88.1-12's "verbatim in shape" as covering this span's
               SIZING and STACKING only; the colour slot is this ternary's.
 

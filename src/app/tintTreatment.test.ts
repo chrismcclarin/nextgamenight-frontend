@@ -150,7 +150,8 @@ export function parseAlphaToken(
  * Every tint is emitted BEFORE the plain surfaces. Two same-specificity background rules on
  * one element are resolved by stylesheet order, so where both reach an element through a
  * template literal with no `tailwind-merge`, the PLAIN SURFACE WINS and the tint renders
- * nothing — exactly the failure `MergedHeatmapGrid` shipped into before this plan.
+ * nothing — exactly the failure the now-deleted `MergedHeatmapGrid` shipped into before Phase 88-27
+ * fixed it. (The file itself went in plan 88.1-16; the failure mode it demonstrated has not.)
  * Variant-prefixed tints (`hover:`) are exempt: the pseudo-class raises specificity.
  */
 const RESTING_SUBTLE = /^bg-(status-(success|error|warning)-subtle|surface-accent-subtle)$/;
@@ -237,9 +238,35 @@ describe('D-32/D-33 tint treatment (Req 17)', () => {
   });
 
   it('4. the three UI-SPEC §10.3 exemplars carry their designed treatment', () => {
-    const grid = fs.readFileSync(path.join(SRC, 'app/components/MergedHeatmapGrid.js'), 'utf8');
+    // DECISION Phase 88.1 (Req 10): this exemplar reads `EventScheduler.tsx`, chosen OVER its
+    // previous home `MergedHeatmapGrid.js`, because that file and its `MergedHeatmap.js` parent
+    // were DELETED in plan 88.1-16 — the disposition was DELETE, chosen OVER reviving the pair as
+    // the rebuilt scheduler's rendering tree. The rebuilt scheduler composes WeekGrid/ReadCell
+    // directly (SPEC Req 10, owner ruling at discuss). The pair had zero live mounts since the
+    // Polls scrap in Phase 71-05 (FE commit 958ed0c) and was nonetheless polished by Phases
+    // 72 / 84 / 88-27 ON A REVIVE ASSUMPTION THAT NO LONGER HOLDS — no future phase should
+    // re-invest in it, and "restoring" it is a decision to re-open a closed one, not a cleanup.
+    // What survived the deletion is the thing worth keeping: the paired-ternary today-tint idiom,
+    // carried verbatim in SHAPE to the site this assertion now guards.
+    //
+    // `EventScheduler.tsx` is the canonical desktop exemplar, chosen OVER `SchedulerWeekStrip.tsx`
+    // (which also carries a today ternary): only this site matches the retired exemplar in BOTH
+    // halves. The strip's non-today TEXT value is deliberately the muted token, not primary, to
+    // hold M-03 parity with its sibling idiom (see the DECISION block at SchedulerWeekStrip.tsx
+    // :150-186). Converging the two is a decision, not a consistency fix.
+    //
+    // KNOWN LIMIT, measured in plan 88.1-13 and repeated here so nobody over-reads this line:
+    // test 3 above does NOT catch the interpolated collapse at this site. Its scanner lexes string
+    // CHUNKS, and in the collapsed shape the plain surface sits in the template quasi while the
+    // tint sits in a separate inner literal — two chunks, one background each, no offender. What
+    // actually guards the scheduler against the collapse is the component pin in
+    // `EventScheduler.test.tsx` (T-88.1-39). This assertion pins the SHAPE, not the cascade.
+    const scheduler = fs.readFileSync(path.join(SRC, 'app/components/EventScheduler.tsx'), 'utf8');
     // mutually exclusive branches, NOT a static surface with an appended tint
-    expect(grid).toMatch(/isTodayDate \? 'bg-surface-accent-subtle' : 'bg-surface-card'/);
+    expect(scheduler).toMatch(/today \? 'bg-surface-accent-subtle' : 'bg-surface-card'/);
+    // the retired exemplar's own in-file warning was that `isTodayDate` drove the day number's
+    // `text-accent` too and "the two must agree" — so the PAIR is asserted, not just the surface.
+    expect(scheduler).toMatch(/today \? 'text-accent' : 'text-content-primary'/);
 
     const grouplist = fs.readFileSync(path.join(SRC, 'app/components/grouplist.js'), 'utf8');
     expect(grouplist).toMatch(/bg-\[var\(--color-bg-overlay\)\]/);

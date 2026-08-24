@@ -10,7 +10,9 @@ import { HEATMAP_DENSITY } from '../mockData';
  * with a diagonal-sweep stagger so users see the heatmap *forming* from
  * the data they just saw entered in Step 2.
  *
- * Color scale matches MergedHeatmap's LEGEND_ITEMS exactly:
+ * Color scale matches the canonical availability ramp exactly (`mergedCellColor` in
+ * `lib/availabilityColor.ts` — the anchor moved off MergedHeatmap's LEGEND_ITEMS when plan
+ * 88.1-16 deleted that component; the ramp is byte-identical):
  *   0 -> bg-surface-elevated
  *   1 -> bg-green-100
  *   2 -> bg-green-200
@@ -58,7 +60,7 @@ export default function HeatmapDemo({ stage }) {
 
   return (
     <div className="text-center">
-      {/* Header label — mimics MergedHeatmap title */}
+      {/* Header label — mimics the merged-availability heatmap title */}
       <div className="bg-surface-card rounded-t-card border border-line border-b-0 px-3 py-2 inline-block">
         <span className="text-xs text-content-secondary">
           Group availability — this week
@@ -69,7 +71,7 @@ export default function HeatmapDemo({ stage }) {
         <TutorialGrid renderCell={renderCell} />
       </div>
 
-      {/* Legend — matches MergedHeatmap LEGEND_ITEMS */}
+      {/* Legend — matches the canonical ramp (`mergedCellColor`) */}
       <div className="mt-2 flex items-center justify-center gap-1 text-[10px] text-content-muted">
         <span>0</span>
         <div className="w-3 h-3 bg-surface-elevated border border-line rounded-xs" />

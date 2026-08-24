@@ -29,7 +29,8 @@
 //     <CellElement />                // single trigger child
 //   </HeatmapTooltip>
 //
-// triggerRef escape hatch: parent grids in Plan 02 (MergedHeatmapGrid, and the
+// triggerRef escape hatch: parent grids in Plan 02 (MergedHeatmapGrid — deleted by plan
+// 88.1-16 — and the
 // legacy intensity read-grid deleted by 88-31) implement roving-tabindex
 // arrow-key navigation and need to
 // call `cellRefs.current[idx].focus()` without fighting floating-ui's internal

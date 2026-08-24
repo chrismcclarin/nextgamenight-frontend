@@ -1136,7 +1136,8 @@ describe('EventScheduler — today carries BOTH halves of the paired ternary (Re
   });
 
   it('desktop: the tint and the plain surface are never emitted in the SAME class string', () => {
-    // The collapse the exemplar's in-file warning describes (`MergedHeatmapGrid.js:130-138`):
+    // The collapse the exemplar's in-file warning describes (was `MergedHeatmapGrid.js:130-138`,
+    // deleted by plan 88.1-16 — the warning now lives on the exemplar at `EventScheduler.tsx`):
     // a static `bg-surface-card` with the tint appended renders NOTHING, because
     // `.bg-surface-accent-subtle` is emitted BEFORE `.bg-surface-card` in a real build. It looks
     // identical to a working treatment in every role/text assertion, so it is pinned here.
