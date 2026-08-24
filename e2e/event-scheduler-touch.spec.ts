@@ -387,6 +387,43 @@ async function settleSchedulerGeometry(page: Page): Promise<void> {
 }
 
 /**
+ * Scroll the MODAL BODY until the grid scroller's bottom edge sits inside the modal's visible
+ * box — the thing a real user does before they can put a finger in the column's bottom edge band.
+ *
+ * WHY THIS IS NEEDED AT ALL (measured, run 32783377133, on the settled layout). The grid's
+ * scroll container is TALLER than the modal's visible box and hangs below it: scroller
+ * [430.352, 735.352] against a clipped box of [430.352, 632.648]. `getBounds`
+ * (`EventScheduler.tsx`) hands `usePaintGesture` the scroller's UNCLIPPED rect, so the bottom
+ * edge band the rAF loop watches is [687.352, 735.352] — 54.7px BELOW the last pixel a finger
+ * can touch. There is no coordinate that is both on the grid and in the edge band until the
+ * modal body is scrolled, which is exactly what case 5's guard reported.
+ *
+ * This is a real user action, not a measurement convenience: the create-event form is long and
+ * its body scrolls. It is also the honest way to test the claim — auto-scroll must work when the
+ * edge band is ON SCREEN. Relaxing the guard, widening EDGE_BAND_PX, or inventing a coordinate
+ * outside the clip would each be "fix the spec until it passes", which this plan forbids.
+ *
+ * Scrolls the nearest clipping ancestor only, by the exact overhang plus an 8px margin, and
+ * never past its own max. Geometry MUST be re-read after this call — the grid moves.
+ */
+async function revealGridBottomEdge(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const grid = document.querySelector('[role="dialog"] [role="grid"]');
+    const scroller = grid?.parentElement as HTMLElement | null;
+    if (!scroller) return;
+    for (let node = scroller.parentElement; node && node !== document.body; node = node.parentElement) {
+      const cs = window.getComputedStyle(node);
+      if (cs.overflow === 'visible' && cs.overflowY === 'visible') continue;
+      const overhang = scroller.getBoundingClientRect().bottom - node.getBoundingClientRect().bottom;
+      if (overhang > 0) {
+        node.scrollTop = Math.min(node.scrollTop + overhang + 8, node.scrollHeight - node.clientHeight);
+      }
+      return;
+    }
+  });
+}
+
+/**
  * Cells safely inside the drag corridor: visible, and clear of BOTH edge bands so
  * the rAF auto-scroll loop can never engage. Case 5 is the one that wants a band.
  */
@@ -611,13 +648,26 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
 
     const cdp = await page.context().newCDPSession(page);
     const x = corridor[0].cx;
-    // Swipe UP from just above the bottom band to just below the top band: the
-    // finger moves up, so the column scrolls down.
+    /* Swipe UP from the LOWEST corridor cell to the highest: the finger moves up, so the
+       column scrolls down.
+
+       These endpoints used to be `geo.scroller.bottom - EDGE_BAND_PX - 10` and
+       `geo.scroller.top + EDGE_BAND_PX + 10` — arithmetic on the UNCLIPPED scroller rect,
+       which is the same defect plan 88.1-19 measured in case 5 (verdict row B). It went
+       unnoticed because the case ran BEFORE the form's 62px growth landed; with
+       `settleSchedulerGeometry` in front of it the growth lands first, the scroller's rect
+       bottom moves to 735.352 while the modal still clips at 632.648, and the finger started
+       102.7px below the reachable box — on the Radix backdrop, scrolling nothing (measured,
+       run 32783377133).
+
+       Corridor cells are already filtered to the reachable box AND clear of both edge bands,
+       so taking the endpoints from them cannot reproduce this. Do not reintroduce rect
+       arithmetic here: `scroller.bottom` is not where the grid ends on screen. */
     await swipe(
       cdp,
       page,
-      { x, y: geo.scroller.bottom - EDGE_BAND_PX - 10 },
-      { x, y: geo.scroller.top + EDGE_BAND_PX + 10 },
+      { x, y: corridor[corridor.length - 1].cy },
+      { x, y: corridor[0].cy },
     );
 
     await expect
@@ -817,6 +867,9 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
   test('(5) edge auto-scroll paints past the visible edge and the page behind the modal stays put', async ({ page }, testInfo) => {
     await openVisualScheduler(page);
     await settleSchedulerGeometry(page);
+    // Bring the column's bottom edge on screen FIRST — see `revealGridBottomEdge`. Every
+    // number below is read after it, because the grid moves.
+    await revealGridBottomEdge(page);
     await resetColumnScroll(page);
     const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
     const corridor = corridorCells(geo);
