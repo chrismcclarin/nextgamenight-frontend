@@ -1,4 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+// Plan 88.1-19 MEASUREMENT instruments — read-only attachments, no assertions, and NOT a
+// spec file so Playwright cannot collect it as a suite. See `e2e/support/diagnostics.ts`.
+import { attachDiagnostics, probeOverflowCulprits, probeViewport } from './support/diagnostics';
 
 /**
  * Phase 87.8 Plan 08 — SPEC R4 (44x44 effective hit areas) + SPEC R6 (pressed-state
@@ -157,7 +160,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await assertPressedOpacity(page, createGroup, '"+ Create New Group"');
   });
 
-  test('R4: groupHomePage + Create Event modal census CTAs measure >= 44x44 and press-dim', async ({ page }) => {
+  test('R4: groupHomePage + Create Event modal census CTAs measure >= 44x44 and press-dim', async ({ page }, testInfo) => {
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     await assertDarkTheme(page);
 
@@ -174,6 +177,46 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
     const submit = page.getByRole('button', { name: /^(create|update) event$/i });
     await guardResolved(submit, 'the Create Event submit CTA (createEvent.js census row 7)');
+
+    // MEASUREMENT ONLY (plan 88.1-19), immediately before the assertion that read 43.835px.
+    // Read-only: nothing here scrolls, clicks or writes a style.
+    //
+    // THE DISCRIMINATOR IS THE PAIR OF HEIGHTS. `getBoundingClientRect().height` is CSS
+    // pixels; Playwright's `boundingBox().height` is the VISUAL-VIEWPORT-SCALED number, and
+    // the phone project sets `isMobile: true`. So:
+    //   - in-page 44 and Playwright 43.835 -> page scale, not CSS. The cause is horizontal
+    //     overflow (`docScrollWidth` > `docClientWidth`) shrinking the scale, and
+    //     `probeOverflowCulprits` NAMES the element instead of leaving it inferred.
+    //   - in-page ALSO 43.835 -> it is CSS, and the fix belongs at the call site
+    //     (`createEvent.js:1268`, which already carries `min-h-11`).
+    // `planSession` is the CONTROL: it PASSED on the failing run, and whether it passed
+    // because it is naturally taller than 44 or because it is unscaled is what makes the
+    // submit's reading interpretable at all. Both boxes are recorded for that reason.
+    const readBox = (locator: Locator) =>
+      locator.first().evaluate((el) => {
+        const round = (n: number) => Math.round(n * 1000) / 1000;
+        const r = el.getBoundingClientRect();
+        const cs = window.getComputedStyle(el);
+        return {
+          rectWidth: round(r.width),
+          rectHeight: round(r.height),
+          offsetWidth: (el as HTMLElement).offsetWidth,
+          offsetHeight: (el as HTMLElement).offsetHeight,
+          computedMinHeight: cs.minHeight,
+          computedHeight: cs.height,
+          computedTransform: cs.transform,
+          className: (typeof el.className === 'string' ? el.className : '').slice(0, 120),
+        };
+      });
+    await attachDiagnostics(testInfo, 'submit-44px', {
+      viewport: await probeViewport(page),
+      overflowCulprits: await probeOverflowCulprits(page),
+      submitInPage: await readBox(submit),
+      submitPlaywrightBoundingBox: await submit.first().boundingBox(),
+      planSessionInPage: await readBox(planSession),
+      planSessionPlaywrightBoundingBox: await planSession.first().boundingBox(),
+    });
+
     await assertMin44(submit, '"Create Event" submit');
     await assertPressedOpacity(page, submit, '"Create Event" submit');
 

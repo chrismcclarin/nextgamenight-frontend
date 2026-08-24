@@ -1,4 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+// Plan 88.1-19 MEASUREMENT instruments — read-only attachments, no assertions, and NOT a
+// spec file so Playwright cannot collect it as a suite. See `e2e/support/diagnostics.ts`.
+import { attachDiagnostics, probeFooterOcclusion } from './support/diagnostics';
 
 /**
  * Phase 88.1 plan 10 — SPEC Req 11 (both phone event-discovery surfaces on the
@@ -344,15 +347,35 @@ test.describe('Phase 88.1 Req 11 — phone event discovery (phone project)', () 
     ).toBeHidden();
   });
 
-  test('the fixed bar does not occlude the Footer /Privacy link', async ({ page }) => {
+  test('the fixed bar does not occlude the Footer /Privacy link', async ({ page }, testInfo) => {
     await page.goto('/');
     await assertDarkTheme(page);
 
     const bar = phoneBar(page);
     await guardResolved(bar, 'the phone Upcoming Events bar (the occluding element under test)');
 
+    // MEASUREMENT ONLY (plan 88.1-19), sampled TWICE — before and after the scroll —
+    // because part of the open question is whether the scroll landed at all.
+    //
+    // The recorded failure is a GEOMETRY comparison (link bottom 702px vs bar top 612px),
+    // and 702 in a 667px viewport is 35px past the fold. `scrollTop` vs `maxScrollTop`
+    // settles cheaply whether `window.scrollTo(0, document.body.scrollHeight)` actually
+    // reached the bottom — an under-scroll explains those numbers; a missing 56px spacer
+    // does not. `88.1-REVIEW.md` IN-01's loading-branch theory predicts a DIFFERENT
+    // failure shape (no `/Privacy` link renders in that state at all, so `guardResolved`
+    // would fail first), which is why the auth-state discriminator is reported alongside
+    // the geometry rather than assumed. `privacyHref` is READ, never written — the capital
+    // P is load-bearing for Google auth (CLAUDE.md). Read-only; concluded in plan 20.
+    await attachDiagnostics(testInfo, 'privacy-occlusion-initial', await probeFooterOcclusion(page));
+
     // Scroll to the very bottom — the only place the Footer and the fixed bar can collide.
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+
+    await attachDiagnostics(
+      testInfo,
+      'privacy-occlusion-after-scroll',
+      await probeFooterOcclusion(page),
+    );
 
     // `/Privacy` keeps its capital P deliberately (CLAUDE.md: required for Google auth).
     const privacy = page.getByRole('link', { name: 'Privacy', exact: true });

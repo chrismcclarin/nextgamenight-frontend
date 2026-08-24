@@ -1,4 +1,13 @@
 import { test, expect, type CDPSession, type Locator, type Page } from '@playwright/test';
+// Plan 88.1-19 MEASUREMENT instruments — read-only, and deliberately NOT a spec file, so
+// Playwright's default testMatch cannot collect it as a suite. Every call below is an
+// attachment; none of them asserts anything. See `e2e/support/diagnostics.ts`.
+import {
+  attachDiagnostics,
+  probePointPath,
+  probeSchedulerGeometry,
+  probeViewport,
+} from './support/diagnostics';
 
 /** Arm-trace sample collected in-page by the plan 88.1-12 deviation-3 flash probe. */
 interface ArmSample {
@@ -447,10 +456,30 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
     ).toBe(SLOT_MINUTES);
   });
 
-  test('(3) long-press then drag paints a range across the crossed slots', async ({ page }) => {
+  test('(3) long-press then drag paints a range across the crossed slots', async ({ page }, testInfo) => {
     await openVisualScheduler(page);
     await resetColumnScroll(page);
     const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
+
+    // MEASUREMENT ONLY (plan 88.1-19). Read-only: no scroll, no click, no style write.
+    // The recorded failure is `endRow` 2 where 3 was expected, with the commit math, the
+    // overlay's pointer-events and an rAF race all already RULED OUT (.continue-here.md
+    // triage A). What has never been measured is whether the corridor's last cell is
+    // reachable AT ALL — `probeSchedulerGeometry` reports the clipped modal box next to
+    // `gridGeometry`'s viewport-clamped band, and every cell's own `elementFromPoint`
+    // resolution. Do not turn this into an assertion: plan 20 owns the fix.
+    await attachDiagnostics(testInfo, 'case3-pre-drag', {
+      viewport: await probeViewport(page),
+      geometry: await probeSchedulerGeometry(page),
+      specHelperBand: {
+        note: 'gridGeometry\'s own numbers, for direct comparison with geometry.specVisibleBand',
+        scroller: geo.scroller,
+        visibleCount: geo.visible.length,
+        cellCount: geo.cells.length,
+        gridCount: geo.gridCount,
+      },
+    });
+
     const corridor = corridorCells(geo);
     expect(
       corridor.length,
@@ -464,6 +493,23 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
 
     await longPress(cdp, page, { x: anchor.cx, y: anchor.cy });
     await steppedMoves(cdp, page, { x: anchor.cx, y: anchor.cy }, { x: anchor.cx, y: target.cy });
+
+    // MEASUREMENT ONLY — the finger is still down here, which is the only moment the
+    // mid-gesture state is observable. The path below is recomputed with the SAME formula
+    // `steppedMoves` uses (12 steps, `from + (to - from) * i / steps`) so each dispatched
+    // touch point can be compared against what was actually under it.
+    const dragPath = Array.from({ length: 12 }, (_, i) => ({
+      x: anchor.cx,
+      y: anchor.cy + ((target.cy - anchor.cy) * (i + 1)) / 12,
+    }));
+    await attachDiagnostics(testInfo, 'case3-mid-drag', {
+      anchor: { coord: anchor.coord, row: anchor.row, col: anchor.col, cx: anchor.cx, cy: anchor.cy },
+      target: { coord: target.coord, row: target.row, col: target.col, cx: target.cx, cy: target.cy },
+      corridor: corridor.map((c) => ({ coord: c.coord, row: c.row, cy: c.cy })),
+      edgeBandPx: EDGE_BAND_PX,
+      dragPath: await probePointPath(page, dragPath),
+      geometry: await probeSchedulerGeometry(page),
+    });
 
     // The LIVE affordance, read while the finger is still down: the drag
     // rectangle (DECISION Phase 88-27 D-32 bucket A — border only, no fill).
@@ -539,7 +585,7 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
       .toBeGreaterThan(0);
   });
 
-  test('(5) edge auto-scroll paints past the visible edge and the page behind the modal stays put', async ({ page }) => {
+  test('(5) edge auto-scroll paints past the visible edge and the page behind the modal stays put', async ({ page }, testInfo) => {
     await openVisualScheduler(page);
     await resetColumnScroll(page);
     const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
@@ -563,7 +609,57 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
     // finger is stationary from here, so no pointermove fires and the rAF tick
     // has to drive both the scroll AND the paint.
     const bandY = geo.scroller.bottom - 12;
+
+    // MEASUREMENT ONLY (plan 88.1-19). TWO live hypotheses, neither settled, and this
+    // attachment exists to decide between them rather than to assert either:
+    //   B1 (SPEC HELPER) — `bandY` is computed from the UNCLIPPED scroller rect, so it may
+    //      land OUTSIDE the modal's `max-h-[90vh] overflow-hidden` box. If it does, the
+    //      finger is driven to a coordinate with no grid element under it, and with no
+    //      document-level `pointermove` (`usePaintGesture.ts:503-504`) `st.lastY` never
+    //      updates, so the rAF edge loop never sees an edge position.
+    //   B2 (IMPLEMENTATION) — `bandY` sits comfortably inside the clipped band and inside
+    //      the scroller's own edge band, and the column still does not move.
+    // THE DISCRIMINATOR IS `bandY` vs `clippedVisibleBand.bottom`. Outside -> B1,
+    // comfortably inside -> B2. Reported, not concluded.
+    const preDragGeometry = await probeSchedulerGeometry(page);
+    await attachDiagnostics(testInfo, 'case5-pre-drag', {
+      bandY,
+      edgeBandPx: EDGE_BAND_PX,
+      specScrollerBottom: geo.scroller.bottom,
+      clippedVisibleBandBottom: preDragGeometry?.clippedVisibleBand.bottom ?? null,
+      bandYInsideClippedBand:
+        preDragGeometry !== null &&
+        bandY >= preDragGeometry.clippedVisibleBand.top &&
+        bandY <= preDragGeometry.clippedVisibleBand.bottom,
+      anchor: { coord: anchor.coord, row: anchor.row, cx: anchor.cx, cy: anchor.cy },
+      lastVisibleRow,
+      scrollTopBefore: await columnScrollTop(page),
+      whatIsAtBandY: await probePointPath(page, [{ x: anchor.cx, y: bandY }]),
+      viewport: await probeViewport(page),
+      geometry: preDragGeometry,
+    });
+
     await steppedMoves(cdp, page, { x: anchor.cx, y: anchor.cy }, { x: anchor.cx, y: bandY });
+
+    // MEASUREMENT ONLY — emitted BEFORE the poll below, deliberately. The poll THROWS on
+    // failure, so anything attached after it would never run on exactly the run this plan
+    // exists to measure. The 1.5s hold gives the rAF edge loop the same window the poll
+    // would have given it, so "the column moved 0px" becomes a measured number instead of
+    // an inference. The finger stays down throughout; nothing here interacts with the page.
+    await attachDiagnostics(testInfo, 'case5-in-band', {
+      bandY,
+      scrollTopOnArrival: await columnScrollTop(page),
+      whatIsUnderTheFinger: await probePointPath(page, [{ x: anchor.cx, y: bandY }]),
+    });
+    await page.waitForTimeout(1500);
+    await attachDiagnostics(testInfo, 'case5-after-hold', {
+      bandY,
+      scrollTopAfter1500msHold: await columnScrollTop(page),
+      pageScrollYAfterHold: await page.evaluate(() => window.scrollY),
+      pageScrollYBefore: pageScrollBefore,
+      whatIsUnderTheFinger: await probePointPath(page, [{ x: anchor.cx, y: bandY }]),
+      geometry: await probeSchedulerGeometry(page),
+    });
 
     await expect
       .poll(() => columnScrollTop(page), {
@@ -1135,7 +1231,7 @@ test.describe('Phase 88.1 Req 5 — visual scheduler mouse range-select (desktop
   // seven-column grid renders.
   test.skip(({ isMobile }) => isMobile, 'mouse range-select is a desktop-arm mechanism — desktop project only');
 
-  test('a mouse drag commits ONE range, on the anchor\'s day column only', async ({ page }) => {
+  test('a mouse drag commits ONE range, on the anchor\'s day column only', async ({ page }, testInfo) => {
     await openVisualScheduler(page);
     // The modal body scrolls independently; bring the grid's top into view before
     // measuring, or every cell rect is outside the viewport and unresolvable.
@@ -1143,6 +1239,24 @@ test.describe('Phase 88.1 Req 5 — visual scheduler mouse range-select (desktop
     await resetColumnScroll(page);
 
     const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
+
+    // MEASUREMENT ONLY (plan 88.1-19). The desktop `endRow` failure (4 where 5 was
+    // expected) is the SAME mechanism as case 3's at a different viewport — and the
+    // 1280x720 numbers are what PROVE that rather than assert it. At 720px the
+    // `max-h-[90vh]` modal is 648px tall and centred, so the clipped band and
+    // `gridGeometry`'s viewport-clamped band diverge by a different amount than they do
+    // at 667px; that difference is the point of measuring both arms.
+    await attachDiagnostics(testInfo, 'desktop-pre-drag', {
+      viewport: await probeViewport(page),
+      geometry: await probeSchedulerGeometry(page),
+      specHelperBand: {
+        scroller: geo.scroller,
+        visibleCount: geo.visible.length,
+        cellCount: geo.cells.length,
+        gridCount: geo.gridCount,
+      },
+    });
+
     const headers = dialog(page).getByRole('columnheader');
     expect(
       await headers.count(),
