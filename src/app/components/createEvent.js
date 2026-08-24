@@ -77,7 +77,9 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   // slot whenever heatmapData is loaded. Scope to prefillDate's day if set
   // (day-tap path), otherwise the full week. Tie-break: earliest of top tier.
   // Returns a Date whose time-of-day is what scrollToTime reads (date portion
-  // ignored by react-big-calendar). No auto-scroll when totalMembers is 0
+  // ignored by the outgoing calendar library, and still ignored by WeekGrid — plan 88.1-16
+  // removed react-big-calendar; the prop's date half stayed inert across the swap). No
+  // auto-scroll when totalMembers is 0
   // or no slots have any availability — calendar uses its default scroll.
   const peakScrollTime = useMemo(() => {
     if (!heatmapData?.slots || heatmapData.slots.length === 0) return null;
@@ -116,7 +118,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         return a.localHour - b.localHour;
       })[0];
 
-    // Return a Date whose hour-of-day is the peak hour. react-big-calendar's
+    // Return a Date whose hour-of-day is the peak hour. The outgoing react-big-calendar's
     // scrollToTime only uses time-of-day; date portion is irrelevant.
     const t = new Date();
     t.setHours(winner.localHour, 0, 0, 0);

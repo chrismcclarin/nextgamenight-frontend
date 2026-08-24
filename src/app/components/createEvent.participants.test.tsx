@@ -6,7 +6,10 @@
 // (triage A1 — non-blocking by ruling).
 //
 // The modal's scheduling half is stubbed out: this file is about the
-// participants list, and EventScheduler/heatmap pull in react-big-calendar.
+// participants list, and EventScheduler/heatmap are expensive to mount (a 28-row x 7-column
+// grid plus its gesture machine). The mock is STILL justified after plan 88.1-16 removed
+// react-big-calendar — the reason changed from "pulls in a heavy dependency" to "is heavy
+// to mount", but the cost this file is avoiding did not go away with the dependency.
 import * as React from 'react';
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
