@@ -81,6 +81,19 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   // removed react-big-calendar; the prop's date half stayed inert across the swap). No
   // auto-scroll when totalMembers is 0
   // or no slots have any availability — calendar uses its default scroll.
+  //
+  // DECISION Phase 88.1-18 (SPEC Req 13): the `prefillDate` scoping just below is KEPT, chosen
+  // OVER deleting it as now-redundant. Req 13 moved the DAY arm's landing into EventScheduler
+  // (it derives the displayed day's own peak from `heatmapLookup` via `peakHourForDay`), so the
+  // only consumer of THIS value is now the WEEK arm — and on the CAL-05 day-tap path the user
+  // arrived from a specific day, so scoping the week view's landing to that day remains the
+  // intended Phase 66-03 CREVT-06 behaviour. Req 13 holds week view unchanged, so removing the
+  // scoping would be a behaviour change this requirement explicitly rules out.
+  //
+  // WHERE TO LOOK INSTEAD: this value no longer reaches day view. A day-view landing bug lives in
+  // `EventScheduler.tsx`'s scrollToTime effect (and `heatmap/dayAggregate.ts`'s `peakHourForDay`),
+  // not here. The max-count / earliest tie-break below is mirrored there ON PURPOSE — the two must
+  // keep agreeing about what "peak" means; change them together or not at all.
   const peakScrollTime = useMemo(() => {
     if (!heatmapData?.slots || heatmapData.slots.length === 0) return null;
     if (!heatmapData.totalMembers || heatmapData.totalMembers === 0) return null;

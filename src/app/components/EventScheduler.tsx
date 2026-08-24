@@ -45,7 +45,7 @@ import {
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { calendarWashColor, CALENDAR_WASH_RAMP } from '../../lib/availabilityColor';
 import { WeekGrid, type WeekGridReadData } from './heatmap/WeekGrid';
-import { maxAvailabilityPerDay } from './heatmap/dayAggregate';
+import { maxAvailabilityPerDay, peakHourForDay } from './heatmap/dayAggregate';
 import SchedulerWeekStrip, { stripTabId } from './SchedulerWeekStrip';
 import {
   usePaintGesture,
@@ -423,6 +423,19 @@ export default function EventScheduler({
     [heatmapLookup, weekDates]
   );
 
+  // SPEC Req 13: the DISPLAYED day's own peak hour, for the day arm's landing (see the
+  // scrollToTime effect below). Derived HERE, beside `stripAggregates`, and from the SAME
+  // `heatmapLookup` on purpose — the strip tint and the column landing are then two readings of
+  // one map and can never disagree about a day. `null` (no availability, or week arm) means the
+  // effect does not scroll.
+  const dayPeakHour = useMemo(
+    () =>
+      effectiveView === 'day'
+        ? peakHourForDay(heatmapLookup, format(dayDates[0], 'yyyy-MM-dd'))
+        : null,
+    [effectiveView, heatmapLookup, dayDates]
+  );
+
   // ---------------------------------------------------------------------------
   // Navigation. The per-arm STEP SIZE is the parity detail: the outgoing host inherited
   // `views={['week','day']}`, so its Next/Back moved a week in week view and a day in day view.
@@ -503,17 +516,51 @@ export default function EventScheduler({
   }, []);
 
   // ---------------------------------------------------------------------------
-  // scrollToTime parity (Phase 66-03 CREVT-06). WeekGrid's `scrollContainerRef` is ONE seam with
-  // three consumers — this, the rAF edge auto-scroll (88.1-03) and the phone day column
-  // (88.1-12). Resolve the row, then read its authored offset; no geometry is fabricated, so in
-  // jsdom (where every box is zero) this is an inert no-op rather than a false pass.
+  // The opening scroll position. WeekGrid's `scrollContainerRef` is ONE seam with three
+  // consumers — this, the rAF edge auto-scroll (88.1-03) and the phone day column (88.1-12).
+  // Resolve the row, then read its authored offset; no geometry is fabricated, so in jsdom
+  // (where every box is zero) this is an inert no-op rather than a false pass — plan 88.1-18's
+  // pins make it observable by stubbing `offsetTop`, which is a test-side mechanism only.
+  //
+  // TWO ARMS AS OF SPEC Req 13. The WEEK arm is the original Phase 66-03 CREVT-06 parity path
+  // and still lands on the parent's week-wide `scrollToTime`. The DAY arm no longer reads
+  // `scrollToTime` AT ALL — it derives the displayed day's own peak from `heatmapLookup`.
+  //
+  /* DECISION Phase 88.1-18 (SPEC Req 13, owner walkthrough 2026-08-24): in day view the landing
+     is derived from the DISPLAYED DAY (`dayPeakHour`) and re-derives whenever the day changes,
+     CHOSEN OVER continuing to apply the parent's week-wide `scrollToTime`. Rejected because on a
+     phone roughly six of 28 rows are visible (see the `PHONE_GRID_MAX_HEIGHT` budget above), so a
+     peak belonging to a DIFFERENT day lands the user on empty space — the owner's own diagnosis:
+     "a holdover from seeing the whole week's times, when we are only seeing a day."
+
+     AND, for an empty day, CHOSEN OVER falling back to the week peak (owner ruling 2026-08-24):
+     no availability means NO SCROLL, so the column sits at the top of the grid (10:00). The
+     explicit `scrollTop = 0` is not decoration — without it, navigating from a day WITH a peak to
+     a day with none leaves the previous day's offset in place, which is the very thing this
+     requirement removes (a scroll position belonging to another day).
+
+     WEEK VIEW IS DELIBERATELY LEFT ON THE PARENT'S VALUE, including its `prefillDate` scoping
+     (see the marker above `peakScrollTime` in `createEvent.js`). Re-unifying the two arms is a
+     decision, not a cleanup. */
   // ---------------------------------------------------------------------------
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const container = scrollContainerRef.current;
-    if (!container || !scrollToTime) return;
-    const minutesFromStart =
-      (scrollToTime.getHours() - START_HOUR) * 60 + scrollToTime.getMinutes();
+    if (!container) return;
+
+    let minutesFromStart: number;
+    if (effectiveView === 'day') {
+      if (dayPeakHour === null) {
+        container.scrollTop = 0;
+        return;
+      }
+      minutesFromStart = (dayPeakHour - START_HOUR) * 60;
+    } else {
+      if (!scrollToTime) return;
+      minutesFromStart =
+        (scrollToTime.getHours() - START_HOUR) * 60 + scrollToTime.getMinutes();
+    }
+
     const row = Math.max(
       0,
       Math.min(SLOT_ROWS - 1, Math.floor(minutesFromStart / SLOT_MINUTES))
@@ -521,7 +568,7 @@ export default function EventScheduler({
     const cell = container.querySelector(`[data-coord="${row}:0"]`) as HTMLElement | null;
     if (!cell) return;
     container.scrollTop = cell.offsetTop;
-  }, [scrollToTime, effectiveView, currentDate]);
+  }, [scrollToTime, effectiveView, currentDate, dayPeakHour]);
 
   // ---------------------------------------------------------------------------
   // DRAG RANGE SELECTION (plan 88.1-11, SPEC Req 5 / Req 3).
