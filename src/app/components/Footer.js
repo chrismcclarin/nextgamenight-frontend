@@ -35,12 +35,28 @@ export default function Footer() {
      the `/Privacy` link CLAUDE.md records as load-bearing for Google auth.
 
      Deleting this spacer re-occludes that link, and jsdom cannot see occlusion — the real
-     guard is plan 88.1-10's phone e2e. */
+     guard is plan 88.1-10's phone e2e.
+
+     EXTENDED Phase 88.1-20 (88.1-REVIEW.md IN-01): the contract is now honoured on ALL THREE
+     return paths. The auth-LOADING branch below returned a bare placeholder and dropped the
+     spacer — the one hole. Stated honestly, because it matters for what this does and does not
+     buy: in the loading state the footer renders no links at all, so closing this hole closes a
+     CONTRACT hole, NOT a known user-visible occlusion. Plan 19 measured the occlusion the CI
+     case reports and REFUTED this branch as its cause (`spacerPresent: true` and
+     `authFooterPresent: true` in every sample, failing attempt included); that failure is a
+     scroll race and is fixed in the e2e spec, not here. */
   const phoneBottomBarSpacer = phoneBottomBarMounted ? (
     <div className="md:hidden h-14 shrink-0" aria-hidden="true" data-testid="phone-bottom-bar-spacer" />
   ) : null;
 
-  if (isLoading) return <div className="h-12" />;
+  if (isLoading) {
+    return (
+      <>
+        <div className="h-12" />
+        {phoneBottomBarSpacer}
+      </>
+    );
+  }
 
   if (!user) {
     return (

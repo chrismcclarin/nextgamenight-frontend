@@ -112,8 +112,12 @@ function formatRelativeDateTime(dateStr, timezone) {
  *   cannot derive this itself.
  * @param {React.ReactNode} [props.action=null] - Optional caller-owned CTA for
  *   the empty state, so any gating stays at the call site.
+ * @param {(event: Object) => void} [props.onEventClick=null] - Phase 88.1-20 (WR-02):
+ *   optional caller-owned row activation, so any host-specific teardown stays at the
+ *   call site — the 11a BottomSheet must CLOSE before it navigates, and the desktop
+ *   column has nothing to close. When omitted the card navigates itself, unchanged.
  */
-export default function UpcomingEventsCard({ events, showGroupName = false, loading = false, viewerDbUserId = null, errorState = null, action = null }) {
+export default function UpcomingEventsCard({ events, showGroupName = false, loading = false, viewerDbUserId = null, errorState = null, action = null, onEventClick = null }) {
   const router = useRouter();
   const { timezone } = useTimezone();
   const [expanded, setExpanded] = useState(false);
@@ -131,7 +135,19 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
   const displayEvents = expanded ? upcomingEvents : upcomingEvents.slice(0, 3);
   const overflowCount = upcomingEvents.length - 3;
 
+  /* DECISION Phase 88.1-20 (WR-02/WR-03): row activation is OVERRIDABLE by the host, and the
+     row is a real <button>. Chosen OVER moving `router.push` out of the card entirely (rejected:
+     the desktop call site has no reason to own a URL, and moving it would change two call sites
+     to fix one) and OVER `role="button"` + tabIndex + an Enter/Space handler on the existing div
+     (rejected: a native button is Enter AND Space by construction — `CalendarListView.js`'s
+     EventRow predates this row and is not a reason to hand-roll what the platform provides).
+     The URL shape is deliberately NOT unified with `UserHomePage.js`'s and `EventCalendar.js`'s
+     copies of it; that divergence is recorded as out of scope at `UserHomePage.js:145-148`. */
   const handleEventClick = (event) => {
+    if (onEventClick) {
+      onEventClick(event);
+      return;
+    }
     router.push(`/gameDetail?event_id=${event.id}&group_id=${event.group_id}`);
   };
 
@@ -195,10 +211,15 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
             })();
 
             return (
-              <div
+              /* `block w-full text-left` restores the div's layout — a button is inline-block
+                 and centre-aligned by default, which would silently restyle every row.
+                 `min-h-11` is the 44px floor: at py-1.5 with text-sm these rows measure ~32px,
+                 and this project treats 44 as a floor rather than a target (WR-03). */
+              <button
                 key={event.id}
+                type="button"
                 onClick={() => handleEventClick(event)}
-                className={`hover:bg-surface-card-hover rounded-sm py-1.5 px-2 cursor-pointer ${isGuestEvent ? 'border-l-2 border-dashed border-amber-400 dark:border-amber-500/70 pl-3' : ''}`}
+                className={`block w-full text-left min-h-11 hover:bg-surface-card-hover rounded-sm py-1.5 px-2 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${isGuestEvent ? 'border-l-2 border-dashed border-amber-400 dark:border-amber-500/70 pl-3' : ''}`}
               >
                 <span className="text-sm text-content-secondary">{gameName}</span>
                 <span className="text-sm text-content-muted"> · </span>
@@ -217,7 +238,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                     Guest
                   </span>
                 )}
-              </div>
+              </button>
             );
           })}
 

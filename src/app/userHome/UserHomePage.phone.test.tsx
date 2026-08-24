@@ -23,6 +23,8 @@ import { render, screen, cleanup, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { axe } from 'vitest-axe';
+
 import { selectUpcomingWithin7Days } from '@/lib/upcomingEvents';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -90,7 +92,17 @@ const FILTERED = selectUpcomingWithin7Days(EVENTS);
 const h = vi.hoisted(() => ({
   selfUuid: undefined as string | undefined,
   isError: false,
+  // Footer's third return path. Defaults false, so every pre-existing case sees the resolved
+  // auth state it saw before.
+  authLoading: false,
 }));
+
+/* WR-02: `useRouter` returned a FRESH `vi.fn()` on every call, so nothing could ever assert on
+   navigation — the spy the component held was never the spy a test could read. Hoisted to ONE
+   stable object instead. Verified before changing it: no pre-existing case in this file asserts
+   on `push` (the only prior occurrence was the mock line itself), so this cannot flip an
+   existing outcome. */
+const nav = vi.hoisted(() => ({ push: vi.fn() }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   SELF_IDENTITY_KEY: ['users', 'self'],
@@ -107,12 +119,15 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
 }));
 
 vi.mock('@auth0/nextjs-auth0/client', () => ({
-  useUser: () => ({ user: { sub: 'auth0|self' }, isLoading: false }),
+  useUser: () =>
+    h.authLoading
+      ? { user: undefined, isLoading: true }
+      : { user: { sub: 'auth0|self' }, isLoading: false },
 }));
 
 vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => nav,
 }));
 
 vi.mock('@/app/components/TimezoneProvider', () => ({
@@ -171,12 +186,15 @@ async function openSheet(user: ReturnType<typeof userEvent.setup>, name: string 
 beforeEach(() => {
   h.selfUuid = SELF_UUID;
   h.isError = false;
+  h.authLoading = false;
+  nav.push.mockClear();
 });
 
 afterEach(() => {
   cleanup();
   h.selfUuid = undefined;
   h.isError = false;
+  h.authLoading = false;
   vi.restoreAllMocks();
 });
 
@@ -355,6 +373,29 @@ describe('Footer clearance for the fixed bar', () => {
       await screen.findByTestId('phone-bottom-bar-spacer')
     ).toBeInTheDocument();
   });
+
+  // 88.1-20 (88.1-REVIEW.md IN-01): the auth-LOADING branch returned a bare placeholder and
+  // dropped the spacer — the one return path that did not honour the contract. This is a
+  // CONTRACT pin, not an occlusion pin: in the loading state the footer renders no links, and
+  // plan 19 measured this branch and REFUTED it as the cause of the CI occlusion failure.
+  it('reserves space in the auth-LOADING branch too, when a phone bar is mounted', async () => {
+    h.authLoading = true;
+    render(
+      <>
+        <PhoneEventBar events={[]} onOpen={vi.fn()} />
+        <Footer />
+      </>
+    );
+    expect(
+      await screen.findByTestId('phone-bottom-bar-spacer')
+    ).toBeInTheDocument();
+  });
+
+  it('reserves NO space while auth is loading if no phone bar is mounted', () => {
+    h.authLoading = true;
+    render(<Footer />);
+    expect(screen.queryByTestId('phone-bottom-bar-spacer')).toBeNull();
+  });
 });
 
 // Plan 88.1-17 Task 4 — the owner's dark-theme walkthrough defect (2026-08-24).
@@ -375,5 +416,81 @@ describe('Req 11a — the bar is readable in BOTH themes', () => {
 
     expect(bar).toHaveClass('text-white');
     expect(bar).not.toHaveClass('text-content-inverse');
+  });
+});
+
+describe('Req 11a — tapping a row in the sheet (WR-02 / WR-03)', () => {
+  // WR-02: the sheet is a focus-trapped Radix dialog. Navigating without closing it leaves the
+  // destination page mounted BEHIND an overlay that still traps focus — the user lands on
+  // gameDetail and cannot reach it. The desktop column has no sheet, so the teardown belongs to
+  // the CALLER, not to the card: `UpcomingEventsCard` takes an optional `onEventClick`.
+  const CATAN_URL = '/gameDetail?event_id=e-soon&group_id=g1';
+
+  it('closes the sheet BEFORE navigating', async () => {
+    const user = userEvent.setup();
+    await mockEvents(EVENTS);
+    renderHome();
+
+    const sheet = await openSheet(user, /Open upcoming events/);
+    await user.click(within(sheet).getByText('Catan'));
+
+    // Asserted on the DOM after the click rather than by spying on call order: a
+    // navigate-then-close implementation leaves the dialog mounted, which is the actual harm.
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: SHEET_TITLE })).toBeNull()
+    );
+    expect(nav.push).toHaveBeenCalledTimes(1);
+    expect(nav.push).toHaveBeenCalledWith(CATAN_URL);
+  });
+
+  it('rows are real buttons, reachable inside the focus trap', async () => {
+    const user = userEvent.setup();
+    await mockEvents(EVENTS);
+    renderHome();
+
+    const sheet = await openSheet(user, /Open upcoming events/);
+
+    // Pre-fix the row is a `div` with an onClick and no role at all, so this cannot resolve.
+    const row = within(sheet).getByRole('button', { name: /Catan/ });
+    expect(row).toBeInTheDocument();
+  });
+
+  it('Enter on a focused row navigates', async () => {
+    const user = userEvent.setup();
+    await mockEvents(EVENTS);
+    renderHome();
+
+    const sheet = await openSheet(user, /Open upcoming events/);
+    const row = within(sheet).getByRole('button', { name: /Catan/ });
+    row.focus();
+    expect(document.activeElement).toBe(row);
+
+    await user.keyboard('{Enter}');
+    expect(nav.push).toHaveBeenCalledWith(CATAN_URL);
+  });
+
+  it('Space on a focused row navigates', async () => {
+    const user = userEvent.setup();
+    await mockEvents(EVENTS);
+    renderHome();
+
+    const sheet = await openSheet(user, /Open upcoming events/);
+    const row = within(sheet).getByRole('button', { name: /Catan/ });
+    row.focus();
+
+    await user.keyboard(' ');
+    expect(nav.push).toHaveBeenCalledWith(CATAN_URL);
+  });
+
+  it('axe passes on the OPEN sheet with rows rendered', async () => {
+    const user = userEvent.setup();
+    // The POPULATED fixture, not the empty state — the point is the rows themselves.
+    await mockEvents(EVENTS);
+    renderHome();
+
+    const sheet = await openSheet(user, /Open upcoming events/);
+    expect(within(sheet).getByText('Catan')).toBeInTheDocument();
+
+    expect(await axe(sheet)).toHaveNoViolations();
   });
 });

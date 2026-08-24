@@ -156,6 +156,21 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
         }
     };
 
+    /* Req 11a event tap (WR-02). Same ordering, same reason as its sibling directly above —
+       close first, navigate second; the rationale block at `handleCalendarSheetEventClick` is
+       the canonical statement of WHY and is deliberately not restated here. The ordering IS the
+       point: navigating first strands the destination behind an open Radix overlay and focus
+       trap.
+
+       DELIBERATELY NOT COPIED from the sibling: its future-vs-past `game_id` fork. This card's
+       URL has always been event-id-only, and the 11a sheet lists FUTURE events only
+       (`selectUpcomingWithin7Days`), so importing that fork would add a branch whose second arm
+       is unreachable. Do not "finish" it. */
+    const handleUpcomingSheetEventClick = (event) => {
+        setUpcomingSheetOpen(false);
+        router.push(`/gameDetail?event_id=${event?.id}&group_id=${event?.group_id}`);
+    };
+
     const handleGroupSelect = (group) => {
         setSelectedGroup(group);
         setInvitePanelOpen(true);
@@ -336,6 +351,7 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                         showGroupName={true}
                         viewerDbUserId={selfUuid ?? null}
                         errorState={upcomingErrorState}
+                        onEventClick={handleUpcomingSheetEventClick}
                     />
                 )}
             </BottomSheet>
