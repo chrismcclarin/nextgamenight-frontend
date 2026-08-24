@@ -134,6 +134,27 @@ async function assertDarkTheme(page: Page): Promise<void> {
   await expect(page.locator('html')).toHaveClass(/dark/);
 }
 
+/** MEASUREMENT ONLY (plan 88.1-19): the IN-PAGE box of a CTA, in CSS pixels. Read-only.
+ *  Paired with Playwright's own `boundingBox()`, which is visual-viewport-SCALED, this is
+ *  what separates "the button is short" from "the page is scaled". Asserts nothing. */
+function readCtaBox(locator: Locator) {
+  return locator.first().evaluate((el) => {
+    const round = (n: number) => Math.round(n * 1000) / 1000;
+    const r = el.getBoundingClientRect();
+    const cs = window.getComputedStyle(el);
+    return {
+      rectWidth: round(r.width),
+      rectHeight: round(r.height),
+      offsetWidth: (el as HTMLElement).offsetWidth,
+      offsetHeight: (el as HTMLElement).offsetHeight,
+      computedMinHeight: cs.minHeight,
+      computedHeight: cs.height,
+      computedTransform: cs.transform,
+      className: (typeof el.className === 'string' ? el.className : '').slice(0, 120),
+    };
+  });
+}
+
 test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (phone project)', () => {
   // Inverse of the tailwind-v4-styles.spec.ts:57 guard: this file is phone-only.
   // Both projects match every spec (playwright.config.ts:44, :87), so without this
@@ -171,6 +192,17 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await assertMin44(planSession, '"Plan Game Session"');
     await assertPressedOpacity(page, planSession, '"Plan Game Session"');
 
+    // MEASUREMENT ONLY (plan 88.1-19) — the CONTROL half of the submit reading below, and it
+    // MUST be sampled HERE, before the modal opens. Radix's DialogContent marks the whole
+    // background inert/aria-hidden, so once the Create Event modal is open this role-based
+    // locator resolves NOTHING and any read against it hangs until the test timeout. That is
+    // not a hypothesis: the first instrumented run (32773229213) timed out at exactly this
+    // read placed after the modal opened, and produced no submit measurement at all.
+    const planSessionControl = {
+      inPage: await readCtaBox(planSession),
+      playwrightBoundingBox: await planSession.first().boundingBox(),
+    };
+
     // Census row 7: the Create Event modal's submit. Reached the same way the green
     // create-event journey reaches it (tailwind-v4-styles.spec.ts:59-76).
     await page.getByRole('button', { name: /add new game event/i }).click();
@@ -191,30 +223,14 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     //     (`createEvent.js:1268`, which already carries `min-h-11`).
     // `planSession` is the CONTROL: it PASSED on the failing run, and whether it passed
     // because it is naturally taller than 44 or because it is unscaled is what makes the
-    // submit's reading interpretable at all. Both boxes are recorded for that reason.
-    const readBox = (locator: Locator) =>
-      locator.first().evaluate((el) => {
-        const round = (n: number) => Math.round(n * 1000) / 1000;
-        const r = el.getBoundingClientRect();
-        const cs = window.getComputedStyle(el);
-        return {
-          rectWidth: round(r.width),
-          rectHeight: round(r.height),
-          offsetWidth: (el as HTMLElement).offsetWidth,
-          offsetHeight: (el as HTMLElement).offsetHeight,
-          computedMinHeight: cs.minHeight,
-          computedHeight: cs.height,
-          computedTransform: cs.transform,
-          className: (typeof el.className === 'string' ? el.className : '').slice(0, 120),
-        };
-      });
+    // submit's reading interpretable at all. It is captured above, pre-modal, for the
+    // inert-background reason recorded there.
     await attachDiagnostics(testInfo, 'submit-44px', {
       viewport: await probeViewport(page),
       overflowCulprits: await probeOverflowCulprits(page),
-      submitInPage: await readBox(submit),
+      submitInPage: await readCtaBox(submit),
       submitPlaywrightBoundingBox: await submit.first().boundingBox(),
-      planSessionInPage: await readBox(planSession),
-      planSessionPlaywrightBoundingBox: await planSession.first().boundingBox(),
+      planSessionControl,
     });
 
     await assertMin44(submit, '"Create Event" submit');

@@ -104,6 +104,12 @@ export interface ClipAncestor {
   overflow: string;
   overflowY: string;
   rect: { top: number; bottom: number; left: number; right: number; height: number };
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+  /** Direct children, with heights — so an element that GROWS mid-gesture can be named
+   *  rather than inferred from a moved rect. Capped at 12. */
+  children: { tag: string; className: string; height: number; top: number }[];
 }
 
 export interface CellProbe {
@@ -148,6 +154,17 @@ export interface SchedulerGeometryProbe {
    *  VIEWPORT, not the clipped box. Reported side by side so the divergence is one glance
    *  rather than an inference. */
   specVisibleBand: { top: number; bottom: number; height: number };
+  /**
+   * The scroller's top expressed in the FIRST clipping ancestor's own CONTENT space
+   * (`scrollerRect.top - clipRect.top + clipScrollTop`), which is invariant under that
+   * ancestor's scrolling. This is the discriminator for a grid that MOVES mid-gesture:
+   *   - the scroller's viewport rect moves AND this number moves -> content above the grid
+   *     GREW (look at `clipChain[0].children` for the grower)
+   *   - the scroller's viewport rect moves and this number does NOT -> the modal body
+   *     SCROLLED; nothing grew.
+   * null when the scroller has no clipping ancestor.
+   */
+  contentOffsetTopInClip: number | null;
   cells: CellProbe[];
   /** Cells the spec helper counts as visible (its own band, its own rule). */
   specVisibleCount: number;
@@ -268,13 +285,7 @@ export async function probeSchedulerGeometry(page: Page): Promise<SchedulerGeome
     const sStyle = window.getComputedStyle(scroller);
 
     // Every clipping ancestor between the scroller and <body>.
-    const clipChain: {
-      tag: string;
-      className: string;
-      overflow: string;
-      overflowY: string;
-      rect: { top: number; bottom: number; left: number; right: number; height: number };
-    }[] = [];
+    const clipChain: ClipAncestor[] = [];
     let node: HTMLElement | null = scroller.parentElement;
     while (node && node !== document.body) {
       const cs = window.getComputedStyle(node);
@@ -292,6 +303,20 @@ export async function probeSchedulerGeometry(page: Page): Promise<SchedulerGeome
             right: round(r.right),
             height: round(r.height),
           },
+          scrollTop: round(node.scrollTop),
+          scrollHeight: node.scrollHeight,
+          clientHeight: node.clientHeight,
+          children: Array.from(node.children)
+            .slice(0, 12)
+            .map((child) => {
+              const cr = child.getBoundingClientRect();
+              return {
+                tag: child.tagName.toLowerCase(),
+                className: (typeof child.className === 'string' ? child.className : '').slice(0, 60),
+                height: round(cr.height),
+                top: round(cr.top),
+              };
+            }),
         });
       }
       node = node.parentElement;
@@ -361,6 +386,10 @@ export async function probeSchedulerGeometry(page: Page): Promise<SchedulerGeome
         bottom: round(specBottom),
         height: round(specBottom - specTop),
       },
+      contentOffsetTopInClip:
+        clipChain.length > 0
+          ? round(sr.top - clipChain[0].rect.top + clipChain[0].scrollTop)
+          : null,
       cells,
       specVisibleCount: inSpecBand.length,
       clippedVisibleCount: inClippedBand.length,

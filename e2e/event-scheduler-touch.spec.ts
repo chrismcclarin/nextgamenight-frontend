@@ -1285,6 +1285,28 @@ test.describe('Phase 88.1 Req 5 — visual scheduler mouse range-select (desktop
         anchor.cy + ((target.cy - anchor.cy) * i) / 10,
       );
     }
+
+    // MEASUREMENT ONLY (plan 88.1-19), button still down. The desktop arm's pre-drag
+    // numbers alone cannot name a layer: on the first instrumented run (32773229213) every
+    // target cell resolved to ITSELF before the drag, yet the commit still ended one row
+    // short — so whatever indicts a layer here happens DURING the gesture, and only a
+    // mid-drag sample can see it. `contentOffsetTopInClip` is the discriminator: if the
+    // scroller's viewport rect has moved but that number has not, the modal body SCROLLED
+    // under the pointer; if both moved, something above the grid GREW
+    // (`clipChain[0].children` names it).
+    const desktopPath = Array.from({ length: 10 }, (_, i) => ({
+      x: anchor.cx + ((target.cx - anchor.cx) * (i + 1)) / 10,
+      y: anchor.cy + ((target.cy - anchor.cy) * (i + 1)) / 10,
+    }));
+    await attachDiagnostics(testInfo, 'desktop-mid-drag', {
+      anchor: { coord: anchor.coord, row: anchor.row, col: anchor.col, cx: anchor.cx, cy: anchor.cy },
+      target: { coord: target.coord, row: target.row, col: target.col, cx: target.cx, cy: target.cy },
+      anchorColumn: anchorColumn.map((c) => ({ coord: c.coord, row: c.row, cy: c.cy })),
+      targetColumn: targetColumn.map((c) => ({ coord: c.coord, row: c.row, cy: c.cy })),
+      dragPath: await probePointPath(page, desktopPath),
+      geometry: await probeSchedulerGeometry(page),
+    });
+
     await expect(
       dialog(page).getByTestId('scheduler-drag-rect'),
       'no live selection rectangle during a mouse drag — the range machine never engaged on the mouse arm',
