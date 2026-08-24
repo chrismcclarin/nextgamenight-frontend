@@ -851,53 +851,205 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
     ).toBeGreaterThan(geo.scroller.clientHeight + 10);
   });
 
-  test('scrollToTime lands the column on peak availability, not at the top', async ({ page }) => {
+  test('the opening scroll lands on the DISPLAYED day\'s peak, and follows it across the strip', async ({ page }) => {
     /* ASSERTED UNCONDITIONALLY, and that is the point (2026-08-22 adversarial
-       review). This is the phase's ONLY behavioural check of `scrollToTime` —
+       review). This is the phase's ONLY behavioural check of the opening scroll —
        plan 88.1-01's Layer-2 pin only asserts "mounts without throwing", because
        in jsdom `offsetTop` is 0 and the effect is an inert no-op by design
-       (EventScheduler.tsx:546-564 says so in its own words). A skip-if-absent
+       (EventScheduler.tsx says so in its own words). A skip-if-absent
        version of this case would be green forever against any fixture.
 
        A NULL PEAK IS A FIXTURE FAILURE, NOT A PASS: `peakScrollTime` is null
        whenever the group has no availability (createEvent.js:81-85, :109), so a
        silent skip here would mean the fixture stopped seeding and nobody found
        out. `scripts/e2e-fixtures.js` owns that invariant — see the block it
-       added for this case. */
+       added for this case.
+
+       RE-POINTED BY PLAN 88.1-18 (SPEC Req 13), and the OLD SHAPE IS THE LESSON:
+       this case used to prove only "the column landed on SOME row's offsetTop,
+       rather than at the top", which stayed GREEN under the very defect Req 13
+       fixes — landing on the WEEK's peak satisfies it just as well as landing on
+       the DAY's. It now walks all seven strip days and requires the landing to
+       FOLLOW THE DISPLAYED DAY: the earliest row of that day's own maximum count,
+       or the top of the grid when that day has no availability at all (the owner's
+       2026-08-24 ruling, chosen over a week-peak fallback). Do not weaken this
+       back to "not the top".
+
+       Plan 88.1-18 also added a vitest pin that stubs `offsetTop` to make the
+       chosen ROW observable in jsdom. That stub fabricates no layout, so THIS
+       remains the only measurement of the real thing. */
     await openVisualScheduler(page);
 
-    const landing = await page.evaluate(() => {
-      const grid = document.querySelector('[role="dialog"] [role="grid"]') as HTMLElement | null;
-      const scroller = grid?.parentElement as HTMLElement | null;
-      if (!grid || !scroller) return null;
-      return {
-        scrollTop: scroller.scrollTop,
-        maxScroll: scroller.scrollHeight - scroller.clientHeight,
-        // `offsetTop` is relative to WeekGrid's positioned body — exactly the
-        // value the scrollToTime effect assigns (`container.scrollTop =
-        // cell.offsetTop`), so an exact match proves THAT effect ran.
-        rowOffsets: Array.from(grid.querySelectorAll('[data-coord$=":0"]')).map((el) => ({
-          row: Number((el.getAttribute('data-coord') ?? '').split(':')[0]),
-          offsetTop: (el as HTMLElement).offsetTop,
-        })),
-      };
-    });
-    const l = must(landing, "the day column's scroll landing");
+    // START_HOUR / SLOT_MINUTES / SLOT_ROWS, mirrored from EventScheduler.tsx so the expected row
+    // is computed the same way the component computes it (including the clamp).
+    const GRID_START_HOUR = 10;
+    const GRID_SLOT_MINUTES = 30;
+    const GRID_SLOT_ROWS = 28;
 
-    await expect
-      .poll(() => columnScrollTop(page), {
-        message:
-          'the day column opened at the top — either `peakScrollTime` was null (the CI fixture group has no availability data: a FIXTURE failure, owned by scripts/e2e-fixtures.js, never a pass) or the scrollToTime effect no longer resolves its row. The user opens onto roughly six of 28 rows, so landing on peak availability is what makes those six the right six.',
-        timeout: 10_000,
-      })
-      .toBeGreaterThan(0);
+    const tabs = dialog(page).getByRole('tab');
+    await expect(
+      tabs,
+      'the phone strip did not render seven day tabs — without the strip there is no way to change the DISPLAYED day, so this case could not observe Req 13 at all',
+    ).toHaveCount(7);
 
-    const scrollTop = await columnScrollTop(page);
-    const landedOnRow = l.rowOffsets.find((r) => r.row > 0 && Math.abs(r.offsetTop - scrollTop) <= 1);
-    const clampedAtBottom = Math.abs(scrollTop - l.maxScroll) <= 1;
+    /**
+     * Read the day column: its header, its scroll position, every row's authored offset, and the
+     * per-hour availability counts the cells themselves render.
+     */
+    const readDay = async () =>
+      page.evaluate(() => {
+        const root = document.querySelector('[role="dialog"]');
+        const grid = root?.querySelector('[role="grid"]') as HTMLElement | null;
+        const scroller = grid?.parentElement as HTMLElement | null;
+        if (!root || !grid || !scroller) return null;
+
+        const rowOffsets: Array<{ row: number; offsetTop: number }> = [];
+        const hours = new Map<number, number>();
+
+        grid.querySelectorAll('[data-coord$=":0"]').forEach((wrapper) => {
+          const row = Number((wrapper.getAttribute('data-coord') ?? '').split(':')[0]);
+          if (!Number.isFinite(row)) return;
+          // `offsetTop` is relative to WeekGrid's positioned body — exactly the value the landing
+          // effect assigns (`container.scrollTop = cell.offsetTop`), so an exact match proves THAT
+          // effect ran rather than some other scroll.
+          rowOffsets.push({ row, offsetTop: (wrapper as HTMLElement).offsetTop });
+
+          const labelled = wrapper.matches('[aria-label]')
+            ? (wrapper as HTMLElement)
+            : (wrapper.querySelector('[aria-label]') as HTMLElement | null);
+          const matched = /^Availability for \d{4}-\d{2}-\d{2} hour (\d+)$/.exec(
+            labelled?.getAttribute('aria-label') ?? '',
+          );
+          if (!matched) return; // an un-annotated cell carries no availability, by construction
+
+          // The count badge is the only TEXT inside an availability cell: the tooltip is
+          // portal-mounted only while open (HeatmapTooltip.js), and the selected-slot block is an
+          // empty aria-hidden div. So the cell's own text IS the count.
+          const count = Number((wrapper.textContent ?? '').trim());
+          if (!Number.isFinite(count)) return;
+          const hour = Number(matched[1]);
+          hours.set(hour, Math.max(hours.get(hour) ?? 0, count));
+        });
+
+        return {
+          header: root.querySelector('[role="columnheader"]')?.textContent ?? '',
+          scrollTop: scroller.scrollTop,
+          maxScroll: scroller.scrollHeight - scroller.clientHeight,
+          rowOffsets: rowOffsets.sort((a, b) => a.row - b.row),
+          hours: Array.from(hours, ([hour, count]) => ({ hour, count })).sort(
+            (a, b) => a.hour - b.hour,
+          ),
+        };
+      });
+
+    /** Max count, earliest hour on a tie, null when nothing is available — `peakHourForDay`. */
+    const expectedRowFor = (hours: Array<{ hour: number; count: number }>): number | null => {
+      const populated = hours.filter((h) => h.count > 0);
+      if (populated.length === 0) return null;
+      const max = Math.max(...populated.map((h) => h.count));
+      const peakHour = Math.min(...populated.filter((h) => h.count === max).map((h) => h.hour));
+      const minutesFromStart = (peakHour - GRID_START_HOUR) * 60;
+      return Math.max(
+        0,
+        Math.min(GRID_SLOT_ROWS - 1, Math.floor(minutesFromStart / GRID_SLOT_MINUTES)),
+      );
+    };
+
+    const perDay: Array<{
+      index: number;
+      header: string;
+      hours: Array<{ hour: number; count: number }>;
+      expectedRow: number | null;
+      expectedScrollTop: number | null;
+      scrollTop: number;
+    }> = [];
+
+    for (let i = 0; i < 7; i += 1) {
+      // The strip cell's accessible name is `${format(date,'EEEE d')}, …` (SchedulerWeekStrip),
+      // so the day-of-month is readable from the tab itself — no date arithmetic in the spec.
+      const tabLabel = await tabs.nth(i).getAttribute('aria-label');
+      const dayOfMonth = /\s(\d{1,2}),/.exec(tabLabel ?? '')?.[1];
+      expect(
+        dayOfMonth,
+        `strip tab ${i} has no parseable day-of-month in its accessible name ("${tabLabel}") — the tab naming changed, and without it this case cannot tell which day it is measuring`,
+      ).toBeDefined();
+
+      await tabs.nth(i).click();
+      // The day column header is `dd EEE`, so this waits for the DISPLAYED day to actually change
+      // before anything is measured.
+      await expect(dialog(page).getByRole('columnheader')).toHaveText(
+        new RegExp(`^${String(Number(dayOfMonth)).padStart(2, '0')} `),
+      );
+
+      // Settle. The landing effect runs after the commit, and nothing else writes scrollTop on a
+      // same-week tap (the parent's `resolveWeekNav` skips the refetch), so two identical readings
+      // mean the column has stopped moving.
+      let previous = Number.NaN;
+      await expect
+        .poll(
+          async () => {
+            const now = (await readDay())?.scrollTop ?? Number.NaN;
+            const stable = Object.is(now, previous);
+            previous = now;
+            return stable;
+          },
+          {
+            message: `the day column's scroll position never settled after tapping strip day ${i} — something is still writing scrollTop, so no landing assertion below would be meaningful`,
+            timeout: 10_000,
+          },
+        )
+        .toBe(true);
+
+      const reading = must(await readDay(), `the day column's landing for strip day ${i}`);
+      const expectedRow = expectedRowFor(reading.hours);
+      const offsetForRow =
+        expectedRow === null
+          ? null
+          : reading.rowOffsets.find((r) => r.row === expectedRow)?.offsetTop ?? null;
+      perDay.push({
+        index: i,
+        header: reading.header,
+        hours: reading.hours,
+        expectedRow,
+        // The browser clamps a scrollTop beyond the scrollable extent, and so must the expectation.
+        expectedScrollTop: offsetForRow === null ? null : Math.min(offsetForRow, reading.maxScroll),
+        scrollTop: reading.scrollTop,
+      });
+    }
+
+    /* NON-VACUITY GUARD — checked BEFORE the landing assertions on purpose, so a day-invariant
+       fixture reports itself rather than surfacing as seven confusing landing failures. If every
+       day peaks on the same row then "the day's peak" and "the week's peak" are the same number,
+       and this whole case would pass just as well against the defect Req 13 removes. */
+    const distinctRows = Array.from(
+      new Set(perDay.filter((d) => d.expectedRow !== null).map((d) => d.expectedRow)),
+    );
     expect(
-      Boolean(landedOnRow) || clampedAtBottom,
-      `the column scrolled to ${scrollTop}px, which is neither a row's offsetTop nor the container's max scroll (${l.maxScroll}px) — something other than the scrollToTime effect moved it. Row offsets: ${JSON.stringify(l.rowOffsets.slice(0, 6))}...`,
+      distinctRows.length,
+      `the seeded availability is DAY-INVARIANT — all seven strip days peak on the same grid row (${JSON.stringify(distinctRows)}), which makes the day-vs-week distinction this case exists to prove unobservable. Fix the FIXTURE, never this assertion. Owners: periodictabletopbackend_v2/Sonnet/scripts/seed-sample-data.js:722-749 (Alice evenings all week, Bob weekday afternoons, Charlie weekend daytime, Diana two evenings — the shape that makes weekdays and weekends peak differently) and periodictabletopbackend_v2/Sonnet/scripts/e2e-fixtures.js:243-273, whose fallback block seeds an IDENTICAL pattern for all seven days and is therefore day-invariant by construction. Per-day readings: ${JSON.stringify(perDay)}`,
+    ).toBeGreaterThanOrEqual(2);
+
+    for (const day of perDay) {
+      if (day.expectedRow === null) {
+        // The owner's ruling: a day with no availability does NOT scroll, and in particular does
+        // not inherit the previous day's position.
+        expect(
+          day.scrollTop,
+          `strip day ${day.index} ("${day.header}") has NO availability, so the column must stay at the top (SPEC Req 13, owner ruling 2026-08-24) — it is at ${day.scrollTop}px instead, which is a position belonging to some other day`,
+        ).toBe(0);
+        continue;
+      }
+      expect(
+        Math.abs(day.scrollTop - (day.expectedScrollTop as number)),
+        `strip day ${day.index} ("${day.header}") peaks at row ${day.expectedRow}, whose offsetTop clamps to ${day.expectedScrollTop}px — the column is at ${day.scrollTop}px. The landing is not following the DISPLAYED day (SPEC Req 13). Per-hour counts read from the cells: ${JSON.stringify(day.hours)}`,
+      ).toBeLessThanOrEqual(1);
+    }
+
+    // …and the case still carries its original guarantee: at least one day genuinely scrolls, so
+    // "everything is 0" cannot pass as "correct".
+    expect(
+      perDay.some((d) => d.scrollTop > 0),
+      `every strip day opened at the top — either the fixture group has no availability at all (a FIXTURE failure, owned by scripts/e2e-fixtures.js, never a pass) or the landing effect no longer resolves its row. The user opens onto roughly six of 28 rows, so landing on peak availability is what makes those six the right six. Per-day readings: ${JSON.stringify(perDay)}`,
     ).toBe(true);
   });
 

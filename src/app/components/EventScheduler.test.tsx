@@ -333,6 +333,15 @@ describe('EventScheduler — roving keyboard navigation moves REAL DOM focus (Re
   // guarantee — the guarantee is that a keyboard user's focus ring is on the cell they navigated
   // to. The handler under test is `useHeatmapCell`'s; this proves the rebuild WIRED it, which is
   // exactly what the outgoing implementation never did.
+  // DEF-88.1-10-01 (RESOLVED 2026-08-24, recorded here because THIS is the test that surfaced it):
+  // this case passes alone in ~12.6s and used to expire against vitest's 5000ms default whenever
+  // the whole directory ran in parallel on a 4-core machine. Plan 88.1-18 was routed to fix it with
+  // a per-test timeout argument, but the owner had already ruled the other way in the interim —
+  // `vitest.config.mts` now carries a suite-wide `testTimeout: 20000` (FE commit `7fb52e6`), chosen
+  // OVER per-test arguments because the same flake had spread to four files. So there is
+  // deliberately NO timeout argument here: adding one would shadow the ceiling the owner picked and
+  // hide the next instance of the same problem. If this expires again, the number to look at is in
+  // `vitest.config.mts`, not on this line.
   it('walks the full eight-key set across the WEEK arm', () => {
     render(<EventScheduler initialDate={WEEK_N} />);
     const cols = 7;
@@ -1202,5 +1211,191 @@ describe('EventScheduler — today carries BOTH halves of the paired ternary (Re
     } finally {
       restore();
     }
+  });
+});
+
+// =============================================================================================
+// PLAN 88.1-18 — SPEC Req 13: day view opens on the DISPLAYED DAY's own peak.
+//
+// A DELIBERATE, SCOPED NARROWING OF THIS FILE'S GEOMETRY EXCLUSION (see ":P7, anything geometric"
+// in the preamble). That rule stands for REAL layout — jsdom computes none, so column widths and
+// strip cell heights remain Playwright's. What is answerable here is the effect's OWN assignment:
+// `container.scrollTop = cell.offsetTop`. Both halves were probed against this repo's vitest
+// (4.1.7, jsdom) on 2026-08-24: `scrollTop` round-trips faithfully, and an `offsetTop` accessor
+// installed on `HTMLElement.prototype` is read by the component.
+//
+// So the stub below FABRICATES NO LAYOUT. It gives each cell a synthetic, row-derived offset, and
+// the assertions then read back which ROW the effect chose — which is the whole of Req 13. It is
+// installed per-test and the ORIGINAL property descriptor is restored in `afterEach`, so it cannot
+// leak into a neighbouring suite (threat T-88.1-51).
+//
+// NON-VACUITY: the fixture makes the DAY peak and the WEEK peak land on DIFFERENT rows, and case 4
+// pins the week arm on the week row — so case 2's zero means "did not scroll", not "the stub is
+// not wired". Against the pre-88.1-18 component, cases 1-3 are red and case 4 is green.
+// =============================================================================================
+
+/** Synthetic per-row offset. No relation to real layout — see the block comment above. */
+const ROW_PX = 20;
+
+/** Build a UTC wire slot from a LOCAL (date, hour) target — the `WIRE_SLOT` idiom at :127-131. */
+const wireSlotAt = (localDay: Date, localHour: number, availableCount: number) => {
+  const local = new Date(
+    localDay.getFullYear(),
+    localDay.getMonth(),
+    localDay.getDate(),
+    localHour,
+    0,
+    0
+  );
+  return {
+    date: local.toISOString().slice(0, 10),
+    hour: local.getUTCHours(),
+    availableCount,
+  };
+};
+
+// The displayed week is Mon 2026-07-20 .. Sun 2026-07-26 (WEEK_N is the Wednesday).
+const REQ13_MON = new Date(2026, 6, 20, 12, 0, 0); // no slots at all — the "empty day" case
+const REQ13_WED = new Date(2026, 6, 22, 12, 0, 0); // peak 13:00 -> row 6
+const REQ13_THU = new Date(2026, 6, 23, 12, 0, 0); // peak 16:00 -> row 12
+const REQ13_FRI = new Date(2026, 6, 24, 12, 0, 0); // peak 19:00, count 3 -> the WEEK peak, row 18
+
+const rowOf = (hour: number) => (hour - 10) * 2;
+const WED_ROW = rowOf(13); // 6
+const THU_ROW = rowOf(16); // 12
+const WEEK_ROW = rowOf(19); // 18
+
+/**
+ * One week of availability where the displayed day's peak and the week's peak DISAGREE.
+ *
+ * Wednesday's own peak is 13:00 (count 2) — chosen so it is neither its earliest populated hour
+ * (11:00) nor its latest (20:00), so a "first slot" or "last slot" rule answers differently.
+ * Friday carries the week-wide maximum (count 3 at 19:00), which is what `createEvent.js`'s
+ * `peakScrollTime` would hand over as `scrollToTime`.
+ */
+const req13Heatmap = {
+  totalMembers: 4,
+  totalGroupMembers: 4,
+  membersWithoutDataCount: 0,
+  slots: [
+    wireSlotAt(REQ13_WED, 11, 1),
+    wireSlotAt(REQ13_WED, 13, 2),
+    wireSlotAt(REQ13_WED, 20, 1),
+    wireSlotAt(REQ13_THU, 16, 2),
+    wireSlotAt(REQ13_FRI, 19, 3),
+  ],
+  gcalConflicts: [],
+};
+
+/** Exactly what `createEvent.js:84-126` produces for this fixture: the week peak, 19:00. */
+const REQ13_WEEK_SCROLL_TO_TIME = new Date(2026, 6, 24, 19, 0, 0);
+
+/** The scroll container is the DIRECT PARENT of the `role="grid"` body (`WeekGrid.tsx:419-434`). */
+const scroller = () => screen.getByRole('grid').parentElement as HTMLElement;
+
+describe('EventScheduler — day view lands on the DAY peak, not the week peak (Req 13)', () => {
+  let originalOffsetTop: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    originalOffsetTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetTop');
+    Object.defineProperty(HTMLElement.prototype, 'offsetTop', {
+      configurable: true,
+      get(this: HTMLElement) {
+        const coord = this.getAttribute?.('data-coord');
+        return coord ? Number(coord.split(':')[0]) * ROW_PX : 0;
+      },
+    });
+  });
+
+  afterEach(() => {
+    if (originalOffsetTop) {
+      Object.defineProperty(HTMLElement.prototype, 'offsetTop', originalOffsetTop);
+    } else {
+      // jsdom ships the accessor, so this branch should never run — but deleting is still the
+      // correct restore for "there was nothing here before", and leaving the stub installed is
+      // exactly the cross-suite leak T-88.1-51 names.
+      delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetTop;
+    }
+  });
+
+  it('opens on the DISPLAYED day\'s peak even while the parent hands over the week peak', () => {
+    render(
+      <EventScheduler
+        initialDate={REQ13_WED}
+        defaultView="day"
+        heatmapData={req13Heatmap}
+        scrollToTime={REQ13_WEEK_SCROLL_TO_TIME}
+      />
+    );
+
+    // Wednesday's own peak is 13:00 -> row 6. The week's is 19:00 -> row 18, which is what the
+    // pre-Req-13 component landed on and is therefore the wrong answer worth naming.
+    expect(scroller().scrollTop).toBe(WED_ROW * ROW_PX);
+    expect(scroller().scrollTop).not.toBe(WEEK_ROW * ROW_PX);
+  });
+
+  it('starts at the TOP on a day with no availability, instead of inheriting another day\'s row', () => {
+    // Monday has no slots. The owner's ruling (2026-08-24) is that this does NOT fall back to the
+    // week peak — the column simply does not scroll.
+    const { rerender } = render(
+      <EventScheduler
+        initialDate={REQ13_MON}
+        defaultView="day"
+        heatmapData={req13Heatmap}
+        scrollToTime={REQ13_WEEK_SCROLL_TO_TIME}
+      />
+    );
+    expect(scroller().scrollTop).toBe(0);
+
+    // NON-VACUITY, in the SAME test: a populated day in the SAME render still lands non-zero, so
+    // "everything is 0 because the stub is not wired" cannot masquerade as "correct".
+    rerender(
+      <EventScheduler
+        initialDate={REQ13_WED}
+        defaultView="day"
+        heatmapData={req13Heatmap}
+        scrollToTime={REQ13_WEEK_SCROLL_TO_TIME}
+      />
+    );
+    expect(scroller().scrollTop).toBeGreaterThan(0);
+  });
+
+  it('RE-DERIVES the landing when the displayed day changes', () => {
+    const { rerender } = render(
+      <EventScheduler
+        initialDate={REQ13_WED}
+        defaultView="day"
+        heatmapData={req13Heatmap}
+        scrollToTime={REQ13_WEEK_SCROLL_TO_TIME}
+      />
+    );
+    expect(scroller().scrollTop).toBe(WED_ROW * ROW_PX);
+
+    rerender(
+      <EventScheduler
+        initialDate={REQ13_THU}
+        defaultView="day"
+        heatmapData={req13Heatmap}
+        scrollToTime={REQ13_WEEK_SCROLL_TO_TIME}
+      />
+    );
+    // Thursday peaks at 16:00, not Wednesday's 13:00 — the landing MOVED with the day.
+    expect(scroller().scrollTop).toBe(THU_ROW * ROW_PX);
+    expect(scroller().scrollTop).not.toBe(WED_ROW * ROW_PX);
+  });
+
+  it('leaves WEEK view on the parent-supplied scrollToTime (Req 13 holds it unchanged)', () => {
+    // This case does double duty: it is the week-view guarantee AND the proof that the stub and
+    // the effect are wired at all, which is what gives case 2's zero its meaning.
+    render(
+      <EventScheduler
+        initialDate={REQ13_WED}
+        heatmapData={req13Heatmap}
+        scrollToTime={REQ13_WEEK_SCROLL_TO_TIME}
+      />
+    );
+    expect(columnHeaders()).toHaveLength(7);
+    expect(scroller().scrollTop).toBe(WEEK_ROW * ROW_PX);
+    expect(scroller().scrollTop).not.toBe(WED_ROW * ROW_PX);
   });
 });
