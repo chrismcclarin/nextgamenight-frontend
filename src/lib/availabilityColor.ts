@@ -89,6 +89,18 @@ export function mergedCellColor(availableCount: number, totalMembers: number): s
  *
  * WHY the rejected option was rejected: in `EventScheduler` the availability shading is a wash
  * painted BEHIND react-big-calendar's gridlines and event blocks. Opaque pale greens cover both at
+ * ---
+ * ALLOW-LISTED PROSE (Phase 88.1-16, SPEC Req 9): plan 88.1-16 removed react-big-calendar from
+ * the tree, and this block's two mentions of it were DELIBERATELY LEFT IN PLACE. The name is what
+ * carries the reason — "translucent, because it was painted behind THOSE gridlines and event
+ * blocks" — and the rejected alternative (consuming `mergedCellColor`'s opaque
+ * `bg-green-100..500` directly) is unintelligible without it. Req 9's literal `grep 'rbc-'` = 0
+ * acceptance was rewritten rather than satisfied by erasing this; the executable allow-list is
+ * `src/app/reactBigCalendarRemoval.test.ts` and it names this file with this reason. Deleting the
+ * word to make a grep go green is the anti-pattern that gate exists to prevent — and this file's
+ * own banner already says re-unifying the ramps is "a design decision, not a convenience."
+ * The successor surface is WeekGrid, which has gridlines of its own, so the property still holds.
+ * ---
  * the darker steps, turning a background signal into a fill that hides the very events the user is
  * scheduling around. Transparency is a deliberate property of a calendar surface here, not drift.
  * Owner ruling 2026-08-05 (Task 1 of plan 88-23), option-a.
@@ -161,8 +173,11 @@ export const CALENDAR_WASH_RAMP: readonly string[] = (() => {
  * Get the calendar wash background for an availability ratio — the translucent sibling of
  * `mergedCellColor`, same 5 steps and same 20/40/60/80% thresholds.
  *
- * Returns a CSS colour string rather than Tailwind classes because the consumer is
- * react-big-calendar's `slotPropGetter`, which takes an inline `style` object; and returns
+ * Returns a CSS colour string rather than Tailwind classes because the consumer WAS
+ * react-big-calendar's `slotPropGetter`, which took an inline `style` object. Since the
+ * Phase 88.1 rebuild the consumer is WeekGrid's read-cell style (via `EventScheduler`'s
+ * `getCell`), which takes the same shape — so the return type survived the swap unchanged
+ * and this is still not a place to hand back Tailwind classes. Returns
  * `undefined` (not a colour) for the empty case, preserving EventScheduler's existing behaviour
  * of applying NO `backgroundColor` at all when nobody is available — an explicit transparent
  * fill would still stack a paint layer over the gridlines.

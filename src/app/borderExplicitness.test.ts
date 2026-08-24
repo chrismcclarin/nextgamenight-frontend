@@ -402,7 +402,23 @@ describe('D-35 border explicitness (Req 16)', () => {
     ).toEqual([]);
     // ...and a SCOPED border colour is not a hit either, or every rule in the file would be.
     expect(universalBorderColourRules('.card { border-color: var(--color-line); }')).toEqual([]);
-    // ...including the shipped rbc override that ENDS in `*`, the first-run false positive.
+    // ...including the rbc override that ENDS in `*`, the first-run false positive.
+    //
+    // DECISION Phase 88.1-16 (SPEC Req 9): this fixture string is RETAINED BYTE-IDENTICAL after
+    // react-big-calendar was removed from the tree, chosen OVER renaming it to a neutral
+    // selector and OVER deleting it to satisfy Req 9's stated `grep -rn 'rbc-' src` = 0 gate.
+    //   - It is not a style rule. It is a PARSER UNIT TEST, and it is the regression pin for a
+    //     REAL first-run false positive: `.rbc-time-content > * + * > *` ends in `*`, so the
+    //     original "any `*` anywhere" predicate flagged it and reddened a correct tree. See the
+    //     history at :175. Renaming the selector stops exercising the shape that broke it, so a
+    //     rename silently WEAKENS the pin while leaving it looking green.
+    //   - Req 9's gate was therefore rewritten rather than the code bent to fit it. The shipped
+    //     gate is three parts — (a) no live import or dependency, (b) no `.rbc-*` selector
+    //     AUTHORED in a stylesheet, (c) an enumerated prose allow-list — and it is EXECUTABLE at
+    //     `src/app/reactBigCalendarRemoval.test.ts`, which pins this exact string (its test 4)
+    //     and lists this file with its reason. The SPEC carries the matching
+    //     "AMENDED 2026-08-22 (plan 88.1-16)" note.
+    // Deleting or renaming this line is a decision about a regression pin, not a cleanup.
     expect(
       universalBorderColourRules('.rbc-time-content > * + * > * { border-left-color: var(--color-border); }')
     ).toEqual([]);
