@@ -68,3 +68,68 @@ export function maxAvailabilityPerDay(
 
   return dates.map((date) => peaks.get(date) ?? 0);
 }
+
+/*
+ * DECISION Phase 88.1-18 (SPEC Req 13, owner ruling 2026-08-24): when a day has no availability
+ * at all this returns `null`, and the scheduler's day column then STARTS AT THE TOP (10:00) —
+ * CHOSEN OVER falling back to the week-wide peak, which is the behaviour being removed. The
+ * rejected option is the load-bearing half: falling back is what shipped, and it is exactly the
+ * defect the owner walked into on his phone ("Monday opened at Friday's noon peak and showed no
+ * green"). Restoring a week fallback here is a decision, not a cleanup.
+ *
+ * NOT DOWNSTREAM OF THE `DECISION Phase 88.1-12` MAX-vs-mean QUESTION ABOVE. That marker governs
+ * the STRIP's per-day aggregate (how green a day looks). This function's max/earliest rule is
+ * pinned independently, by parity with `createEvent.js:110-119`, so that the week landing and the
+ * day landing can never disagree about what "peak" means. If the strip's aggregate is ever moved
+ * to a mean, DO NOT propagate that here for "consistency" — the two answer different questions.
+ */
+
+/**
+ * The LOCAL HOUR of one day's peak availability: the hour with the highest `availableCount`,
+ * earliest hour winning a tie.
+ *
+ * Input is the scheduler's own LOCAL-keyed `heatmapLookup` (`${localDateStr}_${localHour}`),
+ * already converted from the UTC wire by `EventScheduler.tsx`. This function does NOT redo that
+ * conversion and must not — doing it in two places is how the two copies drift (Constraints:
+ * Timezone), and it is the same rule the sibling above follows.
+ *
+ * The max-then-earliest rule is deliberately IDENTICAL to `createEvent.js`'s `peakScrollTime`
+ * (`:110-119`), which serves the WEEK arm's landing. One meaning of "peak", two callers.
+ *
+ * @param heatmapLookup - the scheduler's `${localDateStr}_${localHour}` -> slot map
+ * @param date - the local date string ('YYYY-MM-DD') of the displayed day
+ * @returns the peak local hour, or `null` when the day has no slot with a count above 0.
+ *          `null` means DO NOT SCROLL (owner ruling, above) — it is not a falsy 0, because 0 is
+ *          a legitimate hour. The hour is returned honestly even when it falls outside the grid's
+ *          10:00-23:59 window; clamping to a row is the caller's job, not this function's.
+ */
+export function peakHourForDay(
+  heatmapLookup: ReadonlyMap<string, DayAggregateSlot | undefined>,
+  date: string
+): number | null {
+  let peakHour: number | null = null;
+  let peakCount = 0;
+
+  for (const [key, slot] of heatmapLookup) {
+    // Same `lastIndexOf('_')` split as `maxAvailabilityPerDay` above, for the same reason: the
+    // hour suffix is appended last, and a malformed key is skipped rather than thrown on.
+    const sep = key.lastIndexOf('_');
+    if (sep <= 0) continue;
+    if (key.slice(0, sep) !== date) continue;
+
+    const hour = Number(key.slice(sep + 1));
+    if (!Number.isFinite(hour)) continue;
+
+    const count = slot?.availableCount ?? 0;
+    if (count <= 0) continue; // a zero-count slot can never be the peak (null means no data)
+
+    // Strictly-greater keeps the EARLIEST hour on a tie regardless of Map insertion order,
+    // because the tie-break compares hours rather than relying on iteration order.
+    if (count > peakCount || (count === peakCount && peakHour !== null && hour < peakHour)) {
+      peakCount = count;
+      peakHour = hour;
+    }
+  }
+
+  return peakHour;
+}
