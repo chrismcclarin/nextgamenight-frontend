@@ -155,6 +155,58 @@ function readCtaBox(locator: Locator) {
   });
 }
 
+/**
+ * Wait until a freshly-opened dialog has finished ANIMATING IN, so geometry read inside it is
+ * the settled geometry.
+ *
+ * WHY THIS EXISTS (plan 88.1-19 measured it, run 32774690333). The Create Event submit read
+ * 43.913 / 43.9636 / 43.9915 across three successive reads in a single attempt, climbing toward
+ * 44 while its x/y drifted — a uniform ancestor scale, not a CSS height. Computed `min-height`
+ * on the button was exactly `44px` the whole time and `offsetHeight` was 44. The source is
+ * `src/components/ui/dialog.tsx` — `duration-200 data-[state=open]:animate-in
+ * data-[state=open]:zoom-in-95` — and `expect(heading).toBeVisible()` resolves at animation
+ * START, not end. The recorded page-scale/overflow hypothesis was REFUTED by the same run
+ * (`scrollWidth 375 === clientWidth 375`, `visualViewport.scale 1`, zero overflow culprits).
+ *
+ * So this is a SETTLE, never a threshold change: 44 is untouched and must stay untouched.
+ * EVERY `boundingBox()` assertion taken inside a freshly-opened Radix dialog anywhere in this
+ * suite has the same latent race — that is why this is a shared helper and not an inline wait.
+ *
+ * Two gates, because either alone can lie:
+ *   1. The Web Animations API — await every finite animation on the dialog subtree. Infinite
+ *      ones (spinners) are excluded or this would never resolve. Under `prefers-reduced-motion`
+ *      there may be none at all, which is a legitimate no-op.
+ *   2. A stability poll on the measured height, as the backstop for anything the WAAPI does not
+ *      cover (a transition starting a frame later, layout settling after the animation ends).
+ */
+async function settleOpenAnimation(page: Page, target: Locator, label: string): Promise<void> {
+  const dialog = page.getByRole('dialog').first();
+  await dialog.evaluate(async (el) => {
+    const running = (el as HTMLElement)
+      .getAnimations({ subtree: true })
+      .filter((a) => a.effect?.getTiming().iterations !== Infinity);
+    await Promise.all(running.map((a) => a.finished.catch(() => undefined)));
+  });
+
+  // Two consecutive identical readings = the box has stopped moving.
+  let previous: number | null = null;
+  await expect
+    .poll(
+      async () => {
+        const height = (await readCtaBox(target)).rectHeight;
+        const stable = previous !== null && height === previous;
+        previous = height;
+        return stable;
+      },
+      {
+        message: `${label}: geometry never stopped changing — the dialog open animation (dialog.tsx zoom-in-95 / duration-200) is still running, or something else is resizing it. Measuring here reads a mid-animation number (plan 88.1-19 measured 43.913 -> 43.9636 -> 43.9915 climbing toward 44). Do NOT lower the 44px floor to accommodate it.`,
+        timeout: 5_000,
+        intervals: [50, 50, 100, 100, 250],
+      },
+    )
+    .toBe(true);
+}
+
 test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (phone project)', () => {
   // Inverse of the tailwind-v4-styles.spec.ts:57 guard: this file is phone-only.
   // Both projects match every spec (playwright.config.ts:44, :87), so without this
@@ -209,6 +261,10 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
     const submit = page.getByRole('button', { name: /^(create|update) event$/i });
     await guardResolved(submit, 'the Create Event submit CTA (createEvent.js census row 7)');
+
+    // The dialog is VISIBLE at this point but not yet settled — `toBeVisible()` above resolves
+    // at animation start. See settleOpenAnimation's block for the measured numbers.
+    await settleOpenAnimation(page, submit, '"Create Event" submit');
 
     // MEASUREMENT ONLY (plan 88.1-19), immediately before the assertion that read 43.835px.
     // Read-only: nothing here scrolls, clicks or writes a style.

@@ -57,6 +57,65 @@ import { attachDiagnostics, probeFooterOcclusion } from './support/diagnostics';
  *  MEASURED top edge. */
 const PHONE_BAR_HEIGHT = 56;
 
+/**
+ * Scroll to the true bottom of the page, AFTER the page has stopped growing, and prove the
+ * scroll landed before anything is measured.
+ *
+ * WHY (plan 88.1-19 measured it, run 32774690333). The failing attempt read
+ * `documentScrollHeight = 667`, `maxScrollTop = 0`, `scrollTop = 0` at BOTH samples: the page
+ * had not grown yet, so the one-shot `window.scrollTo(0, document.body.scrollHeight)` was a
+ * no-op against a page with nothing to scroll. Content landed a moment later and the test's own
+ * read then saw the `/Privacy` link at 702.1875px against a bar top of 612px. The passing retry
+ * had the content already present at `goto` (`documentScrollHeight = 826`, `maxScrollTop = 159`)
+ * and read 543.188 after scrolling. 543.188 + 159 = 702.188 — the arithmetic closes exactly on
+ * the recorded failure number, so this is a scroll race and nothing else.
+ *
+ * What it is NOT: a spacer bug or an auth-branch bug. `spacerPresent: true` with
+ * `spacerRect.height = 56`, and `authFooterPresent: true` with `loadingPlaceholderLikely: false`,
+ * in ALL FOUR samples including the failing one. `88.1-REVIEW.md` IN-01's loading-branch theory
+ * is refuted by measurement; the Footer contract hole it names is real but is a different thing,
+ * closed separately in `Footer.js`.
+ *
+ * Deliberately NOT a `waitForTimeout`: a fixed sleep would re-introduce the same race on a
+ * slower runner. The two gates are "the document stopped changing height" and "the scroll
+ * actually landed at maxScrollTop", both observable.
+ */
+async function scrollToSettledBottom(page: Page): Promise<{ scrollTop: number; maxScrollTop: number }> {
+  let previousHeight: number | null = null;
+  await expect
+    .poll(
+      async () => {
+        const height = await page.evaluate(
+          () => (document.scrollingElement ?? document.documentElement).scrollHeight,
+        );
+        const stable = previousHeight !== null && height === previousHeight;
+        previousHeight = height;
+        return stable;
+      },
+      {
+        message:
+          "the page never stopped growing, so there is no settled bottom to scroll to — measuring the Footer here would compare geometry against content that is still arriving (the exact plan-19 failure mode)",
+        timeout: 15_000,
+        intervals: [100, 100, 200, 200, 500],
+      },
+    )
+    .toBe(true);
+
+  const landed = await page.evaluate(() => {
+    const el = document.scrollingElement ?? document.documentElement;
+    const maxScrollTop = el.scrollHeight - el.clientHeight;
+    el.scrollTop = maxScrollTop;
+    return { scrollTop: el.scrollTop, maxScrollTop };
+  });
+
+  expect(
+    Math.abs(landed.scrollTop - landed.maxScrollTop),
+    `the scroll did not reach the bottom (scrollTop ${landed.scrollTop} vs maxScrollTop ${landed.maxScrollTop}). Every geometry assertion below would then be measuring a link that is still below the fold, which is how a 702px reading appeared in a 667px viewport.`,
+  ).toBeLessThanOrEqual(1);
+
+  return landed;
+}
+
 /** Vacuity guard (touch-targets.spec.ts:63 / availability-grid-touch.spec.ts:64): a
  *  zero-count locator makes every assertion after it vacuous — that is a failure of the
  *  LOCATOR or the fixture state, not of the work under test. Fail loudly at the locator.
@@ -369,13 +428,14 @@ test.describe('Phase 88.1 Req 11 — phone event discovery (phone project)', () 
     await attachDiagnostics(testInfo, 'privacy-occlusion-initial', await probeFooterOcclusion(page));
 
     // Scroll to the very bottom — the only place the Footer and the fixed bar can collide.
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    // This USED TO be a one-shot `window.scrollTo(0, document.body.scrollHeight)`, which plan
+    // 88.1-19 measured racing the page's own content; see scrollToSettledBottom's block.
+    const landedScroll = await scrollToSettledBottom(page);
 
-    await attachDiagnostics(
-      testInfo,
-      'privacy-occlusion-after-scroll',
-      await probeFooterOcclusion(page),
-    );
+    await attachDiagnostics(testInfo, 'privacy-occlusion-after-scroll', {
+      ...(await probeFooterOcclusion(page)),
+      landedScroll,
+    });
 
     // `/Privacy` keeps its capital P deliberately (CLAUDE.md: required for Google auth).
     const privacy = page.getByRole('link', { name: 'Privacy', exact: true });

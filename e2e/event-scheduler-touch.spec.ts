@@ -608,20 +608,42 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
     // Drag into the BOTTOM edge band of the scroll container, then hold: the
     // finger is stationary from here, so no pointermove fires and the rAF tick
     // has to drive both the scroll AND the paint.
-    const bandY = geo.scroller.bottom - 12;
-
-    // MEASUREMENT ONLY (plan 88.1-19). TWO live hypotheses, neither settled, and this
-    // attachment exists to decide between them rather than to assert either:
-    //   B1 (SPEC HELPER) — `bandY` is computed from the UNCLIPPED scroller rect, so it may
-    //      land OUTSIDE the modal's `max-h-[90vh] overflow-hidden` box. If it does, the
-    //      finger is driven to a coordinate with no grid element under it, and with no
-    //      document-level `pointermove` (`usePaintGesture.ts:503-504`) `st.lastY` never
-    //      updates, so the rAF edge loop never sees an edge position.
-    //   B2 (IMPLEMENTATION) — `bandY` sits comfortably inside the clipped band and inside
-    //      the scroller's own edge band, and the column still does not move.
-    // THE DISCRIMINATOR IS `bandY` vs `clippedVisibleBand.bottom`. Outside -> B1,
-    // comfortably inside -> B2. Reported, not concluded.
     const preDragGeometry = await probeSchedulerGeometry(page);
+
+    /* B1 RESOLVED BY MEASUREMENT (plan 88.1-19, run 32774690333). This USED TO read
+       `geo.scroller.bottom - 12`, off the UNCLIPPED scroller rect, which put the finger at
+       y=661.352 when the modal's reachable box ended at 632.648 — 28.704px outside it. What was
+       actually under the finger there was `div.fixed inset-0 z-50 bg-black/80`, the Radix dialog
+       BACKDROP, and `elementFromPoint` resolved to null. With no document-level `pointermove`
+       (`usePaintGesture.ts:503-504`) `st.lastY` could never reach an edge position, so the rAF
+       edge loop never engaged and the column moved 0px. The IMPLEMENTATION was exonerated by the
+       same measurement (B2 refuted): the finger simply never landed on the grid.
+
+       The target must sit inside BOTH boxes, and they are different boxes:
+         - the CLIPPED band — where a finger can land at all (the modal is `overflow-hidden`);
+         - the hook's own edge band — `getBounds` (`EventScheduler.tsx`) returns the scroller's
+           UNCLIPPED rect, so the band the loop watches is `scroller.bottom - EDGE_BAND_PX`
+           upward from the scroller's real bottom, which extends past the clip.
+       Their intersection is the only window where a finger both lands on the grid AND reads as
+       "in the edge band". Measured, that window was [625.352, 632.648] — about 7px — so the old
+       12px inset from the CLIPPED bottom would still have missed it by ~4.7px. Take the MIDDLE
+       of the intersection rather than an inset from either edge. */
+    const clippedBand = must(preDragGeometry, "the scheduler's clipped geometry").clippedVisibleBand;
+    const bandLo = Math.max(clippedBand.top, geo.scroller.bottom - EDGE_BAND_PX);
+    const bandHi = Math.min(clippedBand.bottom, geo.scroller.bottom);
+    const bandY = (bandLo + bandHi) / 2;
+
+    /* GUARD, so a future geometry change fails loudly HERE instead of silently reproducing the
+       0px scroll as an inscrutable auto-scroll failure. */
+    expect(
+      bandHi - bandLo,
+      `the clipped grid box [${clippedBand.top}, ${clippedBand.bottom}] and the hook's edge band [${geo.scroller.bottom - EDGE_BAND_PX}, ${geo.scroller.bottom}] no longer overlap by a usable margin (${bandHi - bandLo}px). There is no coordinate at which a finger both lands on the grid AND reads as in the edge band, so this case cannot drive the rAF loop. Fix the GEOMETRY (or EDGE_BAND_PX), never this number.`,
+    ).toBeGreaterThanOrEqual(4);
+    expect(
+      bandY,
+      `the auto-scroll target ${bandY} is outside the reachable clipped box [${clippedBand.top}, ${clippedBand.bottom}] — the finger would land on the Radix backdrop, exactly the plan-19 defect this line was rewritten to fix`,
+    ).toBeLessThanOrEqual(clippedBand.bottom);
+    expect(bandY).toBeGreaterThanOrEqual(geo.scroller.bottom - EDGE_BAND_PX);
     await attachDiagnostics(testInfo, 'case5-pre-drag', {
       bandY,
       edgeBandPx: EDGE_BAND_PX,
@@ -664,7 +686,7 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
     await expect
       .poll(() => columnScrollTop(page), {
         message:
-          'holding in the bottom edge band did not scroll the DAY COLUMN — the hook\'s documented default scrolls the WINDOW, which inside a Radix dialog either does nothing or moves the page behind it (RESEARCH C10 / pitfall P4); the scheduler must override both axes',
+          'holding in the bottom edge band did not scroll the DAY COLUMN. The finger IS on the grid and IS inside the hook\'s edge band (both asserted above), so the rAF edge loop should be ticking: look at `scrollVerticalBy`/`getBounds` (EventScheduler.tsx) and `maybeRunEdgeLoop` (usePaintGesture.ts). NOTE FOR THE NEXT READER: this message used to blame the hook\'s documented default (a window-level scroll) for the failure, which the scheduler\'s own overrides disprove and plan 88.1-19 measured false (pageScrollY 0 -> 0 across a 1500ms hold). The real 0px reading in CI was a SPEC defect — the target coordinate sat 28.7px outside the clipped modal box, on the Radix backdrop — and it is fixed at the bandY computation above, not here.',
         timeout: 10_000,
       })
       .toBeGreaterThan(150);
