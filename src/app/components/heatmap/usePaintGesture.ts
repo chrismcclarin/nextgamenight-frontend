@@ -132,6 +132,13 @@ export interface GesturePointerEvent {
   pointerType?: string;
   clientX: number;
   clientY: number;
+  /**
+   * Which button produced the press. React's synthetic `PointerEvent` and the DOM's native one
+   * BOTH supply it, so the structural contract above still holds for both call paths; it is
+   * optional only so hand-rolled points (every fixture in `usePaintGesture.test.ts`) stay valid.
+   * ABSENT MEANS PRIMARY — see the filter in `onPointerDown`.
+   */
+  button?: number;
 }
 
 /** Edge-band bounds in CLIENT coordinates (same space as `clientX`/`clientY`). */
@@ -407,6 +414,21 @@ export function usePaintGesture<T>(args: PaintGestureArgs<T>): PaintGestureResul
   const onPointerDown = useCallback(
     (event: GesturePointerEvent) => {
       if (argsRef.current.disabled) return;
+      // DECISION Phase 88.1-20 (WR-01): non-primary presses are dropped HERE, at the gesture's
+      // entry point, and NOWHERE ELSE. Without this a right-click on a slot opened the context
+      // menu AND wrote the event's start time — `onPointerUp` commits for any press once a
+      // gesture is live. Absent-means-primary is required, not incidental: every fixture at
+      // `usePaintGesture.test.ts` omits the field, and touch contact reports 0, so touch is
+      // unaffected either way.
+      // Chosen OVER filtering every handler (rejected: `pointercancel` carries -1 by spec, so a
+      // filter there would stop cancellation outright, and gating `onPointerMove` would re-fork
+      // the mouse and touch arms — the NOTE (C11) below exists to prevent exactly that).
+      // Chosen OVER suppressing the context menu instead (rejected: that changes browser
+      // behaviour the user expects; the defect is that a right-click COMMITS, not that a menu
+      // opens).
+      // POSITION IS LOAD-BEARING: this sits ABOVE the stale-gesture `teardown()`, so a
+      // non-primary press arriving mid-drag cannot destroy a live primary gesture. Pinned.
+      if ((event.button ?? 0) !== 0) return;
       if (stateRef.current) teardown(); // stale-gesture safety
       const pointerType = event.pointerType ?? 'mouse';
       stateRef.current = {

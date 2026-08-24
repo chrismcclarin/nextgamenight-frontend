@@ -164,7 +164,32 @@ describe('SchedulerWeekStrip — selection and roving keyboard navigation', () =
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' });
     expect(document.activeElement).toBe(tabs[0]);
 
-    fireEvent.keyDown(tabs[6], { key: 'ArrowRight' });
+    // WR-05 (88.1-REVIEW.md): the right-edge half USED TO fire at `tabs[6]` while focus was
+    // still on `tabs[0]`, then assert only that focus was not on `document.body` — true no
+    // matter what the handler did. Focus is now ROVED to the last tab through real key presses
+    // rather than a bare `.focus()`: the roving `focusedIndex` only moves when `onMove` fires,
+    // so a DOM-only focus call would leave it at 0 and the tabindex assertion below would be
+    // measuring the wrong cell.
+    for (let i = 0; i < 6; i += 1) {
+      fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' });
+    }
+    expect(document.activeElement).toBe(tabs[6]);
+
+    // One more, into the right edge.
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(tabs[6]);
+
+    // THE ASSERTION THAT ACTUALLY BITES, and why the focus check above is not enough:
+    // breaking the clamp at `useHeatmapCell.ts` from `Math.min(cols - 1, col + 1)` to `col + 1`
+    // makes `onMove(0, 7)` fire; `SchedulerWeekStrip.tsx` then sets `focusedIndex = 7` and calls
+    // `cellRefs.current.get(7)?.focus()`, which is `undefined` — so focus would STILL be sitting
+    // on tabs[6] and a focus-only assertion would STILL pass. What changes under a broken clamp
+    // is the ROVING TABINDEX: no tab is `focused`, so the tabbable count drops from 1 to 0 and
+    // the strip becomes unreachable by Tab. Same shape as "makes exactly ONE cell tabbable".
+    // Demonstrated red against a deliberately broken clamp before this line was committed.
+    expect(tabs.filter((t) => t.tabIndex === 0)).toHaveLength(1);
+    expect(tabs[6].tabIndex).toBe(0);
+
     // Focus never left the strip for the body — the failure mode a clamp bug produces.
     expect(document.body.contains(document.activeElement)).toBe(true);
     expect(document.activeElement).not.toBe(document.body);

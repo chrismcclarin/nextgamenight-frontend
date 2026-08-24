@@ -37,9 +37,15 @@ function evt(
   x: number,
   y: number,
   pointerType: 'touch' | 'mouse' = 'touch',
-  pointerId = 1
+  pointerId = 1,
+  // WR-01: OPTIONAL and OMITTED by default, deliberately. Every fixture in describes 1-6 calls
+  // `evt()` without it, so leaving it undefined is what proves the hook's absent-means-primary
+  // reading. Extended here rather than adding a second builder — two builders drift apart.
+  button?: number
 ): GesturePointerEvent {
-  return { pointerId, pointerType, clientX: x, clientY: y };
+  const e: GesturePointerEvent = { pointerId, pointerType, clientX: x, clientY: y };
+  if (button !== undefined) e.button = button;
+  return e;
 }
 
 function renderGesture(overrides: Partial<PaintGestureArgs<string>> = {}) {
@@ -235,5 +241,84 @@ describe('usePaintGesture — 6. mouse enters immediately and commits a RANGE (P
     expect(onCommit).toHaveBeenCalledTimes(1);
     expect(onCommit).toHaveBeenCalledWith(anchor, end);
     expect(anchor).not.toEqual(end);
+  });
+});
+
+describe('usePaintGesture — 7. non-primary mouse buttons are ignored (WR-01)', () => {
+  // The defect: a RIGHT-CLICK on a slot opened the context menu AND wrote the event's start
+  // time. `onPointerDown` had no button check, and `onPointerUp` commits for any button once a
+  // gesture is live, so the press anchored and the release committed.
+  it('a right-button press commits nothing', () => {
+    const { result, onEnter, onExtend, onCommit } = renderGesture();
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y, 'mouse', 1, 2));
+    result.current.handlers.onPointerUp(evt(MID.x, MID.y, 'mouse', 1, 2));
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onEnter).not.toHaveBeenCalled();
+    expect(onExtend).not.toHaveBeenCalled();
+  });
+
+  it('a middle-button press commits nothing', () => {
+    const { result, onEnter, onExtend, onCommit } = renderGesture();
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y, 'mouse', 1, 1));
+    result.current.handlers.onPointerMove(evt(MID.x, MID.y + 200, 'mouse', 1, 1));
+    result.current.handlers.onPointerUp(evt(MID.x, MID.y + 200, 'mouse', 1, 1));
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onEnter).not.toHaveBeenCalled();
+    expect(onExtend).not.toHaveBeenCalled();
+  });
+
+  it('the PRIMARY button still anchors, extends and commits', () => {
+    const { result, onExtend, onCommit } = renderGesture();
+    const anchor = resolvePoint(MID.x, MID.y);
+    const end = resolvePoint(MID.x, MID.y + 200);
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y, 'mouse', 1, 0));
+    expect(onExtend).toHaveBeenCalledWith(anchor, anchor);
+
+    result.current.handlers.onPointerMove(evt(MID.x, MID.y + 200, 'mouse', 1, 0));
+    result.current.handlers.onPointerUp(evt(MID.x, MID.y + 200, 'mouse', 1, 0));
+
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith(anchor, end);
+  });
+
+  it('an event with NO button field still engages — absent means primary', () => {
+    // Touch contact reports `button: 0`, and every synthetic fixture in this file omits the
+    // field entirely. A filter that treated absent as non-primary would kill BOTH.
+    const { result, onExtend, onCommit } = renderGesture();
+    const anchor = resolvePoint(MID.x, MID.y);
+
+    const down = evt(MID.x, MID.y, 'mouse');
+    expect(down.button).toBeUndefined();
+
+    result.current.handlers.onPointerDown(down);
+    expect(onExtend).toHaveBeenCalledWith(anchor, anchor);
+
+    result.current.handlers.onPointerUp(evt(MID.x, MID.y, 'mouse'));
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('a right-button press MID-DRAG neither cancels nor re-anchors the live gesture', () => {
+    // The filter is at `onPointerDown` only. A second, non-primary press arriving while a
+    // primary drag is live must be a no-op: the stale-gesture `teardown()` sits BELOW the
+    // filter, so it is never reached, and the original anchor survives to commit.
+    const { result, onCommit } = renderGesture();
+    const anchor = resolvePoint(MID.x, MID.y);
+    const end = resolvePoint(MID.x, MID.y + 200);
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y, 'mouse', 1, 0));
+    result.current.handlers.onPointerMove(evt(MID.x, MID.y + 200, 'mouse', 1, 0));
+
+    // Right button goes down mid-drag.
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y + 200, 'mouse', 2, 2));
+
+    result.current.handlers.onPointerUp(evt(MID.x, MID.y + 200, 'mouse', 1, 0));
+
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith(anchor, end);
   });
 });
