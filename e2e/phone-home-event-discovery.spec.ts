@@ -25,6 +25,11 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
  *   5. tapping an event navigates AND leaves no sheet behind (the close-before-navigate
  *      ordering, observed from outside — React batches both into one commit, so this is
  *      the only layer that can observe the outcome at all)
+ *   5b. (Req 12, plan 88.1-17) the calendar sheet opens on the UPCOMING section with the
+ *      past collapsed: the disclosure is present, reports itself collapsed, controls a
+ *      hidden region and meets the 44px floor; expanding it flips aria-expanded and
+ *      strictly increases the row count. That last delta is the non-vacuity guard — a
+ *      seeded account with no history would otherwise make the case measure nothing.
  *   6. the Footer's /Privacy link is visible AND hit-testable with the bar mounted
  *   7. at DESKTOP width neither phone surface renders (the ">=768px unchanged" half)
  *
@@ -99,6 +104,24 @@ const calendarSheet = (page: Page) => page.getByRole('dialog', { name: 'Calendar
 const desktopColumnHeading = (page: Page) =>
   page.getByRole('heading', { name: 'Upcoming Events', exact: true });
 
+/** Req 12 (plan 88.1-17): the calendar sheet's event rows, in DOM order. `EventRow`'s
+ *  title is an `<h5>`, and it falls back to the game name for the seeded row shape —
+ *  the same locator the readable-game-text case above relies on. */
+const sheetRowHeadings = (page: Page) =>
+  calendarSheet(page).getByRole('heading', { level: 5 });
+
+/** Req 12: the past disclosure. The COUNT is part of its accessible name by
+ *  requirement, so the locator asserts the shape while staying data-agnostic. */
+const pastDisclosure = (page: Page) =>
+  calendarSheet(page).getByRole('button', { name: /^past events \(\d+\)$/i });
+
+/** Named in every Req 12 fixture-dependent failure message. A seeded account with no
+ *  event history makes the expand case vacuous, and that is a FIXTURE failure — never a
+ *  pass. `seed-sample-data.js` is what actually seeds past events (7 of them, -1 to -14
+ *  days); `e2e-fixtures.js` owns the invariant that the e2e account still sees them. */
+const FIXTURE_OWNER =
+  'periodictabletopbackend_v2/Sonnet/scripts/e2e-fixtures.js (past rows come from seed-sample-data.js)';
+
 test.describe('Phase 88.1 Req 11 — phone event discovery (phone project)', () => {
   // Inverse of tailwind-v4-styles.spec.ts:57 and the same shape as
   // touch-targets.spec.ts:138 — Req 11 is a phone-tenet requirement measured at 375x667.
@@ -124,7 +147,17 @@ test.describe('Phase 88.1 Req 11 — phone event discovery (phone project)', () 
     await bar.click();
     await expect(upcomingSheet(page)).toBeVisible();
     // Content, not an empty shell: the card's own heading renders inside the sheet.
-    await expect(upcomingSheet(page).getByRole('heading', { name: 'Upcoming Events' })).toBeVisible();
+    //
+    // DISAMBIGUATED BY LEVEL (plan 88.1-17; CI run 32653244426 failed here on strict
+    // mode). TWO headings match "Upcoming Events" inside this dialog: the sheet's own
+    // Radix `DialogTitle` <h2>"Upcoming events" (BottomSheet.tsx, title from
+    // UserHomePage.js) and UpcomingEventsCard's <h3>"Upcoming Events". Playwright's
+    // accessible-name match is case-insensitive and substring unless `exact` is set, so
+    // the un-levelled locator resolved both. `level: 3` is the CARD's heading and is
+    // robust to a copy-case change in either place — do not "simplify" the level back out.
+    await expect(
+      upcomingSheet(page).getByRole('heading', { level: 3, name: 'Upcoming Events', exact: true }),
+    ).toBeVisible();
 
     // Dismiss path 1: Escape.
     await page.keyboard.press('Escape');
@@ -203,6 +236,86 @@ test.describe('Phase 88.1 Req 11 — phone event discovery (phone project)', () 
       overflow.scrollHeight,
       `"${text}" overflows its box vertically (${overflow.scrollHeight} > ${overflow.clientHeight}) — the line clamp is cutting the name off`,
     ).toBeLessThanOrEqual(overflow.clientHeight + 1);
+  });
+
+  test('Req 12: the calendar sheet opens on upcoming events with no past row visible', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await assertDarkTheme(page);
+
+    await guardResolved(calendarButton(page), 'the phone Calendar button');
+    await calendarButton(page).click();
+    await expect(calendarSheet(page)).toBeVisible();
+
+    // The sheet has CONTENT before anything is asserted about its shape — otherwise an
+    // empty sheet would satisfy "no past row is visible" trivially.
+    await guardResolved(
+      sheetRowHeadings(page),
+      'an event row heading inside the calendar sheet (Req 12 opens on the upcoming section)',
+    );
+
+    const disclosure = pastDisclosure(page);
+    await guardResolved(
+      disclosure,
+      `the "Past events (N)" disclosure — either Req 12's disclosure is not rendering, or the seeded account has NO past events, which is a FIXTURE failure owned by ${FIXTURE_OWNER}`,
+    );
+
+    // Collapsed on open. This IS the requirement: the owner opened this sheet to see
+    // "when is the next one" and got ~50 rows of history first.
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+
+    // The controlled region resolves and is hidden — the two halves of the disclosure
+    // contract. A dangling `aria-controls` announces a region that does not exist.
+    const panelId = await disclosure.getAttribute('aria-controls');
+    expect(
+      panelId,
+      'the Past events disclosure carries no aria-controls — the region it expands is unidentifiable to assistive tech',
+    ).toBeTruthy();
+    // Attribute selector, not `#id`: React's `useId` values contain colons, which are
+    // not valid in a bare CSS id selector.
+    const panel = page.locator(`[id="${panelId}"]`);
+    await expect(
+      panel,
+      'the region named by aria-controls is visible while the disclosure reports itself collapsed',
+    ).toBeHidden();
+
+    // 44px floor. Only this layer can measure it, and the floor is a phone-tenet
+    // requirement, not a nice-to-have — the control is full-width, so height is the
+    // dimension actually at risk.
+    await assertMin44(disclosure, 'the Past events disclosure');
+  });
+
+  test('Req 12: expanding Past events reveals rows and reports itself expanded', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await assertDarkTheme(page);
+
+    await guardResolved(calendarButton(page), 'the phone Calendar button');
+    await calendarButton(page).click();
+    await expect(calendarSheet(page)).toBeVisible();
+
+    await guardResolved(sheetRowHeadings(page), 'the calendar sheet event rows');
+    const disclosure = pastDisclosure(page);
+    await guardResolved(
+      disclosure,
+      `the "Past events (N)" disclosure — a seeded account with no past events makes this case vacuous; that is a FIXTURE failure owned by ${FIXTURE_OWNER}`,
+    );
+
+    const rowsBefore = await sheetRowHeadings(page).count();
+    await disclosure.click();
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+
+    // NON-VACUITY GUARD (mandatory, plan 88.1-17 / T-88.1-46): "the click did not throw"
+    // is not an assertion. The row count must strictly INCREASE, because the only thing
+    // expanding can do is mount past rows that were not mounted before.
+    await expect
+      .poll(() => sheetRowHeadings(page).count(), {
+        message: `expanding "Past events" did not increase the row count (${rowsBefore} before) — either the disclosure mounts nothing, or the seeded account has zero past events. The latter is a FIXTURE failure owned by ${FIXTURE_OWNER}, never a pass: a zero-delta count means this case measured nothing at all.`,
+        timeout: 5_000,
+      })
+      .toBeGreaterThan(rowsBefore);
   });
 
   test('11b: tapping an event navigates and leaves no sheet behind', async ({ page }) => {
