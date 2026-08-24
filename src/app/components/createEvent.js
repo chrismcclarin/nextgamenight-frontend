@@ -837,7 +837,29 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     // calendar's rendered week. Without this, navigating weeks updated the
     // heatmap data but left the calendar showing today's week, producing a
     // blank grid in next/prior-week views.
-    if (heatmapWeekStart) return heatmapWeekStart;
+    //
+    /* DECISION Phase 88.1-20 (CR-01, seed half): when the fetched week is the week CONTAINING
+       TODAY, hand the scheduler TODAY rather than that week's Monday. `heatmapWeekStart` is a
+       WEEK anchor (`:359`, snapped to Monday at `:352`) and this fallthrough was handing it over
+       as a DAY anchor. Below `md` the scheduler renders a single-day column, so that opened the
+       modal on Monday for a user sitting on any other weekday — CR-01.
+       Chosen OVER fixing it in the scheduler (rejected: at mount a Monday from this fetch and a
+       Monday from `prefillDate` are indistinguishable there, so a child-side default-to-today
+       would break "tap Monday -> create an event on Monday"; only THIS site knows which producer
+       won). Chosen OVER stabilising this memo's identity (rejected: identity churn is the
+       re-sync half, closed in `EventScheduler.tsx`; it leaves the VALUE wrong, and the value is
+       what seeds `currentDate` when the scheduler mounts after the fetch has landed).
+       BOTH halves are needed and neither subsumes the other: `:902` gates the form on the
+       group-members fetch while the heatmap effect at `:325` runs independently, so seeding vs
+       re-syncing is a race between two network calls, and a navigated-away week still needs the
+       scheduler-side guard. Week view is unaffected — Monday and today render the same week.
+       Reverting this to a bare `return heatmapWeekStart` re-opens CR-01; it is a decision, not
+       a redundant branch. Pinned: `createEvent.integration.test.tsx` "the phone arm opens on
+       TODAY, not the week Monday, on a non-Monday". */
+    if (heatmapWeekStart) {
+      const now = new Date();
+      return isSameWeek(now, heatmapWeekStart, { weekStartsOn: 1 }) ? now : heatmapWeekStart;
+    }
     return new Date();
   }, [prefillDate, editingEvent?.start_date, promptId, heatmapData?.weekStart, heatmapWeekStart]);
 

@@ -36,6 +36,8 @@ import {
   addDays,
   differenceInMinutes,
   format,
+  isSameDay,
+  isSameWeek,
   isToday,
   setHours,
   setMinutes,
@@ -276,10 +278,17 @@ export default function EventScheduler({
   //       paths pin the parent's `initialDate` to the prefill date and never follow navigation
   //       (`createEvent.js:806-825`), so a FULLY CONTROLLED reading of `initialDate` would freeze
   //       week and day nav dead on those paths.
-  //   (b) A post-mount effect re-syncs whenever `initialDate` CHANGES. That is the Phase 71.2
-  //       poll-CTA anchor: on the `promptId` journey the poll's own `weekStart` only arrives
-  //       after the fetch resolves, so a mount-only seed opens on the wrong week and shows no
-  //       tiles. It is also the nav blank-grid fix.
+  //   (b) A post-mount effect re-syncs whenever `initialDate` CHANGES — now ACROSS WEEKS ONLY,
+  //       see the marker on the effect below. That is the Phase 71.2 poll-CTA anchor: on the
+  //       `promptId` journey the poll's own `weekStart` only arrives after the fetch resolves,
+  //       so a mount-only seed opens on the wrong week and shows no tiles. It is also the nav
+  //       blank-grid fix. BOTH of those reasons are CROSS-week by construction — the poll
+  //       anchor arrives with the poll's own `weekStart` (a different week, or the re-sync is a
+  //       no-op anyway), and the blank-grid fix exists precisely because the grid is showing a
+  //       week the data is not for. A SAME-week re-anchor has no consumer at all: it is the
+  //       CR-01 defect. `createEvent.js` re-emits the FETCHED WEEK'S MONDAY as a fresh `Date`
+  //       after every heatmap fetch (`:359` -> `:840`), and in the day arm — the only arm below
+  //       `md` — that moved the displayed day to Monday on every non-Monday.
   //
   // `initialDate` is therefore a HYBRID contract: neither a mount-only seed nor a controlled
   // prop. Both readings are pinned (EventScheduler.test.tsx / createEvent.integration.test.tsx).
@@ -290,9 +299,52 @@ export default function EventScheduler({
     defaultView === 'day' ? 'day' : 'week'
   );
 
+  /* DECISION Phase 88.1-20 (CR-01, 88.1-REVIEW.md): writer (b) ignores exactly one class of
+     incoming value — a WEEK ANCHOR for the week ALREADY DISPLAYED, i.e. the Monday of the week
+     `currentDate` is in. Everything else still re-anchors, including a same-week DIFFERENT DAY.
+
+     WHY THAT SHAPE AND NOT PLAIN `isSameWeek`: a plain same-week suppression was tried first and
+     turned two Req-13 pins red ("starts at the TOP on a day with no availability" and
+     "RE-DERIVES the landing when the displayed day changes", `EventScheduler.test.tsx`), both of
+     which move the displayed day WITHIN one week through `initialDate` and expect the day-peak
+     landing to follow. A same-week different-day hand-over is a genuine day intent; the week's
+     own Monday is not, because the only producer of that value is the parent's FETCH ANCHOR
+     (`createEvent.js:359` `setHeatmapWeekStart(effectiveMonday)` -> `:840` the fallthrough),
+     re-emitted as a fresh `Date` after every heatmap fetch. In the day arm — the only arm below
+     `md` — taking it moved the displayed day to Monday on every non-Monday. That is CR-01.
+
+     Chosen OVER two rejected alternatives:
+       (i) stabilising `heatmapWeekStart`'s identity in `createEvent.js` (rejected: it makes the
+           fix depend on ONE parent memo staying stable forever, and any OTHER parent handing
+           over a week anchor re-opens the bug; the guard belongs to the consumer's contract,
+           which is where the contract is documented — right above this line), and
+      (ii) making `initialDate` a mount-only seed (rejected: the comment directly above says that
+           breaks the Phase 71.2 poll CTA, and it is pinned at two layers).
+
+     This closes the RE-SYNC half of CR-01 only. The SEED half — the scheduler mounting when the
+     heatmap fetch has already resolved, so `initialDate` is the anchor before this effect ever
+     runs — cannot be closed here: at mount a Monday from the fetch and a Monday from
+     `prefillDate` are indistinguishable to this component, and defaulting to today would break
+     "tap Monday -> create event on Monday". It is closed at the parent, where the two are
+     distinguishable — see the matching marker at `createEvent.js`'s `calendarInitialDate`.
+     BOTH halves are reachable in production: `createEvent.js:902` gates the whole form on the
+     GROUP-MEMBERS fetch while the heatmap effect at `:325` runs independently, so which of the
+     two paths you get is a race between two network calls.
+
+     The boundary is MONDAY deliberately (`weekStartsOn: 1`), matching `heatmapWeekStart`'s own
+     snap (`createEvent.js:352`), `resolveWeekNav` and `weekDates` below — a different boundary
+     here would suppress re-anchors the fetch considers cross-week and vice versa.
+     The FUNCTIONAL form is load-bearing: adding `currentDate` to the deps would re-run this
+     effect on every navigation and defeat the guard. */
   useEffect(() => {
     if (initialDate) {
-      setCurrentDate(initialDate);
+      setCurrentDate((prev) => {
+        const displayedMonday = startOfWeek(prev, { weekStartsOn: 1 });
+        const isAnchorForDisplayedWeek =
+          isSameWeek(initialDate, prev, { weekStartsOn: 1 }) &&
+          isSameDay(initialDate, displayedMonday);
+        return isAnchorForDisplayedWeek ? prev : initialDate;
+      });
     }
   }, [initialDate]);
 

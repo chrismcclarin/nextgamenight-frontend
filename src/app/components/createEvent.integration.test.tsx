@@ -343,3 +343,121 @@ describe('CreateEvent + real EventScheduler — the Phase 66-01 controlled round
     expect(screen.getByText(/select a time slot for your event/i)).toBeInTheDocument();
   });
 });
+
+describe('CreateEvent + real EventScheduler — the displayed day survives the heatmap fetch (CR-01)', () => {
+  // CR-01 (88.1-REVIEW.md). `createEvent.js` re-emits the FETCHED WEEK'S MONDAY as a fresh `Date`
+  // after every group-heatmap fetch (`:359` setHeatmapWeekStart(effectiveMonday) -> `:840`
+  // calendarInitialDate's fallthrough), and the scheduler's `initialDate` re-sync effect used to
+  // take it unconditionally. In the DAY arm — the only arm below `md` — that moved the displayed
+  // day to Monday on every non-Monday. Only this harness can catch it: the churn originates in the
+  // PARENT's memo, so a component-level rerender pin cannot reproduce the source.
+  //
+  // DELIBERATE COPY, not an accident: `stubMatchMedia` below duplicates the shape at
+  // `EventScheduler.test.tsx:490-513`. That helper is file-local and NOT exported; exporting it
+  // from a `.test.tsx` to import here would make one suite's harness load-bearing for another's.
+  // If the media-query fork ever changes, both copies change.
+  function stubMatchMedia() {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => {
+      const widthMatch = /max-width:\s*(\d+)px/.exec(query);
+      // Phone arm: 375px, coarse pointer.
+      const matches = widthMatch
+        ? 375 <= Number(widthMatch[1])
+        : query.includes('hover: none');
+      return {
+        matches,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      } as unknown as MediaQueryList;
+    }) as typeof window.matchMedia;
+    return () => {
+      window.matchMedia = original;
+    };
+  }
+
+  let restoreMatchMedia: (() => void) | null = null;
+
+  afterEach(() => {
+    restoreMatchMedia?.();
+    restoreMatchMedia = null;
+    vi.useRealTimers();
+  });
+
+  it('the phone arm opens on TODAY, not the week Monday, on a non-Monday', async () => {
+    // Thursday 2026-09-17, local noon. Its Monday is 2026-09-14.
+    const THURSDAY = new Date(2026, 8, 17, 12, 0, 0);
+    // Guard the fixture itself: a future edit that slides this onto a Monday would make the whole
+    // case vacuous, because Monday is exactly the value the defect produces.
+    expect(THURSDAY.getDay()).toBe(4);
+
+    // `shouldAdvanceTime` is REQUIRED — this harness leans on `waitFor`/`findByText`, which never
+    // resolve under frozen timers.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(THURSDAY);
+    restoreMatchMedia = stubMatchMedia();
+
+    await renderModal();
+    await waitFor(() => expect(api.getGroupHeatmap).toHaveBeenCalledTimes(1));
+
+    // The phone day arm rendered: one column, not seven.
+    await waitFor(() => expect(columnHeaders()).toHaveLength(1));
+    expect(columnHeaders()[0]).toBe(format(THURSDAY, 'dd EEE'));
+    // THE FINDING, asserted as a negative on its own line: a positive-only assertion would pass
+    // on a Monday-dated fixture and prove nothing.
+    expect(columnHeaders()[0]).not.toBe(
+      format(startOfWeek(THURSDAY, { weekStartsOn: 1 }), 'dd EEE')
+    );
+
+    // …and the strip agrees with the column: today's tab is selected, not index 0.
+    const selectedTab = screen
+      .getAllByRole('tab')
+      .find((t) => t.getAttribute('aria-selected') === 'true');
+    expect(selectedTab).toBeDefined();
+    expect(selectedTab?.getAttribute('aria-label')).toContain(format(THURSDAY, 'EEEE d'));
+  });
+
+  it('Back across the week boundary stays on the day the user navigated to', async () => {
+    // Time-independent by construction: no fake timers, no hardcoded date — it walks forward to
+    // whatever Monday it finds and steps back off it.
+    await renderModal({ initialVisualView: 'day' });
+    await waitFor(() => expect(api.getGroupHeatmap).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(columnHeaders()).toHaveLength(1));
+
+    // Walk forward to a Monday. The header format is 'dd EEE' (EventScheduler.tsx), so the
+    // suffix test is exact. Bounded — a week of steps must reach one.
+    let steps = 0;
+    while (!/Mon$/.test(columnHeaders()[0] ?? '')) {
+      if (steps >= 7) {
+        throw new Error(
+          `CR-01 pin: seven day-steps did not reach a Monday. Last header: ${columnHeaders()[0]}`
+        );
+      }
+      fireEvent.click(toolbarButton(/^next$/i));
+      // eslint-disable-next-line no-await-in-loop
+      await waitFor(() => expect(columnHeaders()).toHaveLength(1));
+      steps += 1;
+    }
+    const mondayHeader = columnHeaders()[0];
+    const callsAtMonday = heatmapCalls().length;
+
+    fireEvent.click(toolbarButton(/^(back|previous|prev)$/i));
+
+    // One day back off a Monday is the previous week's Sunday.
+    await waitFor(() => expect(columnHeaders()[0]).not.toBe(mondayHeader));
+    const sundayHeader = columnHeaders()[0];
+    expect(sundayHeader).toMatch(/Sun$/);
+
+    // The cross-week refetch really fired, so the parent really re-emitted a Monday and the
+    // churn really had its chance to land.
+    await waitFor(() => expect(api.getGroupHeatmap).toHaveBeenCalledTimes(callsAtMonday + 1));
+
+    // Pre-fix this is the six-day jump back to that week's Monday.
+    await waitFor(() => expect(columnHeaders()[0]).toBe(sundayHeader));
+    expect(columnHeaders()[0]).not.toMatch(/Mon$/);
+  });
+});
