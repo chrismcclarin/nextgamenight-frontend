@@ -490,3 +490,80 @@ export async function probeFooterOcclusion(page: Page): Promise<FooterOcclusionP
     };
   });
 }
+
+// --- Plan 19's unsettled question: WHICH element grows? -----------------------
+
+export interface FormChildBox {
+  index: number;
+  tag: string;
+  className: string;
+  height: number;
+  top: number;
+  /** First 48 characters of visible text — enough to NAME the block ("Suggestions",
+   *  "Add games to enable suggestions"), never enough to be a data dump. */
+  text: string;
+}
+
+/**
+ * Plan 88.1-19's "ten-line probe", implemented (owner ruling D-12, 2026-08-24).
+ *
+ * WHAT IT ANSWERS. Plan 19 measured the create-event form growing EXACTLY 62px above the
+ * scheduler grid on both viewports, but `probeSchedulerGeometry` stops at `clipChain[0]`'s
+ * direct children — which is the single `<form class="space-y-4">` — so it could attribute the
+ * growth to the form and no further. 19's SUMMARY names the fix in its own words: "recurse one
+ * more level and report each form child's height in the pre-drag and mid-drag samples; the child
+ * whose height changes by 62 is the answer."
+ *
+ * WHY IT IS STILL WIRED AFTER THE SPEC FIX. Plan 20 ruled item A spec-only (D-12) and routed the
+ * PRODUCT finding — content shifting the grid under a user's finger — to Phase 88.6. That entry
+ * names `QuickSuggestions` BY INSPECTION, which the project's Evidence Rule does not accept as a
+ * finding. This probe converts the inspection into a measurement so the 88.6 planner inherits a
+ * number instead of a lead. It asserts nothing and can never fail a case.
+ *
+ * READ-ONLY, like every probe in this file: no scroll, no click, no style write. The text slice
+ * is fixture copy from an open Create Event dialog — no cookies, storage, headers or `.auth/`
+ * content, per threat T-88.1-60.
+ */
+export async function probeFormChildHeights(page: Page): Promise<FormChildBox[] | null> {
+  return page.evaluate(() => {
+    const round = (n: number) => Math.round(n * 1000) / 1000;
+    const form = document.querySelector('[role="dialog"] form');
+    if (!form) return null;
+    return Array.from(form.children).map((child, index) => {
+      const r = child.getBoundingClientRect();
+      return {
+        index,
+        tag: child.tagName.toLowerCase(),
+        className: (typeof child.className === 'string' ? child.className : '').slice(0, 60),
+        height: round(r.height),
+        top: round(r.top),
+        text: (child.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 48),
+      };
+    });
+  }) as Promise<FormChildBox[] | null>;
+}
+
+/**
+ * Per-child height delta between two `probeFormChildHeights` samples, matched by index.
+ * Pure arithmetic in the test process — nothing is read from the page here.
+ */
+export function formChildDeltas(
+  before: FormChildBox[] | null,
+  after: FormChildBox[] | null,
+): { index: number; tag: string; className: string; text: string; heightDelta: number; topDelta: number }[] {
+  if (!before || !after) return [];
+  return after
+    .map((a) => {
+      const b = before.find((x) => x.index === a.index);
+      if (!b) return null;
+      return {
+        index: a.index,
+        tag: a.tag,
+        className: a.className,
+        text: a.text || b.text,
+        heightDelta: Math.round((a.height - b.height) * 1000) / 1000,
+        topDelta: Math.round((a.top - b.top) * 1000) / 1000,
+      };
+    })
+    .filter((d): d is NonNullable<typeof d> => d !== null);
+}

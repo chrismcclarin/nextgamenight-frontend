@@ -4,6 +4,8 @@ import { test, expect, type CDPSession, type Locator, type Page } from '@playwri
 // attachment; none of them asserts anything. See `e2e/support/diagnostics.ts`.
 import {
   attachDiagnostics,
+  formChildDeltas,
+  probeFormChildHeights,
   probePointPath,
   probeSchedulerGeometry,
   probeViewport,
@@ -189,9 +191,21 @@ interface GridGeometry {
   gridCount: number;
   /** Every cell. Widths/heights are valid even for rows scrolled out of view. */
   cells: CellBox[];
-  /** Cells fully inside BOTH the scroller's client box and the viewport — the only
-   *  ones `document.elementFromPoint` (and therefore `usePaintGesture`) can resolve. */
+  /** Cells fully inside the REACHABLE band below — the only ones
+   *  `document.elementFromPoint` (and therefore `usePaintGesture`) can resolve. */
   visible: CellBox[];
+  /**
+   * The band a finger can actually land in: the scroller's rect INTERSECT every clipping
+   * ancestor INTERSECT the viewport.
+   *
+   * The clip chain is the load-bearing half and it used to be missing (plan 88.1-19, run
+   * 32774690333). At 375x667 this band measured `368.352 .. 632.648` while a viewport-only
+   * clamp gave `368.352 .. 667` — so the old filter admitted FIVE cells where only FOUR were
+   * reachable, and a drag to the fifth landed on the Radix backdrop
+   * (`div.fixed inset-0 z-50 bg-black/80`, `elementFromPoint` -> null). The modal is
+   * `max-h-[90vh] overflow-hidden`; the viewport is not the clip.
+   */
+  visibleBand: { top: number; bottom: number; height: number };
 }
 
 /**
@@ -225,8 +239,20 @@ async function gridGeometry(page: Page): Promise<GridGeometry | null> {
         height: r.height,
       };
     });
-    const vTop = Math.max(sr.top, 0);
-    const vBottom = Math.min(sr.bottom, window.innerHeight);
+    // Every clipping ancestor between the scroller and <body>. This walk is lifted from
+    // `probeSchedulerGeometry` (e2e/support/diagnostics.ts) rather than re-derived, so the
+    // spec helper and the diagnostic probe can never disagree about the same box — plan 19
+    // compared them side by side precisely because they DID disagree.
+    let vTop = Math.max(sr.top, 0);
+    let vBottom = Math.min(sr.bottom, window.innerHeight);
+    for (let node = scroller.parentElement; node && node !== document.body; node = node.parentElement) {
+      const cs = window.getComputedStyle(node);
+      if (cs.overflow !== 'visible' || cs.overflowY !== 'visible') {
+        const cr = node.getBoundingClientRect();
+        vTop = Math.max(vTop, cr.top);
+        vBottom = Math.min(vBottom, cr.bottom);
+      }
+    }
     return {
       scroller: {
         top: sr.top,
@@ -247,6 +273,7 @@ async function gridGeometry(page: Page): Promise<GridGeometry | null> {
           c.cx > 0 &&
           c.cx < window.innerWidth,
       ),
+      visibleBand: { top: vTop, bottom: vBottom, height: vBottom - vTop },
     };
   });
 }
@@ -275,6 +302,88 @@ async function resetColumnScroll(page: Page): Promise<void> {
     if (scroller) scroller.scrollTop = 0;
   });
   await expect.poll(() => columnScrollTop(page)).toBe(0);
+}
+
+/**
+ * Wait until the open dialog has stopped MOVING THE GRID, so every coordinate computed from
+ * `gridGeometry` below is computed against the layout the gesture will actually meet.
+ *
+ * WHY THIS EXISTS (plan 88.1-19 measured it, runs 32773229213 and 32774690333). The create-event
+ * form GROWS by exactly 62px above the scheduler while a gesture is in flight — phone
+ * `contentOffsetTopInClip` 273 -> 335 and form height 1195 -> 1257, desktop 195 -> 257 and
+ * 1392 -> 1454, with the modal body's `scrollTop` pinned at 0 throughout, so this is content
+ * growing and categorically not a container scrolling. Row pitch is 57px desktop / 49px phone,
+ * so 62px is just over ONE ROW: the drag cases computed their target coordinate before the
+ * growth and dispatched the finger there after it, and committed one row short (desktop endRow
+ * 4 for 5, phone 2 for 3). The grower is async content above `<EventScheduler>`; the PRODUCT
+ * side of that — a grid that jumps under a user's finger — is routed to Phase 88.6 by owner
+ * ruling D-12 and is deliberately NOT fixed here.
+ *
+ * THIS IS A PRECONDITION, NOT THE FIX. The fix is `steppedMovesToCell` / `mouseMovesToCell`,
+ * which re-resolve the target LIVE on every step and therefore track a shift whenever it
+ * happens. This settle is what keeps that chase REACHABLE: measured on the phone arm, the last
+ * corridor cell sat 35.7px clear of the clipped box's bottom (cell bottom 596.9 vs band bottom
+ * 632.648), so a 62px shift carried it OUT of the modal's `overflow-hidden` box entirely and no
+ * amount of live tracking could have put a finger on it. Measure after the growth, then chase
+ * anything left. Two layers, and they fail independently.
+ *
+ * Case 5 needs it for a second reason: `getBounds` returns the scroller's UNCLIPPED rect, so a
+ * 62px shift moves the hook's edge band down 62px while the clip stays put — post-shift, the
+ * intersection its `bandY` lives in is EMPTY. A stale bandY there reproduces the 0px auto-scroll
+ * that plan 19 diagnosed, with a different cause and the same red.
+ *
+ * Two gates, because either alone can lie:
+ *   1. the Web Animations API — the Radix `zoom-in-95 / duration-200` open animation moves the
+ *      whole dialog (`src/components/ui/dialog.tsx`), and `toBeVisible()` resolves at its START.
+ *      Infinite animations (spinners) are excluded or this would never resolve.
+ *   2. a stability poll on the grid scroller's own top edge and the form's height. The window is
+ *      deliberately LONGER than the 500ms debounce the known grower fires on: four identical
+ *      samples 250ms apart is >= 750ms of quiet. A shorter window would go green in the gap
+ *      BEFORE the late content lands, which is the exact race this helper exists to close.
+ */
+const SETTLE_SAMPLES = 4;
+
+async function settleSchedulerGeometry(page: Page): Promise<void> {
+  await dialog(page)
+    .first()
+    .evaluate(async (el) => {
+      const running = (el as HTMLElement)
+        .getAnimations({ subtree: true })
+        .filter((a) => a.effect?.getTiming().iterations !== Infinity);
+      await Promise.all(running.map((a) => a.finished.catch(() => undefined)));
+    });
+
+  const sample = () =>
+    page.evaluate(() => {
+      const round = (n: number) => Math.round(n * 1000) / 1000;
+      const grid = document.querySelector('[role="dialog"] [role="grid"]');
+      const scroller = grid?.parentElement as HTMLElement | null;
+      if (!scroller) return 'no-scroller';
+      const r = scroller.getBoundingClientRect();
+      const form = document.querySelector('[role="dialog"] form') as HTMLElement | null;
+      const fh = form ? round(form.getBoundingClientRect().height) : -1;
+      return [round(r.top), round(r.height), fh].join('/');
+    });
+
+  const history: string[] = [];
+  await expect
+    .poll(
+      async () => {
+        history.push(await sample());
+        if (history.length > SETTLE_SAMPLES) history.shift();
+        return (
+          history.length === SETTLE_SAMPLES &&
+          history.every((h) => h === history[0] && h !== 'no-scroller')
+        );
+      },
+      {
+        message:
+          'the scheduler grid never stopped moving inside the dialog — something above it is still growing or animating after ~750ms of quiet. Every coordinate this case computes would be stale before it is dispatched (plan 88.1-19 measured a 62px shift doing exactly that). Find the grower with `probeFormChildHeights`; do NOT delete this wait and do NOT relax a row expectation to match a moved grid.',
+        timeout: 15_000,
+        intervals: [250],
+      },
+    )
+    .toBe(true);
 }
 
 /**
@@ -366,6 +475,94 @@ async function steppedMoves(
   }
 }
 
+/** Live centre of one grid cell, read by its `data-coord` at the moment of the call.
+ *  Scoped to the open dialog because `EventHeatmapBackground` mounts a second WeekGrid
+ *  on the page behind the modal. */
+async function cellCentre(page: Page, coord: string): Promise<{ x: number; y: number } | null> {
+  return page.evaluate((wanted) => {
+    const el = document.querySelector(
+      '[role="dialog"] [role="grid"] [data-coord="' + wanted + '"]',
+    );
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }, coord);
+}
+
+/**
+ * Drag to a CELL rather than to a coordinate — the target is re-resolved LIVE on every step.
+ *
+ * DECISION Phase 88.1-20 (item A, owner ruling D-12 / plan 88.1-19 verdict row A): the drag
+ * cases track the target cell's CURRENT position, chosen OVER dispatching a coordinate computed
+ * once before the gesture. Plan 19 measured why: the create-event form grows 62px above the grid
+ * mid-gesture (phone `contentOffsetTopInClip` 273 -> 335, desktop 195 -> 257, `scrollTop` 0
+ * throughout), which is just over one row at both pitches, and the pre-computed coordinate then
+ * pointed at the row ABOVE the intended one — desktop `652` resolved to `4:3` when the target was
+ * `5:3`, phone `572.420` resolved to `2:0` when the target was `3:0`. The commits were `endRow` 4
+ * for 5 and 2 for 3: the range machine was doing exactly what the finger told it.
+ *
+ * Rejected alternative 1 — WAIT for the form to settle and keep dispatching fixed coordinates.
+ * That is a timing heuristic against ONE known grower: it closes the shift that finishes before
+ * the gesture and is blind to any shift that starts after it (`QuickSuggestions`' deps
+ * `[groupId, playerCount, duration]` can re-fire mid-session, and nothing stops the next async
+ * block above the grid from landing later still). A live chase does not care WHEN, WHY or HOW
+ * MANY times the layout moves. `settleSchedulerGeometry` is still called first, but as this
+ * helper's PRECONDITION, not as the fix — see its own header for the 35.7px-vs-62px reason.
+ *
+ * Rejected alternative 2 — relax the row expectation to whatever landed. That is the "fix a spec
+ * until it passes" move plan 88.1-20 forbids outright; `endRow` is the assertion the case exists
+ * for.
+ *
+ * Each step closes the REMAINING distance to the live centre, so the last step lands exactly on
+ * it however far the grid moved in between, and the steps stay small enough that no row is
+ * skipped by point resolution. Returns the path actually dispatched — the caller reports THAT,
+ * never a formula, because with a live chase no formula reproduces it.
+ */
+async function steppedMovesToCell(
+  cdp: CDPSession,
+  page: Page,
+  from: { x: number; y: number },
+  coord: string,
+  steps = 12,
+): Promise<{ x: number; y: number }[]> {
+  const path: { x: number; y: number }[] = [];
+  let cur = { ...from };
+  for (let i = 1; i <= steps; i++) {
+    const live = must(await cellCentre(page, coord), `the live centre of cell ${coord} on step ${i}`);
+    const remaining = steps - i + 1;
+    cur = {
+      x: cur.x + (live.x - cur.x) / remaining,
+      y: cur.y + (live.y - cur.y) / remaining,
+    };
+    await touchMove(cdp, cur.x, cur.y);
+    path.push({ ...cur });
+    await page.waitForTimeout(30);
+  }
+  return path;
+}
+
+/** The mouse arm of `steppedMovesToCell` — same live re-resolution, same reason. */
+async function mouseMovesToCell(
+  page: Page,
+  from: { x: number; y: number },
+  coord: string,
+  steps = 10,
+): Promise<{ x: number; y: number }[]> {
+  const path: { x: number; y: number }[] = [];
+  let cur = { ...from };
+  for (let i = 1; i <= steps; i++) {
+    const live = must(await cellCentre(page, coord), `the live centre of cell ${coord} on step ${i}`);
+    const remaining = steps - i + 1;
+    cur = {
+      x: cur.x + (live.x - cur.x) / remaining,
+      y: cur.y + (live.y - cur.y) / remaining,
+    };
+    await page.mouse.move(cur.x, cur.y);
+    path.push({ ...cur });
+  }
+  return path;
+}
+
 /** A plain swipe: start, immediate stepped moves (past the slop well before the
  *  long-press timer), end. The browser owns this gesture. */
 async function swipe(
@@ -399,6 +596,7 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
 
   test('(1) a plain drag scrolls the day column and selects nothing', async ({ page }) => {
     await openVisualScheduler(page);
+    await settleSchedulerGeometry(page);
     await resetColumnScroll(page);
     const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
     const corridor = corridorCells(geo);
@@ -436,6 +634,7 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
 
   test('(2) a tap selects exactly one slot and the Selected Time panel reflects it', async ({ page }) => {
     await openVisualScheduler(page);
+    await settleSchedulerGeometry(page);
     await resetColumnScroll(page);
     const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
     const corridor = corridorCells(geo);
@@ -458,22 +657,39 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
 
   test('(3) long-press then drag paints a range across the crossed slots', async ({ page }, testInfo) => {
     await openVisualScheduler(page);
+
+    // D-12 PROBE, half one of two (owner ruling 2026-08-24). Sampled BEFORE the settle below,
+    // so the pair brackets the growth plan 19 measured but could not attribute: 19's probe
+    // stopped at the single `<form class="space-y-4">` and could not point inside it. Read-only,
+    // asserts nothing. See `probeFormChildHeights` for why this is still wired after the spec fix.
+    const formChildrenAtOpen = await probeFormChildHeights(page);
+
+    await settleSchedulerGeometry(page);
     await resetColumnScroll(page);
     const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
 
+    // D-12 PROBE, half two: the same children after the layout has settled. The child whose
+    // `heightDelta` is ~62 IS the grower — the identity Phase 88.6's deferred entry currently
+    // names by INSPECTION (`QuickSuggestions`), which the Evidence Rule does not accept.
+    const formChildrenSettled = await probeFormChildHeights(page);
+    await attachDiagnostics(testInfo, 'case3-form-growth', {
+      note: 'per-child height delta of the create-event form between dialog open and layout settle. The ~62px row names the element that shifts the grid under the user (Phase 88.6 deferred entry). MEASUREMENT ONLY.',
+      deltas: formChildDeltas(formChildrenAtOpen, formChildrenSettled),
+      atOpen: formChildrenAtOpen,
+      settled: formChildrenSettled,
+    });
+
     // MEASUREMENT ONLY (plan 88.1-19). Read-only: no scroll, no click, no style write.
-    // The recorded failure is `endRow` 2 where 3 was expected, with the commit math, the
-    // overlay's pointer-events and an rAF race all already RULED OUT (.continue-here.md
-    // triage A). What has never been measured is whether the corridor's last cell is
-    // reachable AT ALL — `probeSchedulerGeometry` reports the clipped modal box next to
-    // `gridGeometry`'s viewport-clamped band, and every cell's own `elementFromPoint`
-    // resolution. Do not turn this into an assertion: plan 20 owns the fix.
+    // Kept after the fix on purpose (T-88.1-64): these numbers are what turned this case's
+    // triage from three plausible stories into one measured one, and they will attach fresh
+    // numbers to whatever the NEXT red run is. Do not turn any of it into an assertion.
     await attachDiagnostics(testInfo, 'case3-pre-drag', {
       viewport: await probeViewport(page),
       geometry: await probeSchedulerGeometry(page),
       specHelperBand: {
-        note: 'gridGeometry\'s own numbers, for direct comparison with geometry.specVisibleBand',
+        note: 'gridGeometry\'s own numbers. `visibleBand` now intersects the clip chain, so it should match geometry.clippedVisibleBand and NOT geometry.specVisibleBand.',
         scroller: geo.scroller,
+        visibleBand: geo.visibleBand,
         visibleCount: geo.visible.length,
         cellCount: geo.cells.length,
         gridCount: geo.gridCount,
@@ -483,8 +699,20 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
     const corridor = corridorCells(geo);
     expect(
       corridor.length,
-      'fewer than 3 cells in the drag corridor — a range drag cannot be distinguished from a tap here',
+      `fewer than 3 cells in the drag corridor — a range drag cannot be distinguished from a tap here. The reachable box (scroller INTERSECT every clip INTERSECT viewport) is [${geo.visibleBand.top}, ${geo.visibleBand.bottom}] = ${geo.visibleBand.height}px tall and holds ${geo.visible.length} of ${geo.cells.length} cells; the corridor then drops ${EDGE_BAND_PX + 4}px at each end so the rAF auto-scroll loop cannot engage. Fix the GEOMETRY or the viewport, never this number.`,
     ).toBeGreaterThanOrEqual(3);
+
+    // POSITIVE CONTROL for the clip-chain intersection added in `gridGeometry`. An
+    // over-tight band would empty the corridor and fail the guard above with a message
+    // about the GRID when the defect was in the FILTER — so prove the filter is sane here.
+    expect(geo.visible.length, 'the reachable-cell filter returned NOTHING — the clip-chain intersection is over-tight (or the grid is genuinely off screen), and every coordinate below would be invented').toBeGreaterThan(0);
+    for (const c of geo.visible) {
+      expect(
+        c.cy >= geo.visibleBand.top && c.cy <= geo.visibleBand.bottom,
+        `cell ${c.coord} passed the reachable filter with centre ${c.cy} outside the reachable box [${geo.visibleBand.top}, ${geo.visibleBand.bottom}]`,
+      ).toBe(true);
+    }
+
     const anchor = corridor[0];
     const target = corridor[corridor.length - 1];
 
@@ -492,22 +720,22 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
     const cdp = await page.context().newCDPSession(page);
 
     await longPress(cdp, page, { x: anchor.cx, y: anchor.cy });
-    await steppedMoves(cdp, page, { x: anchor.cx, y: anchor.cy }, { x: anchor.cx, y: target.cy });
+    // Live re-resolution per step — see `steppedMovesToCell` for the measurement that
+    // selected this over a coordinate computed once before the gesture.
+    const dragPath = await steppedMovesToCell(cdp, page, { x: anchor.cx, y: anchor.cy }, target.coord);
 
     // MEASUREMENT ONLY — the finger is still down here, which is the only moment the
-    // mid-gesture state is observable. The path below is recomputed with the SAME formula
-    // `steppedMoves` uses (12 steps, `from + (to - from) * i / steps`) so each dispatched
-    // touch point can be compared against what was actually under it.
-    const dragPath = Array.from({ length: 12 }, (_, i) => ({
-      x: anchor.cx,
-      y: anchor.cy + ((target.cy - anchor.cy) * (i + 1)) / 12,
-    }));
+    // mid-gesture state is observable. `dragPath` is the path ACTUALLY dispatched (the chase
+    // makes any recomputed formula wrong), so each point can be compared against what was
+    // under it. `formGrowthDuringGesture` should now be all-zero deltas: a non-zero row here
+    // means content moved DURING the drag, which the chase absorbs and this line records.
     await attachDiagnostics(testInfo, 'case3-mid-drag', {
       anchor: { coord: anchor.coord, row: anchor.row, col: anchor.col, cx: anchor.cx, cy: anchor.cy },
       target: { coord: target.coord, row: target.row, col: target.col, cx: target.cx, cy: target.cy },
       corridor: corridor.map((c) => ({ coord: c.coord, row: c.row, cy: c.cy })),
       edgeBandPx: EDGE_BAND_PX,
       dragPath: await probePointPath(page, dragPath),
+      formGrowthDuringGesture: formChildDeltas(formChildrenSettled, await probeFormChildHeights(page)),
       geometry: await probeSchedulerGeometry(page),
     });
 
@@ -544,6 +772,7 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
 
   test('(4) movement past the slop distance before the threshold cancels the gesture', async ({ page }) => {
     await openVisualScheduler(page);
+    await settleSchedulerGeometry(page);
     await resetColumnScroll(page);
     const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
     const corridor = corridorCells(geo);
@@ -587,6 +816,7 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
 
   test('(5) edge auto-scroll paints past the visible edge and the page behind the modal stays put', async ({ page }, testInfo) => {
     await openVisualScheduler(page);
+    await settleSchedulerGeometry(page);
     await resetColumnScroll(page);
     const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
     const corridor = corridorCells(geo);
@@ -779,6 +1009,7 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
     // round-trip could not be driven in jsdom and routed it here. If this case is
     // ever deleted, Req 1 has no owner at all.
     await openVisualScheduler(page);
+    await settleSchedulerGeometry(page);
     await resetColumnScroll(page);
     const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
     const corridor = corridorCells(geo);
@@ -1258,6 +1489,7 @@ test.describe('Phase 88.1 Req 5 — visual scheduler mouse range-select (desktop
     // The modal body scrolls independently; bring the grid's top into view before
     // measuring, or every cell rect is outside the viewport and unresolvable.
     await dialog(page).getByRole('columnheader').first().scrollIntoViewIfNeeded();
+    await settleSchedulerGeometry(page);
     await resetColumnScroll(page);
 
     const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
@@ -1300,26 +1532,19 @@ test.describe('Phase 88.1 Req 5 — visual scheduler mouse range-select (desktop
     await page.mouse.move(anchor.cx, anchor.cy);
     await page.mouse.down();
     // Diagonal on purpose: rows AND columns. A mouse engages immediately (no
-    // long-press), so this is the full range machine in one gesture.
-    for (let i = 1; i <= 10; i++) {
-      await page.mouse.move(
-        anchor.cx + ((target.cx - anchor.cx) * i) / 10,
-        anchor.cy + ((target.cy - anchor.cy) * i) / 10,
-      );
-    }
+    // long-press), so this is the full range machine in one gesture. The target is
+    // re-resolved LIVE on every step — the desktop arm shifted by the SAME 62px as the
+    // phone arm (plan 19: `contentOffsetTopInClip` 195 -> 257) and committed `endRow` 4
+    // where 5 was expected. See `mouseMovesToCell`.
+    const desktopPath = await mouseMovesToCell(page, { x: anchor.cx, y: anchor.cy }, target.coord);
 
-    // MEASUREMENT ONLY (plan 88.1-19), button still down. The desktop arm's pre-drag
-    // numbers alone cannot name a layer: on the first instrumented run (32773229213) every
-    // target cell resolved to ITSELF before the drag, yet the commit still ended one row
-    // short — so whatever indicts a layer here happens DURING the gesture, and only a
-    // mid-drag sample can see it. `contentOffsetTopInClip` is the discriminator: if the
-    // scroller's viewport rect has moved but that number has not, the modal body SCROLLED
-    // under the pointer; if both moved, something above the grid GREW
-    // (`clipChain[0].children` names it).
-    const desktopPath = Array.from({ length: 10 }, (_, i) => ({
-      x: anchor.cx + ((target.cx - anchor.cx) * (i + 1)) / 10,
-      y: anchor.cy + ((target.cy - anchor.cy) * (i + 1)) / 10,
-    }));
+    // MEASUREMENT ONLY (plan 88.1-19), button still down — kept after the fix (T-88.1-64).
+    // The desktop arm's pre-drag numbers alone could not name a layer: on the first
+    // instrumented run (32773229213) every target cell resolved to ITSELF before the drag,
+    // yet the commit still ended one row short. The mid-drag sample is what saw it — content
+    // above the grid GREW 62px (`contentOffsetTopInClip` 195 -> 257 with `scrollTop` 0), so
+    // the pre-computed coordinate pointed one row high. `dragPath` below is the path ACTUALLY
+    // dispatched by the live chase, not a formula, so it stays comparable to `resolvesTo`.
     await attachDiagnostics(testInfo, 'desktop-mid-drag', {
       anchor: { coord: anchor.coord, row: anchor.row, col: anchor.col, cx: anchor.cx, cy: anchor.cy },
       target: { coord: target.coord, row: target.row, col: target.col, cx: target.cx, cy: target.cy },
