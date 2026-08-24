@@ -174,7 +174,16 @@ function StripDayCell({
           data-layer corruption the desktop marker rejects a column-body fill for.
 
           Collapsing either ternary into one static class plus an interpolated tint turns the tint
-          OFF (stylesheet order again); it is a decision, not a simplification. */}
+          OFF (stylesheet order again); it is a decision, not a simplification.
+
+          WHERE THE TINT'S VALUE COMES FROM (plan 88.1-15, Req 8): the CLASS is the shared
+          `bg-surface-accent-subtle`, but inside the scheduler that token is re-pointed to
+          `--color-bg-today-tint` — the owner's ARM B pick — by `TODAY_TINT_SCOPE` on
+          `EventScheduler`'s root div. That is deliberate and it is why this file needed no edit
+          when the pick landed. Consequence a future reader should know rather than discover:
+          rendering this strip OUTSIDE `EventScheduler` would give its today cell the WEAKER
+          global accent tint. If that ever happens, move the scope, do not hard-code a colour
+          here (`rawColorValues.test.ts` forbids the literal anyway). */}
       <span className={today ? 'bg-surface-accent-subtle' : 'bg-surface-card'}>
         <span aria-hidden="true" className="text-xs font-medium text-content-muted block leading-tight">
           {format(date, 'EEEEE')}

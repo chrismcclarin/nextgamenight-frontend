@@ -87,22 +87,6 @@ const HEX_EXEMPT: Record<string, string> = {
   'app/components/LandingPage.js':
     'The identical Google "G" brand mark as `userProfile/page.js`, and the site the ' +
     "userProfile marker points at for the fuller rationale. Same exemption, same reason.",
-  // TODAY_TINT_AB_88_1_13 — TEMPORARY EXEMPTION. DELETE AT PHASE CLOSE, WITH THE A/B BLOCK.
-  //
-  // This is the only entry in this list that is NOT permanent, and it is deliberately allowed to
-  // be self-removing rather than trusted to a human: test 4 goes RED the moment the A/B block is
-  // deleted and the hex leaves the file, so the exemption cannot outlive the thing it exempts.
-  // That makes it a STRONGER deletion gate for plan 88.1-15 than the `grep -rn
-  // TODAY_TINT_AB_88_1_13` the plan specified — the grep has to be remembered; this fails a suite.
-  'app/components/EventScheduler.tsx':
-    'TEMPORARY (Phase 88.1 Req 8, plan 88.1-13). The dark-theme candidate `#513902` for the ' +
-    'today-tint A/B is a MEASURED value with no token yet — minting one is precisely the ' +
-    'decision the owner makes at plan 88.1-15, so tokenising it now would presuppose the ' +
-    'answer, and moving it into globals.css would change ~20 unrelated consumers of ' +
-    '`--color-bg-accent-subtle` instead of A/B-ing this one surface. The light arm needs no ' +
-    'literal (`var(--amber-200)` already exists). Both arms are scoped to a temporary override ' +
-    'on the scheduler root. Remove this entry together with the `TODAY_TINT_AB_88_1_13` block; ' +
-    'test 4 above enforces that, because a stale exemption over a hex-free file is a failure.',
 };
 
 /**

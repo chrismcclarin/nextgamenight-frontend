@@ -560,6 +560,28 @@
      error). The values are UI-SPEC §9.1's: light amber-100, dark a warm amber-over-purple-900
      literal with no palette step to point at. */
   --color-bg-accent-subtle: var(--amber-100);
+  /* DECISION Phase 88.1 (plan 15, Req 8): the TODAY-marker tint gets its own runtime token at ARM
+     B's measured strength — light `amber-200`, dark `#513902` (the `.dark` declaration below) —
+     chosen OVER the two alternatives the owner's pick left on the table:
+       (a) BUMPING `--color-bg-accent-subtle` above to amber-200. Rejected: measured census, that
+           token has ~13 other consumers (five invite/restore pages, `BallotSection`,
+           `PendingMemberBanner`, `ManageMembers`, `EmptyState`, the MergedHeatmap pair plan
+           88.1-16 deletes) — none of which the owner judged. A one-surface pick must not repaint
+           nine unrelated surfaces.
+       (b) A RAW `#513902` LITERAL in `EventScheduler.tsx`. Rejected: `rawColorValues.test.ts`
+           test 1 (Phase 88 DES-01) forbids hex in components, and that suite's own TEMPORARY
+           exemption said in words that minting this token is "precisely the decision the owner
+           makes at plan 88.1-15". The A/B is over; the value is decided; it belongs here.
+     This token is intentionally NOT in `@theme inline` and generates NO `bg-*` utility: its single
+     consumer re-points `--color-bg-accent-subtle` to it for the scheduler subtree only, which is
+     what keeps the paired-ternary class shape byte-identical per `DECISION Phase 88-27 D-32`
+     ("token VALUE only, never the ternary shape"). Adding a `bg-surface-today-tint` utility and
+     swapping the ternary's class onto it is a decision that moves that shape — not a cleanup.
+     CONTRAST, recorded rather than shipped silently: the day-number `text-accent` over this tint
+     measures 1.72:1 in LIGHT (was 1.93:1 over amber-100), both below the 4.5:1 AA floor. Phase
+     88.3 owns the light `text-accent` ramp (`.planning/deferred/phase-88.3.md`); the owner chose
+     visibility over a ratio that was already failing. DARK passes: 5.05:1. */
+  --color-bg-today-tint: var(--amber-200);
 
   /* Brand / Navigation */
   --color-bg-nav: var(--purple-900);
@@ -731,6 +753,13 @@
      the status tints: an `rgba()` amber over the card would shift with whatever sits behind it.
      See the full DECISION marker at the light declaration above. */
   --color-bg-accent-subtle: #3a3320;
+  /* DECISION Phase 88.1 (plan 15, Req 8) — ARM B's dark value, MEASURED 2026-08-21
+     (`.planning/deferred/phase-88.1.md:68-73`) and REUSED here, never re-derived: it is twice
+     `#3a3320`'s delta from the purple-900 card, the same step `amber-100 -> amber-200` makes in
+     light. An OPAQUE literal for the same reason the accent tint above is one (88-04 D-15 /
+     88-01 D-32-33): an `rgba()` amber over the card shifts with whatever sits behind it. There is
+     no palette step to point at. Full rationale at the light declaration. */
+  --color-bg-today-tint: #513902;
 
   --color-bg-nav: var(--purple-950);
   --color-bg-nav-hover: var(--purple-900);
