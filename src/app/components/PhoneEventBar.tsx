@@ -63,7 +63,12 @@ export interface PhoneEventBarProps {
       gets exactly one accent element, and `UserHomePage` already spends it on
       "+ Create New Group" (`grouplist.js:133,177`). A second accent surface here makes
       the page fail that rule. This bar is structural chrome bookending the viewport and
-      spends zero accent budget. "Making it stand out more" re-opens the rule. */
+      spends zero accent budget. "Making it stand out more" re-opens the rule.
+      AMENDED BY 88.1-17 Task 4: "inverse text" was the wrong reading of "mirroring the app
+      header" and shipped an unreadable bar in dark theme — the header itself uses plain
+      `text-white` on this surface, not a theme-flipping token. The SURFACE choice this bullet
+      records (header chrome over an accent treatment) is unchanged; only the text token moved.
+      See the marker at the render below. */
 const PhoneEventBar = React.forwardRef<HTMLDivElement, PhoneEventBarProps>(
   function PhoneEventBar(
     { events, pending = false, identityErrorState, eventsErrorState, onOpen },
@@ -113,10 +118,29 @@ const PhoneEventBar = React.forwardRef<HTMLDivElement, PhoneEventBarProps>(
           ? `Open upcoming events, ${upcomingCount} in the next 7 days`
           : 'Open upcoming events, none in the next 7 days';
 
+    /* DECISION Phase 88.1 (plan 17 Task 4) — owner walkthrough 2026-08-24. The bar's text is
+       `text-white`, chosen OVER the theme-flipping inverse token (`text-content-INVERSE`,
+       capitalised here on purpose so this plan's "the class is gone" grep gate stays honest) —
+       which is what shipped and what the owner reported as unreadable ("way too dark and the
+       words can't be read"; he "didn't even realize there was an Upcoming events thing on the
+       bottom").
+
+       WHY THAT TOKEN IS WRONG HERE: "inverse" text FLIPS with the theme — `--color-text-inverse` is
+       `#ffffff` in `:root` but `var(--purple-950)` under `.dark` (globals.css:594 / :770). The
+       surface underneath does NOT flip: `--color-bg-header` is `warm-800` in light and `warm-900`
+       in dark (globals.css:726 / :824) — dark in BOTH themes. So in dark theme the bar rendered
+       near-black text on a near-black surface. Light theme was unaffected, which is why plan 08's
+       jsdom pins never saw it.
+
+       `text-white` is the exact pairing `Header.js:204` uses on this same surface, which is what
+       choice 2 above ("mirroring the app header") intends. The principled fix would be a
+       `text-content-on-header` token, but minting one is a globals.css/design-system change owned
+       by Phase 88.3/88.6, not this plan. Swapping this back to a theme-flipping token re-opens the
+       owner's walkthrough defect — it is a decision, not a token-consistency cleanup. */
     return (
       <div
         ref={ref}
-        className="md:hidden fixed inset-x-0 bottom-0 z-30 h-14 border-t border-line-strong bg-surface-header text-content-inverse"
+        className="md:hidden fixed inset-x-0 bottom-0 z-30 h-14 border-t border-line-strong bg-surface-header text-white"
       >
         <button
           type="button"

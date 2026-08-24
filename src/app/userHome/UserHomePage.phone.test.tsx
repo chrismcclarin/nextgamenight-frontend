@@ -356,3 +356,24 @@ describe('Footer clearance for the fixed bar', () => {
     ).toBeInTheDocument();
   });
 });
+
+// Plan 88.1-17 Task 4 — the owner's dark-theme walkthrough defect (2026-08-24).
+//
+// This is a CLASS pin, not a colour measurement: jsdom has no colour, and the whole
+// point is to stop the theme-flipping token from coming back. `text-content-inverse`
+// resolves to #ffffff in light and purple-950 under `.dark`, while `bg-surface-header`
+// is warm-800/warm-900 — dark in BOTH themes. The pairing therefore rendered near-black
+// text on a near-black bar in dark theme, and the owner could not see the bar at all.
+describe('Req 11a — the bar is readable in BOTH themes', () => {
+  it('bar text stays white on the always-dark header surface (does not use the theme-flipping inverse token)', () => {
+    render(<PhoneEventBar events={[]} onOpen={vi.fn()} />);
+
+    const bar = screen.getByRole('button', { name: /open upcoming events/i })
+      .parentElement as HTMLElement;
+    // Confirm we grabbed the bar container itself before asserting about its text token.
+    expect(bar).toHaveClass('fixed', 'bottom-0', 'bg-surface-header');
+
+    expect(bar).toHaveClass('text-white');
+    expect(bar).not.toHaveClass('text-content-inverse');
+  });
+});
