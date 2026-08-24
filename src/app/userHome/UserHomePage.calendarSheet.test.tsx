@@ -21,6 +21,13 @@
 // Geometry (the 44x44 floor, the 85dvh height, Footer occlusion, whether the game
 // text is visually clipped) is deliberately NOT asserted here: jsdom has no layout,
 // so a pixel assertion would be theatre. That is e2e/phone-home-event-discovery's job.
+//
+// EXTENDED BY PLAN 88.1-17 (SPEC Req 12): the sheet arm no longer renders one
+// chronological feed. It renders upcoming events first and collapses past events behind
+// a counted disclosure, so this file additionally locks ORDER and the COLLAPSE — see the
+// `Req 12` describe at the bottom. Two of the plan-10 pins above were RE-POINTED rather
+// than deleted (each says so at its site); both were asserting that a past row is on
+// screen the instant the sheet opens, which Req 12 makes false by design.
 import * as React from 'react';
 import { render, screen, cleanup, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -34,11 +41,17 @@ const DAY = 24 * HOUR;
 const at = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
 
 /**
- * Two rows, deliberately of the two shapes the click rule discriminates between:
- * a FUTURE event (opens by event id) and a PAST event that has a game (opens by
- * game id). Neither carries an explicit `title`, which is the common shape in this
- * app's own seed data — `eventTitle` then falls back to the game name, which is why
- * the row heading is the game text the requirement is about.
+ * FOUR rows — two past, two future — deliberately of the two shapes the click rule
+ * discriminates between: a FUTURE event (opens by event id) and a PAST event that has
+ * a game (opens by game id). None carries an explicit `title`, which is the common
+ * shape in this app's own seed data — `eventTitle` then falls back to the game name,
+ * which is why the row heading is the game text the requirement is about.
+ *
+ * TWO ON EACH SIDE IS THE NON-VACUITY (plan 88.1-17, T-88.1-45). With one past and one
+ * future row, "upcoming first" cannot distinguish soonest-first from latest-first, and
+ * "past most-recent-first" cannot distinguish either direction — a reversed sort would
+ * pass. The two futures are 3 days apart and the two pasts 7 days apart, and `EVENTS`
+ * is passed SCRAMBLED so the component's own sort is what is under test.
  */
 const FUTURE_EVENT = {
   id: 'e-soon',
@@ -48,6 +61,17 @@ const FUTURE_EVENT = {
   status: 'scheduled',
   Game: { name: 'Catan' },
   Group: { name: 'Alpha' },
+  EventParticipations: [],
+};
+
+const FUTURE_LATER = {
+  id: 'e-later',
+  group_id: 'g3',
+  game_id: 'game-gloomhaven',
+  start_date: at(3 * DAY),
+  status: 'scheduled',
+  Game: { name: 'Gloomhaven' },
+  Group: { name: 'Gamma' },
   EventParticipations: [],
 };
 
@@ -62,7 +86,19 @@ const PAST_EVENT = {
   EventParticipations: [],
 };
 
-const EVENTS = [PAST_EVENT, FUTURE_EVENT];
+const PAST_OLDER = {
+  id: 'e-older',
+  group_id: 'g4',
+  game_id: 'game-azul',
+  start_date: at(-10 * DAY),
+  status: 'completed',
+  Game: { name: 'Azul' },
+  Group: { name: 'Delta' },
+  EventParticipations: [],
+};
+
+/** Deliberately NOT in chronological order — see the fixture note above. */
+const EVENTS = [FUTURE_LATER, PAST_OLDER, FUTURE_EVENT, PAST_EVENT];
 
 // Mutable identity, mirroring UserHomePage.identity.test.tsx's harness.
 const h = vi.hoisted(() => ({
@@ -163,6 +199,31 @@ async function openCalendarSheet(user: ReturnType<typeof userEvent.setup>) {
   return screen.getByRole('dialog', { name: SHEET_TITLE });
 }
 
+/**
+ * Row order, read in DOM order. `EventRow`'s title is an `<h5>` and every
+ * seeded-shape event's title falls back to its game name (see the fixture note),
+ * so this reads as the list of game names top to bottom.
+ */
+function rowOrder(dialog: HTMLElement): string[] {
+  return within(dialog)
+    .getAllByRole('heading', { level: 5 })
+    .map((h) => (h.textContent ?? '').trim());
+}
+
+/** The Req 12 past disclosure, by its accessible name (which carries the count). */
+function pastToggle(dialog: HTMLElement): HTMLElement {
+  return within(dialog).getByRole('button', { name: /past events \(\d+\)/i });
+}
+
+/** Open the sheet on a given event list, from a clean tree. */
+async function openSheetWith(events: unknown[]) {
+  await mockEvents(events);
+  const user = userEvent.setup();
+  renderHome();
+  const dialog = await openCalendarSheet(user);
+  return { user, dialog };
+}
+
 beforeEach(async () => {
   h.selfUuid = SELF_UUID;
   h.isError = false;
@@ -184,13 +245,17 @@ afterEach(() => {
 
 describe('Req 11b — the Calendar button and its sheet', () => {
   it('opens the calendar sheet with the page rows in it, in one tap', async () => {
-    await mockEvents(EVENTS);
-    const user = userEvent.setup();
-    renderHome();
+    // RE-POINTED by plan 88.1-17 (SPEC Req 12). This originally asserted that BOTH the
+    // future row and the past row were present the moment the sheet opened. Under Req 12
+    // the past row must NOT be — so the inversion below is itself the collapse pin, and
+    // the "rows come from the page's list, not a sheet-local fetch" claim this test
+    // exists for is still made, now via the reveal.
+    const { user, dialog } = await openSheetWith(EVENTS);
 
-    const dialog = await openCalendarSheet(user);
-    // Both rows come from the page's list, not a sheet-local fetch.
     expect(await within(dialog).findByText('Catan')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Wingspan')).toBeNull();
+
+    await user.click(pastToggle(dialog));
     expect(within(dialog).getByText('Wingspan')).toBeInTheDocument();
   });
 
@@ -257,8 +322,11 @@ describe('Req 11b — error is checked BEFORE empty (T-88.1-27)', () => {
     expect(
       await within(dialog).findByText("We couldn't load your calendar")
     ).toBeInTheDocument();
-    // The empty state is what a flipped branch order would render here.
-    expect(within(dialog).queryByText('No events')).toBeNull();
+    // The empty state is what a flipped branch order would render here. The matcher
+    // covers BOTH empty strings (T-88.1-27): plan 88.1-17 changed the sheet arm's copy to
+    // "No upcoming events", so a guard looking only for the desktop "No events" line would
+    // still pass while no longer catching the flipped branch it exists for.
+    expect(within(dialog).queryByText(/^no (upcoming )?events$/i)).toBeNull();
   });
 
   it('terminal identity failure degrades to the compact notice, never the empty state', async () => {
@@ -271,7 +339,8 @@ describe('Req 11b — error is checked BEFORE empty (T-88.1-27)', () => {
     expect(
       within(dialog).getByText(/some personal controls are unavailable/i)
     ).toBeInTheDocument();
-    expect(within(dialog).queryByText('No events')).toBeNull();
+    // Same T-88.1-27 widening as the guard above — see its comment.
+    expect(within(dialog).queryByText(/^no (upcoming )?events$/i)).toBeNull();
     // The identity branch is checked FIRST, so the events copy is not also shown.
     expect(within(dialog).queryByText("We couldn't load your calendar")).toBeNull();
   });
@@ -299,16 +368,113 @@ describe('Req 11b — tapping an event', () => {
   });
 
   it('navigates by GAME id for a past event that has a game', async () => {
-    await mockEvents(EVENTS);
-    const user = userEvent.setup();
-    renderHome();
+    const { user, dialog } = await openSheetWith(EVENTS);
 
-    const dialog = await openCalendarSheet(user);
+    // RE-POINTED by plan 88.1-17 (SPEC Req 12): past rows are behind the disclosure now.
+    // The ASSERTION is unchanged on purpose — the past-event destination rule is live
+    // behaviour (`UserHomePage.js` handleCalendarSheetEventClick), which is exactly why
+    // Req 12 collapses past events rather than dropping them from the sheet.
+    await within(dialog).findByText('Catan');
+    await user.click(pastToggle(dialog));
+
     await within(dialog).findByText('Wingspan');
     await user.click(within(dialog).getByRole('button', { name: /Wingspan/ }));
 
     expect(h.push).toHaveBeenCalledWith(
       `/gameDetail?game_id=${PAST_EVENT.game_id}&group_id=${PAST_EVENT.group_id}`
     );
+  });
+});
+
+// Plan 88.1-17 — SPEC Req 12 (owner walkthrough 2026-08-24, CONTEXT D-09).
+//
+// The owner opened this sheet to answer "when is the next one?" and got history first,
+// because `CalendarListView` was designed as ONE chronological desktop feed. These pin
+// the two-section shape: upcoming on top, past collapsed behind a counted disclosure.
+//
+// EVERY case here is written so the WRONG order fails it — see the fixture note above
+// (T-88.1-45). A one-past/one-future fixture cannot tell a sort from its reverse.
+describe('Req 12 — upcoming first, past collapsed', () => {
+  it('the first row is the soonest upcoming event', async () => {
+    const { dialog } = await openSheetWith(EVENTS);
+    await within(dialog).findByText('Catan');
+
+    const order = rowOrder(dialog);
+    // Soonest-first, not latest-first: the two futures are 3 days apart, so a reversed
+    // sort puts Gloomhaven here and fails.
+    expect(order[0]).toBe('Catan');
+    expect(order.indexOf('Gloomhaven')).toBeGreaterThan(order.indexOf('Catan'));
+  });
+
+  it('no past row is visible before the disclosure is opened', async () => {
+    const { dialog } = await openSheetWith(EVENTS);
+
+    // POSITIVE CONTROL FIRST: without it a sheet that rendered nothing at all would
+    // pass both absence assertions vacuously.
+    expect(await within(dialog).findByText('Catan')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Wingspan')).toBeNull();
+    expect(within(dialog).queryByText('Azul')).toBeNull();
+  });
+
+  it('the disclosure names the total past count and is collapsed by default', async () => {
+    const { dialog } = await openSheetWith(EVENTS);
+    await within(dialog).findByText('Catan');
+
+    const toggle = pastToggle(dialog);
+    expect(toggle).toHaveAccessibleName(/past events \(2\)/i);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    // NON-VACUITY on the NUMBER: 2 is also what a count read off the visible window
+    // would say here, so state what it must NOT be. (0) is "counted nothing at all",
+    // (4) is "counted the whole list instead of the past bucket".
+    const name = (toggle.textContent ?? '').trim();
+    expect(name).not.toMatch(/\(0\)/);
+    expect(name).not.toMatch(/\(4\)/);
+  });
+
+  it('expanding reveals past rows most-recent-first and reports itself expanded', async () => {
+    const { user, dialog } = await openSheetWith(EVENTS);
+    await within(dialog).findByText('Catan');
+
+    const toggle = pastToggle(dialog);
+    const panelId = toggle.getAttribute('aria-controls');
+    expect(panelId, 'the disclosure carries no aria-controls').toBeTruthy();
+    // The controlled region exists BEFORE expansion so aria-controls always resolves.
+    const panel = document.getElementById(panelId as string);
+    expect(panel, `aria-controls="${panelId}" resolves to no element`).not.toBeNull();
+    expect(panel).toHaveAttribute('hidden');
+
+    await user.click(toggle);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(panel).not.toHaveAttribute('hidden');
+
+    // MOST-RECENT-FIRST: the two pasts are 7 days apart, so oldest-first fails here.
+    // Read against the full row order so the past section's POSITION is pinned too —
+    // it must sit below the whole upcoming section, not interleaved with it.
+    expect(rowOrder(dialog)).toEqual(['Catan', 'Gloomhaven', 'Wingspan', 'Azul']);
+  });
+
+  it('renders the section-scoped empty line with no upcoming, and no past section with no past', async () => {
+    // (a) Past only — the shared "No events" copy would be a lie here (there ARE
+    // events, all of them past), which is why the sheet arm carries its own line.
+    {
+      const { dialog } = await openSheetWith([PAST_EVENT, PAST_OLDER]);
+      expect(await within(dialog).findByText('No upcoming events')).toBeInTheDocument();
+      expect(pastToggle(dialog)).toHaveAccessibleName(/past events \(2\)/i);
+    }
+
+    cleanup();
+
+    // (b) Future only — no disclosure at all, and the upcoming section is populated
+    // rather than empty.
+    {
+      const { dialog } = await openSheetWith([FUTURE_EVENT, FUTURE_LATER]);
+      expect(await within(dialog).findByText('Catan')).toBeInTheDocument();
+      expect(within(dialog).queryByText('No upcoming events')).toBeNull();
+      expect(
+        within(dialog).queryByRole('button', { name: /past events/i })
+      ).toBeNull();
+    }
   });
 });
