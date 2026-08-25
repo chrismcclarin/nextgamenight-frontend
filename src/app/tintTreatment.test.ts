@@ -238,16 +238,16 @@ describe('D-32/D-33 tint treatment (Req 17)', () => {
   });
 
   it('4. the three UI-SPEC §10.3 exemplars carry their designed treatment', () => {
-    // DECISION Phase 88.1 (Req 10): this exemplar reads `EventScheduler.tsx`, chosen OVER its
-    // previous home `MergedHeatmapGrid.js`, because that file and its `MergedHeatmap.js` parent
-    // were DELETED in plan 88.1-16 — the disposition was DELETE, chosen OVER reviving the pair as
-    // the rebuilt scheduler's rendering tree. The rebuilt scheduler composes WeekGrid/ReadCell
-    // directly (SPEC Req 10, owner ruling at discuss). The pair had zero live mounts since the
-    // Polls scrap in Phase 71-05 (FE commit 958ed0c) and was nonetheless polished by Phases
-    // 72 / 84 / 88-27 ON A REVIVE ASSUMPTION THAT NO LONGER HOLDS — no future phase should
-    // re-invest in it, and "restoring" it is a decision to re-open a closed one, not a cleanup.
-    // What survived the deletion is the thing worth keeping: the paired-ternary today-tint idiom,
-    // carried verbatim in SHAPE to the site this assertion now guards.
+    // This exemplar reads `EventScheduler.tsx`, chosen OVER its previous home
+    // `MergedHeatmapGrid.js`, because that file and its `MergedHeatmap.js` parent were DELETED in
+    // plan 88.1-16. What survived the deletion is the thing worth keeping: the paired-ternary
+    // today-tint idiom, carried verbatim in SHAPE to the site this assertion now guards.
+    //
+    // THE DELETE-OVER-REVIVE DECISION ITSELF NO LONGER LIVES HERE. Until 88.1-21 this comment was
+    // its only record, which put a decision about production code somewhere no one reading that
+    // code would look. It now lives at `src/lib/availabilityColor.ts` as
+    // `DECISION Phase 88.1 (Req 10)`, beside the 88-31 second-ramp deletion. Read it there; the
+    // assertion below keeps it there.
     //
     // `EventScheduler.tsx` is the canonical desktop exemplar, chosen OVER `SchedulerWeekStrip.tsx`
     // (which also carries a today ternary): only this site matches the retired exemplar in BOTH
@@ -279,6 +279,19 @@ describe('D-32/D-33 tint treatment (Req 17)', () => {
 
     const member = fs.readFileSync(path.join(SRC, 'app/components/ClickableMemberName.js'), 'utf8');
     expect(member).toMatch(/rounded-full bg-surface-card-hover text-btn-primary/);
+  });
+
+  it('4b. the Req 10 delete-over-revive decision lives at a PRODUCTION site, not only in this file', () => {
+    // Phase 88.1-21 (88.1-CODE-REVIEW.md). A decision recorded only inside a test file is
+    // invisible to the next person editing the code it governs — that is how a deliberate delete
+    // gets "restored" as an oversight two phases later. This pins the marker to a production
+    // module, so moving it back into a test (or dropping it) fails here rather than silently.
+    const color = fs.readFileSync(path.join(SRC, 'lib/availabilityColor.ts'), 'utf8');
+    expect(color).toMatch(/DECISION Phase 88\.1 \(Req 10\)/);
+    // The load-bearing half is the REJECTED alternative — "was deleted" warns nobody,
+    // "deleted OVER reviving it" stops a future revive.
+    expect(color).toMatch(/chosen OVER reviving/);
+    expect(color).toMatch(/MergedHeatmap/);
   });
 
   it('5. the parser tells a semantic-token alpha from a raw-palette one and from a fraction', () => {

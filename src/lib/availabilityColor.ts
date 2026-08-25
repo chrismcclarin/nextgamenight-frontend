@@ -42,6 +42,29 @@
  */
 
 /**
+ * DECISION Phase 88.1 (Req 10): the MergedHeatmap pair was DELETED, chosen OVER reviving it as
+ * the rebuilt scheduler's rendering tree.
+ *
+ * `MergedHeatmap.js` and `MergedHeatmapGrid.js` went in plan 88.1-16 (owner ruling at discuss,
+ * SPEC Req 10). The rebuilt scheduler composes `WeekGrid` / `ReadCell` directly instead.
+ *
+ * WHY DELETE WON: the pair had ZERO live mounts from the Polls scrap in Phase 71-05 (FE commit
+ * 958ed0c) onward, and was nonetheless polished by Phases 72, 84 and 88-27 — three phases of
+ * investment made on a revive assumption that had already stopped holding. Reviving it would
+ * have carried that assumption a fourth time and given the rebuild a second rendering tree to
+ * keep in step with the first.
+ *
+ * WHAT SURVIVED IS THE IDIOM, NOT THE COMPONENT: the paired-ternary today-tint shape was carried
+ * verbatim in SHAPE to `EventScheduler.tsx`, which is now the canonical exemplar and is pinned
+ * as such in `src/app/tintTreatment.test.ts` (test 4).
+ *
+ * "Restoring" the pair re-opens a closed decision; it is not an omission being fixed. This
+ * marker lives HERE — beside the second-ramp deletion above, in a production module no phase is
+ * going to delete — because until 88.1-21 the only record of it was a comment inside a test
+ * file, which is invisible to anyone reading the code the decision is about.
+ */
+
+/**
  * ★ CANONICAL AVAILABILITY RAMP — 5 steps, green-100 → green-500 (owner decision 2026-07-25).
  *
  * This is THE standard for "how many of the group is available in this slot?". Three surfaces

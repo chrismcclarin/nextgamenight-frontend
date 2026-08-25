@@ -88,7 +88,24 @@ declare global {
  * locally, verify in the `phone` lane.
  */
 
-const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
+/* DECISION Phase 88.1-21 (88.1-CODE-REVIEW.md): NO `?? '1'` fallback here, chosen OVER keeping
+   one for local convenience. Every scheduler case in this file leans on the fixture-owned
+   availability invariant (the non-vacuity guard below names its two owners); a job that failed
+   to export the fixture id would silently drive group '1' instead, decoupled from that
+   invariant, and go green for the wrong reason. The empty-string default keeps the type
+   `string` so every template interpolation below still typechecks, and the beforeEach turns an
+   unset var into one loud, self-explaining failure instead of a mystery. Scoped to THIS file
+   deliberately — other specs' `?? '1'` is a separate decision with a separate owner. */
+const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '';
+
+// Repo idiom (e2e/auth.setup.ts:31-33): assert, name the var and its producer, never echo the
+// value. File-scope so all three test.describe blocks below are covered.
+test.beforeEach(() => {
+  expect(
+    E2E_GROUP_ID,
+    'E2E_GROUP_ID must be set — the CI step that runs scripts/e2e-fixtures.js exports it. Without it every scheduler case in this file reads a group the fixtures do not own, and its availability assertions prove nothing.',
+  ).toBeTruthy();
+});
 
 /** Hold comfortably past `usePaintGesture`'s LONG_PRESS_MS. Placement, not an assertion. */
 const LONG_PRESS_HOLD_MS = 400;
@@ -1428,7 +1445,7 @@ test.describe('Phase 88.1 Req 7 / C6 — measured scheduler geometry at 375x667 
     );
     expect(
       distinctRows.length,
-      `the seeded availability is DAY-INVARIANT — all seven strip days peak on the same grid row (${JSON.stringify(distinctRows)}), which makes the day-vs-week distinction this case exists to prove unobservable. Fix the FIXTURE, never this assertion. Owners: periodictabletopbackend_v2/Sonnet/scripts/seed-sample-data.js:722-749 (Alice evenings all week, Bob weekday afternoons, Charlie weekend daytime, Diana two evenings — the shape that makes weekdays and weekends peak differently) and periodictabletopbackend_v2/Sonnet/scripts/e2e-fixtures.js:243-273, whose fallback block seeds an IDENTICAL pattern for all seven days and is therefore day-invariant by construction. Per-day readings: ${JSON.stringify(perDay)}`,
+      `the seeded availability is DAY-INVARIANT — all seven strip days peak on the same grid row (${JSON.stringify(distinctRows)}), which makes the day-vs-week distinction this case exists to prove unobservable. Fix the FIXTURE, never this assertion. Owners: periodictabletopbackend_v2/Sonnet/scripts/seed-sample-data.js:722-749 (Alice evenings all week, Bob weekday afternoons, Charlie weekend daytime, Diana two evenings — the shape that makes weekdays and weekends peak differently) and periodictabletopbackend_v2/Sonnet/scripts/e2e-fixtures.js, whose no-availability fallback block seeds peaks that VARY by weekday (Tue/Thu 19:00, Mon/Wed/Fri 13:00, Sat/Sun 18:00) — so if that block ran, it is not your cause; grep its "DECISION Phase 88.1-20 (WR-04)" marker rather than a line number, which rots. Corrected 88.1-21: this message used to describe that fallback as uniform across the week, which sent fixers at an already-correct file. Per-day readings: ${JSON.stringify(perDay)}`,
     ).toBeGreaterThanOrEqual(2);
 
     for (const day of perDay) {
