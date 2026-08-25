@@ -9,7 +9,7 @@ import EventHeatmapBackground from './EventHeatmapBackground';
 import GameComboInput from './GameComboInput';
 import QuickSuggestions from './QuickSuggestions';
 import useSwipeNavigation from './useSwipeNavigation';
-import { createParticipant, createEventForm, prepareEventData, resolveInitialHeatmapWeek, withRowIds, remapCustomParticipantRef } from '../../lib/eventFormUtils';
+import { createParticipant, createEventForm, prepareEventData, resolveInitialHeatmapWeek, resolveWeekNav, withRowIds, remapCustomParticipantRef } from '../../lib/eventFormUtils';
 import ParticipantRow from './ParticipantRow';
 import BallotOptionsEditor from './BallotOptionsEditor';
 import EventResultFields from './EventResultFields';
@@ -37,7 +37,18 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   const [ballotError, setBallotError] = useState(null);
   const [heatmapData, setHeatmapData] = useState(null);
   const [heatmapLoading, setHeatmapLoading] = useState(false);
-  const [heatmapWeekStart, setHeatmapWeekStart] = useState(null);
+  /* DECISION Phase 88.1-21 (H1): the fetched week anchor is stored as ONE object,
+     `{ monday, fromNavigation }`, chosen OVER a bare `Date` plus reading `currentWeekStart`
+     back out at the consumer. The two facts — WHICH week landed, and whether it landed because
+     the user navigated or because it is the page-load default — must move together or they
+     desynchronise for exactly one render, and that one render is enough to re-anchor the
+     scheduler (see the amended marker on `calendarInitialDate`). Rejected: adding
+     `currentWeekStart` to that memo's deps, which recomputes it the instant the nav handler
+     writes, while `monday` is still the PREVIOUS fetch's week — a stale anchor handed to the
+     child. A companion `useState` boolean was rejected for the same reason at half the odds.
+     `heatmapWeekStart` below stays a plain `Date` for the two manual-mode display consumers. */
+  const [heatmapWeekAnchor, setHeatmapWeekAnchor] = useState(null);
+  const heatmapWeekStart = heatmapWeekAnchor?.monday ?? null;
   // Phase 72 HUX-04: user-controlled week navigation for the manual-entry
   // heatmap. null sentinel = "use today's Monday in effective TZ" (page-load
   // / modal-open default). Reset back to null on modal open / promptId change
@@ -77,8 +88,23 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   // slot whenever heatmapData is loaded. Scope to prefillDate's day if set
   // (day-tap path), otherwise the full week. Tie-break: earliest of top tier.
   // Returns a Date whose time-of-day is what scrollToTime reads (date portion
-  // ignored by react-big-calendar). No auto-scroll when totalMembers is 0
+  // ignored by the outgoing calendar library, and still ignored by WeekGrid — plan 88.1-16
+  // removed react-big-calendar; the prop's date half stayed inert across the swap). No
+  // auto-scroll when totalMembers is 0
   // or no slots have any availability — calendar uses its default scroll.
+  //
+  // DECISION Phase 88.1-18 (SPEC Req 13): the `prefillDate` scoping just below is KEPT, chosen
+  // OVER deleting it as now-redundant. Req 13 moved the DAY arm's landing into EventScheduler
+  // (it derives the displayed day's own peak from `heatmapLookup` via `peakHourForDay`), so the
+  // only consumer of THIS value is now the WEEK arm — and on the CAL-05 day-tap path the user
+  // arrived from a specific day, so scoping the week view's landing to that day remains the
+  // intended Phase 66-03 CREVT-06 behaviour. Req 13 holds week view unchanged, so removing the
+  // scoping would be a behaviour change this requirement explicitly rules out.
+  //
+  // WHERE TO LOOK INSTEAD: this value no longer reaches day view. A day-view landing bug lives in
+  // `EventScheduler.tsx`'s scrollToTime effect (and `heatmap/dayAggregate.ts`'s `peakHourForDay`),
+  // not here. The max-count / earliest tie-break below is mirrored there ON PURPOSE — the two must
+  // keep agreeing about what "peak" means; change them together or not at all.
   const peakScrollTime = useMemo(() => {
     if (!heatmapData?.slots || heatmapData.slots.length === 0) return null;
     if (!heatmapData.totalMembers || heatmapData.totalMembers === 0) return null;
@@ -116,7 +142,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         return a.localHour - b.localHour;
       })[0];
 
-    // Return a Date whose hour-of-day is the peak hour. react-big-calendar's
+    // Return a Date whose hour-of-day is the peak hour. The outgoing react-big-calendar's
     // scrollToTime only uses time-of-day; date portion is irrelevant.
     const t = new Date();
     t.setHours(winner.localHour, 0, 0, 0);
@@ -325,7 +351,12 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             // weekStart is YYYY-MM-DD UTC; snap a noon-UTC Date for stable date-only ops.
             const [y, m, d] = data.weekStart.split('-').map(Number);
             const anchor = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-            setHeatmapWeekStart(startOfWeek(anchor, { weekStartsOn: 1 }));
+            // fromNavigation: true — the poll's own week is never a "show today" default, so
+            // the today-substitution must not fire for it under any circumstances.
+            setHeatmapWeekAnchor({
+              monday: startOfWeek(anchor, { weekStartsOn: 1 }),
+              fromNavigation: true,
+            });
           }
           return;
         }
@@ -341,7 +372,12 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         const weekStartStr = format(effectiveMonday, 'yyyy-MM-dd');
         const data = await availabilityAPI.getGroupHeatmap(group_id, weekStartStr, effectiveTz);
         setHeatmapData(data);
-        setHeatmapWeekStart(effectiveMonday);
+        // Capture WHY this week was fetched at the same instant as WHICH week it was — a
+        // navigated week and a page-load default are indistinguishable downstream otherwise.
+        setHeatmapWeekAnchor({
+          monday: effectiveMonday,
+          fromNavigation: Boolean(currentWeekStart),
+        });
       } catch (err) {
         console.error('Failed to load heatmap:', err);
         // Silently fail -- heatmap is a nice-to-have visual, not critical
@@ -411,8 +447,10 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   };
   // null sentinel = "use today's Monday" (page-load reset). Today button
   // returns to the null-state which the fetch effect resolves to today's
-  // actual Monday — label-accurate semantics consistent with MergedHeatmap.
-  // (A second grid was named here until plan 88-31 deleted it as dead code.)
+  // actual Monday — label-accurate semantics, matching the convention the (now-deleted)
+  // MergedHeatmap grid used. (A second grid was named here until plan 88-31 deleted it as dead
+  // code; MergedHeatmap itself went in plan 88.1-16. The convention is what survives, not the
+  // component — see `dayAggregate.ts` / `WeekGrid` for where the week now starts on Monday.)
   const handleToday = () => setCurrentWeekStart(null);
   const isOnTodayMonday = isSameWeek(effectiveMondayForUI, todayMonday, { weekStartsOn: 1 });
 
@@ -820,9 +858,71 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
     // calendar's rendered week. Without this, navigating weeks updated the
     // heatmap data but left the calendar showing today's week, producing a
     // blank grid in next/prior-week views.
-    if (heatmapWeekStart) return heatmapWeekStart;
+    //
+    /* DECISION Phase 88.1-20 (CR-01, seed half): when the fetched week is the week CONTAINING
+       TODAY, hand the scheduler TODAY rather than that week's Monday. `heatmapWeekStart` is a
+       WEEK anchor (`:359`, snapped to Monday at `:352`) and this fallthrough was handing it over
+       as a DAY anchor. Below `md` the scheduler renders a single-day column, so that opened the
+       modal on Monday for a user sitting on any other weekday — CR-01.
+       Chosen OVER fixing it in the scheduler (rejected: at mount a Monday from this fetch and a
+       Monday from `prefillDate` are indistinguishable there, so a child-side default-to-today
+       would break "tap Monday -> create an event on Monday"; only THIS site knows which producer
+       won). Chosen OVER stabilising this memo's identity (rejected: identity churn is the
+       re-sync half, closed in `EventScheduler.tsx`; it leaves the VALUE wrong, and the value is
+       what seeds `currentDate` when the scheduler mounts after the fetch has landed).
+       BOTH halves are needed and neither subsumes the other: `:902` gates the form on the
+       group-members fetch while the heatmap effect at `:325` runs independently, so seeding vs
+       re-syncing is a race between two network calls, and a navigated-away week still needs the
+       scheduler-side guard. Week view is unaffected — Monday and today render the same week.
+       Reverting this to a bare `return heatmapWeekStart` re-opens CR-01; it is a decision, not
+       a redundant branch. Pinned: `createEvent.integration.test.tsx` "the phone arm opens on
+       TODAY, not the week Monday, on a non-Monday".
+
+       AMENDED BY PHASE 88.1-21 (H1, 88.1-CODE-REVIEW.md) — the substitution is now additionally
+       gated on the fetched anchor NOT coming from a navigation (`!heatmapWeekAnchor
+       .fromNavigation`). Everything above still stands: a WEEK anchor was being handed over as a
+       DAY anchor, and this is still the only site that can tell the two producers apart. What
+       changed is WHEN the substitution is allowed to fire.
+
+       THE DEFECT THAT FORCED IT: in day view, Next past Sunday and then Back once landed on
+       TODAY instead of on the Sunday the user had just navigated to — silently, with no
+       feedback, on the only arm that exists below `md`. Back re-emits a week anchor for the week
+       CONTAINING TODAY, `isSameWeek` was therefore true, and today (a Wednesday, say) went over
+       as the day anchor. The scheduler-side guard suppresses only the displayed week's MONDAY,
+       and a Wednesday is not a Monday, so it landed.
+
+       WHY "DID A NAVIGATION CAUSE THIS FETCH" IS EXACTLY THE DISCRIMINATOR: the fetch effect
+       resolves `effectiveMonday = currentWeekStart || todayMondayLocal`, and `currentWeekStart`
+       is this file's existing null sentinel for "show today" — written by the modal-open effect
+       when there is no `prefillDate` and no `promptId` (`eventFormUtils.js:28`) and by the Today
+       button. EVERY other value was written by a navigation — `handlePrevWeek`, `handleNextWeek`,
+       the `onWeekChange` body, or a `prefillDate` clamp — and in all of those the user has
+       expressed a day/week intent that today must not override. That fact is captured AT THE
+       FETCH and carried on the anchor, not re-read here; see the marker on `heatmapWeekAnchor`
+       for why reading `currentWeekStart` at this site is a stale-anchor bug rather than a
+       simplification.
+
+       REJECTED: widening the SCHEDULER-side guard from "the displayed week's Monday" to a bare
+       `isSameWeek`. Plan 20 already tried precisely that and it turned plan 18's two Req-13 pins
+       red ("starts at the TOP on a day with no availability" and "RE-DERIVES the landing when the
+       displayed day changes") — the guard's own marker at `EventScheduler.tsx:305-311` records
+       that attempt in its own words. A same-week different-day hand-over is a real day intent
+       there; the discrimination this defect needs is not available in the child.
+       Pinned: `createEvent.integration.test.tsx` "H1: Next past Sunday then Back lands on
+       Sunday, not on today". */
+    if (heatmapWeekAnchor?.monday) {
+      const { monday, fromNavigation } = heatmapWeekAnchor;
+      const now = new Date();
+      return !fromNavigation && isSameWeek(now, monday, { weekStartsOn: 1 }) ? now : monday;
+    }
     return new Date();
-  }, [prefillDate, editingEvent?.start_date, promptId, heatmapData?.weekStart, heatmapWeekStart]);
+  }, [
+    prefillDate,
+    editingEvent?.start_date,
+    promptId,
+    heatmapData?.weekStart,
+    heatmapWeekAnchor,
+  ]);
 
   if (!modal) return null;
 
@@ -967,17 +1067,16 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
               <>
                 <EventScheduler
                 onWeekChange={(date) => {
-                  // Bubble react-big-calendar nav into currentWeekStart so the
-                  // heatmap fetch re-fires for the navigated week. Skip the
-                  // update when the date is in the same week we already have
-                  // (day-view nav within a week shouldn't trigger a refetch),
-                  // and clamp to the same -3/+12 bounds the manual-mode nav
-                  // buttons enforce so the backend doesn't 400 on out-of-range
-                  // weeks.
-                  const navMonday = startOfWeek(date, { weekStartsOn: 1 });
-                  if (isSameWeek(navMonday, effectiveMondayForUI, { weekStartsOn: 1 })) return;
-                  if (navMonday < minWeek || navMonday > maxWeek) return;
-                  setCurrentWeekStart(navMonday);
+                  // The skip + clamp rule lives in `resolveWeekNav` (lib/eventFormUtils)
+                  // as a pure, unit-tested function — null means "no-op". See its doc
+                  // block for why (88.1-01 D-08 Layer 1).
+                  const next = resolveWeekNav({
+                    date,
+                    currentMonday: effectiveMondayForUI,
+                    minWeek,
+                    maxWeek,
+                  });
+                  if (next) setCurrentWeekStart(next);
                 }}
                 onTimeSelected={(start, end) => {
                   // Phase 66-01: write canonical fields only. The visual

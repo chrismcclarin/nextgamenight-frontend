@@ -32,7 +32,10 @@ import ScheduleDemo from './simulated/ScheduleDemo';
  *
  * Visual fidelity: AvailabilityPromptDemo uses bg-green-300 (matching the
  * real AvailabilityGrid's "Preferred" preference). HeatmapDemo uses
- * bg-green-100..500 (matching MergedHeatmap's LEGEND_ITEMS exactly).
+ * bg-green-100..500 (matching the canonical availability ramp exactly — `mergedCellColor` in
+ * `lib/availabilityColor.ts`. This used to name MergedHeatmap's LEGEND_ITEMS; that component was
+ * DELETED by plan 88.1-16 and its legend was the same ramp, so the anchor moved to the ramp
+ * itself rather than being left pointing at nothing).
  *
  * @param {Object} props
  * @param {Function} props.onComplete - Persists tutorial_version=3 to backend

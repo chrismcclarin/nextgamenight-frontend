@@ -1,4 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+// Plan 88.1-19 MEASUREMENT instruments — read-only attachments, no assertions, and NOT a
+// spec file so Playwright cannot collect it as a suite. See `e2e/support/diagnostics.ts`.
+import { attachDiagnostics, probeOverflowCulprits, probeViewport } from './support/diagnostics';
 
 /**
  * Phase 87.8 Plan 08 — SPEC R4 (44x44 effective hit areas) + SPEC R6 (pressed-state
@@ -131,6 +134,79 @@ async function assertDarkTheme(page: Page): Promise<void> {
   await expect(page.locator('html')).toHaveClass(/dark/);
 }
 
+/** MEASUREMENT ONLY (plan 88.1-19): the IN-PAGE box of a CTA, in CSS pixels. Read-only.
+ *  Paired with Playwright's own `boundingBox()`, which is visual-viewport-SCALED, this is
+ *  what separates "the button is short" from "the page is scaled". Asserts nothing. */
+function readCtaBox(locator: Locator) {
+  return locator.first().evaluate((el) => {
+    const round = (n: number) => Math.round(n * 1000) / 1000;
+    const r = el.getBoundingClientRect();
+    const cs = window.getComputedStyle(el);
+    return {
+      rectWidth: round(r.width),
+      rectHeight: round(r.height),
+      offsetWidth: (el as HTMLElement).offsetWidth,
+      offsetHeight: (el as HTMLElement).offsetHeight,
+      computedMinHeight: cs.minHeight,
+      computedHeight: cs.height,
+      computedTransform: cs.transform,
+      className: (typeof el.className === 'string' ? el.className : '').slice(0, 120),
+    };
+  });
+}
+
+/**
+ * Wait until a freshly-opened dialog has finished ANIMATING IN, so geometry read inside it is
+ * the settled geometry.
+ *
+ * WHY THIS EXISTS (plan 88.1-19 measured it, run 32774690333). The Create Event submit read
+ * 43.913 / 43.9636 / 43.9915 across three successive reads in a single attempt, climbing toward
+ * 44 while its x/y drifted — a uniform ancestor scale, not a CSS height. Computed `min-height`
+ * on the button was exactly `44px` the whole time and `offsetHeight` was 44. The source is
+ * `src/components/ui/dialog.tsx` — `duration-200 data-[state=open]:animate-in
+ * data-[state=open]:zoom-in-95` — and `expect(heading).toBeVisible()` resolves at animation
+ * START, not end. The recorded page-scale/overflow hypothesis was REFUTED by the same run
+ * (`scrollWidth 375 === clientWidth 375`, `visualViewport.scale 1`, zero overflow culprits).
+ *
+ * So this is a SETTLE, never a threshold change: 44 is untouched and must stay untouched.
+ * EVERY `boundingBox()` assertion taken inside a freshly-opened Radix dialog anywhere in this
+ * suite has the same latent race — that is why this is a shared helper and not an inline wait.
+ *
+ * Two gates, because either alone can lie:
+ *   1. The Web Animations API — await every finite animation on the dialog subtree. Infinite
+ *      ones (spinners) are excluded or this would never resolve. Under `prefers-reduced-motion`
+ *      there may be none at all, which is a legitimate no-op.
+ *   2. A stability poll on the measured height, as the backstop for anything the WAAPI does not
+ *      cover (a transition starting a frame later, layout settling after the animation ends).
+ */
+async function settleOpenAnimation(page: Page, target: Locator, label: string): Promise<void> {
+  const dialog = page.getByRole('dialog').first();
+  await dialog.evaluate(async (el) => {
+    const running = (el as HTMLElement)
+      .getAnimations({ subtree: true })
+      .filter((a) => a.effect?.getTiming().iterations !== Infinity);
+    await Promise.all(running.map((a) => a.finished.catch(() => undefined)));
+  });
+
+  // Two consecutive identical readings = the box has stopped moving.
+  let previous: number | null = null;
+  await expect
+    .poll(
+      async () => {
+        const height = (await readCtaBox(target)).rectHeight;
+        const stable = previous !== null && height === previous;
+        previous = height;
+        return stable;
+      },
+      {
+        message: `${label}: geometry never stopped changing — the dialog open animation (dialog.tsx zoom-in-95 / duration-200) is still running, or something else is resizing it. Measuring here reads a mid-animation number (plan 88.1-19 measured 43.913 -> 43.9636 -> 43.9915 climbing toward 44). Do NOT lower the 44px floor to accommodate it.`,
+        timeout: 5_000,
+        intervals: [50, 50, 100, 100, 250],
+      },
+    )
+    .toBe(true);
+}
+
 test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (phone project)', () => {
   // Inverse of the tailwind-v4-styles.spec.ts:57 guard: this file is phone-only.
   // Both projects match every spec (playwright.config.ts:44, :87), so without this
@@ -157,7 +233,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await assertPressedOpacity(page, createGroup, '"+ Create New Group"');
   });
 
-  test('R4: groupHomePage + Create Event modal census CTAs measure >= 44x44 and press-dim', async ({ page }) => {
+  test('R4: groupHomePage + Create Event modal census CTAs measure >= 44x44 and press-dim', async ({ page }, testInfo) => {
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     await assertDarkTheme(page);
 
@@ -168,12 +244,51 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await assertMin44(planSession, '"Plan Game Session"');
     await assertPressedOpacity(page, planSession, '"Plan Game Session"');
 
+    // MEASUREMENT ONLY (plan 88.1-19) — the CONTROL half of the submit reading below, and it
+    // MUST be sampled HERE, before the modal opens. Radix's DialogContent marks the whole
+    // background inert/aria-hidden, so once the Create Event modal is open this role-based
+    // locator resolves NOTHING and any read against it hangs until the test timeout. That is
+    // not a hypothesis: the first instrumented run (32773229213) timed out at exactly this
+    // read placed after the modal opened, and produced no submit measurement at all.
+    const planSessionControl = {
+      inPage: await readCtaBox(planSession),
+      playwrightBoundingBox: await planSession.first().boundingBox(),
+    };
+
     // Census row 7: the Create Event modal's submit. Reached the same way the green
     // create-event journey reaches it (tailwind-v4-styles.spec.ts:59-76).
     await page.getByRole('button', { name: /add new game event/i }).click();
     await expect(page.getByRole('heading', { name: /create event/i })).toBeVisible();
     const submit = page.getByRole('button', { name: /^(create|update) event$/i });
     await guardResolved(submit, 'the Create Event submit CTA (createEvent.js census row 7)');
+
+    // The dialog is VISIBLE at this point but not yet settled — `toBeVisible()` above resolves
+    // at animation start. See settleOpenAnimation's block for the measured numbers.
+    await settleOpenAnimation(page, submit, '"Create Event" submit');
+
+    // MEASUREMENT ONLY (plan 88.1-19), immediately before the assertion that read 43.835px.
+    // Read-only: nothing here scrolls, clicks or writes a style.
+    //
+    // THE DISCRIMINATOR IS THE PAIR OF HEIGHTS. `getBoundingClientRect().height` is CSS
+    // pixels; Playwright's `boundingBox().height` is the VISUAL-VIEWPORT-SCALED number, and
+    // the phone project sets `isMobile: true`. So:
+    //   - in-page 44 and Playwright 43.835 -> page scale, not CSS. The cause is horizontal
+    //     overflow (`docScrollWidth` > `docClientWidth`) shrinking the scale, and
+    //     `probeOverflowCulprits` NAMES the element instead of leaving it inferred.
+    //   - in-page ALSO 43.835 -> it is CSS, and the fix belongs at the call site
+    //     (`createEvent.js:1268`, which already carries `min-h-11`).
+    // `planSession` is the CONTROL: it PASSED on the failing run, and whether it passed
+    // because it is naturally taller than 44 or because it is unscaled is what makes the
+    // submit's reading interpretable at all. It is captured above, pre-modal, for the
+    // inert-background reason recorded there.
+    await attachDiagnostics(testInfo, 'submit-44px', {
+      viewport: await probeViewport(page),
+      overflowCulprits: await probeOverflowCulprits(page),
+      submitInPage: await readCtaBox(submit),
+      submitPlaywrightBoundingBox: await submit.first().boundingBox(),
+      planSessionControl,
+    });
+
     await assertMin44(submit, '"Create Event" submit');
     await assertPressedOpacity(page, submit, '"Create Event" submit');
 

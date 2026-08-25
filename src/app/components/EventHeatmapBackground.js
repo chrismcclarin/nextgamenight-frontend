@@ -17,9 +17,10 @@ import ReadCell from './heatmap/ReadCell';
  * Keyboard scope: Tab+focus+Esc only on this surface. Arrow-key roving-tabindex
  * is intentionally NOT provided here — see Plan 72-02 truths block. This is a
  * passive availability summary, not a primary input grid; arrow-key cell
- * navigation is provided on the input grids (MergedHeatmapGrid, and WeekGrid for anything
- * built on the shared primitive). A second legacy read-grid used to be named here too; plan
- * 88-31 deleted it as dead code, and this sentence is corrected rather than left dangling.
+ * navigation is provided on the input grids — since plan 88.1-16 that means WeekGrid and
+ * anything built on the shared primitive. Two legacy read-grids used to be named here as well
+ * (one deleted by plan 88-31, then MergedHeatmapGrid by plan 88.1-16); this sentence is
+ * corrected each time rather than left dangling at a file that no longer exists.
  *
  * Drag-select coexistence: EventHeatmapBackground has no internal drag-select
  * gesture; the long-press-drag-to-select gesture from Phase 68 MOB-07 lives in

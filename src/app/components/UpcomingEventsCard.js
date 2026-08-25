@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useTimezone } from '../components/TimezoneProvider';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { selectUpcomingWithin7Days } from '../../lib/upcomingEvents';
 
 /**
  * Format event date/time in relative + compact format with timezone support.
@@ -111,34 +112,42 @@ function formatRelativeDateTime(dateStr, timezone) {
  *   cannot derive this itself.
  * @param {React.ReactNode} [props.action=null] - Optional caller-owned CTA for
  *   the empty state, so any gating stays at the call site.
+ * @param {(event: Object) => void} [props.onEventClick=null] - Phase 88.1-20 (WR-02):
+ *   optional caller-owned row activation, so any host-specific teardown stays at the
+ *   call site — the 11a BottomSheet must CLOSE before it navigates, and the desktop
+ *   column has nothing to close. When omitted the card navigates itself, unchanged.
  */
-export default function UpcomingEventsCard({ events, showGroupName = false, loading = false, viewerDbUserId = null, errorState = null, action = null }) {
+export default function UpcomingEventsCard({ events, showGroupName = false, loading = false, viewerDbUserId = null, errorState = null, action = null, onEventClick = null }) {
   const router = useRouter();
   const { timezone } = useTimezone();
   const [expanded, setExpanded] = useState(false);
 
-  // Defensive: treat null/undefined as empty array
-  const safeEvents = events || [];
-
-  // Filter: future events, within 7 days, scheduled or in_progress only
-  const now = new Date();
-  const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-  const upcomingEvents = safeEvents
-    .filter(event => {
-      const startDate = new Date(event.start_date);
-      if (startDate <= now) return false;
-      if (startDate > sevenDaysLater) return false;
-      const status = event.status || 'scheduled';
-      if (status !== 'scheduled' && status !== 'in_progress') return false;
-      return true;
-    })
-    .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
+  /* DECISION Phase 88.1-05 (Req-11, PATTERNS S5): the 7-day window + status filter + sort
+     that used to live inline HERE now lives in the shared `selectUpcomingWithin7Days`
+     selector — chosen OVER keeping the predicate in this component. The page owner passes
+     the RAW list (UserHomePage.js: "UpcomingEventsCard does its own filter+sort"), so the
+     phone bottom bar's upcoming-count pill (plan 88.1-08) has to derive its NUMBER from the
+     same predicate this body derives its ROWS from, or the bar advertises a count the sheet
+     does not show. Re-inlining it here is a decision, not a cleanup. The selector tolerates
+     null/undefined, which is why the old `safeEvents` guard is gone rather than lost. */
+  const upcomingEvents = selectUpcomingWithin7Days(events);
 
   const displayEvents = expanded ? upcomingEvents : upcomingEvents.slice(0, 3);
   const overflowCount = upcomingEvents.length - 3;
 
+  /* DECISION Phase 88.1-20 (WR-02/WR-03): row activation is OVERRIDABLE by the host, and the
+     row is a real <button>. Chosen OVER moving `router.push` out of the card entirely (rejected:
+     the desktop call site has no reason to own a URL, and moving it would change two call sites
+     to fix one) and OVER `role="button"` + tabIndex + an Enter/Space handler on the existing div
+     (rejected: a native button is Enter AND Space by construction — `CalendarListView.js`'s
+     EventRow predates this row and is not a reason to hand-roll what the platform provides).
+     The URL shape is deliberately NOT unified with `UserHomePage.js`'s and `EventCalendar.js`'s
+     copies of it; that divergence is recorded as out of scope at `UserHomePage.js:145-148`. */
   const handleEventClick = (event) => {
+    if (onEventClick) {
+      onEventClick(event);
+      return;
+    }
     router.push(`/gameDetail?event_id=${event.id}&group_id=${event.group_id}`);
   };
 
@@ -202,10 +211,36 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
             })();
 
             return (
-              <div
+              /* `block w-full text-left` restores the div's layout — a button is inline-block
+                 and centre-aligned by default, which would silently restyle every row.
+
+                 DECISION Phase 88.1-21 (owner D-13, 88.1-CODE-REVIEW.md H2): the 44px floor is
+                 `min-h-11 md:min-h-0` — kept on PHONE, released at >=768px. At py-1.5 with
+                 text-sm these rows measure ~32px, and this project treats 44 as a floor rather
+                 than a target (WR-03), but WR-03's unqualified `min-h-11` also grew the rows on
+                 DESKTOP, and Req 11's acceptance says the >=768px layout is pixel-unchanged.
+                 Phone is where the floor earns its keep: this card also mounts inside the phone
+                 sheet (`userHome/UserHomePage.js:348`), which is the surface the tenet is about.
+                 REJECTED: keeping the desktop growth and amending Req 11 instead — a phone-only
+                 floor is the smaller change and Req 11's boundary is the thing under test.
+                 This does NOT touch WR-03's actual fix, which is that the row is a real
+                 `<button>` (keyboard-reachable) rather than a click-handling div. D-13 reverses
+                 the height, not the element.
+
+                 WHY A UTILITY OPT-OUT WORKS HERE AND WOULD NOT ON A `.btn`: `globals.css`
+                 :1173-1177 applies the phone floor as an UNLAYERED `.btn { min-height: 2.75rem }`,
+                 and an unlayered author rule beats every `@layer utilities` rule regardless of
+                 specificity — so on a `.btn` element `md:min-h-0` would silently do nothing
+                 (the trap documented at `globals.css:1164-1171`, already hit twice). This row
+                 is a bare `<button>` carrying no `.btn`, so the utility lands normally; a pin
+                 in `UpcomingEventsCard.test.tsx` asserts that stays true.
+                 Precedent for phone-scoped floors generally: `DECISION Phase 88-01 (D-36)` at
+                 `globals.css:1142-1160`. */
+              <button
                 key={event.id}
+                type="button"
                 onClick={() => handleEventClick(event)}
-                className={`hover:bg-surface-card-hover rounded-sm py-1.5 px-2 cursor-pointer ${isGuestEvent ? 'border-l-2 border-dashed border-amber-400 dark:border-amber-500/70 pl-3' : ''}`}
+                className={`block w-full text-left min-h-11 md:min-h-0 hover:bg-surface-card-hover rounded-sm py-1.5 px-2 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${isGuestEvent ? 'border-l-2 border-dashed border-amber-400 dark:border-amber-500/70 pl-3' : ''}`}
               >
                 <span className="text-sm text-content-secondary">{gameName}</span>
                 <span className="text-sm text-content-muted"> · </span>
@@ -224,7 +259,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                     Guest
                   </span>
                 )}
-              </div>
+              </button>
             );
           })}
 

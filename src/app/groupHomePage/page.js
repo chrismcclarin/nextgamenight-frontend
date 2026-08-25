@@ -53,7 +53,10 @@ function GroupHomePage(){
     // CAL-05: track the visual entry mode for the create-event modal.
     // 'day' is set when the user taps an empty day cell or the modal's
     // "+ New event on this day" button — the EventScheduler then opens
-    // in react-big-calendar's day view focused on the tapped date.
+    // in its DAY view focused on the tapped date. (Until plan 88.1-16 that day view was
+    // react-big-calendar's; the rebuilt scheduler's week and day arms are the same code
+    // path parameterized by `days` (7 vs 1) — SPEC Req 2 — so 'day view' is now a prop
+    // value on one component, not a second library view.)
     // The "Add New Game Event" header button leaves this at 'week'.
     const [calendarEntryMode, setCalendarEntryMode] = useState('week');
     // Defensive cache-bust key — bumped after a fresh fetch so EventCalendar

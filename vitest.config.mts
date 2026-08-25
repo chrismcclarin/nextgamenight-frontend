@@ -54,6 +54,11 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // DECISION Phase 88.1 (owner, 2026-08-24, DEF-88.1-10-01): 20s per-test ceiling OVER vitest's 5s
+    // default and OVER per-test timeout arguments. The 5s default mislabels green tests as red on a
+    // loaded 4-core box / shared CI runner (four different files flaked across this phase, all green
+    // alone). A suite-wide ceiling stops the whack-a-mole; it costs nothing for fast tests.
+    testTimeout: 20000,
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
     // Unit tests use the `.test.ts(x)` suffix under src/. Playwright owns the

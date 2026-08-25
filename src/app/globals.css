@@ -18,27 +18,33 @@
    emit nothing at all. Removing or reordering this is a decision, not a cleanup. */
 @import 'tw-animate-css';
 
-/* DECISION Phase 87.7 (Plan 03, RESEARCH Pitfall 9): react-big-calendar is imported into
-   `layer(base)` OVER the v4 codemod's `layer(utilities)`. Measured, not reasoned — byte offsets
-   in the emitted stylesheet:
+/* DECISION Phase 88.1-16 (SPEC Req 9): react-big-calendar's stylesheet import — and the
+   twenty-line Phase 87.7 Plan 03 marker that guarded its `layer(base)` — were DELETED here
+   together with the dependency itself. The marker existed for exactly one purpose: to stop a
+   future reader "cleaning up" `layer(base)` on THAT import and silently re-inverting the
+   cascade. It dies with the line it documented, which is why removing it is not a loss.
 
-     v3 (bare @import, hoisted by webpack's css-loader): .rbc-calendar @253 vs .text-sm @35,701
-       -> Tailwind utilities win ties.
-     v4 with the codemod's layer(utilities):             .rbc-calendar @62,534 vs .text-sm @35,355
-       -> RBC wins ties. That is a CASCADE INVERSION, i.e. a regression.
-     v4 with layer(base) (this line):                    .rbc-* inside @layer base, utilities after
-       -> Tailwind utilities win ties again, matching v3.
+   VERIFIED before removal, not assumed: `layer(base)` appeared on that import line ONLY (plus
+   its own comment); this file's own `@layer base` block and Tailwind's layer order are declared
+   by `@import 'tailwindcss'` above, so nothing else depended on that import's layer.
+   (Written without a trailing brace on purpose: `focusAndMotionTreatment.test.ts:451-461`
+   decides whether the reduced-motion block is layered by counting RAW `{`/`}` bytes with no
+   comment stripping, so an unbalanced brace in ANY comment above it reds that gate. Measured
+   here during 88.1-16 — the first draft of this marker wrote the brace and did exactly that.)
 
-   `globals.css`'s own UNLAYERED `.rbc-*` overrides in the "React Big Calendar Restyle" section
-   below (including the Phase 72-02 pointer-events block) keep winning over both, exactly as today.
+   WHAT A FUTURE READER STILL NEEDS — the rule the deleted marker was carrying, kept because the
+   next third-party stylesheet will hit it again: ANY third-party CSS imported into this file
+   must be imported `layer(base)`, chosen OVER the v4 codemod's `layer(utilities)` and OVER a
+   bare unlayered `@import`. Measured at the time in emitted byte offsets: with
+   `layer(utilities)` the vendor rules WIN ties against Tailwind utilities (a cascade inversion
+   vs. v3); with `layer(base)` utilities win ties again, matching v3. Importing a vendor
+   stylesheet without `layer(base)` is a decision, not a default.
+   (Note `@import 'tw-animate-css'` above is deliberately NOT layered — it is a keyframes/custom
+   property source with no competing utility-shaped selectors, a different case.)
 
-   Deliberate, accepted side effect: wrapping RBC in a layer makes its leading `@charset "UTF-8";`
-   illegal in that position, so lightningcss emits one non-fatal build warning
-   ("Unknown at rule: @charset"). `next build` still exits 0. Removing the layer to silence that
-   warning re-inverts the cascade — that is a decision, not a cleanup. The only untested
-   alternative is hoisting this @import above `@import 'tailwindcss'` (RESEARCH Assumption A2),
-   which perturbs layer-order declaration; it was rejected as higher-risk. */
-@import 'react-big-calendar/lib/css/react-big-calendar.css' layer(base);
+   Deliberate side effect of the deletion: the non-fatal `Unknown at rule: @charset` build
+   warning that the layered vendor import produced is GONE. Its absence is the fix, not a
+   regression to chase. */
 
 /* ===== TAILWIND v4: EXPLICIT SOURCE SCOPING =====
    DECISION Phase 87.7 (Plan 07, D-01/D-04, DI-87.7-01): three explicit `@source` directives,
@@ -126,8 +132,10 @@
 
    Placement is load-bearing and identical to the constraint the palette-pin block below
    documents: `@import` must be the first statement in a stylesheet, so this line sits AFTER
-   every `@import`. Moving it above the react-big-calendar import would silently invalidate
-   that import.
+   every `@import`. Moving it above one would silently invalidate that import. The import this
+   used to name specifically — react-big-calendar's stylesheet — was DELETED by plan 88.1-16;
+   the LAST `@import` is now `@import 'tw-animate-css'` at the top of this file, and the
+   constraint is unchanged. Do not read the removal of that import as removing the rule.
 
    Recorded, no action: v4 emits this variant as `:where(.dark, .dark *)`, which drops the
    variant's specificity from (0,2,0) to (0,1,0) relative to v3's `.dark &`. Harmless here --
@@ -188,8 +196,10 @@
      to ship a dead utility. Describe utilities; do not name them here.
 
      Placement is load-bearing: this block sits AFTER every `@import` line. `@import` must be the
-     first statement in a stylesheet, so moving this above the react-big-calendar import would
-     silently invalidate that import. It is also a plain `@theme`, NOT `@theme inline` — this one
+     first statement in a stylesheet, so moving this above one would silently invalidate that
+     import. (This used to name react-big-calendar's stylesheet import; plan 88.1-16 deleted it.
+     The last `@import` is now `@import 'tw-animate-css'`; the constraint is unchanged.)
+     It is also a plain `@theme`, NOT `@theme inline` — this one
      declares literal build-time VALUES for v4's own palette keys; Plan 06's `@theme inline` block
      maps semantic names onto runtime `var()`s so `.dark` keeps flipping. Merging the two breaks
      one of the two mechanisms. */
@@ -560,6 +570,29 @@
      error). The values are UI-SPEC §9.1's: light amber-100, dark a warm amber-over-purple-900
      literal with no palette step to point at. */
   --color-bg-accent-subtle: var(--amber-100);
+  /* DECISION Phase 88.1 (plan 15, Req 8): the TODAY-marker tint gets its own runtime token at ARM
+     B's measured strength — light `amber-200`, dark `#513902` (the `.dark` declaration below) —
+     chosen OVER the two alternatives the owner's pick left on the table:
+       (a) BUMPING `--color-bg-accent-subtle` above to amber-200. Rejected: measured census, that
+           token has ~13 other consumers (five invite/restore pages, `BallotSection`,
+           `PendingMemberBanner`, `ManageMembers`, `EmptyState`, and the MergedHeatmap pair —
+           since DELETED by plan 88.1-16) — none of which the owner judged. A one-surface pick
+           must not repaint nine unrelated surfaces. That deletion only LOWERS the count; it does
+           not re-open this rejected alternative.
+       (b) A RAW `#513902` LITERAL in `EventScheduler.tsx`. Rejected: `rawColorValues.test.ts`
+           test 1 (Phase 88 DES-01) forbids hex in components, and that suite's own TEMPORARY
+           exemption said in words that minting this token is "precisely the decision the owner
+           makes at plan 88.1-15". The A/B is over; the value is decided; it belongs here.
+     This token is intentionally NOT in `@theme inline` and generates NO `bg-*` utility: its single
+     consumer re-points `--color-bg-accent-subtle` to it for the scheduler subtree only, which is
+     what keeps the paired-ternary class shape byte-identical per `DECISION Phase 88-27 D-32`
+     ("token VALUE only, never the ternary shape"). Adding a `bg-surface-today-tint` utility and
+     swapping the ternary's class onto it is a decision that moves that shape — not a cleanup.
+     CONTRAST, recorded rather than shipped silently: the day-number `text-accent` over this tint
+     measures 1.72:1 in LIGHT (was 1.93:1 over amber-100), both below the 4.5:1 AA floor. Phase
+     88.3 owns the light `text-accent` ramp (`.planning/deferred/phase-88.3.md`); the owner chose
+     visibility over a ratio that was already failing. DARK passes: 5.05:1. */
+  --color-bg-today-tint: var(--amber-200);
 
   /* Brand / Navigation */
   --color-bg-nav: var(--purple-900);
@@ -731,6 +764,13 @@
      the status tints: an `rgba()` amber over the card would shift with whatever sits behind it.
      See the full DECISION marker at the light declaration above. */
   --color-bg-accent-subtle: #3a3320;
+  /* DECISION Phase 88.1 (plan 15, Req 8) — ARM B's dark value, MEASURED 2026-08-21
+     (`.planning/deferred/phase-88.1.md:68-73`) and REUSED here, never re-derived: it is twice
+     `#3a3320`'s delta from the purple-900 card, the same step `amber-100 -> amber-200` makes in
+     light. An OPAQUE literal for the same reason the accent tint above is one (88-04 D-15 /
+     88-01 D-32-33): an `rgba()` amber over the card shifts with whatever sits behind it. There is
+     no palette step to point at. Full rationale at the light declaration. */
+  --color-bg-today-tint: #513902;
 
   --color-bg-nav: var(--purple-950);
   --color-bg-nav-hover: var(--purple-900);
@@ -883,10 +923,22 @@
 
      REJECTED ALTERNATIVE — rename the runtime properties (e.g. `--color-accent` to `--sem-accent`)
      so the namespaces cannot overlap at all. Rejected on cost and blast radius: this file carries
-     140 custom-property declarations that would all need re-checking, and there are six JS call
+     140 custom-property declarations that would all need re-checking, and there are NINE JS call
      sites reading these properties through `var()` at runtime, which no CSS-only rename would
-     touch and no build step would catch (SafeImage.js:31, DieLogo.js:12, EventScheduler.js:459
-     and :517 and :518, gameDetail/page.js:1782 — enumerated exhaustively by RESEARCH). A rename
+     touch and no build step would catch. RE-DERIVED 2026-08-24 by plan 88.1-16, because the
+     enumeration this line used to carry (six sites, three of them `EventScheduler.js:459,517,518`)
+     was already stale before Phase 88.1 and then went dangling entirely — `EventScheduler.js` no
+     longer exists, the rebuild replaced it with `EventScheduler.tsx`. Current, exhaustive:
+       CalendarMonthView.js:186, SafeImage.js:31, DieLogo.js:12,
+       EventScheduler.tsx:249 and :795 and :807, SchedulerWeekStrip.tsx:144,
+       gameDetail/page.js:1211, colorUtils.js:84-86.
+     Two further sites reach these properties through a Tailwind ARBITRARY VALUE rather than a JS
+     style object — `grouplist.js:299` and `tutorial/TutorialOverlay.js:187`, both
+     `bg-[var(--color-bg-overlay)]`. A rename misses those the same way, so they are named here
+     rather than folded into the count. `groupHomePage/page.js:466` reads `var(--amber-600)`, a
+     RAW palette token outside the `--color-*` namespace this alternative would rename, and is
+     deliberately excluded. Line numbers in this list are a snapshot; the file list is the
+     durable part. A rename
      is still the structurally cleaner end state; if Phase 88 wants it, it is a deliberate
      follow-up, and these three lines are what it deletes.
 
@@ -986,6 +1038,11 @@ body {
    blocks (guardrail comment above), `.btn`, `.btn-*` and `.modal-overlay` — MUST STAY
    unlayered; their cascade position is a measured 87.7 decision and nothing needs to
    override them. Only `.card` moves. Moving it back is a decision, not a cleanup.
+   AMENDED BY PHASE 88.1-16: the `.rbc-*` overrides are no longer in that list either — the
+   whole restyle block went with react-big-calendar itself (SPEC Req 9), which is a deletion
+   of the RULES, not a re-layering of them. Amended in the same style as the 88-31 amendment
+   below so a reader who remembers the original four-item list can see which items went and
+   why. The unlayered requirement stands unchanged for every remaining item.
    AMENDED BY PHASE 88-31: `.modal-overlay` is no longer in that list because the rule no
    longer exists — the dialog fleet moved onto the `<Modal>` primitive and its CSS was
    deleted here (see the amended DEC-3 marker below, where `.modal-overlay` used to sit).
@@ -1165,155 +1222,6 @@ body {
    record each rule's numbers as the primitive's derivation source, and the dialog-title 20px/700
    contract lives in UI-SPEC §4.2. Same reasoning as the overlay deletion above — a rule nothing
    references is a rule every future census re-adjudicates. */
-
-/* ===== DESIGN SYSTEM: React Big Calendar Restyle ===== */
-
-.rbc-calendar {
-  color: var(--color-text-primary);
-  font-family: inherit;
-}
-
-.rbc-header {
-  color: var(--color-text-secondary);
-  background-color: var(--color-bg-card);
-  border-bottom: 2px solid var(--color-border);
-  padding: 8px;
-  font-weight: 600;
-}
-
-.rbc-today {
-  background-color: var(--purple-100);
-}
-
-.dark .rbc-today {
-  background-color: var(--purple-800);
-}
-
-.rbc-toolbar {
-  color: var(--color-text-primary);
-}
-
-.rbc-toolbar button {
-  color: var(--color-text-primary) !important;
-  border: 1px solid var(--color-border) !important;
-  background-color: var(--color-bg-elevated) !important;
-  border-radius: 6px;
-  padding: 0.5rem 1rem;
-}
-
-.rbc-toolbar button:hover {
-  background-color: var(--color-bg-card-hover) !important;
-}
-
-.rbc-toolbar button.rbc-active {
-  background-color: var(--color-btn-primary-bg) !important;
-  color: var(--color-btn-primary-text) !important;
-  border-color: var(--color-btn-primary-bg) !important;
-}
-
-.rbc-toolbar-label {
-  color: var(--color-text-primary);
-  font-weight: 600;
-}
-
-.rbc-event {
-  background-color: var(--color-btn-primary-bg) !important;
-  border: none;
-  border-radius: 6px;
-  color: white;
-}
-
-.rbc-event-content {
-  color: white;
-}
-
-.rbc-event-label {
-  color: white;
-}
-
-.rbc-off-range-bg {
-  background-color: var(--color-bg-card-hover);
-}
-
-.rbc-slot-selection {
-  background-color: var(--color-accent) !important;
-  opacity: 0.3;
-}
-
-.rbc-time-gutter {
-  color: var(--color-text-muted);
-  font-weight: 500;
-}
-
-/* react-big-calendar's slotPropGetter applies the heatmap green tint to
-   every slot it sees, including the time-gutter slots on the left edge.
-   The wrapper-side filter (timeSlotWrapper) handles the count badge + tooltip,
-   but the bg color comes from a separate path — strip it here. */
-.rbc-time-gutter .rbc-time-slot {
-  background-color: transparent !important;
-}
-
-/* react-big-calendar's `.rbc-events-container` is absolute-positioned over
-   every day column with no `pointer-events: none`. That invisible layer sits
-   on top of all time slots and intercepts hover, which broke the heatmap
-   tooltip — only the count badge was reachable because it lives in the 10px
-   right-margin strip the container leaves uncovered. Pass pointer events
-   through the empty container; events themselves re-enable pointer events so
-   they stay clickable. Phase 72-02 UAT regression. */
-.rbc-day-slot .rbc-events-container {
-  pointer-events: none;
-}
-.rbc-day-slot .rbc-event,
-.rbc-day-slot .rbc-background-event {
-  pointer-events: auto;
-}
-
-.rbc-label {
-  color: var(--color-text-muted);
-  font-weight: 500;
-}
-
-.rbc-time-header-content {
-  color: var(--color-text-primary);
-}
-
-.rbc-day-header {
-  color: var(--color-text-secondary);
-}
-
-.rbc-day-slot .rbc-time-slot {
-  border-top: 1px solid var(--color-border);
-}
-
-.rbc-month-view,
-.rbc-time-view,
-.rbc-agenda-view {
-  border-color: var(--color-border);
-}
-
-.rbc-month-row + .rbc-month-row {
-  border-top-color: var(--color-border);
-}
-
-.rbc-day-bg + .rbc-day-bg {
-  border-left-color: var(--color-border);
-}
-
-.rbc-header + .rbc-header {
-  border-left-color: var(--color-border);
-}
-
-.rbc-time-content {
-  border-top-color: var(--color-border);
-}
-
-.rbc-time-content > * + * > * {
-  border-left-color: var(--color-border);
-}
-
-.rbc-timeslot-group {
-  border-bottom-color: var(--color-border);
-}
 
 /* ===== PHASE 87.8: PHONE-WIDTH FLATTEN UTILITIES ===== */
 

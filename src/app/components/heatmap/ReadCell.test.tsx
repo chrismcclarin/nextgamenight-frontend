@@ -49,6 +49,67 @@ describe('ReadCell — semantics + verbatim color', () => {
   });
 });
 
+// Plan 88.1-02 Task 1: the opt-in colour-resolution override (C3).
+//
+// The default-path pins assert the EXACT rendered string, not `toContain` — the whole point of the
+// override's `undefined` state is that `EventHeatmapBackground` (the only live consumer, owner-passed
+// at 375px under locked 72-02) renders a byte-identical class string to the one it rendered before
+// this prop existed. A "contains" assertion would pass even if a stray space or an extra class crept
+// in, which is exactly the regression this is here to catch.
+describe('ReadCell — colorClass override (88.1-02 C3)', () => {
+  const base = {
+    row: 0,
+    col: 0,
+    rows: 1,
+    cols: 1,
+    variant: 'merged',
+  } as const;
+
+  it('omitting colorClass renders the byte-identical default string — ZERO availability', () => {
+    render(<ReadCell {...base} availableCount={0} totalMembers={4} className="border border-line" />);
+    // Literal, not colors.mergedCellColor(...): pinning the composed string byte-for-byte.
+    expect(screen.getByRole('gridcell').className).toBe(
+      'border border-line bg-surface-elevated text-content-muted'
+    );
+  });
+
+  it('omitting colorClass renders the byte-identical default string — NON-ZERO availability', () => {
+    render(<ReadCell {...base} availableCount={3} totalMembers={5} className="border border-line" />);
+    expect(screen.getByRole('gridcell').className).toBe('border border-line bg-green-300 text-green-900');
+  });
+
+  it('omitting colorClass with NO structural className is still exactly the colour string', () => {
+    render(<ReadCell {...base} availableCount={5} totalMembers={5} />);
+    expect(screen.getByRole('gridcell').className).toBe('bg-green-500 text-white');
+  });
+
+  it('colorClass={null} emits NO colour class and no trailing whitespace', () => {
+    render(
+      <ReadCell {...base} availableCount={0} totalMembers={4} className="border border-line" colorClass={null} />
+    );
+    const cls = screen.getByRole('gridcell').className;
+    expect(cls).toBe('border border-line');
+    expect(cls).not.toMatch(/\s$/);
+    expect(cls).not.toContain('bg-surface-elevated');
+  });
+
+  it('colorClass={null} with no structural className renders an empty class string', () => {
+    render(<ReadCell {...base} availableCount={2} totalMembers={4} colorClass={null} />);
+    expect(screen.getByRole('gridcell').className).toBe('');
+  });
+
+  it('colorClass="bg-foo" uses that string verbatim as the colour segment, structural class FIRST', () => {
+    // availableCount/totalMembers would resolve to bg-green-300; the override must win outright,
+    // not merge with it.
+    render(
+      <ReadCell {...base} availableCount={3} totalMembers={5} className="border border-line" colorClass="bg-foo" />
+    );
+    const cls = screen.getByRole('gridcell').className;
+    expect(cls).toBe('border border-line bg-foo');
+    expect(cls).not.toContain('bg-green-300');
+  });
+});
+
 describe('ReadCell — keyboard roving wired through useHeatmapCell', () => {
   it('an arrow keydown invokes the grid onMove with the clamped target', () => {
     const onMove = vi.fn();

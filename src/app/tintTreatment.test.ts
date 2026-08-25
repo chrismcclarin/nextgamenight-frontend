@@ -150,7 +150,8 @@ export function parseAlphaToken(
  * Every tint is emitted BEFORE the plain surfaces. Two same-specificity background rules on
  * one element are resolved by stylesheet order, so where both reach an element through a
  * template literal with no `tailwind-merge`, the PLAIN SURFACE WINS and the tint renders
- * nothing — exactly the failure `MergedHeatmapGrid` shipped into before this plan.
+ * nothing — exactly the failure the now-deleted `MergedHeatmapGrid` shipped into before Phase 88-27
+ * fixed it. (The file itself went in plan 88.1-16; the failure mode it demonstrated has not.)
  * Variant-prefixed tints (`hover:`) are exempt: the pseudo-class raises specificity.
  */
 const RESTING_SUBTLE = /^bg-(status-(success|error|warning)-subtle|surface-accent-subtle)$/;
@@ -237,9 +238,35 @@ describe('D-32/D-33 tint treatment (Req 17)', () => {
   });
 
   it('4. the three UI-SPEC §10.3 exemplars carry their designed treatment', () => {
-    const grid = fs.readFileSync(path.join(SRC, 'app/components/MergedHeatmapGrid.js'), 'utf8');
+    // This exemplar reads `EventScheduler.tsx`, chosen OVER its previous home
+    // `MergedHeatmapGrid.js`, because that file and its `MergedHeatmap.js` parent were DELETED in
+    // plan 88.1-16. What survived the deletion is the thing worth keeping: the paired-ternary
+    // today-tint idiom, carried verbatim in SHAPE to the site this assertion now guards.
+    //
+    // THE DELETE-OVER-REVIVE DECISION ITSELF NO LONGER LIVES HERE. Until 88.1-21 this comment was
+    // its only record, which put a decision about production code somewhere no one reading that
+    // code would look. It now lives at `src/lib/availabilityColor.ts` as
+    // `DECISION Phase 88.1 (Req 10)`, beside the 88-31 second-ramp deletion. Read it there; the
+    // assertion below keeps it there.
+    //
+    // `EventScheduler.tsx` is the canonical desktop exemplar, chosen OVER `SchedulerWeekStrip.tsx`
+    // (which also carries a today ternary): only this site matches the retired exemplar in BOTH
+    // halves. The strip's non-today TEXT value is deliberately the muted token, not primary, to
+    // hold M-03 parity with its sibling idiom (see the DECISION block at SchedulerWeekStrip.tsx
+    // :150-186). Converging the two is a decision, not a consistency fix.
+    //
+    // KNOWN LIMIT, measured in plan 88.1-13 and repeated here so nobody over-reads this line:
+    // test 3 above does NOT catch the interpolated collapse at this site. Its scanner lexes string
+    // CHUNKS, and in the collapsed shape the plain surface sits in the template quasi while the
+    // tint sits in a separate inner literal — two chunks, one background each, no offender. What
+    // actually guards the scheduler against the collapse is the component pin in
+    // `EventScheduler.test.tsx` (T-88.1-39). This assertion pins the SHAPE, not the cascade.
+    const scheduler = fs.readFileSync(path.join(SRC, 'app/components/EventScheduler.tsx'), 'utf8');
     // mutually exclusive branches, NOT a static surface with an appended tint
-    expect(grid).toMatch(/isTodayDate \? 'bg-surface-accent-subtle' : 'bg-surface-card'/);
+    expect(scheduler).toMatch(/today \? 'bg-surface-accent-subtle' : 'bg-surface-card'/);
+    // the retired exemplar's own in-file warning was that `isTodayDate` drove the day number's
+    // `text-accent` too and "the two must agree" — so the PAIR is asserted, not just the surface.
+    expect(scheduler).toMatch(/today \? 'text-accent' : 'text-content-primary'/);
 
     const grouplist = fs.readFileSync(path.join(SRC, 'app/components/grouplist.js'), 'utf8');
     expect(grouplist).toMatch(/bg-\[var\(--color-bg-overlay\)\]/);
@@ -252,6 +279,19 @@ describe('D-32/D-33 tint treatment (Req 17)', () => {
 
     const member = fs.readFileSync(path.join(SRC, 'app/components/ClickableMemberName.js'), 'utf8');
     expect(member).toMatch(/rounded-full bg-surface-card-hover text-btn-primary/);
+  });
+
+  it('4b. the Req 10 delete-over-revive decision lives at a PRODUCTION site, not only in this file', () => {
+    // Phase 88.1-21 (88.1-CODE-REVIEW.md). A decision recorded only inside a test file is
+    // invisible to the next person editing the code it governs — that is how a deliberate delete
+    // gets "restored" as an oversight two phases later. This pins the marker to a production
+    // module, so moving it back into a test (or dropping it) fails here rather than silently.
+    const color = fs.readFileSync(path.join(SRC, 'lib/availabilityColor.ts'), 'utf8');
+    expect(color).toMatch(/DECISION Phase 88\.1 \(Req 10\)/);
+    // The load-bearing half is the REJECTED alternative — "was deleted" warns nobody,
+    // "deleted OVER reviving it" stops a future revive.
+    expect(color).toMatch(/chosen OVER reviving/);
+    expect(color).toMatch(/MergedHeatmap/);
   });
 
   it('5. the parser tells a semantic-token alpha from a raw-palette one and from a fraction', () => {
