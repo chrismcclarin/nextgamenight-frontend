@@ -165,3 +165,33 @@ describe('UpcomingEventsCard — branch precedence (DECISION Phase 88-18)', () =
     expect(screen.queryByText('Nothing on the calendar')).not.toBeInTheDocument();
   });
 });
+
+describe('UpcomingEventsCard — the 44px row floor is PHONE-scoped (owner D-13)', () => {
+  // 88.1-CODE-REVIEW.md H2. WR-03 made these rows real `<button>`s and gave them `min-h-11`
+  // for the phone touch floor, which also grew them on desktop — a >=768px layout change Req 11
+  // says is out of bounds. The owner's D-13 ruling scopes the floor to phone. The class pair is
+  // the assertion because jsdom applies no stylesheet: there is no computed height to read here,
+  // and the mobile Playwright project is where the rendered result is proven.
+  it('the row button keeps min-h-11 and opts out of it at md and up', () => {
+    renderCard({ events: [ev('e1', '2026-08-23T23:00:00.000Z', 'Game One')] });
+
+    const row = screen.getByRole('button', { name: /Game One/ });
+    // Phone: the floor stays. Removing this re-breaks WR-03's touch target.
+    expect(row.className).toContain('min-h-11');
+    // Desktop: the floor is released, restoring the pre-phase row height.
+    expect(row.className).toContain('md:min-h-0');
+  });
+
+  it('the row carries no `.btn` class, which is why the utility opt-out can work at all', () => {
+    // ANTI-VACUITY for the pin above. `globals.css:1173-1177` applies the phone floor as an
+    // UNLAYERED `.btn { min-height: 2.75rem }`, and an unlayered author rule beats every
+    // `@layer utilities` rule — so on a `.btn` element `md:min-h-0` would silently do nothing
+    // (globals.css:1164-1171 documents that trap, hit twice already). This row is a bare
+    // button, so the opt-out lands. If a future edit puts `.btn` on this row, the D-13 pin
+    // above would still pass while the desktop height quietly reverted; this catches that.
+    renderCard({ events: [ev('e1', '2026-08-23T23:00:00.000Z', 'Game One')] });
+
+    const row = screen.getByRole('button', { name: /Game One/ });
+    expect(row.className.split(/\s+/)).not.toContain('btn');
+  });
+});

@@ -213,13 +213,34 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
             return (
               /* `block w-full text-left` restores the div's layout — a button is inline-block
                  and centre-aligned by default, which would silently restyle every row.
-                 `min-h-11` is the 44px floor: at py-1.5 with text-sm these rows measure ~32px,
-                 and this project treats 44 as a floor rather than a target (WR-03). */
+
+                 DECISION Phase 88.1-21 (owner D-13, 88.1-CODE-REVIEW.md H2): the 44px floor is
+                 `min-h-11 md:min-h-0` — kept on PHONE, released at >=768px. At py-1.5 with
+                 text-sm these rows measure ~32px, and this project treats 44 as a floor rather
+                 than a target (WR-03), but WR-03's unqualified `min-h-11` also grew the rows on
+                 DESKTOP, and Req 11's acceptance says the >=768px layout is pixel-unchanged.
+                 Phone is where the floor earns its keep: this card also mounts inside the phone
+                 sheet (`userHome/UserHomePage.js:348`), which is the surface the tenet is about.
+                 REJECTED: keeping the desktop growth and amending Req 11 instead — a phone-only
+                 floor is the smaller change and Req 11's boundary is the thing under test.
+                 This does NOT touch WR-03's actual fix, which is that the row is a real
+                 `<button>` (keyboard-reachable) rather than a click-handling div. D-13 reverses
+                 the height, not the element.
+
+                 WHY A UTILITY OPT-OUT WORKS HERE AND WOULD NOT ON A `.btn`: `globals.css`
+                 :1173-1177 applies the phone floor as an UNLAYERED `.btn { min-height: 2.75rem }`,
+                 and an unlayered author rule beats every `@layer utilities` rule regardless of
+                 specificity — so on a `.btn` element `md:min-h-0` would silently do nothing
+                 (the trap documented at `globals.css:1164-1171`, already hit twice). This row
+                 is a bare `<button>` carrying no `.btn`, so the utility lands normally; a pin
+                 in `UpcomingEventsCard.test.tsx` asserts that stays true.
+                 Precedent for phone-scoped floors generally: `DECISION Phase 88-01 (D-36)` at
+                 `globals.css:1142-1160`. */
               <button
                 key={event.id}
                 type="button"
                 onClick={() => handleEventClick(event)}
-                className={`block w-full text-left min-h-11 hover:bg-surface-card-hover rounded-sm py-1.5 px-2 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${isGuestEvent ? 'border-l-2 border-dashed border-amber-400 dark:border-amber-500/70 pl-3' : ''}`}
+                className={`block w-full text-left min-h-11 md:min-h-0 hover:bg-surface-card-hover rounded-sm py-1.5 px-2 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${isGuestEvent ? 'border-l-2 border-dashed border-amber-400 dark:border-amber-500/70 pl-3' : ''}`}
               >
                 <span className="text-sm text-content-secondary">{gameName}</span>
                 <span className="text-sm text-content-muted"> · </span>

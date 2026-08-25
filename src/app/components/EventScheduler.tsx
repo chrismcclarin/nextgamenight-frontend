@@ -875,6 +875,20 @@ export default function EventScheduler({
         ariaLabel,
         tooltipContent,
         colorClass: null,
+        // Emitted for EVERY scheduler cell, true or false — not only the selected ones.
+        // Rejected: setting it only on the selected cell. `aria-selected` is a tri-state to
+        // assistive tech: absent means "not selectable". A grid where one cell says true and
+        // the rest say nothing announces the rest as unselectable, which is the opposite of
+        // true here. The passive `EventHeatmapBackground` path deliberately passes NOTHING, so
+        // its cells stay attribute-free — there the absence is honest.
+        ariaSelected: isSelected,
+        // The project focus-visible ring, copied VERBATIM from `AvailabilityGrid.js:628` — a
+        // heatmap grid cell, the closest shipped precedent (88-28 standard). Without it these
+        // gridcells are keyboard-focusable with only the UA default outline.
+        // `focus:outline-hidden` is deliberate and allowed; `focusAndMotionTreatment.test.ts`
+        // :20-24 says in its own words not to "fix" it to `outline-none`.
+        className:
+          'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2',
         // `position: relative` is load-bearing, not styling: the count badge and the selection
         // block are absolutely positioned against this cell.
         style: { position: 'relative', ...(backgroundColor ? { backgroundColor } : {}) },

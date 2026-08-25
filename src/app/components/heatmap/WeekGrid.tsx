@@ -61,6 +61,18 @@ export type WeekGridReadData = {
   style?: React.CSSProperties;
   /** Cell content forwarded to the cell (e.g. the participant-count badge). */
   children?: React.ReactNode;
+  /**
+   * Forwarded to `ReadCell.ariaSelected` -> `aria-selected` on the gridcell (88.1-21). Omit on
+   * grids whose cells are not selectable, so the attribute is absent rather than `"false"`.
+   */
+  ariaSelected?: boolean;
+  /**
+   * Structural classes forwarded to `ReadCell.className` — the prop ReadCell has always
+   * accepted and this arm simply never passed (88.1-21). Used by the scheduler for the
+   * project focus-visible ring. Two ADDITIVE OPTIONAL fields, not a new `variant` arm: per the
+   * marker above, adding FIELDS is not what DECISION Phase 88-31 forbids.
+   */
+  className?: string;
 };
 
 interface WeekGridBaseProps {
@@ -388,6 +400,8 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
           tooltipContent={data.tooltipContent}
           colorClass={data.colorClass}
           style={data.style}
+          ariaSelected={data.ariaSelected}
+          className={data.className}
         >
           {data.children}
         </ReadCell>

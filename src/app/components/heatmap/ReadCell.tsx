@@ -113,6 +113,19 @@ interface ReadCellBaseProps {
    * not here.
    */
   colorClass?: string | null;
+  /**
+   * Whether this cell is part of a committed selection, forwarded to `aria-selected` on the
+   * `role="gridcell"` element. Omit entirely on surfaces that are not selectable — the attribute
+   * is then absent rather than `"false"`, which is the honest answer for a passive read grid.
+   *
+   * DECISION Phase 88.1-21 (88.1-CODE-REVIEW.md): an ADDITIVE OPTIONAL prop, the shape the
+   * 88.1-02 C3 marker above established for exactly this situation. It re-opens neither the
+   * 88-31 one-variant decision (no new `variant` arm) nor the 84-05 byte-identical `className`
+   * contract (no class string touched). `EventHeatmapBackground.js:262-277`, the other live
+   * consumer, passes neither this nor a structural `className`, so its rendered attributes are
+   * unchanged.
+   */
+  ariaSelected?: boolean;
 }
 
 export interface MergedReadCellProps extends ReadCellBaseProps {
@@ -162,6 +175,7 @@ export const ReadCell = memo(function ReadCell(props: ReadCellProps) {
     fill = true,
     children = null,
     colorClass,
+    ariaSelected,
   } = props;
 
   // Hook is called unconditionally (rules of hooks). In passive mode we simply
@@ -200,6 +214,7 @@ export const ReadCell = memo(function ReadCell(props: ReadCellProps) {
       className={fullClassName}
       role="gridcell"
       tabIndex={tabIndex}
+      aria-selected={ariaSelected}
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
       style={{ ...(fill ? { width: '100%', height: '100%' } : {}), ...style }}

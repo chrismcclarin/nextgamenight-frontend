@@ -146,6 +146,10 @@ const PhoneEventBar = React.forwardRef<HTMLDivElement, PhoneEventBarProps>(
           type="button"
           onClick={onOpen}
           aria-label={accessibleName}
+          // Matches the sibling Calendar trigger (`userHome/UserHomePage.js:248`): this opens a
+          // focus-trapping bottom sheet, and a screen-reader user gets no warning of that from
+          // "button" alone.
+          aria-haspopup="dialog"
           // `min-h-11` is the 44px touch floor; `h-full` fills the 56px bar.
           // Focus ring class set copied from the FAB (`FeedbackButton.js:189`).
           className="flex h-full w-full min-h-11 items-center justify-between gap-2 px-4 text-left focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"

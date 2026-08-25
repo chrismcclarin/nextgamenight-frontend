@@ -494,3 +494,16 @@ describe('Req 11a — tapping a row in the sheet (WR-02 / WR-03)', () => {
     expect(await axe(sheet)).toHaveNoViolations();
   });
 });
+
+// Plan 88.1-21 (88.1-CODE-REVIEW.md) — the bar's trigger opens a dialog and must say so.
+describe('Req 11a — the bar trigger announces the sheet it opens', () => {
+  it('carries aria-haspopup="dialog", matching the sibling Calendar trigger', () => {
+    // The desktop-side Calendar button that opens the same class of bottom sheet already does
+    // this (`userHome/UserHomePage.js:248`). Without it a screen-reader user is told only
+    // "button" and gets no warning that activation moves focus into a modal.
+    render(<PhoneEventBar events={[]} onOpen={vi.fn()} />);
+
+    const trigger = screen.getByRole('button', { name: /open upcoming events/i });
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+  });
+});

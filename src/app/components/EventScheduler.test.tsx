@@ -1399,3 +1399,100 @@ describe('EventScheduler — day view lands on the DAY peak, not the week peak (
     expect(scroller().scrollTop).not.toBe(WED_ROW * ROW_PX);
   });
 });
+
+describe('EventScheduler — assistive-tech affordances on the grid (88.1-21, 88.1-CODE-REVIEW.md)', () => {
+  const SELECTED = {
+    start: new Date(2026, 6, 22, 19, 0, 0),
+    end: new Date(2026, 6, 22, 19, 30, 0),
+  };
+
+  it('announces a committed selection with aria-selected on the gridcell', () => {
+    render(<EventScheduler initialDate={WEEK_N} selectedSlot={SELECTED} />);
+
+    const blocks = screen.getAllByTestId('scheduler-selected-block');
+    expect(blocks.length).toBeGreaterThan(0);
+    for (const block of blocks) {
+      const cell = block.closest('[role="gridcell"]');
+      expect(cell).not.toBeNull();
+      expect(cell?.getAttribute('aria-selected')).toBe('true');
+    }
+  });
+
+  it('says aria-selected="false" on the OTHER cells, not nothing', () => {
+    // The negative is the load-bearing half. A grid where only the selected cell carries
+    // aria-selected tells assistive tech the remaining cells are not selectable — the opposite
+    // of true, and worse than omitting the attribute everywhere.
+    render(<EventScheduler initialDate={WEEK_N} selectedSlot={SELECTED} />);
+
+    const unselected = screen
+      .getAllByRole('gridcell')
+      .filter((c) => !c.querySelector('[data-testid="scheduler-selected-block"]'));
+    expect(unselected.length).toBeGreaterThan(0);
+    expect(unselected[0].getAttribute('aria-selected')).toBe('false');
+  });
+
+  it('gives gridcells the project focus-visible ring instead of the UA default outline', () => {
+    render(<EventScheduler initialDate={WEEK_N} />);
+
+    // The four tokens copied verbatim from AvailabilityGrid.js:628 — the closest shipped
+    // precedent, itself a heatmap grid cell. `focus:outline-hidden` is DELIBERATE and allowed
+    // (focusAndMotionTreatment.test.ts:20-24); do not "fix" it to outline-none.
+    const cell = screen.getAllByRole('gridcell')[0];
+    expect(cell.className).toContain('focus:outline-hidden');
+    expect(cell.className).toContain('focus-visible:ring-2');
+    expect(cell.className).toContain('focus-visible:ring-focus-ring');
+    expect(cell.className).toContain('focus-visible:ring-offset-2');
+  });
+});
+
+describe('EventScheduler — the per-slot conflict tooltip tells self from other (Req 3)', () => {
+  // The conflict rides the SAME backwards-constructed wire slot as `heatmapFixture`, so the
+  // annotated cell lands inside the visible 10:00-23:59 window on any runner timezone. A
+  // hard-coded UTC hour renders off-grid for some offsets — documented at :117-124, not
+  // hypothetical.
+  const OTHER_UUID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const SELF_LINE = /You have a Google Calendar conflict at this time/;
+  const OTHER_LINE = /Bea: said yes, calendar shows busy/;
+
+  const withConflicts = (
+    gcalConflicts: Array<{ date: string; hour: number; user_id: string; username: string }>
+  ) => ({ ...heatmapFixture, gcalConflicts });
+
+  const openTooltip = async () => {
+    // HeatmapTooltip attaches useClick to the reference (HeatmapTooltip.js:223) as well as
+    // useFocus (:227); click is the primary path.
+    const cell = screen.getAllByRole('gridcell', { name: EXPECTED_CELL_LABEL })[0];
+    expect(cell).toBeDefined();
+    fireEvent.click(cell);
+  };
+
+  it('renders the SELF line, and not the other-member line, for my own conflict', async () => {
+    render(
+      <EventScheduler
+        initialDate={WEEK_N}
+        heatmapData={withConflicts([
+          { ...WIRE_SLOT, user_id: SELF_UUID, username: 'Me' },
+        ])}
+      />
+    );
+    await openTooltip();
+
+    expect(await screen.findByText(SELF_LINE)).toBeInTheDocument();
+    expect(screen.queryByText(OTHER_LINE)).not.toBeInTheDocument();
+  });
+
+  it('renders the other-member line naming them, and not the SELF line, for someone else', async () => {
+    render(
+      <EventScheduler
+        initialDate={WEEK_N}
+        heatmapData={withConflicts([
+          { ...WIRE_SLOT, user_id: OTHER_UUID, username: 'Bea' },
+        ])}
+      />
+    );
+    await openTooltip();
+
+    expect(await screen.findByText(OTHER_LINE)).toBeInTheDocument();
+    expect(screen.queryByText(SELF_LINE)).not.toBeInTheDocument();
+  });
+});
