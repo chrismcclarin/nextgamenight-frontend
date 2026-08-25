@@ -37,7 +37,18 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
   const [ballotError, setBallotError] = useState(null);
   const [heatmapData, setHeatmapData] = useState(null);
   const [heatmapLoading, setHeatmapLoading] = useState(false);
-  const [heatmapWeekStart, setHeatmapWeekStart] = useState(null);
+  /* DECISION Phase 88.1-21 (H1): the fetched week anchor is stored as ONE object,
+     `{ monday, fromNavigation }`, chosen OVER a bare `Date` plus reading `currentWeekStart`
+     back out at the consumer. The two facts — WHICH week landed, and whether it landed because
+     the user navigated or because it is the page-load default — must move together or they
+     desynchronise for exactly one render, and that one render is enough to re-anchor the
+     scheduler (see the amended marker on `calendarInitialDate`). Rejected: adding
+     `currentWeekStart` to that memo's deps, which recomputes it the instant the nav handler
+     writes, while `monday` is still the PREVIOUS fetch's week — a stale anchor handed to the
+     child. A companion `useState` boolean was rejected for the same reason at half the odds.
+     `heatmapWeekStart` below stays a plain `Date` for the two manual-mode display consumers. */
+  const [heatmapWeekAnchor, setHeatmapWeekAnchor] = useState(null);
+  const heatmapWeekStart = heatmapWeekAnchor?.monday ?? null;
   // Phase 72 HUX-04: user-controlled week navigation for the manual-entry
   // heatmap. null sentinel = "use today's Monday in effective TZ" (page-load
   // / modal-open default). Reset back to null on modal open / promptId change
@@ -340,7 +351,12 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             // weekStart is YYYY-MM-DD UTC; snap a noon-UTC Date for stable date-only ops.
             const [y, m, d] = data.weekStart.split('-').map(Number);
             const anchor = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-            setHeatmapWeekStart(startOfWeek(anchor, { weekStartsOn: 1 }));
+            // fromNavigation: true — the poll's own week is never a "show today" default, so
+            // the today-substitution must not fire for it under any circumstances.
+            setHeatmapWeekAnchor({
+              monday: startOfWeek(anchor, { weekStartsOn: 1 }),
+              fromNavigation: true,
+            });
           }
           return;
         }
@@ -356,7 +372,12 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         const weekStartStr = format(effectiveMonday, 'yyyy-MM-dd');
         const data = await availabilityAPI.getGroupHeatmap(group_id, weekStartStr, effectiveTz);
         setHeatmapData(data);
-        setHeatmapWeekStart(effectiveMonday);
+        // Capture WHY this week was fetched at the same instant as WHICH week it was — a
+        // navigated week and a page-load default are indistinguishable downstream otherwise.
+        setHeatmapWeekAnchor({
+          monday: effectiveMonday,
+          fromNavigation: Boolean(currentWeekStart),
+        });
       } catch (err) {
         console.error('Failed to load heatmap:', err);
         // Silently fail -- heatmap is a nice-to-have visual, not critical
@@ -855,13 +876,53 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
        scheduler-side guard. Week view is unaffected — Monday and today render the same week.
        Reverting this to a bare `return heatmapWeekStart` re-opens CR-01; it is a decision, not
        a redundant branch. Pinned: `createEvent.integration.test.tsx` "the phone arm opens on
-       TODAY, not the week Monday, on a non-Monday". */
-    if (heatmapWeekStart) {
+       TODAY, not the week Monday, on a non-Monday".
+
+       AMENDED BY PHASE 88.1-21 (H1, 88.1-CODE-REVIEW.md) — the substitution is now additionally
+       gated on the fetched anchor NOT coming from a navigation (`!heatmapWeekAnchor
+       .fromNavigation`). Everything above still stands: a WEEK anchor was being handed over as a
+       DAY anchor, and this is still the only site that can tell the two producers apart. What
+       changed is WHEN the substitution is allowed to fire.
+
+       THE DEFECT THAT FORCED IT: in day view, Next past Sunday and then Back once landed on
+       TODAY instead of on the Sunday the user had just navigated to — silently, with no
+       feedback, on the only arm that exists below `md`. Back re-emits a week anchor for the week
+       CONTAINING TODAY, `isSameWeek` was therefore true, and today (a Wednesday, say) went over
+       as the day anchor. The scheduler-side guard suppresses only the displayed week's MONDAY,
+       and a Wednesday is not a Monday, so it landed.
+
+       WHY "DID A NAVIGATION CAUSE THIS FETCH" IS EXACTLY THE DISCRIMINATOR: the fetch effect
+       resolves `effectiveMonday = currentWeekStart || todayMondayLocal`, and `currentWeekStart`
+       is this file's existing null sentinel for "show today" — written by the modal-open effect
+       when there is no `prefillDate` and no `promptId` (`eventFormUtils.js:28`) and by the Today
+       button. EVERY other value was written by a navigation — `handlePrevWeek`, `handleNextWeek`,
+       the `onWeekChange` body, or a `prefillDate` clamp — and in all of those the user has
+       expressed a day/week intent that today must not override. That fact is captured AT THE
+       FETCH and carried on the anchor, not re-read here; see the marker on `heatmapWeekAnchor`
+       for why reading `currentWeekStart` at this site is a stale-anchor bug rather than a
+       simplification.
+
+       REJECTED: widening the SCHEDULER-side guard from "the displayed week's Monday" to a bare
+       `isSameWeek`. Plan 20 already tried precisely that and it turned plan 18's two Req-13 pins
+       red ("starts at the TOP on a day with no availability" and "RE-DERIVES the landing when the
+       displayed day changes") — the guard's own marker at `EventScheduler.tsx:305-311` records
+       that attempt in its own words. A same-week different-day hand-over is a real day intent
+       there; the discrimination this defect needs is not available in the child.
+       Pinned: `createEvent.integration.test.tsx` "H1: Next past Sunday then Back lands on
+       Sunday, not on today". */
+    if (heatmapWeekAnchor?.monday) {
+      const { monday, fromNavigation } = heatmapWeekAnchor;
       const now = new Date();
-      return isSameWeek(now, heatmapWeekStart, { weekStartsOn: 1 }) ? now : heatmapWeekStart;
+      return !fromNavigation && isSameWeek(now, monday, { weekStartsOn: 1 }) ? now : monday;
     }
     return new Date();
-  }, [prefillDate, editingEvent?.start_date, promptId, heatmapData?.weekStart, heatmapWeekStart]);
+  }, [
+    prefillDate,
+    editingEvent?.start_date,
+    promptId,
+    heatmapData?.weekStart,
+    heatmapWeekAnchor,
+  ]);
 
   if (!modal) return null;
 

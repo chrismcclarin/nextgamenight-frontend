@@ -460,4 +460,60 @@ describe('CreateEvent + real EventScheduler — the displayed day survives the h
     await waitFor(() => expect(columnHeaders()[0]).toBe(sundayHeader));
     expect(columnHeaders()[0]).not.toMatch(/Mon$/);
   });
+
+  it('H1: Next past Sunday then Back lands on Sunday, not on today', async () => {
+    // H1 (88.1-CODE-REVIEW.md). The sibling pin above crosses OUT of today's week, so the
+    // fetched week is never the week containing today and the seed-half substitution never
+    // fires. This pin crosses BACK IN: forward into next week, then one step back onto THIS
+    // week's Sunday. Pre-fix the parent re-emits today (a Wednesday) as the day anchor and the
+    // scheduler's guard — which suppresses only the displayed week's MONDAY — lets it through.
+    //
+    // Wednesday 2026-09-16 at local noon. Its Monday is 2026-09-14, its Sunday 2026-09-20.
+    // Guarded, exactly as the `:391` fixture is: slid onto a Monday or a Sunday this case
+    // would go vacuous, so it must fail LOUDLY instead.
+    const WEDNESDAY = new Date(2026, 8, 16, 12, 0, 0);
+    expect(WEDNESDAY.getDay()).toBe(3);
+
+    // `shouldAdvanceTime` is REQUIRED — `waitFor`/`findByText` never resolve under frozen timers.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(WEDNESDAY);
+    restoreMatchMedia = stubMatchMedia();
+
+    await renderModal({ initialVisualView: 'day' });
+    await waitFor(() => expect(api.getGroupHeatmap).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(columnHeaders()).toHaveLength(1));
+    expect(columnHeaders()[0]).toBe(format(WEDNESDAY, 'dd EEE'));
+
+    // Step Next until the header crosses into next week — i.e. until it reads a Monday.
+    // Bounded at seven with an explicit throw naming the last header (the `:432` idiom).
+    let steps = 0;
+    while (!/Mon$/.test(columnHeaders()[0] ?? '')) {
+      if (steps >= 7) {
+        throw new Error(
+          `H1 pin: seven day-steps did not reach a Monday. Last header: ${columnHeaders()[0]}`
+        );
+      }
+      fireEvent.click(toolbarButton(/^next$/i));
+      // eslint-disable-next-line no-await-in-loop
+      await waitFor(() => expect(columnHeaders()).toHaveLength(1));
+      steps += 1;
+    }
+    const mondayHeader = columnHeaders()[0];
+    const callsAtMonday = heatmapCalls().length;
+
+    fireEvent.click(toolbarButton(/^(back|previous|prev)$/i));
+
+    await waitFor(() => expect(columnHeaders()[0]).not.toBe(mondayHeader));
+
+    // The cross-week refetch really fired, so the parent really re-emitted a week anchor for
+    // the week CONTAINING TODAY and the churn really had its chance to land. Without this the
+    // case can pass for the wrong reason.
+    await waitFor(() => expect(api.getGroupHeatmap).toHaveBeenCalledTimes(callsAtMonday + 1));
+
+    // The day the user navigated to.
+    await waitFor(() => expect(columnHeaders()[0]).toMatch(/Sun$/));
+    // THE FINDING, asserted as a negative on its own line: pre-fix the header reads the faked
+    // Wednesday, because `isSameWeek(now, heatmapWeekStart)` substitutes today.
+    expect(columnHeaders()[0]).not.toBe(format(WEDNESDAY, 'dd EEE'));
+  });
 });
