@@ -196,7 +196,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
       {/* Permission notice for members */}
       {!canManageSchedules && !loading && (
         <div className="mt-4 p-3 bg-surface-sunken border border-line-accent rounded-btn">
-          <p className="text-accent text-sm">
+          <p className="text-content-accent text-sm">
             You are viewing schedules as a member. Only group owners and admins can create or edit schedules.
           </p>
         </div>

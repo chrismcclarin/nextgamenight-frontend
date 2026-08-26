@@ -193,7 +193,7 @@ function StripDayCell({
           aria-hidden="true"
           // Hooked for the T-88.1-39 pin, which asserts exactly ONE colour class per branch here.
           data-testid="strip-day-number"
-          className={`text-[10px] ${today ? 'text-accent' : 'text-content-muted'}`}
+          className={`text-[10px] ${today ? 'text-content-accent' : 'text-content-muted'}`}
         >
           {format(date, 'd')}
         </span>

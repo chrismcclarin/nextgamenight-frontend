@@ -1129,14 +1129,14 @@ describe('EventScheduler — today carries BOTH halves of the paired ternary (Re
           // BOTH halves, and NEITHER of the non-today values — a half-applied treatment (tint
           // without the accent label, or the reverse) is the regression this pairs against.
           expect(html).toContain('bg-surface-accent-subtle');
-          expect(html).toContain('text-accent');
+          expect(html).toContain('text-content-accent');
           expect(html).not.toContain('bg-surface-card');
           expect(html).not.toContain('text-content-primary');
         } else {
           expect(html).toContain('bg-surface-card');
           expect(html).toContain('text-content-primary');
           expect(html).not.toContain('bg-surface-accent-subtle');
-          expect(html).not.toContain('text-accent');
+          expect(html).not.toContain('text-content-accent');
         }
       });
     } finally {
@@ -1178,12 +1178,12 @@ describe('EventScheduler — today carries BOTH halves of the paired ternary (Re
       expect(todayTab!.getAttribute('aria-label')).toMatch(/wednesday 22/i);
 
       expect(todayTab!.innerHTML).toContain('bg-surface-accent-subtle');
-      expect(todayTab!.innerHTML).toContain('text-accent');
+      expect(todayTab!.innerHTML).toContain('text-content-accent');
 
       for (const tab of tabs.filter((t) => t !== todayTab)) {
         expect(tab.innerHTML).toContain('bg-surface-card');
         expect(tab.innerHTML).not.toContain('bg-surface-accent-subtle');
-        expect(tab.innerHTML).not.toContain('text-accent');
+        expect(tab.innerHTML).not.toContain('text-content-accent');
       }
     } finally {
       restore();
@@ -1193,7 +1193,7 @@ describe('EventScheduler — today carries BOTH halves of the paired ternary (Re
   it('phone: the date-number span carries EXACTLY ONE text-colour class per branch (T-88.1-39)', () => {
     // The collision this guards: plan 88.1-12 copied a static muted colour onto this span, and
     // this plan's ternary owns that slot. If both ever ship in one class string, stylesheet order
-    // decides — and the static class would silently outrank `text-accent` on today's cell no
+    // decides — and the static class would silently outrank `text-content-accent` on today's cell no
     // matter which one appears later in the JSX. Counting the classes is the only way to see it.
     const { restore } = renderAtViewport(PHONE, <EventScheduler initialDate={TODAY} />);
     try {
@@ -1206,7 +1206,7 @@ describe('EventScheduler — today carries BOTH halves of the paired ternary (Re
         expect(colours).toHaveLength(1);
         // Non-today keeps M-03 parity with the sibling idiom directly above it — deliberately NOT
         // the desktop header's non-today value. See the DECISION marker at the site.
-        expect(colours[0]).toBe(tab === todayTab ? 'text-accent' : 'text-content-muted');
+        expect(colours[0]).toBe(tab === todayTab ? 'text-content-accent' : 'text-content-muted');
       }
     } finally {
       restore();

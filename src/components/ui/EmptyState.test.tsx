@@ -93,7 +93,7 @@ describe('EmptyState', () => {
     expect(media).toHaveClass('w-24');
     expect(media).toHaveClass('rounded-full');
     expect(media).toHaveClass('bg-surface-accent-subtle');
-    expect(media).toHaveClass('text-accent');
+    expect(media).toHaveClass('text-content-accent');
   });
 
   it('renders `illustration` INSTEAD of the icon circle, in the same position', () => {

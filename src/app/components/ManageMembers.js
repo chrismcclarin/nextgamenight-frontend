@@ -339,7 +339,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     const getRoleBadge = (role) => {
         const roleStyles = {
             owner: 'bg-purple-100 text-purple-800 border-purple-300',
-            admin: 'bg-surface-card-hover text-accent border-accent',
+            admin: 'bg-surface-card-hover text-content-accent border-accent',
             member: 'bg-surface-card-hover text-content-secondary border-line',
             pending: 'bg-amber-100 text-amber-800 border-amber-300'
         };
@@ -487,7 +487,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                         <ClickableMemberName userId={member.id} username={member.username || member.email} />
                                                     </p>
                                                     {isCurrentUser && (
-                                                        <span className="text-xs text-accent font-medium">(You)</span>
+                                                        <span className="text-xs text-content-accent font-medium">(You)</span>
                                                     )}
                                                     {/* Phase 69-02 GROUP-03: explicit Owner badge inline next to the
                                                         owner's name. Visible to ALL viewers (member/admin/owner) so
@@ -496,7 +496,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                         renders the role pill on the right; this inline badge is
                                                         the canonical "this is the owner" indicator per CONTEXT. */}
                                                     {isOwner ? (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-surface-accent-subtle text-accent border border-line-accent">
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-surface-accent-subtle text-content-accent border border-line-accent">
                                                             Owner
                                                         </span>
                                                     ) : (
@@ -780,7 +780,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             className="max-w-md"
         >
             <Modal.Header>
-                Leave <span className="text-accent">{group_name}</span>?
+                Leave <span className="text-content-accent">{group_name}</span>?
             </Modal.Header>
             <Modal.Body>
                 <p className="text-content-secondary">

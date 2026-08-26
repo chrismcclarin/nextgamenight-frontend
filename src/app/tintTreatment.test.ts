@@ -265,8 +265,8 @@ describe('D-32/D-33 tint treatment (Req 17)', () => {
     // mutually exclusive branches, NOT a static surface with an appended tint
     expect(scheduler).toMatch(/today \? 'bg-surface-accent-subtle' : 'bg-surface-card'/);
     // the retired exemplar's own in-file warning was that `isTodayDate` drove the day number's
-    // `text-accent` too and "the two must agree" — so the PAIR is asserted, not just the surface.
-    expect(scheduler).toMatch(/today \? 'text-accent' : 'text-content-primary'/);
+    // `text-content-accent` too and "the two must agree" — so the PAIR is asserted, not just the surface.
+    expect(scheduler).toMatch(/today \? 'text-content-accent' : 'text-content-primary'/);
 
     const grouplist = fs.readFileSync(path.join(SRC, 'app/components/grouplist.js'), 'utf8');
     expect(grouplist).toMatch(/bg-\[var\(--color-bg-overlay\)\]/);

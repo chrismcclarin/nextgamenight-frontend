@@ -52,7 +52,7 @@ export default function TermsOfService() {
               href="https://developers.google.com/terms/api-services-user-data-policy"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-accent underline hover:text-accent-hover"
+              className="text-content-accent underline hover:text-content-accent-hover"
             >
               Google API Services User Data Policy
             </a>

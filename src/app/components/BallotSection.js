@@ -265,7 +265,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   <div className="flex items-center justify-between">
                     <span>{opt.game_name}</span>
                     {isVoted && (
-                      <span className="text-accent text-xs font-semibold">Voted</span>
+                      <span className="text-content-accent text-xs font-semibold">Voted</span>
                     )}
                   </div>
                 </button>

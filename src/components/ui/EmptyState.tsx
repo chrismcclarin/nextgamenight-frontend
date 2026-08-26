@@ -112,7 +112,7 @@ const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
         className={cn(
           'flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden',
           // The circle + accent glyph are the ICON path only; artwork brings its own shape.
-          !illustration && 'rounded-full bg-surface-accent-subtle text-accent'
+          !illustration && 'rounded-full bg-surface-accent-subtle text-content-accent'
         )}
       >
         {illustration ?? <Icon name={icon} size={56} strokeWidth={1.5} />}

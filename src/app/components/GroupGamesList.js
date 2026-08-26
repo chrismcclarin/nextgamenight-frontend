@@ -355,7 +355,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                     onClick={() => setFilterOpen(prev => !prev)}
                     className={`px-3 py-2 border rounded-btn text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
                         (filterWinner || filterPicker)
-                            ? 'border-line-accent bg-surface-card-hover text-accent hover:bg-surface-elevated'
+                            ? 'border-line-accent bg-surface-card-hover text-content-accent hover:bg-surface-elevated'
                             : 'border-line text-content-secondary hover:bg-surface-hover'
                     }`}
                 >

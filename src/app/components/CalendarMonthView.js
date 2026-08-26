@@ -132,7 +132,7 @@ export default function CalendarMonthView({
               {date && (
                 <>
                   <div className={`${variant === 'compact' ? 'text-xs' : 'text-sm'} font-medium mb-1 ${
-                    isCurrentDay ? 'text-accent' :
+                    isCurrentDay ? 'text-content-accent' :
                     isAdjacent ? 'text-content-muted' :
                     variant === 'full' && isPastDate ? 'text-content-muted' :
                     'text-content-primary'
@@ -149,7 +149,7 @@ export default function CalendarMonthView({
                           return (
                             <div
                               key={event.id}
-                              className="text-xs p-0.5 bg-surface-card-hover text-accent rounded-sm font-medium cursor-pointer hover:bg-surface-elevated transition-colors"
+                              className="text-xs p-0.5 bg-surface-card-hover text-content-accent rounded-sm font-medium cursor-pointer hover:bg-surface-elevated transition-colors"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onEventClick(event);
