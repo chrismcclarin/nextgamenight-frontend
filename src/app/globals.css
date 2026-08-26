@@ -354,6 +354,14 @@
      collision-breaker alias, which is why the nine-key alias family further down is not extended. */
   --color-content-accent: var(--color-accent-text);
   --color-content-accent-hover: var(--color-accent-text-hover);
+  /* Phase 88.3 (Req 6 / OI-1 Option B, UI-SPEC §9.4): the status-as-TEXT keys. ADDITIVE — the
+     plan-09 sweep of the 134 `text-status-{x}` sites is their only consumer, which is the whole
+     point of Option B: the shared `--color-status-{x}` key keeps the BORDER and solid-fill
+     utilities while text gets its own passing values. Deleting these as "unused" before that
+     sweep lands, or after it as "duplicates of --color-status-*", re-opens Req 6. */
+  --color-content-status-success: var(--color-status-success-text);
+  --color-content-status-error: var(--color-status-error-text);
+  --color-content-status-warning: var(--color-status-warning-text);
 
   /* accent    (tailwind.config.js:49-54) -- 3 collision keys, aliased */
   --color-accent: var(--accent);
@@ -395,9 +403,13 @@
   --color-btn-secondary-text: var(--secondary-foreground);
 
   /* status    (tailwind.config.js:100-104) */
-  --color-status-success: var(--color-success);
-  --color-status-error: var(--color-error);
-  --color-status-warning: var(--color-warning);
+  /* Phase 88.3 (OI-4): these three now read the per-theme `--color-status-{x}-border` runtime
+     properties, NOT the raw `--color-success/-error/-warning` hues. One key generates `text-`,
+     `bg-` AND `border-` utilities, which is exactly why the split exists — see the OI-4 DECISION
+     marker at those declarations in `:root` below. */
+  --color-status-success: var(--color-status-success-border);
+  --color-status-error: var(--color-status-error-border);
+  --color-status-warning: var(--color-status-warning-border);
 
   /* status tints (Phase 88 D-33) -- 6 collision keys, aliased. These resolve through the bare
      `--status-*-subtle` aliases in the shadcn bridge block below, NOT through their own names;
@@ -837,6 +849,74 @@
   --color-error: #dc2626;
   --color-warning: #d97706;
 
+  /* ===== Status TEXT and BORDER values (Phase 88.3, Req 6 / OI-1 / OI-4, UI-SPEC §5.7) =====
+     DECISION Phase 88.3: the three hues directly above are the FILL vocabulary and they do NOT
+     move (the OKLCH recolour is a post-88.3 decision, SPEC Boundaries). What moves is that TEXT
+     and BORDERS stop reading them and get their own per-theme values, because the fill hues fail
+     as ink and — after Req 1 — two of them also fail as borders.
+
+     Re-derived at execution time from the literal hex via `src/lib/wcag.ts` (2026-08-26), light,
+     against white card / warm-100 page / own `-subtle` tint / own `-subtle-hover` tint:
+       success `#166534` green-800  7.13 / 6.29 / 6.03 / 5.44
+       error   `#991b1b` red-800    8.31 / 7.33 / 6.56 / 5.68
+       warning `#854d0e` yellow-800 6.85 / 6.05 / 5.85 / 5.27
+     The values they replace as ink: success 3.30 card / 2.79 tint, warning 3.19 / 2.72, error
+     4.83 / 3.81 — four of the six light cells were below 4.5:1.
+
+     THE LOAD-BEARING REJECTION, light warning. `#92400e` amber-800 measures perfectly well
+     (7.09 / 6.26 / 6.05) and is the obvious pick because it is already on the ramp — but it is
+     THE SAME HEX as `--color-accent-text` above. Shipping it would recreate OI-4's
+     `--color-warning == --color-accent` collision one layer down, in a NEW light value, which is
+     precisely what SPEC Req 6 forbids. `#854d0e` (yellow-800, pinned at the D-17 block `:284`) is
+     measurably equivalent, visually distinct from both amber-800 and red-800, and already pinned.
+     Re-pointing light warning at amber-800 "because it matches the accent" is a decision, not a
+     cleanup.
+
+     REJECTED, light error: `#b91c1c` red-700 passes the resting tint (5.10) but measures
+     **4.42 on the `-subtle-hover` tint `#f7cbcb`** and fails the sixth cell of §5.7.3's blind
+     spot. `#991b1b` red-800 clears every ground and costs nothing.
+
+     `-subtle-hover` DISPOSITION (OI-3), recorded here because a report-only mention evaporates:
+     with these values light success 5.44 / light warning 5.27 / light error 5.68 and dark error
+     5.76 all pass. TWO DARK CELLS STILL FAIL — dark success `#22c55e` on `#235146` = **3.94** and
+     dark warning `#f59e0b` on `#554832` = **4.14**. Closing them means moving dark success and
+     warning, which is outside this phase's dark boundary, so they are DEFERRED to the OKLCH
+     recolour WITH their measured candidates attached: `#4ade80` green-400 reads **5.16** on
+     `#235146` (6.09 resting, 7.95 card) and `#fbbf24` amber-400 reads **5.33** on `#554832`
+     (6.37 resting, 8.30 card) — both clear every dark ground. Deleting these two numbers is how
+     the deferral becomes a bare mention nobody can action. */
+  --color-status-success-text: #166534;
+  --color-status-error-text: #991b1b;
+  --color-status-warning-text: #854d0e;
+
+  /* DECISION Phase 88.3 (OI-4 / UI-SPEC §5.7.4): status BORDERS get their own per-theme tokens,
+     and the `@theme inline` keys `--color-status-{success,error,warning}` are re-pointed at THEM
+     rather than at the raw hues. This closes a regression THIS PHASE introduced: Req 1 moved the
+     page from warm-50 to warm-100, and on the new ground `--color-success` drops to **2.91** and
+     `--color-warning` to **2.81**, both under WCAG 1.4.11's 3:1 non-text floor (they were 3.11
+     and 3.01 on warm-50). The light `-text` values above read 6.05-6.29 on warm-100 and
+     6.85-8.31 on white, so one value fixes both grounds.
+
+     WHY THIS SHAPE AND NOT THE OBVIOUS ONE — this is the load-bearing part. Pointing the three
+     theme keys straight at the `-text` tokens IS OI-1's Option A, which the owner REJECTED: one
+     `@theme inline` key generates `text-`, `bg-` AND `border-` utilities, so it would drag the
+     DARK error border from `#ef4444` to `#fca5a5` — a visible dark-mode change outside this
+     phase's dark boundary. Splitting into per-theme `-border` properties buys the light fix and a
+     byte-identical dark (the three dark `-border` values in the `.dark` block below are today's
+     hues verbatim).
+
+     WHO STILL READS THE SHARED KEY, measured 2026-08-25: after plan 09 sweeps all 134
+     `text-status-{x}` sites onto `text-content-status-{x}`, the remaining consumers are the 51
+     `border-status-*` sites plus four decorative solid `bg-status-*` glyphs
+     (`PromptScheduleReadOnly.js:62`, `SuggestionCard.js:102` and `:108`, `AvailabilityForm.js:345`
+     — 8px dots and one state fill). Every one of them gains contrast on the new page rather than
+     losing it (`#16a34a` 2.91 -> `#166534` 6.29 on warm-100).
+     Collapsing these back onto `--color-success/-error/-warning`, or re-pointing the keys at the
+     `-text` tokens "since they're the same in light", is a decision, not a cleanup. */
+  --color-status-success-border: #166534;
+  --color-status-error-border: #991b1b;
+  --color-status-warning-border: #854d0e;
+
   /* ===== Status TINTS (Phase 88 D-32/D-33, UI-SPEC §10.3) =====
      DECISION Phase 88-01 (D-33): status tints are HAND-PICKED OPAQUE per-theme values. Two
      mechanisms were rejected, and both rejections are load-bearing:
@@ -979,6 +1059,25 @@
   --color-success: #22c55e;
   --color-error: #ef4444;
   --color-warning: #f59e0b;
+
+  /* Phase 88.3 (Req 6 / OI-4): the dark half. Full rationale at the light declarations above.
+     EXACTLY ONE DARK HUE MOVES. Measured 2026-08-26 against the dark card / page / own tint:
+     success `#22c55e` 6.08 / 7.42 / 4.66 and warning `#f59e0b` 6.45 / 7.87 / 4.95 both already
+     pass, so their `-text` tokens are declared at today's hue and are BYTE-IDENTICAL — that is
+     deliberate, not a copy-paste to be deduplicated into the hue above. Dark error `#ef4444` is
+     the one that fails (3.68 card / 3.23 own tint); `#fca5a5` red-300 reads 7.30 / 8.91 / 6.41 /
+     5.76 on `-subtle-hover`. REJECTED: `#f87171` red-400, which measures **4.40 on its own tint
+     and fails by 0.10** — red-300 is the nearest PINNED step that clears it.
+     The three `-border` values are today's hues VERBATIM, so no dark border moves (see the OI-4
+     marker above for why they are not pointed at the `-text` tokens).
+     Folding the byte-identical pairs back into the hues above, or "upgrading" dark error's border
+     to red-300 for symmetry with its text, is a decision, not a cleanup. */
+  --color-status-success-text: #22c55e;
+  --color-status-error-text: #fca5a5;
+  --color-status-warning-text: #f59e0b;
+  --color-status-success-border: #22c55e;
+  --color-status-error-border: #ef4444;
+  --color-status-warning-border: #f59e0b;
 
   /* Status tints — the RATIFIED half (Phase 88 D-33, UI-SPEC §10.3). Derived, not eyeballed:
      `round((1-t)*card + t*hue)` per channel against the dark card `#232d3e`, t=0.15 resting /
