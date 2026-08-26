@@ -348,11 +348,17 @@
   --color-content-inverse: var(--color-text-inverse);
   --color-content-link: var(--color-text-link);
   --color-content-link-hover: var(--color-text-link-hover);
+  /* Phase 88.3 (Req 4 / UI-SPEC §5.6.1, §9.4): the amber-as-TEXT keys. Named `--color-content-*`
+     and NOT `--color-accent-text` on purpose — see the DECISION marker at the runtime declarations
+     in `:root` below. Because the key name differs from the runtime property name, neither needs a
+     collision-breaker alias, which is why the nine-key alias family further down is not extended. */
+  --color-content-accent: var(--color-accent-text);
+  --color-content-accent-hover: var(--color-accent-text-hover);
 
   /* accent    (tailwind.config.js:49-54) -- 3 collision keys, aliased */
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
-  --color-accent-text: var(--accent-foreground);
+  --color-on-accent: var(--accent-foreground);
   --color-accent-foreground: var(--accent-foreground);
 
   /* shadcn bridge (tailwind.config.js:55-85) -- 1 collision key, already aliased in the config */
@@ -547,6 +553,17 @@
   --amber-500: #f59e0b;
   --amber-600: #d97706;
   --amber-700: #b45309;
+  /* DECISION Phase 88.3 (Req 4 / UI-SPEC §5.6.2, §9.1): two NEW steps on the APP's own `--amber-*`
+     ramp, minted so the re-meant `--color-accent-text` below has a pinned home. Chosen OVER
+     (rejected) pointing the semantic token at `var(--color-amber-800)` / `var(--color-amber-900)`
+     in the D-17 Tailwind-palette pin block at `:216-217` — that block is TAILWIND's palette
+     namespace and this ramp is the APP's. A semantic token reaching across namespaces makes the
+     app ramp look like it stops at 700, which is exactly the kind of thing a future reader
+     "tidies" by deleting these two lines. The hexes are identical to the pinned Tailwind pair on
+     purpose; that duplication is the price of keeping one namespace per ramp, not an oversight to
+     be deduplicated. Deleting these and reaching into the pin block is a decision, not a cleanup. */
+  --amber-800: #92400e;
+  --amber-900: #78350f;
 
   /* Neutral warm scale */
   --warm-50: #faf8f5;
@@ -673,9 +690,53 @@
   --color-text-link-hover: var(--purple-700);
 
   /* Accent (interactive elements) */
+  /* DECISION Phase 88.3 (Req 4 / UI-SPEC §5.6.1, §5.6.2, §9.2): `--color-accent-text` is RENAMED
+     and RE-MINTED WITH THE OPPOSITE MEANING. Both halves have to be read together or the diff
+     looks like a value change when it is a name change plus a new token.
+
+     THE COLLISION, closed. `DESIGN-SYSTEM-REFERENCE-2026.md:68` defines accent text as AMBER WHEN
+     USED AS TEXT. This file used that same name for the INVERSE — the ink you put ON an amber
+     ground (`var(--purple-950)`). So the inverse token is renamed `--color-on-accent` (SAME VALUE,
+     both themes) and the shadcn bridge's `--accent-foreground` is re-plumbed onto it in the SAME
+     commit; `--color-accent-text` is then re-minted as the reference means it.
+
+     TAKEN OVER two named alternatives:
+       (a) mint a second `accent-text`-ish name and leave the collision standing — REJECTED as
+           idiom proliferation: two near-identical names, neither meaning what the reference says.
+       (b) reuse `--color-accent-text` as the `@theme inline` key — REJECTED because it recreates
+           the literal `--color-X: var(--color-X)` self-reference that the 87.7 D-01/D-02 marker
+           further down this file records as invalid at computed-value time, and would need a
+           FIFTH collision-breaker alias. The key is `--color-content-accent` instead, which puts
+           it in the CONTENT family where every other text token already lives (`--color-text-muted`
+           -> `--color-content-muted` -> `text-content-muted`) and needs no alias at all.
+
+     THE VALUE, re-derived at execution time from the literal hex via `src/lib/wcag.ts` (2026-08-26),
+     light: amber-800 `#92400e` reads 7.09 on the white card / 6.26 on the warm-100 page / 5.69 on
+     the amber-200 today tint / 6.37 on the amber-100 EmptyState circle / 5.43 on the warm-200
+     card-hover pill / 6.69 on warm-50 hover+sunken — every real ground clears 4.5:1.
+     REJECTED VALUES, both measured: the reference's own suggested `#A86E00` reads 4.29 / 3.79 /
+     3.44 and FAILS the page and the today tint; `amber-700` reads 5.02 / 4.43 / 4.03 and FAILS
+     the page. Today's `--color-accent` amber-500 reads 2.15 / 1.90 / 1.72 — that is the defect
+     being closed. ONE HEX SHARED ACROSS THEMES IS NOT AN OPTION: amber-800 on the dark card
+     measures 1.95:1, so the per-theme declaration is mandatory (the dark pair in the `.dark` block
+     below is today's `--color-accent` / `-hover` verbatim, which is what makes every site plan 08
+     migrates byte-identical in dark).
+
+     `--color-accent` and `--color-accent-hover` directly above are DELIBERATELY UNTOUCHED — they
+     are the amber FILL, not amber ink, and Req 4 does not move them.
+     Collapsing these two names back into one, or "simplifying" `--color-on-accent` away, is a
+     decision, not a cleanup. */
   --color-accent: var(--amber-500);
   --color-accent-hover: var(--amber-400);
-  --color-accent-text: var(--purple-950);
+  --color-on-accent: var(--purple-950);
+  --color-accent-text: var(--amber-800);
+  /* `--color-accent-text-hover` is NOT in the SPEC and exists for a measured reason. The obvious
+     hover partner for amber ink — `--color-accent-hover`, `var(--amber-400)` in BOTH themes —
+     measures 1.67:1 on a white card, so migrating only the resting colour would leave the six
+     static-page links LESS readable on hover than at rest. Light amber-900 reads 9.07 on white /
+     8.01 on the page; dark amber-400 is byte-identical to today's dark hover. Deleting this as
+     "not in the spec" re-opens that regression — a decision, not a cleanup. */
+  --color-accent-text-hover: var(--amber-900);
 
   /* Borders */
   /* DECISION Phase 88-01 (D-34 / UI-SPEC §5.5 FINDING-1, §10.2): the HAIRLINE contrast fix is
@@ -877,7 +938,14 @@
 
   --color-accent: var(--amber-500);
   --color-accent-hover: var(--amber-400);
-  --color-accent-text: var(--purple-950);
+  /* Phase 88.3 (Req 4): the dark half of the accent rename + mint. The full rationale, the two
+     rejected names and every measured ratio live at the light declarations above. These two values
+     are today's `--color-accent` / `--color-accent-hover` VERBATIM, deliberately — that is what
+     keeps "dark does not move" true across plan 08's sweep. amber-800 is not an option here: it
+     measures 1.95:1 on the dark card. */
+  --color-on-accent: var(--purple-950);
+  --color-accent-text: var(--amber-500);
+  --color-accent-text-hover: var(--amber-400);
 
   --color-border: var(--purple-700);
   /* DECISION Phase 88-01 (D-34): darkened one step for the 1.4.11 hairline floor — see the full
@@ -984,7 +1052,7 @@
   --muted: var(--color-bg-card-hover);
   --muted-foreground: var(--color-text-muted);
   --accent: var(--color-accent);
-  --accent-foreground: var(--color-accent-text);
+  --accent-foreground: var(--color-on-accent);
   --destructive: var(--color-error);
   --destructive-foreground: #ffffff;
   --border: var(--color-border);
@@ -998,13 +1066,24 @@
 
      The collision, measured: Tailwind v4's colour theme namespace is `--color-*`, and this
      project's runtime semantic properties are ALSO named `--color-*`. Nine names match exactly
-     (`--color-accent`, `--color-accent-hover`, `--color-accent-text`, `--color-border`,
+     (`--color-accent`, `--color-accent-hover`, `--color-on-accent`, `--color-border`,
      `--color-btn-primary-hover`, `--color-btn-primary-text`, `--color-btn-secondary-hover`,
      `--color-btn-secondary-text`, `--color-focus-ring`). Eight of those nine are declared in the
      JS config as `var(<their own name>)`, so a direct port into `@theme inline` writes a literal
      self-reference such as `--color-accent: var(--color-accent)`. Six of the nine already had a
      differently-named alias in this Phase 84 bridge block above; `--color-border` was already
      written against `--border` in the config; only these three had nothing to point at.
+
+     PHASE 88.3 (Req 4) RENAMED ONE OF THE NINE, and the count did not move. The third name in
+     the list above used to read `--color-accent-text`; 88.3 renamed that runtime property to
+     `--color-on-accent` (same value, both themes) because `--color-accent-text` was re-minted
+     with the OPPOSITE meaning — amber-as-text, per `DESIGN-SYSTEM-REFERENCE-2026.md:68`. The
+     alias mechanics are untouched: `--accent-foreground` above is the differently-named alias
+     this key points at, exactly as before. The NEW `--color-accent-text` is bridged as
+     `--color-content-accent` in `@theme inline`, a key whose name differs from every runtime
+     property, so it adds NO tenth collision and needs NO alias. Rewriting that key as
+     `--color-accent-text: var(--color-accent-text)` is the self-reference this whole marker
+     exists to prevent.
 
      WHY THIS IS NOT COSMETIC. A self-referential custom property is invalid at computed-value
      time. Today it still renders, but only because this file's `:root` blocks are UNLAYERED and
