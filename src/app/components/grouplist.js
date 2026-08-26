@@ -6,7 +6,12 @@ import Link from 'next/link';
 import GroupSettings from './GroupSettings';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { groupsAPI } from '../../lib/api';
-import { getTextStyle, resolveGroupBackgroundColor } from '../../lib/colorUtils';
+import {
+  getTextStyle,
+  lightTintGroupBackgroundColor,
+  resolveGroupBackgroundColor,
+  themedTextStyleVars,
+} from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { formatDate } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
@@ -240,6 +245,34 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             // null when the group has no colour of its own — the inline
             // backgroundColor is then omitted so `bg-surface-card` wins (D-28).
             const bgColor = resolveGroupBackgroundColor(group.background_color);
+            /*
+             * DECISION Phase 88.3 (D-09, cascade fix): the card's ground is a
+             * MUTUALLY EXCLUSIVE ternary — the themed surface class and its
+             * hover class live ONLY in the no-colour branch, the tint pair ONLY
+             * in the has-colour branch. Chosen OVER stacking the tint classes
+             * alongside an always-present `bg-surface-card hover:bg-surface-hover`.
+             *
+             * WHY (compile-verified on this tree, tailwindcss@4.3.3): in
+             * `@layer utilities` the emitted order is
+             * `.bg-[var(--group-ground-light)]` (line 1426) <
+             * `.bg-surface-card` (1543) < `.bg-surface-hover` (1558) <
+             * `.hover:bg-surface-hover:hover` (2347) <
+             * `.dark:bg-[var(--group-ground)]` (2894). Same property, same
+             * specificity — source order wins — so stacking them renders the
+             * WHITE card surface in light mode for every coloured group, and
+             * only the `dark:` arm would work. Today's inline `style`
+             * background hides this, because an inline style beats any class;
+             * the moment the mechanism becomes a class the two cannot coexist.
+             * The hover class is half of it: leaving it always-present would
+             * flip a coloured card to the white hover surface on hover.
+             *
+             * ALSO REJECTED: gating on `bgColor` alone. `ground` is gated on
+             * the TINT succeeding (T-88.3-43) so a malformed legacy hex
+             * withholds BOTH custom properties together, never just the light
+             * one. This is a decision, not a cleanup.
+             */
+            const tinted = lightTintGroupBackgroundColor(bgColor);
+            const ground = tinted ? bgColor : null;
             const bgImage = group.background_image_url;
             // Wave-12 review follow-up (owner-ruled fix, 2026-08-21): gate the
             // overlay AND the white-text treatment on the VALIDATED style, not
@@ -250,12 +283,22 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             // degrade to the plain color card.
             const bgImageStyle = safeBgImageStyle(bgImage);
             const hasBgImage = !!bgImageStyle;
+            // The text treatment forks in the CSS cascade, exactly like the
+            // ground above: the DARK half is computed against the stored hex,
+            // the LIGHT half against the rendered tint. No `useTheme` — see the
+            // shipped DECISION at EventScheduler.tsx (plan 15, Req 8).
+            const cardTextDark = getTextStyle(hasBgImage, bgColor);
+            const cardTextVars = themedTextStyleVars(
+              cardTextDark,
+              getTextStyle(hasBgImage, tinted || bgColor),
+            );
+            const cardTextBold = !!cardTextDark.fontWeight;
             const profilePic = group.profile_picture_url;
 
             return (
               <div
                 key={group.id}
-                className="bg-surface-card rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover hover:bg-surface-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                className={`rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card hover:bg-surface-hover'}`}
                 onClick={(e) => handleGroupClick(group, e)}
                 role="button"
                 tabIndex={0}
@@ -265,7 +308,11 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   }
                 }}
                 style={{
-                  ...(bgColor && { backgroundColor: bgColor }),
+                  ...(tinted && {
+                    '--group-ground': ground,
+                    '--group-ground-light': tinted,
+                  }),
+                  ...cardTextVars,
                   ...bgImageStyle,
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
@@ -319,9 +366,15 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                           )}
                         </div>
                       )}
+                      {/* The inline `color`/`textShadow`/`WebkitTextStroke` keys
+                          are GONE on purpose: an inline declaration beats a
+                          `dark:` class, so the fork only works if they are
+                          absent rather than merely overridden. `text-content-primary`
+                          is gone for the same reason it was always redundant here
+                          — the no-colour half of the fork already resolves to
+                          `var(--color-content-primary)`. */}
                       <h3
-                        className="text-[1.1rem] font-semibold text-content-primary flex-1 min-w-0 wrap-break-word max-md:text-base"
-                        style={getTextStyle(hasBgImage, bgColor)}
+                        className="text-[1.1rem] font-semibold flex-1 min-w-0 wrap-break-word max-md:text-base [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
                       >
                         {group.name}
                       </h3>
@@ -361,10 +414,24 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                 {/* 87.8-13 walkthrough F-9: name + date on ONE line (owner call —
                     the stacked date read as a stray row). flex-wrap keeps long
                     game names graceful: the date wraps as a unit, never mid-text. */}
-                <div className="border-t border-line pt-3" style={getTextStyle(hasBgImage, bgColor)}>
-                  <div className="flex flex-wrap items-baseline gap-x-2 text-content-secondary text-sm">
+                {/* DECISION Phase 88.3 (R2-6): on a TINTED card this row uses
+                    `text-content-primary` for both spans, chosen OVER today's
+                    `text-content-secondary` / `text-content-muted`.
+
+                    WHY, measured against the eight t = 0.70 tints:
+                    `text-content-secondary` (warm-600) 3.4-3.6:1 and
+                    `text-content-muted` (warm-550) 2.8-3.0:1 both FAIL 4.5:1 —
+                    only `#374151`-and-darker clears it, and
+                    `text-content-primary` is the token that does. The
+                    uncoloured card is untouched: its ground is the themed
+                    surface those two tokens were designed against, so keeping
+                    them there is correct and converging the two would be the
+                    error. REJECTED: leaving today's tokens on a tinted ground.
+                    This is a decision, not a cleanup. */}
+                <div className={`border-t border-line pt-3 [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] ${cardTextBold ? 'font-semibold' : ''}`}>
+                  <div className={`flex flex-wrap items-baseline gap-x-2 text-sm ${tinted ? 'text-content-primary' : 'text-content-secondary'}`}>
                     <span><strong className="text-content-primary">Last Game:</strong> {lastGame?.name || 'None'}</span>
-                    <span className="text-content-muted text-xs">
+                    <span className={`text-xs ${tinted ? 'text-content-primary' : 'text-content-muted'}`}>
                       {formatDate(lastEvent?.start_date || lastEvent?.createdAt, timezone)}
                     </span>
                   </div>

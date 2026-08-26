@@ -262,8 +262,11 @@ export function lightTintGroupBackgroundColor(color, t = 0.70) {
  *   [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)]
  *   [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]
  *
- * on the className instead. `fontWeight` is theme-independent and stays a plain
- * inline property.
+ * on the className instead. `fontWeight` is DELIBERATELY not returned here: it
+ * is theme-independent, and returning it would make this object unsafe to spread
+ * onto a CONTAINER (custom properties inherit, `font-weight` inherits too — and
+ * it would then bold every descendant, which the per-element treatments it
+ * replaces never did). Callers apply `font-semibold` at the text element.
  *
  * @param {{color?: string, textShadow?: string, WebkitTextStroke?: string, fontWeight?: string}} dark
  *        the treatment computed against the STORED hex (what dark mode paints)
@@ -279,7 +282,6 @@ export function themedTextStyleVars(dark, light) {
     '--t-shadow-l': light.textShadow || 'none',
     '--t-stroke': dark.WebkitTextStroke || 'none',
     '--t-stroke-l': light.WebkitTextStroke || 'none',
-    ...(dark.fontWeight ? { fontWeight: dark.fontWeight } : {}),
   };
 }
 

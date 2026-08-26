@@ -4,7 +4,9 @@ import {
   getSubtitleStyle,
   getTextStyle,
   isDarkBackground,
+  lightTintGroupBackgroundColor,
   resolveGroupBackgroundColor,
+  themedTextStyleVars,
   SUBTEXT_MUTED_ON_LIGHT,
   SUBTEXT_ON_LIGHT,
   TEXT_ON_DARK,
@@ -101,14 +103,102 @@ export default function EventDayModal({
                 // No image and no group colour: the row is on the themed
                 // surface, so the shared fallback resolution owns its text.
                 const isThemedRow = !groupBgImage && !groupBgColor;
+                /*
+                 * DECISION Phase 88.3 (D-09, cascade fix): the row's ground is a
+                 * MUTUALLY EXCLUSIVE ternary gated on `tinted`, chosen OVER
+                 * stacking the tint pair beside the always-present
+                 * `bg-surface-card`. Compile-verified on this tree's
+                 * tailwindcss@4.3.3: `.bg-[var(--group-ground-light)]` emits at
+                 * line 1426, `.bg-surface-card` at 1543,
+                 * `.dark:bg-[var(--group-ground)]` at 2894 — same property,
+                 * same specificity, source order wins, so a stacked className
+                 * paints the white card surface over the tint in light mode.
+                 * ALSO REJECTED: gating on `groupBgColor` alone; `ground` is
+                 * gated on the TINT succeeding so both custom properties turn
+                 * on or off together (T-88.3-43). A decision, not a cleanup.
+                 */
+                const tinted = lightTintGroupBackgroundColor(groupBgColor);
+                const ground = tinted ? groupBgColor : null;
+                const hasBgImage = !!groupBgImage;
+                /*
+                 * DECISION Phase 88.3 (R2-6): the title and subtitle treatments
+                 * are computed TWICE — against the stored hex for dark mode and
+                 * against the rendered tint for light — and handed to the
+                 * cascade as `--t-*` properties, chosen OVER the single
+                 * `isDark` fork this replaces. That fork asked
+                 * `isDarkBackground` about the STORED hex, and every shipped
+                 * preset is dark, so it never flipped: these rows painted
+                 * near-white text with a black shadow and stroke on a pale
+                 * tint. REJECTED: a `useTheme` read (the shipped DECISION at
+                 * EventScheduler.tsx rejected it for this exact problem) and
+                 * layering a `dark:` class over the inline keys (an inline
+                 * declaration beats any class — the plan-07 inert-override
+                 * trap), which is why those keys are DELETED here, not
+                 * overridden. A decision, not a cleanup.
+                 */
+                const rowTitleTreatment = (rowGround) => {
+                  if (isThemedRow) return getTextStyle(false, null);
+                  const onDarkGround = !hasBgImage && isDarkBackground(rowGround);
+                  return {
+                    color: onDarkGround ? TEXT_ON_DARK : TEXT_ON_LIGHT,
+                    textShadow: hasBgImage
+                      ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
+                      : (onDarkGround
+                        ? '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)'
+                        : '1px 1px 2px rgba(255, 255, 255, 0.9)'),
+                    WebkitTextStroke: onDarkGround ? '0.5px rgba(0, 0, 0, 0.9)' : 'none',
+                  };
+                };
+                const rowSubtitleTreatment = (rowGround) => {
+                  if (isThemedRow) return getSubtitleStyle(false, null);
+                  const onDarkGround = !hasBgImage && isDarkBackground(rowGround);
+                  return {
+                    color: hasBgImage
+                      ? SUBTEXT_ON_LIGHT
+                      : (onDarkGround ? 'rgba(255,255,255,0.9)' : SUBTEXT_MUTED_ON_LIGHT),
+                    textShadow: hasBgImage
+                      ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
+                      : (onDarkGround
+                        ? '1px 1px 3px rgba(0, 0, 0, 0.8)'
+                        : '1px 1px 2px rgba(255, 255, 255, 0.9)'),
+                    WebkitTextStroke: onDarkGround ? '0.3px rgba(0, 0, 0, 0.9)' : 'none',
+                  };
+                };
+                const rowTitleVars = themedTextStyleVars(
+                  rowTitleTreatment(groupBgColor),
+                  rowTitleTreatment(tinted || groupBgColor),
+                );
+                const rowSubtitleVars = themedTextStyleVars(
+                  rowSubtitleTreatment(groupBgColor),
+                  rowSubtitleTreatment(tinted || groupBgColor),
+                );
+                const rowLabel = `${event.Game?.name || 'Game Night'} - ${event.Group?.name || 'Unknown Group'}`;
 
                 return (
+                  /* DECISION Phase 88.3 (R3-C, owner ruling 2026-08-25): this
+                     row is keyboard-operable, matching the shipped shape at
+                     CalendarListView.js's EventRow rather than inventing a new
+                     one. REJECTED: leaving it mouse-only — the identical
+                     interaction one file over has been keyboard-reachable all
+                     along. A decision, not a cleanup. */
                   <div
                     key={event.id}
                     onClick={() => onEventClick(event)}
-                    className={`p-4 border border-line rounded-lg transition-all hover:shadow-md cursor-pointer bg-surface-card`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={rowLabel}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onEventClick(event);
+                      }
+                    }}
+                    className={`p-4 border border-line rounded-lg transition-all hover:shadow-md cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
                     style={{
-                      ...(groupBgColor && { backgroundColor: groupBgColor }),
+                      ...(tinted && {
+                        '--group-ground': ground,
+                        '--group-ground-light': tinted,
+                      }),
                       ...safeBgImageStyle(groupBgImage),
                       backgroundSize: 'cover',
                       backgroundPosition: 'center',
@@ -145,47 +235,14 @@ export default function EventDayModal({
                           )}
                           <div>
                             <h4
-                              className="font-semibold"
-                              style={(() => {
-                                if (isThemedRow) return getTextStyle(false, null);
-                                const hasBgImage = !!groupBgImage;
-                                const isDark = !hasBgImage && isDarkBackground(groupBgColor);
-
-                                return {
-                                  color: isDark ? TEXT_ON_DARK : TEXT_ON_LIGHT,
-                                  textShadow: hasBgImage
-                                    ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
-                                    : (isDark
-                                      ? '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)'
-                                      : '1px 1px 2px rgba(255, 255, 255, 0.9)'),
-                                  WebkitTextStroke: isDark ? '0.5px rgba(0, 0, 0, 0.9)' : 'none',
-                                };
-                              })()}
+                              className="font-semibold [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
+                              style={rowTitleVars}
                             >
                               {event.Game?.name || 'Game Night'}
                             </h4>
                             <p
-                              className="text-sm"
-                              style={(() => {
-                                if (isThemedRow) return getSubtitleStyle(false, null);
-                                const hasBgImage = !!groupBgImage;
-                                const isDark = !hasBgImage && isDarkBackground(groupBgColor);
-                                const textColor = hasBgImage
-                                  ? SUBTEXT_ON_LIGHT
-                                  : isDark
-                                    ? 'rgba(255,255,255,0.9)'
-                                    : SUBTEXT_MUTED_ON_LIGHT;
-
-                                return {
-                                  color: textColor,
-                                  textShadow: hasBgImage
-                                    ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
-                                    : (isDark
-                                      ? '1px 1px 3px rgba(0, 0, 0, 0.8)'
-                                      : '1px 1px 2px rgba(255, 255, 255, 0.9)'),
-                                  WebkitTextStroke: isDark ? '0.3px rgba(0, 0, 0, 0.9)' : 'none',
-                                };
-                              })()}
+                              className="text-sm [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
+                              style={rowSubtitleVars}
                             >
                               {event.Group?.name || 'Unknown Group'} - {formatTime(event.start_date, timezone)}
                             </p>
