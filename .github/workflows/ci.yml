@@ -248,6 +248,7 @@ jobs:
             "src/app/components/availabilityGridColumns.test.ts:6" \
             "src/app/decisionMarkers.test.ts:11" \
             "src/app/rawColorValues.test.ts:7" \
+            "src/app/tokenContrast.test.ts:28" \
             "src/app/legacyOverlayClass.test.ts:5" \
             "src/app/nativeDialogs.test.ts:7" \
             "src/test-utils/sourceScan.ts:0" \
