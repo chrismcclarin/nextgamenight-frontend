@@ -125,7 +125,7 @@ export default function CalendarMonthView({
                 !date ? 'bg-surface-page' :
                 isCurrentDay ? 'bg-surface-card-hover border-line-accent' :
                 variant === 'full' && isPastDate ? 'bg-surface-page' :
-                cellClickable ? 'bg-surface-card hover:bg-surface-card-hover hover:border-line-accent cursor-pointer transition-colors group' :
+                cellClickable ? 'bg-surface-card hover:bg-surface-hover hover:border-line-accent cursor-pointer transition-colors group' :
                 'bg-surface-card'
               }`}
             >

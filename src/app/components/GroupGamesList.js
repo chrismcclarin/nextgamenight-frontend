@@ -345,7 +345,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                     </label>
                     <button
                         onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                        className="px-3 py-2 border border-line rounded-btn text-sm text-content-primary hover:bg-surface-card-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 transition-colors"
+                        className="px-3 py-2 border border-line rounded-btn text-sm text-content-primary hover:bg-surface-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 transition-colors"
                         title={sortOrder === 'asc' ? 'Ascending (click to reverse)' : 'Descending (click to reverse)'}
                     >
                         {sortOrder === 'asc' ? '\u2191' : '\u2193'}
@@ -356,7 +356,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                     className={`px-3 py-2 border rounded-btn text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
                         (filterWinner || filterPicker)
                             ? 'border-line-accent bg-surface-card-hover text-accent hover:bg-surface-elevated'
-                            : 'border-line text-content-secondary hover:bg-surface-card-hover'
+                            : 'border-line text-content-secondary hover:bg-surface-hover'
                     }`}
                 >
                     Filter{(filterWinner || filterPicker) ? ` (${(filterWinner ? 1 : 0) + (filterPicker ? 1 : 0)})` : ''}

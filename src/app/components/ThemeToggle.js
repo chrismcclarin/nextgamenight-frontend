@@ -26,10 +26,15 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
   if (variant === 'row') {
     // Full-width row hit area — entire surface toggles theme.
     // Mirrors NotificationBell row variant for parity in mobile hamburger.
+    // DECISION Phase 88.3 (§10.1): hovers to `bg-surface-header-hover`, NOT the
+    // `bg-surface-hover` the other 38 swept sites took — this row sits on the dark
+    // header panel under `text-white` (1.06:1 on warm-50 vs 10.48:1 on warm-700).
+    // Full reasoning at NotificationBell.js's marker; pinned by name in
+    // `surfaceHoverSweep.test.ts` test 4b. Converging it is a decision, not a cleanup.
     return (
       <button
         onClick={() => setTheme(isDark ? 'light' : 'dark')}
-        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
         aria-label={ariaLabel}
       >
         {icon}

@@ -245,5 +245,5 @@ export function preferenceColor(
   if (disabled) return 'bg-surface-elevated opacity-50 cursor-not-allowed';
   if (preference === 'preferred') return 'bg-green-300';
   if (preference === 'if-need-be') return 'bg-yellow-300';
-  return 'bg-surface-elevated hover:bg-surface-card-hover';
+  return 'bg-surface-elevated hover:bg-surface-hover';
 }

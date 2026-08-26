@@ -178,7 +178,7 @@ export default function ResponseDashboard({
           {respondents.map(r => (
             <li
               key={r.user_id}
-              className="flex items-center justify-between py-2 px-2 rounded-sm hover:bg-surface-card-hover border-b border-line last:border-b-0"
+              className="flex items-center justify-between py-2 px-2 rounded-sm hover:bg-surface-hover border-b border-line last:border-b-0"
             >
               <div className="flex items-center gap-2 min-w-0">
                 {r.has_responded ? (
@@ -269,7 +269,7 @@ function RemindButton({ userId, lastRemindedAt, isReminding, onRemind }) {
     <button
       onClick={() => onRemind(userId)}
       disabled={isReminding}
-      className="px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-card-hover active:opacity-75 disabled:opacity-50 shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+      className="px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-hover active:opacity-75 disabled:opacity-50 shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
     >
       {isReminding ? 'Sending...' : 'Remind'}
     </button>

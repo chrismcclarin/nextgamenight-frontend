@@ -202,7 +202,7 @@ function GuestInviteButton({ groupId, userId }) {
                         ? 'text-content-muted border-line bg-surface-page'
                         : status === 'error'
                             ? 'bg-status-error-subtle border-status-error hover:bg-status-error-subtle-hover text-status-error'
-                            : 'hover:bg-surface-card-hover text-content-link'
+                            : 'hover:bg-surface-hover text-content-link'
             }`}
             title={
                 status === 'sent'
@@ -1519,7 +1519,7 @@ export default function GameDetailPage() {
                                 <button
                                     type="button"
                                     onClick={() => setShowActionsMenu(prev => !prev)}
-                                    className="text-2xl text-content-muted hover:text-content-primary px-2 py-1 leading-none rounded-sm hover:bg-surface-card-hover transition-colors"
+                                    className="text-2xl text-content-muted hover:text-content-primary px-2 py-1 leading-none rounded-sm hover:bg-surface-hover transition-colors"
                                     aria-haspopup="menu"
                                     aria-expanded={showActionsMenu}
                                     aria-label="Event actions"
@@ -1541,7 +1541,7 @@ export default function GameDetailPage() {
                                                 role="menuitem"
                                                 onClick={handleCancelEvent}
                                                 disabled={cancellingEvent}
-                                                className="w-full text-left px-3 py-2 text-sm text-status-error hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                                                className="w-full text-left px-3 py-2 text-sm text-status-error hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 {cancellingEvent ? 'Cancelling…' : 'Cancel event'}
                                             </button>
@@ -1552,7 +1552,7 @@ export default function GameDetailPage() {
                                                 role="menuitem"
                                                 onClick={handleLeaveEvent}
                                                 disabled={leavingEvent}
-                                                className="w-full text-left px-3 py-2 text-sm text-status-error hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                                                className="w-full text-left px-3 py-2 text-sm text-status-error hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 {leavingEvent ? 'Leaving…' : 'Leave event'}
                                             </button>

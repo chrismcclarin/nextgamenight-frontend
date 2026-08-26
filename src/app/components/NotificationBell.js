@@ -167,9 +167,29 @@ function NotificationBell({ user, variant = 'icon', label }) {
         // is swallowed on an ~80ms tap while an untransitioned opacity change fires
         // instantly. hover:bg-surface-card-hover stays — correct on desktop, inert
         // on touch (Tailwind v4 hover media query), and inertness is not a defect.
+        // ——— AMENDED Phase 88.3 (§10.1), original reasoning above KEPT AS HISTORY:
+        // the PRESS IDIOM half still stands verbatim — the press is an opacity dim, and
+        // a desktop-only hover being inert on touch is still not a defect. What changed
+        // is the COLOUR FAMILY of that hover, and only because plan 88.3-03 re-keyed
+        // --color-bg-card-hover: the sentence "hover:bg-surface-card-hover stays" was
+        // true when the card-hover token was a near-white wash and became false the
+        // moment it became warm-200. See the marker below.
+        //
+        // DECISION Phase 88.3 (§10.1): this row hovers to `bg-surface-header-hover`
+        // (warm-700), chosen OVER `bg-surface-hover` (warm-50) which the other 38 swept
+        // sites took. Ground reason: this row renders inside the mobile menu panel on
+        // `bg-surface-header` (Header.js:192) under `text-white` — a warm-50 wash there
+        // measures 1.06:1, while warm-700 measures 10.48:1. The nav links beside it
+        // (Header.js:204, :212) were already on the header family and are the model this
+        // row should have followed; it had drifted onto the card family.
+        // ThemeToggle.js:32 and FeedbackButton.js:84 are the same row idiom on the same
+        // panel and moved with it — all three are cross-referenced back to this marker.
+        // Converging these three onto `bg-surface-hover` "for consistency" with the other
+        // 38 re-introduces a 1.06:1 hover state; `surfaceHoverSweep.test.ts` test 4b pins
+        // all three by name so that goes red. That is a decision, not a cleanup.
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+          className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
           aria-label={label ? `${label} notifications` : 'Notifications'}
         >
           {bellIcon}

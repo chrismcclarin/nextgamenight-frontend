@@ -348,7 +348,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                                     ? 'border-line bg-surface-page cursor-default'
                                                     : selectedFriends.has(friend.id)
                                                         ? 'border-accent bg-surface-card-hover cursor-pointer'
-                                                        : 'border-line hover:bg-surface-card-hover cursor-pointer'
+                                                        : 'border-line hover:bg-surface-hover cursor-pointer'
                                             }`}
                                         >
                                             <input
@@ -480,7 +480,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                             <p className="text-status-success text-sm mt-2">{emailSuccess}</p>
                         )}
                         {friendPrompt && !friendRequestSent && (
-                            <div className="mt-3 p-3 bg-surface-card-hover border border-line rounded-lg flex items-center justify-between gap-3">
+                            <div className="mt-3 p-3 bg-surface-sunken border border-line rounded-lg flex items-center justify-between gap-3">
                                 {/* PRIM-04 adoption: render the resolved found-user identity
                                     via the shared UserChip primitive. */}
                                 <div className="min-w-0">

@@ -199,7 +199,7 @@ function formatDuration(start: Date, end: Date): string {
 
 const NAV_BUTTON_CLASS =
   'inline-flex min-h-11 items-center justify-center rounded-btn border border-line px-3 ' +
-  'text-sm text-content-secondary hover:text-content-primary hover:bg-surface-card-hover ' +
+  'text-sm text-content-secondary hover:text-content-primary hover:bg-surface-hover ' +
   'transition-colors duration-200 ease-out ' +
   'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
 
@@ -1168,7 +1168,7 @@ export default function EventScheduler({
       )}
 
       {selectedSlot && (
-        <div className="p-4 bg-surface-card-hover rounded-card border border-line-accent">
+        <div className="p-4 bg-surface-sunken rounded-card border border-line-accent">
           <p className="text-sm font-medium text-content-primary mb-1">Selected Time:</p>
           <p className="text-lg text-accent font-semibold">
             {format(selectedSlot.start, 'EEEE, MMMM d, h:mm a')}

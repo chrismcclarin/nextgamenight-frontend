@@ -407,7 +407,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 )}
 
                 {!canManageMembers && (
-                    <div className="bg-surface-card-hover border border-line rounded-lg p-4 mb-4">
+                    <div className="bg-surface-sunken border border-line rounded-lg p-4 mb-4">
                         <p className="text-content-secondary text-sm">
                             You're viewing the member list. Only owners and admins can change roles or remove members.
                         </p>
@@ -478,7 +478,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                 return (
                                     <div
                                         key={member.id}
-                                        className="flex items-center justify-between p-4 border border-line rounded-lg hover:bg-surface-card-hover"
+                                        className="flex items-center justify-between p-4 border border-line rounded-lg hover:bg-surface-hover"
                                     >
                                         <div className="flex items-center gap-3 flex-1">
                                             <div className="flex-1">

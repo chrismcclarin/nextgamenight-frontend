@@ -77,11 +77,18 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
         // active:opacity-75 (the Plan 87.8-01 press idiom) instead of the
         // old bg-surface-card-hover token-swap press state — plan 08 converged
         // the two remaining token-swap sites; do not reintroduce the old idiom.
+        // DECISION Phase 88.3 (§10.1): the hover moved to `bg-surface-header-hover`,
+        // NOT the `bg-surface-hover` the other 38 swept sites took — this row renders on
+        // the dark header panel under `text-white` (1.06:1 on warm-50 vs 10.48:1 on
+        // warm-700). ThemeToggle.js:32 moved identically, so the "copied from
+        // ThemeToggle.js with ONE change" note above still holds. Full reasoning at
+        // NotificationBell.js's marker; pinned by name in `surfaceHoverSweep.test.ts`
+        // test 4b. Converging it is a decision, not a cleanup.
         // Focus ring matches the FAB this row replaces (same tokens), so
         // keyboard/switch users get the same visible affordance from either
         // entry point; inset (no ring-offset) because the row is a full-bleed
         // menu row where an offset ring would clip against siblings.
-        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
         aria-label="Send feedback"
       >
         <svg

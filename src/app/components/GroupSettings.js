@@ -358,6 +358,15 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
               {/* 87.8-13 walkthrough F-4: inline-flex (was inline-block + flex — two
                   competing display utilities; the centering never applied) and
                   overflow-hidden so nothing can spill the circle. */}
+              {/* DECISION Phase 88.3 (OI-5): this disc STAYS on `bg-surface-card-hover`
+                  and was deliberately excluded from the sunken adoption, chosen OVER
+                  converging it with the five nested blocks that took `bg-surface-sunken`.
+                  It is an avatar PLACEHOLDER DISC, not a nested block: it must read as a
+                  filled shape against its container, and on warm-50 sunken it would be
+                  ΔL* 2.3 from the surrounding card and near-invisible, where warm-200
+                  gives ΔL* 10.4 and is MORE visible. Phase 88.6's broader sunken adoption
+                  across the 176 `bg-surface-card` sites must not re-add it. That is a
+                  decision, not a cleanup. */}
               <div className="inline-flex w-20 h-20 rounded-full bg-surface-card-hover items-center justify-center text-4xl mb-2 overflow-hidden">
                 {profilePictureUrl ? (
                   profilePictureUrl.startsWith('http') || profilePictureUrl.startsWith('/') ? (
@@ -388,7 +397,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                 <button
                   key={index}
                   onClick={() => handleSelectDefaultPicture(pic.url)}
-                  className={`p-4 border-2 rounded-lg text-3xl hover:bg-surface-card-hover transition-colors ${
+                  className={`p-4 border-2 rounded-lg text-3xl hover:bg-surface-hover transition-colors ${
                     profilePictureUrl === pic.url ? 'border-accent bg-surface-card-hover' : 'border-line'
                   }`}
                   title={pic.name}

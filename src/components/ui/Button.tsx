@@ -70,7 +70,7 @@ const buttonVariants = cva(
         // No legacy class exists for ghost, and `.btn` sets no background,
         // so utilities are the correct tool here.
         ghost:
-          'bg-transparent text-content-secondary hover:bg-surface-card-hover',
+          'bg-transparent text-content-secondary hover:bg-surface-hover',
       },
       size: {
         default: '',

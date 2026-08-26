@@ -298,7 +298,7 @@ export default function GroupLibrary({ groupId }) {
               {/* Collapsed row */}
               <button
                 onClick={() => setExpandedId(isExpanded ? null : game.id)}
-                className="w-full flex items-center gap-3 p-3 hover:bg-surface-card-hover active:opacity-75 transition-colors text-left focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+                className="w-full flex items-center gap-3 p-3 hover:bg-surface-hover active:opacity-75 transition-colors text-left focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
                 style={{ minHeight: '56px' }}
               >
                 <SafeImage

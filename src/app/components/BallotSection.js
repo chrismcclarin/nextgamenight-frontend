@@ -256,7 +256,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   className={`w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm font-medium cursor-pointer
                     ${isVoted
                       ? 'border-accent bg-surface-accent-subtle text-content-primary'
-                      : 'border-line bg-surface-card text-content-primary hover:bg-surface-card-hover hover:border-line-strong'
+                      : 'border-line bg-surface-card text-content-primary hover:bg-surface-hover hover:border-line-strong'
                     }
                     ${isToggling ? 'opacity-70' : ''}
                     ${votingOptionId && !isToggling ? 'opacity-50 cursor-not-allowed' : ''}

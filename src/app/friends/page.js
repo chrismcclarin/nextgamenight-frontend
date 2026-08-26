@@ -887,7 +887,7 @@ function FriendsPage() {
                                         return (
                                             <div
                                                 key={friendship.id}
-                                                className="flex items-center justify-between p-4 border border-line rounded-card hover:bg-surface-card-hover"
+                                                className="flex items-center justify-between p-4 border border-line rounded-card hover:bg-surface-hover"
                                             >
                                                 <div className="flex items-center gap-3 flex-1">
                                                     <input
@@ -996,7 +996,7 @@ function FriendsPage() {
                                     return (
                                         <div
                                             key={request.id}
-                                            className="flex items-center justify-between p-4 border border-line rounded-card hover:bg-surface-card-hover"
+                                            className="flex items-center justify-between p-4 border border-line rounded-card hover:bg-surface-hover"
                                         >
                                             <div className="flex-1">
                                                 <p className="font-semibold text-content-primary">
