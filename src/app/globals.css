@@ -669,9 +669,26 @@
      ("token VALUE only, never the ternary shape"). Adding a `bg-surface-today-tint` utility and
      swapping the ternary's class onto it is a decision that moves that shape — not a cleanup.
      CONTRAST, recorded rather than shipped silently: the day-number `text-accent` over this tint
-     measures 1.72:1 in LIGHT (was 1.93:1 over amber-100), both below the 4.5:1 AA floor. Phase
-     88.3 owns the light `text-accent` ramp (`.planning/deferred/phase-88.3.md`); the owner chose
-     visibility over a ratio that was already failing. DARK passes: 5.05:1. */
+     measured 1.72:1 in LIGHT (was 1.93:1 over amber-100), both below the 4.5:1 AA floor. Phase
+     88.3 was named as the owner of the light `text-accent` ramp
+     (`.planning/deferred/phase-88.3.md`); the owner chose visibility over a ratio that was already
+     failing. DARK passed: 5.05:1.
+
+     ——— AMENDED Phase 88.3 (Req 5 / UI-SPEC §5.6.3), original reasoning above KEPT AS HISTORY:
+     that deferral is CLOSED — the site is RESOLVED, not inherited.
+     TAKEN: the day number moves from `text-accent` to `text-content-accent`, whose light value is
+     amber-800 `#92400e`, measured 2026-08-26 at **5.69:1 on this amber-200 tint** (and 6.26 on the
+     warm-100 page, 7.09 on the white card). The DARK arm is amber-500 on `#513902` at **5.05:1** —
+     byte-identical to what shipped, because dark `--color-accent-text` is declared at today's
+     `--color-accent` value on purpose.
+     UNCHANGED, and this is the half a reader would get wrong: the owner-picked ARM B tint below is
+     NOT touched, and the `DECISION 88-27 D-32` paired-ternary SHAPE is not touched either — only
+     the class token inside the true arm moves (plan 08).
+     STILL REJECTED, both of which the SPEC listed as open forks and neither of which was needed:
+     lightening this tint, and minting a special-case amber for this one site.
+     The mirrored paragraph at `EventScheduler.tsx:245-248` is amended in the same terms by the
+     same phase. Re-pointing this day number back at `text-accent` because "accent is the accent
+     token" restores a 1.72:1 label — a decision, not a cleanup. */
   --color-bg-today-tint: var(--amber-200);
 
   /* Brand / Navigation */
@@ -765,15 +782,37 @@
        (b) mint a third `line-contrast` token — REJECTED as idiom proliferation. `border-strong`
            already exists for exactly this job and 11 JSX sites already point at it; a third
            hairline name would leave three overlapping ways to draw the same 1px line.
-     `--color-border` and `--color-line` are therefore deliberately UNCHANGED here. Sole-separator
-     hairlines get pointed at `border-strong` by the wave-2+ surface plans; that is the migration,
-     not a token edit.
+     `--color-border` and `--color-line` were therefore deliberately UNCHANGED at the time this
+     marker was written, and the light value was parked as PROVISIONAL for Phase 88.3 to re-derive.
 
-     THE LIGHT VALUE IS PROVISIONAL, owned by Phase 88.3 (light-mode design). Phase 88 is a
-     dark-first pass; 88.3 re-derives the light ramp wholesale and may move this. Re-measure
-     in-browser per the 87.8-01 method before treating either number as final.
-     Changing either value, or "simplifying" this back onto `--color-line`, is a decision, not a
-     cleanup. */
+     ——— AMENDED Phase 88.3 (Req 2 / UI-SPEC §5.3, §10.6), original reasoning above KEPT AS
+     HISTORY: both things this marker parked with 88.3 are now CLOSED, and neither closed the way
+     the parking text implied.
+
+     TAKEN: `--color-border` light moves warm-200 -> **warm-300** `#d6cbc0`, measured 2026-08-26
+     from the literal hex via `src/lib/wcag.ts` at **1.60:1 vs the white card / 1.41:1 vs the
+     warm-100 page** — inside SPEC Req 2's deliberate 1.40-1.80 HAIRLINE band, not at a control
+     ratio. It cost **zero JSX migrations**, because `--color-line: var(--color-border)` in
+     `@theme inline` carries the new value to all 235 `border-line` sites for free. Rejection (a)
+     above is honoured in substance: the token moved, but only within the hairline band.
+
+     RETIRED, not deferred: the migration this marker used to schedule — repointing sole-separator
+     hairlines at `border-strong` in the later surface plans — is **retired**, at 235 sites across
+     74 files. The rule that replaces it, and the reason a future reader must not re-schedule it:
+     **3:1 is for CONTROL boundaries only** (inputs, ghost buttons, selected states — which is
+     exactly the job `border-strong` exists for). WCAG 1.4.11 exempts decorative container
+     boundaries, and no shipped design system puts a 3:1 border on a resting card; the densest
+     surveyed are Primer at 1.43:1 and Radix step-6 at 1.41:1
+     (`.planning/research/LIGHT-MODE-INDUSTRY-SURVEY-2026-08-25.md`).
+
+     STILL REJECTED: promoting every hairline to a 3:1 control boundary — which is what executing
+     that retired migration would have amounted to. Rejection (a)'s original objection is still
+     live: it recolours every decorative and paired separator in the app.
+
+     CONSEQUENCE: `--color-border-strong` (warm-500) stays the 3:1 control edge and the 11 JSX
+     sites already pointing at it are unchanged. Re-adding a hairlines-to-`border-strong` sweep,
+     changing either value, or "simplifying" `--color-border` back onto `--color-line`, is a
+     decision, not a cleanup. */
   --color-border: var(--warm-300);
   --color-border-strong: var(--warm-500);
   --color-border-accent: var(--amber-600);
@@ -808,7 +847,26 @@
      THE THREE DARK OVERRIDES BELOW ARE DELIBERATELY UNCHANGED. Dark mode signals elevation with
      rings (dark `--shadow-sm` is `none`; `-md`/`-lg` are 1px rings), a shipped choice from the original
      design system — warming a shadow that does not render is a no-op at best. Re-tinting dark, or
-     "finishing the job" by re-tinting it for symmetry, is a decision, not a cleanup. */
+     "finishing the job" by re-tinting it for symmetry, is a decision, not a cleanup.
+
+     ——— AMENDED Phase 88.3 (Req 3 / OI-2, UI-SPEC §5.4), original reasoning above KEPT AS
+     HISTORY — the hue-over-geometry choice it records is still live and still the rule.
+
+     TAKEN: under archetype A (tonal depth) the light `--shadow-sm` is now `none`, so a RESTING
+     card carries no shadow in EITHER theme, and the legacy `@utility card` rule moved its resting
+     shadow from `-md` DOWN to `-sm` (OI-2) so both card idioms are flat. The warm hue this marker
+     installed is exactly what `-md` and `-lg` still carry; only the `-sm` step went away.
+
+     STILL REJECTED: archetype C — shadow as the PRIMARY light-mode depth cue (Stripe). Rejected
+     in a rendered 375px mockup (artifact be3f50bf): a shadow heavy enough to separate a card at
+     phone width reads as a floating dialog, not as a card.
+
+     STILL OPEN, named here because it is a LIVE inconsistency and not a closed one: the design
+     reference's shadow GEOMETRY (4px/8px, 12px/24px) still disagrees with the shipped geometry
+     (4px/6px, 10px/15px). The decision above to keep the shipped geometry STANDS — `-md`/`-lg`
+     are not this phase's depth cue — and the disagreement is carried forward to Phase 88.6's
+     design-system convergence (`.planning/deferred/phase-88.6.md`, written by plan 13).
+     "Finishing" the geometry outside that phase is a decision, not a cleanup. */
   /* DECISION Phase 88.3 (Req 3 / UI-SPEC §5.4): the LIGHT `--shadow-sm` becomes `none`, so a
      RESTING card carries no shadow in EITHER theme — dark has shipped `none` at its own
      declaration in the `.dark` block below since 87.7. Under archetype A the page TONE carries the
@@ -936,15 +994,40 @@
        (ii) THERE IS DELIBERATELY NO FIFTH `info` FAMILY (D-33). Informational surfaces reuse
             Banner's shipped treatment — `border-line` on the container, `text-content-secondary`
             on the glyph. Minting an info colour is a decision, not a completion of the set.
-       (iii) THE LIGHT VALUES BELOW ARE PROVISIONAL, owned by Phase 88.3 (light-mode design), on
-            the same footing as the light `border-strong` value above. The DARK values are the
+       (iii) THE LIGHT VALUES BELOW WERE MARKED PROVISIONAL when this marker was written, with
+            Phase 88.3 (light-mode design) named as their owner, on the same footing as the light
+            `border-strong` value above. See the AMENDMENT below — 88.3 has since shipped and
+            closed this. The DARK values are the
             ratified ones (§10.3); measured on `#234443`, `--color-content-primary` reads 10.01:1
             and success text reads 4.66:1.
 
-     Bucket B (resting BORDER tints) reuses the full-strength `--color-success/-error/-warning`
+     Bucket B (resting BORDER tints) reused the full-strength `--color-success/-error/-warning`
      above, and bucket D (overlay dims / text-alpha) reuses `--color-bg-overlay` and
-     `--color-text-muted`. Neither gets a token — minting one for them was rejected as vocabulary
-     that nothing would consume. */
+     `--color-text-muted`. Neither got a token — minting one for them was rejected as vocabulary
+     that nothing would consume.
+
+     ——— AMENDED Phase 88.3 (Req 6 / OI-1 / OI-4, UI-SPEC §5.7), original reasoning above KEPT AS
+     HISTORY. Rules (i) and (ii) are UNCHANGED and still binding; (iii) and the bucket-B sentence
+     are the two that closed.
+
+     (iii) CLOSED — and the tint HEXES BELOW DID NOT MOVE. They are hand-picked opaque values per
+     the paragraph at the top of this marker, not formula output, so re-deriving them was
+     considered and REJECTED: it would surrender the hand-control this marker was written to
+     protect. What actually closed the provisional note is that TEXT stopped reading the raw hues:
+     six new `--color-status-{x}-text` tokens carry the ink (see their own DECISION marker in
+     `:root` above), so the tints no longer have to do a job they were never derived for.
+
+     BUCKET B AMENDED — resting BORDERS now DO get their own tokens, `--color-status-{x}-border`,
+     one pair per theme. TAKEN because Req 1's page move from warm-50 to warm-100 pushed the
+     success and warning borders to **2.91** and **2.81**, under WCAG 1.4.11's 3:1 floor — a
+     regression this phase introduced, so this phase closes it. Bucket D is unchanged and still
+     gets no token.
+     STILL REJECTED: re-pointing the `@theme inline` keys `--color-status-{x}` straight at the
+     `-text` tokens (OI-1 Option A). One key generates `text-`, `bg-` AND `border-` utilities, so
+     that would drag the DARK error border from `#ef4444` to `#fca5a5` — a visible dark change
+     outside this phase's dark boundary.
+     Deleting the `-border` tokens as "the same as the -text ones in light" re-opens the 2.91/2.81
+     regression in dark's direction — a decision, not a cleanup. */
   --color-status-success-subtle: #dcf1e4;
   --color-status-success-subtle-hover: #c7e9d4;
   --color-status-error-subtle: #fadede;
@@ -959,12 +1042,37 @@
 
   /* Focus ring */
   /* DEFERRED, not overlooked — Phase 88.3 / OI-2 (UI-SPEC §5.5 FINDING-2, recorded in
-     `.planning/deferred/phase-88.3.md`): this LIGHT value measures 2.65:1 vs the page and 2.81:1
-     vs the white card, under WCAG 2.4.11's 3:1 floor. Dark (amber-400, below) passes at 10.13:1,
-     which is why a dark-first app never caught it. Phase 88 deliberately did NOT repair it while
-     repairing `--color-border-strong` above: 88.3 owns the light ramp wholesale and the measured
-     one-line candidate (purple-600, 5.34:1 vs page / 5.66:1 vs white card) is recorded there.
-     Leaving this at purple-400 is a scheduled deferral, not an oversight. */
+     `.planning/deferred/phase-88.3.md`): the shipped LIGHT value, purple-400, measured 2.65:1 vs
+     the page and 2.81:1 vs the white card, under WCAG 2.4.11's 3:1 floor. Dark (amber-400, below)
+     passes at 10.13:1, which is why a dark-first app never caught it. Phase 88 deliberately did
+     NOT repair it while repairing `--color-border-strong` above: 88.3 owned the light ramp
+     wholesale, and this note recorded a measured one-line candidate for it.
+
+     ——— AMENDED Phase 88.3 (Req 7 / UI-SPEC §5.8), original reasoning above KEPT AS HISTORY:
+     the deferral is CLOSED, and the candidate this very note recommended was DISPROVEN.
+
+     TAKEN: **purple-700 `#42536e`**, measured 2026-08-26 from the literal hex via
+     `src/lib/wcag.ts` — 7.79 vs the white card / 6.88 vs the warm-100 page / 6.26 vs the amber-200
+     today tint / **3.63 vs the amber-500 accent fill**. The fourth ground is the one that decides
+     it: a focus ring has to clear 3:1 against whatever it is drawn around, and the primary accent
+     button is an amber fill.
+
+     STILL REJECTED — and it is the recommendation ABOVE that is being rejected, which is why this
+     cannot be deleted as redundant: **purple-600 measures 2.64:1 on that amber-500 fill and
+     FAILS.** Its 5.34 / 5.66 numbers in the original note are real but were taken against the page
+     and card only; the accent ground was never measured. A stale recommendation left standing is
+     how a corrected decision comes undone.
+
+     SECOND FINDING, new here because nothing upstream had it: purple-700 measures **1.93:1 on
+     `--color-bg-header` (warm-800) and 1.78:1 on `--color-bg-nav` (purple-900)**. The app's chrome
+     is dark in BOTH themes by design (`DESIGN-SYSTEM-REFERENCE-2026.md:59-60`), so a light-mode
+     ring value cannot work there. The ring is scoped to `var(--amber-400)` on that subtree by
+     plan 07 (`Header.js:84` and `:192`) — and it does so by overriding **`--ring`**, the property
+     the emitted ring utility actually reads (`[--ring:var(--amber-400)]`). An override of
+     `--color-focus-ring` is INERT there, because `--ring` resolves its `var()` on `:root`. See
+     that plan's markers at those two sites before touching either.
+     Moving this back to purple-600 or purple-400, or "simplifying" the header override onto
+     `--color-focus-ring`, is a decision, not a cleanup. */
   --color-focus-ring: var(--purple-700);
 
   /* Transitions */
