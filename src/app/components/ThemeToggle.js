@@ -38,7 +38,9 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
         aria-label={ariaLabel}
       >
         {icon}
-        <span className="text-content-muted flex-1">{label || 'Theme'}</span>
+        {/* Phase 88.3 (Req 8 / §5.9.2): `text-content-muted` dropped — inherits the row's
+            `text-white`. Full DECISION marker at `NotificationBell.js`'s row label. */}
+        <span className="flex-1">{label || 'Theme'}</span>
       </button>
     )
   }

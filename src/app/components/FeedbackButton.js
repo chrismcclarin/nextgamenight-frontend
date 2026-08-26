@@ -104,7 +104,9 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
         >
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
-        <span className="text-content-muted flex-1">{label || 'Send feedback'}</span>
+        {/* Phase 88.3 (Req 8 / §5.9.2): `text-content-muted` dropped — inherits the row's
+            `text-white`. Full DECISION marker at `NotificationBell.js`'s row label. */}
+        <span className="flex-1">{label || 'Send feedback'}</span>
       </button>
     );
   }

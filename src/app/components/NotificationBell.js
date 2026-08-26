@@ -193,7 +193,30 @@ function NotificationBell({ user, variant = 'icon', label }) {
           aria-label={label ? `${label} notifications` : 'Notifications'}
         >
           {bellIcon}
-          <span className="text-content-muted flex-1">{label || 'Notifications'}</span>
+          {/* DECISION Phase 88.3 (Req 8 / UI-SPEC §5.9.2): this label DROPS
+              `text-content-muted` and inherits the row button's `text-white` — chosen OVER
+              scoping a lighter muted value to the header subtree.
+
+              MEASURED BASIS: this row sits on the dark header panel (`--color-bg-header`,
+              warm-800 in light mode). Muted was never right for that ground — warm-500
+              (today) reads 3.66:1, already failing — and Req 8's move to warm-550 makes it
+              measurably WORSE at 2.79:1 (warm-600 would be 2.28:1). Inheriting the row's own
+              `text-white` reads 15.03:1. Dark mode is byte-identical: the row is `text-white`
+              there too, so nothing changes.
+
+              REJECTED — minting a header-scoped lighter muted value. That would create a
+              FOURTH meaning of "muted" for the sake of three labels, when the correct fix is
+              to remove a token that was wrong for this ground in the first place.
+
+              This applies to all three header-row labels: `ThemeToggle.js`'s and
+              `FeedbackButton.js`'s carry a one-line pointer back here. Every OTHER
+              `text-content-muted` in these three files sits on a card or dropdown-panel
+              ground (confirmed site by site) and is correct — `darkChromeLegibility.test.ts`
+              test 3 is deliberately narrowed to the `text-content-muted flex-1` shape so it
+              cannot demand those be removed too.
+
+              Putting a muted token back on this label is a decision, not a cleanup. */}
+          <span className="flex-1">{label || 'Notifications'}</span>
           {countBadge}
         </button>
       ) : (
