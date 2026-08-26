@@ -514,6 +514,7 @@ describe('Req 19 / gate-hygiene — the drift-gate registry step (parsed from ci
       'src/app/typeScaleTouchedSurfaces.test.ts', //     CD-006 — heading type scale
       'src/app/rawColorValues.test.ts', //               Req 2  — raw hex / black shadows
       'src/app/tokenContrast.test.ts', //                Phase 88.3 Req 1-8 — token-layer WCAG floors
+      'src/app/surfaceHoverSweep.test.ts', //            Phase 88.3 Req 1 / D-02 — the hover + sunken sweep
       'src/app/legacyOverlayClass.test.ts', //           Req 9  — the legacy overlay class
       'src/app/nativeDialogs.test.ts', //                Req 11 — native browser dialogs
       'src/app/fetchErrorTreatment.test.ts', //          Req 14 — fetch-error treatment
