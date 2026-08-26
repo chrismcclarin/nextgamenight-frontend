@@ -140,7 +140,7 @@ function fixtureCard(page: Page): Locator {
 function groupHeader(page: Page): Locator {
   return page
     .getByRole('heading', { level: 1 })
-    .locator('xpath=ancestor::div[contains(@style,"min-height: 120px")][1]');
+    .locator('xpath=ancestor::div[contains(@style,"min-height")][1]');
 }
 function groupHeaderDim(page: Page): Locator {
   return groupHeader(page).locator('xpath=./*[1]');
@@ -282,7 +282,9 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // PAGE ground: the footer's copyright line. `Footer.js:122` puts
       // `text-content-muted` on the row and `Footer.js:81` puts `bg-surface-page` on the
       // <footer>, so this element's ground chain terminates on the page surface.
-      const mutedOnPage = page.getByText(/©\s*\d{4}\s+Next Game Night/);
+      // Scoped to the <span> for the same parent-text reason as surface 12 below: the row div
+      // wraps the logo plus this span, and a bare text locator can match both.
+      const mutedOnPage = page.locator('span').filter({ hasText: /^©\s*\d{4}\s+Next Game Night$/ });
       await expect(mutedOnPage).toBeVisible({ timeout: 15_000 });
       const onPage = await ratioAgainstGround(mutedOnPage, 'muted text on the PAGE (Req 8)');
       expectRatio('muted text on the PAGE (Req 8)', onPage, AA_TEXT);
@@ -411,7 +413,9 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // second is gated on `userData?.sms_enabled`, a DB-only admin entitlement the fixture
       // does not set. Both would be zero-element locators. This block is the same
       // requirement (a sunken/recessed block inside a card) at a site that actually renders.
-      const nested = page.getByText(/Tap and hold on a day to pick a time\.|Click and drag on the calendar/);
+      const nested = page
+        .locator('p')
+        .filter({ hasText: /Tap and hold on a day to pick a time\.|Click and drag on the calendar/ });
       await expect(nested).toBeVisible({ timeout: 15_000 });
       const nestedProbe = await probeElement(nested, []);
       const nestedGround = compositeGround(nestedProbe);
@@ -648,7 +652,9 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
     const m = await ratioAgainstGround(todayCell.getByTestId('strip-day-number'), 'today number on the today tint (Req 5, dark)');
     expectRatio('today number on the today tint (Req 5, dark)', m, AA_TEXT);
 
-    const nested = page.getByText(/Tap and hold on a day to pick a time\.|Click and drag on the calendar/);
+    const nested = page
+        .locator('p')
+        .filter({ hasText: /Tap and hold on a day to pick a time\.|Click and drag on the calendar/ });
     await expect(nested).toBeVisible({ timeout: 15_000 });
     const nestedProbe = await probeElement(nested, []);
     const nestedGround = compositeGround(nestedProbe);
@@ -762,7 +768,12 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
  * confirmed rendered; the assertion is required to exist.
  */
 async function assertStatusTextLanded(page: Page, theme: 'light' | 'dark'): Promise<void> {
-  const yesCount = page.getByText(/^\d+\s+Yes$/);
+  // A SPAN, not `getByText`. When the fixture's only responses are 'yes' (which is exactly what
+  // `e2e-fixtures.js:203-205` seeds), the count banner's parent <div> has the SAME text content as
+  // the span — `getByText` would match both and violate strict mode, and picking the first would
+  // silently measure the DIV, whose colour is inherited body text. That is the very failure this
+  // assertion exists to catch, so measuring it by accident would be the worst possible outcome.
+  const yesCount = page.locator('span').filter({ hasText: /^\d+\s+Yes$/ });
   await expect(
     yesCount,
     `Req 6 (${theme}): the RSVP "N Yes" count is not present at E2E_EVENT_DETAIL_PATH. The fixture ` +
