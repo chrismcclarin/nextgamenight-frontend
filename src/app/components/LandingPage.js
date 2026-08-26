@@ -26,9 +26,35 @@ export default function LandingPage() {
             >
               Get Started
             </a>
+            {/* DECISION Phase 88.3 (Req 7 / UI-SPEC §11 OI-7): this ONE element re-points
+                `--ring` to amber-400 for itself, chosen OVER letting Req 7's global light
+                ring (`purple-700`) apply here.
+
+                WHY, measured rather than argued. This button's ground is a COMPOSITE, and
+                it is the one Req 7 ground that no token holds: `bg-white/20` over the
+                hero's `bg-surface-nav` (purple-900) composites to a mid slate. The light
+                ring reads **1.07:1** against that — a focus indicator nobody can see, on
+                the sign-in control of a logged-out page. amber-400 reads **4.36:1** on the
+                same composite. Gate C measures this at 375x667 rather than trusting either
+                number (`e2e/contrast.spec.ts`, the OI-7 describe).
+
+                REJECTED, and it is the mistake this comment exists to stop being repeated:
+                `[--color-focus-ring:var(--amber-400)]`. It COMPILES and does NOTHING —
+                `--color-focus-ring` is declared in `@theme inline`, so Tailwind substitutes
+                its VALUE (`var(--ring)`) into the emitted utility, and `--ring` resolves on
+                `:root`. Plan 07 already proved this on the header (`globals.css:1070-1075`);
+                overriding `--ring` is the only form that works.
+
+                ALSO REJECTED: moving the override up to the hero container, the way
+                `Header.js:116` scopes the whole header subtree. The hero's other CTA is
+                `btn btn-primary`, whose ring sits on its own offset — it does not need the
+                amber and would inherit it silently. This element is the one with the
+                composited ground, so this element is where the override belongs.
+
+                Widening or removing this is a decision, not a cleanup. */}
             <a
               href="/api/auth/login?connection=google-oauth2"
-              className="bg-white/20 hover:bg-white/30 active:opacity-75 border border-white/30 text-white px-8 py-4 rounded-btn text-lg font-semibold transition-all w-full sm:w-auto text-center flex items-center justify-center gap-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+              className="bg-white/20 hover:bg-white/30 active:opacity-75 border border-white/30 text-white px-8 py-4 rounded-btn text-lg font-semibold transition-all w-full sm:w-auto text-center flex items-center justify-center gap-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset [--ring:var(--amber-400)]"
             >
               {/* DECISION Phase 88-22 (Req 2): the four fills below stay RAW,
                   chosen OVER converting them to semantic tokens with the rest of

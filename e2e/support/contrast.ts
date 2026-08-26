@@ -406,14 +406,19 @@ export function groundResolutionOf(probe: ElementProbe): GroundResolution {
  * rung and blends the translucent rungs back down onto it, outermost first, with the same
  * `blend` the token gate uses.
  *
+ * `from` selects the innermost rung to composite. `0` (the default) INCLUDES the element's
+ * own background, which is what a text colour sits on. `1` EXCLUDES it — the ground just
+ * OUTSIDE the element's border box, which is where a non-inset focus ring is painted. That
+ * distinction is not cosmetic: see `focusRingMeasurement`.
+ *
  * Returns `null` when the chain never reached an opaque rung — the caller must fail loudly
  * rather than pick a number (see `vacuityGround`).
  */
-export function compositeGround(probe: ElementProbe): string | null {
-  if (probe.opaqueAt < 0) return null;
+export function compositeGround(probe: ElementProbe, from = 0): string | null {
+  if (probe.opaqueAt < 0 || from > probe.opaqueAt) return null;
   let result = probe.levels[probe.opaqueAt].color.css;
   if (!result) return null;
-  for (let i = probe.opaqueAt - 1; i >= 0; i -= 1) {
+  for (let i = probe.opaqueAt - 1; i >= from; i -= 1) {
     const layer = probe.levels[i].color;
     if (!layer.css || layer.alpha === null || layer.alpha === 0) continue;
     const blended = blend(layer.css, layer.alpha, result);
@@ -567,34 +572,81 @@ export async function focusByKeyboard(page: Page, anchor: Locator): Promise<void
 }
 
 /**
- * The focus ring's colour and its ratio against the element's own composited ground.
+ * The focus ring's colour and its ratio against THE GROUND THE RING IS ACTUALLY DRAWN ON.
  *
- * Reads `--tw-ring-color`, which is what the emitted utility actually sets: Tailwind
- * compiles `focus-visible:ring-focus-ring` to `--tw-ring-color: var(--ring)` INSIDE the
- * `:focus-visible` rule (compile-verified on this tree's tailwindcss@4.3.3), and registers
- * the property with `syntax: "*"`, so `getComputedStyle` hands back the substituted colour
- * when the ring is live and an EMPTY STRING when it is not. That empty string is the
- * vacuity guard: an element that never entered `:focus-visible` fails loudly here instead
- * of being measured with the ring it does not have.
+ * ---------------------------------------------------------------------------------------
+ * DECISION Phase 88.3 (Req 7): the ring is measured against its ADJACENT ground, which is
+ * not always the element's own background.
+ * ---------------------------------------------------------------------------------------
+ * CHOSEN: three cases, decided from the element's own computed ring variables.
+ *   - `ring-inset` -> the ring is painted INSIDE the border box, so its ground is the
+ *     element's own composited background (`from = 0`).
+ *   - a non-zero `ring-offset-width` -> Tailwind paints an offset ring in
+ *     `--tw-ring-offset-color` (unset default: white) between the border box and the ring,
+ *     so THAT is what the ring sits against — not the element's fill, which the offset
+ *     hides.
+ *   - otherwise -> the ring is painted immediately outside the border box, on the
+ *     ancestor's background (`from = 1`).
  *
- * The `box-shadow` read comes back too, unasserted, purely so a failure message can say
- * whether a ring was painted at all.
+ * REJECTED: always measuring against the element's own background.
+ *
+ * WHY, and it is a measured reason rather than a tidy one. `88.3-SPEC.md:179-182` names
+ * "the amber-500 primary button" as Req 7's fourth ground at 3.63:1. The shipped
+ * `--color-btn-primary` on this tree is a SLATE BLUE, not amber-500 (the hex is deliberately
+ * not written here: this file's acceptance gate greps it for six-digit hex literals and
+ * requires zero, so quoting the value would red the gate that keeps colour values out of the
+ * probe. Read it from `globals.css`). The light ring `purple-700` measures **1.377:1**
+ * against that fill. Asserting that number would red a
+ * gate over a ground NOBODY SEES: every `.btn` focus site in this app carries
+ * `focus-visible:ring-offset-2`, so a 2px white offset ring sits between the button fill
+ * and the coloured ring, and the ring's real neighbour is that white. Measuring the fill
+ * would be measuring a colour the ring never touches.
+ *
+ * Collapsing these three cases back into one is a decision, not a cleanup — and it is one
+ * that changes what the numbers MEAN, not merely how they are computed.
  */
 export async function focusRingMeasurement(
   page: Page,
   anchor: Locator,
   label: string
-): Promise<Measurement & { boxShadow: string }> {
+): Promise<Measurement & { boxShadow: string; ringGroundKind: 'inset' | 'offset' | 'outside' }> {
   await focusByKeyboard(page, anchor);
-  const probe = await probeElement(anchor, ['--tw-ring-color', 'box-shadow']);
+  const probe = await probeElement(anchor, [
+    '--tw-ring-color',
+    '--tw-ring-inset',
+    '--tw-ring-offset-width',
+    '--tw-ring-offset-color',
+    'box-shadow',
+  ]);
   const ring = requireColor(
     `${label} — focus ring (--tw-ring-color; empty means the element never matched :focus-visible)`,
     probe.computed['--tw-ring-color']
   );
-  const ground = compositeGround(probe);
+
+  const inset = (probe.computed['--tw-ring-inset']?.raw ?? '').trim() === 'inset';
+  const offsetWidth = Number.parseFloat(probe.computed['--tw-ring-offset-width']?.raw ?? '0') || 0;
+
+  let ground: string | null;
+  let ringGroundKind: 'inset' | 'offset' | 'outside';
+  if (inset) {
+    ringGroundKind = 'inset';
+    ground = compositeGround(probe, 0);
+  } else if (offsetWidth > 0) {
+    ringGroundKind = 'offset';
+    const offset = probe.computed['--tw-ring-offset-color'];
+    const offsetCss = requireColor(`${label} — ring offset colour`, offset);
+    const behind = compositeGround(probe, 1) ?? compositeGround(probe, 0);
+    // The offset ring can itself be translucent; blend it onto whatever is behind it.
+    ground = offset?.alpha === 1 || behind === null ? offsetCss : blend(offsetCss, offset?.alpha ?? 1, behind);
+  } else {
+    ringGroundKind = 'outside';
+    ground = compositeGround(probe, 1);
+  }
+
   if (ground === null) {
     throw new Error(
-      `${label}: no opaque ground under the focus ring.\n${describeGround(label, groundResolutionOf(probe))}`
+      `${label}: no opaque ground under the focus ring (kind=${ringGroundKind}).\n` +
+        describeGround(label, groundResolutionOf(probe))
     );
   }
   const ratio = contrastRatio(ring, ground);
@@ -606,6 +658,7 @@ export async function focusRingMeasurement(
     probe,
     resolution: groundResolutionOf(probe),
     boxShadow: probe.computed['box-shadow']?.raw ?? '',
+    ringGroundKind,
   };
 }
 
