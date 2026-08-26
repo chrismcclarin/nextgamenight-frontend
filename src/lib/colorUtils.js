@@ -36,6 +36,25 @@
  * light-mode palette may ship light presets that make the dark-text branch
  * load-bearing again, and rebuilding them costs more than carrying them.
  * Deleting them is a decision, not a cleanup.
+ *
+ * ——— AMENDED Phase 88.3 (D-09), original reasoning above KEPT AS HISTORY:
+ * THE PROPHECY IS FULFILLED — the two lighter tiers are LIVE, and not for the
+ * reason predicted. No light preset shipped; instead every group colour is now
+ * RENDERED in light mode as a light tint of itself
+ * (`lightTintGroupBackgroundColor` below, owner ruling t = 0.70, 2026-08-25).
+ * All eight tints measure W3C brightness 188-191, so `getTextStyle` takes its
+ * `brightness > 180` branch and `getContrastColor` / `isDarkBackground` return
+ * the dark pole on six rendering surfaces. That branch was unreachable before
+ * this phase and is load-bearing now.
+ *
+ * NOTE THE MARGIN: 188-191 clears the 180 threshold by only ~8-11 points (it
+ * was ~46-47 at the previously-ruled t = 0.87). `colorUtils.test.ts` therefore
+ * asserts `getBrightness(tint(preset)) > 180` per preset rather than inferring
+ * it from the L* floor.
+ *
+ * So: do NOT delete these tiers, and do NOT "simplify" them now that they run
+ * — collapsing the algorithm now would break the light-mode rendering of every
+ * coloured group. Still a decision, not a cleanup.
  */
 
 // --- Title text color constants (computed poles — see DECISION above) ---
@@ -50,7 +69,23 @@ const SUBTITLE_DARK_BG = 'rgba(255, 255, 255, 0.95)';
 // --- Calendar tile text color constants (computed poles) ---
 const TILE_TEXT_LIGHT_BG = '#1e40af'; // Blue text on light calendar tiles
 const TILE_TEXT_DARK_BG = '#ffffff';
-const TEXT_MUTED_ON_LIGHT_BG = '#6b7280'; // Muted body text on a light ground
+/*
+ * DECISION Phase 88.3 (R2-6): this pole is `#374151`, chosen OVER the `#6b7280`
+ * it carried until this phase.
+ *
+ * WHY. Phase 88.3 renders a group's stored colour as a light tint of itself in
+ * light mode (`lightTintGroupBackgroundColor`, t = 0.70). Measured against the
+ * eight resulting tints, `#6b7280` scores 2.5-2.65:1 — it FAILS 4.5:1 on every
+ * one of them, i.e. the muted line would be unreadable on every coloured card,
+ * tile and row in light mode. `#374151` (already this file's
+ * `SUBTITLE_VERY_LIGHT_BG` pole) measures 5.35-5.65:1 and passes with margin.
+ *
+ * REJECTED: keeping `#6b7280` as the status quo, which was only ever legible
+ * because the ground it was drawn on used to be the WHITE card, not a tint.
+ * Pinned per preset in `colorUtils.test.ts`. Reverting it is a decision, not a
+ * cleanup.
+ */
+const TEXT_MUTED_ON_LIGHT_BG = '#374151'; // Muted body text on a light ground
 
 // --- Standard contrast color constants (computed poles) ---
 const CONTRAST_DARK = '#1f2937';
@@ -69,6 +104,16 @@ export const TEXT_ON_LIGHT = CONTRAST_DARK;
 export const TEXT_ON_DARK = CONTRAST_LIGHT;
 export const SUBTEXT_ON_LIGHT = SUBTITLE_MEDIUM_LIGHT_BG;
 export const SUBTEXT_MUTED_ON_LIGHT = TEXT_MUTED_ON_LIGHT_BG;
+/*
+ * The dark-ground twin of the pole above, added by Phase 88.3 (R2-6) because
+ * the theme fork needs BOTH halves. `SUBTEXT_MUTED_ON_LIGHT` used to be painted
+ * unconditionally on past-date calendar tiles in both themes; once it moved to
+ * `#374151` that reading became dark-slate-on-navy (~1.4:1) in dark mode, so
+ * the dark half needs its own value. 70% white keeps the "past" dimming legible
+ * against every shipped preset (>= 7:1) — same idiom as the 90% white the row
+ * subtitles already use, one step dimmer.
+ */
+export const SUBTEXT_MUTED_ON_DARK = 'rgba(255, 255, 255, 0.7)';
 
 /*
  * --- No-colour fallbacks (D-28) ---
@@ -123,6 +168,119 @@ export function isUnsetBackgroundColor(color) {
  */
 export function resolveGroupBackgroundColor(color) {
   return isUnsetBackgroundColor(color) ? null : color;
+}
+
+/**
+ * The RENDERED ground for a stored group colour in LIGHT mode: a per-channel
+ * linear mix of the stored hex toward white — `round(c + (255 - c) * t)`. Same
+ * arithmetic shape as the ratified `-subtle` tint rule (i) at
+ * `globals.css:713-716` (`round((1-t)*ground + t*hue)`), with white as the
+ * target, so this file's formula and its rounding already have a precedent.
+ *
+ * Returns `null` when the group has no colour of its own, and ALSO when the
+ * stored value cannot be parsed as a 6-digit hex. Never throws — the totality
+ * contract `getBrightness` already sets in this file (it returns 255 rather
+ * than blowing up), because these values come off an API response and a throw
+ * here would take out the render of every group card.
+ *
+ * Callers MUST omit both custom properties entirely when this returns `null`,
+ * and MUST gate the STORED value on this result too (`const ground = tinted ?
+ * stored : null`) — a hex that fails to tint must withhold BOTH grounds
+ * together, never just the light one. An inline background beats the themed
+ * `bg-surface-*` class, and that override is the exact mechanism of the D-28
+ * white-card defect.
+ *
+ * TWO RULES THE CALLERS DEPEND ON:
+ *  1. Ask `isUnsetBackgroundColor` about the **stored** hex; ask
+ *     `isDarkBackground` / `getTextStyle` / `getEventTileTextColor` about the
+ *     **rendered** ground. A legacy `#fefefe` is a real colour that tints to
+ *     exactly `#ffffff`, so re-asking "is unset?" about the rendered value
+ *     would silently strip that group's ground (Pitfall 8).
+ *  2. This is a RENDERING transform. It must NEVER reach a save payload — see
+ *     the marker at `GroupSettings.js`'s form-state seed.
+ *
+ * DECISION Phase 88.3 (D-09): a group's colour renders as a LIGHT TINT of
+ * itself in light mode and as the stored hex in dark, chosen OVER two named
+ * alternatives.
+ *
+ * WHY. The owner's principle is "light mode gets light colours — no dark bands
+ * in light mode ... if they choose dark blue in dark mode, it should be light
+ * blue in light mode". The stored hex stays the group's IDENTITY; this is its
+ * RENDERING. The DB column, the backend `^#[0-9A-Fa-f]{6}$` validator and the
+ * raw preset array (`GroupSettings.js`, `DECISION 88-22 D-27`) are untouched.
+ *
+ * REJECTED (1): storing the tint instead of computing it. That destroys the
+ * identity colour irreversibly — the original hex is not recoverable from the
+ * tint — and is the exact failure mode `GroupSettings.js`'s seed marker guards.
+ * REJECTED (2): a per-theme branch INSIDE this function. It deliberately takes
+ * no theme argument; the theme fork belongs in the CSS cascade, where the
+ * shipped `DECISION Phase 88.1 (plan 15, Req 8)` at `EventScheduler.tsx` put it
+ * — no `useTheme` read, no hydration fork, no theme-flash window.
+ *
+ * MEASURED BASIS (t = 0.70, owner ruling 2026-08-25, plan adversarial review
+ * round 2): all 8 presets land at L* 75.7 (worst case, Wine) or better, with
+ * W3C brightness 188-191 — inside `getTextStyle`'s `brightness > 180` tier but
+ * with a margin of only ~8-11 points, down from ~46-47 at the previously-ruled
+ * 0.87. 0.87 was rejected by the owner because the eight presets had converged
+ * to pairwise 1.01:1 and were no longer told apart.
+ *
+ * Changing `t`, or reverting to the stored hex in light mode, is a decision,
+ * not a cleanup.
+ *
+ * @param {string|null|undefined} color - STORED background colour
+ * @param {number} [t=0.70] - mix toward white, clamped to [0, 1]
+ * @returns {string|null} `#rrggbb`, or null to defer to the themed surface
+ */
+export function lightTintGroupBackgroundColor(color, t = 0.70) {
+  if (isUnsetBackgroundColor(color)) return null;
+  if (typeof color !== 'string') return null;
+
+  const hex = color.trim().replace(/^#/, '');
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return null;
+
+  const amount = Number.isFinite(t) ? Math.min(1, Math.max(0, t)) : 0.70;
+
+  let out = '#';
+  for (let i = 0; i < 6; i += 2) {
+    const channel = parseInt(hex.slice(i, i + 2), 16);
+    out += Math.round(channel + (255 - channel) * amount)
+      .toString(16)
+      .padStart(2, '0');
+  }
+  return out;
+}
+
+/**
+ * Hand a two-theme text treatment to the CSS cascade as custom properties.
+ *
+ * The companion to `lightTintGroupBackgroundColor`: the ground forks in CSS, so
+ * the text drawn on it must fork in CSS too. An INLINE `color` / `textShadow` /
+ * `WebkitTextStroke` declaration beats any `dark:` class (the plan-07 inert-
+ * override trap), so a caller must delete those keys and carry
+ *
+ *   [color:var(--t-color-l)] dark:[color:var(--t-color)]
+ *   [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)]
+ *   [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]
+ *
+ * on the className instead. `fontWeight` is theme-independent and stays a plain
+ * inline property.
+ *
+ * @param {{color?: string, textShadow?: string, WebkitTextStroke?: string, fontWeight?: string}} dark
+ *        the treatment computed against the STORED hex (what dark mode paints)
+ * @param {{color?: string, textShadow?: string, WebkitTextStroke?: string, fontWeight?: string}} light
+ *        the treatment computed against the RENDERED tint (what light mode paints)
+ * @returns {Record<string, string>} the six `--t-*` properties, plus fontWeight
+ */
+export function themedTextStyleVars(dark, light) {
+  return {
+    '--t-color': dark.color || 'inherit',
+    '--t-color-l': light.color || 'inherit',
+    '--t-shadow': dark.textShadow || 'none',
+    '--t-shadow-l': light.textShadow || 'none',
+    '--t-stroke': dark.WebkitTextStroke || 'none',
+    '--t-stroke-l': light.WebkitTextStroke || 'none',
+    ...(dark.fontWeight ? { fontWeight: dark.fontWeight } : {}),
+  };
 }
 
 // --- Shadow presets ---
