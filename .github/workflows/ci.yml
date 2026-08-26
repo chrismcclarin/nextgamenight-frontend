@@ -252,6 +252,7 @@ jobs:
             "src/app/surfaceHoverSweep.test.ts:7" \
             "src/app/darkChromeLegibility.test.ts:7" \
             "src/app/accentSweep.test.ts:6" \
+            "src/app/statusTextSweep.test.ts:5" \
             "src/app/legacyOverlayClass.test.ts:5" \
             "src/app/nativeDialogs.test.ts:7" \
             "src/test-utils/sourceScan.ts:0" \

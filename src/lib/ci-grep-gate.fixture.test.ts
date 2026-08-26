@@ -517,6 +517,7 @@ describe('Req 19 / gate-hygiene — the drift-gate registry step (parsed from ci
       'src/app/surfaceHoverSweep.test.ts', //            Phase 88.3 Req 1 / D-02 — the hover + sunken sweep
       'src/app/darkChromeLegibility.test.ts', //         Phase 88.3 Req 7/8 — dark-chrome ring + muted-label corrections + mobile-panel inert guard
       'src/app/accentSweep.test.ts', //                  Phase 88.3 Req 4/5 — the text-safe accent sweep, incl. the Req 5 today number
+      'src/app/statusTextSweep.test.ts', //              Phase 88.3 Req 6 / OI-1 — the 132-site status text sweep
       'src/app/legacyOverlayClass.test.ts', //           Req 9  — the legacy overlay class
       'src/app/nativeDialogs.test.ts', //                Req 11 — native browser dialogs
       'src/app/fetchErrorTreatment.test.ts', //          Req 14 — fetch-error treatment
