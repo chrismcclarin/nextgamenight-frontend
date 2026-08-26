@@ -96,7 +96,7 @@ function Header(){
                 desktop icon-only triggers (NotificationBell / ThemeToggle) that gained their
                 first focus-visible ring in this same plan.
 
-                REJECTED — overriding `--color-focus-ring` here instead of `--ring`. That shape
+                Rejected — overriding `--color-focus-ring` here instead of `--ring`. That shape
                 looks like the shipped `EventScheduler.tsx:228-236` precedent but is INERT on
                 this chain. That precedent overrides a ONE-hop alias; this ring chain is TWO
                 hops (`--color-focus-ring` -> `--ring` -> the emitted `--tw-ring-color`), and
@@ -109,7 +109,7 @@ function Header(){
                 green in every gate that only checks the class string, and changes nothing on
                 screen. `darkChromeLegibility.test.ts` test 2 asserts that shape is absent.
 
-                REJECTED — a `dark:` variant fix. Useless here: the ground is dark in BOTH
+                Rejected — a `dark:` variant fix. Useless here: the ground is dark in BOTH
                 themes, so there is no light/dark fork to hang the fix on.
 
                 Changing either of these is a decision, not a cleanup. */}
@@ -226,13 +226,13 @@ function Header(){
                         of the header container, so strictly it would inherit; the override is
                         repeated here so the panel keeps a legible ring if it is ever hoisted
                         or portalled out. Same measured basis (purple-700 = 1.93:1 on warm-800,
-                        amber-400 = 9.00:1), same two rejections: NOT `--color-focus-ring`
+                        amber-400 = 9.00:1), same two Rejected alternatives: NOT `--color-focus-ring`
                         (inert — `--ring` resolves on `:root`; see the container's marker), and
                         NOT a `dark:` variant (the ground is dark in both themes). That is a
                         decision, not a cleanup.
 
                         DECISION Phase 88.3 (owner ruling R3-D, 2026-08-25): `inert` while the
-                        menu is CLOSED — chosen OVER a conditional mount. The comment directly
+                        menu is CLOSED — chosen OVER a conditional mount (Rejected). The comment directly
                         above establishes why this panel renders unconditionally: mount/unmount
                         strips the element before the CSS transition can run, killing the exit
                         animation. But "hidden" here is only `-translate-y-full opacity-0
