@@ -1,4 +1,4 @@
-import type { Locator } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 import { blend, contrastRatio, deltaLStar, lStar, parseHex } from '../../src/lib/wcag';
 
@@ -201,5 +201,428 @@ export function vacuityGround(label: string, ground: GroundResolution): string {
     `the locator did not find the intended element — it may have landed on <body> itself or on a ` +
     `detached node — so every contrast assertion below would be vacuous. This is a failure of the ` +
     `LOCATOR, not of the colour tokens: fix the anchor, do not touch globals.css.`
+  );
+}
+
+/* =========================================================================================
+ * Phase 88.3 plan 12 — the rendered half (Gate C).
+ *
+ * Everything below this line is what `e2e/contrast.spec.ts` needs in order to force a
+ * theme, prove it landed, resolve a REAL ground and turn a computed-style string into a
+ * number. It lives here rather than in the spec so the spec stays a list of surfaces and
+ * floors.
+ *
+ * SECURITY, restated because this half returns more than the half above (threat
+ * T-88.3-56, the standing rule from `diagnostics.ts:32-35`): every shape returned from
+ * this module carries COLOURS and element TAG/CLASS NAMES only. No cookies, no storage
+ * contents, no headers, no `.auth/` content, no URLs. What a probe returns is the security
+ * boundary — a Playwright attachment is retained by GitHub Actions, so a field added here
+ * is a field published there.
+ *
+ * -----------------------------------------------------------------------------------------
+ * DECISION Phase 88.3 (Req 11): this gate asserts RATIOS and DELTA-L*, never a hex.
+ * -----------------------------------------------------------------------------------------
+ * CHOSEN: floor discipline. Every assertion in Gate C compares a MEASURED ratio or a
+ * measured lightness delta against the SPEC's floor. No assertion pins a colour value.
+ *
+ * REJECTED: pinning the computed colour strings themselves, and screenshot baselines.
+ *
+ * WHY. It is the same goal `tailwind-v4-styles.spec.ts:37-40` had when it banned pinned
+ * pixel values: a future re-tint that still clears its floor must not churn this file. A
+ * ratio IS a value — that is the narrow exception being taken here, and it is taken
+ * deliberately rather than by omission — but it is the value the requirement is written
+ * in, so an assertion on it can only fail when the requirement fails. A hex assertion
+ * fails whenever anyone changes a colour, including changes that improve it.
+ * Screenshot baselines were already ruled out for this reason by 87.7 D-12, and Req 12's
+ * owner phone UAT owns "does it look right"; this file owns "does it clear the floor".
+ *
+ * Turning any floor below into an equality, or adding a hex literal, is a decision, not a
+ * cleanup.
+ * ======================================================================================= */
+
+/** A colour normalised out of whatever Chromium serialised, plus the raw string. */
+export interface NormalisedColor {
+  /** Exactly what `getComputedStyle` returned, kept for failure messages. */
+  raw: string;
+  /**
+   * The opaque channels as `rgb(r, g, b)` — a form `src/lib/wcag.ts`'s `parseHex` accepts.
+   * `null` when the raw value is not a colour at all (e.g. a `box-shadow` string).
+   */
+  css: string | null;
+  /** 0-1. `null` when `css` is `null`. */
+  alpha: number | null;
+}
+
+/** One rung of the ground walk, with its colour normalised. */
+export interface ProbeLevel extends GroundLevel {
+  color: NormalisedColor;
+}
+
+export interface ElementProbe {
+  /** Requested properties (longhand or custom property), normalised where they are colours. */
+  computed: Record<string, NormalisedColor>;
+  levels: ProbeLevel[];
+  resolvedAt: number;
+  /** Index of the first FULLY OPAQUE rung, or -1 when the walk never found one. */
+  opaqueAt: number;
+  terminatedAt: string;
+  stoppedBecause: GroundResolution['stoppedBecause'];
+}
+
+/**
+ * ONE browser-side probe, used by every read in this module.
+ *
+ * WHY ONE FUNCTION AND NOT SEVERAL. A Playwright `evaluate` callback is serialised into
+ * the page and cannot close over module scope (the constraint `diagnostics.ts` records),
+ * so any helper it needs must be re-declared inside it. Three separate probes would mean
+ * three copies of the colour normaliser — and the plan requires the SAME normalisation at
+ * every call site, because a ratio computed from a differently-parsed string is a number
+ * nobody can defend. One probe, one normaliser.
+ *
+ * NORMALISATION, and why it is a canvas round-trip rather than a regex. Tailwind v4
+ * compiles `color-mix()`-based utilities (including slash-opacity on a theme colour), and
+ * Chromium is free to serialise the computed result as `oklab(...)`, `oklch(...)` or
+ * `color(srgb ...)` rather than `rgba(...)`. `parseHex` understands hex and `rgb()/rgba()`
+ * only — by design; it is the token-layer parser. Painting the value into a 1x1 canvas and
+ * reading `getImageData` converts ANY CSS colour Chromium can parse into sRGB channels
+ * plus alpha, uniformly, with no format list to keep in sync. `CSS.supports('color', v)`
+ * runs FIRST because an invalid or empty value would otherwise leave `fillStyle` at its
+ * default black and silently produce a confident, wrong number.
+ *
+ * READ-ONLY: no scroll, no click, no style write.
+ */
+export async function probeElement(anchor: Locator, props: string[] = ['color']): Promise<ElementProbe> {
+  return anchor.evaluate((start: Element, wanted: string[]): ElementProbe => {
+    // Re-declared inside the callback — see the WHY note above.
+    const normalise = (value: string): NormalisedColor => {
+      const raw = value ?? '';
+      const trimmed = raw.trim();
+      if (trimmed.length === 0 || !CSS.supports('color', trimmed)) {
+        return { raw, css: null, alpha: null };
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return { raw, css: null, alpha: null };
+      ctx.clearRect(0, 0, 1, 1);
+      ctx.fillStyle = trimmed;
+      ctx.fillRect(0, 0, 1, 1);
+      const data = ctx.getImageData(0, 0, 1, 1).data;
+      return {
+        raw,
+        css: `rgb(${data[0]}, ${data[1]}, ${data[2]})`,
+        alpha: data[3] / 255,
+      };
+    };
+
+    const style = getComputedStyle(start);
+    const computed: Record<string, NormalisedColor> = {};
+    for (const prop of wanted) {
+      computed[prop] = normalise(
+        prop.startsWith('--') ? style.getPropertyValue(prop) : style.getPropertyValue(prop)
+      );
+    }
+
+    const levels: ProbeLevel[] = [];
+    let node: Element | null = start;
+    let outermost: Element = start;
+    let resolvedAt = -1;
+    let opaqueAt = -1;
+    let stoppedBecause: GroundResolution['stoppedBecause'] = 'root';
+
+    while (node) {
+      const nodeStyle = getComputedStyle(node);
+      const color = normalise(nodeStyle.backgroundColor);
+      const alpha = color.alpha ?? 0;
+      levels.push({
+        tagName: node.tagName.toLowerCase(),
+        // SVG elements expose className as SVGAnimatedString — normalise.
+        className:
+          typeof node.className === 'string' ? node.className : String(node.getAttribute('class') ?? ''),
+        backgroundColor: color.raw,
+        transparent: alpha === 0,
+        color,
+      });
+      outermost = node;
+
+      if (alpha > 0 && resolvedAt === -1) resolvedAt = levels.length - 1;
+      if (alpha === 1) {
+        opaqueAt = levels.length - 1;
+        stoppedBecause = 'resolved';
+        break;
+      }
+      if (node === document.body) {
+        stoppedBecause = 'body';
+        break;
+      }
+      // Same `position: fixed` BREAK as `resolveGroundColor` above and
+      // `measurePaddingChain` (`padding-budget.spec.ts:129`): a fixed element's containing
+      // block is the viewport, so an in-flow ancestor underneath a modal is not what the
+      // user sees behind the modal.
+      if (nodeStyle.position === 'fixed') {
+        stoppedBecause = 'fixed';
+        break;
+      }
+      node = node.parentElement;
+    }
+
+    return {
+      computed,
+      levels,
+      resolvedAt,
+      opaqueAt,
+      terminatedAt: outermost.tagName.toLowerCase(),
+      stoppedBecause,
+    };
+  }, props);
+}
+
+/** The `GroundResolution` shape `describeGround` / `vacuityGround` above already speak. */
+export function groundResolutionOf(probe: ElementProbe): GroundResolution {
+  return {
+    color: probe.resolvedAt >= 0 ? probe.levels[probe.resolvedAt].backgroundColor : null,
+    resolvedAt: probe.resolvedAt,
+    terminatedAt: probe.terminatedAt,
+    stoppedBecause: probe.stoppedBecause,
+    levels: probe.levels.map(({ tagName, className, backgroundColor, transparent }) => ({
+      tagName,
+      className,
+      backgroundColor,
+      transparent,
+    })),
+  };
+}
+
+/**
+ * The ground a human actually sees, as an OPAQUE `rgb(...)` string.
+ *
+ * WHY IT COMPOSITES rather than returning the first painting rung. `resolveGroundColor`
+ * above stops at the first rung with a non-zero alpha, which is the right answer for the
+ * common case and the WRONG one for a translucent wash — `LandingPage.js:31`'s
+ * `bg-white/20` over the hero is exactly that, and it is UI-SPEC §11 OI-7, "the one value
+ * not computable from tokens". A ratio computed against `rgba(255,255,255,0.2)` would be a
+ * ratio against a colour nobody painted. So the walk continues to the first FULLY opaque
+ * rung and blends the translucent rungs back down onto it, outermost first, with the same
+ * `blend` the token gate uses.
+ *
+ * Returns `null` when the chain never reached an opaque rung — the caller must fail loudly
+ * rather than pick a number (see `vacuityGround`).
+ */
+export function compositeGround(probe: ElementProbe): string | null {
+  if (probe.opaqueAt < 0) return null;
+  let result = probe.levels[probe.opaqueAt].color.css;
+  if (!result) return null;
+  for (let i = probe.opaqueAt - 1; i >= 0; i -= 1) {
+    const layer = probe.levels[i].color;
+    if (!layer.css || layer.alpha === null || layer.alpha === 0) continue;
+    const blended = blend(layer.css, layer.alpha, result);
+    if (!blended) return null;
+    result = blended;
+  }
+  return result;
+}
+
+/**
+ * Throw with the RAW computed string when a value did not survive normalisation.
+ *
+ * The vacuity rule for this gate: a NaN must never reach a ratio, an L* or an alpha
+ * comparison, where it could pass or fail for a reason that has nothing to do with the
+ * requirement. Every unparsed read stops the test HERE, naming what came back.
+ */
+function requireColor(label: string, value: NormalisedColor | undefined): string {
+  if (!value || value.css === null) {
+    throw new Error(
+      `${label}: the computed value did not normalise to a colour. Raw computed-style string: ` +
+        `${JSON.stringify(value?.raw ?? '(property absent)')}. This is a PROBE failure, not a ` +
+        `contrast failure — do not "fix" it by relaxing a floor.`
+    );
+  }
+  return value.css;
+}
+
+export interface Measurement {
+  ratio: number;
+  /** The foreground, opaque, as `rgb(...)`. */
+  fg: string;
+  /** The composited ground, opaque, as `rgb(...)`. */
+  ground: string;
+  probe: ElementProbe;
+  resolution: GroundResolution;
+}
+
+/**
+ * Contrast of one computed property against the element's composited ground.
+ *
+ * `property` defaults to `color`; pass a border longhand (`border-top-color`) or a custom
+ * property when the requirement is about something other than text.
+ */
+export async function ratioAgainstGround(
+  anchor: Locator,
+  label: string,
+  property = 'color'
+): Promise<Measurement> {
+  const probe = await probeElement(anchor, [property]);
+  const fg = requireColor(`${label} — computed ${property}`, probe.computed[property]);
+  const ground = compositeGround(probe);
+  if (ground === null) {
+    throw new Error(
+      `${label}: the background walk never reached a fully opaque rung, so there is no ground to ` +
+        `measure against.\n${describeGround(label, groundResolutionOf(probe))}`
+    );
+  }
+  const ratio = contrastRatio(fg, ground);
+  if (ratio === null) {
+    throw new Error(`${label}: could not compute a ratio from fg=${fg} ground=${ground}.`);
+  }
+  return { ratio, fg, ground, probe, resolution: groundResolutionOf(probe) };
+}
+
+/**
+ * CIE L* of an element's own DECLARED ground (Req 9's `L* >= 75` floor, SPEC amended
+ * 2026-08-25 to a t = 0.70 tint; it was 85).
+ *
+ * READ THIS BEFORE TRUSTING THE NUMBER: it resolves the ground the same way
+ * `resolveGroundColor` does — by walking ANCESTORS. It therefore CANNOT see a
+ * dim overlay, and never could: `groupHomePage/page.js`'s dim is an absolutely-positioned
+ * SIBLING-ORDER CHILD of the header, not an ancestor of anything. That is not a gap in
+ * this helper, it is what the DOM is. The overlay is verified separately and explicitly,
+ * in the spec (surfaces 8 and 9), by reading the overlay element's OWN computed
+ * `background-color` alpha. Both halves ship; neither substitutes for the other, and
+ * calling this "the rendered pixel with the dim applied" would be a false claim.
+ */
+export async function lStarOfGround(anchor: Locator, label: string): Promise<{ value: number; ground: string; probe: ElementProbe }> {
+  const probe = await probeElement(anchor, []);
+  const ground = compositeGround(probe);
+  if (ground === null) {
+    throw new Error(
+      `${label}: the background walk never reached a fully opaque rung, so there is no ground ` +
+        `lightness to report.\n${describeGround(label, groundResolutionOf(probe))}`
+    );
+  }
+  const value = lStar(ground);
+  if (value === null) throw new Error(`${label}: could not compute L* from ground=${ground}.`);
+  return { value, ground, probe };
+}
+
+/**
+ * Force LIGHT mode for the whole context, before the app's first paint.
+ *
+ * `addInitScript`, NOT a post-load `page.evaluate`, and NOT Playwright's media-emulation
+ * API. (That API's name is deliberately not spelled here: this plan's acceptance gate greps
+ * this file for it and requires ZERO occurrences, so naming it would red the gate that
+ * exists to keep it out. Same "written apart on purpose" idiom as the `@/` alias note at the
+ * top of this file — do not "tidy" the two halves back together.)
+ *   - MEDIA EMULATION cannot switch this app's theme AT ALL. `ThemeProvider.js` passes
+ *     `attribute="class"`, `defaultTheme="dark"`, `storageKey="theme"`; `globals.css`
+ *     declares ZERO `prefers-color-scheme` rules and the dark variant is a
+ *     `@custom-variant dark` class selector. The media query is not wired to anything.
+ *   - a post-load `evaluate` is too late. `e2e/auth.setup.ts` calls
+ *     `storageState({ path: AUTH_FILE })`, which BAKES localStorage into `.auth/user.json`;
+ *     next-themes reads that stored key on mount, so by the time a post-load script ran the
+ *     page would already have applied the stored value and painted. An init script runs
+ *     before any page script on every navigation, so the write lands first.
+ *
+ * This is a hope until `assertTheme` proves it — see there.
+ */
+export async function forceLightMode(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('theme', 'light');
+  });
+}
+
+/**
+ * Assert the theme BEFORE any style is read. Mandatory, not defensive.
+ *
+ * Mirrors the D-11 pre-assertion marker at `tailwind-v4-styles.spec.ts:80-88`: a style
+ * assertion that ran in the wrong theme is meaningless, and its failure would be
+ * misdiagnosed as a colour bug in whichever theme the reader assumed was active. This
+ * assertion is also the thing that converts `88.3-RESEARCH.md`'s UNVERIFIED assumption A2
+ * — that the init-script write beats the baked `storageState` — from a hope into a red
+ * test (threat T-88.3-55).
+ */
+export async function assertTheme(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  const pattern = theme === 'light' ? /light/ : /dark/;
+  await expect(
+    page.locator('html'),
+    `theme pre-assertion: expected <html> to carry the "${theme}" class before any style is read. ` +
+      `If this fails, every contrast assertion below would have measured the WRONG THEME.`
+  ).toHaveClass(pattern);
+}
+
+/**
+ * Give an element a REAL keyboard focus, so `:focus-visible` matches.
+ *
+ * Both halves are load-bearing. `locator.focus()` alone is programmatic focus, and
+ * Chromium only matches `:focus-visible` on programmatic focus when the user's most recent
+ * interaction was a KEYBOARD one — hence the `Tab` press first, purely to set that
+ * modality. Without it the ring rules never apply and `--tw-ring-color` comes back empty,
+ * which `requireColor` would (correctly) turn into a probe failure. A bare `:focus`
+ * variant would not help: `Button.tsx:62` and `Input.tsx:80` both use `focus-visible:`
+ * deliberately, so that pointer and programmatic focus do NOT draw a ring.
+ */
+export async function focusByKeyboard(page: Page, anchor: Locator): Promise<void> {
+  await page.keyboard.press('Tab');
+  await anchor.focus();
+}
+
+/**
+ * The focus ring's colour and its ratio against the element's own composited ground.
+ *
+ * Reads `--tw-ring-color`, which is what the emitted utility actually sets: Tailwind
+ * compiles `focus-visible:ring-focus-ring` to `--tw-ring-color: var(--ring)` INSIDE the
+ * `:focus-visible` rule (compile-verified on this tree's tailwindcss@4.3.3), and registers
+ * the property with `syntax: "*"`, so `getComputedStyle` hands back the substituted colour
+ * when the ring is live and an EMPTY STRING when it is not. That empty string is the
+ * vacuity guard: an element that never entered `:focus-visible` fails loudly here instead
+ * of being measured with the ring it does not have.
+ *
+ * The `box-shadow` read comes back too, unasserted, purely so a failure message can say
+ * whether a ring was painted at all.
+ */
+export async function focusRingMeasurement(
+  page: Page,
+  anchor: Locator,
+  label: string
+): Promise<Measurement & { boxShadow: string }> {
+  await focusByKeyboard(page, anchor);
+  const probe = await probeElement(anchor, ['--tw-ring-color', 'box-shadow']);
+  const ring = requireColor(
+    `${label} — focus ring (--tw-ring-color; empty means the element never matched :focus-visible)`,
+    probe.computed['--tw-ring-color']
+  );
+  const ground = compositeGround(probe);
+  if (ground === null) {
+    throw new Error(
+      `${label}: no opaque ground under the focus ring.\n${describeGround(label, groundResolutionOf(probe))}`
+    );
+  }
+  const ratio = contrastRatio(ring, ground);
+  if (ratio === null) throw new Error(`${label}: could not compute a ring ratio from ${ring} on ${ground}.`);
+  return {
+    ratio,
+    fg: ring,
+    ground,
+    probe,
+    resolution: groundResolutionOf(probe),
+    boxShadow: probe.computed['box-shadow']?.raw ?? '',
+  };
+}
+
+/** Failure message for a ratio floor: the two colours AND the ground chain that produced them. */
+export function describeRatio(label: string, floor: number, m: Measurement): string {
+  return (
+    `${label}: measured ${m.ratio.toFixed(3)}:1 against a floor of ${floor}:1 ` +
+    `(foreground ${m.fg} on composited ground ${m.ground}).\n` +
+    describeGround(label, m.resolution)
+  );
+}
+
+/** Failure message for a delta-L* floor between two resolved grounds. */
+export function describeDelta(label: string, floor: number, a: string, b: string, measured: number): string {
+  return (
+    `${label}: measured delta-L* ${measured.toFixed(2)} against a floor of ${floor} ` +
+    `(${a} vs ${b}). Two surfaces can clear every contrast floor and still be ` +
+    `indistinguishable; only a lightness delta says so (SPEC Req 1).`
   );
 }
