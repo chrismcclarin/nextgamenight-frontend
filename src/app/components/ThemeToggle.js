@@ -46,7 +46,12 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
   return (
     <button
       onClick={() => setTheme(isDark ? 'light' : 'dark')}
-      className={`p-2 rounded-lg transition-colors hover:bg-white/10 ${className}`}
+      // Phase 88.3 (Req 7 / UI-SPEC §5.8.2): this icon variant shipped with NO focus-visible
+      // ring at all — unlike the row variant above — and fell to the UA outline on the
+      // warm-800 header. It now carries the same treatment as the row variant, and inherits
+      // the amber-400 `--ring` override scoped to the header subtree at `Header.js`'s
+      // container. See the DECISION marker at `NotificationBell.js`'s row label.
+      className={`p-2 rounded-lg transition-colors hover:bg-white/10 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${className}`}
       aria-label={ariaLabel}
       title={ariaLabel}
     >

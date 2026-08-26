@@ -200,7 +200,12 @@ function NotificationBell({ user, variant = 'icon', label }) {
         // Icon-only trigger — desktop nav. Visual unchanged from pre-Plan-68-01.
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="relative text-white hover:text-amber-400 transition-colors p-1"
+          // Phase 88.3 (Req 7 / UI-SPEC §5.8.2): this icon-only trigger shipped with NO
+          // focus-visible ring at all — unlike the row variant above — and fell to the UA
+          // outline on the warm-800 header. It now carries the same treatment as the row
+          // variant, and inherits the amber-400 `--ring` override scoped to the header
+          // subtree at `Header.js`'s container. See the DECISION marker on the row label below.
+          className="relative text-white hover:text-amber-400 transition-colors p-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
           aria-label="Notifications"
         >
           {bellIcon}
