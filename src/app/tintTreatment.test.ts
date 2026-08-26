@@ -54,7 +54,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { sourceFiles, stringChunks } from '../test-utils/sourceScan';
+import { sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 const GLOBALS = path.join(__dirname, 'globals.css');
@@ -221,8 +221,23 @@ describe('D-32/D-33 tint treatment (Req 17)', () => {
   });
 
   it('2. no component source authors a tint with `color-mix()` (D-33 rejected it)', () => {
+    // AMENDED Phase 88.3-11: the scan reads CODE with comments blanked, not the raw
+    // file. It was comment-blind, and this phase's own markers necessarily NAME the
+    // function they forbid: `groupHomePage/page.js`'s dim records that Tailwind 4.3
+    // compiles `bg-black/15` to a `color-mix(in oklab, …)` the browser serialises as
+    // oklab(), which is precisely WHY the bracketed `rgb(0_0_0/0.15)` form was chosen
+    // there. A gate that reds on the comment explaining the decision is the exact
+    // failure recorded in DEF-88-25-02, DEF-88-27-01 and DEF-88-28-01, and the pressure
+    // it applies is to DELETE the explanation. `withoutComments` is the shared primitive
+    // 88-29 extracted for this; the property being asserted (no AUTHORED color-mix) is
+    // unchanged, and the anti-vacuity pair below pins that the detector still fires.
+    expect(withoutComments('const t = "color-mix(in oklab, a, b)";')).toContain('color-mix(');
+    expect(withoutComments('// Tailwind compiles this to color-mix(in oklab, …)\nconst t = 1;')).not.toContain(
+      'color-mix(',
+    );
+
     const offenders = files
-      .filter((f) => fs.readFileSync(f, 'utf8').includes('color-mix('))
+      .filter((f) => withoutComments(fs.readFileSync(f, 'utf8')).includes('color-mix('))
       .map((f) => path.relative(SRC, f));
     expect(offenders).toEqual([]);
   });

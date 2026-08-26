@@ -8,7 +8,15 @@ import ManageMembers from '../components/ManageMembers';
 import { listsAPI, groupsAPI, eventsAPI, API_BASE_URL } from '../../lib/api';
 import GroupGamesList from '../components/GroupGamesList';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
-import { getTextStyle, getSubtitleStyle, resolveGroupBackgroundColor } from '../../lib/colorUtils';
+import {
+    getTextStyle,
+    getSubtitleStyle,
+    resolveGroupBackgroundColor,
+    lightTintGroupBackgroundColor,
+    isDarkBackground,
+    themedTextStyleVars,
+} from '../../lib/colorUtils';
+import { cn } from '../../lib/cn';
 import SafeImage from '../components/SafeImage';
 import EventCalendar from '../components/EventCalendar';
 import PendingMemberBanner from '../components/PendingMemberBanner';
@@ -313,6 +321,99 @@ function GroupHomePage(){
     // keeps its themed surface class instead of an inline override (D-28).
     const headerBgColor = resolveGroupBackgroundColor(Group?.background_color);
 
+    /*
+     * DECISION Phase 88.3 (D-08/D-09): the identity header renders a LIGHT TINT
+     * of the group's stored colour in light mode and the stored hex itself in
+     * dark, and the UNCOLOURED header stays on `bg-surface-elevated` (white in
+     * light) — chosen because the owner's principle for this phase is no dark
+     * bands in light mode, for coloured groups AND uncoloured ones alike.
+     *
+     * REJECTED, both measured in the phase discussion: (H2) a warm-700 band —
+     * a dark plinth behind the title, which is the very thing light mode is
+     * supposed to stop; and (H3) a nav-blue band — the same objection plus a
+     * second identity colour competing with the group's own. Neither survives
+     * the "the group's colour IS the identity cue" contract that 87.8 D-03
+     * records a few lines below.
+     *
+     * AND: Phase 88-22's "the header falls back to the THEMED ELEVATED SURFACE"
+     * decision at the comment below STANDS. It is NOT reversed by this phase —
+     * the tint applies to a group that HAS a colour; the no-colour path is
+     * untouched. Re-pinning a hardcoded dark value here would re-open the exact
+     * D-28 bug 88-22 closed.
+     *
+     * `ground` is the raw stored hex GATED ON THE TINT SUCCEEDING (T-88.3-43,
+     * the same shape as plan 10's five render sites): there is no second parse
+     * and no `parsedHex` local, because `lightTintGroupBackgroundColor`'s own
+     * success/failure IS the parse. A legacy non-hex value therefore behaves as
+     * "no colour" in BOTH arms — light falls to `bg-surface-elevated`, and
+     * `darkArm` below falls to `!ground`, rather than the raw string being
+     * truthy in one arm and unusable in the other.
+     *
+     * Changing any of this is a decision, not a cleanup.
+     */
+    const tinted = lightTintGroupBackgroundColor(headerBgColor);
+    const ground = tinted ? headerBgColor : null;
+    const hasHeaderImage = !!Group?.background_image_url;
+
+    /*
+     * The title/subtitle treatment is computed TWICE — once against the stored
+     * hex (what dark mode paints) and once against the rendered tint (what
+     * light mode paints) — and handed to the cascade as `--t-*` custom
+     * properties. An inline `style` cannot itself be forked by a `dark:` class,
+     * so the indirection is REQUIRED here, not stylistic (the plan-07 inert-
+     * override trap; see `themedTextStyleVars`' own note in colorUtils.js).
+     * No `useTheme`: the shipped DECISION at EventScheduler.tsx (plan 15, Req 8)
+     * rejected the hook for exactly this problem — hydration fork, theme flash.
+     *
+     * NOTE for a future reader: at t = 0.70 all eight shipped presets tint to
+     * W3C brightness 188-191, so `getTextStyle` takes its `brightness > 180`
+     * tier for every one of them and the LIGHT-mode title treatment is CONSTANT
+     * across the preset table (UI-SPEC §5.10.2). Do not add per-colour
+     * computation back on the strength of that constancy — it is an outcome of
+     * the current preset set, and `colorUtils.test.ts` pins the tier per preset
+     * so a future light preset reds there first.
+     *
+     * `--t-weight` / `--t-weight-l` are built HERE rather than in
+     * `themedTextStyleVars`, which deliberately omits `fontWeight` because it is
+     * spread onto a CONTAINER at `grouplist.js` and `font-weight` inherits. Both
+     * consumers here are leaf text elements, so the property cannot bleed.
+     *
+     * The fallback is the element's OWN base weight (`700` = `font-bold` on the
+     * h1, `inherit` on the unstyled `<p>`), NOT a bare `inherit`. Compile-
+     * verified against this tree's tailwindcss@4.3.3: `.font-bold` emits at
+     * line 1847 of the compiled sheet and `.[font-weight:var(--t-weight-l)]` at
+     * 1863 — same property, same specificity, so the ARBITRARY UTILITY WINS.
+     * `inherit` is a real value, not an absence: it would beat `font-bold` and
+     * silently un-bold the uncoloured header, which is the app's default.
+     */
+    const themedTextVars = (dark, light, baseWeight) => ({
+        ...themedTextStyleVars(dark, light),
+        '--t-weight': dark.fontWeight || baseWeight,
+        '--t-weight-l': light.fontWeight || baseWeight,
+    });
+    const headerTitleVars = themedTextVars(
+        getTextStyle(hasHeaderImage, ground),
+        getTextStyle(hasHeaderImage, tinted),
+        '700',
+    );
+    const headerSubtitleVars = themedTextVars(
+        getSubtitleStyle(hasHeaderImage, ground),
+        getSubtitleStyle(hasHeaderImage, tinted),
+        'inherit',
+    );
+    /*
+     * The eight arbitrary-property utilities that READ the properties above are
+     * written out LITERALLY on each of the two elements rather than hoisted into
+     * a shared constant. Deliberate, twice over: the drift gate
+     * (`groupColourRendering.test.ts`) matches whole `className` EXPRESSIONS, and
+     * `typeScaleTouchedSurfaces.test.ts`'s `HEADING_RE` reads the h1's className
+     * literal — an interpolated constant is invisible to both, so hoisting would
+     * silently disarm two gates. Four utilities are light-arm (unprefixed) and
+     * four are `dark:`; the light-arm STROKE and WEIGHT are not optional
+     * decoration — without them an image-background header loses its outline in
+     * light mode and `font-bold` beats the returned `600`.
+     */
+
     return (
         // POLL-02: FriendshipStatusProvider lifted to root layout — see
         // src/app/layout.js. Nested mount removed so NotificationBell +
@@ -345,33 +446,82 @@ function GroupHomePage(){
                 to the themed elevated surface — which also makes it correct in
                 light mode, where a hardcoded near-black header was not. */}
             <div
-                className="mb-6 flex flex-col gap-4 p-3 md:p-6 rounded-lg relative overflow-visible bg-surface-elevated"
+                className={cn(
+                    'mb-6 flex flex-col gap-4 p-3 md:p-6 rounded-lg relative overflow-visible',
+                    // MUTUALLY EXCLUSIVE, never stacked — `bg-surface-elevated`
+                    // lives ONLY in the null branch. Compile-verified against
+                    // this tree's tailwindcss@4.3.3: `.bg-[var(--group-ground-light)]`
+                    // emits at 1426 and `.bg-surface-elevated` at 1549 — same
+                    // property, same specificity, so source order wins and a
+                    // stacked themed class would paint a coloured group WHITE in
+                    // light mode. The inline `style` background this replaces hid
+                    // that, because an inline style beats any class.
+                    tinted
+                        ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]'
+                        : 'bg-surface-elevated',
+                )}
                 style={{
-                    ...(headerBgColor && { backgroundColor: headerBgColor }),
+                    ...(tinted && {
+                        '--group-ground': ground,
+                        '--group-ground-light': tinted,
+                    }),
                     ...safeBgImageStyle(Group?.background_image_url),
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
                     minHeight: '120px',
                 }}
             >
-                <div style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
+                <div
                     // The dim exists to darken a user-chosen colour or cover
                     // image so the title reads over it. With neither, the header
                     // is on a themed surface that already has its contrast — a
                     // wash there just muddies the token (D-28).
-                    backgroundColor: Group?.background_image_url
-                        ? 'rgba(0, 0, 0, 0.4)'
-                        : headerBgColor
-                            ? 'rgba(0, 0, 0, 0.15)'
-                            : 'transparent',
-                    zIndex: 0,
-                    borderRadius: 'inherit',
-                }} />
+                    //
+                    // EXTENDED Phase 88.3 (Req 9, UI-SPEC §5.10.3), original
+                    // reasoning above KEPT: the same argument now applies to the
+                    // COLOURED header in LIGHT mode. A 15% black dim over the
+                    // t = 0.70 tint costs ~11.5 L*, which would drag the rendered
+                    // ground below Req 9's own `L* >= 75` acceptance — and that
+                    // acceptance is measured on the RENDERED PIXEL, so the dim
+                    // would fail the requirement rather than merely dull it. The
+                    // dim rescues text from a DARK colour or a photo; on a light
+                    // tint it only muddies the ground. So three explicit cases:
+                    //   (1) background image -> 0.4, INLINE, both themes;
+                    //   (2) stored colour, no image -> transparent in light,
+                    //       0.15 in dark, via the class below;
+                    //   (3) no colour -> transparent in both themes.
+                    //
+                    // The 0.15 is `dark:bg-[rgb(0_0_0/0.15)]` and NOT Tailwind's
+                    // `dark:bg-black/15` shorthand. Compile-verified on
+                    // tailwindcss@4.3.3: the slash form on a theme colour emits
+                    // `color-mix(in oklab, var(--color-black) 15%, transparent)`,
+                    // which Chromium serialises back as `color(srgb …)`/`oklab(…)`
+                    // — not `rgba()`. The bracketed value emits a plain
+                    // `rgb(0 0 0/0.15)`, which is what plan 12's rendered-alpha
+                    // probe reads. It is also NEVER an inline value: an inline
+                    // declaration outranks a `dark:` class, so an inline
+                    // `'transparent'` on this property would win in both themes
+                    // and silently delete the dark dim. The guard is `tinted`,
+                    // not raw `headerBgColor`, so a legacy non-hex colour is
+                    // "no colour" here too — same rule as the ground above.
+                    className={
+                        tinted && !Group?.background_image_url
+                            ? 'dark:bg-[rgb(0_0_0/0.15)]'
+                            : undefined
+                    }
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        zIndex: 0,
+                        borderRadius: 'inherit',
+                        ...(Group?.background_image_url && {
+                            backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                        }),
+                    }}
+                />
                 {/* z-30, not z-10: this row hosts the kebab dropdown, and its z-index
                     is a STACKING CONTEXT for everything inside — the sibling CTA row
                     below is z-20, so at z-10 the open dropdown painted underneath
@@ -402,14 +552,14 @@ function GroupHomePage(){
                             unconditionally, so this surface was the last outlier. `wrap-break-word`
                             is what keeps a long group name safe at 375px and must stay. */}
                         <h1
-                            className="text-3xl font-bold wrap-break-word"
-                            style={getTextStyle(!!Group?.background_image_url, headerBgColor)}
+                            className="text-3xl font-bold wrap-break-word [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)]"
+                            style={headerTitleVars}
                         >
                             {Group?.name || 'Group'}
                         </h1>
                         <p
-                            className="mt-1"
-                            style={getSubtitleStyle(!!Group?.background_image_url, headerBgColor)}
+                            className="mt-1 [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)]"
+                            style={headerSubtitleVars}
                         >
                             {gamesList.length} {gamesList.length === 1 ? 'game' : 'games'} played
                             {UserList && UserList.length > 0 && (
