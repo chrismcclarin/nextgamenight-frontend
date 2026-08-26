@@ -520,6 +520,7 @@ describe('Req 19 / gate-hygiene — the drift-gate registry step (parsed from ci
       'src/app/statusTextSweep.test.ts', //              Phase 88.3 Req 6 / OI-1 — the 132-site status text sweep
       'src/app/legacyOverlayClass.test.ts', //           Req 9  — the legacy overlay class
       'src/app/nativeDialogs.test.ts', //                Req 11 — native browser dialogs
+      'src/app/groupColourRendering.test.ts', //         Phase 88.3 Req 9 / D-09 — group-colour rendering; the tint must never reach the save path
       'src/app/fetchErrorTreatment.test.ts', //          Req 14 — fetch-error treatment
       'src/app/borderExplicitness.test.ts', //           Req 16 — explicit border colours
       'src/app/tintTreatment.test.ts', //                Req 17 — opaque tints

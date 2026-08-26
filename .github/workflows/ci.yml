@@ -255,6 +255,7 @@ jobs:
             "src/app/statusTextSweep.test.ts:5" \
             "src/app/legacyOverlayClass.test.ts:5" \
             "src/app/nativeDialogs.test.ts:7" \
+            "src/app/groupColourRendering.test.ts:10" \
             "src/test-utils/sourceScan.ts:0" \
           ; do
             f="${entry%:*}"; min="${entry##*:}"
