@@ -71,7 +71,27 @@ const Switch = React.forwardRef<
   >
     <SwitchPrimitive.Thumb
       className={cn(
-        'pointer-events-none block h-5 w-5 rounded-full bg-white shadow-theme-sm',
+        // DECISION Phase 88.3 (Req 3 knock-on / UI-SPEC §8.2): the thumb keeps a visible edge with
+        // a BORDER. Two 88.3 token edits land on this control at once and they pull in opposite
+        // directions: D-01 re-keys the OFF track from warm-100 to warm-200, which IMPROVES
+        // thumb-vs-track from 1.13:1 to 1.31:1 — but Req 3 sets light `--shadow-sm` to `none`, and
+        // that shadow was the only thing actually separating a white thumb from a warm track. Net,
+        // in light mode the OFF switch becomes a white lozenge on a barely-different track with
+        // nothing left to read, so the border ships in the SAME wave as the shadow change rather
+        // than trailing it.
+        // MEASURED: `border-line-strong` (warm-500 #8c7a6a, unchanged by this phase) is 4.11:1
+        // against the white thumb and 3.15:1 against the warm-200 track — both clear WCAG 1.4.11's
+        // 3:1 floor for non-text contrast, from either side.
+        // Dark is `border-transparent` on purpose: dark has shipped with no thumb shadow since 87.7
+        // (`globals.css` `.dark --shadow-sm: none`) and white-on-purple-800 is 11.28:1, so adding
+        // an edge there would be a change, not a fix.
+        // The `-sm` shadow utility STAYS on the class below: it now resolves to `none` in light and
+        // has always been `none` in dark, so keeping it leaves the class identical in both themes
+        // and keeps `-md`/`-lg` composable — the same reasoning `Card.tsx:22` relies on (§8.1).
+        // Rejected: pointing the thumb at `shadow-theme-md`. That token is reserved for RAISED and
+        // OVERLAY surfaces under archetype A, and a switch thumb is neither.
+        // Removing this border once the shadow is gone is a decision, not a cleanup.
+        'pointer-events-none block h-5 w-5 rounded-full bg-white shadow-theme-sm border border-line-strong dark:border-transparent',
         'translate-x-0.5 transition-transform duration-100 ease-out',
         // 44 track - 20 thumb - 2 resting inset = 22px of travel.
         'data-[state=checked]:translate-x-[22px]'
