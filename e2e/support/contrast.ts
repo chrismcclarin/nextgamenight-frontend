@@ -640,7 +640,15 @@ export async function focusRingMeasurement(
     ground = offset?.alpha === 1 || behind === null ? offsetCss : blend(offsetCss, offset?.alpha ?? 1, behind);
   } else {
     ringGroundKind = 'outside';
-    ground = compositeGround(probe, 1);
+    // A non-inset, zero-offset ring is a box-shadow drawn just OUTSIDE the border box, so it
+    // overlaps the PARENT's background, not the element's own fill. `compositeGround(probe, 1)`
+    // gives that whenever the element itself is transparent — but when the element PAINTS (the
+    // `Input` primitive carries `bg-surface-input`, `Input.tsx:74`), the walk already stopped on
+    // the element's own rung and there is nothing above index 0 to composite. Probing the parent
+    // is the only way to see what the ring actually sits on. Falling back to `compositeGround(probe, 0)`
+    // here would silently report the ring's contrast against the fill it is drawn OUTSIDE OF.
+    const outside = compositeGround(probe, 1);
+    ground = outside ?? compositeGround(await probeElement(anchor.locator('xpath=..'), []), 0);
   }
 
   if (ground === null) {

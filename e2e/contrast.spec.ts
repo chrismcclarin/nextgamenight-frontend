@@ -156,15 +156,37 @@ function headerControls(page: Page): { label: string; locator: Locator }[] {
 }
 
 /**
- * Vacuity guard, in the `padding-budget.spec.ts:212-214` shape.
+ * Vacuity guard, in the `padding-budget.spec.ts:212-214` spirit but NOT its literal rule.
  *
- * A one-rung chain, or a chain that never resolved, means the LOCATOR is wrong — the probe
- * landed on `<body>` or a detached node — and every ratio computed from it would be
- * vacuous. This fails on the anchor, loudly, rather than reporting a confident number.
+ * ---------------------------------------------------------------------------------------
+ * DECISION Phase 88.3 (Req 11): the guard is "landed on a real element AND found an opaque
+ * ground", NOT `levels.length >= 2`.
+ * ---------------------------------------------------------------------------------------
+ * CHOSEN: reject a probe that landed on `<body>`/`<html>` (the locator missed), or that
+ * walked the whole chain without reaching anything opaque (nothing to measure against).
+ *
+ * REJECTED: copying `padding-budget.spec.ts`'s `>= 2` rung floor verbatim.
+ *
+ * WHY, and it is the difference between the two quantities rather than a relaxation. A
+ * PADDING chain of one rung really is broken — padding accumulates over ancestors, so a
+ * single rung means the walk never walked. A GROUND chain of one rung is often the correct
+ * answer: an element that paints its own background IS its own ground, and several of the
+ * elements this gate measures do exactly that (the group card, `.btn-primary`, the inline
+ * amber CTA, the today tint span, the `Input` primitive). Importing the `>= 2` floor here
+ * would red five correct reads and invite the next reader to "fix" it by loosening a
+ * contrast floor instead.
+ *
+ * Restoring the rung count is a decision, not a cleanup.
  */
 function guardGround(label: string, m: Measurement): void {
   const resolution = groundResolutionOf(m.probe);
-  expect(m.probe.levels.length, vacuityGround(label, resolution)).toBeGreaterThanOrEqual(2);
+  const innermost = m.probe.levels[0]?.tagName ?? '(none)';
+  expect(
+    innermost,
+    `${label}: the probe's innermost element is <${innermost}> — the locator did not find the ` +
+      `intended element and landed on the document root instead, so every ratio below would be ` +
+      `vacuous. Fix the ANCHOR, do not touch the tokens.\n${vacuityGround(label, resolution)}`
+  ).not.toMatch(/^(body|html)$/);
   expect(m.probe.opaqueAt, describeGround(label, resolution)).toBeGreaterThanOrEqual(0);
 }
 
@@ -284,7 +306,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // <footer>, so this element's ground chain terminates on the page surface.
       // Scoped to the <span> for the same parent-text reason as surface 12 below: the row div
       // wraps the logo plus this span, and a bare text locator can match both.
-      const mutedOnPage = page.locator('span').filter({ hasText: /^©\s*\d{4}\s+Next Game Night$/ });
+      const mutedOnPage = page.locator('span').filter({ hasText: /^\s*©\s*\d{4}\s+Next Game Night\s*$/ });
       await expect(mutedOnPage).toBeVisible({ timeout: 15_000 });
       const onPage = await ratioAgainstGround(mutedOnPage, 'muted text on the PAGE (Req 8)');
       expectRatio('muted text on the PAGE (Req 8)', onPage, AA_TEXT);
@@ -305,7 +327,7 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // Req 7 target 1 of 4 — the `Button` primitive. `UserHomePage.js:245` renders the
       // phone-only Calendar entry point through it (`md:hidden`, so it exists ONLY at this
       // width). Located by role and name; the Icon inside is decorative.
-      const button = page.getByRole('button', { name: 'Calendar' });
+      const button = page.getByRole('button', { name: 'Calendar', exact: true });
       await expect(button).toBeVisible({ timeout: 15_000 });
       const buttonRing = await focusRingMeasurement(page, button, 'Button primitive focus ring (Req 7)');
       expectRatio('Button primitive focus ring (Req 7)', buttonRing, NON_TEXT);
@@ -773,7 +795,7 @@ async function assertStatusTextLanded(page: Page, theme: 'light' | 'dark'): Prom
   // the span — `getByText` would match both and violate strict mode, and picking the first would
   // silently measure the DIV, whose colour is inherited body text. That is the very failure this
   // assertion exists to catch, so measuring it by accident would be the worst possible outcome.
-  const yesCount = page.locator('span').filter({ hasText: /^\d+\s+Yes$/ });
+  const yesCount = page.locator('span').filter({ hasText: /^\s*\d+\s+Yes\s*$/ });
   await expect(
     yesCount,
     `Req 6 (${theme}): the RSVP "N Yes" count is not present at E2E_EVENT_DETAIL_PATH. The fixture ` +
