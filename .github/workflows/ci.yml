@@ -250,6 +250,7 @@ jobs:
             "src/app/rawColorValues.test.ts:7" \
             "src/app/tokenContrast.test.ts:28" \
             "src/app/surfaceHoverSweep.test.ts:7" \
+            "src/app/darkChromeLegibility.test.ts:7" \
             "src/app/legacyOverlayClass.test.ts:5" \
             "src/app/nativeDialogs.test.ts:7" \
             "src/test-utils/sourceScan.ts:0" \
