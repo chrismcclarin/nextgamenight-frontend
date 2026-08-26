@@ -356,6 +356,20 @@ function GroupHomePage(){
     const hasHeaderImage = !!Group?.background_image_url;
 
     /*
+     * `darkArm` — the ground-brightness half of the three header controls' fork.
+     * The `!ground` clause is NOT belt-and-braces: `getBrightness(null)` returns
+     * `255` by contract (colorUtils.js), so `isDarkBackground(null)` is `false`,
+     * and a bare `isDarkBackground(ground)` would silently send the UNCOLOURED
+     * header — the app's default and most common case — to the LIGHT arm even in
+     * dark theme, where it sits on `bg-surface-elevated` (purple-800). That
+     * surface is invisible to the colour value alone, so the null rule is the
+     * only thing that can see it. `getTextStyle` already carries the equivalent
+     * rule for the TITLE (its `isUnsetBackgroundColor` branch); this is the
+     * controls' half of the same rule.
+     */
+    const darkArm = !ground || isDarkBackground(ground);
+
+    /*
      * The title/subtitle treatment is computed TWICE — once against the stored
      * hex (what dark mode paints) and once against the rendered tint (what
      * light mode paints) — and handed to the cascade as `--t-*` custom
@@ -581,14 +595,87 @@ function GroupHomePage(){
                         </div>
                     )}
                 </div>
+                {/* DECISION Phase 88.3 (D-10 / OI-6): all three controls in this row
+                    branch on `darkArm = !ground || isDarkBackground(ground)`, where
+                    `ground` is the STORED hex gated on the tint parsing (see the ground
+                    block above). The `dark:`-prefixed classes are appended only on the
+                    dark arm; the light-arm classes are always present. No `useTheme` —
+                    the theme half rides the cascade, exactly as the ground does.
+
+                    REJECTED, and both matter:
+                      - keying off "the group HAS no colour", which is what shipped. That
+                        is why `text-white border-2 border-white/30` over an inline
+                        `rgba(255,255,255,0.1)` wash rendered INVISIBLE the moment 88-22
+                        made an uncoloured header white in light mode.
+                      - a `data-ground` CSS attribute selector. It is a new unlayered-
+                        override idiom aimed at a primitive Phase 88.6 is already
+                        migrating; revisit it there as a `Button` `onGround`/inverse
+                        variant, not here.
+                      - a bare `isDarkBackground(ground)` with no null rule — see the
+                        `darkArm` comment above for why that is a silent regression.
+
+                    OI-6 (owner-ruled 2026-08-25), fixed here under "converge while you
+                    are in the file": the Add-New-Game-Event fill was `var(--amber-600)`
+                    with white text — 3.19:1, FAILING in BOTH themes since before this
+                    phase, i.e. pre-existing and not caused by Req 9. It is now
+                    `var(--amber-700)`, 5.02:1. `amber-800` (7.09:1) was offered and
+                    REJECTED by the owner as too dark.
+
+                    THE BORDERS ARE GONE, and that is not a style tidy: `globals.css`'s
+                    unlayered `.btn { border: none }` beats every `@layer utilities`
+                    border class, so `border-2 border-white/30` (Manage Members),
+                    `border-2 border-white/20` (Plan Game Session) and
+                    `border-2 border-amber-400/40 hover:border-amber-400/60` (Add New
+                    Game Event) rendered NOTHING on this row and had done for as long as
+                    `.btn` has been unlayered. Keeping a white border declaration on a
+                    control that now sits on a WHITE header would have read as intent to
+                    a future editor. A real border/ring model for `.btn` is Phase 88.6's
+                    `Button` migration to own; this plan asserts no border ratio.
+                    In their place all three carry an AUTHOR FOCUS RING —
+                    `focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring
+                    focus-visible:ring-offset-2`. `.btn` defines no `focus-visible` style
+                    and there is no global one, so this was the only keyboard affordance
+                    missing. It does NOT fork on `darkArm`: `--color-focus-ring` is
+                    purple-700 in light and amber-400 in dark, so the token carries the
+                    theme itself.
+
+                    NOTE on the inline-boxShadow marker below (preserved verbatim, do not
+                    edit it): its "the ring survives as `ring-2 ring-white/15`" is now
+                    true in DARK ONLY. On the light arm that ring measures 1.28:1 on the
+                    t = 0.70 tint — invisible — so it drops there and the focus ring takes
+                    its place. The dark arm keeps it as `dark:ring-2 dark:ring-white/15`:
+                    RENDERED-EQUIVALENT to what shipped, not byte-identical.
+
+                    LIMIT, recorded because it is the thing that will break first: the
+                    light arm's `text-content-primary` and `hover:bg-surface-hover` are
+                    THEME tokens, not ground-derived. They are correct today only because
+                    every shipped preset is dark, so `darkArm` is `true` for all eight of
+                    `DEFAULT_BACKGROUND_COLORS` — plan 10's `colorUtils.test.ts` pins all
+                    eight as `isDarkBackground === true`, so a future LIGHT preset reds
+                    that test before it ever reaches this header. If one ships, the
+                    upgrade path is the ground-derived pole — `getContrastColor(ground)`
+                    handed to CSS as a custom property, the same indirection the title
+                    already uses above — NOT a theme-token swap.
+
+                    Any of this is a decision, not a cleanup. */}
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 relative z-20 w-full shrink-0 items-stretch sm:items-center md:justify-end">
                     {userRole && userRole !== 'pending' && (
                         <button
                             onClick={() => setMemberModal(true)}
-                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap text-white border-2 border-white/30 rounded-btn backdrop-blur-xs hover:bg-white/20 transition-all shadow-theme-md"
-                            style={{
-                                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                            }}
+                            className={
+                                'btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap ' +
+                                'text-content-primary rounded-btn hover:bg-surface-hover transition-all shadow-theme-md ' +
+                                'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2' +
+                                // The 10% white wash moves from an inline `style` to
+                                // `dark:bg-white/10`, because an inline declaration cannot
+                                // be forked by a `dark:` class. On a light ground it was
+                                // invisible, and it is what made this control disappear.
+                                // `backdrop-blur-xs` comes with it: it only ever did
+                                // visible work over that translucent wash or an image.
+                                (darkArm
+                                    ? ' dark:text-white dark:bg-white/10 dark:hover:bg-white/20 dark:backdrop-blur-xs'
+                                    : '')
+                            }
                         >
                             Manage Members
                         </button>
@@ -604,7 +691,12 @@ function GroupHomePage(){
                            `ring-2 ring-white/15`, the same 15% white at the same
                            2px. Dropping the ring would still pass 88-29's
                            zero-`rgba(0,0,0` gate while looking wrong. */
-                        className="btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white/20 text-center min-h-11 ring-2 ring-white/15"
+                        className={
+                            'btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl ' +
+                            'text-sm md:text-base whitespace-nowrap text-center min-h-11 ' +
+                            'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2' +
+                            (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
+                        }
                     >
                         Plan Game Session
                     </Link>
@@ -614,9 +706,19 @@ function GroupHomePage(){
                             /* Same two-half shadow as the CTA above: black half ->
                                `shadow-theme-lg`, white ring half preserved as
                                `ring-2 ring-white/15`. */
-                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap rounded-btn transition-all border-2 border-amber-400/40 hover:border-amber-400/60 shadow-theme-lg ring-2 ring-white/15"
+                            className={
+                                'btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap ' +
+                                'rounded-btn transition-all shadow-theme-lg ' +
+                                'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2' +
+                                (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
+                            }
                             style={{
-                                backgroundColor: 'var(--amber-600)',
+                                // OI-6: was `var(--amber-600)`, white on it 3.19:1 — a
+                                // pre-existing failure in BOTH themes. `--amber-700` is
+                                // 5.02:1. The inline fill STAYS: `.btn` sets no background
+                                // of its own, and moving this to a class is a separate
+                                // decision (Phase 88.6's `Button`).
+                                backgroundColor: 'var(--amber-700)',
                                 color: 'white',
                             }}
                         >
