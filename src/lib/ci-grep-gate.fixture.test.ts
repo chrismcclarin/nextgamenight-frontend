@@ -618,3 +618,65 @@ describe('Req 19 — the two-sided CSS bundle guard step (parsed from ci.yml by 
     expect(existsSync(resolve(__dirname, '../../scripts/baselines/post-88.css'))).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 88.3 plan 12 — GATE C's anti-disarm mechanism.
+//
+// Gate C (`e2e/contrast.spec.ts`, SPEC Req 11) is a PLAYWRIGHT spec, so it does
+// NOT get a row in the drift-gate registry above: that registry counts `it(`/
+// `test(` inside vitest `.test.ts` files under `src/`, and a Playwright spec is
+// neither. Its arming mechanism is instead the `--project=phone` pin on ci.yml's
+// Playwright run line, plus the do-not-remove marker above it — the `phone`
+// project's `testMatch` collects every `e2e/*.spec.ts` automatically, so dropping
+// that one flag silently stops Gate C running while every check stays green.
+//
+// That marker (armed by Phase 87.8 plan 12, after a green combined run and a
+// negative control) already says removing `--project=phone` DISARMS the
+// phone-forward gate MOB-03. As of this plan it disarms a SECOND dependant, and
+// this test is what makes the pin mechanical rather than a comment: MOB-03's
+// touch/padding budgets AND Phase 88.3's rendered contrast pins both live in
+// that project.
+//
+// Located by STEP NAME, like every reader above it, for the reason the 88.2
+// header note gives.
+// ---------------------------------------------------------------------------
+
+const PLAYWRIGHT_STEP = 'Run Playwright journeys';
+
+describe('Phase 88.3 Req 11 — Gate C is armed by the --project pin (parsed from ci.yml by step name)', () => {
+  const window = stepWindow(PLAYWRIGHT_STEP).join('\n');
+
+  test('the run line still names --project=phone', () => {
+    expect(
+      window,
+      'ci.yml\'s Playwright run line no longer carries `--project=phone`. That single flag is the ' +
+        'ONLY thing keeping the phone project on the PR lane, and TWO gates depend on it: MOB-03 ' +
+        "(touch targets + padding budget) and Phase 88.3's Gate C rendered contrast pins " +
+        '(e2e/contrast.spec.ts). Neither has a drift-gate registry row, because the registry counts ' +
+        'vitest assertions and both are Playwright specs. Removing the flag is a DECISION, not a ' +
+        'cleanup — see the marker above the step in ci.yml.',
+    ).toContain('--project=phone');
+  });
+
+  test('the run line still names the setup and journeys projects too', () => {
+    // `--project` is a positive ALLOWLIST (ci.yml's own marker says so): `setup` produces the
+    // storageState both other projects reuse, so losing it takes the whole lane down, and
+    // `journeys` is the desktop half. Asserting all three together stops a "simplification"
+    // that keeps phone and drops its dependency.
+    expect(window).toContain('--project=setup');
+    expect(window).toContain('--project=journeys');
+  });
+
+  test('Gate C\'s spec file exists and is collected by that project', () => {
+    // The pin is worthless if the file it protects is gone. `testMatch: /.*\.spec\.ts/` on the
+    // phone project (playwright.config.ts) is what collects it, so existence + the `.spec.ts`
+    // suffix is the whole collection contract.
+    const spec = resolve(process.cwd(), 'e2e/contrast.spec.ts');
+    expect(
+      existsSync(spec),
+      'e2e/contrast.spec.ts is missing. Gate C (SPEC Req 11) is the only place this phase measures ' +
+        'contrast from COMPUTED STYLES in a real browser at 375x667 — Gate A pins declared token ' +
+        'values and cannot see a cascade problem, an inline override or a composited ground.',
+    ).toBe(true);
+  });
+});
