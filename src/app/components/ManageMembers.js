@@ -397,7 +397,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                     resetInviteGate.trigger();
                                 }}
                                 disabled={resettingInvite}
-                                className="btn btn-secondary text-sm text-status-error"
+                                className="btn btn-secondary text-sm text-content-status-error"
                                 title="Invalidate the current invite link and generate a new one"
                             >
                                 {resettingInvite ? 'Resetting…' : 'Reset QR link'}
@@ -787,7 +787,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                     You will lose access to events, library, and member-only content.
                 </p>
                 {leaveError && (
-                    <p className="text-status-error text-sm mt-4">{leaveError}</p>
+                    <p className="text-content-status-error text-sm mt-4">{leaveError}</p>
                 )}
             </Modal.Body>
             <Modal.Footer>

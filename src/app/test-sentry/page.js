@@ -101,7 +101,7 @@ export default function TestSentryPage() {
         </div>
 
         {testResults.message && (
-          <div className="p-4 rounded-card bg-status-success-subtle text-status-success border border-status-success">
+          <div className="p-4 rounded-card bg-status-success-subtle text-content-status-success border border-status-success">
             <p className="font-medium">{testResults.message}</p>
           </div>
         )}
@@ -118,7 +118,7 @@ export default function TestSentryPage() {
         </div>
 
         <div className="mt-4 p-4 bg-status-warning-subtle border border-status-warning rounded-card">
-          <p className="text-sm text-status-warning">
+          <p className="text-sm text-content-status-warning">
             <strong>Note:</strong> Make sure <code className="bg-surface-elevated px-1 rounded-sm">NEXT_PUBLIC_SENTRY_DSN</code> is set in your <code className="bg-surface-elevated px-1 rounded-sm">.env.local</code> file.
           </p>
         </div>

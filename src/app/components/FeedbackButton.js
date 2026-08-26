@@ -244,7 +244,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
             {submitted ? (
               /* Success state */
               <div className="text-center py-4">
-                <div className="text-status-success text-5xl mb-4">
+                <div className="text-content-status-success text-5xl mb-4">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 24 24"
@@ -253,7 +253,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
                     strokeWidth={2}
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    className="w-12 h-12 mx-auto text-status-success"
+                    className="w-12 h-12 mx-auto text-content-status-success"
                   >
                     <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                     <polyline points="22 4 12 14.01 9 11.01" />

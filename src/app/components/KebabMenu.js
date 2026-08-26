@@ -155,7 +155,7 @@ export default function KebabMenu({
                    so taller rows reflow nothing outside it. */
                 className={`w-full min-h-11 text-left px-3 py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
                   danger
-                    ? `text-status-error ${isArmed ? 'bg-status-error-subtle font-semibold' : 'hover:bg-surface-hover'}`
+                    ? `text-content-status-error ${isArmed ? 'bg-status-error-subtle font-semibold' : 'hover:bg-surface-hover'}`
                     : 'text-content-primary hover:bg-surface-hover'
                 }`}
               >

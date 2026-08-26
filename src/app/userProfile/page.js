@@ -1515,7 +1515,7 @@ function Profile(){
                                                     }
                                                 />
                                                 {phoneValidation.valid && (
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-status-success">
+                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-content-status-success">
                                                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                                         </svg>
@@ -1532,7 +1532,7 @@ function Profile(){
                                                     <p
                                                         id="phone-format-error"
                                                         role="status"
-                                                        className="text-status-error text-xs mt-1"
+                                                        className="text-content-status-error text-xs mt-1"
                                                     >
                                                         {phoneValidation.error}
                                                     </p>
@@ -1608,12 +1608,12 @@ function Profile(){
 
                                     {phoneState === 'verified' && (
                                         <div className="flex flex-wrap items-center gap-2">
-                                            <span className="text-status-success">
+                                            <span className="text-content-status-success">
                                                 <svg className="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                                 </svg>
                                             </span>
-                                            <span className="text-sm text-status-success font-medium">Phone verified</span>
+                                            <span className="text-sm text-content-status-success font-medium">Phone verified</span>
                                             <button
                                                 onClick={handleChangeNumber}
                                                 className="text-sm text-content-muted hover:text-content-secondary underline ml-2"
@@ -1626,8 +1626,8 @@ function Profile(){
                                                 onClick={handleRemovePhone}
                                                 className={`text-sm underline ml-3 ${
                                                     removeArmed
-                                                        ? 'text-status-error font-semibold'
-                                                        : 'text-status-error hover:text-red-700'
+                                                        ? 'text-content-status-error font-semibold'
+                                                        : 'text-content-status-error hover:text-red-700'
                                                 }`}
                                             >
                                                 {removeArmed ? 'Tap again to remove' : 'Remove'}
@@ -1664,7 +1664,7 @@ function Profile(){
                                         <p
                                             id="phone-flow-error"
                                             role="alert"
-                                            className="text-status-error text-xs mt-1"
+                                            className="text-content-status-error text-xs mt-1"
                                         >
                                             {phoneError}
                                         </p>
@@ -1938,13 +1938,13 @@ function Profile(){
                                             <span className="text-xs text-content-muted">Saving...</span>
                                         )}
                                         {rowSaveStatus(saveStatuses, type.key) === 'saved' && (
-                                            <span className="text-xs text-status-success">Saved</span>
+                                            <span className="text-xs text-content-status-success">Saved</span>
                                         )}
                                         {rowSaveStatus(saveStatuses, type.key) === 'error' && (
-                                            <span className="text-xs text-status-error">Error</span>
+                                            <span className="text-xs text-content-status-error">Error</span>
                                         )}
                                         {rowSaveStatus(saveStatuses, type.key) === 'guard' && (
-                                            <span className="text-xs text-status-error">At least one notification must stay enabled</span>
+                                            <span className="text-xs text-content-status-error">At least one notification must stay enabled</span>
                                         )}
                                     </div>
                                 </div>
@@ -1981,13 +1981,13 @@ function Profile(){
                                             <span className="text-xs text-content-muted">Saving...</span>
                                         )}
                                         {saveStatuses[REMINDER_WINDOW_SLOT] === 'saved' && (
-                                            <span className="text-xs text-status-success">Saved</span>
+                                            <span className="text-xs text-content-status-success">Saved</span>
                                         )}
                                         {/* ML-16 (87.5 review): the identity-guard and persist-failure
                                             paths both set status 'error' here — without this branch the
                                             dropdown silently snapped back with zero feedback. */}
                                         {saveStatuses[REMINDER_WINDOW_SLOT] === 'error' && (
-                                            <span className="text-xs text-status-error">Error</span>
+                                            <span className="text-xs text-content-status-error">Error</span>
                                         )}
                                     </div>
                                 )}
@@ -2014,8 +2014,8 @@ function Profile(){
                     {saveStatuses[RESET_SLOT] && (
                         <div className="mt-2 text-center">
                             {saveStatuses[RESET_SLOT] === 'saving' && <span className="text-xs text-content-muted">Resetting...</span>}
-                            {saveStatuses[RESET_SLOT] === 'saved' && <span className="text-xs text-status-success">Reset to defaults</span>}
-                            {saveStatuses[RESET_SLOT] === 'error' && <span className="text-xs text-status-error">Couldn't reset — try again.</span>}
+                            {saveStatuses[RESET_SLOT] === 'saved' && <span className="text-xs text-content-status-success">Reset to defaults</span>}
+                            {saveStatuses[RESET_SLOT] === 'error' && <span className="text-xs text-content-status-error">Couldn't reset — try again.</span>}
                         </div>
                     )}
 
@@ -2207,7 +2207,7 @@ function Profile(){
                                                             // DECISION Phase 88-27 (D-32 bucket D): the stripped hover was a TEXT
                                                             // alpha; it returns as a subtle SURFACE. Full reasoning at the twin
                                                             // marker on friends/page.js's Remove-friend gate.
-                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
                                                                 deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
                                                             }`}
                                                         >
@@ -2344,7 +2344,7 @@ function Profile(){
                                                             // DECISION Phase 88-27 (D-32 bucket D): the stripped hover was a TEXT
                                                             // alpha; it returns as a subtle SURFACE. Full reasoning at the twin
                                                             // marker on friends/page.js's Remove-friend gate.
-                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                                            className={`inline-flex min-h-11 items-center whitespace-nowrap rounded-btn px-2 text-sm text-content-status-error hover:bg-status-error-subtle focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
                                                                 deletePatternGate.isArmed(pattern.id) ? 'font-semibold' : ''
                                                             }`}
                                                         >
@@ -2433,8 +2433,8 @@ function Profile(){
                         </div>
                         {importProgress && (
                             <div className={`mt-3 p-3 rounded-btn ${
-                                importProgress.status === 'error' ? 'bg-status-error-subtle text-status-error' :
-                                importProgress.status === 'complete' ? 'bg-status-success-subtle text-status-success' :
+                                importProgress.status === 'error' ? 'bg-status-error-subtle text-content-status-error' :
+                                importProgress.status === 'complete' ? 'bg-status-success-subtle text-content-status-success' :
                                 'bg-surface-card-hover text-content-link'
                             }`}>
                                 <p className="font-medium">{importProgress.message}</p>
@@ -2533,7 +2533,7 @@ function Profile(){
                                                 game.name,
                                                 `Remove ${game.name}`
                                             )}
-                                            className={`inline-grid min-h-11 min-w-11 place-items-center whitespace-nowrap rounded-btn border px-2 text-sm text-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                            className={`inline-grid min-h-11 min-w-11 place-items-center whitespace-nowrap rounded-btn border px-2 text-sm text-content-status-error focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring ${
                                                 removeGameGate.isArmed(game.id)
                                                     ? 'bg-status-error-subtle border-status-error font-semibold'
                                                     : 'border-status-error hover:bg-status-error-subtle'

@@ -76,7 +76,7 @@ export default function MemberSelector({
         Selected: {selectedMemberIds.length} of {members.length} members
       </p>
       {error && (
-        <p className="text-status-error text-sm mt-1">{error}</p>
+        <p className="text-content-status-error text-sm mt-1">{error}</p>
       )}
     </div>
   );

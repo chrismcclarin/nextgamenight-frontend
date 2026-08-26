@@ -111,7 +111,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
           <div className="p-4">
             <div className="bg-status-success-subtle border border-status-success rounded-card p-4 mb-3">
               <div className="flex items-center gap-2">
-                <span className="text-lg font-bold text-status-success">Winner</span>
+                <span className="text-lg font-bold text-content-status-success">Winner</span>
               </div>
               <p className="text-lg font-semibold text-content-primary mt-1">{winner.game_name}</p>
             </div>
@@ -147,10 +147,10 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
             <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
           </div>
           <div className="p-4">
-            <p className="text-sm font-medium text-status-warning mb-3">
+            <p className="text-sm font-medium text-content-status-warning mb-3">
               Voting ended in a tie! Pick the winning game:
             </p>
-            {error && <p className="text-sm text-status-error mb-2">{error}</p>}
+            {error && <p className="text-sm text-content-status-error mb-2">{error}</p>}
             <div className="space-y-2">
               {(tied_options || []).map(opt => (
                 <button
@@ -192,10 +192,10 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
             <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
           </div>
           <div className="p-4">
-            <p className="text-sm font-medium text-status-warning mb-3">
+            <p className="text-sm font-medium text-content-status-warning mb-3">
               No votes were cast. Pick a game for this event:
             </p>
-            {error && <p className="text-sm text-status-error mb-2">{error}</p>}
+            {error && <p className="text-sm text-content-status-error mb-2">{error}</p>}
             <div className="space-y-2">
               {(options || []).map(opt => (
                 <button
@@ -240,7 +240,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
       </div>
 
       <div className="p-4 space-y-3">
-        {error && <p className="text-sm text-status-error">{error}</p>}
+        {error && <p className="text-sm text-content-status-error">{error}</p>}
 
         {canVote ? (
           <div className="space-y-2">

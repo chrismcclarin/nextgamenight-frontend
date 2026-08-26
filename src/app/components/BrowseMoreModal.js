@@ -359,7 +359,7 @@ export default function BrowseMoreModal({
           {loading ? (
             <p className="text-content-muted text-center py-12">Loading suggestions...</p>
           ) : error ? (
-            <p className="text-status-error text-center py-12">{error}</p>
+            <p className="text-content-status-error text-center py-12">{error}</p>
           ) : libraryEmpty ? (
             <EmptyState
               variant="library-empty"

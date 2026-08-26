@@ -943,7 +943,16 @@ export default function EventScheduler({
                     top: '2px',
                     right: '4px',
                     fontSize: '10px',
-                    color: 'var(--color-status-success)',
+                    // DECISION Phase 88.3 (Req 6 / OI-1): the ONE status text site in the app that
+                    // is an INLINE STYLE reading the custom property directly rather than a
+                    // `text-content-status-success` utility class. It is therefore invisible to the
+                    // stringChunks census and to `statusTextSweep.test.ts` test 1, so it is swept by
+                    // hand here. It rendered correctly before this phase only by the COINCIDENCE
+                    // that light-mode `--color-status-success-border` and `-text` share a value;
+                    // that is not guaranteed and is already false in dark mode (#22c55e vs the
+                    // border). Pointing this back at the shared `var(--color-status-success)` key,
+                    // which now resolves to the BORDER value, is a decision, not a cleanup.
+                    color: 'var(--color-status-success-text)',
                     fontWeight: 600,
                     zIndex: 1,
                   }}

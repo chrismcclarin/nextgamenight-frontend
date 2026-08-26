@@ -102,7 +102,7 @@ export function FormField({
       {control}
       {hint}
       {error && (
-        <p id={errorId} role="alert" className="text-status-error text-xs mt-1">
+        <p id={errorId} role="alert" className="text-content-status-error text-xs mt-1">
           {error}
         </p>
       )}

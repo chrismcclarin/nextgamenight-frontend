@@ -109,7 +109,7 @@ describe('createGroup — Req 9 migration proof', () => {
     // decision rather than a passing test.
     const closes = screen.getAllByRole('button', { name: /close/i });
     expect(closes).toHaveLength(1);
-    expect(closes[0].className).toContain('text-status-error');
+    expect(closes[0].className).toContain('text-content-status-error');
   });
 
   it('renders nothing at all when `modal` is false', () => {

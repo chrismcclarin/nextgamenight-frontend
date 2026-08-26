@@ -702,7 +702,7 @@ function FriendsPage() {
                                             );
                                         case 'sent':
                                             return (
-                                                <span className="flex items-center gap-1 text-sm text-status-success font-medium">
+                                                <span className="flex items-center gap-1 text-sm text-content-status-success font-medium">
                                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                                     </svg>
@@ -766,7 +766,7 @@ function FriendsPage() {
                             so it must interrupt. Same DEF-88-19-04 gap as userProfile's phone
                             flow — a screen-reader user was told nothing when a Remove failed. */}
                         {removeError && (
-                            <p role="alert" className="text-status-error text-sm mb-4">{removeError}</p>
+                            <p role="alert" className="text-content-status-error text-sm mb-4">{removeError}</p>
                         )}
                         {/* 88-33 Task 1: the groups fetch feeds ONLY the invite-to-group bar, which is
                             itself gated on `userGroups.length > 0` — so a swallowed failure was
@@ -855,10 +855,10 @@ function FriendsPage() {
                                         {bulkInviteResult && (
                                             <div className={`mt-3 p-3 rounded-lg text-sm font-medium ${
                                                 bulkInviteResult.failCount === 0
-                                                    ? 'bg-status-success-subtle text-status-success border border-status-success'
+                                                    ? 'bg-status-success-subtle text-content-status-success border border-status-success'
                                                     : bulkInviteResult.successCount > 0
-                                                        ? 'bg-status-warning-subtle text-status-warning border border-status-warning'
-                                                        : 'bg-status-error-subtle text-status-error border border-status-error'
+                                                        ? 'bg-status-warning-subtle text-content-status-warning border border-status-warning'
+                                                        : 'bg-status-error-subtle text-content-status-error border border-status-error'
                                             }`}>
                                                 {bulkInviteResult.failCount === 0
                                                     ? `Invited ${bulkInviteResult.successCount} friend(s) to ${getSelectedGroupName()}!`
@@ -944,7 +944,7 @@ function FriendsPage() {
                                                             // weight. Same treatment on the two delete-pattern gates in
                                                             // userProfile and on ParticipantRow's Remove, which reaches
                                                             // it by the ordinary bucket-C rule.
-                                                            className={`min-h-11 px-3 rounded-btn border text-sm transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring text-status-error hover:bg-status-error-subtle ${
+                                                            className={`min-h-11 px-3 rounded-btn border text-sm transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring text-content-status-error hover:bg-status-error-subtle ${
                                                                 armed
                                                                     ? 'border-status-error font-semibold'
                                                                     : 'border-transparent font-medium'
@@ -1075,7 +1075,7 @@ function FriendsPage() {
                                                     <p className="text-sm text-content-muted mt-0.5">{addressee.email}</p>
                                                 )}
                                             </div>
-                                            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-status-warning-subtle text-status-warning border border-status-warning">
+                                            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-status-warning-subtle text-content-status-warning border border-status-warning">
                                                 Pending
                                             </span>
                                         </div>

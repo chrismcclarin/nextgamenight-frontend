@@ -1209,7 +1209,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                           max="720"
                         />
                         {durationOverMax && (
-                          <p className="text-status-error text-xs mt-1">Maximum 12 hours (720 minutes)</p>
+                          <p className="text-content-status-error text-xs mt-1">Maximum 12 hours (720 minutes)</p>
                         )}
                       </>
                     );

@@ -136,7 +136,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
       <Modal open onClose={onClose} className="max-w-md">
         <Modal.Body>
           <div className="text-center">
-            <div className="text-status-success text-5xl mb-4">✓</div>
+            <div className="text-content-status-success text-5xl mb-4">✓</div>
             <DialogTitle className="text-xl font-bold text-content-primary mb-2">Thank You!</DialogTitle>
             <p className="text-content-secondary">Your feedback has been submitted successfully.</p>
           </div>
@@ -228,7 +228,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
                 <button
                   type="button"
                   onClick={removeScreenshot}
-                  className="text-content-muted hover:text-status-error transition-colors shrink-0"
+                  className="text-content-muted hover:text-content-status-error transition-colors shrink-0"
                   aria-label="Remove screenshot"
                 >
                   ×

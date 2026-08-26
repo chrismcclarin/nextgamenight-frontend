@@ -264,7 +264,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
               confirmation.tone === 'success' ? 'bg-status-success-subtle' : 'bg-surface-card-hover'
             }`}>
               <p className={`text-sm font-medium ${
-                confirmation.tone === 'success' ? 'text-status-success' : 'text-content-muted'
+                confirmation.tone === 'success' ? 'text-content-status-success' : 'text-content-muted'
               }`}>{confirmation.text}</p>
             </div>
           )}

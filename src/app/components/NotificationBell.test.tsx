@@ -117,6 +117,10 @@ describe('L-8 — a dead-group 410 on the pending invite', () => {
     // The tone half of the refactor: a dead group is NOT a success. Muted
     // styling, never success-green.
     expect(notice.className).toContain('text-content-muted');
+    // Both token names are asserted, not just the current one: after the Phase 88.3 Req 6
+    // sweep the destination is `text-content-status-success`, and pinning ONLY that would
+    // leave a revert to the legacy class passing this test.
+    expect(notice.className).not.toContain('text-content-status-success');
     expect(notice.className).not.toContain('text-status-success');
 
     // The dead row is dropped optimistically instead of leaving a button that
@@ -166,7 +170,7 @@ describe('the { text, tone } confirmation shape', () => {
     // A revert to the bare-string confirmation renders an empty banner here —
     // `confirmation.text` is undefined — so this line is the shape pin.
     const confirmation = await screen.findByText(`Joined ${GROUP_NAME}!`);
-    expect(confirmation.className).toContain('text-status-success');
+    expect(confirmation.className).toContain('text-content-status-success');
     expect(applyLastUpdater([INVITE])).toEqual([]);
     expect(sessionStorage.getItem('nggroups:refresh')).toBe('1');
   });

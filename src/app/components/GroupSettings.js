@@ -545,7 +545,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                       Leave <strong>{group?.name}</strong>? You will lose access to events, library, and member-only content.
                     </p>
                     {leaveError && (
-                      <p className="text-sm text-status-error">{leaveError}</p>
+                      <p className="text-sm text-content-status-error">{leaveError}</p>
                     )}
                     <div className="flex gap-3">
                       <button

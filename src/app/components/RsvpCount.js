@@ -31,9 +31,9 @@ export default function RsvpCount({ rsvpSummary, variant = 'full', className = '
   if (variant === 'compact') {
     return (
       <div className={`flex gap-1 ${className}`.trim()}>
-        {yes > 0 && <span className="text-status-success">{yes}Y</span>}
-        {maybe > 0 && <span className="text-status-warning">{maybe}M</span>}
-        {no > 0 && <span className="text-status-error">{no}N</span>}
+        {yes > 0 && <span className="text-content-status-success">{yes}Y</span>}
+        {maybe > 0 && <span className="text-content-status-warning">{maybe}M</span>}
+        {no > 0 && <span className="text-content-status-error">{no}N</span>}
       </div>
     );
   }
@@ -42,21 +42,21 @@ export default function RsvpCount({ rsvpSummary, variant = 'full', className = '
   const parts = [];
   if (yes > 0) {
     parts.push(
-      <span key="yes" className="text-status-success font-medium">
+      <span key="yes" className="text-content-status-success font-medium">
         {yes} going
       </span>
     );
   }
   if (maybe > 0) {
     parts.push(
-      <span key="maybe" className="text-status-warning font-medium">
+      <span key="maybe" className="text-content-status-warning font-medium">
         {maybe} maybe
       </span>
     );
   }
   if (no > 0) {
     parts.push(
-      <span key="no" className="text-status-error font-medium">
+      <span key="no" className="text-content-status-error font-medium">
         {no} can&apos;t
       </span>
     );

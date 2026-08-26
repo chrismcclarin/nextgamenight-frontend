@@ -42,8 +42,8 @@ import { toast } from 'sonner';
 // to raw amber is a decision, not a cleanup.
 function RsvpStatusPill({ status }) {
     const map = {
-        yes: { label: 'Going', cls: 'bg-status-success-subtle text-status-success' },
-        maybe: { label: 'Maybe', cls: 'bg-status-warning-subtle text-status-warning' },
+        yes: { label: 'Going', cls: 'bg-status-success-subtle text-content-status-success' },
+        maybe: { label: 'Maybe', cls: 'bg-status-warning-subtle text-content-status-warning' },
         no: { label: 'No', cls: 'bg-surface-card-hover text-content-muted' },
     };
     if (!status) {
@@ -197,11 +197,11 @@ function GuestInviteButton({ groupId, userId }) {
                the min-h-11 sweep in this file); this control sat at ~22px. */
             className={`inline-flex min-h-11 items-center text-xs px-2 py-1 rounded-sm border border-line transition-colors ${
                 status === 'sent'
-                    ? 'bg-status-success-subtle border-status-success text-status-success'
+                    ? 'bg-status-success-subtle border-status-success text-content-status-success'
                     : status === 'pending' || status === 'member' || status === 'already'
                         ? 'text-content-muted border-line bg-surface-page'
                         : status === 'error'
-                            ? 'bg-status-error-subtle border-status-error hover:bg-status-error-subtle-hover text-status-error'
+                            ? 'bg-status-error-subtle border-status-error hover:bg-status-error-subtle-hover text-content-status-error'
                             : 'hover:bg-surface-hover text-content-link'
             }`}
             title={
@@ -1222,7 +1222,7 @@ export default function GameDetailPage() {
                                             )}
                                         </div>
                                         {event.is_group_win ? (
-                                            <p className="text-sm text-status-success font-semibold mb-1">
+                                            <p className="text-sm text-content-status-success font-semibold mb-1">
                                                 ✓ Group Win
                                             </p>
                                         ) : event.Winner && (
@@ -1541,7 +1541,7 @@ export default function GameDetailPage() {
                                                 role="menuitem"
                                                 onClick={handleCancelEvent}
                                                 disabled={cancellingEvent}
-                                                className="w-full text-left px-3 py-2 text-sm text-status-error hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                                                className="w-full text-left px-3 py-2 text-sm text-content-status-error hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 {cancellingEvent ? 'Cancelling…' : 'Cancel event'}
                                             </button>
@@ -1552,7 +1552,7 @@ export default function GameDetailPage() {
                                                 role="menuitem"
                                                 onClick={handleLeaveEvent}
                                                 disabled={leavingEvent}
-                                                className="w-full text-left px-3 py-2 text-sm text-status-error hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                                                className="w-full text-left px-3 py-2 text-sm text-content-status-error hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 {leavingEvent ? 'Leaving…' : 'Leave event'}
                                             </button>
@@ -1957,8 +1957,8 @@ export default function GameDetailPage() {
                                                 )}
                                                 className={`inline-flex min-h-11 items-center text-xs px-2 py-1 border rounded-sm transition-colors shrink-0 ${
                                                     isConfirming
-                                                        ? 'bg-status-error-subtle border-status-error text-status-error font-semibold'
-                                                        : 'border-status-error text-status-error hover:bg-status-error-subtle'
+                                                        ? 'bg-status-error-subtle border-status-error text-content-status-error font-semibold'
+                                                        : 'border-status-error text-content-status-error hover:bg-status-error-subtle'
                                                 }`}
                                             >
                                                 {removeParticipantGate.labelFor(p.user_id, 'Remove')}
@@ -2070,7 +2070,7 @@ export default function GameDetailPage() {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="text-center">
-                    <p className="text-status-error mb-4">Game not found</p>
+                    <p className="text-content-status-error mb-4">Game not found</p>
                     {/* Phase 71.1 GAMP-11: scope-aware fallback — game-only/none
                         callers fall through to "← Back to Home" since the group
                         page would 403. Group-member/pending see the group link
@@ -2689,7 +2689,7 @@ export default function GameDetailPage() {
                                     {renderStars(userReview.rating)}
                                 </p>
                                 {userReview.is_recommended && (
-                                    <p className="text-sm text-status-success font-semibold">✓ Recommended</p>
+                                    <p className="text-sm text-content-status-success font-semibold">✓ Recommended</p>
                                 )}
                                 <button
                                     onClick={() => setShowReviewForm(true)}
@@ -2743,7 +2743,7 @@ export default function GameDetailPage() {
                                                     {renderStars(review.rating)}
                                                 </p>
                                                 {review.is_recommended && (
-                                                    <p className="text-sm text-status-success font-semibold">✓ Recommended</p>
+                                                    <p className="text-sm text-content-status-success font-semibold">✓ Recommended</p>
                                                 )}
                                             </div>
                                         </div>
