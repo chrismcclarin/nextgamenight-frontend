@@ -324,6 +324,14 @@
   --color-surface-card-hover: var(--color-bg-card-hover);
   --color-surface-elevated: var(--color-bg-elevated);
   --color-surface-input: var(--color-bg-input);
+  /* Phase 88.3 (D-02 / D-03, UI-SPEC §9.4): the two new surfaces, bridged in the house shape —
+     theme key here, runtime property `--color-bg-hover` / `--color-bg-sunken` in the `:root` and
+     `.dark` blocks below, so the two names never collide. The key names deliberately DIFFER from
+     the property names; that is what keeps them out of the nine-key `--color-X: var(--color-X)`
+     collision family documented further down this file, and why neither needs a `-subtle`-style
+     alias. */
+  --color-surface-hover: var(--color-bg-hover);
+  --color-surface-sunken: var(--color-bg-sunken);
   --color-surface-nav: var(--color-bg-nav);
   --color-surface-nav-hover: var(--color-bg-nav-hover);
   --color-surface-header: var(--color-bg-header);
@@ -547,6 +555,7 @@
   --warm-300: #d6cbc0;
   --warm-400: #b8a898;
   --warm-500: #8c7a6a;
+  --warm-550: #786758;   /* Phase 88.3 (Req 8) — the 60% point on warm-500 -> warm-600; the full DECISION marker lives at `--color-text-muted` below */
   --warm-600: #6b5a4c;
   --warm-700: #4a3d32;
   --warm-800: #2d2520;
@@ -556,9 +565,51 @@
 /* ===== DESIGN SYSTEM: Semantic Tokens (Light = default) ===== */
 :root {
   /* Surfaces */
-  --color-bg-page: var(--warm-50);
+  /* DECISION Phase 88.3 (Req 1 / UI-SPEC §5.1-5.2): the light page ground drops one real step to
+     warm-100, so a white card now sits ABOVE its page by ΔL* 5.00 instead of 2.30. This is
+     archetype A — TONAL depth, where the PAGE carries the separation, the border falls back to a
+     hairline and the resting shadow goes away — chosen from a rendered 375px four-way mockup
+     (artifact be3f50bf-588e-4d68-97f8-5545d831ef94) OVER the two other shipped archetypes
+     surveyed in `.planning/research/LIGHT-MODE-INDUSTRY-SURVEY-2026-08-25.md`:
+       (b) archetype B, BORDERED-WHITE (GitHub Primer / Vercel / Linear / shadcn) — REJECTED: it
+           spends the whole depth budget on a 3:1-class border, which recolours every separator in
+           the app and reads as a wireframe at phone width.
+       (c) archetype C, SHADOW-PRIMARY (Stripe) — REJECTED: see the `--shadow-sm` marker below. A
+           1-2px 6%-alpha warm shadow is invisible at 375px, which is how the app got the
+           complaint that started this phase.
+     Peer numbers for the chosen step: Apple's grouped-table background sits ΔL* 4.4 below its
+     cell and Radix `sand-3` sits 5.2 below `sand-1`; this ships 5.00, between them.
+     Putting this back to warm-50 removes the ONLY remaining depth cue in light mode — the border
+     is a hairline and the resting shadow is `none` by design. It is a decision, not a cleanup. */
+  --color-bg-page: var(--warm-100);
   --color-bg-card: #ffffff;
-  --color-bg-card-hover: var(--warm-100);
+  /* DECISION Phase 88.3 (D-01 / UI-SPEC §5.2): re-keyed warm-100 -> warm-200, because archetype A
+     took warm-100 for the PAGE and a tinted surface that equals the page is no surface at all.
+     This token serves THREE roles, and only the third stays on it after 88.3:
+       - 42 `hover:` washes                        -> move to `--color-bg-hover` (D-02, plan 06);
+       - 1 `data-[state=open]:` (`dialog.tsx:75`)  -> moves with them;
+       - ~49 BARE STATIC surfaces (pills, badges, chips, skeletons, selected/disabled states)
+                                                   -> STAY here, and warm-200 is chosen FOR them.
+     Rejected: warm-50 for those static pills — that is the near-white value `DECISION Phase 88-27
+     (D-32/D-33)` at `ClickableMemberName.js:314-322` already measured and rejected as
+     "byte-identical to the card", and `tintTreatment.test.ts:281` pins the rejection.
+     Rejected: minting a fresh ~#efe8e0 step — the owner chose the existing ramp step once hover
+     had moved off this token.
+     LADDER SELF-CHECK (must keep holding): page 95.0 < hover/sunken 97.7 < card/elevated/input
+     100.0, while card-hover 89.6 sits BELOW the page ON PURPOSE. A pill is DARKER than its
+     surroundings; a hovered card is LIGHTER. Those are opposite directions, and that is the whole
+     reason the token was split. Collapsing hover and pills back onto one value
+     is a decision, not a cleanup. */
+  --color-bg-card-hover: var(--warm-200);
+  /* Phase 88.3 (D-02 / D-03, UI-SPEC §5.2): the two NEW surfaces archetype A needs. `hover` is
+     the owner's "S3 press" look — warm-50 is LIGHTER than the page but fainter than the card
+     (ΔL* 2.30), so a hovered card reads pressed rather than lifted. `sunken` is the same value in
+     LIGHT because a block recessed inside a white card wants the same single step; the two names
+     diverge in DARK, where `sunken` is a minted literal (see the `.dark` block below). Bridged as
+     `bg-surface-hover` / `bg-surface-sunken` in `@theme inline` above. Full rationale for the
+     split is at the `--color-bg-card-hover` marker directly above. */
+  --color-bg-hover: var(--warm-50);
+  --color-bg-sunken: var(--warm-50);
   --color-bg-elevated: #ffffff;
   --color-bg-overlay: rgba(0, 0, 0, 0.5);
   --color-bg-input: #ffffff;
@@ -601,7 +652,22 @@
   /* Text */
   --color-text-primary: var(--warm-900);
   --color-text-secondary: var(--warm-600);
-  --color-text-muted: var(--warm-500);
+  /* DECISION Phase 88.3 (Req 8 / UI-SPEC §5.9.1): light muted moves to the NEW `--warm-550`
+     `#786758` — the 60% point on the warm-500 -> warm-600 line, so it belongs to the ramp rather
+     than being a bespoke hue. Chosen OVER re-keying muted to `--warm-600` (REJECTED: warm-600 IS
+     `--color-text-secondary` on the line directly above, so that collapses muted into secondary
+     and destroys a two-level text hierarchy the app uses everywhere) and OVER leaving `--warm-500`
+     (REJECTED: 3.63:1 on the new warm-100 page — below AA — which is the defect Req 8 exists to
+     fix). Measured: 5.41 on the white card, 4.78 on the warm-100 page, 5.11 on warm-50
+     sunken/hover; ΔL* 5.3 from secondary and 7.6 from `--color-border-strong` (still warm-500), so
+     neither collapses. The true midpoint `#7c6a5b` was rejected at 4.55 on warm-100 — a 0.05
+     margin is not a margin.
+     RESIDUAL, DISCLOSED NOT HIDDEN: on the warm-200 `card-hover` ground this measures 4.15, and no
+     value on this ramp clears 4.5 THERE while staying distinct from secondary. The phase rule is
+     therefore `text-content-secondary` (5.04) on a card-hover pill/badge/chip — never
+     `text-content-muted`. Dark is unchanged (warm-400, 7.78 on the dark card).
+     Moving this back onto a shared ramp step is a decision, not a cleanup. */
+  --color-text-muted: var(--warm-550);
   --color-text-inverse: #ffffff;
   --color-text-link: var(--purple-600);
   --color-text-link-hover: var(--purple-700);
@@ -635,7 +701,7 @@
      in-browser per the 87.8-01 method before treating either number as final.
      Changing either value, or "simplifying" this back onto `--color-line`, is a decision, not a
      cleanup. */
-  --color-border: var(--warm-200);
+  --color-border: var(--warm-300);
   --color-border-strong: var(--warm-500);
   --color-border-accent: var(--amber-600);
 
@@ -670,7 +736,19 @@
      rings (dark `--shadow-sm` is `none`; `-md`/`-lg` are 1px rings), a shipped choice from the original
      design system — warming a shadow that does not render is a no-op at best. Re-tinting dark, or
      "finishing the job" by re-tinting it for symmetry, is a decision, not a cleanup. */
-  --shadow-sm: 0 1px 2px rgba(120, 80, 40, 0.06);
+  /* DECISION Phase 88.3 (Req 3 / UI-SPEC §5.4): the LIGHT `--shadow-sm` becomes `none`, so a
+     RESTING card carries no shadow in EITHER theme — dark has shipped `none` at its own
+     declaration in the `.dark` block below since 87.7. Under archetype A the page TONE carries the
+     depth (see the `--color-bg-page` marker above); the 1px/2px 6%-alpha warm shadow was the third
+     of three sub-threshold cues and measured invisible at 375px on the phone this app is used on.
+     Chosen OVER archetype C — shadow as the PRIMARY light-mode depth cue (Stripe) — REJECTED in
+     the same rendered 375px mockup (artifact be3f50bf): a shadow heavy enough to separate a card
+     at phone width reads as a floating dialog, not as a card.
+     `--shadow-md` and `--shadow-lg` are DELIBERATELY UNTOUCHED — hover lift, dropdowns, sheets and
+     modals keep their elevation — and the legacy `@utility card` rule moves its RESTING shadow
+     DOWN to `-sm` to match `<Card>` rather than `-md` staying put (OI-2 marker at that rule).
+     Restoring a resting `-sm` shadow, in either theme, is a decision, not a cleanup. */
+  --shadow-sm: none;
   --shadow-md: 0 4px 6px rgba(120, 80, 40, 0.08);
   --shadow-lg: 0 10px 15px rgba(120, 80, 40, 0.10);
 
@@ -746,7 +824,7 @@
      repairing `--color-border-strong` above: 88.3 owns the light ramp wholesale and the measured
      one-line candidate (purple-600, 5.34:1 vs page / 5.66:1 vs white card) is recorded there.
      Leaving this at purple-400 is a scheduled deferral, not an oversight. */
-  --color-focus-ring: var(--purple-400);
+  --color-focus-ring: var(--purple-700);
 
   /* Transitions */
   --theme-transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
@@ -757,6 +835,21 @@
   --color-bg-page: var(--purple-950);
   --color-bg-card: var(--purple-900);
   --color-bg-card-hover: var(--purple-800);
+  /* Phase 88.3 (D-02): deliberately IDENTICAL to `--color-bg-card-hover` directly above, so every
+     one of the 42 sites swept from `hover:bg-surface-card-hover` to `hover:bg-surface-hover` in
+     plan 06 is BYTE-IDENTICAL in dark. The two values diverge in LIGHT only, which is the whole
+     point of the split (marker at the light declaration). */
+  --color-bg-hover: var(--purple-800);
+  /* DECISION Phase 88.3 (D-03 / UI-SPEC §5.2.1): `#1c2432` is a MINTED literal — the 45% point on
+     the `--purple-950` -> `--purple-900` line — because no palette step exists between those two.
+     The precedent for minting rather than approximating is `--color-bg-today-tint`'s dark literal
+     a few lines below. Measured: L* 14.1, which is ΔL* 4.2 BELOW the dark card (purple-900, 18.3)
+     and 3.5 ABOVE the dark page (purple-950, 10.6), so a sunken block inside a card on a page
+     reads as three distinct surfaces; `--color-content-primary` on it is 14.70:1.
+     Rejected: reusing `--purple-950` — that IS the page colour, so a sunken block would be
+     indistinguishable from the page and the three-surface ladder collapses back to two. Rounding
+     this onto a neighbouring palette step is a decision, not a cleanup. */
+  --color-bg-sunken: #1c2432;
   --color-bg-elevated: var(--purple-800);
   --color-bg-overlay: rgba(0, 0, 0, 0.7);
   --color-bg-input: var(--purple-800);
