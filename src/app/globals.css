@@ -1145,7 +1145,20 @@ body {
 @utility card {
   background-color: var(--color-bg-card);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-md);
+  /* DECISION Phase 88.3 (OI-2 / UI-SPEC §8.4, owner-ruled 2026-08-25): the RESTING shadow moves
+     `-md` -> `-sm`, so both card idioms are flat at rest and both lift to `-md` on hover. Req 3
+     sets light `--shadow-sm` to `none`, and without this line `<Card>` (`Card.tsx:22`, which is on
+     `shadow-theme-sm`) would go flat while this legacy `.card` kept a 4px/6px warm shadow at 28-29
+     call sites across 11 files — two different resting-card treatments side by side, on the app's
+     most common surface, at exactly the moment the Req 12 UAT asks the owner "do cards read as
+     cards?". Req 3's acceptance probe reads `<Card>` only, so it would have passed over that.
+     MEASURED BASIS: the light `shadow-md` is invisible at 375px, so this changes one DEFINITION of
+     "a resting card", not the rendered appearance.
+     Rejected: migrating the 28-29 `.card` call sites to `<Card>` — that is Phase 88.6's
+     `.btn`-to-`Button`-shaped work and must not be pulled forward into a token phase.
+     Rejected: doing nothing — the option that fails the Req 12 UAT question.
+     Putting this back to `-md` re-splits the two idioms; it is a decision, not a cleanup. */
+  box-shadow: var(--shadow-sm);
   /* DECISION Phase 88-24: this 24px is the FALLBACK, not the shipped value. All 28
      `.card` call sites author `p-3 md:p-6` (12px phone / 24px desktop) and every one
      of them is load-bearing — deleting a call site's `p-*` silently doubles its phone
@@ -1154,7 +1167,16 @@ body {
   transition: var(--theme-transition);
 
   &:hover {
-    background-color: var(--color-bg-card-hover);
+    /* DECISION Phase 88.3 (D-02 / UI-SPEC §8.4): this is THE 43RD HOVER SITE, and the only one
+       that lives in CSS rather than in a `className`. The plan-06 sweep that moves 42
+       `hover:bg-surface-card-hover` sites to `hover:bg-surface-hover` greps JSX — it will never
+       find this line, so it is changed here, by hand, in the same wave the token is minted.
+       Rejected: leaving it on `--color-bg-card-hover`. After D-01 that token is warm-200, so a
+       hovered `.card` would jump ΔL* 10.4 (a heavy, pill-weight wash) while every swept `<Card>`
+       hovers to warm-50 at ΔL* 2.3 — the faint "S3 press" look the owner actually picked. Two
+       card idioms hovering to visibly different colours is the exact inconsistency OI-2 above is
+       closing at rest. Pointing this back at the static token is a decision, not a cleanup. */
+    background-color: var(--color-bg-hover);
   }
 }
 
