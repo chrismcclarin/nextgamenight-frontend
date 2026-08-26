@@ -55,13 +55,23 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { sourceFiles, withoutComments } from '../test-utils/sourceScan';
+import { contrastRatio } from '../lib/wcag';
+import { lineAt, sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 const raw = (rel: string): string => fs.readFileSync(path.join(SRC, rel), 'utf8');
 const code = (rel: string): string => withoutComments(raw(rel));
 
 const SEED = 'app/components/GroupSettings.js';
+
+/**
+ * Plan 11's surface: the group-home identity HEADER. It is not a member of
+ * `RENDER_SITES` above on purpose — its no-colour branch is `bg-surface-elevated`
+ * rather than `bg-surface-card` (88-22's decision, which this phase does NOT
+ * reverse), and it is the only site where the ground fork also drives three
+ * interactive controls and a title/subtitle treatment.
+ */
+const HEADER = 'app/groupHomePage/page.js';
 
 /**
  * The five render-site files, each with the themed surface class its NO-COLOUR
@@ -446,5 +456,238 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         `${path.relative(SRC, file)}: a background_color payload is being built from the tint`,
       ).not.toMatch(new RegExp(`background_color:\\s*[^,\\n]*${TINT}`));
     }
+  });
+
+  // -------------------------------------------------------------------------
+  // Plan 11 — the HEADER half of Req 9. Bare `it(` only, appended: the ci.yml
+  // registry floor is a MINIMUM (10), so growing this file needs no workflow
+  // edit, which is what lets plan 11 be its own wave.
+  //
+  // Everything below reads `groupHomePage/page.js` with comments blanked. That
+  // is not optional here: plan 11's own DECISION markers quote `useTheme`,
+  // `dark:bg-black/15`, `var(--amber-600)` and `bg-surface-elevated` in order
+  // to record why each was rejected, so a raw grep is red on the tree that is
+  // CORRECT and the pressure it applies is to delete the explanation.
+  // -------------------------------------------------------------------------
+
+  it('12. the header ground is the tint, and the uncoloured header keeps 88-22\'s themed surface', () => {
+    const src = code(HEADER);
+    expect(src, 'the header ground no longer comes from the tint').toContain(TINT);
+    // 88-22 STANDS. A group with NO colour of its own keeps the themed elevated
+    // surface — re-pinning a hardcoded dark value here would re-open the exact
+    // D-28 white-card bug 88-22 closed, this time in light mode.
+    expect(src, 'the uncoloured header lost its 88-22 fallback').toContain('bg-surface-elevated');
+
+    // The mutual-exclusion ternary, same shape plan 10 pins at its five sites.
+    const container = attrExprs(src, 'className').find((e) => e.text.includes(LIGHT_GROUND));
+    expect(container, 'no className expression carries the light ground').toBeTruthy();
+    expect(
+      container!.text,
+      'the header ground is not a mutual-exclusion ternary — see test 3: `.bg-[var(--group-ground-light)]` ' +
+        'emits BEFORE `.bg-surface-elevated` at the same specificity, so a stacked themed class paints a ' +
+        'coloured group WHITE in light mode',
+    ).toMatch(/\?\s*'bg-\[var\(--group-ground-light\)\][^']*'\s*:\s*'bg-surface-elevated/);
+
+    // …and the two must never share one literal, which is the shape the ternary
+    // regex alone cannot rule out.
+    for (const chunk of stringChunks(src)) {
+      if (!chunk.text.includes(LIGHT_GROUND)) continue;
+      expect(
+        chunk.text,
+        `${HEADER}:${lineAt(src, chunk.offset)}: the themed surface class is stacked with the tint pair`,
+      ).not.toMatch(/bg-surface-/);
+    }
+  });
+
+  it('13. GATE B — the title and subtitle fork through custom properties, not an inline style', () => {
+    const src = code(HEADER);
+    // An inline `style` CANNOT be forked by a `dark:` class — it outranks every
+    // class in both themes. So the fork is only possible if these calls stop
+    // being applied directly to the element.
+    expect(src, 'the title still applies getTextStyle inline — the light arm would be inert').not.toContain(
+      'style={getTextStyle(',
+    );
+    expect(src, 'the subtitle still applies getSubtitleStyle inline').not.toContain(
+      'style={getSubtitleStyle(',
+    );
+
+    const title = attrExprs(src, 'className').find((e) => e.text.includes('text-3xl'));
+    expect(title, 'the h1 was not found by its text-3xl Display size').toBeTruthy();
+    for (const util of [
+      '[color:var(--t-color-l)]',
+      'dark:[color:var(--t-color)]',
+      '[text-shadow:var(--t-shadow-l)]',
+      'dark:[text-shadow:var(--t-shadow)]',
+      // The STROKE pair is the half that was nearly lost. `getTextStyle`'s
+      // image branch returns a `-webkit-text-stroke` unconditionally, and it is
+      // what keeps the title readable over an arbitrary photo. Fork only the
+      // `dark:` arm and an image-background header silently loses its outline
+      // in LIGHT mode — T-88.3-54.
+      '[-webkit-text-stroke:var(--t-stroke-l)]',
+      'dark:[-webkit-text-stroke:var(--t-stroke)]',
+      // The WEIGHT pair, for the other half of T-88.3-54: compile-verified,
+      // `.[font-weight:var(--t-weight-l)]` emits AFTER `.font-bold`, so the
+      // arbitrary utility wins and its value must restate the base weight
+      // rather than say `inherit`.
+      '[font-weight:var(--t-weight-l)]',
+      'dark:[font-weight:var(--t-weight)]',
+    ]) {
+      expect(title!.text, `the h1 lost its ${util} utility`).toContain(util);
+    }
+  });
+
+  it('14. GATE B — the dim is three explicit cases and the 0.15 is never inline', () => {
+    const src = code(HEADER);
+    const overlay = attrExprs(src, 'className').find((e) => e.text.includes('rgb(0_0_0/0.15)'));
+    expect(
+      overlay,
+      'the coloured-header dark dim is gone, or is no longer a class — UI-SPEC §5.10.3: a 15% black ' +
+        'dim costs ~11.5 L* on the t = 0.70 tint and would fail Req 9\'s own rendered-pixel L* >= 75',
+    ).toBeTruthy();
+    expect(overlay!.text, 'the dim is not guarded on the PARSED tint').toContain('tinted');
+    expect(overlay!.text, 'the dim is not excluded on the image case').toContain(
+      '!Group?.background_image_url',
+    );
+    expect(overlay!.text).toContain('dark:bg-[rgb(0_0_0/0.15)]');
+
+    // Never the opacity-slash shorthand. Compile-verified on tailwindcss@4.3.3:
+    // `dark:bg-black/15` emits `color-mix(in oklab, var(--color-black) 15%, transparent)`,
+    // which Chromium serialises as `color(srgb …)`/`oklab(…)`. Plan 12's probe
+    // and every rendered-alpha reading expect a plain `rgba()`.
+    expect(src, 'the dim uses the opacity-slash form, which compiles to color-mix()').not.toContain(
+      'dark:bg-black/15',
+    );
+
+    // Only the IMAGE case keeps an inline backgroundColor. An inline
+    // `'transparent'` on the same property would outrank the `dark:` class and
+    // silently delete the dark dim in both themes.
+    expect(src, 'the photo dim is gone — it is needed in BOTH themes').toContain('rgba(0, 0, 0, 0.4)');
+    const style = attrExprs(src, 'style').find((e) => e.text.includes('borderRadius'));
+    expect(style, 'the overlay style object was not found').toBeTruthy();
+    expect(style!.text, 'an inline 0.15 remains on the overlay').not.toContain('0.15');
+    expect(style!.text, "an inline 'transparent' remains on the overlay").not.toContain(
+      "'transparent'",
+    );
+  });
+
+  it('15. the three controls survived the rewrite with their type scale and OI-6 closed', () => {
+    const src = code(HEADER);
+    expect(src, 'the controls no longer branch on the ground brightness').toContain(
+      'isDarkBackground',
+    );
+
+    // OI-6, owner-ruled 2026-08-25. White on `--amber-600` measured 3.19:1 and
+    // had failed in BOTH themes since before this phase.
+    expect(src, 'the amber fill regressed to amber-600 (white 3.19:1)').not.toContain(
+      'var(--amber-600)',
+    );
+    expect((src.match(/var\(--amber-700\)/g) ?? []).length).toBe(1);
+    // …and the ratio itself, read out of globals.css rather than restated, so a
+    // future palette edit reds here instead of drifting past a copied number.
+    // This is the OI-6 half of Gate A's ledger, which plan 05 deliberately left
+    // unpinned so that closing OI-6 would land the assertion with the fix.
+    const css = fs.readFileSync(path.join(SRC, 'app/globals.css'), 'utf8');
+    const amber700 = css.match(/--amber-700:\s*(#[0-9a-fA-F]{6})/)?.[1];
+    expect(amber700, 'globals.css no longer declares --amber-700').toBeTruthy();
+    const ratio = contrastRatio('#ffffff', amber700!)!;
+    expect(
+      Number(ratio.toFixed(2)),
+      `white on --amber-700 (${amber700}) measures ${ratio.toFixed(2)}:1 — OI-6 requires >= 4.5`,
+    ).toBeGreaterThanOrEqual(4.5);
+
+    // UI-SPEC §4 obligation 1. `typeScaleTouchedSurfaces.test.ts` CANNOT see
+    // these — its population is `<h1..h6>` only (RESEARCH C-10) — so the three
+    // controls' type scale has no other guard.
+    const controls = attrExprs(src, 'className').filter((e) => /'btn[ ']/.test(e.text));
+    expect(controls.length, 'the three .btn controls were not found').toBe(3);
+    for (const c of controls) {
+      expect(c.text, 'a header control lost text-sm').toContain('text-sm');
+      expect(c.text, 'a header control lost md:text-base').toContain('md:text-base');
+    }
+
+    // The Manage Members blur moved to the dark arm — it only ever did visible
+    // work over the translucent wash, which the light arm no longer has.
+    expect(src).toContain('dark:backdrop-blur-xs');
+    expect(src, 'the 10% white wash is still an inline style, which no dark: class can fork').toContain(
+      'dark:bg-white/10',
+    );
+    // The dark ring is RENDERED-EQUIVALENT to HEAD, via a class fork; the
+    // light-arm form must be gone. A plain `ring-white/15` check would match
+    // the `dark:`-prefixed form and pass vacuously, so exclude it explicitly.
+    expect((src.match(/dark:ring-white\/15/g) ?? []).length).toBe(2);
+    expect(
+      (src.match(/(^|[^:])ring-white\/15/gm) ?? []).length,
+      'a light-arm ring-white/15 survives — it measures 1.28:1 on the t = 0.70 tint',
+    ).toBe(0);
+  });
+
+  it('16. GATE B — the uncoloured header takes the DARK arm, and all three controls focus visibly', () => {
+    const src = code(HEADER);
+    // THE null RULE. `getBrightness(null)` returns 255 by contract, so
+    // `isDarkBackground(null)` is `false` — a bare `isDarkBackground(ground)`
+    // silently sends the app's DEFAULT header (no colour) to the LIGHT arm even
+    // in dark theme, where it sits on `bg-surface-elevated` (purple-800), a
+    // ground the colour value cannot see. A legacy non-hex colour that the tint
+    // cannot parse falls to the same `null` ground and must behave the same.
+    // Nothing else in the tree pins this: it is a boolean whose wrong value
+    // renders, just badly.
+    expect(
+      src,
+      'the darkArm expression lost its explicit `!ground ||` null rule — T-88.3-53',
+    ).toMatch(/!ground\s*\|\|\s*isDarkBackground\(ground\)/);
+
+    // The author focus ring, one per control. `.btn` defines no `focus-visible`
+    // style and there is no global one, and every `border-*` utility on a `.btn`
+    // is DEAD under the unlayered `.btn { border: none }` — so this ring is the
+    // only asserted keyboard-visible affordance these three elements have. The
+    // border/ring model itself is Phase 88.6's `Button` migration.
+    const controls = attrExprs(src, 'className').filter((e) => /'btn[ ']/.test(e.text));
+    expect(controls.length).toBe(3);
+    for (const c of controls) {
+      expect(c.text, 'a header control has no author focus ring').toContain(
+        'focus-visible:ring-focus-ring',
+      );
+    }
+
+    // and no `useTheme` — the theme half rides the cascade, as it does at plan
+    // 10's five sites (the shipped EventScheduler.tsx decision).
+    expect(src).not.toContain('useTheme');
+  });
+
+  it('17. the two protected markers inside the edited range are still there', () => {
+    // Both are markers whose LOSS is invisible to every other gate.
+    //
+    // `min-h-11`: the marker explains that below `md` the phone-only global
+    // floor and this per-CTA class agree, but at `md`+ this class is the ONLY
+    // thing holding the CTA at 44px — unlayered `.btn` padding beats the layered
+    // px/py utilities, so the control renders ~37px without it. A grep for
+    // `min-h-11` alone would not notice the EXPLANATION going, and once the
+    // explanation is gone the class reads as redundant with the global floor.
+    const marker = raw(HEADER);
+    expect(marker, 'the 87.8 D-13/D-14 + 88-28 D-36 min-h-11 marker was edited away').toMatch(
+      /this per-CTA `min-h-11` is NOT made redundant/,
+    );
+    expect(code(HEADER), 'min-h-11 itself is gone from the CTA').toContain('min-h-11');
+
+    // The inline-boxShadow marker records, in its own words, that dropping the
+    // white ring "would still pass 88-29's zero-`rgba(0,0,0` gate while looking
+    // wrong" — i.e. it states that an existing gate cannot catch its loss.
+    expect(marker, 'the Plan-Game-Session inline-boxShadow marker was edited away').toMatch(
+      /carried TWO halves/,
+    );
+  });
+
+  it('18. the D-10 decision lives at the production site with its rejected half named', () => {
+    const marker = raw(HEADER).replace(/\n\s*\*?[ \t]*/g, ' ');
+    expect(marker).toMatch(/DECISION Phase 88\.3 \(D-10 \/ OI-6\)/);
+    // The load-bearing half is what was REJECTED. "branches on darkArm" warns
+    // nobody; "over keying off has-no-colour, which is what shipped and is why
+    // the control vanished" stops the revert.
+    expect(marker, 'the rejected `data-ground` alternative is not named').toMatch(/data-ground/);
+    expect(marker, 'the rejected has-no-colour shape is not named').toMatch(/HAS no colour/);
+    expect(marker, 'the D-08 header-ground decision lost its marker').toMatch(
+      /DECISION Phase 88\.3 \(D-08\/D-09\)/,
+    );
+    expect(marker).toMatch(/is a decision, not a cleanup/);
   });
 });
