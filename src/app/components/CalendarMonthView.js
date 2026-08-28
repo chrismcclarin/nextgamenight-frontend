@@ -289,18 +289,49 @@ export default function CalendarMonthView({
                         const tileBgImage = variant === 'compact' ? null : groupBgImage;
                         // The R2-6 past-date theme-fork reasoning now lives with
                         // `tileTextTreatment` at module level (plan 88.3-16).
+                        /*
+                         * DECISION Phase 88.3-cr (CR-02, code-adversarial-review
+                         * 2026-08-27): both arms are fed the TINT-GATED values —
+                         * `ground` for dark, `tinted` for light — never the
+                         * stored hex and never `tinted || <stored hex>`. Same
+                         * change as `grouplist.js` / `CalendarListView.js` /
+                         * `EventDayModal.js`, mirroring `groupHomePage/page.js`,
+                         * which has always gated both the ground AND the text
+                         * style on the tint succeeding. Gating only the ground
+                         * was the exact asymmetry the T-88.3-43 marker warns
+                         * about: a stored value `resolveGroupBackgroundColor`
+                         * passes through but the tint rejects (anything not a
+                         * 6-digit hex) dropped the FULL tile back to the themed
+                         * cell while its text was still computed against the
+                         * malformed string, where `getBrightness` returns 255.
+                         * Unreachable for new writes (BE validator is
+                         * `^#[0-9A-Fa-f]{6}$`), so this is consistency, not a
+                         * live bug — but "withhold both grounds together" has to
+                         * mean the text too.
+                         *
+                         * NOT IN THE ORIGINAL CR-02 FINDING, which enumerated
+                         * only the other three files. This site was found by
+                         * censusing the `tinted || ` idiom while adding the Gate
+                         * B pin, and the pin cannot be file-complete without it.
+                         * The `isPastDate` truthiness gates below still read
+                         * `groupBgColor` deliberately: they ask "does this group
+                         * have a colour at all", not "what ground is painted",
+                         * and re-pointing them would change the past-date pole
+                         * on an untinted-but-coloured tile. A decision, not a
+                         * cleanup.
+                         */
                         const tileTextVars = themedTextStyleVars(
                           {
-                            ...tileTextTreatment(groupBgColor, tileBgImage),
+                            ...tileTextTreatment(ground, tileBgImage),
                             color: isPastDate
                               ? (groupBgColor ? SUBTEXT_MUTED_ON_DARK : 'var(--color-content-muted)')
-                              : getEventTileTextColor(groupBgColor),
+                              : getEventTileTextColor(ground),
                           },
                           {
-                            ...tileTextTreatment(tinted || groupBgColor, tileBgImage),
+                            ...tileTextTreatment(tinted, tileBgImage),
                             color: isPastDate
                               ? (groupBgColor ? SUBTEXT_MUTED_ON_LIGHT : 'var(--color-content-muted)')
-                              : getEventTileTextColor(tinted || groupBgColor),
+                              : getEventTileTextColor(tinted),
                           },
                         );
                         const tileLabel = `${event.Game?.name || 'Game Night'} - ${event.Group?.name || 'Group'}`;

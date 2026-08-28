@@ -287,10 +287,31 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             // ground above: the DARK half is computed against the stored hex,
             // the LIGHT half against the rendered tint. No `useTheme` — see the
             // shipped DECISION at EventScheduler.tsx (plan 15, Req 8).
-            const cardTextDark = getTextStyle(hasBgImage, bgColor);
+            /*
+             * DECISION Phase 88.3-cr (CR-02, code-adversarial-review
+             * 2026-08-27): the DARK arm is computed on `ground`, not on the
+             * stored hex, and the LIGHT arm on `tinted`, not on
+             * `tinted || <stored hex>` — mirroring the shipped shape at
+             * `groupHomePage/page.js`, which gates BOTH the ground and the
+             * text style on the tint succeeding. Gating only the ground was
+             * the exact asymmetry the T-88.3-43 marker above warns about:
+             * a stored value that `resolveGroupBackgroundColor` passes
+             * through but `lightTintGroupBackgroundColor` rejects (anything
+             * not a 6-digit hex) would drop the card back to the themed
+             * surface while the text treatment was still computed against
+             * the malformed string — `getBrightness` returns 255 for it, so
+             * the dark arm painted the light-ground pole on a DARK themed
+             * card. Unreachable for new writes (the backend validator is
+             * `^#[0-9A-Fa-f]{6}$`), which is why this is a consistency fix
+             * rather than a bug fix — but "withhold both grounds together"
+             * has to mean the text too, or the marker is only half true.
+             * REJECTED: leaving the stored hex in and widening the tint
+             * validator instead. A decision, not a cleanup.
+             */
+            const cardTextDark = getTextStyle(hasBgImage, ground);
             const cardTextVars = themedTextStyleVars(
               cardTextDark,
-              getTextStyle(hasBgImage, tinted || bgColor),
+              getTextStyle(hasBgImage, tinted),
             );
             const cardTextBold = !!cardTextDark.fontWeight;
             const profilePic = group.profile_picture_url;

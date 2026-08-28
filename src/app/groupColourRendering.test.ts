@@ -484,6 +484,18 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         );
       }
 
+      // CR-02 (88.3-cr): the text treatment must be fed the TINT-GATED values.
+      // `groupHomePage/page.js` gates both the ground and the text style on the
+      // tint succeeding; these four files gated only the ground, so a stored
+      // value that `resolveGroupBackgroundColor` passes but the tint rejects
+      // dropped the card to the themed surface while the text was still
+      // computed against the malformed string (`getBrightness` -> 255, i.e. the
+      // light-ground pole on a DARK card). `tinted || <stored hex>` is the
+      // greppable shape of that asymmetry — the LIGHT arm reaching past a
+      // failed tint for the raw hex. It must not come back.
+      expect(src, `${file}: a light arm falls back to the stored hex past a failed tint`)
+        .not.toMatch(/tinted\s*\|\|/);
+
       // CR-01 (88.3-cr): a stroke value must be a LITERAL. `tileTextTreatment`'s
       // image branch assigned `groupBgImage` — a URL — to `WebkitTextStroke`.
       // Inline that was merely dropped, but once the helper was hoisted the

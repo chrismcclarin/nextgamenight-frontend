@@ -100,9 +100,6 @@ export default function EventDayModal({
                 const groupBgColor = resolveGroupBackgroundColor(event.Group?.background_color);
                 const groupProfilePic = event.Group?.profile_picture_url;
                 const groupBgImage = event.Group?.background_image_url;
-                // No image and no group colour: the row is on the themed
-                // surface, so the shared fallback resolution owns its text.
-                const isThemedRow = !groupBgImage && !groupBgColor;
                 /*
                  * DECISION Phase 88.3 (D-09, cascade fix): the row's ground is a
                  * MUTUALLY EXCLUSIVE ternary gated on `tinted`, chosen OVER
@@ -120,6 +117,11 @@ export default function EventDayModal({
                 const tinted = lightTintGroupBackgroundColor(groupBgColor);
                 const ground = tinted ? groupBgColor : null;
                 const hasBgImage = !!groupBgImage;
+                // No image and no group colour: the row is on the themed
+                // surface, so the shared fallback resolution owns its text.
+                // Keyed on `ground` (not the stored hex) and therefore declared
+                // AFTER it — see the CR-02 marker below.
+                const isThemedRow = !groupBgImage && !ground;
                 /*
                  * DECISION Phase 88.3 (R2-6): the title and subtitle treatments
                  * are computed TWICE — against the stored hex for dark mode and
@@ -164,13 +166,34 @@ export default function EventDayModal({
                     WebkitTextStroke: onDarkGround ? '0.3px rgba(0, 0, 0, 0.9)' : 'none',
                   };
                 };
+                /*
+                 * DECISION Phase 88.3-cr (CR-02, code-adversarial-review
+                 * 2026-08-27): the DARK arm is computed on `ground`, not on the
+                 * stored hex, and the LIGHT arm on `tinted`, not on
+                 * `tinted || <stored hex>` — mirroring the shipped shape at
+                 * `groupHomePage/page.js`, which gates BOTH the ground and the
+                 * text style on the tint succeeding. Gating only the ground was
+                 * the exact asymmetry the T-88.3-43 marker above warns about:
+                 * a stored value that `resolveGroupBackgroundColor` passes
+                 * through but `lightTintGroupBackgroundColor` rejects (anything
+                 * not a 6-digit hex) would drop the card back to the themed
+                 * surface while the text treatment was still computed against
+                 * the malformed string — `getBrightness` returns 255 for it, so
+                 * the dark arm painted the light-ground pole on a DARK themed
+                 * card. Unreachable for new writes (the backend validator is
+                 * `^#[0-9A-Fa-f]{6}$`), which is why this is a consistency fix
+                 * rather than a bug fix — but "withhold both grounds together"
+                 * has to mean the text too, or the marker is only half true.
+                 * REJECTED: leaving the stored hex in and widening the tint
+                 * validator instead. A decision, not a cleanup.
+                 */
                 const rowTitleVars = themedTextStyleVars(
-                  rowTitleTreatment(groupBgColor),
-                  rowTitleTreatment(tinted || groupBgColor),
+                  rowTitleTreatment(ground),
+                  rowTitleTreatment(tinted),
                 );
                 const rowSubtitleVars = themedTextStyleVars(
-                  rowSubtitleTreatment(groupBgColor),
-                  rowSubtitleTreatment(tinted || groupBgColor),
+                  rowSubtitleTreatment(ground),
+                  rowSubtitleTreatment(tinted),
                 );
                 const rowLabel = `${event.Game?.name || 'Game Night'} - ${event.Group?.name || 'Unknown Group'}`;
 
