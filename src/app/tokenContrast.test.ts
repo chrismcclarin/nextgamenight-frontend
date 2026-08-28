@@ -1197,4 +1197,52 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       expect(count, `88.3-18 — expected exactly ONE \`btn btn-accent\` in ${rel}, found ${count}. A second copy of this control must take the same treatment, not a new one`).toBe(1);
     }
   });
+
+  // ===================================================================================
+  // Phase 88.3-18 — the UNPREDICTED finding. `--color-text-link` was asserted by NEITHER gate,
+  // so ruling 1c pushed it under AA with nothing to red. These two rows exist so that can never
+  // happen again, whichever way the owner rules the fork.
+  // ===================================================================================
+
+  it('48. 88.3-18 — light --color-text-link clears 4.5:1 on the CARD and the SUNKEN grounds', () => {
+    // The two grounds it still passes on, asserted positively so a future edit that "fixes" the
+    // page failure by darkening the token cannot quietly break these instead.
+    expectRatio('light', '--color-text-link', '--color-bg-card', 4.5, '88.3-18 / link on the white card');
+    expectRatio('light', '--color-text-link', '--color-bg-sunken', 4.5, '88.3-18 / link on warm-50 sunken');
+    // The hover step must stay a VISIBLE step, not collapse onto the resting colour. This is the
+    // assertion that makes owner option (b) — re-point the link to purple-700, which IS
+    // `--color-text-link-hover` — red instead of shipping a link with no hover state.
+    const link = resolve('light', '--color-text-link');
+    const hover = resolve('light', '--color-text-link-hover');
+    expect(link, `88.3-18 — light --color-text-link (${link}) must NOT be byte-equal to --color-text-link-hover (${hover}); collapsing them leaves links with no visible hover state. If a link re-colour reds this row, mint a step instead of taking purple-700`).not.toBe(hover);
+  });
+
+  it('49. 88.3-18 — ⚠ DISCLOSED FAILURE: light --color-text-link is BELOW 4.5:1 on the page and on card-hover', () => {
+    // ⚠️ THIS TEST ASSERTS A FAILURE ON PURPOSE — the same idiom as tests 21 and 27. It is NOT a
+    // pass, and it must not be "fixed" by deleting it.
+    //
+    // FOUND 2026-08-28 while re-measuring UI-SPEC §5.11's trailing prose for owner ruling 1c, NOT
+    // by any gate: `--color-text-link` is asserted by neither Gate A nor Gate C, so moving the page
+    // ground warm-100 -> warm-200 took it under the AA text floor with nothing to red.
+    //   white card    5.6617 -> 5.6617  ✓ (unchanged)
+    //   warm-50 sunken 5.3409 -> 5.3409 ✓ (unchanged)
+    //   THE PAGE      4.9970 -> 4.3366  ✗ NEW failure, caused by ruling 1c
+    //   card-hover    4.3366 -> 3.7628  ✗ pre-existing, made worse
+    //
+    // REACH: 61 `text-content-link` sites across 21 files. Verified LIVE on the page ground —
+    // `GroupLibrary.js:265` and `:338` (inside the `bg-surface-page` containers at `:261`/`:326`)
+    // and `GroupGamesList.js:432` (inside `:428`); live on card-hover at `friends/page.js:748`.
+    //
+    // NOT CLOSED IN PLAN 18, deliberately: every fix re-colours a brand token across 61 sites, and
+    // the obvious one (purple-700) is byte-equal to `--color-text-link-hover` — the exact collapse
+    // this phase already rejected for amber-900. It is an OWNER FORK with four measured options in
+    // `88.3-UI-SPEC.md` §5.11 and `.planning/deferred/phase-88.6.md`; the recommendation is to mint
+    // ~`#506484`, which reads 4.5995 on the page and keeps a real hover step.
+    //
+    // WHEN THE OWNER RULES AND THE LINK MOVES, THIS ROW REDS. That is the intended behaviour: close
+    // the deferral and promote these two pairings into test 48 in the SAME commit, rather than
+    // deleting the assertion.
+    expectRatioBelow('light', '--color-text-link', '--color-bg-page', 4.5, '88.3-18 / DISCLOSED FAILURE — link on the page (4.3366)');
+    expectRatioBelow('light', '--color-text-link', '--color-bg-card-hover', 4.5, '88.3-18 / DISCLOSED FAILURE — link on card-hover (3.7628)');
+  });
 });
