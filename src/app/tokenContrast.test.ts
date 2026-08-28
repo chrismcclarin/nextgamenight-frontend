@@ -1251,4 +1251,32 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // deleting the assertion.
     expectRatioBelow('light', '--color-text-link', '--color-bg-card-hover', 4.5, '88.3-18 / DISCLOSED FAILURE — link on card-hover (3.9909 after ruling c; 3.7628 before) — Phase 88.6 owns it');
   });
+
+  it('50. 88.3-cr3 M3 — EVERY light text / status-text token clears 4.5:1 on the PAGE ground (iterated, not enumerated)', () => {
+    // Phase 88.3 code-adversarial-review run 3 (2026-08-28), M3. The text-link failure plan 18
+    // found by hand existed because no row asserted a foreground token against the PAGE — only
+    // the card. Tests 48/49 closed that for ONE token. This row closes the class: it parses the
+    // light `:root` block for every `--color-text-*` and `--color-status-*-text` declaration and
+    // measures each on `--color-bg-page`, so a token minted tomorrow is covered without a new row.
+    // EXCLUDED by name, with the reason: `--color-text-inverse` is the ink ON a filled control,
+    // never on the page. `--color-text-link` is asserted here too (ruling (c): 4.5995) — it
+    // stays in test 48 as well, on purpose, so the two rows fail independently.
+    const light = blockOf('light');
+    const swept: string[] = [];
+    const EXCLUDE = new Set(['--color-text-inverse']);
+    for (const m of light.matchAll(/^\s*(--color-(?:text-[a-z-]+|status-[a-z]+-text))\s*:/gm)) {
+      const token = m[1];
+      if (EXCLUDE.has(token) || swept.includes(token)) continue;
+      swept.push(token);
+      expectRatio('light', token, '--color-bg-page', 4.5, `88.3-cr3 M3 / ${token} on the page`);
+    }
+    // Anti-vacuity: six text tokens + three status hues are known to exist today; a parse that
+    // finds fewer is a broken regex, not a clean sweep.
+    expect(swept.length, `88.3-cr3 M3 — expected to sweep >= 8 light foreground tokens on the page, swept ${swept.length}: ${swept.join(', ')}`).toBeGreaterThanOrEqual(8);
+    for (const must of ['--color-text-primary', '--color-text-secondary', '--color-text-muted', '--color-text-link']) {
+      expect(swept, `88.3-cr3 M3 — ${must} must be in the sweep`).toContain(must);
+    }
+    // The primary button FILL sits on the page as a non-text UI boundary (1.4.11, 3:1).
+    expectRatio('light', '--color-btn-primary-bg', '--color-bg-page', 3.0, '88.3-cr3 M3 / primary button fill on the page (1.4.11)');
+  });
 });

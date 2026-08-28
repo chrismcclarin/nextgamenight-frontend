@@ -2044,7 +2044,8 @@ body {
 
 /* DECISION Phase 88.3-14 (owner ruling 2, 2026-08-27, research-checked): `.btn-secondary` gets an
    edge the way shipped light modes ACTUALLY do it — a FILL that differs from its ground, plus a
-   1.22:1 hairline RING on top. Not a 3:1 border.
+   1.22:1 hairline RING on top [AMENDED 88.3-18 ruling 1c: the fill moved to warm-100, so the
+   warm-300 ring now reads 1.4081 on it — still inside Gate A test 35's 1.2-1.6 band]. Not a 3:1 border.
 
    WHY. The owner ran the Req 12 UAT on a physical phone on 2026-08-27; tests 4 and 7 failed with
    "I can read the words, but I can't see a button there." The cause is in the tokens, not the

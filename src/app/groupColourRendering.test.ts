@@ -527,10 +527,21 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // thing that would have caught the miss: `CalendarMonthView.js` renders TWO
     // tiles, and a refactor that drops one must red rather than pass on the
     // survivor.
+    //
+    // AMENDED 88.3 code-adversarial-review run 3 (H1, owner ruling (a), 2026-08-28):
+    // `EventDayModal.js`'s tinted card CONTAINS a native "Share Game QR" <button>, so
+    // the keyboard semantics must NOT sit on the tint-carrying div — with them there,
+    // Enter on the nested button bubbled, was preventDefault()ed and navigated instead
+    // of opening the QR, and `role="button"` (children-presentational) hid the button
+    // from AT. For that file the keyboard target is an INNER title block, and this
+    // test asserts the OPPOSITE on the card: it must NOT carry role/onKeyDown (so the
+    // hijack shape cannot come back), while the inner target must carry the full set.
+    // Behaviour is pinned by EventDayModal.test.tsx; this is the source-shape pin.
     const floors: Record<string, number> = {
       'app/components/CalendarMonthView.js': 2,
       'app/components/EventDayModal.js': 1,
     };
+    const KEYBOARD_TARGET_INSIDE = new Set(['app/components/EventDayModal.js']);
     for (const [file, floor] of Object.entries(floors)) {
       const src = code(file);
       const exprs = attrExprs(src, 'className').filter((e) => e.text.includes(LIGHT_GROUND));
@@ -544,6 +555,31 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         const tagStart = src.lastIndexOf('<div', expr.start);
         const tag = src.slice(tagStart, expr.end + 1);
         const at = `${file}:${lineAt(src, expr.start)}`;
+
+        if (KEYBOARD_TARGET_INSIDE.has(file)) {
+          expect(tag, `${at}: H1 — the card wraps a native button; role="button" must NOT return to it`).not.toContain('role="button"');
+          expect(tag, `${at}: H1 — the card wraps a native button; onKeyDown must NOT return to it`).not.toContain('onKeyDown');
+          expect(tag, `${at}: the card keeps its pointer onClick`).toContain('onClick=');
+          // The inner keyboard target: one element carrying the whole set, named by the row label.
+          // Anchored on the accessible name, not on "the next <div" — the next div is the
+          // background wash overlay, and a line-order anchor would silently test that.
+          const inner = src.slice(expr.end);
+          const nameAt = inner.indexOf('aria-label={rowLabel}');
+          expect(nameAt, `${at}: no element after the card carries aria-label={rowLabel} — the inner keyboard target is gone`).toBeGreaterThan(-1);
+          const innerOpen = inner.lastIndexOf('<div', nameAt);
+          // The tag's own `>` is the first one AFTER its className attribute — the handler
+          // in between contains `=>`, which a naive first-`>` search would stop on.
+          const classAt = inner.indexOf('className="', nameAt);
+          expect(classAt, `${at}: the inner keyboard target has no className (it needs the focus ring)`).toBeGreaterThan(-1);
+          const classEnd = inner.indexOf('"', classAt + 'className="'.length);
+          const innerTag = inner.slice(innerOpen, inner.indexOf('>', classEnd) + 1);
+          for (const need of ['role="button"', 'tabIndex={0}', 'aria-label={rowLabel}', 'onKeyDown', 'focus-visible:ring-focus-ring']) {
+            expect(innerTag, `${at}: the INNER keyboard target (title block) lost ${need}`).toContain(need);
+          }
+          expect(innerTag, `${at}: the inner handler must fire on Enter and Space`).toMatch(/'Enter'[\s\S]*' '/);
+          expect(innerTag, `${at}: the inner handler must stopPropagation so the card onClick does not double-fire`).toContain('stopPropagation');
+          continue;
+        }
 
         expect(tag, `${at}: the clickable div lost role="button"`).toContain('role="button"');
         expect(tag, `${at}: the clickable div lost tabIndex`).toContain('tabIndex={0}');

@@ -203,20 +203,30 @@ export default function EventDayModal({
                      CalendarListView.js's EventRow rather than inventing a new
                      one. REJECTED: leaving it mouse-only — the identical
                      interaction one file over has been keyboard-reachable all
-                     along. A decision, not a cleanup. */
+                     along. A decision, not a cleanup.
+
+                     AMENDED Phase 88.3 code-adversarial-review run 3 (H1, owner
+                     ruling (a) 2026-08-28): the KEYBOARD target is the TITLE
+                     BLOCK below, not this card. The card keeps a pointer-only
+                     `onClick`; `role="button"` / `tabIndex` / `aria-label` /
+                     `onKeyDown` live on the title `<div>`. Why: the card
+                     CONTAINS a native "Share Game QR" `<button>` (upcoming
+                     events). With the handler on the card, Enter on that button
+                     bubbled up, was `preventDefault()`ed and navigated to the
+                     event instead of showing the QR — a keyboard path that
+                     worked before 2c37a4e — and `role="button"` is
+                     children-presentational, so AT never exposed the nested
+                     button at all (WCAG 4.1.2). EventRow was safe to copy only
+                     because it has no interactive descendants. REJECTED:
+                     (1) a `target !== currentTarget` guard alone — fixes the
+                     hijack, leaves the nested button hidden from AT;
+                     (2) moving the Share button out of the card — an unasked
+                     layout change to a control the owner ruled on the same
+                     day. Pinned by EventDayModal.test.tsx. */
                   <div
                     key={event.id}
                     onClick={() => onEventClick(event)}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={rowLabel}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        onEventClick(event);
-                      }
-                    }}
-                    className={`p-4 border border-line rounded-lg transition-all hover:shadow-md cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
+                    className={`p-4 border border-line rounded-lg transition-all hover:shadow-md cursor-pointer ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
                     style={{
                       ...(tinted && {
                         '--group-ground': ground,
@@ -256,7 +266,19 @@ export default function EventDayModal({
                               )}
                             </div>
                           )}
-                          <div>
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            aria-label={rowLabel}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onEventClick(event);
+                              }
+                            }}
+                            className="rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                          >
                             <h4
                               className="font-semibold [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
                               style={rowTitleVars}
