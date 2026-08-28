@@ -31,7 +31,25 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? 'github' : 'list',
+  /*
+   * DECISION Phase 88.3-cr (CR-09, code-adversarial-review 2026-08-27): CI gets a
+   * SECOND, machine-readable reporter alongside 'github', chosen OVER swapping to
+   * the blob reporter or parsing the human summary line. `scripts/
+   * gate-c-executed-floor.mjs` reads this file to assert that Gate C
+   * (`e2e/contrast.spec.ts`) actually EXECUTED in the `phone` project — Playwright
+   * exits 0 on a run that skipped every one of those tests, so the exit code alone
+   * cannot tell an armed gate from a disarmed one.
+   *
+   * The outputFile is at the repo ROOT, deliberately NOT inside `test-results/`:
+   * that directory is uploaded as a failure artifact, and this report carries every
+   * test title and error message. Keeping it out means the floor gains no new
+   * disclosure surface. Gitignored beside the other Playwright outputs.
+   *
+   * Removing the 'json' entry disarms the floor — a decision, not a cleanup.
+   */
+  reporter: process.env.CI
+    ? [['github'], ['json', { outputFile: 'playwright-results.json' }]]
+    : 'list',
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
     trace: 'on-first-retry',

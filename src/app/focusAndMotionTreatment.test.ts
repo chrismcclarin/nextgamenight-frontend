@@ -64,7 +64,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { sourceFiles, stringChunks } from '../test-utils/sourceScan';
+import { sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -597,5 +597,80 @@ describe('accessible names on icon-only controls (Req 4 / UI-SPEC §7.3)', () =>
       const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
       expect(code, `${rel} still renders a glyph close button`).not.toMatch(/&times;|>\s*×\s*</);
     }
+  });
+});
+
+/**
+ * Feedback-modal focus restoration — the source-level half of DEF-88.3-12-01.
+ *
+ * WHY THIS EXISTS AT ALL. The behavioural gate for this is
+ * `e2e/feedback-stacking.spec.ts`, and per `88.3-VALIDATION.md` caveat 4 the `e2e` job
+ * cannot execute on a laptop by design — its auth state is produced against real Auth0.
+ * A regression this specific (a caller stops handing the provider an invoker; someone
+ * "simplifies" the guarded `preventDefault()` back to an unconditional one) would then
+ * only surface on CI, which is a slow loop for a one-line edit. These are cheap source
+ * pins in front of that.
+ *
+ * WHAT THEY PIN, and the reverse pin that stops the easy cheat: the row hands the
+ * provider an override, `Header` supplies the hamburger toggle's ref, the provider
+ * focuses BEFORE it prevents the default and only prevents when the focus landed — and
+ * `Header`'s `inert` guard (R3-D) is still there, exactly once. That last one is the
+ * point: the cheapest way to make the e2e assertion green was always to delete `inert`,
+ * and this suite reds if anyone does.
+ */
+describe('feedback-modal focus restoration (DEF-88.3-12-01 / owner ruling 6, 2026-08-27)', () => {
+  const codeOf = (rel: string) => withoutComments(fs.readFileSync(path.join(SRC, rel), 'utf8'));
+
+  it('1. the row variant hands the provider an invoker OVERRIDE, and the FAB path is untouched', () => {
+    const src = codeOf('app/components/FeedbackButton.js');
+    // the prop exists on the signature and is used at the row's open() call
+    expect(src, 'FeedbackButton must accept an optional invokerRef prop').toMatch(
+      /function FeedbackButton\(\{[^}]*invokerRef[^}]*\}\)/,
+    );
+    expect(
+      src,
+      'the ROW variant must call open(invokerRef?.current ?? e.currentTarget) — an inert element cannot take focus, so the row cannot be its own restore target',
+    ).toContain('open(invokerRef?.current ?? e.currentTarget)');
+    // ...and the FAB still passes nothing, so its behaviour is unchanged BY CONSTRUCTION
+    expect(
+      src,
+      'the FAB must still call open(e.currentTarget) — the desktop entry point restores to itself and this change must not reach it',
+    ).toContain('open(e.currentTarget)');
+  });
+
+  it('2. Header wires the hamburger toggle as the row\'s invoker, and R3-D `inert` is intact', () => {
+    const src = codeOf('app/Header.js');
+    const wires = src.match(/invokerRef=\{triggerRef\}/g) ?? [];
+    expect(
+      wires.length,
+      'Header must pass invokerRef={triggerRef} to the nav-row FeedbackButton exactly once',
+    ).toBe(1);
+    // REVERSE PIN (owner ruling 6: R3-D stays). The cheap way to make the e2e focus
+    // assertion pass was always to drop `inert` from the closed panel — that would put
+    // the menu rows back in the tab order, which is the defect R3-D was added to fix.
+    const inertGuards = src.match(/inert=\{mobileMenuOpen \? undefined : ''\}/g) ?? [];
+    expect(
+      inertGuards.length,
+      "Header's closed mobile menu must still carry inert={mobileMenuOpen ? undefined : ''} (R3-D) — removing it is how this focus fix gets faked",
+    ).toBe(1);
+    // and the toggle it restores to is a real, ref'd, named control
+    expect(src).toContain('ref={triggerRef}');
+    expect(src).toContain('aria-label="Toggle menu"');
+  });
+
+  it('3. the provider FOCUSES first and only then prevents the default, guarded on where focus landed', () => {
+    const src = codeOf('app/components/FeedbackModalProvider.tsx');
+    const focusAt = src.indexOf('invoker.focus()');
+    const preventAt = src.indexOf('event.preventDefault()');
+    expect(focusAt, 'the provider must still restore focus to the invoker').toBeGreaterThan(-1);
+    expect(preventAt, 'the provider must still be able to suppress Radix default focus').toBeGreaterThan(-1);
+    expect(
+      focusAt,
+      'invoker.focus() must run BEFORE event.preventDefault() — the toggle is md:hidden, so if the viewport crossed 768px while the modal was open the focus is a no-op and an already-fired preventDefault() strands focus on <body> (T-88.3-80)',
+    ).toBeLessThan(preventAt);
+    expect(
+      src,
+      'preventDefault() must be guarded on document.activeElement === invoker, so a failed restore falls back to Radix instead of <body>',
+    ).toContain('document.activeElement === invoker');
   });
 });

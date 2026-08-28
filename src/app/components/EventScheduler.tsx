@@ -199,7 +199,7 @@ function formatDuration(start: Date, end: Date): string {
 
 const NAV_BUTTON_CLASS =
   'inline-flex min-h-11 items-center justify-center rounded-btn border border-line px-3 ' +
-  'text-sm text-content-secondary hover:text-content-primary hover:bg-surface-card-hover ' +
+  'text-sm text-content-secondary hover:text-content-primary hover:bg-surface-hover ' +
   'transition-colors duration-200 ease-out ' +
   'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
 
@@ -247,6 +247,29 @@ const NAV_BUTTON_CLASS =
    and the owner picked the more visible of two failing values with that stated. Phase 88.3 owns the
    ~15-site light `text-accent` census (`.planning/deferred/phase-88.3.md:63-82`, coordination
    recorded by plan 88.1-06). DARK passes either way: 5.05:1 at arm B.
+
+   ——— AMENDED Phase 88.3 (Req 5), original reasoning above KEPT AS HISTORY: that deferral is
+   CLOSED. This site is RESOLVED, not inherited — the paragraph above shipped true and is now
+   false, so it is amended rather than deleted.
+   TAKEN: the day number moves from `text-accent` to `text-content-accent`, whose LIGHT value is
+   amber-800 `#92400e` (`globals.css:761`, minted by plan 88.3-04). Measured 2026-08-26 against
+   `src/lib/wcag.ts`: **5.69:1 on this amber-200 arm-B tint** — over the 4.5:1 AA floor — plus
+   6.26 on the warm-100 page and 7.09 on the white card. The DARK arm is amber-500 on `#513902`
+   at **5.05:1**, BYTE-IDENTICAL to what shipped, because dark `--color-accent-text` is declared
+   at today's `--color-accent` value on purpose.
+   UNCHANGED, and this is the half a reader would get wrong: the owner-picked ARM B tint is NOT
+   touched, and the `DECISION Phase 88-27 D-32` paired-ternary SHAPE is not touched either — only
+   the class token inside the TRUE ARM moves. `accentSweep.test.ts` test 6 and
+   `tintTreatment.test.ts:269` both pin that shape at this site.
+   STILL REJECTED, and both are recorded because the SPEC listed this as an open fork and neither
+   was needed: (a) LIGHTENING the owner-picked arm-B tint to buy the old amber a passing ratio —
+   the owner judged that tint at 375px and a contrast fix must not silently re-open his pick;
+   (b) MINTING A SPECIAL-CASE AMBER for this one site — the shared text-safe token clears the
+   floor here with 1.19 to spare, so a second near-identical amber would be idiom proliferation
+   with no ratio to show for it.
+   The mirrored paragraph at `globals.css` (the `--color-bg-today-tint` marker) is amended in the
+   same terms by the same phase. Re-pointing this day number back at `text-accent` because
+   "accent is the accent token" restores a 1.72:1 label — that is a decision, not a cleanup.
    ============================================================================================ */
 const TODAY_TINT_SCOPE = {
   '--color-bg-accent-subtle': 'var(--color-bg-today-tint)',
@@ -920,7 +943,16 @@ export default function EventScheduler({
                     top: '2px',
                     right: '4px',
                     fontSize: '10px',
-                    color: 'var(--color-status-success)',
+                    // DECISION Phase 88.3 (Req 6 / OI-1): the ONE status text site in the app that
+                    // is an INLINE STYLE reading the custom property directly rather than a
+                    // `text-content-status-success` utility class. It is therefore invisible to the
+                    // stringChunks census and to `statusTextSweep.test.ts` test 1, so it is swept by
+                    // hand here. It rendered correctly before this phase only by the COINCIDENCE
+                    // that light-mode `--color-status-success-border` and `-text` share a value;
+                    // that is not guaranteed and is already false in dark mode (#22c55e vs the
+                    // border). Pointing this back at the shared `var(--color-status-success)` key,
+                    // which now resolves to the BORDER value, is a decision, not a cleanup.
+                    color: 'var(--color-status-success-text)',
                     fontWeight: 600,
                     zIndex: 1,
                   }}
@@ -995,7 +1027,7 @@ export default function EventScheduler({
         <span
           className={`block -my-2 py-2 ${today ? 'bg-surface-accent-subtle' : 'bg-surface-card'}`}
         >
-          <span className={today ? 'text-accent' : 'text-content-primary'}>
+          <span className={today ? 'text-content-accent' : 'text-content-primary'}>
             {format(day, 'dd EEE')}
           </span>
         </span>
@@ -1168,14 +1200,14 @@ export default function EventScheduler({
       )}
 
       {selectedSlot && (
-        <div className="p-4 bg-surface-card-hover rounded-card border border-line-accent">
+        <div className="p-4 bg-surface-sunken rounded-card border border-line-accent">
           <p className="text-sm font-medium text-content-primary mb-1">Selected Time:</p>
-          <p className="text-lg text-accent font-semibold">
+          <p className="text-lg text-content-accent font-semibold">
             {format(selectedSlot.start, 'EEEE, MMMM d, h:mm a')}
             {' - '}
             {format(selectedSlot.end, 'h:mm a')}
             {' '}
-            <span className="text-accent">({formatDuration(selectedSlot.start, selectedSlot.end)})</span>
+            <span className="text-content-accent">({formatDuration(selectedSlot.start, selectedSlot.end)})</span>
           </p>
         </div>
       )}

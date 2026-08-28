@@ -135,7 +135,7 @@ export default function ResponseDashboard({
   if (error) {
     return (
       <div className="bg-surface-card rounded-card border border-status-error p-4">
-        <div className="flex items-center gap-2 text-status-error">
+        <div className="flex items-center gap-2 text-content-status-error">
           <ExclamationIcon className="w-5 h-5" />
           <span>{error}</span>
         </div>
@@ -157,14 +157,14 @@ export default function ResponseDashboard({
 
       {/* Reminder error message */}
       {reminderError && (
-        <div className="mb-3 p-2 bg-status-error-subtle border border-status-error rounded-sm text-sm text-status-error">
+        <div className="mb-3 p-2 bg-status-error-subtle border border-status-error rounded-sm text-sm text-content-status-error">
           {reminderError}
         </div>
       )}
 
       {/* Blind voting notice */}
       {blindVotingEnabled && !pollClosed && !userHasResponded && !isAdmin && (
-        <div className="mb-3 p-2 bg-status-warning-subtle border border-status-warning rounded-sm text-sm text-status-warning">
+        <div className="mb-3 p-2 bg-status-warning-subtle border border-status-warning rounded-sm text-sm text-content-status-warning">
           Slot counts are hidden until you submit your response or the poll closes.
         </div>
       )}
@@ -178,11 +178,11 @@ export default function ResponseDashboard({
           {respondents.map(r => (
             <li
               key={r.user_id}
-              className="flex items-center justify-between py-2 px-2 rounded-sm hover:bg-surface-card-hover border-b border-line last:border-b-0"
+              className="flex items-center justify-between py-2 px-2 rounded-sm hover:bg-surface-hover border-b border-line last:border-b-0"
             >
               <div className="flex items-center gap-2 min-w-0">
                 {r.has_responded ? (
-                  <CheckIcon className="w-5 h-5 text-status-success shrink-0" />
+                  <CheckIcon className="w-5 h-5 text-content-status-success shrink-0" />
                 ) : (
                   <ClockIcon className="w-5 h-5 text-content-muted shrink-0" />
                 )}
@@ -269,7 +269,7 @@ function RemindButton({ userId, lastRemindedAt, isReminding, onRemind }) {
     <button
       onClick={() => onRemind(userId)}
       disabled={isReminding}
-      className="px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-card-hover active:opacity-75 disabled:opacity-50 shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+      className="px-3 py-1 text-sm text-content-link rounded-sm hover:bg-surface-hover active:opacity-75 disabled:opacity-50 shrink-0 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
     >
       {isReminding ? 'Sending...' : 'Remind'}
     </button>

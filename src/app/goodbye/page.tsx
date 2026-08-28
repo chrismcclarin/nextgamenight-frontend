@@ -34,7 +34,7 @@ export default function Goodbye() {
         <section>
           <a
             href="/"
-            className="text-accent underline hover:text-accent-hover"
+            className="text-content-accent underline hover:text-content-accent-hover"
           >
             Return to Next Game Night
           </a>

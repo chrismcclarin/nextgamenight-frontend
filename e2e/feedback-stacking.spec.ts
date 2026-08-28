@@ -240,14 +240,69 @@ test.describe('phone: feedback trigger moves into the nav menu (R3, D-09)', () =
     await textarea.fill('typed from the phone nav row entry point');
     await expect(textarea).toHaveValue('typed from the phone nav row entry point');
 
-    // Focus restoration (T-87.8-22): closing the modal returns focus to the
-    // nav row that opened it.
+    // Focus restoration (T-87.8-22), AMENDED Phase 88.3-17 (owner ruling 6,
+    // 2026-08-27, DEF-88.3-12-01). This assertion used to name the nav ROW and
+    // was deterministically red on CI. It was not weakened to fit — the target
+    // moved, on a ruling, for a measured reason:
+    //
+    //   the row's own onOpen() closes the menu in the SAME transition that opens
+    //   the modal, and plan 07's R3-D put `inert` on the closed panel
+    //   (Header.js). An element inside an `inert` subtree CANNOT take focus
+    //   (probed live in this repo's Chromium: `el.focus()` inside `<div inert="">`
+    //   leaves document.activeElement !== el). So the row is not a restorable
+    //   target by construction, and no assertion can make it one.
+    //
+    // Focus therefore lands on the hamburger TOGGLE — the menu's own trigger, the
+    // conventional landing when a menu-launched dialog closes, and already where
+    // Header.js sends focus on an ordinary menu close, so the two paths now agree
+    // rather than there being a third. REJECTED: re-opening the menu on restore
+    // (resurfaces a menu the user closed) and un-inerting for the duration of the
+    // restore (makes R3-D conditional on an unrelated modal's lifecycle). The
+    // reverse pin below is what stops this from being "the old assertion was
+    // inconvenient": it fails if anyone makes it pass by dropping `inert`.
+    const toggleAfterClose = page.getByRole('button', { name: 'Toggle menu', includeHidden: true });
     await page.getByRole('button', { name: 'Close' }).click();
     await expect(modalHeading(page)).toHaveCount(0);
     await expect(
-      navRowLocator(page, { includeHidden: true }),
-      'closing the modal must return keyboard focus to the nav "Send feedback" row that opened it — the provider records the invoking element on open() and restores it on close()',
+      toggleAfterClose,
+      'closing the modal must return keyboard focus to the hamburger TOGGLE (owner ruling 6, 2026-08-27) — the row that opened it is inside the panel its own onOpen() inerts in the same transition, and an inert element cannot take focus',
     ).toBeFocused();
+
+    // The toggle is genuinely focusABLE, not merely the active element by
+    // default: it has no `inert` ancestor, so the restore above is a real focus
+    // move rather than a fallback that happened to land here.
+    const toggleIsReachable = await toggleAfterClose.evaluate((el) => {
+      for (let node: HTMLElement | null = el as HTMLElement; node; node = node.parentElement) {
+        if (node.hasAttribute('inert')) return false;
+      }
+      return true;
+    });
+    expect(
+      toggleIsReachable,
+      'the hamburger toggle must have no `inert` ancestor — otherwise the restore above is asserting against an element that cannot hold focus',
+    ).toBe(true);
+
+    // REVERSE PIN (owner ruling 6: R3-D stays intact). With the menu CLOSED
+    // after the modal closed, the nav row must be neither focused nor tabbable —
+    // it is still inside the `inert` subtree. Without this, the assertion change
+    // above reads as a test weakened to fit, and the cheapest "fix" for the
+    // original red — deleting `inert` — would go green.
+    const rowAfterClose = navRowLocator(page, { includeHidden: true });
+    await expect(rowAfterClose, 'vacuity guard: the nav row must still exist in the DOM to be pinned').toHaveCount(1);
+    await expect(
+      rowAfterClose,
+      'the nav "Send feedback" row must NOT be focused after the modal closes — focus belongs on the toggle (ruling 6)',
+    ).not.toBeFocused();
+    const rowStillInert = await rowAfterClose.evaluate((el) => {
+      for (let node: HTMLElement | null = el as HTMLElement; node; node = node.parentElement) {
+        if (node.hasAttribute('inert')) return true;
+      }
+      return false;
+    });
+    expect(
+      rowStillInert,
+      'R3-D regression guard: the CLOSED mobile menu must still carry `inert`, so its rows stay out of the tab order — making this focus fix work by removing `inert` re-breaks the Tab order R3-D was added to fix',
+    ).toBe(true);
   });
 });
 

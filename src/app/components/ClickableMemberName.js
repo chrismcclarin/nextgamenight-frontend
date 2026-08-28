@@ -164,7 +164,7 @@ export default function ClickableMemberName({ userId, username, children }) {
     // restoreFocus (render site below).
     if (sent) {
       return (
-        <div role="status" className="flex items-center gap-1.5 text-sm text-status-success font-medium">
+        <div role="status" className="flex items-center gap-1.5 text-sm text-content-status-success font-medium">
           <span>&#10003;</span>
           <span>Request sent</span>
         </div>
@@ -173,7 +173,7 @@ export default function ClickableMemberName({ userId, username, children }) {
 
     if (sendError) {
       return (
-        <div role="alert" className="text-sm text-status-error">
+        <div role="alert" className="text-sm text-content-status-error">
           Failed to send request
         </div>
       );
@@ -210,10 +210,10 @@ export default function ClickableMemberName({ userId, username, children }) {
     // Accepted preserves the existing md:hidden ✓ Friend mobile indicator
     // (desktop now also shows a "Friend" pill via the hover popover).
     if (status === 'accepted') {
-      return <span className="md:hidden ml-1 text-xs text-status-success">✓ Friend</span>;
+      return <span className="md:hidden ml-1 text-xs text-content-status-success">✓ Friend</span>;
     }
     if (sendError) {
-      return <span className="md:hidden ml-1 text-xs text-status-error">Failed</span>;
+      return <span className="md:hidden ml-1 text-xs text-content-status-error">Failed</span>;
     }
     if (status === 'pending_sent' || status === 'pending_received') {
       // role="status" makes this span an implicit polite live region, so its

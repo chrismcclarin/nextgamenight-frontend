@@ -24,7 +24,7 @@ import { Textarea, SelectControl } from '@/components/ui/Input';
  * restoration) lives in FeedbackModalProvider; `text`/`error`/`submitted`
  * stay LOCAL here so keystrokes never re-render context consumers.
  */
-export default function FeedbackButton({ variant = 'floating', label, onOpen }) {
+export default function FeedbackButton({ variant = 'floating', label, onOpen, invokerRef = null }) {
   const { user } = useUser();
   const pathname = usePathname();
   const { isOpen, category, open, close, onCloseAutoFocus, setCategory } = useFeedbackModal();
@@ -67,7 +67,38 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
     return (
       <button
         onClick={(e) => {
-          open(e.currentTarget);
+          // DECISION Phase 88.3-17 (DEF-88.3-12-01, owner ruling 6, 2026-08-27):
+          // the row hands the provider an INVOKER OVERRIDE (`invokerRef`, which
+          // Header points at its hamburger `triggerRef`) instead of restoring
+          // focus to itself — chosen OVER two alternatives that were both
+          // defensible, and both rejected on the record.
+          //
+          // The mechanism, MEASURED not inferred: `onOpen()` below closes the
+          // mobile menu in the SAME transition that opens the modal, and plan
+          // 07's R3-D put `inert` on the closed panel (`Header.js`). This row
+          // lives inside that panel. An element in an `inert` subtree cannot
+          // take focus — probed live in this repo's Chromium: `el.focus()` on a
+          // button inside a plain <div> leaves `document.activeElement === el`
+          // true; the identical button inside `<div inert="">` leaves it false.
+          // So by the time the modal closes and the provider restores, the row
+          // is unfocusable. `e2e/feedback-stacking.spec.ts` was deterministically
+          // red on CI for exactly this, and it blocked the phase's FE merge.
+          //
+          // REJECTED — re-open the menu on restore: it resurfaces a menu the
+          // user deliberately closed, and re-entering the animated panel is the
+          // Tab-order problem R3-D was added to fix in the first place.
+          // REJECTED — un-inert for the duration of the restore: it makes R3-D
+          // conditional on an unrelated modal's lifecycle, which is exactly the
+          // kind of coupling that breaks silently two phases later.
+          //
+          // The hamburger toggle is the conventional landing for focus when a
+          // menu-launched dialog closes, and `Header.js`'s own menu-close effect
+          // ALREADY sends focus there — so this makes the two paths agree rather
+          // than inventing a third. The FAB below passes no override and falls
+          // through to `e.currentTarget`, so the desktop path is unchanged by
+          // construction. Pointing this back at the row is a decision, not a
+          // cleanup: it re-reds the e2e spec.
+          open(invokerRef?.current ?? e.currentTarget);
           // Close the mobile dropdown in the SAME transition (Header passes
           // its setMobileMenuOpen(false) here, the same close-on-tap idiom
           // the nav links use at Header.js:185,193).
@@ -77,11 +108,18 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
         // active:opacity-75 (the Plan 87.8-01 press idiom) instead of the
         // old bg-surface-card-hover token-swap press state — plan 08 converged
         // the two remaining token-swap sites; do not reintroduce the old idiom.
+        // DECISION Phase 88.3 (§10.1): the hover moved to `bg-surface-header-hover`,
+        // NOT the `bg-surface-hover` the other 38 swept sites took — this row renders on
+        // the dark header panel under `text-white` (1.06:1 on warm-50 vs 10.48:1 on
+        // warm-700). ThemeToggle.js:32 moved identically, so the "copied from
+        // ThemeToggle.js with ONE change" note above still holds. Full reasoning at
+        // NotificationBell.js's marker; pinned by name in `surfaceHoverSweep.test.ts`
+        // test 4b. Converging it is a decision, not a cleanup.
         // Focus ring matches the FAB this row replaces (same tokens), so
         // keyboard/switch users get the same visible affordance from either
         // entry point; inset (no ring-offset) because the row is a full-bleed
         // menu row where an offset ring would clip against siblings.
-        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
         aria-label="Send feedback"
       >
         <svg
@@ -97,7 +135,9 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
         >
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
-        <span className="text-content-muted flex-1">{label || 'Send feedback'}</span>
+        {/* Phase 88.3 (Req 8 / §5.9.2): `text-content-muted` dropped — inherits the row's
+            `text-white`. Full DECISION marker at `NotificationBell.js`'s row label. */}
+        <span className="flex-1">{label || 'Send feedback'}</span>
       </button>
     );
   }
@@ -235,7 +275,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
             {submitted ? (
               /* Success state */
               <div className="text-center py-4">
-                <div className="text-status-success text-5xl mb-4">
+                <div className="text-content-status-success text-5xl mb-4">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 24 24"
@@ -244,7 +284,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
                     strokeWidth={2}
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    className="w-12 h-12 mx-auto text-status-success"
+                    className="w-12 h-12 mx-auto text-content-status-success"
                   >
                     <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                     <polyline points="22 4 12 14.01 9 11.01" />

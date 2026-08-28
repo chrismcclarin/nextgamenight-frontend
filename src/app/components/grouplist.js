@@ -6,7 +6,12 @@ import Link from 'next/link';
 import GroupSettings from './GroupSettings';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { groupsAPI } from '../../lib/api';
-import { getTextStyle, resolveGroupBackgroundColor } from '../../lib/colorUtils';
+import {
+  getTextStyle,
+  lightTintGroupBackgroundColor,
+  resolveGroupBackgroundColor,
+  themedTextStyleVars,
+} from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { formatDate } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
@@ -240,6 +245,34 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             // null when the group has no colour of its own — the inline
             // backgroundColor is then omitted so `bg-surface-card` wins (D-28).
             const bgColor = resolveGroupBackgroundColor(group.background_color);
+            /*
+             * DECISION Phase 88.3 (D-09, cascade fix): the card's ground is a
+             * MUTUALLY EXCLUSIVE ternary — the themed surface class and its
+             * hover class live ONLY in the no-colour branch, the tint pair ONLY
+             * in the has-colour branch. Chosen OVER stacking the tint classes
+             * alongside an always-present `bg-surface-card hover:bg-surface-hover`.
+             *
+             * WHY (compile-verified on this tree, tailwindcss@4.3.3): in
+             * `@layer utilities` the emitted order is
+             * `.bg-[var(--group-ground-light)]` (line 1426) <
+             * `.bg-surface-card` (1543) < `.bg-surface-hover` (1558) <
+             * `.hover:bg-surface-hover:hover` (2347) <
+             * `.dark:bg-[var(--group-ground)]` (2894). Same property, same
+             * specificity — source order wins — so stacking them renders the
+             * WHITE card surface in light mode for every coloured group, and
+             * only the `dark:` arm would work. Today's inline `style`
+             * background hides this, because an inline style beats any class;
+             * the moment the mechanism becomes a class the two cannot coexist.
+             * The hover class is half of it: leaving it always-present would
+             * flip a coloured card to the white hover surface on hover.
+             *
+             * ALSO REJECTED: gating on `bgColor` alone. `ground` is gated on
+             * the TINT succeeding (T-88.3-43) so a malformed legacy hex
+             * withholds BOTH custom properties together, never just the light
+             * one. This is a decision, not a cleanup.
+             */
+            const tinted = lightTintGroupBackgroundColor(bgColor);
+            const ground = tinted ? bgColor : null;
             const bgImage = group.background_image_url;
             // Wave-12 review follow-up (owner-ruled fix, 2026-08-21): gate the
             // overlay AND the white-text treatment on the VALIDATED style, not
@@ -250,12 +283,43 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             // degrade to the plain color card.
             const bgImageStyle = safeBgImageStyle(bgImage);
             const hasBgImage = !!bgImageStyle;
+            // The text treatment forks in the CSS cascade, exactly like the
+            // ground above: the DARK half is computed against the stored hex,
+            // the LIGHT half against the rendered tint. No `useTheme` — see the
+            // shipped DECISION at EventScheduler.tsx (plan 15, Req 8).
+            /*
+             * DECISION Phase 88.3-cr (CR-02, code-adversarial-review
+             * 2026-08-27): the DARK arm is computed on `ground`, not on the
+             * stored hex, and the LIGHT arm on `tinted`, not on
+             * `tinted || <stored hex>` — mirroring the shipped shape at
+             * `groupHomePage/page.js`, which gates BOTH the ground and the
+             * text style on the tint succeeding. Gating only the ground was
+             * the exact asymmetry the T-88.3-43 marker above warns about:
+             * a stored value that `resolveGroupBackgroundColor` passes
+             * through but `lightTintGroupBackgroundColor` rejects (anything
+             * not a 6-digit hex) would drop the card back to the themed
+             * surface while the text treatment was still computed against
+             * the malformed string — `getBrightness` returns 255 for it, so
+             * the dark arm painted the light-ground pole on a DARK themed
+             * card. Unreachable for new writes (the backend validator is
+             * `^#[0-9A-Fa-f]{6}$`), which is why this is a consistency fix
+             * rather than a bug fix — but "withhold both grounds together"
+             * has to mean the text too, or the marker is only half true.
+             * REJECTED: leaving the stored hex in and widening the tint
+             * validator instead. A decision, not a cleanup.
+             */
+            const cardTextDark = getTextStyle(hasBgImage, ground);
+            const cardTextVars = themedTextStyleVars(
+              cardTextDark,
+              getTextStyle(hasBgImage, tinted),
+            );
+            const cardTextBold = !!cardTextDark.fontWeight;
             const profilePic = group.profile_picture_url;
 
             return (
               <div
                 key={group.id}
-                className="bg-surface-card rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover hover:bg-surface-card-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                className={`rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card hover:bg-surface-hover'}`}
                 onClick={(e) => handleGroupClick(group, e)}
                 role="button"
                 tabIndex={0}
@@ -265,7 +329,11 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   }
                 }}
                 style={{
-                  ...(bgColor && { backgroundColor: bgColor }),
+                  ...(tinted && {
+                    '--group-ground': ground,
+                    '--group-ground-light': tinted,
+                  }),
+                  ...cardTextVars,
                   ...bgImageStyle,
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
@@ -319,9 +387,15 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                           )}
                         </div>
                       )}
+                      {/* The inline `color`/`textShadow`/`WebkitTextStroke` keys
+                          are GONE on purpose: an inline declaration beats a
+                          `dark:` class, so the fork only works if they are
+                          absent rather than merely overridden. `text-content-primary`
+                          is gone for the same reason it was always redundant here
+                          — the no-colour half of the fork already resolves to
+                          `var(--color-content-primary)`. */}
                       <h3
-                        className="text-[1.1rem] font-semibold text-content-primary flex-1 min-w-0 wrap-break-word max-md:text-base"
-                        style={getTextStyle(hasBgImage, bgColor)}
+                        className="text-[1.1rem] font-semibold flex-1 min-w-0 wrap-break-word max-md:text-base [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
                       >
                         {group.name}
                       </h3>
@@ -361,10 +435,58 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                 {/* 87.8-13 walkthrough F-9: name + date on ONE line (owner call —
                     the stacked date read as a stray row). flex-wrap keeps long
                     game names graceful: the date wraps as a unit, never mid-text. */}
-                <div className="border-t border-line pt-3" style={getTextStyle(hasBgImage, bgColor)}>
-                  <div className="flex flex-wrap items-baseline gap-x-2 text-content-secondary text-sm">
+                {/* DECISION Phase 88.3 (R2-6): on a TINTED card this row uses
+                    `text-content-primary` for both spans, chosen OVER today's
+                    `text-content-secondary` / `text-content-muted`.
+
+                    WHY, measured against the eight t = 0.70 tints:
+                    `text-content-secondary` (warm-600) 3.4-3.6:1 and
+                    `text-content-muted` (warm-550) 2.8-3.0:1 both FAIL 4.5:1 —
+                    only `#374151`-and-darker clears it, and
+                    `text-content-primary` is the token that does. The
+                    uncoloured card is untouched: its ground is the themed
+                    surface those two tokens were designed against, so keeping
+                    them there is correct and converging the two would be the
+                    error. REJECTED: leaving today's tokens on a tinted ground.
+                    This is a decision, not a cleanup.
+
+                    ——— AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28),
+                    everything above KEPT AS HISTORY ———
+
+                    THE MEASURED BASIS ABOVE IS NOW FALSE IN ONE CLAUSE, AND THE
+                    DECISION STILL STANDS. Ruling 1c moved the ink ramp:
+                    `text-content-secondary` warm-600 -> **warm-700 `#4a3d32`**
+                    and `text-content-muted` warm-550 -> **warm-600** (`--warm-550`
+                    is retired). warm-700 is DARKER than the `#374151` this marker
+                    named as the threshold (L* 26.8020 vs 27.2607), so measured
+                    2026-08-28 against the same eight t = 0.70 tints with
+                    `src/lib/wcag.ts`:
+                      - `text-content-secondary` (warm-700) **5.43-5.75:1 — now
+                        CLEARS 4.5** (was 3.4-3.6 at warm-600);
+                      - `text-content-muted` (warm-600) **3.41-3.61:1 — still
+                        FAILS** (was 2.8-3.0 at warm-550);
+                      - `text-content-primary` (warm-900) 9.32-9.87:1, unchanged.
+                    So the sentence "only `#374151`-and-darker clears it, and
+                    `text-content-primary` is the token that does" is no longer
+                    exclusively true — secondary clears it too now.
+
+                    THE DECISION IS **NOT RE-OPENED** BY THIS PLAN. Tinted rows keep
+                    `text-content-primary`. This is stated explicitly because a
+                    future reader who finds a marker whose stated reason no longer
+                    holds will otherwise assume the choice was superseded and
+                    "restore" secondary here. Moving these rows to
+                    `text-content-secondary` on the strength of the new 5.43-5.75
+                    figures is a DECISION — it wants its own owner ruling and its
+                    own look on a phone — not a cleanup. */}
+                <div className={`border-t border-line pt-3 [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] ${cardTextBold ? 'font-semibold' : ''}`}>
+                  {/* LIMIT Phase 88.3-cr M1 (2026-08-28): these two rows use the THEME token on the
+                      tinted arm, not the ground-derived `--t-color` the title above forks on. Correct
+                      for all eight shipped presets (all dark; `colorUtils.test.ts` pins it); a stored
+                      LIGHT hex would paint near-white on light in dark mode. Registered in
+                      `.planning/deferred/phase-88.6.md` and cross-referenced from phase-88.3.1.md. */}
+                  <div className={`flex flex-wrap items-baseline gap-x-2 text-sm ${tinted ? 'text-content-primary' : 'text-content-secondary'}`}>
                     <span><strong className="text-content-primary">Last Game:</strong> {lastGame?.name || 'None'}</span>
-                    <span className="text-content-muted text-xs">
+                    <span className={`text-xs ${tinted ? 'text-content-primary' : 'text-content-muted'}`}>
                       {formatDate(lastEvent?.start_date || lastEvent?.createdAt, timezone)}
                     </span>
                   </div>
@@ -393,8 +515,118 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       </button>
                     )}
                     {canEdit && (
+                      /* DECISION Phase 88.3-16 (owner ruling 2, research-checked 2026-08-27):
+                         the cog takes plan 14's secondary-control recipe as plain utilities —
+                         `bg-btn-secondary dark:bg-surface-elevated` (warm-200 fill in light
+                         [AMENDED 88.3-18: the token now resolves to **warm-100** — see the AMENDED
+                         block below]; dark restored byte-identical to what shipped)
+                         plus `border border-line-control`
+                         (warm-300). Req 12 test 7 named this control: in light it was #ffffff on a
+                         white card with no edge at all.
+
+                         IT TAKES A BORDER WHILE MANAGE MEMBERS TAKES A RING, and that difference is
+                         deliberate rather than drift: this element does NOT carry `.btn`, so the
+                         unlayered `.btn { border: none }` reset never reaches it and an ordinary
+                         border utility works; `groupHomePage/page.js`'s Manage Members IS a `.btn`
+                         and can only get an edge through `box-shadow`. Both resolve to the SAME
+                         `--color-border-control` token, so the two render identically despite the
+                         different mechanism. No `dark:border-0` is needed or wanted —
+                         `--color-border-control` is declared `transparent` in the `.dark` block
+                         (`globals.css`), so the border self-cancels there. D-35 requires the colour
+                         in the same class string as the width, which `border border-line-control`
+                         satisfies.
+
+                         THIS ELEMENT SITS ON TWO GROUNDS, and the earlier "it is white on white"
+                         reading was only half true. Its parent is the group card above, whose
+                         className is `tinted ? 'bg-[var(--group-ground-light)] …' : 'bg-surface-card
+                         …'` — so for every COLOURED group the cog's light ground is the tint. Both
+                         measured 2026-08-27 with `src/lib/wcag.ts`:
+                           - on the WHITE (uncoloured) card: fill warm-200 vs #ffffff = 1.306, ring
+                             warm-300 vs the fill = 1.222, ring vs the white card = 1.595;
+                           - on the eight t = 0.70 tints: fill 1.395 (Forest) - 1.477 (Wine), ring
+                             1.141-1.209. SEVEN of the eight fill pairings land ABOVE the 1.40 fill
+                             band top (only Forest, 1.395, is inside it). That is DISCLOSURE, not a
+                             failure: the band bounds a fill against its ground for legibility and
+                             more separation is not a defect. Nothing landed below the 1.05 floor, so
+                             the reserved `bg-white/80` wash substitution was not triggered.
+
+                         THE DIRECTION OF TRAVEL, stated because it is the uncomfortable half:
+                         today's white cog reads ~1.82-1.93 against the tint; the warm-200 fill reads
+                         ~1.39-1.48. So on a COLOURED card this change LOWERS the cog's separation
+                         from its ground (~1.88 -> ~1.44) while RAISING it on the white card the
+                         owner's complaint was actually about, and on the tint the border is an inner
+                         edge rather than a boundary. That trade is the point of one recipe.
+
+                         ——— AMENDED Phase 88.3-18 (owner ruling 1c + the cog ruling, 2026-08-28),
+                         everything above KEPT AS HISTORY ———
+
+                         THE COG GOT NO DEDICATED CHANGE, BUT IT DID MOVE — and that difference is
+                         recorded rather than blurred. It wears `bg-btn-secondary`, and ruling 1c
+                         moved `--color-btn-secondary-bg` warm-200 -> **warm-100** (the page vacated
+                         warm-100; see the `.btn-secondary` marker in `globals.css` for why that is
+                         not a reverted fix). So the cog's fill followed the shared token.
+                         HUMAN-UAT test 4 recorded "we will leave the cog as is for now"; **owner
+                         ruling 2026-08-28 is option A, "A, keep" — the cog rides the shared
+                         token.** REJECTED: pinning the cog to its own private frozen token, which
+                         would fork ONE recipe into two for a single control with no owner ruling
+                         behind it. So "as is" means "not singled out", NOT "did not move".
+
+                         AMENDED FIGURES, all re-derived 2026-08-28 with `src/lib/wcag.ts`:
+                           - on the WHITE (uncoloured) card: fill warm-100 vs #ffffff = **1.1330**
+                             (was 1.306), ring warm-300 vs the fill = **1.4081** (was 1.222). Ring
+                             vs the white card = 1.595 is **UNCHANGED** — the card did not move, so
+                             that one figure above is still live rather than restated.
+                           - on the eight t = 0.70 tints: fill **1.6073 (Forest) - 1.7019 (Wine)**
+                             (was 1.395-1.477); ring vs the tints **1.141-1.209, UNCHANGED** (the
+                             ring token held at warm-300). **ALL EIGHT** fill pairings now land
+                             ABOVE the 1.40 band top, where seven of eight already did. Still
+                             DISCLOSURE, not a failure, for the reason stated above: the band bounds
+                             a fill against its ground for legibility, and more separation is not a
+                             defect. Nothing approaches the 1.05 floor, so the reserved
+                             `bg-white/80` wash substitution is STILL not triggered — re-tested at
+                             warm-100.
+
+                         AMENDED DIRECTION OF TRAVEL, and it INVERTS on one ground: the warm-100
+                         fill reads ~1.61-1.70 against the tints, so on a COLOURED card this now
+                         RAISES the cog's separation relative to plan 16 (~1.88 -> ~1.65 against
+                         the original white cog, rather than ~1.88 -> ~1.44). On the WHITE card the
+                         direction FLIPS the other way — 1.306 -> **1.1330**, LESS separation, not
+                         more — which is the opposite of what the paragraph above claimed for
+                         warm-200. That asymmetry (flatter on white, stronger on every colour) is
+                         the entire content of the owner's final-re-check line item for this
+                         control.
+
+                         NOT A GATE A ROW, DELIBERATELY. These eight tint figures live HERE and in
+                         plan 18's ledger F only. `tokenContrast.test.ts` has no cog-vs-tint
+                         assertion and gains none, so the Gate A row count is unchanged. If a future
+                         phase decides these pairings deserve mechanical protection, adding that row
+                         must also update this marker, plan 18's truths block, ROADMAP:1074/:1136
+                         and the plan's task 3(g) template in the SAME commit.
+
+                         REJECTED:
+                           - FORKING THE COG'S OWN className on `tinted` (keep `bg-surface-elevated`
+                             when tinted, take `bg-btn-secondary` only in the null branch). It is
+                             legal here — the cog is not part of the card's exclusion ternary that
+                             Gate B test 3 pins — but it makes ONE control render two different
+                             recipes on one screen, and there is no owner ruling for that.
+                           - the `bg-white/80` WASH Manage Members takes. Held in reserve by the
+                             STOP rule above; not needed, because no tinted pairing fell below 1.05.
+                           - a >= 3:1 neutral border (`border-line-strong` / warm-500) — 0 of 13
+                             shipped systems do it; see the survey.
+
+                         TARGET SIZE — disclosed, deliberately NOT fixed here (owner ruling
+                         2026-08-27). `px-3 py-1 text-sm` around a single emoji glyph is ~28px tall
+                         on a phone, under the project's 44x44 floor (CLAUDE.md, Phone-Forward
+                         Design). It is not a `.btn`, so D-36's phone-only `.btn { min-height:
+                         2.75rem }` does not reach it, and the 87.8 D-13/D-14 markers in this file
+                         cover the two `btn btn-primary` CTAs, not this. The recorded fix is the
+                         per-CTA `min-h-11` pattern (D-13); adding it here reflows the card header,
+                         which is a layout change nobody has looked at on a phone. PHASE 88.6 owns
+                         it under the `Button` migration (entry in `.planning/deferred/phase-88.6.md`).
+
+                         Any of this is a decision, not a cleanup. */
                       <button
-                        className="px-3 py-1 bg-surface-elevated text-content-primary rounded-btn hover:bg-surface-card-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                        className="px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSettingsGroup(group);

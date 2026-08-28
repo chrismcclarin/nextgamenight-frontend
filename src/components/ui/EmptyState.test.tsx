@@ -92,8 +92,8 @@ describe('EmptyState', () => {
     expect(media).toHaveClass('h-24');
     expect(media).toHaveClass('w-24');
     expect(media).toHaveClass('rounded-full');
-    expect(media).toHaveClass('bg-surface-accent-subtle');
-    expect(media).toHaveClass('text-accent');
+    expect(media).toHaveClass('bg-surface-accent-subtle-strong');
+    expect(media).toHaveClass('text-content-accent-strong');
   });
 
   it('renders `illustration` INSTEAD of the icon circle, in the same position', () => {
@@ -113,7 +113,7 @@ describe('EmptyState', () => {
     expect(media!.querySelector('img')).not.toBeNull();
     // the circle + glyph are gone, not merely hidden
     expect(container.querySelector('svg')).toBeNull();
-    expect(media).not.toHaveClass('bg-surface-accent-subtle');
+    expect(media).not.toHaveClass('bg-surface-accent-subtle-strong');
     // same position: still the FIRST child of the root
     expect(container.firstElementChild!.firstElementChild).toBe(media);
   });

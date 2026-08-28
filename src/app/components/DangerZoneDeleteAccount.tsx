@@ -217,7 +217,7 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
 
   return (
     <section className="card p-3 md:p-6 border border-status-error">
-      <h2 className="text-lg font-bold text-status-error mb-2">Danger Zone</h2>
+      <h2 className="text-lg font-bold text-content-status-error mb-2">Danger Zone</h2>
       <p className="text-sm text-content-secondary mb-4">
         Permanently delete your account and all associated data. This action
         cannot be undone.
@@ -333,7 +333,7 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
               {failureMessage && (
                 <p
                   role="alert"
-                  className="text-sm font-medium text-status-error"
+                  className="text-sm font-medium text-content-status-error"
                 >
                   {failureMessage}
                 </p>

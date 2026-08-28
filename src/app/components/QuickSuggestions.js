@@ -79,7 +79,7 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
               key={game.id}
               type="button"
               onClick={() => onSelectGame({ id: game.id, name: game.name })}
-              className="flex items-center gap-1.5 px-2 py-1 border border-line rounded-full bg-surface-card hover:bg-surface-card-hover transition-colors cursor-pointer shrink-0"
+              className="flex items-center gap-1.5 px-2 py-1 border border-line rounded-full bg-surface-card hover:bg-surface-hover transition-colors cursor-pointer shrink-0"
               title={game.name}
             >
               {game.thumbnail_url ? (

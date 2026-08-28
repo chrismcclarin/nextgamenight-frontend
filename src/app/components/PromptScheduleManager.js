@@ -134,7 +134,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
       {/* Error message */}
       {error && (
         <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
-          <p className="text-status-error text-sm">{error}</p>
+          <p className="text-content-status-error text-sm">{error}</p>
         </div>
       )}
 
@@ -195,8 +195,8 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
 
       {/* Permission notice for members */}
       {!canManageSchedules && !loading && (
-        <div className="mt-4 p-3 bg-surface-card-hover border border-line-accent rounded-btn">
-          <p className="text-accent text-sm">
+        <div className="mt-4 p-3 bg-surface-sunken border border-line-accent rounded-btn">
+          <p className="text-content-accent text-sm">
             You are viewing schedules as a member. Only group owners and admins can create or edit schedules.
           </p>
         </div>

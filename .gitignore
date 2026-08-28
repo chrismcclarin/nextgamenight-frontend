@@ -64,5 +64,7 @@ logs
 # .auth/ holds the storageState appSession cookie — NEVER commit (Info Disclosure)
 .auth/
 /test-results/
+# CR-09 (88.3-cr): the CI json reporter's output, read by scripts/gate-c-executed-floor.mjs
+/playwright-results.json
 /playwright-report/
 /playwright/.cache/

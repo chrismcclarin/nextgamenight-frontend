@@ -240,7 +240,7 @@ export default function UpcomingEventsCard({ events, showGroupName = false, load
                 key={event.id}
                 type="button"
                 onClick={() => handleEventClick(event)}
-                className={`block w-full text-left min-h-11 md:min-h-0 hover:bg-surface-card-hover rounded-sm py-1.5 px-2 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${isGuestEvent ? 'border-l-2 border-dashed border-amber-400 dark:border-amber-500/70 pl-3' : ''}`}
+                className={`block w-full text-left min-h-11 md:min-h-0 hover:bg-surface-hover rounded-sm py-1.5 px-2 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${isGuestEvent ? 'border-l-2 border-dashed border-amber-400 dark:border-amber-500/70 pl-3' : ''}`}
               >
                 <span className="text-sm text-content-secondary">{gameName}</span>
                 <span className="text-sm text-content-muted"> · </span>

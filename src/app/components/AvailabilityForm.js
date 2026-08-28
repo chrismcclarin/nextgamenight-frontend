@@ -336,7 +336,7 @@ export default function AvailabilityForm({
             active:opacity-75 transition-colors duration-200
             focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2
             ${isUnavailable
-              ? 'bg-status-error-subtle border-2 border-status-error text-status-error'
+              ? 'bg-status-error-subtle border-2 border-status-error text-content-status-error'
               : 'bg-surface-card border-2 border-line text-content-secondary hover:border-line-strong'
             }
           `}
@@ -379,7 +379,7 @@ export default function AvailabilityForm({
       {/* Validation Error Display */}
       {errors.time_slots && (
         <div className="bg-status-error-subtle border border-status-error rounded-btn p-3">
-          <p className="text-sm text-status-error">
+          <p className="text-sm text-content-status-error">
             {errors.time_slots.message}
           </p>
         </div>
@@ -388,7 +388,7 @@ export default function AvailabilityForm({
       {/* Submission Error Display (inline submit-error UI) */}
       {submitError && (
         <div className="bg-status-error-subtle border border-status-error rounded-btn p-3">
-          <p role="alert" className="text-sm text-status-error">
+          <p role="alert" className="text-sm text-content-status-error">
             {submitError}
           </p>
         </div>

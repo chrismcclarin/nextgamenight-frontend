@@ -134,7 +134,7 @@ export default function PromptScheduleSection({
       );
     }
     return (
-      <span className="bg-status-success-subtle text-status-success rounded-full px-2 py-0.5 text-xs font-medium">
+      <span className="bg-status-success-subtle text-content-status-success rounded-full px-2 py-0.5 text-xs font-medium">
         {openPollCount} open {openPollCount === 1 ? 'poll' : 'polls'}
       </span>
     );
@@ -163,7 +163,7 @@ export default function PromptScheduleSection({
             setIsExpanded((prev) => !prev);
           }
         }}
-        className="p-3 cursor-pointer hover:bg-surface-card-hover active:opacity-75 rounded-card transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+        className="p-3 cursor-pointer hover:bg-surface-hover active:opacity-75 rounded-card transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

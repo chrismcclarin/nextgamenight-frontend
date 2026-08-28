@@ -173,7 +173,7 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                     (UAT row 283) — see the amended marker above. */}
                 <Modal.Header
                     closeDisabled={submitting}
-                    closeClassName="text-status-error hover:text-status-error"
+                    closeClassName="text-content-status-error hover:text-content-status-error"
                 >
                     Create a new Group
                 </Modal.Header>

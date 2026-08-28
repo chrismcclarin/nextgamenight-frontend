@@ -232,7 +232,7 @@ export default function GroupPlanningPage() {
     if (!groupId) {
         return (
             <div className="p-6 max-w-4xl mx-auto">
-                <p className="text-status-error">No group specified. Please navigate from a group page.</p>
+                <p className="text-content-status-error">No group specified. Please navigate from a group page.</p>
                 <Link href="/" className="text-content-link hover:underline">Go to Home</Link>
             </div>
         );

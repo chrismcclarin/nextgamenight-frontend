@@ -348,7 +348,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                                     ? 'border-line bg-surface-page cursor-default'
                                                     : selectedFriends.has(friend.id)
                                                         ? 'border-accent bg-surface-card-hover cursor-pointer'
-                                                        : 'border-line hover:bg-surface-card-hover cursor-pointer'
+                                                        : 'border-line hover:bg-surface-hover cursor-pointer'
                                             }`}
                                         >
                                             <input
@@ -358,7 +358,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                                 checked={isInGroup || selectedFriends.has(friend.id)}
                                                 disabled={isInGroup}
                                                 onChange={() => toggleFriend(friend.id)}
-                                                className="h-4 w-4 rounded-sm border-line text-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 disabled:opacity-40"
+                                                className="h-4 w-4 rounded-sm border-line text-content-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 disabled:opacity-40"
                                             />
                                             <div className="flex-1 min-w-0">
                                                 <p className={`font-medium truncate ${isInGroup ? 'text-content-muted' : 'text-content-primary'}`}>
@@ -411,10 +411,10 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                        decision, not a cleanup. */
                                     <div className={`mt-2 p-3 rounded-lg text-sm font-medium ${
                                         inviteResult.failCount === 0
-                                            ? 'bg-status-success-subtle text-status-success border border-status-success'
+                                            ? 'bg-status-success-subtle text-content-status-success border border-status-success'
                                             : inviteResult.successCount > 0
-                                                ? 'bg-status-warning-subtle text-status-warning border border-status-warning'
-                                                : 'bg-status-error-subtle text-status-error border border-status-error'
+                                                ? 'bg-status-warning-subtle text-content-status-warning border border-status-warning'
+                                                : 'bg-status-error-subtle text-content-status-error border border-status-error'
                                     }`}>
                                         {inviteResult.failCount === 0
                                             ? (inviteResult.alreadyCount > 0
@@ -477,10 +477,10 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                             <p className="text-red-500 text-sm mt-2">{emailError}</p>
                         )}
                         {emailSuccess && (
-                            <p className="text-status-success text-sm mt-2">{emailSuccess}</p>
+                            <p className="text-content-status-success text-sm mt-2">{emailSuccess}</p>
                         )}
                         {friendPrompt && !friendRequestSent && (
-                            <div className="mt-3 p-3 bg-surface-card-hover border border-line rounded-lg flex items-center justify-between gap-3">
+                            <div className="mt-3 p-3 bg-surface-sunken border border-line rounded-lg flex items-center justify-between gap-3">
                                 {/* PRIM-04 adoption: render the resolved found-user identity
                                     via the shared UserChip primitive. */}
                                 <div className="min-w-0">
@@ -500,7 +500,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                             </div>
                         )}
                         {friendRequestSent && (
-                            <p className="text-status-success text-sm mt-2">Friend request sent!</p>
+                            <p className="text-content-status-success text-sm mt-2">Friend request sent!</p>
                         )}
                     </div>
 
@@ -545,7 +545,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                             <button
                                                 onClick={handleResetInviteLink}
                                                 disabled={resetting}
-                                                className="mt-2 w-full btn btn-secondary py-2 text-xs text-status-error"
+                                                className="mt-2 w-full btn btn-secondary py-2 text-xs text-content-status-error"
                                                 title="Invalidate the current invite link and generate a new one"
                                             >
                                                 {resetting ? 'Resetting…' : 'Reset invite link'}

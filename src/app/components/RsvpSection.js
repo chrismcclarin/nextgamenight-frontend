@@ -118,7 +118,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
   const statusConfig = {
     yes: {
       label: "You're going!",
-      textColor: 'text-status-success',
+      textColor: 'text-content-status-success',
       activeBg: 'bg-status-success-subtle',
       activeBorder: 'border-status-success',
       hoverBg: 'hover:bg-status-success-subtle',
@@ -127,7 +127,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
     },
     maybe: {
       label: "You're a maybe",
-      textColor: 'text-status-warning',
+      textColor: 'text-content-status-warning',
       activeBg: 'bg-status-warning-subtle',
       activeBorder: 'border-status-warning',
       hoverBg: 'hover:bg-status-warning-subtle',
@@ -250,20 +250,20 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
 
         {/* Error message */}
         {error && (
-          <p className="text-sm text-status-error">{error}</p>
+          <p className="text-sm text-content-status-error">{error}</p>
         )}
 
         {/* Count banner */}
         {totalResponses > 0 && (
           <div className="flex items-center gap-3 text-sm">
             {summary.yes > 0 && (
-              <span className="text-status-success font-medium">{summary.yes} Yes</span>
+              <span className="text-content-status-success font-medium">{summary.yes} Yes</span>
             )}
             {summary.yes > 0 && (summary.maybe > 0 || summary.no > 0) && (
               <span className="text-line-strong">|</span>
             )}
             {summary.maybe > 0 && (
-              <span className="text-status-warning font-medium">{summary.maybe} Maybe</span>
+              <span className="text-content-status-warning font-medium">{summary.maybe} Maybe</span>
             )}
             {summary.maybe > 0 && summary.no > 0 && (
               <span className="text-line-strong">|</span>

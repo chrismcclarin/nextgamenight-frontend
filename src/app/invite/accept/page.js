@@ -116,7 +116,7 @@ function InviteAcceptPage() {
           <div className="text-center">
             {/* Green checkmark */}
             <div className="mx-auto mb-4 w-16 h-16 bg-status-success-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-status-success" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <svg className="w-8 h-8 text-content-status-success" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
@@ -150,7 +150,7 @@ function InviteAcceptPage() {
           <div className="text-center">
             {/* Red X icon */}
             <div className="mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <svg className="w-8 h-8 text-content-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
@@ -170,9 +170,17 @@ function InviteAcceptPage() {
         {/* Not logged in state */}
         {status === 'not-logged-in' && (
           <div className="text-center">
-            {/* Invite icon */}
-            <div className="mx-auto mb-4 w-16 h-16 bg-surface-accent-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+            {/* Invite icon.
+                DECISION Phase 88.3-16 (owner ruling 3, 2026-08-27) — pointer, full marker at
+                `src/components/ui/EmptyState.tsx`: this is the circle the owner actually tested on
+                his phone. It and its glyph move TOGETHER to the `-strong` pair (amber-200 /
+                amber-900, 7.28:1); the SHARED `--color-bg-accent-subtle` and its ~13 other
+                consumers are deliberately untouched. The `<svg>` here also gained
+                `aria-hidden="true" focusable="false"` — it is decorative and was announcing as a
+                bare "graphic" with no name, an inconsistency with our own `Icon` primitive, which
+                defaults to `aria-hidden`. Both are decisions, not cleanups. */}
+            <div className="mx-auto mb-4 w-16 h-16 bg-surface-accent-subtle-strong rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-content-accent-strong" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
               </svg>
             </div>

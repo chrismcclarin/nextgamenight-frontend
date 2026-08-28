@@ -8,7 +8,15 @@ import ManageMembers from '../components/ManageMembers';
 import { listsAPI, groupsAPI, eventsAPI, API_BASE_URL } from '../../lib/api';
 import GroupGamesList from '../components/GroupGamesList';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
-import { getTextStyle, getSubtitleStyle, resolveGroupBackgroundColor } from '../../lib/colorUtils';
+import {
+    getTextStyle,
+    getSubtitleStyle,
+    resolveGroupBackgroundColor,
+    lightTintGroupBackgroundColor,
+    isDarkBackground,
+    themedTextStyleVars,
+} from '../../lib/colorUtils';
+import { cn } from '../../lib/cn';
 import SafeImage from '../components/SafeImage';
 import EventCalendar from '../components/EventCalendar';
 import PendingMemberBanner from '../components/PendingMemberBanner';
@@ -313,14 +321,133 @@ function GroupHomePage(){
     // keeps its themed surface class instead of an inline override (D-28).
     const headerBgColor = resolveGroupBackgroundColor(Group?.background_color);
 
+    /*
+     * DECISION Phase 88.3 (D-08/D-09): the identity header renders a LIGHT TINT
+     * of the group's stored colour in light mode and the stored hex itself in
+     * dark, and the UNCOLOURED header stays on `bg-surface-elevated` (white in
+     * light) — chosen because the owner's principle for this phase is no dark
+     * bands in light mode, for coloured groups AND uncoloured ones alike.
+     *
+     * REJECTED, both measured in the phase discussion: (H2) a warm-700 band —
+     * a dark plinth behind the title, which is the very thing light mode is
+     * supposed to stop; and (H3) a nav-blue band — the same objection plus a
+     * second identity colour competing with the group's own. Neither survives
+     * the "the group's colour IS the identity cue" contract that 87.8 D-03
+     * records a few lines below.
+     *
+     * AND: Phase 88-22's "the header falls back to the THEMED ELEVATED SURFACE"
+     * decision at the comment below STANDS. It is NOT reversed by this phase —
+     * the tint applies to a group that HAS a colour; the no-colour path is
+     * untouched. Re-pinning a hardcoded dark value here would re-open the exact
+     * D-28 bug 88-22 closed.
+     *
+     * `ground` is the raw stored hex GATED ON THE TINT SUCCEEDING (T-88.3-43,
+     * the same shape as plan 10's five render sites): there is no second parse
+     * and no `parsedHex` local, because `lightTintGroupBackgroundColor`'s own
+     * success/failure IS the parse. A legacy non-hex value therefore behaves as
+     * "no colour" in BOTH arms — light falls to `bg-surface-elevated`, and
+     * `darkArm` below falls to `!ground`, rather than the raw string being
+     * truthy in one arm and unusable in the other.
+     *
+     * Changing any of this is a decision, not a cleanup.
+     */
+    const tinted = lightTintGroupBackgroundColor(headerBgColor);
+    const ground = tinted ? headerBgColor : null;
+    const hasHeaderImage = !!Group?.background_image_url;
+
+    /*
+     * `darkArm` — the ground-brightness half of the three header controls' fork.
+     * The `!ground` clause is NOT belt-and-braces: `getBrightness(null)` returns
+     * `255` by contract (colorUtils.js), so `isDarkBackground(null)` is `false`,
+     * and a bare `isDarkBackground(ground)` would silently send the UNCOLOURED
+     * header — the app's default and most common case — to the LIGHT arm even in
+     * dark theme, where it sits on `bg-surface-elevated` (purple-800). That
+     * surface is invisible to the colour value alone, so the null rule is the
+     * only thing that can see it. `getTextStyle` already carries the equivalent
+     * rule for the TITLE (its `isUnsetBackgroundColor` branch); this is the
+     * controls' half of the same rule.
+     */
+    const darkArm = !ground || isDarkBackground(ground);
+
+    /*
+     * The title/subtitle treatment is computed TWICE — once against the stored
+     * hex (what dark mode paints) and once against the rendered tint (what
+     * light mode paints) — and handed to the cascade as `--t-*` custom
+     * properties. An inline `style` cannot itself be forked by a `dark:` class,
+     * so the indirection is REQUIRED here, not stylistic (the plan-07 inert-
+     * override trap; see `themedTextStyleVars`' own note in colorUtils.js).
+     * No `useTheme`: the shipped DECISION at EventScheduler.tsx (plan 15, Req 8)
+     * rejected the hook for exactly this problem — hydration fork, theme flash.
+     *
+     * NOTE for a future reader: at t = 0.70 all eight shipped presets tint to
+     * W3C brightness 188-191, so `getTextStyle` takes its `brightness > 180`
+     * tier for every one of them and the LIGHT-mode title treatment is CONSTANT
+     * across the preset table (UI-SPEC §5.10.2). Do not add per-colour
+     * computation back on the strength of that constancy — it is an outcome of
+     * the current preset set, and `colorUtils.test.ts` pins the tier per preset
+     * so a future light preset reds there first.
+     *
+     * `--t-weight` / `--t-weight-l` are built HERE rather than in
+     * `themedTextStyleVars`, which deliberately omits `fontWeight` because it is
+     * spread onto a CONTAINER at `grouplist.js` and `font-weight` inherits. Both
+     * consumers here are leaf text elements, so the property cannot bleed.
+     *
+     * The fallback is the element's OWN base weight (`700` = `font-bold` on the
+     * h1, `inherit` on the unstyled `<p>`), NOT a bare `inherit`. Compile-
+     * verified against this tree's tailwindcss@4.3.3: `.font-bold` emits at
+     * line 1847 of the compiled sheet and `.[font-weight:var(--t-weight-l)]` at
+     * 1863 — same property, same specificity, so the ARBITRARY UTILITY WINS.
+     * `inherit` is a real value, not an absence: it would beat `font-bold` and
+     * silently un-bold the uncoloured header, which is the app's default.
+     */
+    const themedTextVars = (dark, light, baseWeight) => ({
+        ...themedTextStyleVars(dark, light),
+        '--t-weight': dark.fontWeight || baseWeight,
+        '--t-weight-l': light.fontWeight || baseWeight,
+    });
+    const headerTitleVars = themedTextVars(
+        getTextStyle(hasHeaderImage, ground),
+        getTextStyle(hasHeaderImage, tinted),
+        '700',
+    );
+    const headerSubtitleVars = themedTextVars(
+        getSubtitleStyle(hasHeaderImage, ground),
+        getSubtitleStyle(hasHeaderImage, tinted),
+        'inherit',
+    );
+    /*
+     * The eight arbitrary-property utilities that READ the properties above are
+     * written out LITERALLY on each of the two elements rather than hoisted into
+     * a shared constant. Deliberate, twice over: the drift gate
+     * (`groupColourRendering.test.ts`) matches whole `className` EXPRESSIONS, and
+     * `typeScaleTouchedSurfaces.test.ts`'s `HEADING_RE` reads the h1's className
+     * literal — an interpolated constant is invisible to both, so hoisting would
+     * silently disarm two gates. Four utilities are light-arm (unprefixed) and
+     * four are `dark:`; the light-arm STROKE and WEIGHT are not optional
+     * decoration — without them an image-background header loses its outline in
+     * light mode and `font-bold` beats the returned `600`.
+     */
+
     return (
         // POLL-02: FriendshipStatusProvider lifted to root layout — see
         // src/app/layout.js. Nested mount removed so NotificationBell +
         // friends/page consume the same receivedRequests state.
         <div className="p-4 md:p-6">
-            {/* Breadcrumbs */}
+            {/* Breadcrumbs.
+                DECISION Phase 88.3-17 (DEF-88.3-13-04, owner ruling A, 2026-08-27):
+                the Home link gains the project focus ring, the same string the tab
+                bar below and the header CTAs carry. It is included because the
+                owner's finding was PAGE-WIDE — "when tabbing around the screen like
+                this it's a blue circle, which is readable on some items, and not
+                readable on others" — and a sweep scoped to the calendar would have
+                closed the finding on a narrower surface than it was reported on,
+                leaving this tab stop still painting the browser default. It is the
+                FIRST tab stop on the group page, so it is the first thing that
+                default outline paints on. Chosen OVER a global `a:focus-visible`
+                rule in `globals.css`: that would repaint every link in the app from
+                inside a phase that has no rendered gate on most of them. */}
             <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
-                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
+                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
                 <span className="text-content-muted mx-2">{'>'}</span>
                 <span className="text-content-primary font-semibold wrap-break-word">{Group?.name || 'Group'}</span>
             </nav>
@@ -345,33 +472,82 @@ function GroupHomePage(){
                 to the themed elevated surface — which also makes it correct in
                 light mode, where a hardcoded near-black header was not. */}
             <div
-                className="mb-6 flex flex-col gap-4 p-3 md:p-6 rounded-lg relative overflow-visible bg-surface-elevated"
+                className={cn(
+                    'mb-6 flex flex-col gap-4 p-3 md:p-6 rounded-lg relative overflow-visible',
+                    // MUTUALLY EXCLUSIVE, never stacked — `bg-surface-elevated`
+                    // lives ONLY in the null branch. Compile-verified against
+                    // this tree's tailwindcss@4.3.3: `.bg-[var(--group-ground-light)]`
+                    // emits at 1426 and `.bg-surface-elevated` at 1549 — same
+                    // property, same specificity, so source order wins and a
+                    // stacked themed class would paint a coloured group WHITE in
+                    // light mode. The inline `style` background this replaces hid
+                    // that, because an inline style beats any class.
+                    tinted
+                        ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]'
+                        : 'bg-surface-elevated',
+                )}
                 style={{
-                    ...(headerBgColor && { backgroundColor: headerBgColor }),
+                    ...(tinted && {
+                        '--group-ground': ground,
+                        '--group-ground-light': tinted,
+                    }),
                     ...safeBgImageStyle(Group?.background_image_url),
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
                     minHeight: '120px',
                 }}
             >
-                <div style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
+                <div
                     // The dim exists to darken a user-chosen colour or cover
                     // image so the title reads over it. With neither, the header
                     // is on a themed surface that already has its contrast — a
                     // wash there just muddies the token (D-28).
-                    backgroundColor: Group?.background_image_url
-                        ? 'rgba(0, 0, 0, 0.4)'
-                        : headerBgColor
-                            ? 'rgba(0, 0, 0, 0.15)'
-                            : 'transparent',
-                    zIndex: 0,
-                    borderRadius: 'inherit',
-                }} />
+                    //
+                    // EXTENDED Phase 88.3 (Req 9, UI-SPEC §5.10.3), original
+                    // reasoning above KEPT: the same argument now applies to the
+                    // COLOURED header in LIGHT mode. A 15% black dim over the
+                    // t = 0.70 tint costs ~11.5 L*, which would drag the rendered
+                    // ground below Req 9's own `L* >= 75` acceptance — and that
+                    // acceptance is measured on the RENDERED PIXEL, so the dim
+                    // would fail the requirement rather than merely dull it. The
+                    // dim rescues text from a DARK colour or a photo; on a light
+                    // tint it only muddies the ground. So three explicit cases:
+                    //   (1) background image -> 0.4, INLINE, both themes;
+                    //   (2) stored colour, no image -> transparent in light,
+                    //       0.15 in dark, via the class below;
+                    //   (3) no colour -> transparent in both themes.
+                    //
+                    // The 0.15 is `dark:bg-[rgb(0_0_0/0.15)]` and NOT Tailwind's
+                    // `dark:bg-black/15` shorthand. Compile-verified on
+                    // tailwindcss@4.3.3: the slash form on a theme colour emits
+                    // `color-mix(in oklab, var(--color-black) 15%, transparent)`,
+                    // which Chromium serialises back as `color(srgb …)`/`oklab(…)`
+                    // — not `rgba()`. The bracketed value emits a plain
+                    // `rgb(0 0 0/0.15)`, which is what plan 12's rendered-alpha
+                    // probe reads. It is also NEVER an inline value: an inline
+                    // declaration outranks a `dark:` class, so an inline
+                    // `'transparent'` on this property would win in both themes
+                    // and silently delete the dark dim. The guard is `tinted`,
+                    // not raw `headerBgColor`, so a legacy non-hex colour is
+                    // "no colour" here too — same rule as the ground above.
+                    className={
+                        tinted && !Group?.background_image_url
+                            ? 'dark:bg-[rgb(0_0_0/0.15)]'
+                            : undefined
+                    }
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        zIndex: 0,
+                        borderRadius: 'inherit',
+                        ...(Group?.background_image_url && {
+                            backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                        }),
+                    }}
+                />
                 {/* z-30, not z-10: this row hosts the kebab dropdown, and its z-index
                     is a STACKING CONTEXT for everything inside — the sibling CTA row
                     below is z-20, so at z-10 the open dropdown painted underneath
@@ -402,14 +578,14 @@ function GroupHomePage(){
                             unconditionally, so this surface was the last outlier. `wrap-break-word`
                             is what keeps a long group name safe at 375px and must stay. */}
                         <h1
-                            className="text-3xl font-bold wrap-break-word"
-                            style={getTextStyle(!!Group?.background_image_url, headerBgColor)}
+                            className="text-3xl font-bold wrap-break-word [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)]"
+                            style={headerTitleVars}
                         >
                             {Group?.name || 'Group'}
                         </h1>
                         <p
-                            className="mt-1"
-                            style={getSubtitleStyle(!!Group?.background_image_url, headerBgColor)}
+                            className="mt-1 [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)]"
+                            style={headerSubtitleVars}
                         >
                             {gamesList.length} {gamesList.length === 1 ? 'game' : 'games'} played
                             {UserList && UserList.length > 0 && (
@@ -431,14 +607,165 @@ function GroupHomePage(){
                         </div>
                     )}
                 </div>
+                {/* DECISION Phase 88.3 (D-10 / OI-6): all three controls in this row
+                    branch on `darkArm = !ground || isDarkBackground(ground)`, where
+                    `ground` is the STORED hex gated on the tint parsing (see the ground
+                    block above). The `dark:`-prefixed classes are appended only on the
+                    dark arm; the light-arm classes are always present. No `useTheme` —
+                    the theme half rides the cascade, exactly as the ground does.
+
+                    REJECTED, and both matter:
+                      - keying off "the group HAS no colour", which is what shipped. That
+                        is why `text-white border-2 border-white/30` over an inline
+                        `rgba(255,255,255,0.1)` wash rendered INVISIBLE the moment 88-22
+                        made an uncoloured header white in light mode.
+                      - a `data-ground` CSS attribute selector. It is a new unlayered-
+                        override idiom aimed at a primitive Phase 88.6 is already
+                        migrating; revisit it there as a `Button` `onGround`/inverse
+                        variant, not here.
+                      - a bare `isDarkBackground(ground)` with no null rule — see the
+                        `darkArm` comment above for why that is a silent regression.
+
+                    OI-6 (owner-ruled 2026-08-25), fixed here under "converge while you
+                    are in the file": the Add-New-Game-Event fill was `var(--amber-600)`
+                    with white text — 3.19:1, FAILING in BOTH themes since before this
+                    phase, i.e. pre-existing and not caused by Req 9. It is now
+                    `var(--amber-700)`, 5.02:1. `amber-800` (7.09:1) was offered and
+                    REJECTED by the owner as too dark.
+
+                    THE BORDERS ARE GONE, and that is not a style tidy: `globals.css`'s
+                    unlayered `.btn { border: none }` beats every `@layer utilities`
+                    border class, so `border-2 border-white/30` (Manage Members),
+                    `border-2 border-white/20` (Plan Game Session) and
+                    `border-2 border-amber-400/40 hover:border-amber-400/60` (Add New
+                    Game Event) rendered NOTHING on this row and had done for as long as
+                    `.btn` has been unlayered. Keeping a white border declaration on a
+                    control that now sits on a WHITE header would have read as intent to
+                    a future editor. A real border/ring model for `.btn` is Phase 88.6's
+                    `Button` migration to own; this plan asserts no border ratio.
+                    In their place all three carry an AUTHOR FOCUS RING —
+                    `focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring
+                    focus-visible:ring-offset-2`. `.btn` defines no `focus-visible` style
+                    and there is no global one, so this was the only keyboard affordance
+                    missing. It does NOT fork on `darkArm`: `--color-focus-ring` is
+                    purple-700 in light and amber-400 in dark, so the token carries the
+                    theme itself.
+
+                    NOTE on the inline-boxShadow marker below (preserved verbatim, do not
+                    edit it): its "the ring survives as `ring-2 ring-white/15`" is now
+                    true in DARK ONLY. On the light arm that ring measures 1.28:1 on the
+                    t = 0.70 tint — invisible — so it drops there and the focus ring takes
+                    its place. The dark arm keeps it as `dark:ring-2 dark:ring-white/15`:
+                    RENDERED-EQUIVALENT to what shipped, not byte-identical.
+
+                    LIMIT, recorded because it is the thing that will break first: the
+                    light arm's `text-content-primary` and `hover:bg-surface-hover` are
+                    THEME tokens, not ground-derived. They are correct today only because
+                    every shipped preset is dark, so `darkArm` is `true` for all eight of
+                    `DEFAULT_BACKGROUND_COLORS` — plan 10's `colorUtils.test.ts` pins all
+                    eight as `isDarkBackground === true`, so a future LIGHT preset reds
+                    that test before it ever reaches this header. If one ships, the
+                    upgrade path is the ground-derived pole — `getContrastColor(ground)`
+                    handed to CSS as a custom property, the same indirection the title
+                    already uses above — NOT a theme-token swap.
+
+                    Any of this is a decision, not a cleanup. */}
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 relative z-20 w-full shrink-0 items-stretch sm:items-center md:justify-end">
                     {userRole && userRole !== 'pending' && (
+                        /* DECISION Phase 88.3-16 (owner ruling 2, research-checked 2026-08-27):
+                           the LIGHT arm of this control now carries an 80% WHITE WASH plus a 1px
+                           RING — `bg-white/80 ring-1 dark:ring-0`. Req 12 test 7,
+                           verbatim: "I can read the words, but I can't see a button there. All other
+                           buttons are readable." Before this it had no bg and no border at all: the
+                           resting shadow was its only edge and Req 3 removed it.
+
+                           THIS ELEMENT RENDERS ON TWO GROUNDS and both are measured (2026-08-27,
+                           `src/lib/wcag.ts`), because `darkArm` is true for all eight presets so the
+                           LIGHT arm is what an UNCOLOURED header gets as well as a tinted one:
+                             - on the eight t = 0.70 tints, the composited wash vs the tint measures
+                               1.634 (Forest) - 1.716 (Wine), Navy 1.660 — the wash IS the boundary;
+                             - on the WHITE uncoloured header the wash composites to white and
+                               contributes NOTHING (1.00), so the RING is the only cue there:
+                               warm-300 vs #ffffff = 1.595. That is the shipped Geist / Fluent / Ant /
+                               shadcn-outline pattern (white fill + a 1.20-1.53 hairline), and it is
+                               why the treatment is a wash AND a ring rather than either alone;
+                             - ring vs the composited wash: 1.418-1.432, inside the shipped
+                               1.20-1.57 neutral-border band;
+                             - DISCLOSURE, not a floor: ring vs the raw tint is only 1.141-1.209. The
+                               ring is an inner edge ON the wash, not a boundary against the tint.
+                               Do not read that number as the tint boundary — the wash's own 1.66 is;
+                             - text `text-content-primary` (warm-900) on the composited wash:
+                               15.97-16.12. The wash did not hurt the label.
+
+                           HOVER IS A DIFFERENT GROUND and is deliberately left alone.
+                           `hover:bg-surface-hover` is (0,2,0) and beats the base `bg-white/80` at
+                           (0,1,0), so on hover the fill becomes the OPAQUE `--color-bg-hover`
+                           (warm-50), not the wash every number above measures: ring 1.505, text
+                           16.949 there. Changing it would repaint a surface the owner has not been
+                           asked about, including on the white header. It is emitted inside
+                           `@media (hover: hover)`, so it is desktop-only and INERT on the phone lane
+                           — it cannot affect the Req 12 phone re-check. If the wash should ever
+                           persist under the pointer, the recorded step is `hover:bg-white/90`.
+
+                           REJECTED, and each matters:
+                             - a >= 3:1 NEUTRAL BORDER (`border-line-strong` / warm-500). This is the
+                               substitution the FIRST version of this plan proposed, and the research
+                               check killed it: 0 of 13 shipped systems put a >= 3:1 neutral border on
+                               a neutral fill, the shipped band is 1.20-1.57, and warm-500 is 2.3x the
+                               strongest shipped neutral border
+                               (`LIGHT-MODE-SECONDARY-BUTTONS-SURVEY-2026-08-27.md`). "Measure upward
+                               until 3:1" is withdrawn, not deferred.
+                             - a BORDER instead of a ring. `.btn { border: none }` is unlayered and
+                               eats every border utility on this element (see the D-10 marker above);
+                               `ring-*` compiles to `box-shadow`, which that reset cannot defeat.
+                               Compile receipt (tailwindcss@4.3.3, 2026-08-27): `.ring-1` emits
+                               `box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow),
+                               var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)`
+                               — the SAME list `.shadow-theme-md` writes, so the existing
+                               `shadow-theme-md` composes with the ring instead of being replaced.
+                               `.focus-visible\:ring-2:focus-visible` is (0,2,0) and emits after
+                               `.ring-1` (0,1,0), so the FOCUS ring still wins when focused; and
+                               `.dark\:ring-0:where(.dark, .dark *)` is (0,1,0) emitted after
+                               `.ring-1`, so the dark arm renders byte-equivalent to what shipped.
+                               Verified from the emitted CSS, not assumed.
+                             - RESTORING THE RESTING SHADOW. Req 3 / OI-2 stands; the owner did not
+                               reject the shadow removal, he reported its consequence.
+                             - a `data-ground` CSS attribute selector — already rejected at the D-10
+                               marker above and still rejected here, for the same reason.
+                             - an OPAQUE light-arm FILL (`bg-btn-secondary`, warm-200). This is the
+                               recorded NEXT STEP, not a discarded idea: it would make this control
+                               consistent with `.btn-secondary` and reads 1.31 on the white header
+                               instead of leaning on the ring. Reach for it if the phone re-check
+                               still says "no button there".
+                               AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28): it STAYS a
+                               recorded next step — only its numbers move. `--color-btn-secondary-bg`
+                               is now **warm-100** (ruling 1c moved the page off that hex; see the
+                               `.btn-secondary` marker in `globals.css` for why that is not a
+                               reverted fix), so this alternative would read **1.1330** on the white
+                               header, not 1.31 — i.e. a WEAKER opaque cue than when this bullet was
+                               written. That makes the ring this control actually ships more
+                               defensible, not less. Nothing here changed in code.
+
+                           Phase 88.6's `Button` migration still owns the real border/ring MODEL;
+                           this is an interim per-site edge. Changing it is a decision, not a
+                           cleanup. */
                         <button
                             onClick={() => setMemberModal(true)}
-                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap text-white border-2 border-white/30 rounded-btn backdrop-blur-xs hover:bg-white/20 transition-all shadow-theme-md"
-                            style={{
-                                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                            }}
+                            className={
+                                'btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap ' +
+                                'text-content-primary bg-white/80 ring-1 ring-line-control dark:ring-0 ' +
+                                'rounded-btn hover:bg-surface-hover transition-all shadow-theme-md ' +
+                                'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2' +
+                                // The 10% white wash moves from an inline `style` to
+                                // `dark:bg-white/10`, because an inline declaration cannot
+                                // be forked by a `dark:` class. On a light ground it was
+                                // invisible, and it is what made this control disappear.
+                                // `backdrop-blur-xs` comes with it: it only ever did
+                                // visible work over that translucent wash or an image.
+                                (darkArm
+                                    ? ' dark:text-white dark:bg-white/10 dark:hover:bg-white/20 dark:backdrop-blur-xs'
+                                    : '')
+                            }
                         >
                             Manage Members
                         </button>
@@ -454,7 +781,12 @@ function GroupHomePage(){
                            `ring-2 ring-white/15`, the same 15% white at the same
                            2px. Dropping the ring would still pass 88-29's
                            zero-`rgba(0,0,0` gate while looking wrong. */
-                        className="btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap border-2 border-white/20 text-center min-h-11 ring-2 ring-white/15"
+                        className={
+                            'btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl ' +
+                            'text-sm md:text-base whitespace-nowrap text-center min-h-11 ' +
+                            'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2' +
+                            (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
+                        }
                     >
                         Plan Game Session
                     </Link>
@@ -464,9 +796,19 @@ function GroupHomePage(){
                             /* Same two-half shadow as the CTA above: black half ->
                                `shadow-theme-lg`, white ring half preserved as
                                `ring-2 ring-white/15`. */
-                            className="btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap rounded-btn transition-all border-2 border-amber-400/40 hover:border-amber-400/60 shadow-theme-lg ring-2 ring-white/15"
+                            className={
+                                'btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap ' +
+                                'rounded-btn transition-all shadow-theme-lg ' +
+                                'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2' +
+                                (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
+                            }
                             style={{
-                                backgroundColor: 'var(--amber-600)',
+                                // OI-6: was `var(--amber-600)`, white on it 3.19:1 — a
+                                // pre-existing failure in BOTH themes. `--amber-700` is
+                                // 5.02:1. The inline fill STAYS: `.btn` sets no background
+                                // of its own, and moving this to a class is a separate
+                                // decision (Phase 88.6's `Button`).
+                                backgroundColor: 'var(--amber-700)',
                                 color: 'white',
                             }}
                         >

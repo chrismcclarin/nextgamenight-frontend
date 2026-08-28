@@ -107,12 +107,44 @@ const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
       className={cn('flex flex-col items-center py-8 text-center', className)}
       {...props}
     >
+      {/* DECISION Phase 88.3-16 (owner ruling 3, 2026-08-27): the circle and its glyph move
+          TOGETHER to the one-step-darker pair — `bg-surface-accent-subtle-strong` (amber-200)
+          + `text-content-accent-strong` (amber-900). The owner, on Req 12 test 5: "Oh, the
+          glyph. yes the glyph is fine. You might want to darken it by 1 step when you darken
+          the circle by 1 step, just to keep them good."
+
+          BOTH HALVES OR NEITHER. Moving only the ground drops the pair from 6.37:1 to 5.69:1;
+          moved together it measures **7.28:1** (amber-900 #78350f on amber-200 #fde68a,
+          `src/lib/wcag.ts` 2026-08-27), clearing both the 4.5 text floor and the 3.0 graphical
+          floor. This is one of SEVEN sites that swapped in the same commit — this shared
+          primitive plus six hand-rolled circles on the five invite screens and the group-restore
+          screen. One marker lives here rather than seven copies; `invite/accept/page.js` (the
+          site the owner actually tested) carries a one-line pointer back to it.
+
+          REJECTED — re-pointing the SHARED `--color-bg-accent-subtle` to amber-200. That token
+          has ~13 other consumers (`BallotSection.js`, `PendingMemberBanner.js`, `ManageMembers.js`,
+          `EventScheduler.tsx` and the rest); the census rejection is recorded at the token itself
+          in `globals.css` and plan 14 minted a separate pair precisely so it survives. Repointing
+          it would repaint thirteen unrelated surfaces nobody asked about.
+
+          DARK MODE IS UNCHANGED BY CONSTRUCTION, not by luck: both new tokens are declared in the
+          `.dark` block with their siblings' values copied verbatim (`--color-bg-accent-subtle-strong:
+          #3a3320`, `--color-accent-text-strong: var(--amber-500)`), so this swap is a light-only
+          change.
+
+          DISCLOSURE, and it is the honest limit of a one-step change: the circle's own EDGE against
+          a white card improves only from **1.11:1 to 1.25:1**. amber-200 is inherently pale and one
+          step cannot reach a 3:1 graphical boundary. If the owner's re-check still reads "blends
+          into the white", the recorded next step is a circle BORDER — the `--color-line-control`
+          hairline plan 14 minted would give it a real edge — NOT a third tint step.
+
+          Changing any of this is a decision, not a cleanup. */}
       <div
         data-slot="empty-state-media"
         className={cn(
           'flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden',
           // The circle + accent glyph are the ICON path only; artwork brings its own shape.
-          !illustration && 'rounded-full bg-surface-accent-subtle text-accent'
+          !illustration && 'rounded-full bg-surface-accent-subtle-strong text-content-accent-strong'
         )}
       >
         {illustration ?? <Icon name={icon} size={56} strokeWidth={1.5} />}

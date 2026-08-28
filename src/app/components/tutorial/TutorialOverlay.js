@@ -317,7 +317,7 @@ export default function TutorialOverlay({ onComplete }) {
             className={`px-4 py-1.5 text-sm font-medium border border-line rounded-btn transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
               isWelcome
                 ? 'text-content-muted bg-surface-elevated'
-                : 'text-content-primary bg-surface-elevated hover:bg-surface-card-hover border-line'
+                : 'text-content-primary bg-surface-elevated hover:bg-surface-hover border-line'
             }`}
           >
             ← Back
@@ -333,7 +333,7 @@ export default function TutorialOverlay({ onComplete }) {
           ) : (
             <button
               onClick={goNext}
-              className="px-4 py-1.5 text-sm font-medium text-content-primary bg-surface-elevated hover:bg-surface-card-hover border border-line rounded-btn transition-colors"
+              className="px-4 py-1.5 text-sm font-medium text-content-primary bg-surface-elevated hover:bg-surface-hover border border-line rounded-btn transition-colors"
             >
               Next →
             </button>

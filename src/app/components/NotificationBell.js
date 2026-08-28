@@ -167,20 +167,77 @@ function NotificationBell({ user, variant = 'icon', label }) {
         // is swallowed on an ~80ms tap while an untransitioned opacity change fires
         // instantly. hover:bg-surface-card-hover stays — correct on desktop, inert
         // on touch (Tailwind v4 hover media query), and inertness is not a defect.
+        // ——— AMENDED Phase 88.3 (§10.1), original reasoning above KEPT AS HISTORY:
+        // the PRESS IDIOM half still stands verbatim — the press is an opacity dim, and
+        // a desktop-only hover being inert on touch is still not a defect. What changed
+        // is the COLOUR FAMILY of that hover, and only because plan 88.3-03 re-keyed
+        // --color-bg-card-hover: the sentence "hover:bg-surface-card-hover stays" was
+        // true when the card-hover token was a near-white wash and became false the
+        // moment it became warm-200. See the marker below.
+        //
+        // DECISION Phase 88.3 (§10.1): this row hovers to `bg-surface-header-hover`
+        // (warm-700), chosen OVER `bg-surface-hover` (warm-50) which the other 38 swept
+        // sites took. Ground reason: this row renders inside the mobile menu panel on
+        // `bg-surface-header` (Header.js:192) under `text-white` — a warm-50 wash there
+        // measures 1.06:1, while warm-700 measures 10.48:1. The nav links beside it
+        // (Header.js:204, :212) were already on the header family and are the model this
+        // row should have followed; it had drifted onto the card family.
+        // ThemeToggle.js:32 and FeedbackButton.js:84 are the same row idiom on the same
+        // panel and moved with it — all three are cross-referenced back to this marker.
+        // Converging these three onto `bg-surface-hover` "for consistency" with the other
+        // 38 re-introduces a 1.06:1 hover state; `surfaceHoverSweep.test.ts` test 4b pins
+        // all three by name so that goes red. That is a decision, not a cleanup.
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+          className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
           aria-label={label ? `${label} notifications` : 'Notifications'}
         >
           {bellIcon}
-          <span className="text-content-muted flex-1">{label || 'Notifications'}</span>
+          {/* DECISION Phase 88.3 (Req 8 / UI-SPEC §5.9.2): this label DROPS
+              `text-content-muted` and inherits the row button's `text-white` — chosen OVER
+              scoping a lighter muted value to the header subtree.
+
+              MEASURED BASIS: this row sits on the dark header panel (`--color-bg-header`,
+              warm-800 in light mode). Muted was never right for that ground — warm-500
+              (today) reads 3.66:1, already failing — and Req 8's move to warm-550 makes it
+              measurably WORSE at 2.79:1 (warm-600 would be 2.28:1). Inheriting the row's own
+              `text-white` reads 15.03:1. Dark mode is byte-identical: the row is `text-white`
+              there too, so nothing changes.
+
+              AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28) — above KEPT AS HISTORY. The
+              parenthetical became the shipped value: `--warm-550` is RETIRED and the LIVE muted
+              is **warm-600 at 2.2848:1** on this warm-800 ground. (Ruling 1c moved the page to
+              warm-200, where warm-550 measured 4.1460 — below Req 8's own 4.5 floor — so muted
+              had to move.) THE DECISION IS UNCHANGED AND ONLY GETS STRONGER: drop
+              `text-content-muted`, inherit the row's `text-white` (15.03:1). 2.2848 is FURTHER
+              below the floor than the 2.79 this marker was written against, so read the number
+              change as reinforcement, not as the decision moving.
+
+              REJECTED — minting a header-scoped lighter muted value. That would create a
+              FOURTH meaning of "muted" for the sake of three labels, when the correct fix is
+              to remove a token that was wrong for this ground in the first place.
+
+              This applies to all three header-row labels: `ThemeToggle.js`'s and
+              `FeedbackButton.js`'s carry a one-line pointer back here. Every OTHER
+              `text-content-muted` in these three files sits on a card or dropdown-panel
+              ground (confirmed site by site) and is correct — `darkChromeLegibility.test.ts`
+              test 3 is deliberately narrowed to the `text-content-muted flex-1` shape so it
+              cannot demand those be removed too.
+
+              Putting a muted token back on this label is a decision, not a cleanup. */}
+          <span className="flex-1">{label || 'Notifications'}</span>
           {countBadge}
         </button>
       ) : (
         // Icon-only trigger — desktop nav. Visual unchanged from pre-Plan-68-01.
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="relative text-white hover:text-amber-400 transition-colors p-1"
+          // Phase 88.3 (Req 7 / UI-SPEC §5.8.2): this icon-only trigger shipped with NO
+          // focus-visible ring at all — unlike the row variant above — and fell to the UA
+          // outline on the warm-800 header. It now carries the same treatment as the row
+          // variant, and inherits the amber-400 `--ring` override scoped to the header
+          // subtree at `Header.js`'s container. See the DECISION marker on the row label below.
+          className="relative text-white hover:text-amber-400 transition-colors p-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
           aria-label="Notifications"
         >
           {bellIcon}
@@ -216,7 +273,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
               confirmation.tone === 'success' ? 'bg-status-success-subtle' : 'bg-surface-card-hover'
             }`}>
               <p className={`text-sm font-medium ${
-                confirmation.tone === 'success' ? 'text-status-success' : 'text-content-muted'
+                confirmation.tone === 'success' ? 'text-content-status-success' : 'text-content-muted'
               }`}>{confirmation.text}</p>
             </div>
           )}

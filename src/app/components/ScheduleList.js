@@ -91,11 +91,11 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
                   <h3 className="text-lg font-semibold text-content-primary">{scheduleName}</h3>
                   {/* Status badge */}
                   {isActive ? (
-                    <span className="px-2 py-1 text-xs font-medium bg-status-success-subtle text-status-success rounded-full">
+                    <span className="px-2 py-1 text-xs font-medium bg-status-success-subtle text-content-status-success rounded-full">
                       Active
                     </span>
                   ) : (
-                    <span className="px-2 py-1 text-xs font-medium bg-status-warning-subtle text-status-warning rounded-full">
+                    <span className="px-2 py-1 text-xs font-medium bg-status-warning-subtle text-content-status-warning rounded-full">
                       Paused
                     </span>
                   )}
@@ -141,8 +141,8 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
                   onClick={() => onToggle?.(schedule.id)}
                   className={`px-3 py-1.5 text-sm rounded-btn transition-colors ${
                     isActive
-                      ? 'bg-status-warning-subtle text-status-warning hover:bg-status-warning-subtle-hover'
-                      : 'bg-status-success-subtle text-status-success hover:bg-status-success-subtle-hover'
+                      ? 'bg-status-warning-subtle text-content-status-warning hover:bg-status-warning-subtle-hover'
+                      : 'bg-status-success-subtle text-content-status-success hover:bg-status-success-subtle-hover'
                   }`}
                   title={isActive ? 'Pause schedule' : 'Resume schedule'}
                 >
@@ -189,7 +189,7 @@ export default function ScheduleList({ schedules = [], onEdit, onToggle, onDelet
             {/* Delete Confirmation Dialog */}
             {deleteConfirm === schedule.id && (
               <div className="mt-4 p-3 md:p-4 bg-status-error-subtle border border-status-error rounded-card">
-                <p className="text-status-error font-medium mb-3">
+                <p className="text-content-status-error font-medium mb-3">
                   Delete {scheduleName}? This will stop sending prompts.
                 </p>
                 <div className="flex gap-2">

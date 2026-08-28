@@ -81,7 +81,39 @@ function Header(){
                 aria-hidden="true"
             />
 
-            <div className="w-full h-16 bg-surface-header border-b border-line-strong sticky top-0 z-50">
+            {/* DECISION Phase 88.3 (Req 7 / UI-SPEC §5.8.2): the focus ring is scoped to
+                amber-400 for this whole header subtree — chosen OVER letting Req 7's global
+                light-mode ring (purple-700) apply here.
+
+                MEASURED BASIS: the header/nav chrome is DARK IN BOTH THEMES — a deliberate,
+                shipped choice (`globals.css` `--color-bg-header`: warm-800 light / warm-900
+                dark; `--color-bg-nav`: purple-900; recorded as "intentional, keep" in
+                `.planning/research/DESIGN-SYSTEM-REFERENCE-2026.md:59-60`). Against that dark
+                ground Req 7's purple-700 ring reads 1.93:1 on warm-800, 1.78:1 on purple-900
+                and 1.38:1 on warm-700 (header-hover) — all below WCAG 2.4.11's 3:1 floor. The
+                value dark mode already uses, amber-400, reads 9.00 / 8.30 / 6.27 on those same
+                three grounds. Everything inside this container inherits it, including the two
+                desktop icon-only triggers (NotificationBell / ThemeToggle) that gained their
+                first focus-visible ring in this same plan.
+
+                Rejected — overriding `--color-focus-ring` here instead of `--ring`. That shape
+                looks like the shipped `EventScheduler.tsx:228-236` precedent but is INERT on
+                this chain. That precedent overrides a ONE-hop alias; this ring chain is TWO
+                hops (`--color-focus-ring` -> `--ring` -> the emitted `--tw-ring-color`), and
+                `--ring: var(--color-focus-ring)` is declared on `:root`, so its `var()` is
+                substituted at computed-value time THERE and descendants inherit an
+                already-resolved hex. Compiled against this project's own tailwindcss@4.3.3, the
+                consumer utility emits `.focus-visible\:ring-focus-ring:focus-visible {
+                --tw-ring-color: var(--ring); }` — it reads `--ring`, never
+                `--color-focus-ring`. A descendant override of the latter compiles cleanly, goes
+                green in every gate that only checks the class string, and changes nothing on
+                screen. `darkChromeLegibility.test.ts` test 2 asserts that shape is absent.
+
+                Rejected — a `dark:` variant fix. Useless here: the ground is dark in BOTH
+                themes, so there is no light/dark fork to hang the fix on.
+
+                Changing either of these is a decision, not a cleanup. */}
+            <div className="w-full h-16 bg-surface-header border-b border-line-strong sticky top-0 z-50 [--ring:var(--amber-400)]">
                 <div className="w-full max-w-7xl mx-auto px-4 h-full">
                     <div className="flex justify-between items-center h-full">
                         {/* Brand */}
@@ -188,12 +220,38 @@ function Header(){
                         element before CSS transition can run, killing the exit animation).
                         pointer-events-none on closed state prevents the off-screen menu
                         from eating clicks on the page below. */}
+                    {/* DECISION Phase 88.3 (Req 7 / UI-SPEC §5.8.2): the same amber-400 ring
+                        override as the header container above. This panel is a separate
+                        subtree root — it is `absolute`-positioned but still a DOM descendant
+                        of the header container, so strictly it would inherit; the override is
+                        repeated here so the panel keeps a legible ring if it is ever hoisted
+                        or portalled out. Same measured basis (purple-700 = 1.93:1 on warm-800,
+                        amber-400 = 9.00:1), same two Rejected alternatives: NOT `--color-focus-ring`
+                        (inert — `--ring` resolves on `:root`; see the container's marker), and
+                        NOT a `dark:` variant (the ground is dark in both themes). That is a
+                        decision, not a cleanup.
+
+                        DECISION Phase 88.3 (owner ruling R3-D, 2026-08-25): `inert` while the
+                        menu is CLOSED — chosen OVER a conditional mount (Rejected). The comment directly
+                        above establishes why this panel renders unconditionally: mount/unmount
+                        strips the element before the CSS transition can run, killing the exit
+                        animation. But "hidden" here is only `-translate-y-full opacity-0
+                        pointer-events-none`, none of which removes anything from the Tab
+                        order — so all three rows inside (each carrying `focus:outline-hidden`)
+                        stayed keyboard-reachable while invisible, and a keyboard user tabbing
+                        past the closed hamburger landed on rows they could not see. `inert`
+                        removes the subtree from the a11y tree and the Tab order without
+                        touching the mount the exit animation needs; a conditional mount would
+                        fix the Tab order by re-breaking the animation. React 18.2.0 here, so
+                        the empty-string attribute form is required (React 19 would accept a
+                        boolean `inert` prop). That is a decision, not a cleanup. */}
                     <div
-                        className={`md:hidden absolute top-16 left-0 right-0 bg-surface-header border-t border-line-header border-b border-line-accent shadow-lg transition-all duration-200 ease-out ${
+                        className={`md:hidden absolute top-16 left-0 right-0 bg-surface-header border-t border-line-header border-b border-line-accent shadow-lg transition-all duration-200 ease-out [--ring:var(--amber-400)] ${
                             mobileMenuOpen
                                 ? 'translate-y-0 opacity-100'
                                 : '-translate-y-full opacity-0 pointer-events-none'
                         }`}
+                        inert={mobileMenuOpen ? undefined : ''}
                     >
                         <ul className="flex flex-col py-2">
                             {navLinks.map(({ href, label, isLink }) => (
@@ -245,10 +303,21 @@ function Header(){
                             user like the Invites row — feedback is auth-only. */}
                         {user && (
                             <div className="border-t border-line-header">
+                                {/* invokerRef (Phase 88.3-17, owner ruling 6 /
+                                    DEF-88.3-12-01): the modal restores focus to
+                                    the hamburger toggle, NOT to this row — this
+                                    row sits inside the panel R3-D disables in
+                                    the same transition `onOpen` fires, and a
+                                    control inside a disabled subtree cannot take
+                                    focus. R3-D itself is untouched; the full
+                                    DECISION marker with both rejected
+                                    alternatives is at the row variant's onClick
+                                    in FeedbackButton.js. */}
                                 <FeedbackButton
                                     variant="row"
                                     label="Send feedback"
                                     onOpen={() => setMobileMenuOpen(false)}
+                                    invokerRef={triggerRef}
                                 />
                             </div>
                         )}

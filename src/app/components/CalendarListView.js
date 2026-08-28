@@ -6,7 +6,9 @@ import {
   getSubtitleStyle,
   getTextStyle,
   isDarkBackground,
+  lightTintGroupBackgroundColor,
   resolveGroupBackgroundColor,
+  themedTextStyleVars,
   SUBTEXT_MUTED_ON_LIGHT,
   SUBTEXT_ON_LIGHT,
   TEXT_ON_DARK,
@@ -692,40 +694,108 @@ const EventRow = forwardRef(function EventRow({ event, timezone, onClick, isShee
   const groupProfilePic = event.Group?.profile_picture_url;
 
   const hasBgImage = !!groupBgImage;
+  /*
+   * DECISION Phase 88.3 (D-09, cascade fix): the row's ground is a MUTUALLY
+   * EXCLUSIVE ternary gated on `tinted`, chosen OVER stacking the tint pair
+   * beside the always-present `bg-surface-card`. Compile-verified on this
+   * tree's tailwindcss@4.3.3: `.bg-[var(--group-ground-light)]` emits at line
+   * 1426, `.bg-surface-card` at 1543, `.dark:bg-[var(--group-ground)]` at 2894
+   * — same property, same specificity, source order wins, so a stacked
+   * className paints the white card surface over the tint in light mode.
+   * ALSO REJECTED: gating on `groupBgColor` alone — `ground` is gated on the
+   * TINT succeeding so both custom properties turn on or off together
+   * (T-88.3-43). This is a decision, not a cleanup.
+   */
+  const tinted = lightTintGroupBackgroundColor(groupBgColor);
+  const ground = tinted ? groupBgColor : null;
   // No image and no group colour: the row sits on the app's themed surface, so
   // the SHARED fallback resolution owns it. This row's bespoke contrast maths
   // below is computed against a coloured ground and produces dark-on-dark here.
-  const isThemed = !hasBgImage && !groupBgColor;
-  const isDark = !hasBgImage && !isThemed && isDarkBackground(groupBgColor);
+  // Keyed on `ground` (not the stored hex) and therefore declared AFTER it —
+  // see the CR-02 marker below.
+  const isThemed = !hasBgImage && !ground;
 
-  const titleStyle = isThemed
-    ? getTextStyle(false, null)
-    : {
-        // isDark already implies !hasBgImage, so the image case falls through
-        // to the dark pole: the row washes the image white at 0.85 below.
-        color: isDark ? TEXT_ON_DARK : TEXT_ON_LIGHT,
-        textShadow: hasBgImage
-          ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
-          : isDark
-            ? '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)'
-            : '1px 1px 2px rgba(255, 255, 255, 0.9)',
-        WebkitTextStroke: isDark ? '0.5px rgba(0, 0, 0, 0.9)' : 'none',
-      };
-  const subtitleStyle = isThemed
-    ? getSubtitleStyle(false, null)
-    : {
-        color: hasBgImage
-          ? SUBTEXT_ON_LIGHT
-          : isDark
-            ? 'rgba(255,255,255,0.9)'
-            : SUBTEXT_MUTED_ON_LIGHT,
-        textShadow: hasBgImage
-          ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
-          : isDark
-            ? '1px 1px 3px rgba(0, 0, 0, 0.8)'
-            : '1px 1px 2px rgba(255, 255, 255, 0.9)',
-        WebkitTextStroke: isDark ? '0.3px rgba(0, 0, 0, 0.9)' : 'none',
-      };
+  /*
+   * DECISION Phase 88.3 (R2-6): the title/subtitle treatment is computed TWICE
+   * — once against the stored hex (what dark mode paints) and once against the
+   * rendered tint (what light mode paints) — and handed to the cascade as
+   * `--t-*` custom properties, chosen OVER the single `isDark` fork this
+   * replaced.
+   *
+   * WHY. `isDarkBackground` was asked about the STORED hex, and every shipped
+   * preset is dark, so the branch never flipped: once the ground renders as a
+   * pale tint in light mode these rows painted near-white text with a black
+   * shadow and stroke ON that tint. Passing the RENDERED ground fixes it, and
+   * the ground is only known to CSS — hence the fork lives there.
+   * REJECTED: a `useTheme` read, which the shipped DECISION at
+   * EventScheduler.tsx rejected for exactly this problem (no hydration fork, no
+   * theme-flash window). REJECTED: keeping the inline `color`/`textShadow`/
+   * `WebkitTextStroke` keys and layering a `dark:` class over them — an inline
+   * declaration beats any class, so the light arm would be inert (the plan-07
+   * trap). Those keys are deleted, not overridden. A decision, not a cleanup.
+   */
+  const titleTreatment = (rowGround) => {
+    if (isThemed) return getTextStyle(false, null);
+    // `onDarkGround` already implies !hasBgImage, so the image case falls
+    // through to the dark pole: the row washes the image white at 0.85 below.
+    const onDarkGround = !hasBgImage && isDarkBackground(rowGround);
+    return {
+      color: onDarkGround ? TEXT_ON_DARK : TEXT_ON_LIGHT,
+      textShadow: hasBgImage
+        ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
+        : onDarkGround
+          ? '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)'
+          : '1px 1px 2px rgba(255, 255, 255, 0.9)',
+      WebkitTextStroke: onDarkGround ? '0.5px rgba(0, 0, 0, 0.9)' : 'none',
+    };
+  };
+  const subtitleTreatment = (rowGround) => {
+    if (isThemed) return getSubtitleStyle(false, null);
+    const onDarkGround = !hasBgImage && isDarkBackground(rowGround);
+    return {
+      color: hasBgImage
+        ? SUBTEXT_ON_LIGHT
+        : onDarkGround
+          ? 'rgba(255,255,255,0.9)'
+          : SUBTEXT_MUTED_ON_LIGHT,
+      textShadow: hasBgImage
+        ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
+        : onDarkGround
+          ? '1px 1px 3px rgba(0, 0, 0, 0.8)'
+          : '1px 1px 2px rgba(255, 255, 255, 0.9)',
+      WebkitTextStroke: onDarkGround ? '0.3px rgba(0, 0, 0, 0.9)' : 'none',
+    };
+  };
+
+  /*
+   * DECISION Phase 88.3-cr (CR-02, code-adversarial-review
+   * 2026-08-27): the DARK arm is computed on `ground`, not on the
+   * stored hex, and the LIGHT arm on `tinted`, not on
+   * `tinted || <stored hex>` — mirroring the shipped shape at
+   * `groupHomePage/page.js`, which gates BOTH the ground and the
+   * text style on the tint succeeding. Gating only the ground was
+   * the exact asymmetry the T-88.3-43 marker above warns about:
+   * a stored value that `resolveGroupBackgroundColor` passes
+   * through but `lightTintGroupBackgroundColor` rejects (anything
+   * not a 6-digit hex) would drop the card back to the themed
+   * surface while the text treatment was still computed against
+   * the malformed string — `getBrightness` returns 255 for it, so
+   * the dark arm painted the light-ground pole on a DARK themed
+   * card. Unreachable for new writes (the backend validator is
+   * `^#[0-9A-Fa-f]{6}$`), which is why this is a consistency fix
+   * rather than a bug fix — but "withhold both grounds together"
+   * has to mean the text too, or the marker is only half true.
+   * REJECTED: leaving the stored hex in and widening the tint
+   * validator instead. A decision, not a cleanup.
+   */
+  const titleVars = themedTextStyleVars(
+    titleTreatment(ground),
+    titleTreatment(tinted),
+  );
+  const subtitleVars = themedTextStyleVars(
+    subtitleTreatment(ground),
+    subtitleTreatment(tinted),
+  );
 
   const eventTitle = event.title || event.Game?.name || 'Game Night';
   const startTime = formatTime(event.start_date, timezone);
@@ -745,9 +815,12 @@ const EventRow = forwardRef(function EventRow({ event, timezone, onClick, isShee
       }}
       role="button"
       tabIndex={0}
-      className="p-3 sm:p-4 border border-line rounded-lg transition-all hover:shadow-md cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 bg-surface-card"
+      className={`p-3 sm:p-4 border border-line rounded-lg transition-all hover:shadow-md cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
       style={{
-        ...(groupBgColor && { backgroundColor: groupBgColor }),
+        ...(tinted && {
+          '--group-ground': ground,
+          '--group-ground-light': tinted,
+        }),
         ...safeBgImageStyle(groupBgImage),
         backgroundSize: 'cover',
         backgroundPosition: 'center',
@@ -798,16 +871,16 @@ const EventRow = forwardRef(function EventRow({ event, timezone, onClick, isShee
                 Req 11b's "readable game text" acceptance. Desktop keeps `truncate` so the
                 fixed-height card cannot reflow. */}
             <h5
-              className={
+              className={`${
                 isSheet
                   ? 'font-semibold text-base min-w-0 line-clamp-2'
                   : 'font-semibold text-base truncate'
-              }
-              style={titleStyle}
+              } [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]`}
+              style={titleVars}
             >
               {eventTitle}
             </h5>
-            <span className="text-sm" style={subtitleStyle}>
+            <span className={`text-sm [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]`} style={subtitleVars}>
               {startTime}
             </span>
           </div>
@@ -832,12 +905,12 @@ const EventRow = forwardRef(function EventRow({ event, timezone, onClick, isShee
               a sheet whose body scrolls. */}
           {showGameName && (
             <p
-              className={
+              className={`${
                 isSheet
                   ? 'block text-base line-clamp-2 mt-0.5'
                   : 'hidden sm:block text-sm truncate mt-0.5'
-              }
-              style={subtitleStyle}
+              } [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]`}
+              style={subtitleVars}
             >
               {gameName}
             </p>

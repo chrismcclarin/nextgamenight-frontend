@@ -206,9 +206,33 @@ function GameInvitePage() {
         {/* Preview state (unauthenticated) */}
         {status === 'preview' && eventInfo && (
           <div className="text-center">
-            <div className="mx-auto mb-4 w-16 h-16 bg-surface-accent-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875S10.5 3.09 10.5 4.125c0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 01-.657.643 48.421 48.421 0 01-4.185-.408c-.009-.003-.018-.006-.028-.006A2.794 2.794 0 014.5 3.75 2.25 2.25 0 002.25 6v.776c0 .543.29 1.048.757 1.325a6.016 6.016 0 013.744 1.313c.178.165.424.262.681.262h8.136c.257 0 .503-.097.681-.262a6.016 6.016 0 013.744-1.313c.467-.277.757-.782.757-1.325V6a2.25 2.25 0 00-2.25-2.25 2.794 2.794 0 00-1.88 2.557c-.01 0-.019.003-.028.006a48.421 48.421 0 01-4.185.408.64.64 0 01-.657-.643v0zM12.75 16.5a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 18a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
+            <div className="mx-auto mb-4 w-16 h-16 bg-surface-accent-subtle-strong rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-content-accent-strong" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                {/* DECISION Phase 88.3-18 (owner ruling on Req 12 UAT test 5, 2026-08-28): a
+                    hand-authored SIX-SIDED DIE replaces a MANGLED Heroicons puzzle-piece path.
+                    Owner, looking at the shipped screen on a phone: "It just looks like squiggles
+                    to me." He was right and the cause is a genuine corruption, not a taste call:
+                    the old 693-char `d` spliced a real `M14.25 6.087...` puzzle-piece OPENING onto
+                    two trailing dot-circles (`M12.75 16.5a.75.75 0 11-1.5 0...`) that belong to a
+                    DIFFERENT icon. It has been on prod since Phase 36-03 and was the only
+                    occurrence of that string in `src/` (verified 2026-08-28).
+                    CHOSEN a die over (REJECTED) a CORRECT Heroicons puzzle-piece path: the owner's
+                    product is board games, so a die says what the screen is for in a way a puzzle
+                    piece never did. Hand-authored on purpose — NO ICON LIBRARY WAS ADDED to the
+                    tree for one glyph. Geometry: a stroked rounded-square body on the existing
+                    24x24 viewBox (x/y 3.75-20.25, corner radius 2.5) plus a five-pip face as
+                    filled circles at r=1.25.
+                    ⚠ THE `<svg>` OPENING TAG ABOVE IS BYTE-UNCHANGED, deliberately:
+                    `tintTreatment.test.ts:437` counts `className="w-8 h-8 text-content-accent-strong"`
+                    openings and expects exactly 2 in this file, and `accentSweep.test.ts:60` lists
+                    this file in its seven-circle census. Both suites were re-run green after this
+                    edit. Restyling the tag, or swapping this glyph back, is a decision. */}
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.25 3.75h11.5a2.5 2.5 0 012.5 2.5v11.5a2.5 2.5 0 01-2.5 2.5H6.25a2.5 2.5 0 01-2.5-2.5V6.25a2.5 2.5 0 012.5-2.5z" />
+                <circle cx="8.25" cy="8.25" r="1.25" fill="currentColor" stroke="none" />
+                <circle cx="15.75" cy="8.25" r="1.25" fill="currentColor" stroke="none" />
+                <circle cx="12" cy="12" r="1.25" fill="currentColor" stroke="none" />
+                <circle cx="8.25" cy="15.75" r="1.25" fill="currentColor" stroke="none" />
+                <circle cx="15.75" cy="15.75" r="1.25" fill="currentColor" stroke="none" />
               </svg>
             </div>
             <h1 className="text-2xl font-bold text-content-primary mb-2">
@@ -262,8 +286,8 @@ function GameInvitePage() {
             so the user knows the link wasn't broken. */}
         {status === 'already-joined' && (
           <div className="text-center">
-            <div className="mx-auto mb-4 w-16 h-16 bg-surface-accent-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <div className="mx-auto mb-4 w-16 h-16 bg-surface-accent-subtle-strong rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-content-accent-strong" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
@@ -317,7 +341,7 @@ function GameInvitePage() {
         {status === 'error-transient' && (
           <div className="text-center">
             <div className="mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <svg className="w-8 h-8 text-content-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
               </svg>
             </div>
@@ -350,7 +374,7 @@ function GameInvitePage() {
         {status === 'error-permanent' && (
           <div className="text-center">
             <div className="mx-auto mb-4 w-16 h-16 bg-status-error-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <svg className="w-8 h-8 text-content-status-error" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>

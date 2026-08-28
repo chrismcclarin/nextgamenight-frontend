@@ -26,14 +26,21 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
   if (variant === 'row') {
     // Full-width row hit area — entire surface toggles theme.
     // Mirrors NotificationBell row variant for parity in mobile hamburger.
+    // DECISION Phase 88.3 (§10.1): hovers to `bg-surface-header-hover`, NOT the
+    // `bg-surface-hover` the other 38 swept sites took — this row sits on the dark
+    // header panel under `text-white` (1.06:1 on warm-50 vs 10.48:1 on warm-700).
+    // Full reasoning at NotificationBell.js's marker; pinned by name in
+    // `surfaceHoverSweep.test.ts` test 4b. Converging it is a decision, not a cleanup.
     return (
       <button
         onClick={() => setTheme(isDark ? 'light' : 'dark')}
-        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-card-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+        className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
         aria-label={ariaLabel}
       >
         {icon}
-        <span className="text-content-muted flex-1">{label || 'Theme'}</span>
+        {/* Phase 88.3 (Req 8 / §5.9.2): `text-content-muted` dropped — inherits the row's
+            `text-white`. Full DECISION marker at `NotificationBell.js`'s row label. */}
+        <span className="flex-1">{label || 'Theme'}</span>
       </button>
     )
   }
@@ -41,7 +48,12 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
   return (
     <button
       onClick={() => setTheme(isDark ? 'light' : 'dark')}
-      className={`p-2 rounded-lg transition-colors hover:bg-white/10 ${className}`}
+      // Phase 88.3 (Req 7 / UI-SPEC §5.8.2): this icon variant shipped with NO focus-visible
+      // ring at all — unlike the row variant above — and fell to the UA outline on the
+      // warm-800 header. It now carries the same treatment as the row variant, and inherits
+      // the amber-400 `--ring` override scoped to the header subtree at `Header.js`'s
+      // container. See the DECISION marker at `NotificationBell.js`'s row label.
+      className={`p-2 rounded-lg transition-colors hover:bg-white/10 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${className}`}
       aria-label={ariaLabel}
       title={ariaLabel}
     >

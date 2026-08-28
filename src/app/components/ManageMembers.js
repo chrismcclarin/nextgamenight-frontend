@@ -339,7 +339,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     const getRoleBadge = (role) => {
         const roleStyles = {
             owner: 'bg-purple-100 text-purple-800 border-purple-300',
-            admin: 'bg-surface-card-hover text-accent border-accent',
+            admin: 'bg-surface-card-hover text-content-accent border-accent',
             member: 'bg-surface-card-hover text-content-secondary border-line',
             pending: 'bg-amber-100 text-amber-800 border-amber-300'
         };
@@ -397,7 +397,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                     resetInviteGate.trigger();
                                 }}
                                 disabled={resettingInvite}
-                                className="btn btn-secondary text-sm text-status-error"
+                                className="btn btn-secondary text-sm text-content-status-error"
                                 title="Invalidate the current invite link and generate a new one"
                             >
                                 {resettingInvite ? 'Resetting…' : 'Reset QR link'}
@@ -407,7 +407,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 )}
 
                 {!canManageMembers && (
-                    <div className="bg-surface-card-hover border border-line rounded-lg p-4 mb-4">
+                    <div className="bg-surface-sunken border border-line rounded-lg p-4 mb-4">
                         <p className="text-content-secondary text-sm">
                             You're viewing the member list. Only owners and admins can change roles or remove members.
                         </p>
@@ -478,7 +478,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                 return (
                                     <div
                                         key={member.id}
-                                        className="flex items-center justify-between p-4 border border-line rounded-lg hover:bg-surface-card-hover"
+                                        className="flex items-center justify-between p-4 border border-line rounded-lg hover:bg-surface-hover"
                                     >
                                         <div className="flex items-center gap-3 flex-1">
                                             <div className="flex-1">
@@ -487,7 +487,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                         <ClickableMemberName userId={member.id} username={member.username || member.email} />
                                                     </p>
                                                     {isCurrentUser && (
-                                                        <span className="text-xs text-accent font-medium">(You)</span>
+                                                        <span className="text-xs text-content-accent font-medium">(You)</span>
                                                     )}
                                                     {/* Phase 69-02 GROUP-03: explicit Owner badge inline next to the
                                                         owner's name. Visible to ALL viewers (member/admin/owner) so
@@ -496,7 +496,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                         renders the role pill on the right; this inline badge is
                                                         the canonical "this is the owner" indicator per CONTEXT. */}
                                                     {isOwner ? (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-surface-accent-subtle text-accent border border-line-accent">
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-surface-accent-subtle text-content-accent border border-line-accent">
                                                             Owner
                                                         </span>
                                                     ) : (
@@ -780,14 +780,14 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             className="max-w-md"
         >
             <Modal.Header>
-                Leave <span className="text-accent">{group_name}</span>?
+                Leave <span className="text-content-accent">{group_name}</span>?
             </Modal.Header>
             <Modal.Body>
                 <p className="text-content-secondary">
                     You will lose access to events, library, and member-only content.
                 </p>
                 {leaveError && (
-                    <p className="text-status-error text-sm mt-4">{leaveError}</p>
+                    <p className="text-content-status-error text-sm mt-4">{leaveError}</p>
                 )}
             </Modal.Body>
             <Modal.Footer>

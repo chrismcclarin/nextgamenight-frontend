@@ -45,7 +45,7 @@ export default function About() {
             at{' '}
             <a
               href="mailto:eternalrook@gmail.com"
-              className="text-accent underline hover:text-accent-hover"
+              className="text-content-accent underline hover:text-content-accent-hover"
             >
               eternalrook@gmail.com
             </a>.
@@ -56,11 +56,11 @@ export default function About() {
           <h2 className="text-xl font-bold text-content-primary mb-3">Legal</h2>
           <p>
             Read our{' '}
-            <a href="/privacy" className="text-accent underline hover:text-accent-hover">
+            <a href="/privacy" className="text-content-accent underline hover:text-content-accent-hover">
               Privacy Policy
             </a>{' '}
             and{' '}
-            <a href="/terms" className="text-accent underline hover:text-accent-hover">
+            <a href="/terms" className="text-content-accent underline hover:text-content-accent-hover">
               Terms of Service
             </a>.
           </p>

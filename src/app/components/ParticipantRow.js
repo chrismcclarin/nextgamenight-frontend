@@ -268,7 +268,7 @@ export default function ParticipantRow({ participant, index, groupMembers, onPar
           <button
             type="button"
             onClick={() => onToggleParticipant(index)}
-            className="inline-flex min-h-11 items-center text-status-error hover:text-status-error text-sm px-2 py-1 border border-status-error rounded-sm hover:bg-status-error-subtle"
+            className="inline-flex min-h-11 items-center text-content-status-error hover:text-content-status-error text-sm px-2 py-1 border border-status-error rounded-sm hover:bg-status-error-subtle"
             title="Remove participant"
           >
             Remove

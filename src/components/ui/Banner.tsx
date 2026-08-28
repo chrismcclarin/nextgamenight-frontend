@@ -67,9 +67,9 @@ const toneIcon: Record<BannerTone, IconName> = {
 /** Icon color per tone (semantic tokens; Icon inherits via currentColor). */
 const toneIconColor: Record<BannerTone, string> = {
   info: 'text-content-secondary',
-  success: 'text-status-success',
-  warning: 'text-status-warning',
-  error: 'text-status-error',
+  success: 'text-content-status-success',
+  warning: 'text-content-status-warning',
+  error: 'text-content-status-error',
 };
 
 export interface BannerProps

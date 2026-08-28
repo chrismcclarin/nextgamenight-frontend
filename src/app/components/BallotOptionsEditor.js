@@ -11,7 +11,7 @@ export default function BallotOptionsEditor({ ballotOptions, setBallotOptions, b
       </div>
 
       {ballotError && (
-        <p className="text-sm text-status-error mb-2">{ballotError}</p>
+        <p className="text-sm text-content-status-error mb-2">{ballotError}</p>
       )}
 
       <div className="space-y-2">
@@ -35,7 +35,7 @@ export default function BallotOptionsEditor({ ballotOptions, setBallotOptions, b
               onClick={() => {
                 setBallotOptions(ballotOptions.filter((_, i) => i !== index));
               }}
-              className="text-status-error hover:text-status-error text-lg px-2 py-1 shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              className="text-content-status-error hover:text-content-status-error text-lg px-2 py-1 shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
               /* DECISION Phase 88-28 (Req 4, UI-SPEC §7.3): the `aria-label` is the accessible
                  name and the `title` is KEPT only for the desktop tooltip — a bare `title` does
                  NOT satisfy §7.3 (not reliably exposed by screen readers, invisible on touch).
@@ -64,7 +64,7 @@ export default function BallotOptionsEditor({ ballotOptions, setBallotOptions, b
       )}
 
       {ballotOptions.length > 0 && ballotOptions.length < 2 && (
-        <p className="text-xs text-status-warning mt-2">Add at least 2 games to create a ballot</p>
+        <p className="text-xs text-content-status-warning mt-2">Add at least 2 games to create a ballot</p>
       )}
     </div>
   );

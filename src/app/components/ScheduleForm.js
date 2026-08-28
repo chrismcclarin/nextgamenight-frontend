@@ -344,7 +344,7 @@ export default function ScheduleForm({
               Leave blank to keep the schedule as &quot;Game TBD&quot;.
             </p>
             {errors.game_id && (
-              <p className="text-status-error text-sm mt-1">{errors.game_id.message}</p>
+              <p className="text-content-status-error text-sm mt-1">{errors.game_id.message}</p>
             )}
           </div>
 
@@ -413,14 +413,14 @@ export default function ScheduleForm({
           {/* Server Error (inline submit-error UI) */}
           {serverError && (
             <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
-              <p role="alert" className="text-status-error text-sm">{serverError}</p>
+              <p role="alert" className="text-content-status-error text-sm">{serverError}</p>
             </div>
           )}
 
           {/* Root Error (from setError) */}
           {errors.root && (
             <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
-              <p className="text-status-error text-sm">{errors.root.message}</p>
+              <p className="text-content-status-error text-sm">{errors.root.message}</p>
             </div>
           )}
 

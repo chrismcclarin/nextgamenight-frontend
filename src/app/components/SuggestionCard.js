@@ -126,7 +126,7 @@ export default function SuggestionCard({
 
       {/* Error message */}
       {error && (
-        <div className="text-sm text-status-error mb-3">
+        <div className="text-sm text-content-status-error mb-3">
           {error}
         </div>
       )}

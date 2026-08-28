@@ -129,7 +129,14 @@ describe('availabilityColor — preferenceColor (write-cell preference enum, D-0
   });
 
   it('maps null (unselected) to the elevated/hover empty-cell classes', () => {
-    expect(preferenceColor(null)).toBe('bg-surface-elevated hover:bg-surface-card-hover');
+    // Phase 88.3 (D-02): the hover half moved from `bg-surface-card-hover` to
+    // `bg-surface-hover` with the other 37 prefixed sites. `bg-surface-card-hover` was
+    // re-keyed to warm-200 by plan 88.3-03 [AMENDED 88.3-18: to the minted warm-250 by owner
+    // ruling 1c, 2026-08-28 — warm-200 became the page] to serve ~44 STATIC surfaces; leaving the
+    // empty write-grid cell on it would give a hovered cell a ΔL* 10.4 slab [now ΔL* 15.63 —
+    // heavier, same conclusion] where the
+    // owner picked a ΔL* 2.3 press. The `bg-surface-elevated` resting half is unchanged.
+    expect(preferenceColor(null)).toBe('bg-surface-elevated hover:bg-surface-hover');
   });
 
   it('returns the full disabled string (opacity + cursor) regardless of preference', () => {

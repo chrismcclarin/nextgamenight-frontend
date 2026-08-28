@@ -248,8 +248,14 @@ jobs:
             "src/app/components/availabilityGridColumns.test.ts:6" \
             "src/app/decisionMarkers.test.ts:11" \
             "src/app/rawColorValues.test.ts:7" \
+            "src/app/tokenContrast.test.ts:28" \
+            "src/app/surfaceHoverSweep.test.ts:7" \
+            "src/app/darkChromeLegibility.test.ts:7" \
+            "src/app/accentSweep.test.ts:6" \
+            "src/app/statusTextSweep.test.ts:5" \
             "src/app/legacyOverlayClass.test.ts:5" \
             "src/app/nativeDialogs.test.ts:7" \
+            "src/app/groupColourRendering.test.ts:10" \
             "src/test-utils/sourceScan.ts:0" \
           ; do
             f="${entry%:*}"; min="${entry##*:}"
@@ -361,9 +367,34 @@ jobs:
         run: |
           # Sequelize logs SQL to stdout — fish out the single marker line.
           # Output goes to a file (NOT the log) so tokens never print (T-82-11).
-          node scripts/e2e-fixtures.js > /tmp/e2e-fixtures.out 2>&1 || { tail -40 /tmp/e2e-fixtures.out; exit 1; }
+          #
+          # Phase 88.3 plan 12 (threat T-88.3-60): both diagnostic tails below are piped
+          # through a `sed` that replaces the `E2E_FIXTURES_JSON=...` MARKER LINE with
+          # `<redacted>` before anything reaches the job log. Without it, a failure that
+          # happens AFTER the marker is emitted printed that line verbatim into a PUBLIC
+          # Actions log — and it carries live secrets (`availability_token`, the restore
+          # nonce). SCOPE, stated precisely so it is not over-read: this redacts THAT LINE
+          # and only that line. It is NOT a blanket guarantee that no diagnostic path in
+          # the fixture script can ever print a secret; plan 02 separately narrows the
+          # script's own `catch` to log `err.name`/`err.message` instead of the whole
+          # error object, which closes the remaining Sequelize error-object path at its
+          # origin, backend-side.
+          #
+          # AMENDED by CR-05 (88.3-cr, code-adversarial-review 2026-08-27): the tail also
+          # drops every line beginning with `Executing (` — Sequelize's query log. Until
+          # now those lines never reached the tail, but only as a SIDE EFFECT of the
+          # backend's logger branch selection: CI sets DATABASE_URL (below), which picks
+          # `config/database.js`'s URL branch, whose custom logger drops any message
+          # containing SELECT/INSERT/UPDATE/DELETE. The DB_* branch in the same file logs
+          # with a bare `console.log`, and CI ALSO sets DB_HOST/DB_NAME/DB_USER — so a
+          # config move that dropped DATABASE_URL would start printing the fixture's
+          # `bulkCreate` INSERTs, with their single-use token nonces inlined, straight
+          # into a public Actions log. Bounded (MAGIC_TOKEN_SECRET here is a published
+          # throwaway against an ephemeral CI database), but the redaction must not depend
+          # on a decision made in another repo. It is now independent of it.
+          node scripts/e2e-fixtures.js > /tmp/e2e-fixtures.out 2>&1 || { tail -40 /tmp/e2e-fixtures.out | sed -e 's/^E2E_FIXTURES_JSON=.*/E2E_FIXTURES_JSON=<redacted>/' -e '/^Executing (/d'; exit 1; }
           JSON=$(grep -m1 '^E2E_FIXTURES_JSON=' /tmp/e2e-fixtures.out | sed 's/^E2E_FIXTURES_JSON=//')
-          [ -n "$JSON" ] || { echo "::error::e2e-fixtures emitted no marker line"; tail -40 /tmp/e2e-fixtures.out; exit 1; }
+          [ -n "$JSON" ] || { echo "::error::e2e-fixtures emitted no marker line"; tail -40 /tmp/e2e-fixtures.out | sed -e 's/^E2E_FIXTURES_JSON=.*/E2E_FIXTURES_JSON=<redacted>/' -e '/^Executing (/d'; exit 1; }
           {
             echo "E2E_GROUP_ID=$(echo "$JSON" | jq -r .group_id)"
             echo "E2E_AVAILABILITY_TOKEN=$(echo "$JSON" | jq -r .availability_token)"
@@ -386,12 +417,28 @@ jobs:
               || { echo "::error::fixture key restore_path missing or null in E2E_FIXTURES_JSON" >&2; exit 1; }
             E2E_EVENT_DETAIL_PATH=$(echo "$JSON" | jq -e -r '.event_detail_path') \
               || { echo "::error::fixture key event_detail_path missing or null in E2E_FIXTURES_JSON" >&2; exit 1; }
+            # DECISION Phase 88.3 (OQ-1): this key is minted by the BACKEND repo, at
+            # `periodictabletopbackend_v2/Sonnet/scripts/e2e-fixtures.js`, and THAT PR MERGES
+            # FIRST. `jq -e` exits non-zero on a missing or null key, so if this line reaches a
+            # ref whose `backend-ref` resolves to a backend that does not yet emit
+            # `coloured_group_id`, the whole `e2e` job reds HERE, at the fixture step, before a
+            # single Playwright assertion runs. That is deliberate — it fails loudly instead of
+            # passing the literal string "null" into `E2E_COLOURED_GROUP_ID` and driving Req
+            # 9(ii)'s probe to `/groupHomePage?id=null`, where it would fail for the wrong
+            # reason. REJECTED: mutating the shared `Weekend Warriors` fixture group from inside
+            # the spec (it is reused by `create-event`, `padding-budget` and `touch-targets`, and
+            # a failed restore poisons every later run), and narrowing Req 9's acceptance to
+            # vitest maths plus the unset group only (a gate that cannot red). Reordering the two
+            # merges, or softening this to a bare `jq -r`, is a decision, not a cleanup.
+            E2E_COLOURED_GROUP_ID=$(echo "$JSON" | jq -e -r '.coloured_group_id') \
+              || { echo "::error::fixture key coloured_group_id missing or null in E2E_FIXTURES_JSON" >&2; exit 1; }
             echo "E2E_INVITE_FRIEND_NAME_PHONE=$E2E_INVITE_FRIEND_NAME_PHONE"
             echo "E2E_RSVP_PATH_PHONE=$E2E_RSVP_PATH_PHONE"
             echo "E2E_RESTORE_PATH=$E2E_RESTORE_PATH"
             echo "E2E_EVENT_DETAIL_PATH=$E2E_EVENT_DETAIL_PATH"
+            echo "E2E_COLOURED_GROUP_ID=$E2E_COLOURED_GROUP_ID"
           } >> "$GITHUB_ENV"
-          echo "Fixtures minted (group id, availability token, rsvp path + phone rsvp path, invite group + friend, phone invite friend, restore path, event detail path)."
+          echo "Fixtures minted (group id, availability token, rsvp path + phone rsvp path, invite group + friend, phone invite friend, restore path, event detail path, coloured group)."
 
       - name: Backend — boot (server.js, :4000) and smoke-wait /health
         working-directory: backend/Sonnet
@@ -517,6 +564,22 @@ jobs:
           E2E_AUTH0_USER: ${{ secrets.E2E_AUTH0_USER }}
           E2E_AUTH0_PASS: ${{ secrets.E2E_AUTH0_PASS }}
         run: npx playwright test --project=setup --project=journeys --project=phone
+
+      # Phase 88.3-cr, CR-09: the pinned `--project=phone` above is what makes Gate C
+      # RUN, and the lockstep test in `src/lib/ci-grep-gate.fixture.test.ts` is what
+      # keeps that flag on the line. Neither can tell you the tests actually executed.
+      # Every Gate C test sits behind `test.skip(({ isMobile }) => !isMobile)`, and
+      # Playwright exits 0 on a run that skipped all of them — run 33138624128 reported
+      # "85 passed, 72 skipped" with nothing consuming the second number. Removing
+      # `isMobile: true` from the phone project, or inverting that predicate, silently
+      # zeroes the phase's ONLY rendered-pixel contrast gate while this job stays green.
+      # This step is the consumer. It reads the json reporter's output (see
+      # playwright.config.ts) and fails if fewer than the floor executed and passed.
+      # It runs on EVERY trigger this job runs on, workflow_dispatch included — there is
+      # no `if:` here on purpose, and adding one would exempt exactly the dispatch lane
+      # the phase's cross-repo merge-order proof depends on.
+      - name: Gate C executed-count floor — contrast.spec.ts must actually run in the phone project
+        run: node scripts/gate-c-executed-floor.mjs playwright-results.json
 
       - name: Upload Playwright failure evidence (excludes .auth/ — T-82-12)
         if: failure()

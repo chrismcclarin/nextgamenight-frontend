@@ -113,7 +113,7 @@ const ErrorFallback = React.forwardRef<HTMLDivElement, ErrorFallbackProps>(
             <button
               type="button"
               onClick={handleReload}
-              className="inline-flex items-center justify-center rounded-btn border border-line-strong bg-surface-card px-5 py-2.5 text-sm font-medium text-content-primary transition-colors hover:bg-surface-card-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="inline-flex items-center justify-center rounded-btn border border-line-strong bg-surface-card px-5 py-2.5 text-sm font-medium text-content-primary transition-colors hover:bg-surface-hover focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               Reload page
             </button>

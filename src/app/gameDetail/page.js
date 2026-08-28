@@ -42,8 +42,8 @@ import { toast } from 'sonner';
 // to raw amber is a decision, not a cleanup.
 function RsvpStatusPill({ status }) {
     const map = {
-        yes: { label: 'Going', cls: 'bg-status-success-subtle text-status-success' },
-        maybe: { label: 'Maybe', cls: 'bg-status-warning-subtle text-status-warning' },
+        yes: { label: 'Going', cls: 'bg-status-success-subtle text-content-status-success' },
+        maybe: { label: 'Maybe', cls: 'bg-status-warning-subtle text-content-status-warning' },
         no: { label: 'No', cls: 'bg-surface-card-hover text-content-muted' },
     };
     if (!status) {
@@ -197,12 +197,12 @@ function GuestInviteButton({ groupId, userId }) {
                the min-h-11 sweep in this file); this control sat at ~22px. */
             className={`inline-flex min-h-11 items-center text-xs px-2 py-1 rounded-sm border border-line transition-colors ${
                 status === 'sent'
-                    ? 'bg-status-success-subtle border-status-success text-status-success'
+                    ? 'bg-status-success-subtle border-status-success text-content-status-success'
                     : status === 'pending' || status === 'member' || status === 'already'
                         ? 'text-content-muted border-line bg-surface-page'
                         : status === 'error'
-                            ? 'bg-status-error-subtle border-status-error hover:bg-status-error-subtle-hover text-status-error'
-                            : 'hover:bg-surface-card-hover text-content-link'
+                            ? 'bg-status-error-subtle border-status-error hover:bg-status-error-subtle-hover text-content-status-error'
+                            : 'hover:bg-surface-hover text-content-link'
             }`}
             title={
                 status === 'sent'
@@ -1222,7 +1222,7 @@ export default function GameDetailPage() {
                                             )}
                                         </div>
                                         {event.is_group_win ? (
-                                            <p className="text-sm text-status-success font-semibold mb-1">
+                                            <p className="text-sm text-content-status-success font-semibold mb-1">
                                                 ✓ Group Win
                                             </p>
                                         ) : event.Winner && (
@@ -1519,7 +1519,7 @@ export default function GameDetailPage() {
                                 <button
                                     type="button"
                                     onClick={() => setShowActionsMenu(prev => !prev)}
-                                    className="text-2xl text-content-muted hover:text-content-primary px-2 py-1 leading-none rounded-sm hover:bg-surface-card-hover transition-colors"
+                                    className="text-2xl text-content-muted hover:text-content-primary px-2 py-1 leading-none rounded-sm hover:bg-surface-hover transition-colors"
                                     aria-haspopup="menu"
                                     aria-expanded={showActionsMenu}
                                     aria-label="Event actions"
@@ -1541,7 +1541,7 @@ export default function GameDetailPage() {
                                                 role="menuitem"
                                                 onClick={handleCancelEvent}
                                                 disabled={cancellingEvent}
-                                                className="w-full text-left px-3 py-2 text-sm text-status-error hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                                                className="w-full text-left px-3 py-2 text-sm text-content-status-error hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 {cancellingEvent ? 'Cancelling…' : 'Cancel event'}
                                             </button>
@@ -1552,7 +1552,7 @@ export default function GameDetailPage() {
                                                 role="menuitem"
                                                 onClick={handleLeaveEvent}
                                                 disabled={leavingEvent}
-                                                className="w-full text-left px-3 py-2 text-sm text-status-error hover:bg-surface-card-hover disabled:opacity-50 disabled:cursor-not-allowed"
+                                                className="w-full text-left px-3 py-2 text-sm text-content-status-error hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 {leavingEvent ? 'Leaving…' : 'Leave event'}
                                             </button>
@@ -1598,10 +1598,31 @@ export default function GameDetailPage() {
                                     type="button"
                                     onClick={handleShowGameQR}
                                     disabled={qrLoading}
-                                    className="btn btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5 shrink-0"
+                                    /* DECISION Phase 88.3-18 (owner ruling on Req 12 UAT test 4 /
+                                       11c(c), 2026-08-28): `btn-secondary` -> `btn-accent`, the
+                                       SAME treatment as the byte-identical twin at
+                                       `EventDayModal.js:289` — same recipe, same QR path, same
+                                       title, same label. The owner ruled on the modal instance;
+                                       this one moved with it because shipping the SAME-NAMED
+                                       control in two treatments is exactly the consistency debt
+                                       the milestone tenet forbids leaving un-owned. REJECTED:
+                                       leaving this on `.btn-secondary` and deferring it to 88.6's
+                                       `Button` migration — the divergence would have been live
+                                       through the owner's final re-check. This is a CONSISTENCY
+                                       CALL the planner made, not something the owner asked for, so
+                                       it is on his re-check list as its own vetoable line; the
+                                       revert is one word.
+                                       `shrink-0` is KEPT — it is flex-row sizing, not treatment;
+                                       dropping it lets this button squeeze against the
+                                       "Participants (N)" heading in its `justify-between` row.
+                                       Ground is the white `.card` at `:1592`, so 5.0216 as above.
+                                       Full marker at the `.btn-accent` rule in `globals.css`. */
+                                    className="btn btn-accent font-semibold text-xs px-3 py-1.5 inline-flex items-center gap-1.5 shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                                     title="Share Game QR"
                                 >
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                    {/* Decorative — the visible label names the button. Same pair
+                                        as the twin at `EventDayModal.js:292`. */}
+                                    <svg className="w-3.5 h-3.5" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
                                     </svg>
@@ -1957,8 +1978,8 @@ export default function GameDetailPage() {
                                                 )}
                                                 className={`inline-flex min-h-11 items-center text-xs px-2 py-1 border rounded-sm transition-colors shrink-0 ${
                                                     isConfirming
-                                                        ? 'bg-status-error-subtle border-status-error text-status-error font-semibold'
-                                                        : 'border-status-error text-status-error hover:bg-status-error-subtle'
+                                                        ? 'bg-status-error-subtle border-status-error text-content-status-error font-semibold'
+                                                        : 'border-status-error text-content-status-error hover:bg-status-error-subtle'
                                                 }`}
                                             >
                                                 {removeParticipantGate.labelFor(p.user_id, 'Remove')}
@@ -2070,7 +2091,7 @@ export default function GameDetailPage() {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="text-center">
-                    <p className="text-status-error mb-4">Game not found</p>
+                    <p className="text-content-status-error mb-4">Game not found</p>
                     {/* Phase 71.1 GAMP-11: scope-aware fallback — game-only/none
                         callers fall through to "← Back to Home" since the group
                         page would 403. Group-member/pending see the group link
@@ -2689,7 +2710,7 @@ export default function GameDetailPage() {
                                     {renderStars(userReview.rating)}
                                 </p>
                                 {userReview.is_recommended && (
-                                    <p className="text-sm text-status-success font-semibold">✓ Recommended</p>
+                                    <p className="text-sm text-content-status-success font-semibold">✓ Recommended</p>
                                 )}
                                 <button
                                     onClick={() => setShowReviewForm(true)}
@@ -2743,7 +2764,7 @@ export default function GameDetailPage() {
                                                     {renderStars(review.rating)}
                                                 </p>
                                                 {review.is_recommended && (
-                                                    <p className="text-sm text-status-success font-semibold">✓ Recommended</p>
+                                                    <p className="text-sm text-content-status-success font-semibold">✓ Recommended</p>
                                                 )}
                                             </div>
                                         </div>

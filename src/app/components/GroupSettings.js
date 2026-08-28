@@ -5,7 +5,10 @@ import { groupsAPI, API_BASE_URL } from '../../lib/api';
 import PromptScheduleReadOnly from './PromptScheduleReadOnly';
 import SafeImage from './SafeImage';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
-import { resolveGroupBackgroundColor } from '../../lib/colorUtils';
+import {
+  lightTintGroupBackgroundColor,
+  resolveGroupBackgroundColor,
+} from '../../lib/colorUtils';
 import { toast } from 'sonner';
 // Relative (not `@/`) so this `.js` component resolves under vitest, matching
 // the sibling ManageMembers.js adopter.
@@ -63,6 +66,30 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
   // anyone having picked it. Seeding the picker with that value made every save
   // re-persist it, which is what manufactured the D-28 white cards in the first
   // place. resolveGroupBackgroundColor treats stored white as unset.
+  /*
+   * DECISION Phase 88.3 (D-09 / Pitfall 7): this line stays
+   * `resolveGroupBackgroundColor`. It is NOT an oversight that the phase which
+   * moved every OTHER `resolveGroupBackgroundColor` call onto
+   * `lightTintGroupBackgroundColor` left this one alone. THIS MARKER IS A
+   * SECURITY CONTROL, NOT DOCUMENTATION.
+   *
+   * WHY, in plain words: this seeds the FORM STATE, and `handleSave` below
+   * persists that same state as `background_color`. Route it through the tint
+   * and the very next save writes the RENDERED tint into
+   * `Groups.background_color` — permanently destroying the group's identity
+   * colour, irreversibly, because the original hex cannot be recovered from the
+   * tint. Every subsequent save would tint the tint.
+   *
+   * REJECTED: a blanket "replace every `resolveGroupBackgroundColor` call"
+   * sweep, which is exactly the shape of change that would do it. The tint is a
+   * RENDERING transform; the stored hex is the group's IDENTITY. The two render
+   * sites in this file (the preview and the eight picker swatches) DO take the
+   * tint — they paint, they do not persist.
+   *
+   * Pinned by `src/app/groupColourRendering.test.ts` test 1, which was
+   * demonstrated red by routing this line through the tint. Changing it is a
+   * decision, not a cleanup.
+   */
   const [backgroundColor, setBackgroundColor] = useState(
     resolveGroupBackgroundColor(group.background_color) || ''
   );
@@ -156,6 +183,13 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
   // the multi-member wording renders (accurate for the typical group).
   const knownMemberCount = deletionImpact?.member_count ?? memberCount;
   const isSoleMemberDelete = knownMemberCount !== null && knownMemberCount <= 1;
+
+  // The live preview is a RENDER site: it takes the tint, so it shows what the
+  // card will actually look like in light mode. `previewGround` is gated on the
+  // TINT succeeding, so a value that fails to tint withholds BOTH custom
+  // properties together rather than just the light one (T-88.3-43).
+  const previewTinted = lightTintGroupBackgroundColor(backgroundColor);
+  const previewGround = previewTinted ? backgroundColor : null;
 
   const handleSave = async () => {
     if (!user?.sub) return;
@@ -358,6 +392,15 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
               {/* 87.8-13 walkthrough F-4: inline-flex (was inline-block + flex — two
                   competing display utilities; the centering never applied) and
                   overflow-hidden so nothing can spill the circle. */}
+              {/* DECISION Phase 88.3 (OI-5): this disc STAYS on `bg-surface-card-hover`
+                  and was deliberately excluded from the sunken adoption, chosen OVER
+                  converging it with the five nested blocks that took `bg-surface-sunken`.
+                  It is an avatar PLACEHOLDER DISC, not a nested block: it must read as a
+                  filled shape against its container, and on warm-50 sunken it would be
+                  ΔL* 2.3 from the surrounding card and near-invisible, where warm-200
+                  gives ΔL* 10.4 and is MORE visible. Phase 88.6's broader sunken adoption
+                  across the 176 `bg-surface-card` sites must not re-add it. That is a
+                  decision, not a cleanup. */}
               <div className="inline-flex w-20 h-20 rounded-full bg-surface-card-hover items-center justify-center text-4xl mb-2 overflow-hidden">
                 {profilePictureUrl ? (
                   profilePictureUrl.startsWith('http') || profilePictureUrl.startsWith('/') ? (
@@ -388,7 +431,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                 <button
                   key={index}
                   onClick={() => handleSelectDefaultPicture(pic.url)}
-                  className={`p-4 border-2 rounded-lg text-3xl hover:bg-surface-card-hover transition-colors ${
+                  className={`p-4 border-2 rounded-lg text-3xl hover:bg-surface-hover transition-colors ${
                     profilePictureUrl === pic.url ? 'border-accent bg-surface-card-hover' : 'border-line'
                   }`}
                   title={pic.name}
@@ -428,10 +471,24 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
           <h3 className="text-lg font-semibold text-content-primary mb-3">Background</h3>
           
           {/* Current Selection Preview */}
-          {/* bg-surface-card so "no colour chosen" previews what the group will
-              actually look like — the themed card, not a white rectangle. */}
-          <div className="mb-4 p-4 border border-line rounded-lg bg-surface-card" style={{
-            ...(backgroundColor && { backgroundColor }),
+          {/* The no-colour branch keeps `bg-surface-card` so "no colour chosen"
+              previews what the group will actually look like — the themed card,
+              not a white rectangle. The has-colour branch takes the TINT, so
+              the preview shows what will actually render in light mode.
+
+              DECISION Phase 88.3 (D-09, cascade fix): mutual exclusion via a
+              ternary gated on `previewTinted`, chosen OVER keeping
+              `bg-surface-card` always present and appending the tint pair —
+              compile-verified, `.bg-[var(--group-ground-light)]` emits BEFORE
+              `.bg-surface-card` (1426 vs 1543) at equal specificity, so the
+              stacked shape renders white in light mode. ALSO REJECTED: gating
+              the ground on `backgroundColor` alone (T-88.3-43). A decision, not
+              a cleanup. */}
+          <div className={`mb-4 p-4 border border-line rounded-lg ${previewTinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`} style={{
+            ...(previewTinted && {
+              '--group-ground': previewGround,
+              '--group-ground-light': previewTinted,
+            }),
             ...safeBgImageStyle(backgroundImageUrl),
             backgroundSize: 'cover',
             backgroundPosition: 'center',
@@ -442,19 +499,94 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
 
           {/* Default Colors */}
           <div className="mb-4">
-            <p className="text-sm text-content-secondary mb-2">Choose a default color:</p>
-            <div className="grid grid-cols-4 gap-2">
-              {DEFAULT_BACKGROUND_COLORS.map((color, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleSelectDefaultColor(color.value)}
-                  className={`p-4 border-2 rounded-lg hover:opacity-80 transition-opacity ${
-                    backgroundColor === color.value && !backgroundImageUrl ? 'border-accent ring-2 ring-focus-ring' : 'border-line'
-                  }`}
-                  style={{ backgroundColor: color.value }}
-                  title={color.name}
-                />
-              ))}
+            <p id="group-colour-choice" className="text-sm text-content-secondary mb-2">Choose a default color:</p>
+            {/* role="group" + aria-labelledby so assistive tech announces these
+                eight as a LABELLED set rather than a bare row of buttons — the
+                visible <p> above is already the label, it just was not wired to
+                them. */}
+            <div className="grid grid-cols-4 gap-2" role="group" aria-labelledby="group-colour-choice">
+              {DEFAULT_BACKGROUND_COLORS.map((color, index) => {
+                /* The swatch is a RENDER site, so it shows the tint: a swatch
+                   must preview what you will actually get. The stored value it
+                   selects (`handleSelectDefaultColor(color.value)`) is the raw
+                   preset, untouched — the tint never reaches form state.
+
+                   DECISION Phase 88.3 (D-09, cascade fix): same mutual-exclusion
+                   ternary and same `tinted ? stored : null` ground gating as the
+                   other render sites, chosen OVER a stacked className (source
+                   order would render the themed surface in light mode) and OVER
+                   gating on `color.value` alone (T-88.3-43). A decision, not a
+                   cleanup.
+
+                   DECISION Phase 88.3 (R2-2, owner ruling): aria-label +
+                   aria-pressed are the FULL accessibility fix here, chosen OVER
+                   adding a visible checkmark, disc or text label. The swatch
+                   identity is genuinely visible at t = 0.70 — at the
+                   previously-ruled 0.87 the eight measured 1.01:1 pairwise and
+                   a visible marker would have been mandatory. A decision, not a
+                   cleanup.
+
+                   DECISION Phase 88.3-cr (CR-14, code-adversarial-review
+                   2026-08-27): SELECTION and FOCUS are now two different
+                   affordances, chosen OVER the shipped shape where the SELECTED
+                   swatch wore `ring-2 ring-focus-ring` — the app's focus idiom —
+                   while the swatch that actually HAD focus showed only the
+                   browser default outline. A sighted keyboard user tabbing
+                   across the eight saw a permanent "focus ring" on a swatch that
+                   was not focused, and no ring on the one that was. Not a WCAG
+                   2.4.7 failure (the default outline satisfies it), which is why
+                   it is LOW — but it is the app's own vocabulary saying the
+                   wrong word.
+                     - FOCUS takes the project string, byte-identical to the one
+                       the group-page header CTAs and both calendar tiles carry.
+                     - SELECTION takes `border-content-primary ring-2
+                       ring-content-primary`: a flush, high-contrast frame. Focus
+                       stays an OFFSET ring, so the two differ in geometry as
+                       well as colour, in both themes.
+                   REJECTED — `ring-accent`, the obvious pick and the one the
+                   review suggested. MEASURED with `src/lib/wcag.ts` against the
+                   rendered t = 0.70 grounds: amber-500 `#f59e0b` scores
+                   1.11-1.18:1 against the eight light tints and 2.15:1 against
+                   the light card. Both are under WCAG 1.4.11's 3:1 for a state
+                   indicator, i.e. a selection ring you cannot see in light mode.
+                   The same measurement condemns the OLD `border-accent` — which
+                   is exactly why the shipped design needed the focus-ring token
+                   to do the visible work, and how the conflation happened.
+                   `content-primary` measures 17.97:1 vs the light card,
+                   9.32-9.87:1 vs the eight tints, 13.06:1 vs the dark card and
+                   12.89-15.47:1 vs the eight raw presets — clear on every
+                   ground the swatch can have, in both themes.
+                   ALSO REJECTED — distinguishing the two by hue alone. In DARK
+                   `--color-focus-ring` is amber-400 and `--color-accent` is
+                   amber-500 (1.29:1 apart): an accent selection ring would read
+                   as "permanently focused" all over again, one shade off.
+                   ALSO REJECTED — a check glyph, which would be the strongest
+                   separation available. Owner ruling R2-2 above rejected exactly
+                   that, and this finding is not a reason to re-open it: the
+                   ruling was about swatch IDENTITY being visible at t = 0.70,
+                   and it still is. A decision, not a cleanup. */
+                const swatchTinted = lightTintGroupBackgroundColor(color.value);
+                const swatchGround = swatchTinted ? color.value : null;
+                const isSelected = backgroundColor === color.value && !backgroundImageUrl;
+                return (
+                  <button
+                    key={index}
+                    onClick={() => handleSelectDefaultColor(color.value)}
+                    className={`p-4 border-2 rounded-lg hover:opacity-80 transition-opacity focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+                      isSelected ? 'border-content-primary ring-2 ring-content-primary' : 'border-line'
+                    } ${swatchTinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
+                    style={{
+                      ...(swatchTinted && {
+                        '--group-ground': swatchGround,
+                        '--group-ground-light': swatchTinted,
+                      }),
+                    }}
+                    title={color.name}
+                    aria-label={color.name}
+                    aria-pressed={backgroundColor === color.value && !backgroundImageUrl}
+                  />
+                );
+              })}
             </div>
           </div>
 
@@ -536,7 +668,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                       Leave <strong>{group?.name}</strong>? You will lose access to events, library, and member-only content.
                     </p>
                     {leaveError && (
-                      <p className="text-sm text-status-error">{leaveError}</p>
+                      <p className="text-sm text-content-status-error">{leaveError}</p>
                     )}
                     <div className="flex gap-3">
                       <button
