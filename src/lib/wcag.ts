@@ -34,8 +34,15 @@
 //      that picks title/subtitle text colour over a USER-CHOSEN group colour, and the
 //      D-27/D-29 marker at `colorUtils.js:33-38` already says "do NOT collapse the algorithm
 //      or delete the two lighter tiers". Phase 88.3 makes those tiers load-bearing for the
-//      first time (every light-mode rendered group tint lands at brightness 226-227, i.e.
-//      the previously-unreachable `brightness > 180` branch). Swapping `getBrightness` for
+//      first time: every light-mode rendered group tint lands at W3C brightness 188-191 —
+//      the previously-unreachable `brightness > 180` branch, cleared by only ~8-11 points.
+//      (AMENDED by CR-03, 88.3-cr, 2026-08-27: this line said 226-227, which was the figure
+//      at the earlier t = 0.87 and carried a ~46-point margin. The owner ruled t = 0.70 on
+//      2026-08-25 and the tints moved with it. A reader trusting 226-227 could conclude the
+//      180 threshold was nowhere near live and "safely" nudge it. The authoritative figures
+//      are the amended D-09 marker at `colorUtils.js` and the per-preset
+//      `getBrightness(tint(preset)) > 180` assertions in `colorUtils.test.ts`.)
+//      Swapping `getBrightness` for
 //      `relativeLuminance` here would silently re-tier every group in the database — a
 //      user's header text would flip pole with no code review noticing.
 //
@@ -94,7 +101,16 @@ const HEX_FULL = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i;
  */
 const RGB_FUNC = /^rgba?\(\s*([^)]*)\)$/i;
 
-/** Clamp to an integer channel in 0-255. Non-finite input yields 0. */
+/**
+ * Clamp to an integer channel in 0-255. Non-finite input yields **NaN**, so that `parseHex`
+ * / `parseRgbFunc` reject the colour via `rgb.some(Number.isNaN)`.
+ *
+ * DECISION Phase 88.3-cr (CR-04, 2026-08-27): the NaN is the contract, not an oversight —
+ * this docstring used to promise `0`. Someone "fixing" the code to match would turn a
+ * malformed channel into a silent black, so `rgb(x, 0, 0)` would parse as an accepted
+ * colour and every contrast reading taken against it would be wrong-but-plausible.
+ * The COMMENT was the defect; the code is correct.
+ */
 function toChannel(value: number): number {
   if (!Number.isFinite(value)) return Number.NaN;
   return Math.min(255, Math.max(0, Math.round(value)));
