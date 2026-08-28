@@ -110,12 +110,27 @@ const CARD_BORDER_MIN = 1.4; // a hairline, not a wireframe
 // resting-card ceiling at 1.9-2.2 (M3 outlined 1.62-1.70, Radix sand-8 1.92, Airbnb
 // border-muted 2.17). `--color-border` ships warm-400 at 2.31 vs the white card. NOT 3.0:
 // >= 3:1 is `--color-border-strong`'s control-edge tier, not a card edge.
+//
+// AMENDED Phase 88.3-18 (owner rulings 1c + 1a-bis, 2026-08-28): BOTH BOUNDS ARE UNCHANGED, and so
+// is the token — owner ruling 1a-bis was "A, keep", so `--color-border` stays warm-400. Only the
+// page-side ground moved: warm-400 now reads 2.3096 vs the white card (unchanged) and 1.7690 vs the
+// new warm-200 page (was 2.0384). Both inside 1.4-2.4. Had 1a-bis picked warm-300 these constants
+// would have needed amending — warm-300 measures 1.2220 vs the page, below CARD_BORDER_MIN.
 const CARD_BORDER_MAX = 2.4;
-const PAGE_CARD_DELTA = 4.0; // Req 1, archetype A (ships at 5.00)
+// AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28): the FLOOR stays 4.0 and the ladder now
+// ships at a raw ΔL* 10.4083 / published 10.40 (was raw 4.9768 / published 5.00), because the page
+// moved warm-100 -> warm-200. Both forms are given deliberately: §5.11 publishes ΔL* as
+// `100 − L*(1dp)`, and a floor written at the published figure would red a correct tree.
+const PAGE_CARD_DELTA = 4.0; // Req 1, archetype A (ships at raw 10.4083 / published 10.40)
 const NESTED_DELTA_LIGHT = 1.5;
 const NESTED_DELTA_DARK = 3.0;
 const TINT_LSTAR_FLOOR = 75; // Req 9, SPEC amended 2026-08-25 to a t = 0.70 tint (was 85)
-const CARD_LSTAR_FLOOR = 97; // distinguishes the white card (100) from the warm-100 page (95.02)
+// AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28): the VALUE 97 is unchanged and still
+// separates them — it just has far more room now. The page is warm-200 at L* 89.5917 (was warm-100
+// at 95.02) against the white card's 100. Note that the NEW secondary-button fill is warm-100
+// (L* 95.0232), which also sits below this floor, so a walk that terminates on a `.btn-secondary`
+// fill still reads as "not a card" rather than passing by accident.
+const CARD_LSTAR_FLOOR = 97; // distinguishes the white card (100) from the warm-200 page (89.59)
 
 /**
  * The fixture group's CARD on the home page, anchored BY NAME.
@@ -297,6 +312,14 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // Req 8 names two grounds and they are asserted SEPARATELY, never collapsed: a token
       // can clear one and fail the other, which is exactly what warm-500 did before this
       // phase (4.11 on white, 3.63 on warm-100).
+      //
+      // AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28): those two figures are the PRE-PHASE
+      // warm-500 values and stay as history. On the shipped tree `--color-border-strong` (warm-500)
+      // now reads 3.1496 on the warm-200 page (was 3.6292 on warm-100) — a Req 2 disclosure, not a
+      // Req 8 one. For Req 8 itself: light muted moved warm-550 -> warm-600 in the same commit
+      // because warm-550 measures 4.1460 on the new page, BELOW the AA_TEXT floor the page probe
+      // below asserts. That probe is the mechanical proof — it reads the REAL computed ground and
+      // would have failed at 4.1460. It ships at 5.0392. DO NOT WEAKEN IT.
       //
       // CARD ground: the "Last Game:" row's date span inside the fixture card. It renders
       // unconditionally — `formatDate(undefined)` returns the string 'Never'
@@ -523,7 +546,8 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       expectRatio('accent on a light CARD (Req 4)', m, AA_TEXT);
 
       // Prove the ground really is the CARD and not the page: the white card is L* 100 and
-      // the warm-100 page is L* 95.02, so a 97 floor separates them without pinning either.
+      // the warm-200 page is L* 89.59 (AMENDED 88.3-18, ruling 1c — was warm-100 at 95.02), so a
+      // 97 floor separates them without pinning either, with more headroom than before.
       const lightness = await lStarOfGround(you, 'accent on a light CARD (Req 4)');
       expect(
         lightness.value,
@@ -531,6 +555,91 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
           `(${lightness.ground}). Below ${CARD_LSTAR_FLOOR} means the walk terminated on the PAGE, not a ` +
           `card — so the card half of Req 4's acceptance would be untested while reading as tested.`
       ).toBeGreaterThanOrEqual(CARD_LSTAR_FLOOR);
+    });
+
+    await test.step('surface 15 — 88.3-18 ruling 1c: a card-hover surface rendered ON the page ground', async () => {
+      // ADDED Phase 88.3-18 (owner ruling 1c, 2026-08-28). THE ONE MOVED TOKEN WITH NO LIVE PIN.
+      // Everything ledger E uses to justify MINTING `--warm-250` is a RENDER claim — that at
+      // warm-200 today's month cell would be byte-identical to an empty one, and `GroupLibrary`'s
+      // skeleton bars would vanish into their `bg-surface-page` parent. Until this step that claim
+      // had only token-level cover (Gate A test 2). Every other token this plan moved carries a
+      // live probe (the Footer muted-on-page read, the card border, the page/card delta); the one
+      // surface the plan calls a "real render defect" carried none.
+      //
+      // Measured at the shipped warm-250 vs the warm-200 page: ΔL* 5.2191, so the 4.0 floor holds
+      // with margin. At warm-200 — the REJECTED option — it would be 0.0000, which is the whole
+      // point of the row.
+      //
+      // REJECTED, and ROUTED rather than silently dropped: adding `aria-current="date"` to the
+      // month cell to give this probe a semantic hook. It would mirror `SchedulerWeekStrip.tsx:130`,
+      // whose own comment says the attribute exists "EXACTLY so that today is exposed to assistive
+      // tech rather than by tint alone" — so the month grid exposing today by TINT ONLY is a real
+      // inconsistency with a shipped sibling. But it changes rendered component semantics, which is
+      // outside ruling 1c's scope; it is persisted to `.planning/deferred/phase-88.6.md`.
+      await page.keyboard.press('Escape');
+
+      // The month view may be persisted OFF: `EventCalendar.js:39-41` defaults `viewMode` to
+      // 'month' but hydrates a saved 'list' from prefs. The toggle at `:209-212` is labelled by the
+      // view it switches TO, so a visible "Month View" button means we are currently in list view.
+      const toMonth = page.getByRole('button', { name: 'Month View' });
+      if (await toMonth.count()) await toMonth.first().click();
+
+      // Locate the CELLS grid, not the day-name header row. `CalendarMonthView.js` renders the
+      // day-name header as its own `.grid.grid-cols-7.gap-1.mb-4` with exactly 7 children, and the
+      // cells grid with ~35-42. Scoped by child count so the two cannot be confused.
+      const grids = page.locator('.grid.grid-cols-7');
+      const gridCount = await grids.count();
+      let cellsGrid: Locator | null = null;
+      for (let i = 0; i < gridCount; i += 1) {
+        const candidate = grids.nth(i);
+        const children = await candidate.locator('> *').count();
+        if (children >= 28) { cellsGrid = candidate; break; }
+      }
+      expect(
+        cellsGrid,
+        'ruling 1c: no `.grid.grid-cols-7` with >= 28 direct children was found, so the month CELLS ' +
+          'grid did not mount (only the 7-child day-name header did, or the calendar is still in ' +
+          'list view). This is a LOCATOR failure, not a contrast failure.'
+      ).not.toBeNull();
+
+      // Today's cell is `bg-surface-card-hover border-line-accent` (`CalendarMonthView.js:225`) and
+      // carries NO `aria-current` and NO `data-testid` (verified 2026-08-28) — hence the class
+      // handle. It is scoped INSIDE the cells grid on purpose: the bare `border-line-accent` token
+      // appears at 9 sites FE-wide (`PendingMemberBanner.js:22`, `ManageMembers.js:499`,
+      // `GroupGamesList.js:372`, `PromptScheduleManager.js:198`, `EventScheduler.tsx:1203`,
+      // `Header.js:249`, `Tabs.tsx:80` ...), several of which can render on this page. The
+      // clickable-cell class is `hover:border-line-accent`, a DIFFERENT class token, so it cannot
+      // collide. Exactly ONE match is required — 0 or >1 fails as a LOCATOR error, never as a
+      // contrast pass (the same idiom `todayStripCell`'s guard uses).
+      const todayMonthCell = (cellsGrid as Locator).locator('.border-line-accent');
+      const matches = await todayMonthCell.count();
+      expect(
+        matches,
+        `ruling 1c: expected EXACTLY ONE \`.border-line-accent\` inside the month cells grid ` +
+          `(today's cell), found ${matches}. 0 means today is not in the rendered month or the ` +
+          `class moved; >1 means the locator caught a sibling surface. Either way this is a ` +
+          `LOCATOR failure, not a contrast failure — do not relax it into a contrast pass.`
+      ).toBe(1);
+
+      const todayProbe = await probeElement(todayMonthCell, []);
+      const todayGround = compositeGround(todayProbe);
+      const bodyProbe = await probeElement(page.locator('body'), []);
+      const pageGround = compositeGround(bodyProbe);
+      expect(todayGround, describeGround("month grid — today's cell", groundResolutionOf(todayProbe))).not.toBeNull();
+      expect(pageGround, describeGround('groupHomePage page', groundResolutionOf(bodyProbe))).not.toBeNull();
+
+      const delta = deltaLStar(todayGround, pageGround);
+      expect(delta, `ruling 1c: delta-L* did not compute from today=${todayGround} page=${pageGround}`).not.toBeNull();
+      expect(
+        delta as number,
+        describeDelta(
+          "88.3-18 ruling 1c — today's month cell (card-hover) vs the page ground",
+          PAGE_CARD_DELTA,
+          String(todayGround),
+          String(pageGround),
+          delta as number
+        )
+      ).toBeGreaterThanOrEqual(PAGE_CARD_DELTA);
     });
   });
 

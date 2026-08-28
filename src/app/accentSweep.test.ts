@@ -9,6 +9,15 @@
  * warm-100 page, **1.72:1** on the amber-200 today tint, **1.93:1** on the amber-100 glyph circle
  * and **1.65:1** on a warm-200 pill — against a 4.5:1 text floor and a 3:1 graphical floor.
  *
+ * AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28) — the two GROUND figures above are history,
+ * because both grounds moved. Re-measured with `src/lib/wcag.ts`: the page is warm-200 now and
+ * `text-accent` reads **1.6450:1** on it (was 1.90 on warm-100), and the "warm-200 pill" is
+ * `--color-bg-card-hover`, now the minted warm-250, where it reads **1.4274:1** (was 1.65).
+ * The card, today-tint and glyph-circle figures are unchanged — those grounds did not move.
+ * THE CONCLUSION IS UNCHANGED AND GETS STRONGER: every one of these still fails the 4.5:1 text
+ * floor and the 3:1 graphical floor, and both moved grounds got FURTHER from passing, not closer.
+ * Read the number change as the gate hardening, not weakening.
+ *
  * Plan 88.3-04 minted `--color-accent-text` with the design reference's meaning (amber-800 light /
  * amber-500 dark) and bridged it into `@theme inline` as `--color-content-accent`
  * (`globals.css:355-356`). This plan moves the 27 failing call sites onto it. This suite is what

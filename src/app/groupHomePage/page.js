@@ -737,6 +737,14 @@ function GroupHomePage(){
                                consistent with `.btn-secondary` and reads 1.31 on the white header
                                instead of leaning on the ring. Reach for it if the phone re-check
                                still says "no button there".
+                               AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28): it STAYS a
+                               recorded next step — only its numbers move. `--color-btn-secondary-bg`
+                               is now **warm-100** (ruling 1c moved the page off that hex; see the
+                               `.btn-secondary` marker in `globals.css` for why that is not a
+                               reverted fix), so this alternative would read **1.1330** on the white
+                               header, not 1.31 — i.e. a WEAKER opaque cue than when this bullet was
+                               written. That makes the ring this control actually ships more
+                               defensible, not less. Nothing here changed in code.
 
                            Phase 88.6's `Button` migration still owns the real border/ring MODEL;
                            this is an interim per-site edge. Changing it is a decision, not a

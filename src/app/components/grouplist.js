@@ -448,7 +448,36 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                     surface those two tokens were designed against, so keeping
                     them there is correct and converging the two would be the
                     error. REJECTED: leaving today's tokens on a tinted ground.
-                    This is a decision, not a cleanup. */}
+                    This is a decision, not a cleanup.
+
+                    ——— AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28),
+                    everything above KEPT AS HISTORY ———
+
+                    THE MEASURED BASIS ABOVE IS NOW FALSE IN ONE CLAUSE, AND THE
+                    DECISION STILL STANDS. Ruling 1c moved the ink ramp:
+                    `text-content-secondary` warm-600 -> **warm-700 `#4a3d32`**
+                    and `text-content-muted` warm-550 -> **warm-600** (`--warm-550`
+                    is retired). warm-700 is DARKER than the `#374151` this marker
+                    named as the threshold (L* 26.8020 vs 27.2607), so measured
+                    2026-08-28 against the same eight t = 0.70 tints with
+                    `src/lib/wcag.ts`:
+                      - `text-content-secondary` (warm-700) **5.43-5.75:1 — now
+                        CLEARS 4.5** (was 3.4-3.6 at warm-600);
+                      - `text-content-muted` (warm-600) **3.41-3.61:1 — still
+                        FAILS** (was 2.8-3.0 at warm-550);
+                      - `text-content-primary` (warm-900) 9.32-9.87:1, unchanged.
+                    So the sentence "only `#374151`-and-darker clears it, and
+                    `text-content-primary` is the token that does" is no longer
+                    exclusively true — secondary clears it too now.
+
+                    THE DECISION IS **NOT RE-OPENED** BY THIS PLAN. Tinted rows keep
+                    `text-content-primary`. This is stated explicitly because a
+                    future reader who finds a marker whose stated reason no longer
+                    holds will otherwise assume the choice was superseded and
+                    "restore" secondary here. Moving these rows to
+                    `text-content-secondary` on the strength of the new 5.43-5.75
+                    figures is a DECISION — it wants its own owner ruling and its
+                    own look on a phone — not a cleanup. */}
                 <div className={`border-t border-line pt-3 [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] ${cardTextBold ? 'font-semibold' : ''}`}>
                   <div className={`flex flex-wrap items-baseline gap-x-2 text-sm ${tinted ? 'text-content-primary' : 'text-content-secondary'}`}>
                     <span><strong className="text-content-primary">Last Game:</strong> {lastGame?.name || 'None'}</span>
@@ -483,8 +512,10 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                     {canEdit && (
                       /* DECISION Phase 88.3-16 (owner ruling 2, research-checked 2026-08-27):
                          the cog takes plan 14's secondary-control recipe as plain utilities —
-                         `bg-btn-secondary dark:bg-surface-elevated` (warm-200 fill in light; dark
-                         restored byte-identical to what shipped) plus `border border-line-control`
+                         `bg-btn-secondary dark:bg-surface-elevated` (warm-200 fill in light
+                         [AMENDED 88.3-18: the token now resolves to **warm-100** — see the AMENDED
+                         block below]; dark restored byte-identical to what shipped)
+                         plus `border border-line-control`
                          (warm-300). Req 12 test 7 named this control: in light it was #ffffff on a
                          white card with no edge at all.
 
@@ -520,6 +551,52 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                          from its ground (~1.88 -> ~1.44) while RAISING it on the white card the
                          owner's complaint was actually about, and on the tint the border is an inner
                          edge rather than a boundary. That trade is the point of one recipe.
+
+                         ——— AMENDED Phase 88.3-18 (owner ruling 1c + the cog ruling, 2026-08-28),
+                         everything above KEPT AS HISTORY ———
+
+                         THE COG GOT NO DEDICATED CHANGE, BUT IT DID MOVE — and that difference is
+                         recorded rather than blurred. It wears `bg-btn-secondary`, and ruling 1c
+                         moved `--color-btn-secondary-bg` warm-200 -> **warm-100** (the page vacated
+                         warm-100; see the `.btn-secondary` marker in `globals.css` for why that is
+                         not a reverted fix). So the cog's fill followed the shared token.
+                         HUMAN-UAT test 4 recorded "we will leave the cog as is for now"; **owner
+                         ruling 2026-08-28 is option A, "A, keep" — the cog rides the shared
+                         token.** REJECTED: pinning the cog to its own private frozen token, which
+                         would fork ONE recipe into two for a single control with no owner ruling
+                         behind it. So "as is" means "not singled out", NOT "did not move".
+
+                         AMENDED FIGURES, all re-derived 2026-08-28 with `src/lib/wcag.ts`:
+                           - on the WHITE (uncoloured) card: fill warm-100 vs #ffffff = **1.1330**
+                             (was 1.306), ring warm-300 vs the fill = **1.4081** (was 1.222). Ring
+                             vs the white card = 1.595 is **UNCHANGED** — the card did not move, so
+                             that one figure above is still live rather than restated.
+                           - on the eight t = 0.70 tints: fill **1.6073 (Forest) - 1.7019 (Wine)**
+                             (was 1.395-1.477); ring vs the tints **1.141-1.209, UNCHANGED** (the
+                             ring token held at warm-300). **ALL EIGHT** fill pairings now land
+                             ABOVE the 1.40 band top, where seven of eight already did. Still
+                             DISCLOSURE, not a failure, for the reason stated above: the band bounds
+                             a fill against its ground for legibility, and more separation is not a
+                             defect. Nothing approaches the 1.05 floor, so the reserved
+                             `bg-white/80` wash substitution is STILL not triggered — re-tested at
+                             warm-100.
+
+                         AMENDED DIRECTION OF TRAVEL, and it INVERTS on one ground: the warm-100
+                         fill reads ~1.61-1.70 against the tints, so on a COLOURED card this now
+                         RAISES the cog's separation relative to plan 16 (~1.88 -> ~1.65 against
+                         the original white cog, rather than ~1.88 -> ~1.44). On the WHITE card the
+                         direction FLIPS the other way — 1.306 -> **1.1330**, LESS separation, not
+                         more — which is the opposite of what the paragraph above claimed for
+                         warm-200. That asymmetry (flatter on white, stronger on every colour) is
+                         the entire content of the owner's final-re-check line item for this
+                         control.
+
+                         NOT A GATE A ROW, DELIBERATELY. These eight tint figures live HERE and in
+                         plan 18's ledger F only. `tokenContrast.test.ts` has no cog-vs-tint
+                         assertion and gains none, so the Gate A row count is unchanged. If a future
+                         phase decides these pairings deserve mechanical protection, adding that row
+                         must also update this marker, plan 18's truths block, ROADMAP:1074/:1136
+                         and the plan's task 3(g) template in the SAME commit.
 
                          REJECTED:
                            - FORKING THE COG'S OWN className on `tinted` (keep `bg-surface-elevated`

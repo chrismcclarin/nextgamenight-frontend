@@ -14,6 +14,15 @@
  *     value dark mode already uses, reads 9.00 / 8.30 / 6.27.
  *   - Req 8's warm-550 muted takes the three `variant="row"` menu labels from 3.66:1 (already
  *     failing) to 2.79:1 on warm-800.
+ *     AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28) — the line above is HISTORY; the
+ *     shipped muted is now **warm-600** and it reads **2.2848:1** on warm-800. `--warm-550` was
+ *     retired when ruling 1c moved the page to warm-200 (warm-550 measured 4.1460 there, below
+ *     Req 8's own 4.5 floor). The DIRECTION IS UNCHANGED AND THE PROHIBITION GETS STRONGER, not
+ *     weaker: 2.7770 -> 2.2848 is further below the 4.5 floor, so dropping `text-content-muted`
+ *     from these header rows in favour of the row's inherited `text-white` (15.03:1) is MORE
+ *     necessary after this change. The DECISION itself is not re-opened — only its number moved.
+ *     Verified 2026-08-28: the seven surviving `text-content-muted` sites in these three files
+ *     sit on `bg-surface-card` or a Modal panel, where muted IMPROVES to 6.5790 and stays correct.
  *
  * Both fixes are one-token edits, which is exactly why they need a gate: a future "consistency"
  * pass that converges the header onto the global ring value, or restores a muted label, would

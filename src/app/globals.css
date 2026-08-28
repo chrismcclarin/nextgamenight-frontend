@@ -597,10 +597,35 @@
   --warm-50: #faf8f5;
   --warm-100: #f5f0ea;
   --warm-200: #e8e0d8;
+  /* DECISION Phase 88.3-18 (owner ruling 1c, 2026-08-28): `--warm-250` is MINTED here, and
+     `--warm-550` is RETIRED in the same commit — the ramp keeps its step count.
+     CHOSEN: `#dbd1c7`, the 70% point on warm-200 -> warm-300 (verified: interpolating each
+     channel at t = 0.70 reproduces `dbd1c7` exactly), L* 84.3726. Its SOLE consumer is
+     `--color-bg-card-hover`; the full rationale lives at that marker below.
+     WHY NEITHER EXISTING NEIGHBOUR WORKS, and this is the whole reason a step was minted rather
+     than reused:
+       - warm-200 `#e8e0d8` is now THE PAGE (ruling 1c). Leaving card-hover on it makes a resting
+         container surface BYTE-EQUAL to its own ground — verbatim the ruling-2 defect — and it is
+         a real render defect at two verified sites, not a token-layer abstraction:
+         `GroupLibrary.js:149-153` paints three `bg-surface-card-hover` skeleton bars whose
+         immediate parent is `bg-surface-page`, and `CalendarMonthView.js:224-226` picks
+         `bg-surface-card-hover` for today and `bg-surface-page` for empty/past cells in the SAME
+         className chain — today's cell would be byte-identical to an empty one.
+       - warm-300 `#d6cbc0` drops `--color-accent-text` (amber-800) to 4.4440 on it, an AA
+         failure on shipped pairings (`GroupGamesList.js:372`, `ManageMembers.js:342`,
+         `CalendarMonthView.js:228`). warm-250 measures 4.7121.
+     The feasible window on the warm-200 -> warm-300 line is t ∈ [0.60, 0.92]; 0.70 is mid-window
+     so no floor is near. Deleting this step and collapsing card-hover back onto a neighbour is a
+     decision, not a cleanup. */
+  --warm-250: #dbd1c7;
   --warm-300: #d6cbc0;
   --warm-400: #b8a898;
   --warm-500: #8c7a6a;
-  --warm-550: #786758;   /* Phase 88.3 (Req 8) — the 60% point on warm-500 -> warm-600; the full DECISION marker lives at `--color-text-muted` below */
+  /* `--warm-550: #786758` was RETIRED by Phase 88.3-18 (owner ruling 1c, 2026-08-28). It was
+     minted by this phase for `--color-text-muted` and had no other consumer; ruling 1c moved the
+     page to warm-200, where warm-550 measures 4.1460 — below Gate A test 28's 4.5 floor — so
+     muted moved to warm-600 and the step had nothing left to hold. The full arithmetic (why the
+     move is FORCED rather than preferred) is at the `--color-text-muted` marker below. */
   --warm-600: #6b5a4c;
   --warm-700: #4a3d32;
   --warm-800: #2d2520;
@@ -625,8 +650,51 @@
      Peer numbers for the chosen step: Apple's grouped-table background sits ΔL* 4.4 below its
      cell and Radix `sand-3` sits 5.2 below `sand-1`; this ships 5.00, between them.
      Putting this back to warm-50 removes the ONLY remaining depth cue in light mode — the border
-     is a hairline and the resting shadow is `none` by design. It is a decision, not a cleanup. */
-  --color-bg-page: var(--warm-100);
+     is a hairline and the resting shadow is `none` by design. It is a decision, not a cleanup.
+
+     ——— AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28), everything above KEPT AS HISTORY ———
+
+     THE PAGE MOVES ONE MORE STEP DOWN: warm-100 -> warm-200 `#e8e0d8`. The owner viewed the
+     throwaway spike `spike/88.3-page-warm-200-trial` (`ab912a8`) on a physical phone and ruled:
+     "That looks much better. Lets use that warmth. make the adjustments as needed. (The cards
+     read so much better on that level than the previous ones.)" This is ruling 1c — the fallback
+     that plan 88.3-14's `--color-border` marker recorded as live and unspent. The reserve is now
+     SPENT.
+
+     THE PUBLISHED STEP IS NOW ΔL* 10.40, RAW 10.4083 (cr 1.3056), up from published 5.00 / raw
+     4.9768. BOTH forms are pinned here on purpose: §5.11 prints ΔL* as `100 − L*(1dp)`, so the
+     published and raw figures differ, and Gate A test 1's own comment warns that a floor written
+     at the PUBLISHED value would red a correct tree. The floor stays 4.0.
+
+     THE PEER SENTENCE ABOVE IS WRONG FOR THE SHIPPED VALUE and is corrected here rather than
+     left to mislead. Against `.planning/research/LIGHT-MODE-CARD-DEPTH-PHONE-SURVEY-2026-08-27.md`
+     §5 — Apple grouped 4.4, Discord panels 3.8-8.4, Material 3 container 5.5 / container-high 8.0
+     / container-highest 10.1 — ΔL* 10.40 lands at M3's container-highest tier, i.e. its FILLED
+     card, which is the TOP of the entire measured peer range. **M3 ships ZERO border at that
+     tier.** We pair a top-of-range tonal step WITH a 2.31:1 border (`--color-border`, warm-400,
+     ruling 1a), and no surveyed system pairs those two cues at once. That is stated as an
+     owner-visible DISCLOSURE with the owner's final phone look attached, and as owner fork
+     1a-bis — NOT quietly corrected by walking ruling 1a back on the planner's own initiative.
+     Owner ruling 1a-bis, 2026-08-28: "A, keep" — `--color-border` stays warm-400 (warm-300 was
+     never a legal option at this ground; it measures 1.2220 vs the page, below Req 2's 1.40
+     floor).
+
+     THE CARD DOES NOT SLIDE, and that is the constraint that shaped everything else. `--color-bg-card`
+     is `#ffffff` and stays `#ffffff`, so the page moved 5.43 L* TOWARD the card while every token
+     measured against the CARD kept its old ground. A uniform "everything slides one warm step"
+     re-lay was PROPOSED and DISPROVED by measurement — it reds three shipped ceilings (fill vs
+     card 1.5954 against a 1.40 cap, control edge vs card 2.3096 against a 2.00 cap, accent-text
+     on a warm-300 card-hover 4.4440 against a 4.5 floor). The lattice therefore moved
+     ASYMMETRICALLY: surfaces below the page moved DOWN, `--color-btn-secondary-bg` moved UP into
+     the hex the page vacated, the three control tokens HELD, and `--warm-250` was minted.
+     Re-attempting the uniform slide is a decision that reds Gate A, not a cleanup.
+
+     Knock-on, all re-measured 2026-08-28 with `src/lib/wcag.ts` (see the SUMMARY for the full
+     old->new table): `--color-border` 2.0384 -> 1.7690 · `--color-border-strong` 3.6292 -> 3.1496
+     (a 0.15 margin over its 3.0 floor — DISCLOSED at its own marker) · `--color-accent-text`
+     6.2577 -> 5.4306 · `--color-focus-ring` 6.8797 -> 5.9704 · the three status borders
+     6.2932/7.3345/6.0468 -> 5.4615/6.3651/5.2476. All still clear their floors. */
+  --color-bg-page: var(--warm-200);
   --color-bg-card: #ffffff;
   /* DECISION Phase 88.3 (D-01 / UI-SPEC §5.2): re-keyed warm-100 -> warm-200, because archetype A
      took warm-100 for the PAGE and a tinted surface that equals the page is no surface at all.
@@ -644,8 +712,56 @@
      100.0, while card-hover 89.6 sits BELOW the page ON PURPOSE. A pill is DARKER than its
      surroundings; a hovered card is LIGHTER. Those are opposite directions, and that is the whole
      reason the token was split. Collapsing hover and pills back onto one value
-     is a decision, not a cleanup. */
-  --color-bg-card-hover: var(--warm-200);
+     is a decision, not a cleanup.
+
+     ——— AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28), everything above KEPT AS HISTORY ———
+
+     RE-KEYED AGAIN: warm-200 -> the MINTED `--warm-250` `#dbd1c7`. Ruling 1c took warm-200 for the
+     PAGE, and by this marker's own argument two paragraphs up — "a tinted surface that equals the
+     page is no surface at all" — this token could not stay there. The mint is at the palette
+     block above.
+
+     AMENDED LADDER SELF-CHECK (this replaces the figures above; the RULE is unchanged):
+       page 89.6 < hover/sunken 97.7 < card/elevated/input 100.0, while card-hover **84.4** sits
+       BELOW the page ON PURPOSE. A pill is DARKER than its surroundings; a hovered card is
+       LIGHTER. Same D-01 split, new numbers.
+
+     MEASURED at `#dbd1c7` (2026-08-28, `src/lib/wcag.ts`): vs the page 1.1525 / ΔL* 5.2191 — a real
+     step, comparable to the ΔL* 4.98 the page/card pair shipped before ruling 1c · vs the card
+     1.5046 / ΔL* 15.6274 · `--color-accent-text` on it 4.7121 (Gate A test 14 row 13, floor 4.5,
+     margin 0.21) · `--color-text-muted` on it 4.3725 (the §5.9.1 residual, preserved IN SHAPE and
+     still asserted by test 30) · `--color-text-secondary` on it 6.9620 (the prescribed
+     replacement) · `--color-btn-secondary-bg` on it 1.3280 · `--color-border-control` on it 1.0603.
+
+     THE FEASIBLE WINDOW is t ∈ [0.60, 0.92] on the warm-200 -> warm-300 line, bounded by test 2
+     (differ from card AND page, and sit BELOW the page in L*), test 14 row 13 (accent-text >= 4.5)
+     and test 30 (muted below 4.5, secondary >= 4.5). t = 0.70 is mid-window so no floor is near.
+
+     REJECTED, each MEASURED rather than argued:
+       - KEEP warm-200. It becomes BYTE-EQUAL TO THE PAGE. Reds test 2 twice (`!= page`, and
+         `L* 89.59 < L* 89.59` is false) and reds test 30a as a side effect (muted would read
+         5.0392, above the ceiling that row asserts it is below). The argument for keeping it was
+         that card-hover is "a hover ground on the white card, never on the page" — THAT PREMISE IS
+         FALSE AND WAS CHECKED: `GroupLibrary.js:149-153` paints three `bg-surface-card-hover`
+         skeleton bars inside a `bg-surface-page` parent (they would vanish), and
+         `CalendarMonthView.js:224-226` picks `bg-surface-card-hover` for today and
+         `bg-surface-page` for empty/past cells in the SAME className chain (today's cell would be
+         byte-identical to an empty one, leaving only `border-line-accent` as a cue). This IS the
+         ruling-2 defect shape — a resting fill equalling its own ground.
+       - warm-300. `--color-accent-text` drops to 4.4440, an AA failure, and not a theoretical one:
+         verified live pairings of `bg-surface-card-hover` with an accent ink at
+         `GroupGamesList.js:372`, `ManageMembers.js:342` and `CalendarMonthView.js:228`. Everything
+         else about warm-300 passes; this single row disqualifies it.
+       - MOVE `--color-accent-text` to amber-900 and keep card-hover at warm-300. amber-900 on
+         warm-300 does measure 5.6865, so the row would pass — rejected because amber-900 is
+         ALREADY `--color-accent-text-hover` AND `--color-accent-text-strong`, so the move collapses
+         three tokens onto one hex, leaves the accent link with no visible hover state, and
+         re-derives §5.11 rows 11/12/13/14/15/17/18/20 plus test 41's pair. One neutral mint is
+         cheaper than three collapsed accent tokens.
+       - warm-100 or warm-50. Both sit ABOVE the page in L*, which reverses the D-01 split stated
+         above and reds test 2c.
+     Collapsing this back onto a neighbouring ramp step is a decision, not a cleanup. */
+  --color-bg-card-hover: var(--warm-250);
   /* Phase 88.3 (D-02 / D-03, UI-SPEC §5.2): the two NEW surfaces archetype A needs. `hover` is
      the owner's "S3 press" look — warm-50 is LIGHTER than the page but fainter than the card
      (ΔL* 2.30), so a hovered card reads pressed rather than lifted. `sunken` is the same value in
@@ -735,7 +851,29 @@
 
   /* Text */
   --color-text-primary: var(--warm-900);
-  --color-text-secondary: var(--warm-600);
+  /* DECISION Phase 88.3-18 (owner ruling 1c, 2026-08-28): light secondary ink moves warm-600 ->
+     warm-700 `#4a3d32`.
+     CHOSEN because it is THE ONLY WAY `--color-text-muted` CAN MOVE, and muted's move is forced.
+     Ruling 1c put the page on warm-200, where the shipped muted (warm-550) measures 4.1460 —
+     below Gate A test 28's 4.5 floor. Test 29 also requires ΔL* >= 4.0 between muted and
+     secondary. With secondary HELD at warm-600, every interpolated value that reaches 4.5 on
+     warm-200 fails test 29 and every value that clears test 29 fails test 28 (the full
+     six-point interpolation is at the `--color-text-muted` marker below). Secondary therefore
+     moves so muted can land on warm-600.
+     REJECTED: amending Gate A test 29's ΔL* floor so a nearly-collapsed muted/secondary pair
+     could ship. That is not a band correction, it is the degradation — it would let the app's
+     two-level text hierarchy converge to the point of being one level, which is exactly what the
+     shipped muted marker below rejected warm-600 for in the first place.
+     MEASURED at warm-700 (2026-08-28): page 8.0235 · card 10.4753 · card-hover (warm-250) 6.9620
+     · sunken 9.8818. The hierarchy WIDENS rather than narrows: ΔL* primary<->secondary 19.1787,
+     secondary<->muted 12.7109, muted<->border-strong 12.9240 — against the outgoing
+     warm-900/600/550 triple's 31.8896 / 5.2857 / 7.6383, so test 29's 4.0 floor now clears with
+     ~3x margin on both pairs.
+     DISCLOSED: `--color-badge-member-text` is ALSO warm-700, so those two names are now
+     BYTE-EQUAL. That is the price of keeping two jobs named apart, not a duplication to be
+     deduplicated — the same idiom `--color-accent-text-strong` carries. Deleting either name
+     because they share a hex is a decision, not a cleanup. */
+  --color-text-secondary: var(--warm-700);
   /* DECISION Phase 88.3 (Req 8 / UI-SPEC §5.9.1): light muted moves to the NEW `--warm-550`
      `#786758` — the 60% point on the warm-500 -> warm-600 line, so it belongs to the ramp rather
      than being a bespoke hue. Chosen OVER re-keying muted to `--warm-600` (REJECTED: warm-600 IS
@@ -750,8 +888,45 @@
      value on this ramp clears 4.5 THERE while staying distinct from secondary. The phase rule is
      therefore `text-content-secondary` (5.04) on a card-hover pill/badge/chip — never
      `text-content-muted`. Dark is unchanged (warm-400, 7.78 on the dark card).
+     Moving this back onto a shared ramp step is a decision, not a cleanup.
+
+     ——— AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28), everything above KEPT AS HISTORY ———
+
+     THE MINT-AND-RETIRE ARC, IN ONE PLACE. `--warm-550` was minted by this phase for this token
+     and had no other consumer. Ruling 1c moved the page warm-100 -> warm-200, where warm-550
+     measures **4.1460** — below Gate A test 28's 4.5 floor, i.e. the very defect Req 8 exists to
+     fix, re-opened by the ground move. So muted moves to **warm-600** and `--warm-550` is RETIRED
+     from the palette in this same commit. The rejection of warm-600 recorded above is SUPERSEDED,
+     not forgotten: it was rejected because warm-600 WAS `--color-text-secondary`, and secondary
+     has now moved to warm-700 (see its marker directly above) precisely so this step is free.
+
+     THE MOVE IS FORCED — ARITHMETIC, NOT PREFERENCE. Interpolating warm-550 -> warm-600, each
+     value's ratio against the warm-200 page and its ΔL* from a secondary HELD at warm-600
+     (measured 2026-08-28 with `src/lib/wcag.ts`):
+        #786758  4.1460 / 5.2857   #756456  4.3313 / 4.0942   #736253  4.4669 / 3.2575
+        #726152  4.5346 / 2.8498   #705f51  4.6696 / 2.0558   #6b5a4c  5.0392 / 0.0000
+     NOTHING on that segment satisfies test 28 (>= 4.5 on the page) AND test 29 (ΔL* >= 4.0 from
+     secondary) at once. `#726152`'s 4.5346 is a 0.03 margin — the same margin this marker already
+     rejected `#7c6a5b` by name for ("a 0.05 margin is not a margin"), so it is rejected on our own
+     stated rule rather than on taste. Secondary had to move for muted to move.
+
+     AMENDED MEASUREMENTS at warm-600 (2026-08-28): page **5.0392** · card **6.5790** · sunken
+     **6.2063** · card-hover (now warm-250) **4.3725**.
+
+     AMENDED RESIDUAL — preserved in SHAPE, not closed: on the `card-hover` ground muted still
+     falls short (4.1460 -> **4.3725**, ceiling 4.5) and Gate A test 30 still asserts it. The
+     phase rule is unchanged and the replacement got BETTER: use `text-content-secondary`
+     (5.0392 -> **6.9620**) on a card-hover pill/badge/chip, NEVER `text-content-muted`.
+
+     DARK CHROME RECOMPUTED, and it goes the wrong way — say so rather than let it be discovered.
+     On the warm-800 header ground muted moves **2.7770 -> 2.2848**, i.e. WORSE. The existing
+     prohibition on `text-content-muted` in the three header-row components
+     (`darkChromeLegibility.test.ts`) is therefore MORE necessary after this change, not less.
+     Verified 2026-08-28: the seven surviving `text-content-muted` sites in those files sit on
+     `bg-surface-card` or a Modal panel, where muted IMPROVES to 6.5790, so they stay correct.
+
      Moving this back onto a shared ramp step is a decision, not a cleanup. */
-  --color-text-muted: var(--warm-550);
+  --color-text-muted: var(--warm-600);
   --color-text-inverse: #ffffff;
   --color-text-link: var(--purple-600);
   --color-text-link-hover: var(--purple-700);
@@ -912,8 +1087,41 @@
      DECISION Phase 88.3-14 (ruling 1a): warm-400 `#b8a898`, 2.31:1 / 2.04:1, inside an amended
      1.40-2.40 band — chosen OVER a card-only border token, OVER a 3.0 ceiling, OVER the owner's
      fallback (c) "page one step darker", and OVER doing nothing. Changing this value is a decision,
-     not a cleanup. */
+     not a cleanup.
+
+     ——— AMENDED Phase 88.3-18 (owner rulings 1c + 1a-bis, 2026-08-28), above KEPT AS HISTORY ———
+
+     REJECTED ALTERNATIVE (iii) ABOVE IS NO LONGER IN RESERVE — IT WAS TAKEN. The owner's fallback
+     (c), "page one step darker", is owner ruling **1c** and shipped on 2026-08-28: the page moved
+     warm-100 -> warm-200. Read (iii) as history; the reserve is SPENT.
+
+     THE TOKEN ITSELF DID NOT MOVE. Owner fork **1a-bis** asked whether the border should now step
+     back to warm-300 and let the heavier page tone carry more of the separation. Owner ruling
+     2026-08-28: **"A, keep"** — warm-400 stands. It was in fact the only in-band answer: warm-300
+     measures **1.2220** against the warm-200 page, BELOW Req 2's 1.40 floor, so it would have red
+     Gate A test 7c and Gate C's `CARD_BORDER_MIN` and required amending the band floor as a named
+     decision with its own survey line. It would also have made `--color-border` byte-equal to
+     `--color-border-control` AND `--color-btn-secondary-hover` (both warm-300), collapsing a
+     container separator, a control edge and a button hover state onto one hex.
+
+     RE-MEASURED on the new ground (2026-08-28, `src/lib/wcag.ts`): vs the white card **2.3096** /
+     ΔL* 30.2022 (UNCHANGED — the card did not move) · vs the page **1.7690** / ΔL* 19.7939 (was
+     2.0384). Both still inside the 1.40-2.40 band. The `--input` consequence recorded above moves
+     with the page side: 2.31:1 on a white card, **1.77:1** on the page. The Phase 88.6 deferral is
+     amended in place, not closed.
+
+     DISCLOSURE CARRIED FORWARD, NOT SILENTLY RESOLVED: at ΔL* 10.4083 the page/card step lands at
+     Material 3's container-highest (FILLED-card) tier, the top of the whole measured peer range —
+     and M3 ships ZERO border there. Keeping warm-400 means we now pair a top-of-range tonal step
+     WITH a 2.31:1 border, which no surveyed system does. The owner was shown that trade-off as
+     fork 1a-bis and chose to keep the border. It is on his final re-check list. */
   --color-border: var(--warm-400);
+  /* AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28) — DISCLOSURE, not a failure.
+     `--color-border-strong` did not move, but its ground did: on the new warm-200 page it thins
+     from **3.6292 to 3.1496** against WCAG 1.4.11's 3.0 floor (Gate A test 8). It still PASSES,
+     with a margin of 0.15. Recorded here so a future editor nudging warm-500, or moving the page
+     again, sees how little headroom is left before this token reds — rather than discovering it
+     from a red run. Against a white card it is unchanged. */
   --color-border-strong: var(--warm-500);
   --color-border-accent: var(--amber-600);
 
@@ -1002,14 +1210,91 @@
      warm-300. warm-100 was BYTE-IDENTICAL to `--color-bg-page`, which is why the button vanished on
      a page in the Req 12 phone UAT. Every measured ratio and six rejected alternatives are in the
      DECISION marker above the `.btn-secondary` rule below; changing these two values without
-     reading it will red Gate A. */
-  --color-btn-secondary-bg: var(--warm-200);
+     reading it will red Gate A.
+
+     ——— AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28), above KEPT AS HISTORY ———
+
+     READ THIS FIRST: THE 88.3-14 DEFECT WAS THE **EQUALITY WITH THE PAGE**, NOT THE HEX — AND THE
+     PAGE HAS NOW VACATED warm-100. The fill returns to `var(--warm-100)` `#f5f0ea`. That is NOT a
+     reverted fix. Ruling 1c moved `--color-bg-page` to warm-200, so warm-100 is free, and the
+     page-side cue is preserved BIT-FOR-BIT: fill vs page **1.1523**, identical to the figure the
+     shipped warm-200 fill had against the warm-100 page. Gate A test 32 still asserts the
+     inequality that ruling 2 was actually about. Do not "restore" warm-200 here — that IS the page
+     now, and it reds test 32.
+
+     WHY IT HAD TO MOVE UP RATHER THAN DOWN: the white card does not slide. The shipped warm-200
+     fill would have kept its old card-side ground while the page moved 5.43 L* toward it, and the
+     obvious one-step-down slide to warm-300 measures **1.5954** against the white card — over test
+     34's **1.40** ceiling, whose own comment reserves raising it for a named decision with a fresh
+     survey because it "re-creates the input-box look the survey rejects".
+
+     MEASURED at warm-100 (2026-08-28, `src/lib/wcag.ts`): vs page **1.1523** / ΔL* 5.4315 · vs the
+     white card **1.1330** / ΔL* 4.9768 · vs the new card-hover (warm-250) **1.3280** · label
+     (warm-800) on it **13.2669** · ring (warm-300) on it **1.4081**, mid-band 1.20-1.60.
+
+     THE ONE HONEST COST, and it is on the owner's final re-check list as its own line: the resting
+     secondary button is now LIGHTER than the page, and flatter against a white card than it was
+     (1.3056 -> **1.1330**). It is still a distinct fill on both grounds and it still carries the
+     1px ring. 1.1330 is INSIDE the 13-system survey band 1.06-1.29 that the shipped 1.3056 sat
+     0.02 ABOVE — so it is less separation than we shipped, but more typical of shipped peers, not
+     out of range.
+
+     REJECTED, EACH MEASURED — the window is the argument. On a warm-200 page a fill must satisfy
+     test 32 (≠ page, ≠ card) AND test 34's page band 1.05-1.40 AND test 34's CARD band 1.05-1.40:
+       - **warm-300** — 1.5954 vs the white card, over the 1.40 ceiling. See above.
+       - **`#e3dad1` / `#e2d9d0`** (minted, darker than the page) — 1.0572/1.3802 and 1.0674/1.3935.
+         Both legal, both with ~0.01 of headroom on BOTH sides. Interpolating the whole warm-50 ->
+         warm-500 ramp, these are the only darker-than-page steps that qualify at all, and this
+         phase's own rule — "a 0.05 margin is not a margin" — disqualifies them. A value that reds
+         if anyone nudges anything is not a shipped value.
+       - **white** — byte-identical to `--color-bg-card` (1.0000 / ΔL* 0.00). The button would
+         vanish on every card: the same class of defect as vanishing on the page.
+       - **warm-50** — 1.2321 vs the page and 1.0567 vs the card, both in band, but byte-identical
+         to `--color-bg-hover` AND `--color-bg-sunken`. A resting control fill equal to the hover
+         surface makes hover unreadable.
+       - **keeping warm-200** — that IS the new page. Reds test 32, and is verbatim the defect
+         ruling 2 was written to fix.
+       - **amending test 34's card ceiling to ~1.60 so warm-300 fits** — possible, but it is a band
+         change that puts us outside the whole surveyed range (1.06-1.29), and the test's own
+         comment reserves that move for a named decision with a fresh survey. Not this plan's.
+
+     DISCLOSED: `--color-badge-member-bg` is ALSO warm-100 now, so those two names are BYTE-EQUAL.
+     Two names, one hex, on purpose — the price of keeping two jobs named apart.
+
+     `--color-btn-secondary-hover` DELIBERATELY DID NOT MOVE (warm-300). Moving it down to warm-200
+     would make a HOVERED secondary button byte-equal to the page — the ruling-2 defect, relocated
+     to the hover state. Held: hover fill vs resting fill **1.4081** / ΔL* 12.7446; hover ring
+     (warm-400) vs hover fill **1.4476**. Holding it is the measured answer, not an omission. */
+  --color-btn-secondary-bg: var(--warm-100);
   --color-btn-secondary-hover: var(--warm-300);
   --color-btn-secondary-text: var(--warm-800);
   /* Phase 88.3-14 (owner ruling 2): the secondary-control RING and its hover step. Bridged as
      `ring-line-control` / `border-line-control` in `@theme inline` above. Dark is `transparent`
      (declared in `.dark`, not omitted, so the 1px is unconditional and the theme toggle shifts
-     nothing). Full DECISION marker above `.btn-secondary`. */
+     nothing). Full DECISION marker above `.btn-secondary`.
+
+     ——— AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28), above KEPT AS HISTORY ———
+
+     BOTH CONTROL EDGES DELIBERATELY DID **NOT** MOVE when ruling 1c moved the page. This is a
+     measured decision, not an omission — a later "finish the slide" pass must red here rather than
+     ship. Moving `--color-border-control` one step down to warm-400 measures **2.3096** against the
+     white card, over Gate A test 36d's **2.00** ceiling. Anything lighter than warm-300 leaves the
+     survey band. So it holds.
+     HELD, RE-MEASURED (2026-08-28): ring vs fill **1.4081** (band 1.20-1.60, was 1.2220) · ring vs
+     the new page **1.2220** (was 1.4081) · ring vs card **1.5954** (UNCHANGED — the card did not
+     move) · ring vs card-hover 1.0603 · hover ring (warm-400) vs hover fill **1.4476** (unchanged).
+
+     ⚠ DISCLOSURE — THE ONE PLACE THIS PHASE'S OWN "A 0.05 MARGIN IS NOT A MARGIN" RULE IS
+     KNOWINGLY NOT MET. Held at warm-300, the ring reads **1.2220** against the warm-200 page while
+     Gate A test 36a asserts a **1.20** floor: a margin of **0.022**, down from 0.21 on the
+     warm-100 page. This is the thinnest margin anything in this phase carries. It is stated
+     plainly because the `.btn-secondary` marker above REJECTS `#e3dad1`, `#e2d9d0` and `#7c6a5b`
+     by invoking that very rule, and presenting 1.2220 as simply "the measured answer" would be the
+     rule applied to everything except our own held value. It is held anyway because every
+     alternative reds something shipped. A future editor nudging warm-300 by a unit reds Gate A —
+     that is the intended behaviour, and this sentence is the warning. It is also on the owner's
+     final re-check list: if the secondary button's edge looks like it is disappearing on the page,
+     that is a real finding, not a nitpick. */
   --color-border-control: var(--warm-300);
   --color-border-control-hover: var(--warm-400);
 
@@ -1587,7 +1872,12 @@ body {
        hovered `.card` would jump ΔL* 10.4 (a heavy, pill-weight wash) while every swept `<Card>`
        hovers to warm-50 at ΔL* 2.3 — the faint "S3 press" look the owner actually picked. Two
        card idioms hovering to visibly different colours is the exact inconsistency OI-2 above is
-       closing at rest. Pointing this back at the static token is a decision, not a cleanup. */
+       closing at rest. Pointing this back at the static token is a decision, not a cleanup.
+       AMENDED Phase 88.3-18 (ruling 1c, 2026-08-28): the rejection STANDS and gets stronger — only
+       its number moves. `--color-bg-card-hover` is now the minted `--warm-250`, so a hovered
+       `.card` pointed back at it would jump ΔL* **15.63** from the white card (was 10.4), against
+       the ΔL* 2.35 that `--color-bg-hover` (warm-50) actually gives. Heavier wash, same
+       conclusion. */
     background-color: var(--color-bg-hover);
   }
 }
@@ -1734,7 +2024,48 @@ body {
    trio (`purple-800` / `purple-700` / `warm-200`) is byte-unchanged. The ruling is LIGHT-ONLY.
 
    Changing the fill, deleting the ring, or "strengthening" it to `border-strong` is a decision, not
-   a cleanup — and Gate A will go red. */
+   a cleanup — and Gate A will go red.
+
+   ——— AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28), everything above KEPT AS HISTORY ———
+
+   THE FILL IS `var(--warm-100)` AGAIN, AND THAT IS NOT A REVERTED FIX. Read this before touching
+   anything: the 88.3-14 defect described at the top of this marker was the **EQUALITY WITH THE
+   PAGE**, not the hex `#f5f0ea` — and owner ruling 1c has moved `--color-bg-page` to warm-200, so
+   warm-100 is vacant. The page-side cue is preserved BIT-FOR-BIT at **1.1523**, the same number the
+   warm-200 fill had against the warm-100 page. Gate A test 32 still asserts fill ≠ page and fill ≠
+   card. Anyone reading "the fill is warm-100 again" and reverting it will re-create the defect,
+   because warm-200 IS the page now.
+
+   AMENDED RATIOS (2026-08-28, re-derived from the literal hexes via `src/lib/wcag.ts`):
+     - fill warm-100: **1.1523** vs the warm-200 page (was 1.15 vs warm-100 — unchanged in value),
+       **1.1330** vs a white card (was 1.3056), **1.3280** vs the new card-hover.
+     - hover fill **warm-300 — HELD**, and holding it is required: warm-200 would make a hovered
+       button byte-equal to the page. 1.4081 from rest.
+     - ring `--color-border-control` **warm-300 — HELD**: **1.4081** on the fill (was 1.2220),
+       **1.2220** vs the page (was 1.4081), 1.5954 vs a white card (unchanged). Hover ring warm-400
+       on the hover fill 1.4476 (unchanged).
+     - label warm-800 on the new fill: **13.2669** (was 11.5134).
+   The card-side figure moved the OTHER way from the trade-off recorded above: 1.1330 is now INSIDE
+   the survey's 1.06-1.29 band that the shipped 1.3056 sat 0.02 above. Flatter on a card, identical
+   on the page. The full six rejected fills are at the `--color-btn-secondary-bg` marker.
+
+   ⚠ THE "THIRD GROUND" DISCLOSURE ABOVE IS **CLOSED — STRUCTURALLY DISSOLVED, NOT DELETED.**
+   `--color-bg-card-hover` is no longer warm-200; it is the minted `--warm-250` `#dbd1c7`. The
+   equality CANNOT be restored at any value, because the two feasible windows are now DISJOINT: the
+   fill is bounded ABOVE by Gate A test 34's 1.40 card ceiling and card-hover is bounded BELOW by
+   test 14 row 13's 4.5 accent-text floor. On a card-hover ground the cue has INVERTED and got
+   STRONGER — the fill now reads **1.3280** (was 1.0000, i.e. contributing nothing) while the ring
+   drops to **1.0603** (was 1.2220). The fill carries that ground now; the ring does not.
+   Gate A test 33 is REWRITTEN to assert the closure rather than being dropped. This disclosure has
+   only ever lived in TWO places — that row and this paragraph — and the closure is recorded in both
+   and ONLY in both. There is **no `phase-88.6.md` deferral for it to close** (verified 2026-08-28:
+   no third-ground entry was ever written there), so none is added — a comment pointing a future
+   reader at a deferral that does not exist is the "lead, not evidence" failure this phase is built
+   to avoid.
+
+   Everything else above stands unchanged: the mechanism, the `--color-border-strong` rejection, the
+   flips-by-parent-surface rejection, the inset-shadow and border-utility rejections, the no-shadow
+   ruling, the 88.6 re-layering boundary, and the LIGHT-ONLY scope. */
 .btn-secondary {
   background-color: var(--color-btn-secondary-bg);
   color: var(--color-btn-secondary-text);

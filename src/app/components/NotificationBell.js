@@ -204,6 +204,15 @@ function NotificationBell({ user, variant = 'icon', label }) {
               `text-white` reads 15.03:1. Dark mode is byte-identical: the row is `text-white`
               there too, so nothing changes.
 
+              AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28) — above KEPT AS HISTORY. The
+              parenthetical became the shipped value: `--warm-550` is RETIRED and the LIVE muted
+              is **warm-600 at 2.2848:1** on this warm-800 ground. (Ruling 1c moved the page to
+              warm-200, where warm-550 measured 4.1460 — below Req 8's own 4.5 floor — so muted
+              had to move.) THE DECISION IS UNCHANGED AND ONLY GETS STRONGER: drop
+              `text-content-muted`, inherit the row's `text-white` (15.03:1). 2.2848 is FURTHER
+              below the floor than the 2.79 this marker was written against, so read the number
+              change as reinforcement, not as the decision moving.
+
               REJECTED — minting a header-scoped lighter muted value. That would create a
               FOURTH meaning of "muted" for the sake of three labels, when the correct fix is
               to remove a token that was wrong for this ground in the first place.

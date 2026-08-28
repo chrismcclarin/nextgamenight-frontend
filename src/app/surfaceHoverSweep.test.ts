@@ -3,9 +3,13 @@
  *
  * WHAT THIS PINS
  * --------------
- * Plan 88.3-03 re-keyed `--color-bg-card-hover` to warm-200 because it serves ~49 STATIC
+ * Plan 88.3-03 re-keyed `--color-bg-card-hover` to warm-200 [AMENDED 88.3-18: the token is the
+ * minted **warm-250** since owner ruling 1c, 2026-08-28 — warm-200 became the page, so the re-key's
+ * own REASON, that the old value had become the page colour, is now true TWICE OVER and the
+ * conclusion is unchanged] because it serves ~49 STATIC
  * surfaces (pills, badges, chips, skeletons, selected/disabled states) whose old value had
  * become the page colour. That re-key left every *hovered* card jumping to a ΔL* 10.4 slab
+ * [now ΔL* 15.63 at warm-250 — a heavier slab, same rejection]
  * where the owner picked a faint ΔL* 2.3 press. This plan moved every PREFIXED use of the
  * legacy token onto `bg-surface-hover`, sent the three dark-chrome menu rows to the HEADER
  * family instead (UI-SPEC §10.1), and adopted `bg-surface-sunken` at the five censused
@@ -242,7 +246,9 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
 
   it('4e. the ~44 STATIC surfaces survived — the sweep was not a replace-all', () => {
     // THE assertion a naive "replace all" fails. The bare token is not legacy: plan 03
-    // re-keyed it to warm-200 precisely to serve pills, badges, chips, skeletons and
+    // re-keyed it to warm-200 [AMENDED 88.3-18: warm-250 since owner ruling 1c, 2026-08-28 —
+    // warm-200 became the page; counts and assertions here are untouched] precisely to serve
+    // pills, badges, chips, skeletons and
     // selected/disabled states (D-01), plus `GroupSettings.js:361`'s avatar disc, which
     // is excluded from the sunken adoption on purpose (OI-5). Measured 44 after the
     // sweep (49 before, minus the five nested blocks that became sunken).

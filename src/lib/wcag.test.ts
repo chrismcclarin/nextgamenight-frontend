@@ -32,9 +32,16 @@ const round1 = (value: number | null): number | null =>
 
 // --- Palette fixtures, each with its UI-SPEC provenance ---------------------------------
 const WHITE = '#ffffff'; // --color-bg-card, both the light card and the ledger's L* 100 datum
-const WARM_100 = '#f5f0ea'; // --color-bg-page (Req 1's NEW value)
+// AMENDED Phase 88.3-18 (owner ruling 1c, 2026-08-28): BOTH of the role labels below moved.
+// warm-100 is no longer the page — it is `--color-btn-secondary-bg` (and `--color-badge-member-bg`);
+// warm-200 is no longer card-hover — it is `--color-bg-page`, and card-hover is the MINTED
+// `--warm-250` `#dbd1c7`, which this file deliberately does NOT carry (see the ordering test below).
+// The ASSERTIONS here are pure maths on the literals and are unchanged; only the roles they
+// annotate moved. That is exactly why these comments are amended by hand — nothing mechanical
+// would ever red on a stale role label in a green test.
+const WARM_100 = '#f5f0ea'; // --color-btn-secondary-bg (was --color-bg-page until 88.3-18)
 const WARM_50 = '#faf8f5'; // --color-bg-hover / --color-bg-sunken (and Req 1's OLD page value)
-const WARM_200 = '#e8e0d8'; // --color-bg-card-hover
+const WARM_200 = '#e8e0d8'; // --color-bg-page (was --color-bg-card-hover until 88.3-18)
 const AMBER_800 = '#92400e'; // --color-accent-text (light)
 const AMBER_500 = '#f59e0b'; // --color-accent (fill)
 const PURPLE_700 = '#42536e'; // the focus ring that WON (CONTEXT D-05)
@@ -94,7 +101,11 @@ describe('lStar / deltaLStar — Req 1 surface separation (UI-SPEC section 5.1, 
    * changes no conclusion in the ledger, only what a test may assert to 2dp.
    */
 
-  it('row 1: the NEW page ground warm-100 separates from the white card by the published 5.00', () => {
+  it('row 1: warm-100 sits the published 5.00 from the white card — now the secondary-button fill, was the page', () => {
+    // Retitled by RAMP STEP rather than by role (88.3-18): warm-100 was `--color-bg-page` when this
+    // row was written and is `--color-btn-secondary-bg` now. The three assertions are unchanged —
+    // the maths never depended on the role — and 4.977 is now the FILL's delta from a white card,
+    // which is Gate A test 34's card-side pairing rather than Req 1's page/card ladder.
     expect(round1(lStar(WHITE))).toBe(100.0);
     expect(round1(lStar(WARM_100))).toBe(95.0);
     expect(round1(lStar(WHITE))! - round1(lStar(WARM_100))!).toBeCloseTo(5.00, 10);
@@ -110,12 +121,26 @@ describe('lStar / deltaLStar — Req 1 surface separation (UI-SPEC section 5.1, 
     expect(deltaLStar(WARM_50, WHITE)).toBeCloseTo(2.347, 3);
   });
 
-  it('row 2: card-hover warm-200 is the published 10.40 from the card', () => {
+  it('row 2: the new page (warm-200) sits the published 10.40 from the card', () => {
+    // Retitled by 88.3-18 (ruling 1c): warm-200 is `--color-bg-page` now, so this row IS the Req 1
+    // page/card ladder that Gate A test 1 asserts (raw 10.4083, published 10.40). The assertions
+    // below are byte-identical to what they were when warm-200 was card-hover — only the role
+    // inverted. `--color-bg-card-hover` is the minted `--warm-250` and is not fixtured here.
     expect(round1(lStar(WARM_200))).toBe(89.6);
     expect(round1(lStar(WHITE))! - round1(lStar(WARM_200))!).toBeCloseTo(10.40, 10);
   });
 
-  it('the three light grounds are ordered card > hover/sunken > page > card-hover', () => {
+  it('the palette ramp is monotonic in L*: white > warm-50 > warm-100 > warm-200', () => {
+    // RETITLED by 88.3-18 (ruling 1c) to what the three assertions actually prove. The old title
+    // claimed "the three light grounds are ordered card > hover/sunken > page > card-hover", which
+    // was a SHIPPED-LADDER claim — and after ruling 1c it is simply false here: warm-100 is the
+    // button fill, warm-200 is the page, and the real card-hover (`--warm-250`) is not in this test
+    // at all. The maths stayed green the whole time; only the description lied.
+    //
+    // THE SHIPPED LADDER IS ASSERTED IN `tokenContrast.test.ts`, NOT HERE — test 2 (card-hover
+    // differs from card and page and sits below the page) and test 3 (hover/sunken between page and
+    // card). warm-250 is deliberately NOT added to this fixture set: this is a palette-ramp check,
+    // and duplicating the ladder assertion across two suites is the drift this amendment closes.
     expect(lStar(WHITE)!).toBeGreaterThan(lStar(WARM_50)!);
     expect(lStar(WARM_50)!).toBeGreaterThan(lStar(WARM_100)!);
     expect(lStar(WARM_100)!).toBeGreaterThan(lStar(WARM_200)!);

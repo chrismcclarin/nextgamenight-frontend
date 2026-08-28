@@ -428,6 +428,13 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // `100 − L*(rounded to 1dp)`, so this ladder PUBLISHES as 5.00 while the raw delta is
     // 4.9768. A floor written at ">= 5.00" would red a correct tree — that is the drift
     // plan 01 pinned both forms against and plan 03's SUMMARY handed forward.
+    //
+    // AMENDED 88.3-18 (owner ruling 1c, 2026-08-28): the page moved warm-100 -> warm-200, so this
+    // ladder now PUBLISHES as 10.40 with a raw delta of 10.4083 (cr 1.3056). The 4.0 FLOOR is
+    // unchanged and the published/raw drift warning above is unchanged — it just got wider.
+    // DISCLOSED: 10.40 lands at Material 3's container-highest (filled-card) tier, the top of the
+    // whole measured peer range, and M3 ships zero border there while we also carry a 2.31:1
+    // `--color-border` (owner ruling 1a-bis, "A, keep"). See the `--color-bg-page` marker.
     expectDelta('light', '--color-bg-page', '--color-bg-card', 4.0, 'Req 1 / §5.11 row 1');
   });
 
@@ -440,6 +447,14 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // Deliberately DARKER than the page: a pill is darker than its surroundings while a
     // hovered card is lighter. Those are opposite directions and D-01 split the token for
     // exactly that reason. Flipping this ordering is a decision, not a cleanup.
+    //
+    // AMENDED 88.3-18 (ruling 1c, 2026-08-28): card-hover is now the MINTED `--warm-250` `#dbd1c7`
+    // (L* 84.3726), sitting ΔL* 5.2191 below the warm-200 page (L* 89.5917). It had to move —
+    // ruling 1c took warm-200 for the PAGE, so leaving it would make this row's `!= page`
+    // assertion AND its L* ordering both false, and would be a real render defect at
+    // `GroupLibrary.js:149-153` (card-hover skeleton bars inside a bg-surface-page parent) and
+    // `CalendarMonthView.js:224-226` (today's cell would be byte-identical to an empty one).
+    // The rejected alternative warm-300 measures accent-text 4.4440 on it, an AA failure.
     expect(
       lStarOf(cardHover, 'card-hover'),
       `Req 1 — card-hover (${cardHover}, L* ${lStarOf(cardHover, 'x').toFixed(2)}) must sit BELOW the page (${page}, L* ${lStarOf(page, 'x').toFixed(2)})`,
@@ -447,6 +462,9 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
   });
 
   it('3. Req 1 — light bg-hover and bg-sunken resolve and sit between the page and the card', () => {
+    // AMENDED 88.3-18 (ruling 1c, 2026-08-28): the page L* is now 89.5917 (was 95.0232), so this
+    // band WIDENED — warm-50 (L* 97.6527) sits ΔL* 8.0610 above the page instead of 2.63. The
+    // ladder holds with more room, not less. Values, not the assertion, moved.
     const lPage = lStarOf(resolve('light', '--color-bg-page'), 'page');
     const lCard = lStarOf(resolve('light', '--color-bg-card'), 'card');
     for (const prop of ['--color-bg-hover', '--color-bg-sunken']) {
@@ -504,6 +522,15 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // THE UPPER BOUND IS THE POINT. Do not delete it and do not raise it to 3.0: it is the only
     // thing keeping `--color-border` out of the control-edge class, which is
     // `--color-border-strong`'s job (test 8, >= 3.0). Moving it is a decision, not a cleanup.
+    //
+    // AMENDED 88.3-18 (rulings 1c + 1a-bis, 2026-08-28). The BAND IS UNCHANGED at 1.40-2.40 and the
+    // TOKEN IS UNCHANGED at warm-400 — owner ruling 1a-bis, "A, keep". Only the page-side ground
+    // moved: warm-400 now reads 2.3096 vs the white card (UNCHANGED, the card did not slide) and
+    // 1.7690 vs the new warm-200 page (was 2.0384). Both still inside the band.
+    // WHY warm-300 WAS NOT A LEGAL OPTION at this ground, so nobody re-proposes it as a tidy-up:
+    // it measures 1.2220 vs the warm-200 page — BELOW this row's own 1.40 floor — so it would red
+    // here and at Gate C's CARD_BORDER_MIN, and it would make `--color-border` byte-equal to BOTH
+    // `--color-border-control` and `--color-btn-secondary-hover` (both warm-300).
     expectRatio('light', '--color-border', '--color-bg-card', 1.4, 'Req 2 / §5.11 row 7');
     expectRatioBelow('light', '--color-border', '--color-bg-card', 2.4, 'Req 2 / §5.11 row 7');
     expectRatio('light', '--color-border', '--color-bg-page', 1.4, 'Req 2 / §5.11 row 8');
@@ -512,6 +539,10 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
 
   it('8. Req 2 — --color-border-strong clears 3:1 on the page in BOTH themes', () => {
     // `border-strong` IS the control-boundary token, so it carries the 1.4.11 floor.
+    // AMENDED 88.3-18 (ruling 1c, 2026-08-28) — ⚠ DISCLOSED THINNING. The token did not move but
+    // its ground did: on the new warm-200 page it reads 3.1496, down from 3.6292, against this
+    // row's 3.0 floor. Margin 0.15. It PASSES; the shrunken headroom is recorded here rather than
+    // discovered by a future editor nudging warm-500 or moving the page again.
     expectRatio('light', '--color-border-strong', '--color-bg-page', 3.0, 'Req 2 / §5.11 row 9');
     expectRatio('dark', '--color-border-strong', '--color-bg-page', 3.0, 'Req 2 / §5.11 row 10');
   });
@@ -544,7 +575,11 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expect(card, 'Req 3 / OI-2 — `@utility card` must rest on var(--shadow-sm)').toMatch(/box-shadow:\s*var\(--shadow-sm\)/);
     expect(card, 'Req 3 / OI-2 — `@utility card` must NOT rest on var(--shadow-md); that re-splits the two card idioms').not.toMatch(/box-shadow:\s*var\(--shadow-md\)/);
     expect(card, 'Req 1 / D-02 — `@utility card`\'s &:hover must use var(--color-bg-hover)').toMatch(/background-color:\s*var\(--color-bg-hover\)/);
-    expect(card, 'Req 1 / D-02 — `@utility card`\'s &:hover must NOT use var(--color-bg-card-hover); after D-01 that is warm-200, a pill-weight ΔL* 10.4 wash').not.toMatch(/background-color:\s*var\(--color-bg-card-hover\)/);
+    // AMENDED 88.3-18 (ruling 1c, 2026-08-28): the message below quotes the PRE-ruling figures.
+    // `--color-bg-card-hover` is now the minted `--warm-250`, so pointing the legacy `.card` hover
+    // back at it would be a ΔL* 15.6274 wash from the white card (was 10.4) — a HEAVIER pill-weight
+    // jump, same rejection. `--color-bg-hover` (warm-50) gives ΔL* 2.35, the "S3 press" look chosen.
+    expect(card, 'Req 1 / D-02 — `@utility card`\'s &:hover must NOT use var(--color-bg-card-hover); after D-01 that is warm-200 and after 88.3-18 the minted warm-250 — a pill-weight ΔL* 15.63 wash from the card').not.toMatch(/background-color:\s*var\(--color-bg-card-hover\)/);
   });
 
   // ===================================================================================
@@ -570,6 +605,12 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
   });
 
   it('14. Req 4 — light accent-text clears 4.5:1 on card, page, card-hover and sunken', () => {
+    // AMENDED 88.3-18 (ruling 1c, 2026-08-28), re-measured amber-800 on the moved grounds:
+    // card 7.0900 (unchanged) · page 5.4306 (was 6.2577) · card-hover 4.7121 (was 5.4306) ·
+    // sunken 6.6884 (unchanged). ROW 13 IS THE TIGHTEST AND IT IS LOAD-BEARING: 4.7121 against a
+    // 4.5 floor is a 0.21 margin, and it is the single row that disqualified warm-300 as the
+    // card-hover value (4.4440) and forced `--warm-250` to be minted. Live pairings that depend on
+    // it: GroupGamesList.js:372, ManageMembers.js:342, CalendarMonthView.js:228.
     expectRatio('light', '--color-accent-text', '--color-bg-card', 4.5, 'Req 4 / §5.11 row 11');
     expectRatio('light', '--color-accent-text', '--color-bg-page', 4.5, 'Req 4 / §5.11 row 12');
     expectRatio('light', '--color-accent-text', '--color-bg-card-hover', 4.5, 'Req 4 / §5.11 row 13');
@@ -602,6 +643,8 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // The token exists though the SPEC does not name it: `--color-accent-hover` is
     // amber-400 in both themes and reads 1.67:1 on a white card, so migrating only the
     // RESTING colour would have made hover LESS readable than rest.
+    // AMENDED 88.3-18 (ruling 1c): light amber-900 now reads 9.0722 on the card (unchanged) and
+    // 6.9489 on the new warm-200 page (was 8.0072). Both clear with room.
     for (const theme of ['light', 'dark'] as const) {
       expectRatio(theme, '--color-accent-text-hover', '--color-bg-card', 4.5, 'Req 4 / §5.11 rows 17-18');
       expectRatio(theme, '--color-accent-text-hover', '--color-bg-page', 4.5, 'Req 4 / §5.11 rows 17-18');
@@ -680,6 +723,10 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // Req 1 INTRODUCED this failure: the full-strength hues measured 3.11 / 3.01 on the
     // old warm-50 page and 2.91 / 2.81 on warm-100. Per-theme `-border` properties close
     // it in the same phase that opened it.
+    // AMENDED 88.3-18 (ruling 1c, 2026-08-28): on the new warm-200 page the three `-border`
+    // values read 5.4615 / 6.3651 / 5.2476 (success / error / warning), down from
+    // 6.2932 / 7.3345 / 6.0468. All still clear the 3.0 floor with margin. The card side is
+    // unchanged at 7.1303 / 8.3101 / 6.8511 — the card did not slide.
     for (const hue of STATUS_HUES) {
       expectRatio('light', `--color-status-${hue}-border`, '--color-bg-page', 3.0, 'Req 6 / OI-4 / §5.7.4');
       expectRatio('light', `--color-status-${hue}-border`, '--color-bg-card', 3.0, 'Req 6 / OI-4 / §5.7.4');
@@ -704,6 +751,12 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
   it('25. Req 7 — the light focus ring clears 3:1 on page, card, today tint and the accent fill', () => {
     // The fourth ground is what disproved purple-600 (2.64 on the amber-500 fill), the
     // candidate both the SPEC text and `.planning/deferred/phase-88.3.md` recommended.
+    // AMENDED 88.3-18 (ruling 1c, 2026-08-28): purple-700 now reads card 7.7948 (unchanged),
+    // page 5.9704 (was 6.8797), today tint 6.2589 (unchanged), accent fill 3.6294 (unchanged).
+    // NOTE FOR A FUTURE READER: 3.6294 is against `--color-accent` (amber-500). It is NOT the
+    // figure for the ring on the 88.3-18 `.btn-accent` fill (amber-700), which measures 1.5522 —
+    // that button carries `ring-offset-2`, so its visible ring renders on the surrounding card
+    // ground (7.7948), not on the fill. See the `.btn-accent` marker in globals.css.
     expectRatio('light', '--color-focus-ring', '--color-bg-card', 3.0, 'Req 7 / §5.11 row 34');
     expectRatio('light', '--color-focus-ring', '--color-bg-page', 3.0, 'Req 7 / §5.11 row 35');
     expectRatio('light', '--color-focus-ring', '--color-bg-today-tint', 3.0, 'Req 7 / §5.11 row 36');
@@ -739,6 +792,11 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
   // ===================================================================================
 
   it('28. Req 8 — light muted clears 4.5:1 on page, card and sunken', () => {
+    // AMENDED 88.3-18 (ruling 1c, 2026-08-28): muted moved warm-550 -> warm-600 and `--warm-550`
+    // was retired. THIS ROW IS WHY THE MOVE WAS FORCED — warm-550 measures 4.1460 on the new
+    // warm-200 page, which would RED this assertion. At warm-600: card 6.5790 (was 5.4129),
+    // page 5.0392 (was 4.7774), sunken 6.2063 (was 5.1062). Secondary had to move to warm-700
+    // first so warm-600 was free (see test 29 and the `--color-text-muted` marker).
     expectRatio('light', '--color-text-muted', '--color-bg-card', 4.5, 'Req 8 / §5.11 row 39');
     expectRatio('light', '--color-text-muted', '--color-bg-page', 4.5, 'Req 8 / §5.11 row 40');
     expectRatio('light', '--color-text-muted', '--color-bg-sunken', 4.5, 'Req 8 / §5.11 row 41');
@@ -747,6 +805,15 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
   it('29. Req 8 — muted stays visibly distinct from secondary and from border-strong', () => {
     // warm-600 would clear every ground but collapses muted INTO secondary, destroying a
     // two-level text hierarchy the app uses everywhere. warm-500 stays `border-strong`.
+    //
+    // AMENDED 88.3-18 (ruling 1c, 2026-08-28): the comment above is HISTORY. Muted IS warm-600
+    // now — it stopped colliding because secondary moved warm-600 -> warm-700 in the same commit,
+    // exactly so this row keeps its meaning. The hierarchy WIDENED: ΔL* muted<->secondary 12.7109
+    // (was 5.2857) and muted<->border-strong 12.9240 (was 7.6383), both against a 4.0 floor.
+    // AMENDING THIS 4.0 FLOOR WAS THE REJECTED ALTERNATIVE to moving secondary: no value on the
+    // warm-550 -> warm-600 segment satisfies test 28 (>= 4.5 on the page) AND this row at once, so
+    // lowering the floor here would have shipped a near-collapsed muted/secondary pair. That is the
+    // degradation this row exists to prevent, not a band correction.
     const muted = resolve('light', '--color-text-muted');
     const secondary = resolve('light', '--color-text-secondary');
     expect(muted, `Req 8 / §5.11 row 42 — light muted (${muted}) must not collapse into secondary (${secondary})`).not.toBe(secondary);
@@ -754,14 +821,19 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expectDelta('light', '--color-text-muted', '--color-border-strong', 4.0, 'Req 8 / §5.9.1');
   });
 
-  it('30. Req 8 / §5.9.1 residual — light muted on the warm-200 card-hover ground is BELOW 4.5', () => {
+  it('30. Req 8 / §5.9.1 residual — light muted on the warm-250 card-hover ground is BELOW 4.5', () => {
     // ⚠️ DISCLOSED RESIDUAL, ASSERTED RATHER THAN HIDDEN. No value on this ramp clears
     // 4.5:1 on warm-200 AND stays distinct from secondary. SPEC Req 8's acceptance is
     // page + card only, so this sits outside its floor — but it is real.
     //
+    // AMENDED 88.3-18 (ruling 1c, 2026-08-28): the residual is PRESERVED IN SHAPE across the
+    // ground move, not closed. The card-hover ground is now the minted warm-250 and muted is
+    // warm-600: muted 4.1460 -> 4.3725 (still under the 4.5 ceiling this row asserts) and the
+    // prescribed replacement secondary 5.0392 -> 6.9620 (better). Both figures below are amended.
+    //
     // THE PHASE RULE, and it is the thing to read here: on a `bg-surface-card-hover`
-    // (warm-200) pill / badge / chip, use `text-content-secondary` (5.04 ✓), NEVER
-    // `text-content-muted` (4.15 ✗). Carried to `.planning/deferred/phase-88.6.md` with
+    // (warm-250) pill / badge / chip, use `text-content-secondary` (6.9620 ✓), NEVER
+    // `text-content-muted` (4.3725 ✗). Carried to `.planning/deferred/phase-88.6.md` with
     // its site count. If a future phase closes it, this test reds — close the deferral in
     // the same commit rather than deleting the assertion.
     expectRatioBelow('light', '--color-text-muted', '--color-bg-card-hover', 4.5, 'Req 8 / §5.9.1 (disclosed residual)');
@@ -794,6 +866,12 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // so on a page the button had no fill at all. The survey's headline finding is that a
     // fill differing from its ground is the primary "this is a button" cue and that OUR
     // 1.00:1 case was the only one in 13 systems.
+    //
+    // ⚠️ AMENDED 88.3-18 (ruling 1c, 2026-08-28) — READ BEFORE "FIXING" ANYTHING HERE. The fill is
+    // `var(--warm-100)` AGAIN, and that is NOT a reverted fix. THE DEFECT WAS THE EQUALITY WITH THE
+    // PAGE, NOT THE HEX — and ruling 1c moved `--color-bg-page` to warm-200, vacating warm-100. The
+    // page-side cue is preserved bit-for-bit at 1.1523. THIS ROW IS THE THING THAT STILL GUARDS IT.
+    // Restoring warm-200 here would red this row, because warm-200 IS the page now.
     const fill = resolve('light', '--color-btn-secondary-bg');
     const page = resolve('light', '--color-bg-page');
     const card = resolve('light', '--color-bg-card');
@@ -801,24 +879,35 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expect(fill, `88.3-14 ruling 2 — light --color-btn-secondary-bg (${fill}) must NOT be byte-equal to --color-bg-card (${card})`).not.toBe(card);
   });
 
-  it('33. 88.3-14 / ruling 2 — the DISCLOSED third ground: the fill IS byte-equal to bg-card-hover, and only the ring separates them', () => {
-    // ⚠️ PINNED DISCLOSURE, NOT A PASS. `--color-bg-card-hover` is also `var(--warm-200)`, and
-    // in this codebase it is a RESTING container surface (member chips, compact month tiles,
-    // today cells), not only a hover state. Census 2026-08-27: 7 of the 19 non-test files
-    // carrying `btn-secondary` also carry `bg-surface-card-hover` (FriendInvitePanel,
-    // GroupSettings, ManageMembers, NotificationBell, friends/page, gameDetail/page,
-    // userProfile/page). On that ground the fill contributes NOTHING and the 1.22:1 ring is
-    // the sole cue.
+  it('33. 88.3-18 / ruling 1c — the DISCLOSED third ground is CLOSED: the fill and bg-card-hover can no longer be equal, and the cue INVERTED', () => {
+    // ⚠️ THIS ROW IS A REWRITE, NOT A DELETION. It previously pinned a 88.3-14 DISCLOSURE: light
+    // `--color-btn-secondary-bg` was BYTE-EQUAL to `--color-bg-card-hover` (both warm-200), so on a
+    // card-hover ground the fill contributed NOTHING (1.0000) and the 1.2220 ring was the sole cue.
+    // Census 2026-08-27 found 7 of the 19 non-test files carrying `btn-secondary` also carry
+    // `bg-surface-card-hover` (FriendInvitePanel, GroupSettings, ManageMembers, NotificationBell,
+    // friends/page, gameDetail/page, userProfile/page), so it was a real surface, not a corner case.
     //
-    // This is not a regression — before 88.3-14 the fill equalled the PAGE and there was no
-    // ring at all — but it contradicts the plan's headline "a fill that differs from its
-    // ground", so it is asserted rather than left for a reader to discover. A future edit that
-    // moves EITHER token reds this row and forces a re-decision instead of drifting silently.
-    // Do NOT "fix" it by moving the fill: a third value reaches all 29 `.btn-secondary` call
-    // sites and needs the whole re-measurement plan 88.3-14 performed.
+    // THAT EQUALITY IS NOW STRUCTURALLY IMPOSSIBLE, which is why the row asserts the CLOSURE rather
+    // than being dropped. The two feasible windows are DISJOINT: the fill is bounded ABOVE by test
+    // 34's 1.40 card ceiling, and card-hover is bounded BELOW by test 14 row 13's 4.5 accent-text
+    // floor. Ruling 1c put the fill on warm-100 and card-hover on the minted warm-250; no value
+    // satisfies both constraints at once, so the disclosure cannot be restored at any hex.
+    //
+    // THE CUE INVERTED AND GOT STRONGER — that is the substance being pinned, measured 2026-08-28:
+    //   fill on a card-hover ground  1.0000 -> 1.3280   (was invisible, now carries the separation)
+    //   ring on a card-hover ground  1.2220 -> 1.0603   (was the sole cue, now contributes little)
+    // A future edit that moves either token reds this row and forces a re-decision.
+    //
+    // THERE IS NO 88.6 DEFERRAL TO CLOSE FOR THIS — verified 2026-08-28: `phase-88.6.md` carries no
+    // third-ground entry (its only `btn-secondary-bg` mentions record the warm-100 -> warm-200 fill
+    // move). This disclosure only ever lived in TWO places, this row and the `.btn-secondary` marker
+    // in `globals.css`, and the closure is recorded in both and ONLY in both. Do not add a line to
+    // `phase-88.6.md` and do not write a pointer to one here.
     const fill = resolve('light', '--color-btn-secondary-bg');
     const cardHover = resolve('light', '--color-bg-card-hover');
-    expect(fill, `88.3-14 ruling 2 — DISCLOSED 1.00:1 ground: light --color-btn-secondary-bg (${fill}) and --color-bg-card-hover (${cardHover}) are the same value on purpose; the ring is the only cue there. If this row reds, one of them moved — that is a decision, not a cleanup`).toBe(cardHover);
+    expect(fill, `88.3-18 ruling 1c — the CLOSED third ground: light --color-btn-secondary-bg (${fill}) must NO LONGER be byte-equal to --color-bg-card-hover (${cardHover}); the 88.3-14 disclosure is dissolved, not deleted`).not.toBe(cardHover);
+    // The fill must actually carry that ground now, not merely differ from it.
+    expectRatio('light', '--color-btn-secondary-bg', '--color-bg-card-hover', 1.05, '88.3-18 ruling 1c / the fill now reads on the third ground (1.3280)');
   });
 
   it('34. 88.3-14 / ruling 2 — the fill sits inside the shipped fill-vs-ground band', () => {
@@ -826,6 +915,15 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // Our CARD value (1.31) is the deliberate TOP-OF-RANGE pick — ~0.02 above M3 tonal's 1.29 —
     // and it is the price of ONE fill instead of a fill that branches on its parent surface.
     // The ceiling is 1.40 so that "top of range" cannot quietly become "a new tier".
+    //
+    // AMENDED 88.3-18 (ruling 1c, 2026-08-28). The BAND IS UNCHANGED. Measured at the new warm-100
+    // fill: vs the warm-200 page 1.1523 — bit-for-bit the shipped page-side figure, so ruling 2's
+    // cue is preserved exactly — and vs the white card 1.1330 (was 1.3056), which moves INTO the
+    // 1.06-1.29 survey band the old value sat 0.02 above. Flatter on a card, identical on the page.
+    // THE 1.40 CARD CEILING IS WHY THE FILL MOVED **UP** RATHER THAN DOWN: the white card does not
+    // slide, so the obvious one-step-down warm-300 measures 1.5954 here and would red this row.
+    // Raising the ceiling to fit it is a band change that leaves the surveyed range entirely, and
+    // this row's own comment reserves that for a named decision with a fresh survey.
     expectRatio('light', '--color-btn-secondary-bg', '--color-bg-page', 1.05, '88.3-14 ruling 2 / fill band');
     expectRatioBelow('light', '--color-btn-secondary-bg', '--color-bg-page', 1.4, '88.3-14 ruling 2 / fill band');
     expectRatio('light', '--color-btn-secondary-bg', '--color-bg-card', 1.05, '88.3-14 ruling 2 / fill band');
@@ -840,11 +938,27 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // change the band as a named decision. Deleting or raising this ceiling re-creates the
     // input-box look the survey rejects. `--color-border-strong` keeps the 3:1 tier (test 8);
     // it is for INPUT boxes, where the box is the affordance.
+    // AMENDED 88.3-18 (ruling 1c, 2026-08-28): the BAND and the RING TOKEN are unchanged (warm-300
+    // HELD). Only the fill beneath it moved, so the ring now reads 1.4081 on it (was 1.2220) —
+    // mid-band rather than at the floor, i.e. this pairing got BETTER. warm-500 on the new fill
+    // would read 3.36, still far above the ceiling, so the rejection above is unaffected.
     expectRatio('light', '--color-border-control', '--color-btn-secondary-bg', 1.2, '88.3-14 ruling 2 / ring band');
     expectRatioBelow('light', '--color-border-control', '--color-btn-secondary-bg', 1.6, '88.3-14 ruling 2 / ring band (upper bound is deliberate)');
   });
 
   it('36. 88.3-14 / ruling 2 — the ring reads on BOTH grounds the button sits on', () => {
+    // AMENDED 88.3-18 (ruling 1c, 2026-08-28). `--color-border-control` DELIBERATELY DID NOT MOVE.
+    // Re-measured: vs the new warm-200 page 1.2220 (was 1.4081); vs the white card 1.5954
+    // (UNCHANGED — the card did not slide).
+    //
+    // ⚠️ DISCLOSURE — THE ONE PLACE THIS PHASE'S OWN "a 0.05 margin is not a margin" RULE IS
+    // KNOWINGLY NOT MET. The page pairing now sits at 1.2220 against this row's 1.20 floor: a
+    // margin of 0.022, down from 0.21. It is the thinnest margin anything in this phase carries.
+    // It is HELD anyway because every alternative reds something shipped — warm-400 measures 2.3096
+    // against the CARD ceiling on the line below (2.00), and anything lighter leaves the survey
+    // band. A future editor nudging warm-300 by a unit reds here; that is intended. Stated plainly
+    // because the `.btn-secondary` marker rejects three candidate values by invoking that very
+    // rule, and it must not read as a rule applied to everything except our own held value.
     expectRatio('light', '--color-border-control', '--color-bg-page', 1.2, '88.3-14 ruling 2 / ring vs page');
     expectRatioBelow('light', '--color-border-control', '--color-bg-page', 2.0, '88.3-14 ruling 2 / ring vs page');
     expectRatio('light', '--color-border-control', '--color-bg-card', 1.2, '88.3-14 ruling 2 / ring vs card');
@@ -854,6 +968,8 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
   it('37. 88.3-14 / ruling 2 — the label still clears 4.5:1 on the darker fill', () => {
     // Moving a fill is exactly how a passing label quietly stops passing. warm-800 on warm-200
     // measures 11.51, so there is enormous headroom — but the assertion is what keeps it true.
+    // AMENDED 88.3-18 (ruling 1c): the fill is warm-100 now and warm-800 on it measures 13.2669 —
+    // more headroom, same assertion. The row earns its keep precisely because the fill moved twice.
     expectRatio('light', '--color-btn-secondary-text', '--color-btn-secondary-bg', 4.5, '88.3-14 ruling 2 / label on fill');
   });
 
@@ -913,5 +1029,69 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // `--color-bg-accent-subtle` DECISION marker rejected on a ~13-consumer census; this pair
     // exists precisely so that rejection survives.
     expect(resolve('light', '--color-bg-accent-subtle'), '88.3-14 ruling 3 — light --color-bg-accent-subtle must still be amber-100; re-pointing it to amber-200 repaints ~13 unrelated consumers and is the REJECTED alternative').toBe(resolve('light', '--amber-100'));
+  });
+
+  // ===================================================================================
+  // Phase 88.3-18 — owner ruling 1c (the page one step darker). APPENDED, never renumbered.
+  // Rows 42-44 are NEW coverage for the palette arc this plan ships: `--warm-550` retires and
+  // `--warm-250` is minted in the same commit, and two token names deliberately share one hex.
+  // Exactly ONE pre-existing row CHANGED (test 33, rewritten to its closure); these three are
+  // ADDITIONS, so that claim stays true. The cog's eight tint pairings are deliberately NOT a
+  // Gate A row — they live in plan 18's ledger F and the `grouplist.js` marker only.
+  // ===================================================================================
+
+  it('42. 88.3-18 / ruling 1c — `--warm-550` is RETIRED and light muted resolves to the warm-600 literal', () => {
+    // The retirement half of the mint-and-retire arc, asserted so a future "restore the ramp step"
+    // pass reds. `--warm-550` was minted by Phase 88.3 for `--color-text-muted` and had no other
+    // consumer; ruling 1c moved the page to warm-200, where warm-550 measures 4.1460 — below test
+    // 28's 4.5 floor — so muted moved to warm-600 and the step had nothing left to hold.
+    // Asserted via the RESOLVER's own throw contract rather than a text grep: `globals.css` is ~60%
+    // comment and the amended markers necessarily NAME `--warm-550` in prose, so a grep would count
+    // the history and report a live orphan. `resolve` reads declarations only.
+    expect(
+      () => resolve('light', '--warm-550'),
+      '88.3-18 ruling 1c — `--warm-550` must be RETIRED from the palette; resolving it should THROW. If this row reds, the step was restored — that is a decision, not a cleanup, and it needs the `--color-text-muted` marker read first',
+    ).toThrow(TokenContrastParseError);
+    expect(
+      resolve('light', '--color-text-muted'),
+      '88.3-18 ruling 1c — light --color-text-muted must resolve to the warm-600 literal',
+    ).toBe(resolve('light', '--warm-600'));
+  });
+
+  it('43. 88.3-18 / ruling 1c — `--warm-250` is MINTED, carries card-hover, and sits strictly between warm-200 and warm-300', () => {
+    // The mint half. `--warm-250` `#dbd1c7` is the 70% point on warm-200 -> warm-300 and its SOLE
+    // consumer is `--color-bg-card-hover`. The L* ordering is asserted rather than the hex, so a
+    // future re-tint inside the feasible window (t ∈ [0.60, 0.92]) does not churn this row — but a
+    // collapse back onto either neighbour does red it. warm-200 IS the page (byte-equality, a real
+    // render defect at GroupLibrary.js:149-153 and CalendarMonthView.js:224-226); warm-300 drops
+    // accent-text to 4.4440 and reds test 14's row 13.
+    const mint = resolve('light', '--warm-250');
+    expect(mint, '88.3-18 ruling 1c — `--warm-250` must be declared in the palette').toMatch(/^#[0-9a-f]{6}$/i);
+    expect(
+      resolve('light', '--color-bg-card-hover'),
+      '88.3-18 ruling 1c — light --color-bg-card-hover must resolve THROUGH the minted --warm-250',
+    ).toBe(mint);
+    const l250 = lStarOf(mint, '--warm-250');
+    const l200 = lStarOf(resolve('light', '--warm-200'), '--warm-200');
+    const l300 = lStarOf(resolve('light', '--warm-300'), '--warm-300');
+    expect(l250, `88.3-18 ruling 1c — --warm-250 (L* ${l250.toFixed(4)}) must sit BELOW --warm-200 (L* ${l200.toFixed(4)}); collapsing it onto warm-200 makes card-hover byte-equal to the page`).toBeLessThan(l200);
+    expect(l250, `88.3-18 ruling 1c — --warm-250 (L* ${l250.toFixed(4)}) must sit ABOVE --warm-300 (L* ${l300.toFixed(4)}); at warm-300 accent-text drops to 4.4440 and test 14 reds`).toBeGreaterThan(l300);
+  });
+
+  it('44. 88.3-18 / ruling 1c — the two DISCLOSED cross-name hex duplications, asserted rather than deduplicated', () => {
+    // ⚠️ PINNED DISCLOSURE (plan 18 ledger I5), the same idiom `--color-accent-text-strong` carries.
+    // After ruling 1c two pairs of names land on one hex each. That is the price of keeping two
+    // JOBS named apart, not a duplication to be tidied — but it is asserted so that an edit to one
+    // side reds instead of silently splitting them, and so a "deduplicate these" pass has to be a
+    // named decision. `--color-btn-secondary-bg` == `--color-badge-member-bg` (both warm-100) and
+    // `--color-text-secondary` == `--color-badge-member-text` (both warm-700).
+    expect(
+      resolve('light', '--color-btn-secondary-bg'),
+      '88.3-18 ruling 1c — DISCLOSED: light --color-btn-secondary-bg and --color-badge-member-bg are both warm-100 on purpose. If this reds, one of them moved — decide, do not deduplicate',
+    ).toBe(resolve('light', '--color-badge-member-bg'));
+    expect(
+      resolve('light', '--color-text-secondary'),
+      '88.3-18 ruling 1c — DISCLOSED: light --color-text-secondary and --color-badge-member-text are both warm-700 on purpose. If this reds, one of them moved — decide, do not deduplicate',
+    ).toBe(resolve('light', '--color-badge-member-text'));
   });
 });
