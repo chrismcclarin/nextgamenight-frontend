@@ -488,14 +488,26 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
   // Req 2 — borders (UI-SPEC §5.3, §5.11 rows 7-10)
   // ===================================================================================
 
-  it('7. Req 2 — the light --color-border is a HAIRLINE, inside the 1.40-1.80 band', () => {
+  it('7. Req 2 — the light --color-border is a HAIRLINE, inside the amended 1.40-2.40 band', () => {
     // A BAND, not a floor: `--color-border` is a container separator, not a control edge.
     // Promoting it above the band is the RETIRED 235-site hairlines-to-`border-strong`
     // migration (plan 04 amendment 1) — a decision, not a cleanup.
+    //
+    // AMENDED Phase 88.3-14 (owner ruling 1a, 2026-08-27). The FLOOR is unchanged at 1.40. The
+    // CEILING moved 1.80 -> 2.40 because the band, not the token, was what was wrong: the
+    // 2026-08-25 survey read the "densest peers" at ~1.4:1, and the 2026-08-27 re-check
+    // (`.planning/research/LIGHT-MODE-CARD-DEPTH-PHONE-SURVEY-2026-08-27.md` §4) measured the
+    // shipped resting-card range at 1.25-2.17 (M3 outlined 1.62-1.70, Radix sand-8 1.92, Airbnb
+    // border-muted 2.17) — and the owner could not see the old value on a physical phone (Req 12
+    // UAT test 2). The token now ships warm-400 at 2.31 / 2.04.
+    //
+    // THE UPPER BOUND IS THE POINT. Do not delete it and do not raise it to 3.0: it is the only
+    // thing keeping `--color-border` out of the control-edge class, which is
+    // `--color-border-strong`'s job (test 8, >= 3.0). Moving it is a decision, not a cleanup.
     expectRatio('light', '--color-border', '--color-bg-card', 1.4, 'Req 2 / §5.11 row 7');
-    expectRatioBelow('light', '--color-border', '--color-bg-card', 1.8, 'Req 2 / §5.11 row 7');
+    expectRatioBelow('light', '--color-border', '--color-bg-card', 2.4, 'Req 2 / §5.11 row 7');
     expectRatio('light', '--color-border', '--color-bg-page', 1.4, 'Req 2 / §5.11 row 8');
-    expectRatioBelow('light', '--color-border', '--color-bg-page', 1.8, 'Req 2 / §5.11 row 8');
+    expectRatioBelow('light', '--color-border', '--color-bg-page', 2.4, 'Req 2 / §5.11 row 8');
   });
 
   it('8. Req 2 — --color-border-strong clears 3:1 on the page in BOTH themes', () => {

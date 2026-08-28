@@ -103,8 +103,14 @@ const E2E_EVENT_DETAIL_PATH =
 /** SPEC floors, named once so a failure message and the assertion cannot drift apart. */
 const AA_TEXT = 4.5;
 const NON_TEXT = 3.0; // WCAG 1.4.11 — focus indicators and other non-text contrast
-const CARD_BORDER_MIN = 1.4; // UI-SPEC §5.2: a hairline, not a wireframe
-const CARD_BORDER_MAX = 1.8;
+const CARD_BORDER_MIN = 1.4; // a hairline, not a wireframe
+// AMENDED Phase 88.3-14 (owner ruling 1a, 2026-08-27): ceiling 1.8 -> 2.4, in step with Gate A
+// test 7. The band, not the token, was the defect — the Req 12 phone UAT failed test 2 at
+// warm-300, and `LIGHT-MODE-CARD-DEPTH-PHONE-SURVEY-2026-08-27.md` §4 measured the shipped
+// resting-card ceiling at 1.9-2.2 (M3 outlined 1.62-1.70, Radix sand-8 1.92, Airbnb
+// border-muted 2.17). `--color-border` ships warm-400 at 2.31 vs the white card. NOT 3.0:
+// >= 3:1 is `--color-border-strong`'s control-edge tier, not a card edge.
+const CARD_BORDER_MAX = 2.4;
 const PAGE_CARD_DELTA = 4.0; // Req 1, archetype A (ships at 5.00)
 const NESTED_DELTA_LIGHT = 1.5;
 const NESTED_DELTA_DARK = 3.0;

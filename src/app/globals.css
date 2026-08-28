@@ -791,8 +791,9 @@
 
      TAKEN: `--color-border` light moves warm-200 -> **warm-300** `#d6cbc0`, measured 2026-08-26
      from the literal hex via `src/lib/wcag.ts` at **1.60:1 vs the white card / 1.41:1 vs the
-     warm-100 page** — inside SPEC Req 2's deliberate 1.40-1.80 HAIRLINE band, not at a control
-     ratio. It cost **zero JSX migrations**, because `--color-line: var(--color-border)` in
+     warm-100 page** — inside SPEC Req 2's deliberate 1.40-1.80 HAIRLINE band (that band was
+     itself amended to 1.40-2.40 by AMENDED Phase 88.3-14 below, and this whole paragraph is
+     history from that point on), not at a control ratio. It cost **zero JSX migrations**, because `--color-line: var(--color-border)` in
      `@theme inline` carries the new value to all 235 `border-line` sites for free. Rejection (a)
      above is honoured in substance: the token moved, but only within the hairline band.
 
@@ -812,8 +813,64 @@
      CONSEQUENCE: `--color-border-strong` (warm-500) stays the 3:1 control edge and the 11 JSX
      sites already pointing at it are unchanged. Re-adding a hairlines-to-`border-strong` sweep,
      changing either value, or "simplifying" `--color-border` back onto `--color-line`, is a
-     decision, not a cleanup. */
-  --color-border: var(--warm-300);
+     decision, not a cleanup.
+
+     ——— AMENDED Phase 88.3-14 (owner ruling 1a, 2026-08-27, research-checked), everything above
+     KEPT AS HISTORY and never rewritten.
+
+     WHY: the owner ran the Req 12 UAT on a PHYSICAL PHONE on 2026-08-27 and test 2 FAILED on the
+     group page at warm-300 — "The card fades into the background a little. I have to look hard to
+     see the edges."
+
+     TAKEN: `--color-border` light moves warm-300 -> **warm-400** `#b8a898`, measured 2026-08-27
+     from the literal hex via `src/lib/wcag.ts` at **2.31:1 vs the white card / 2.04:1 vs the
+     warm-100 page**.
+
+     WHAT WAS ACTUALLY WRONG WAS THE BAND, NOT THE TOKEN. The 1.40-1.80 ceiling the paragraph above
+     declared was derived from the 2026-08-25 survey's "densest peers ~1.4:1", and that reading was
+     UNDERSTATED. The 2026-08-27 re-check
+     (`.planning/research/LIGHT-MODE-CARD-DEPTH-PHONE-SURVEY-2026-08-27.md` §4) measured the true
+     shipped ceiling at 1.9-2.2: M3's outlined card `outline-variant` 1.62-1.70, Radix `sand-8`
+     1.92, and Airbnb's documented `border-muted` #b0b0b0 at 2.17 ("for borders that need more
+     definition"). The band is therefore AMENDED to **1.40-2.40** — pinned in Gate A
+     (`tokenContrast.test.ts` test 7), in Gate C (`e2e/contrast.spec.ts` CARD_BORDER_MIN/MAX) and in
+     SPEC Req 2 — and 2.31 sits ONE STEP above the shipped ceiling, not in the 3:1 control class.
+
+     REJECTED ALTERNATIVES — the load-bearing half:
+       (i)   A CARD-ONLY border token. REJECTED on the same idiom-proliferation grounds as the
+             `line-contrast` token in rejection (b) at the top of this marker: a third name for the
+             same 1px line, leaving three overlapping ways to draw it.
+       (ii)  **A 3.0 upper bound. REJECTED.** Raising the ceiling to 3.0 would let `--color-border`
+             drift into the control-edge class `--color-border-strong` already owns, and would
+             re-open the RETIRED 235-site sweep by the back door. The survey is explicit that the
+             >=3:1 tier is input boxes and accent outlines (M3 `outline` 4.55, our `line-strong`
+             4.11), not a resting card edge. 3.0 is a REJECTED ceiling here, never a target.
+       (iii) The owner's own recorded fallback (c), "page one step darker". Explicitly NOT chosen
+             and NOT to be pre-empted — held in reserve if the phone re-check still fails.
+       (iv)  Doing nothing. That is the option that failed the UAT.
+
+     PROVENANCE HONESTY: this is a SINGLE-DEVICE, SINGLE-READING owner decision backed by a peer
+     RANGE — not a rule derived from a standard. The survey says exactly that, and this marker does
+     not overstate it.
+
+     `--input` CONSEQUENCE, DISCLOSED HERE RATHER THAN DISCOVERED LATER (owner ruling C,
+     2026-08-27): `--input` aliases `--color-border` (`:1323`), so this edit hands every input box
+     the same warm-400 edge — **2.31:1 on a white card, 2.04:1 on the page** — while the input's own
+     fill is `--color-bg-input: #ffffff` (`:644`), which on a white card makes that border the SOLE
+     boundary. Said plainly, because it sits against this marker's own claim that >=3:1 belongs to
+     input boxes: `--input` currently inherits this 2.31:1 card hairline; the shared
+     `Input`/`Textarea`/`Select` primitive draws its box with `border-input`
+     (`src/components/ui/Input.tsx:74` — the one consumer of that utility, mounted by ~20 files) and
+     does NOT yet take the >=3:1 `--color-border-strong` this marker says input boxes own. The token
+     change is deliberately NOT widened to close it. Owner ruling C DEFERRED that to **Phase 88.6**
+     and it is already persisted there — `.planning/deferred/phase-88.6.md`, entry "[a11y] Input
+     primitive border aliases `--color-border` and lands at 2.31:1".
+
+     DECISION Phase 88.3-14 (ruling 1a): warm-400 `#b8a898`, 2.31:1 / 2.04:1, inside an amended
+     1.40-2.40 band — chosen OVER a card-only border token, OVER a 3.0 ceiling, OVER the owner's
+     fallback (c) "page one step darker", and OVER doing nothing. Changing this value is a decision,
+     not a cleanup. */
+  --color-border: var(--warm-400);
   --color-border-strong: var(--warm-500);
   --color-border-accent: var(--amber-600);
 
