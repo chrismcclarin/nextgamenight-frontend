@@ -1793,6 +1793,45 @@ body {
 
 .btn-compact {
   min-height: 0;
+  /* DECISION Phase 88.3-17: zero the HORIZONTAL padding, chosen OVER dropping
+     plan 88.3-14's `.btn-secondary` border on compact controls and OVER
+     loosening the gate that caught this.
+
+     FOUND BY CI, NOT BY REVIEW — `e2e/touch-targets.spec.ts:428` (D-36),
+     dispatch run 33137056149, 2026-08-28: `.btn.btn-compact probe measured
+     34x32 — the steppers are square BY DESIGN`. It is a regression plan
+     88.3-14 introduced two waves earlier and nothing local could see, because
+     it is pure geometry in a real browser.
+
+     THE ARITHMETIC, so nobody has to re-derive it. `.btn` is
+     `padding: 0.5rem 1rem`, i.e. 16px + 16px = 32px horizontally. Plan 88.3-14
+     gave `.btn-secondary` `border: 1px solid var(--color-border-control)`
+     (owner ruling 2 — secondary controls had no edge at all in light). Both
+     shipped call sites are `btn btn-compact btn-secondary w-8 h-8`
+     (`BrowseMoreModal.js:232` and `:270`), and `w-8` is 32px. With
+     `box-sizing: border-box` the used width cannot go below
+     padding + border = 16 + 16 + 1 + 1 = **34px**, so `w-8` was silently
+     clamped and the stepper went 32x32 -> 34x32. The VERTICAL padding
+     (8 + 8 + 2 = 18px) stays under `h-8`'s 32px, which is why only the width
+     moved and why a height-only assertion would have passed.
+
+     Zeroing horizontal padding is a no-op on these two controls by
+     construction: the box is fixed at 32x32 by `w-8 h-8`, the content is a
+     single glyph, and `.btn` centres it with `justify-content: center`. It
+     restores the exact pre-phase geometry rather than introducing a new one.
+
+     REJECTED — exempt `.btn-compact` from the `.btn-secondary` border: it takes
+     the edge back off two secondary controls on a phone surface, which is the
+     thing owner ruling 2 exists to fix, on a surface nobody has looked at.
+     REJECTED — relax the `<= 1` squareness assertion to `<= 2`: a gate weakened
+     to admit the shape it caught is worse than the shape. That assertion exists
+     precisely because a height-only check would have missed a deformation.
+
+     This rule stays UNLAYERED and stays authored AFTER the media block above —
+     both are load-bearing (see the D-36 marker). Re-adding horizontal padding
+     here re-deforms both steppers and reds `touch-targets.spec.ts:428`. */
+  padding-left: 0;
+  padding-right: 0;
 }
 
 /* DECISION Phase 87.8 DEC-3 — AMENDED BY PHASE 88-31: THE `.modal-overlay` RULES ARE GONE, AND
