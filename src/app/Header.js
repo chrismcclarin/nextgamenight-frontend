@@ -303,10 +303,21 @@ function Header(){
                             user like the Invites row — feedback is auth-only. */}
                         {user && (
                             <div className="border-t border-line-header">
+                                {/* invokerRef (Phase 88.3-17, owner ruling 6 /
+                                    DEF-88.3-12-01): the modal restores focus to
+                                    the hamburger toggle, NOT to this row — this
+                                    row sits inside the panel R3-D disables in
+                                    the same transition `onOpen` fires, and a
+                                    control inside a disabled subtree cannot take
+                                    focus. R3-D itself is untouched; the full
+                                    DECISION marker with both rejected
+                                    alternatives is at the row variant's onClick
+                                    in FeedbackButton.js. */}
                                 <FeedbackButton
                                     variant="row"
                                     label="Send feedback"
                                     onOpen={() => setMobileMenuOpen(false)}
+                                    invokerRef={triggerRef}
                                 />
                             </div>
                         )}

@@ -24,7 +24,7 @@ import { Textarea, SelectControl } from '@/components/ui/Input';
  * restoration) lives in FeedbackModalProvider; `text`/`error`/`submitted`
  * stay LOCAL here so keystrokes never re-render context consumers.
  */
-export default function FeedbackButton({ variant = 'floating', label, onOpen }) {
+export default function FeedbackButton({ variant = 'floating', label, onOpen, invokerRef = null }) {
   const { user } = useUser();
   const pathname = usePathname();
   const { isOpen, category, open, close, onCloseAutoFocus, setCategory } = useFeedbackModal();
@@ -67,7 +67,38 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen }) 
     return (
       <button
         onClick={(e) => {
-          open(e.currentTarget);
+          // DECISION Phase 88.3-17 (DEF-88.3-12-01, owner ruling 6, 2026-08-27):
+          // the row hands the provider an INVOKER OVERRIDE (`invokerRef`, which
+          // Header points at its hamburger `triggerRef`) instead of restoring
+          // focus to itself — chosen OVER two alternatives that were both
+          // defensible, and both rejected on the record.
+          //
+          // The mechanism, MEASURED not inferred: `onOpen()` below closes the
+          // mobile menu in the SAME transition that opens the modal, and plan
+          // 07's R3-D put `inert` on the closed panel (`Header.js`). This row
+          // lives inside that panel. An element in an `inert` subtree cannot
+          // take focus — probed live in this repo's Chromium: `el.focus()` on a
+          // button inside a plain <div> leaves `document.activeElement === el`
+          // true; the identical button inside `<div inert="">` leaves it false.
+          // So by the time the modal closes and the provider restores, the row
+          // is unfocusable. `e2e/feedback-stacking.spec.ts` was deterministically
+          // red on CI for exactly this, and it blocked the phase's FE merge.
+          //
+          // REJECTED — re-open the menu on restore: it resurfaces a menu the
+          // user deliberately closed, and re-entering the animated panel is the
+          // Tab-order problem R3-D was added to fix in the first place.
+          // REJECTED — un-inert for the duration of the restore: it makes R3-D
+          // conditional on an unrelated modal's lifecycle, which is exactly the
+          // kind of coupling that breaks silently two phases later.
+          //
+          // The hamburger toggle is the conventional landing for focus when a
+          // menu-launched dialog closes, and `Header.js`'s own menu-close effect
+          // ALREADY sends focus there — so this makes the two paths agree rather
+          // than inventing a third. The FAB below passes no override and falls
+          // through to `e.currentTarget`, so the desktop path is unchanged by
+          // construction. Pointing this back at the row is a decision, not a
+          // cleanup: it re-reds the e2e spec.
+          open(invokerRef?.current ?? e.currentTarget);
           // Close the mobile dropdown in the SAME transition (Header passes
           // its setMobileMenuOpen(false) here, the same close-on-tap idiom
           // the nav links use at Header.js:185,193).

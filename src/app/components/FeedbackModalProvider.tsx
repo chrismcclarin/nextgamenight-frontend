@@ -137,12 +137,27 @@ export function FeedbackModalProvider({ children }: { children: ReactNode }) {
   // ended up unfocused (caught by feedback-stacking.spec.ts in the first CI
   // run). preventDefault() only when there is an invoker to restore to; with
   // none, Radix's default is the right fallback.
+  //
+  // AMENDED Phase 88.3-17 (T-88.3-80), premise re-verified, restore location
+  // UNCHANGED: the order of the two calls is now load-bearing and must not be
+  // "tidied" back. Since 88.3-17 the phone entry point restores to the hamburger
+  // toggle (owner ruling 6 / DEF-88.3-12-01), and that toggle is `md:hidden`
+  // (`Header.js`). If the viewport crosses the `md` breakpoint while the modal is
+  // open — a tablet rotated past 768px — the toggle computes `display: none`,
+  // `focus()` is a silent no-op, and the old order had ALREADY called
+  // preventDefault(), suppressing Radix's own fallback: focus landed on <body>
+  // and the keyboard user was stranded. So: focus FIRST, then prevent the
+  // default ONLY if the focus actually landed. On the failure path the event
+  // stays unprevented and Radix restores focus itself. This is a strict
+  // improvement on the FAB path too — the FAB is always focusable, so the guard
+  // never fires there. Reordering these two lines, or dropping the
+  // `document.activeElement` check, is a decision, not a cleanup.
   const onCloseAutoFocus = useCallback((event: Event) => {
     const invoker = invokerRef.current;
     invokerRef.current = null;
     if (invoker && typeof invoker.focus === 'function') {
-      event.preventDefault();
       invoker.focus();
+      if (document.activeElement === invoker) event.preventDefault();
     }
   }, []);
 
