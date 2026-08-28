@@ -567,6 +567,17 @@
   --purple-400: #8a9bba;
   --purple-500: #6b7fa3;
   --purple-600: #536889;
+  /* DECISION Phase 88.3-18 (owner ruling 2026-08-28, option c): `--purple-650` is MINTED as the
+     light-mode LINK ink, chosen OVER re-pointing `--color-text-link` to purple-700. Ruling 1c moved
+     the page ground warm-100 -> warm-200 and took purple-600 from 4.9970 to 4.3366 on it — an AA
+     failure no gate asserted. purple-700 would pass (5.9704) but is byte-equal to
+     `--color-text-link-hover`, so links would lose their hover state (Gate A test 48 reds on that).
+     `#506484` is t=0.2 on the purple-600 -> purple-700 line, measured 2026-08-28: page 4.5995,
+     white card 6.0049, warm-50 sunken 5.6647, card-hover (warm-250) 3.9909 — the card-hover residual
+     is PRE-EXISTING (3.7628 before), DISCLOSED, asserted by Gate A test 49 and owned by Phase 88.6;
+     option (d) `#495b79` closes it but leaves only dL* 3.39 from hover. This step keeps dL* 7.03.
+     Collapsing this onto purple-600 or purple-700 is a decision, not a cleanup. */
+  --purple-650: #506484;
   --purple-700: #42536e;
   --purple-800: #2f3b50;
   --purple-900: #232d3e;
@@ -928,7 +939,7 @@
      Moving this back onto a shared ramp step is a decision, not a cleanup. */
   --color-text-muted: var(--warm-600);
   --color-text-inverse: #ffffff;
-  --color-text-link: var(--purple-600);
+  --color-text-link: var(--purple-650); /* 88.3-18 owner ruling (c) — see the --purple-650 marker */
   --color-text-link-hover: var(--purple-700);
 
   /* Accent (interactive elements) */

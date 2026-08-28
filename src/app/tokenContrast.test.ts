@@ -1204,11 +1204,13 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
   // happen again, whichever way the owner rules the fork.
   // ===================================================================================
 
-  it('48. 88.3-18 — light --color-text-link clears 4.5:1 on the CARD and the SUNKEN grounds', () => {
-    // The two grounds it still passes on, asserted positively so a future edit that "fixes" the
-    // page failure by darkening the token cannot quietly break these instead.
+  it('48. 88.3-18 — light --color-text-link clears 4.5:1 on the CARD, the SUNKEN and the PAGE grounds', () => {
+    // OWNER RULED 2026-08-28, option (c): `--color-text-link` moved purple-600 -> a minted
+    // `--purple-650` (#506484). The PAGE pairing was promoted here from test 49 in the same commit,
+    // per that test's own instruction. Measured: card 6.0049, sunken 5.6647, page 4.5995.
     expectRatio('light', '--color-text-link', '--color-bg-card', 4.5, '88.3-18 / link on the white card');
     expectRatio('light', '--color-text-link', '--color-bg-sunken', 4.5, '88.3-18 / link on warm-50 sunken');
+    expectRatio('light', '--color-text-link', '--color-bg-page', 4.5, '88.3-18 ruling (c) / link on the warm-200 page (4.5995) — was the DISCLOSED FAILURE in test 49');
     // The hover step must stay a VISIBLE step, not collapse onto the resting colour. This is the
     // assertion that makes owner option (b) — re-point the link to purple-700, which IS
     // `--color-text-link-hover` — red instead of shipping a link with no hover state.
@@ -1217,7 +1219,12 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expect(link, `88.3-18 — light --color-text-link (${link}) must NOT be byte-equal to --color-text-link-hover (${hover}); collapsing them leaves links with no visible hover state. If a link re-colour reds this row, mint a step instead of taking purple-700`).not.toBe(hover);
   });
 
-  it('49. 88.3-18 — ⚠ DISCLOSED FAILURE: light --color-text-link is BELOW 4.5:1 on the page and on card-hover', () => {
+  it('49. 88.3-18 — ⚠ DISCLOSED FAILURE: light --color-text-link is BELOW 4.5:1 on card-hover (page pairing PROMOTED to test 48 by owner ruling c)', () => {
+    // OWNER RULED 2026-08-28, option (c) — mint #506484 (`--purple-650`). The PAGE row below is
+    // now GREEN (4.5995) and lives in test 48. What remains here is the PRE-EXISTING card-hover
+    // residual (3.7628 -> 3.9909), knowingly left open by ruling (c) over option (d) `#495b79`
+    // (which closes it at the cost of a dL* 3.39 hover step). Owned by Phase 88.6. History follows.
+
     // ⚠️ THIS TEST ASSERTS A FAILURE ON PURPOSE — the same idiom as tests 21 and 27. It is NOT a
     // pass, and it must not be "fixed" by deleting it.
     //
@@ -1242,7 +1249,6 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // WHEN THE OWNER RULES AND THE LINK MOVES, THIS ROW REDS. That is the intended behaviour: close
     // the deferral and promote these two pairings into test 48 in the SAME commit, rather than
     // deleting the assertion.
-    expectRatioBelow('light', '--color-text-link', '--color-bg-page', 4.5, '88.3-18 / DISCLOSED FAILURE — link on the page (4.3366)');
-    expectRatioBelow('light', '--color-text-link', '--color-bg-card-hover', 4.5, '88.3-18 / DISCLOSED FAILURE — link on card-hover (3.7628)');
+    expectRatioBelow('light', '--color-text-link', '--color-bg-card-hover', 4.5, '88.3-18 / DISCLOSED FAILURE — link on card-hover (3.9909 after ruling c; 3.7628 before) — Phase 88.6 owns it');
   });
 });
