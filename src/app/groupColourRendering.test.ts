@@ -483,6 +483,21 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
           /WebkitTextStroke\s*:/,
         );
       }
+
+      // CR-01 (88.3-cr): a stroke value must be a LITERAL. `tileTextTreatment`'s
+      // image branch assigned `groupBgImage` — a URL — to `WebkitTextStroke`.
+      // Inline that was merely dropped, but once the helper was hoisted the
+      // value rode `--t-stroke` into `[-webkit-text-stroke:var(--t-stroke)]`,
+      // where it is invalid at computed-value time and resets the property to
+      // `none`. A custom property will carry ANY token, so nothing upstream
+      // rejects it; this assertion is the only thing that would.
+      // `[^,\n]` would cut an `rgba(0, 0, 0, 0.9)` literal in half — take the line.
+      for (const m of src.matchAll(/WebkitTextStroke\s*:\s*(.+)$/gm)) {
+        expect(m[1], `${file}: WebkitTextStroke assigned an image/url value`).not.toMatch(
+          /Image|url\(/i,
+        );
+        expect(m[1], `${file}: WebkitTextStroke is not a string literal`).toMatch(/'[^']*'/);
+      }
     }
   });
 

@@ -59,17 +59,38 @@ const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
  * render anyway, so memoization here is dead weight that reads as a performance
  * claim nobody measured.
  *
- * DEF-88.3-10-02 IS CARRIED THROUGH UNREPAIRED AND ON PURPOSE: the
- * background-image branch assigns the image URL to `WebkitTextStroke`, which is
- * not a stroke value. That defect is Phase 88.6's; plan 88.3-16 moved this
- * function without touching its body. Do not "fix" it here in passing — fix it
- * where it is owned, with its own test.
+ * DECISION Phase 88.3-cr (CR-01, code-adversarial-review 2026-08-27):
+ * DEF-88.3-10-02 IS FIXED HERE, reversing plan 88.3-16's "carry it verbatim"
+ * and its routing to Phase 88.6. The image branch used to assign the image URL
+ * to `WebkitTextStroke`, which is not a stroke value. That was inert while it
+ * lived in an inline IIFE — an invalid inline declaration is dropped and the
+ * element simply had no stroke. THE HOIST MADE IT WORSE, not merely relocated:
+ * the return value now flows through `themedTextStyleVars` into
+ * `--t-stroke`/`--t-stroke-l`, and a custom property accepts any token, so the
+ * URL is carried all the way to `[-webkit-text-stroke:var(--t-stroke)]` and is
+ * only rejected there — invalid at computed-value time, which resets the
+ * property to `none` and poisons the `--t-stroke` pair for anything else
+ * reading it. Deferring an inert defect is cheap; deferring a live one into a
+ * shared custom-property channel is not. The stroke is now the same
+ * `'0.5px rgba(0, 0, 0, 0.9)'` the dark-ground branch below already uses,
+ * which is what this comment always claimed the image branch did.
+ * REJECTED: keeping the deferral to 88.6 — the repair is one literal, and the
+ * hoist is precisely what changed its blast radius. Gate B test 7 now asserts
+ * that no identifier is ever assigned to `WebkitTextStroke` in these files.
+ *
+ * `groupBgImage` is passed as `null` for the COMPACT variant at the call site
+ * (`tileBgImage`), because that tile deliberately paints no background image —
+ * see the "NO BACKGROUND IMAGE HERE" marker further down. Passing the URL made
+ * a coloured group that ALSO has an image take the heavy image-tuned black
+ * shadow over a pale t = 0.70 tint. REJECTED: reading `variant` inside the
+ * helper — it is deliberately module-level and argument-driven (marker above),
+ * so the variant fork belongs at the call site.
  */
 const tileTextTreatment = (tileGround, groupBgImage) => {
   if (groupBgImage) {
     return {
       textShadow: '2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 2px rgba(0, 0, 0, 0.9)',
-      WebkitTextStroke: groupBgImage,
+      WebkitTextStroke: '0.5px rgba(0, 0, 0, 0.9)',
     };
   }
   // No group colour: the tile is on the themed month
@@ -263,17 +284,20 @@ export default function CalendarMonthView({
                         const ground = tinted ? groupBgColor : null;
                         const groupProfilePic = event.Group?.profile_picture_url;
                         const groupBgImage = event.Group?.background_image_url;
+                        // CR-01 (88.3-cr): the COMPACT tile renders no image, so
+                        // it must not take the image-tuned text treatment either.
+                        const tileBgImage = variant === 'compact' ? null : groupBgImage;
                         // The R2-6 past-date theme-fork reasoning now lives with
                         // `tileTextTreatment` at module level (plan 88.3-16).
                         const tileTextVars = themedTextStyleVars(
                           {
-                            ...tileTextTreatment(groupBgColor, groupBgImage),
+                            ...tileTextTreatment(groupBgColor, tileBgImage),
                             color: isPastDate
                               ? (groupBgColor ? SUBTEXT_MUTED_ON_DARK : 'var(--color-content-muted)')
                               : getEventTileTextColor(groupBgColor),
                           },
                           {
-                            ...tileTextTreatment(tinted || groupBgColor, groupBgImage),
+                            ...tileTextTreatment(tinted || groupBgColor, tileBgImage),
                             color: isPastDate
                               ? (groupBgColor ? SUBTEXT_MUTED_ON_LIGHT : 'var(--color-content-muted)')
                               : getEventTileTextColor(tinted || groupBgColor),
@@ -346,7 +370,10 @@ export default function CalendarMonthView({
                                one is ever added it MUST go through `safeBgImageStyle` exactly as the
                                full tile does — never a raw `url()`. The new Gate B `it(` asserts
                                every `url(`/`backgroundImage` in this file sits inside a
-                               `safeBgImageStyle(` call.
+                               `safeBgImageStyle(` call. CR-01 (88.3-cr) extends the same rule to
+                               the TEXT treatment: this tile passes `tileBgImage` (null in the
+                               compact variant), so the image-tuned black shadow can no longer land
+                               on a pale t = 0.70 tint just because the group also has a photo.
 
                                TARGET SIZE — INHERITED, disclosed, not resized (owner ruling
                                2026-08-27). `role="button"` promotes this to a first-class
