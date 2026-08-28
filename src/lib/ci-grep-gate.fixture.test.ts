@@ -680,3 +680,76 @@ describe('Phase 88.3 Req 11 — Gate C is armed by the --project pin (parsed fro
     ).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 88.3-cr, CR-09 — GATE C's EXECUTED-COUNT FLOOR.
+//
+// The three tests above prove the `--project=phone` FLAG is on the run line and
+// the spec FILE exists. Neither can tell you a single test ran. Every Gate C test
+// is behind `test.skip(({ isMobile }) => !isMobile)`, Playwright exits 0 on a run
+// that skipped all of them, and nothing consumed the skipped count (run
+// 33138624128: "85 passed, 72 skipped"). Removing `isMobile: true` from the phone
+// project, or inverting that predicate, was pinned by NOTHING.
+//
+// `scripts/gate-c-executed-floor.mjs` is the consumer; this block is its lockstep,
+// and the load-bearing assertion is the last one: the floor in the script may
+// never exceed the number of tests the spec actually declares, or the gate goes
+// permanently red and gets deleted rather than fixed.
+// ---------------------------------------------------------------------------
+
+const GATE_C_FLOOR_STEP =
+  'Gate C executed-count floor — contrast.spec.ts must actually run in the phone project';
+
+describe('Phase 88.3-cr CR-09 — Gate C\'s executed-count floor (parsed from ci.yml by step name)', () => {
+  const window = stepWindow(GATE_C_FLOOR_STEP).join('\n');
+  const scriptPath = resolve(__dirname, '../../scripts/gate-c-executed-floor.mjs');
+
+  test('the step runs the floor SCRIPT, not an inline one-liner that can drift', () => {
+    expect(window).toMatch(/run:\s*node scripts\/gate-c-executed-floor\.mjs\s+\S+\s*$/m);
+  });
+
+  test('the step carries no `if:` — it must run on the workflow_dispatch lane too', () => {
+    // The cross-repo merge-order proof for this phase runs via workflow_dispatch with a
+    // backend-ref. A condition here would exempt exactly the lane that matters most.
+    expect(window, 'the Gate C floor step gained an `if:` condition').not.toMatch(/^\s*if:/m);
+  });
+
+  test('the floor script exists and fails the job rather than warning', () => {
+    expect(existsSync(scriptPath)).toBe(true);
+    const src = readFileSync(scriptPath, 'utf8');
+    expect(src).toMatch(/Gate C DISARMED/);
+    expect(src).toMatch(/process\.exit\(1\)/);
+  });
+
+  test('playwright.config.ts still emits the machine-readable report the script reads', () => {
+    // The floor is unreadable without it, and the script's outputFile argument in ci.yml
+    // must name the same path the config writes. Drift here makes the gate fail-closed
+    // (missing report -> exit 1), which is the right direction but a confusing red; this
+    // test names the real cause instead.
+    const cfg = readFileSync(resolve(__dirname, '../../playwright.config.ts'), 'utf8');
+    const outputFile = cfg.match(/outputFile:\s*'([^']+)'/)?.[1];
+    expect(outputFile, "playwright.config.ts no longer configures a 'json' reporter outputFile").toBeTruthy();
+    expect(cfg).toContain("['json'");
+    expect(window, `the step does not pass ${outputFile} to the floor script`).toContain(outputFile!);
+  });
+
+  test('the floor never exceeds the number of tests the spec actually declares', () => {
+    // THE LOCKSTEP. A floor above the real count is a permanently red gate, and a
+    // permanently red gate gets deleted. Measured, not quoted: `npx playwright test
+    // --list --project=phone` reports 13 on this tree. (The code review that raised
+    // CR-09 said 16 — it was wrong, and this assertion is why that cannot ship.)
+    const src = readFileSync(scriptPath, 'utf8');
+    const floor = Number(src.match(/^const FLOOR = (\d+);$/m)?.[1]);
+    expect(Number.isInteger(floor), 'the FLOOR constant was renamed or made dynamic').toBe(true);
+
+    const spec = readFileSync(resolve(process.cwd(), 'e2e/contrast.spec.ts'), 'utf8');
+    const declared = (spec.match(/^\s*test\(/gm) ?? []).length;
+    expect(
+      floor,
+      `gate-c-executed-floor.mjs's FLOOR is ${floor} but e2e/contrast.spec.ts declares only ` +
+        `${declared} tests — the gate would be permanently red. Lower the floor, or add the tests.`,
+    ).toBeLessThanOrEqual(declared);
+    // ...and it must not be vacuous either. A floor of 0 passes every run.
+    expect(floor, 'the Gate C floor was zeroed, which passes a run that skipped everything').toBeGreaterThan(0);
+  });
+});

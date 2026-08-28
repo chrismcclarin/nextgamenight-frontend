@@ -379,9 +379,22 @@ jobs:
           # script's own `catch` to log `err.name`/`err.message` instead of the whole
           # error object, which closes the remaining Sequelize error-object path at its
           # origin, backend-side.
-          node scripts/e2e-fixtures.js > /tmp/e2e-fixtures.out 2>&1 || { tail -40 /tmp/e2e-fixtures.out | sed 's/^E2E_FIXTURES_JSON=.*/E2E_FIXTURES_JSON=<redacted>/'; exit 1; }
+          #
+          # AMENDED by CR-05 (88.3-cr, code-adversarial-review 2026-08-27): the tail also
+          # drops every line beginning with `Executing (` — Sequelize's query log. Until
+          # now those lines never reached the tail, but only as a SIDE EFFECT of the
+          # backend's logger branch selection: CI sets DATABASE_URL (below), which picks
+          # `config/database.js`'s URL branch, whose custom logger drops any message
+          # containing SELECT/INSERT/UPDATE/DELETE. The DB_* branch in the same file logs
+          # with a bare `console.log`, and CI ALSO sets DB_HOST/DB_NAME/DB_USER — so a
+          # config move that dropped DATABASE_URL would start printing the fixture's
+          # `bulkCreate` INSERTs, with their single-use token nonces inlined, straight
+          # into a public Actions log. Bounded (MAGIC_TOKEN_SECRET here is a published
+          # throwaway against an ephemeral CI database), but the redaction must not depend
+          # on a decision made in another repo. It is now independent of it.
+          node scripts/e2e-fixtures.js > /tmp/e2e-fixtures.out 2>&1 || { tail -40 /tmp/e2e-fixtures.out | sed -e 's/^E2E_FIXTURES_JSON=.*/E2E_FIXTURES_JSON=<redacted>/' -e '/^Executing (/d'; exit 1; }
           JSON=$(grep -m1 '^E2E_FIXTURES_JSON=' /tmp/e2e-fixtures.out | sed 's/^E2E_FIXTURES_JSON=//')
-          [ -n "$JSON" ] || { echo "::error::e2e-fixtures emitted no marker line"; tail -40 /tmp/e2e-fixtures.out | sed 's/^E2E_FIXTURES_JSON=.*/E2E_FIXTURES_JSON=<redacted>/'; exit 1; }
+          [ -n "$JSON" ] || { echo "::error::e2e-fixtures emitted no marker line"; tail -40 /tmp/e2e-fixtures.out | sed -e 's/^E2E_FIXTURES_JSON=.*/E2E_FIXTURES_JSON=<redacted>/' -e '/^Executing (/d'; exit 1; }
           {
             echo "E2E_GROUP_ID=$(echo "$JSON" | jq -r .group_id)"
             echo "E2E_AVAILABILITY_TOKEN=$(echo "$JSON" | jq -r .availability_token)"
@@ -551,6 +564,22 @@ jobs:
           E2E_AUTH0_USER: ${{ secrets.E2E_AUTH0_USER }}
           E2E_AUTH0_PASS: ${{ secrets.E2E_AUTH0_PASS }}
         run: npx playwright test --project=setup --project=journeys --project=phone
+
+      # Phase 88.3-cr, CR-09: the pinned `--project=phone` above is what makes Gate C
+      # RUN, and the lockstep test in `src/lib/ci-grep-gate.fixture.test.ts` is what
+      # keeps that flag on the line. Neither can tell you the tests actually executed.
+      # Every Gate C test sits behind `test.skip(({ isMobile }) => !isMobile)`, and
+      # Playwright exits 0 on a run that skipped all of them — run 33138624128 reported
+      # "85 passed, 72 skipped" with nothing consuming the second number. Removing
+      # `isMobile: true` from the phone project, or inverting that predicate, silently
+      # zeroes the phase's ONLY rendered-pixel contrast gate while this job stays green.
+      # This step is the consumer. It reads the json reporter's output (see
+      # playwright.config.ts) and fails if fewer than the floor executed and passed.
+      # It runs on EVERY trigger this job runs on, workflow_dispatch included — there is
+      # no `if:` here on purpose, and adding one would exempt exactly the dispatch lane
+      # the phase's cross-repo merge-order proof depends on.
+      - name: Gate C executed-count floor — contrast.spec.ts must actually run in the phone project
+        run: node scripts/gate-c-executed-floor.mjs playwright-results.json
 
       - name: Upload Playwright failure evidence (excludes .auth/ — T-82-12)
         if: failure()
