@@ -1206,6 +1206,19 @@
   --color-btn-primary-bg: var(--purple-600);
   --color-btn-primary-hover: var(--purple-700);
   --color-btn-primary-text: #ffffff;
+  /* DECISION Phase 88.3-18 (owner ruling on Req 12 UAT test 4 / 11c(c), 2026-08-28): the accent
+     BUTTON vocabulary, minted so the Create-Event amber has a name instead of only a literal.
+     Owner: "The Share game qr button still looks odd. Lets make it amber, like the create event
+     button." Declared with IDENTICAL values in light and in `.dark` on purpose — the Create-Event
+     button this matches uses the same amber in both themes (`groupHomePage/page.js:798-804`), so
+     the theme-equality IS the design, and declaring it in both blocks lets Gate A pin it as an
+     equality (the idiom `--color-bg-accent-subtle-strong` already uses).
+     MEASURED 2026-08-28 via `src/lib/wcag.ts`: white on amber-700 **5.0216** (AA ✓); on hover,
+     white on amber-800 **7.0900**. The full rationale, both call sites and the 1.4.11 note live at
+     the `.btn-accent` rule below. */
+  --color-btn-accent-bg: var(--amber-700);
+  --color-btn-accent-hover: var(--amber-800);
+  --color-btn-accent-text: #ffffff;
   /* Phase 88.3-14 (owner ruling 2): the fill moves warm-100 -> warm-200 and hover warm-200 ->
      warm-300. warm-100 was BYTE-IDENTICAL to `--color-bg-page`, which is why the button vanished on
      a page in the Req 12 phone UAT. Every measured ratio and six rejected alternatives are in the
@@ -1564,6 +1577,14 @@
   --color-btn-primary-bg: var(--purple-600);
   --color-btn-primary-hover: var(--purple-500);
   --color-btn-primary-text: #ffffff;
+  /* Phase 88.3-18: BYTE-IDENTICAL to the light arm, deliberately. The Create-Event button this
+     matches carries one inline amber in both themes, so the accent CTA is theme-invariant by
+     design; Gate A asserts the cross-theme equality so a future "dark needs its own amber" edit
+     reds rather than silently splitting the two CTAs apart in one theme. Full marker at
+     `.btn-accent`. */
+  --color-btn-accent-bg: var(--amber-700);
+  --color-btn-accent-hover: var(--amber-800);
+  --color-btn-accent-text: #ffffff;
   --color-btn-secondary-bg: var(--purple-800);
   --color-btn-secondary-hover: var(--purple-700);
   --color-btn-secondary-text: var(--warm-200);
@@ -1937,6 +1958,77 @@ body {
 
 .btn-primary:hover:not(:disabled) {
   background-color: var(--color-btn-primary-hover);
+}
+
+/* DECISION Phase 88.3-18 (owner ruling on Req 12 UAT test 4 / 11c(c), 2026-08-28): the Share Game
+   QR button takes the Create-Event amber, expressed ONCE as a class over
+   `--color-btn-accent-*` — REJECTED: a second inline `var(--amber-700)` literal in
+   `EventDayModal`, which would have made "the amber CTA colour" live in two unrelated files with
+   nothing tying them together.
+
+   BOTH CALL SITES, NAMED so a future reader restyling one can see there is a second:
+     - `EventDayModal.js:289`  — the instance the owner actually ruled on (HUMAN-UAT test 4).
+     - `gameDetail/page.js:1601` — a byte-identical TWIN, verified 2026-08-28: same
+       `btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5` recipe (plus `shrink-0`), same
+       QR path, same `title="Share Game QR"`, same `Loading...` / `Share Game QR` label.
+   BOTH move. REJECTED: leaving the twin on `.btn-secondary` and routing it to 88.6's `Button`
+   migration — shipping the SAME-NAMED control in two treatments is the consistency debt the
+   milestone tenet forbids leaving un-owned, and the divergence would have been live through the
+   owner's final re-check, which is exactly when it would be seen. It is a one-line revert if the
+   owner vetoes it, and it is on his re-check list as its own item.
+
+   THE CREATE-EVENT BUTTON IS DELIBERATELY **NOT** RE-POINTED AT THIS RULE.
+   `groupHomePage/page.js:798-804` carries a prior in-file decision — "The inline fill STAYS: `.btn`
+   sets no background of its own, and moving this to a class is a separate decision (Phase 88.6's
+   `Button`)" — and moving it is not byte-equivalent anyway (inline `style` vs a class changes
+   cascade and specificity, and the OI-6 marker's border reasoning hangs off it). Overriding a
+   recorded decision silently is forbidden. So this phase ACCEPTS a routed duplication: two
+   expressions of one amber until 88.6's `Button` migration converges them, persisted at
+   `.planning/deferred/phase-88.6.md`.
+
+   THE FOCUS RING IS APPLIED PER-SITE, NOT AS A `.btn:focus-visible` RULE — also deliberate.
+   `globals.css` declares ZERO `:focus` / `:focus-visible` selectors (grep-verified 2026-08-28), so
+   adding one here would be a shared-surface change across 119 `btn btn-*` call sites, only 4 of
+   which carry a focus string today. That is 88.6's `Button` migration and is routed to the SAME
+   deferral entry as the fill duplication. Both call sites therefore carry the house string
+   `focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring
+   focus-visible:ring-offset-2` verbatim — the Create-Event idiom (`groupHomePage/page.js:794`),
+   also at `EventDayModal.js:219`, `CalendarMonthView.js:164`, `KebabMenu.js:125` and
+   `FeedbackButton.js:229`.
+
+   ⚠ MEASUREMENT CORRECTION, recorded because the plan's own ledger got this ground wrong. Plan 18
+   task 2(b) cited `--color-focus-ring` vs "the accent fill" at **3.6294** as covering this button.
+   That figure is purple-700 against `--color-accent` (amber-500) — Gate A test 25d — NOT against
+   this rule's fill. Re-measured 2026-08-28: purple-700 on amber-700 is **1.5522**, below Req 7's
+   3.0 floor. It does not matter, and here is why, stated so nobody "fixes" it: the ring is drawn
+   with `ring-offset-2`, so the visible indicator sits 2px OUTSIDE the button on the SURROUNDING
+   ground — the white card (`EventDayModal.js:219`'s panel and `gameDetail/page.js:1592`'s `.card`)
+   — where purple-700 measures **7.7948**. Req 7 clears on the card ground, not on the fill. The
+   Create-Event button this copies has exactly the same geometry and the same numbers.
+
+   FILL-VS-TINT IS NOT A 1.4.11 FAILURE, and this sentence exists so a bare number does not invite
+   a "fix". amber-700 measures **2.6042 (Wine) - 2.7576 (Forest)** against the eight t = 0.70 group
+   tints. That is a MEASUREMENT, not a near-miss: the control is identified by its 5.02:1 white text
+   label, and the Understanding doc for Non-text Contrast says outright that the criterion "does not
+   require that controls have a visual boundary indicating the hit area", so a filled button's
+   boundary is exempt; 3:1 is the bar for INPUTS, where the box IS the affordance. See
+   `.planning/research/LIGHT-MODE-SECONDARY-BUTTONS-SURVEY-2026-08-27.md:155-161`, which already
+   made exactly this call for the secondary button. NO BORDER IS ADDED, on purpose. Darkening the
+   fill or adding a border to chase 3.0 re-opens the owner's ruling, whose whole content is WHICH
+   AMBER this button wears.
+
+   SUPERSEDED: plan 88.3-16's verify-only figures for this button (fill 1.3948-1.4770, border
+   1.1414-1.2086) describe a `.btn-secondary` treatment this rule REMOVES. Do not carry them forward.
+
+   Adding a second inline amber, or re-pointing either call site back to `.btn-secondary`, is a
+   decision, not a cleanup — and the two source-scan pins in `tokenContrast.test.ts` will red. */
+.btn-accent {
+  background-color: var(--color-btn-accent-bg);
+  color: var(--color-btn-accent-text);
+}
+
+.btn-accent:hover:not(:disabled) {
+  background-color: var(--color-btn-accent-hover);
 }
 
 /* DECISION Phase 88.3-14 (owner ruling 2, 2026-08-27, research-checked): `.btn-secondary` gets an

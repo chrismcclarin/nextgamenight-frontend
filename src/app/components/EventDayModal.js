@@ -286,10 +286,28 @@ export default function EventDayModal({
                           <button
                             onClick={(e) => handleShowGameQR(e, event)}
                             disabled={gameQRLoading && qrEventId === event.id}
-                            className="mt-2 btn btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
+                            /* DECISION Phase 88.3-18 (owner ruling on Req 12 UAT test 4 / 11c(c),
+                               2026-08-28): `btn-secondary` -> `btn-accent`. Owner: "The Share game
+                               qr button still looks odd. Lets make it amber, like the create event
+                               button." The amber lives ONCE, in the `.btn-accent` rule over
+                               `--color-btn-accent-*` — REJECTED: a second inline
+                               `var(--amber-700)` literal here. White on amber-700 = 5.0216 (AA);
+                               hover white on amber-800 = 7.0900. `font-semibold` and the house
+                               focus-ring string match the Create-Event button this copies
+                               (`groupHomePage/page.js:794,798-804`); the ring is applied PER-SITE
+                               rather than as `.btn:focus-visible`, which would be a 119-call-site
+                               change belonging to 88.6. A byte-identical TWIN of this button lives
+                               at `gameDetail/page.js:1601` and moved in the same commit — one
+                               control, one treatment. Full marker at the `.btn-accent` rule. */
+                            className="mt-2 btn btn-accent font-semibold text-xs px-3 py-1.5 inline-flex items-center gap-1.5 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                             title="Share Game QR"
                           >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            {/* Decorative: the visible "Share Game QR" / "Loading..." label already
+                                gives this button its accessible name, so the icon is hidden from AT
+                                rather than announced as a stray image before the label. House
+                                convention — the sibling at `invite/game/[token]/page.js:210` carries
+                                the same pair. */}
+                            <svg className="w-3.5 h-3.5" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
                               <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
                             </svg>

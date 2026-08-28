@@ -1094,4 +1094,107 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       '88.3-18 ruling 1c — DISCLOSED: light --color-text-secondary and --color-badge-member-text are both warm-700 on purpose. If this reds, one of them moved — decide, do not deduplicate',
     ).toBe(resolve('light', '--color-badge-member-text'));
   });
+
+  // ===================================================================================
+  // Phase 88.3-18 — the amber Share Game QR button (owner ruling on Req 12 UAT test 4 / 11c(c))
+  // ===================================================================================
+
+  it('45. 88.3-18 — the `--color-btn-accent-*` family resolves in both themes, is theme-EQUAL, and its label clears 4.5', () => {
+    // Theme-equality is asserted, not assumed: the Create-Event button this treatment matches
+    // carries ONE inline amber in both themes, so the accent CTA is theme-invariant BY DESIGN. A
+    // future "dark needs its own amber" edit reds here rather than silently splitting the two CTAs
+    // apart in one theme. Same idiom as test 41's dark byte-equalities.
+    for (const key of ['--color-btn-accent-bg', '--color-btn-accent-hover', '--color-btn-accent-text']) {
+      const light = resolve('light', key);
+      const dark = resolve('dark', key);
+      expect(light, `88.3-18 — light ${key} resolved to "${light}"`).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(dark, `88.3-18 — ${key} must be BYTE-EQUAL across themes; the accent CTA is theme-invariant by design (the Create-Event button it matches uses one amber in both)`).toBe(light);
+    }
+    expectRatio('light', '--color-btn-accent-text', '--color-btn-accent-bg', 4.5, '88.3-18 / white on amber-700 (5.0216)');
+    expectRatio('light', '--color-btn-accent-text', '--color-btn-accent-hover', 4.5, '88.3-18 / white on amber-800 hover (7.0900)');
+    expectRatio('dark', '--color-btn-accent-text', '--color-btn-accent-bg', 4.5, '88.3-18 / white on amber-700 (dark arm, identical)');
+  });
+
+  it('46. 88.3-18 — the `.btn-accent` RULE exists exactly once and is UNLAYERED', () => {
+    // A token pin alone does not hold a treatment: a rule declared inside `@layer` would be beaten
+    // by `.btn { border: none }` and its siblings the same way a border utility is, so "the tokens
+    // resolve" would read as coverage while nothing was painted.
+    //
+    // ⚠️ COMMENTS ARE STRIPPED BEFORE COUNTING, and that is load-bearing. The `DECISION Phase
+    // 88.3-18` marker at that rule NAMES `.btn-accent` in prose several times, so an unfiltered
+    // count self-invalidates the moment the marker lands (the project's grep-gate hygiene rule —
+    // the same trap `darkChromeLegibility.test.ts`'s header documents at a 10/1/2-vs-7/0/1 census).
+    const hits = [...MASKED.matchAll(/\.btn-accent[ \t]*\{/g)];
+    expect(
+      hits.length,
+      `88.3-18 — expected exactly ONE \`.btn-accent {\` declaration in globals.css (comments stripped), found ${hits.length}`,
+    ).toBe(1);
+    // Brace depth 0 at the rule == top level == unlayered.
+    const before = MASKED.slice(0, hits[0].index);
+    const depth = (before.match(/\{/g) ?? []).length - (before.match(/\}/g) ?? []).length;
+    expect(
+      depth,
+      `88.3-18 — \`.btn-accent\` is nested at brace depth ${depth}; it MUST be unlayered (depth 0), beside \`.btn-primary\`. The \`@utility card\` guardrail names \`.btn\` and \`.btn-*\` as blocks that must stay unlayered`,
+    ).toBe(0);
+    // ...and it must read the tokens rather than carrying a literal.
+    const rule = RAW.slice(RAW.indexOf('.btn-accent {'));
+    expect(rule.slice(0, 200), '88.3-18 — `.btn-accent` must read var(--color-btn-accent-bg), not an amber literal').toContain('var(--color-btn-accent-bg)');
+  });
+
+  it('47. 88.3-18 — BOTH Share Game QR buttons carry `btn-accent` with no inline colour (source scan on the BUTTON\'S OWN SLICE)', () => {
+    // WHY A SOURCE SCAN AND NOT ONLY TOKEN PINS: a future edit back to `btn btn-secondary`, or a
+    // second inline `var(--amber-700)` literal — precisely the alternative the `.btn-accent` marker
+    // REJECTS — passes every token assertion above without reddening anything. Every other
+    // treatment this phase shipped is backed by a house source scan; this one would have had none.
+    //
+    // A PIN THAT READ ONLY THE MODAL COULD NOT SEE THE TWIN, which is how the divergence would have
+    // survived every gate. Both files are read.
+    //
+    // ⚠️ THE NEGATIVE ASSERTIONS ARE SCOPED TO THE BUTTON'S SLICE ON PURPOSE — a file-level version
+    // reds on day one. `EventDayModal.js:239` already carries
+    // `backgroundColor: groupBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent'` — the
+    // group-background-image wash on the event row, verified 2026-08-28, unrelated to this button
+    // and out of scope by construction. A file-wide "no backgroundColor literal" pin would fail
+    // against that line, and the predictable reaction is to weaken or delete the pin — leaving the
+    // thing it exists for with no mechanical backing at all. Do NOT "fix" `:239`; it is not ours.
+    const SITES = [
+      { rel: 'components/EventDayModal.js', file: path.join(__dirname, 'components', 'EventDayModal.js') },
+      { rel: 'gameDetail/page.js', file: path.join(__dirname, 'gameDetail', 'page.js') },
+    ];
+    for (const { rel, file } of SITES) {
+      const src = fs.readFileSync(file, 'utf8');
+
+      // Cut the button's own JSX out first: find the title, walk BACK to the nearest preceding
+      // `<button`, walk FORWARD to the next `</button>`.
+      const titleIdx = src.indexOf('title="Share Game QR"');
+      expect(titleIdx, `88.3-18 — no \`title="Share Game QR"\` found in ${rel}; the LOCATOR is broken, not the treatment. This must fail loudly rather than pass on an empty slice`).toBeGreaterThan(-1);
+      const openIdx = src.lastIndexOf('<button', titleIdx);
+      expect(openIdx, `88.3-18 — no \`<button\` precedes \`title="Share Game QR"\` in ${rel}; LOCATOR failure`).toBeGreaterThan(-1);
+      const closeIdx = src.indexOf('</button>', titleIdx);
+      expect(closeIdx, `88.3-18 — no \`</button>\` follows \`title="Share Game QR"\` in ${rel}; LOCATOR failure`).toBeGreaterThan(-1);
+      const rawSlice = src.slice(openIdx, closeIdx);
+      expect(rawSlice.length, `88.3-18 — the Share Game QR button slice in ${rel} came back empty; a zero-length slice would make every assertion below pass vacuously`).toBeGreaterThan(50);
+
+      // ⚠️ COMMENTS ARE STRIPPED, for the same reason test 46 strips them — and this one is not
+      // hypothetical, it RED on first run. The `DECISION Phase 88.3-18` marker that sits INSIDE
+      // this button's opening tag necessarily quotes the strings the negatives forbid: it names
+      // `btn-secondary` as the value replaced and quotes the owner saying "make it amber". An
+      // unfiltered slice therefore fails against the very marker that explains the treatment, and
+      // the predictable reaction is to weaken the pin. Both JSX `{/* … */}` comments and bare
+      // `/* … */` attribute comments are removed; the ASSERTIONS then read only rendered code.
+      const slice = rawSlice.replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ');
+
+      expect(slice, `88.3-18 — the Share Game QR button in ${rel} must carry \`btn btn-accent\` (owner: "Lets make it amber, like the create event button")`).toContain('btn btn-accent');
+      expect(slice, `88.3-18 — the Share Game QR button in ${rel} must NOT carry \`btn-secondary\`; reverting it is a decision, not a cleanup`).not.toContain('btn-secondary');
+      expect(slice, `88.3-18 — the Share Game QR button in ${rel} must NOT carry an inline \`backgroundColor\`; the amber lives ONCE in the \`.btn-accent\` rule`).not.toContain('backgroundColor');
+      expect(slice, `88.3-18 — the Share Game QR button in ${rel} must NOT name an amber literal inline`).not.toContain('amber');
+      expect(slice, `88.3-18 — the Share Game QR button in ${rel} must carry the house focus-visible ring string, like the Create-Event button it copies`).toContain('focus-visible:ring-focus-ring');
+      expect(slice, `88.3-18 — the Share Game QR button's decorative icon in ${rel} must be hidden from AT; the visible label already names the control`).toContain('aria-hidden="true"');
+
+      // File-level: exactly one `btn btn-accent` per file, so a THIRD untreated copy of this
+      // control cannot appear alongside the treated one.
+      const count = (src.match(/btn btn-accent/g) ?? []).length;
+      expect(count, `88.3-18 — expected exactly ONE \`btn btn-accent\` in ${rel}, found ${count}. A second copy of this control must take the same treatment, not a new one`).toBe(1);
+    }
+  });
 });
