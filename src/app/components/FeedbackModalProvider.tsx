@@ -148,7 +148,12 @@ export function FeedbackModalProvider({ children }: { children: ReactNode }) {
   // preventDefault(), suppressing Radix's own fallback: focus landed on <body>
   // and the keyboard user was stranded. So: focus FIRST, then prevent the
   // default ONLY if the focus actually landed. On the failure path the event
-  // stays unprevented and Radix restores focus itself. This is a strict
+  // stays unprevented and Radix runs its own fallback — which, honestly stated
+  // (88.3 code-adversarial-review run 4, 2026-08-28), is `previouslyFocusedElement
+  // ?? document.body`; the previously-focused nav row is inside the panel
+  // `Header.js` marks inert and is itself `md:hidden` past the breakpoint, so on
+  // that path focus still lands on <body>. The reorder does not RECOVER that
+  // tablet-rotation edge case; it stops the common path from being made worse. This is a strict
   // improvement on the FAB path too — the FAB is always focusable, so the guard
   // never fires there. Reordering these two lines, or dropping the
   // `document.activeElement` check, is a decision, not a cleanup.

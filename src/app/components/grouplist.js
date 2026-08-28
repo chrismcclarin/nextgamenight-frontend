@@ -479,6 +479,11 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                     figures is a DECISION — it wants its own owner ruling and its
                     own look on a phone — not a cleanup. */}
                 <div className={`border-t border-line pt-3 [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] ${cardTextBold ? 'font-semibold' : ''}`}>
+                  {/* LIMIT Phase 88.3-cr M1 (2026-08-28): these two rows use the THEME token on the
+                      tinted arm, not the ground-derived `--t-color` the title above forks on. Correct
+                      for all eight shipped presets (all dark; `colorUtils.test.ts` pins it); a stored
+                      LIGHT hex would paint near-white on light in dark mode. Registered in
+                      `.planning/deferred/phase-88.6.md` and cross-referenced from phase-88.3.1.md. */}
                   <div className={`flex flex-wrap items-baseline gap-x-2 text-sm ${tinted ? 'text-content-primary' : 'text-content-secondary'}`}>
                     <span><strong className="text-content-primary">Last Game:</strong> {lastGame?.name || 'None'}</span>
                     <span className={`text-xs ${tinted ? 'text-content-primary' : 'text-content-muted'}`}>

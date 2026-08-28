@@ -195,8 +195,6 @@ export default function EventDayModal({
                   rowSubtitleTreatment(ground),
                   rowSubtitleTreatment(tinted),
                 );
-                const rowLabel = `${event.Game?.name || 'Game Night'} - ${event.Group?.name || 'Unknown Group'}`;
-
                 return (
                   /* DECISION Phase 88.3 (R3-C, owner ruling 2026-08-25): this
                      row is keyboard-operable, matching the shipped shape at
@@ -208,8 +206,8 @@ export default function EventDayModal({
                      AMENDED Phase 88.3 code-adversarial-review run 3 (H1, owner
                      ruling (a) 2026-08-28): the KEYBOARD target is the TITLE
                      BLOCK below, not this card. The card keeps a pointer-only
-                     `onClick`; `role="button"` / `tabIndex` / `aria-label` /
-                     `onKeyDown` live on the title `<div>`. Why: the card
+                     `onClick`; `role="button"` / `tabIndex` / `onKeyDown` live on
+                     the title `<div>` (NO aria-label — see the note there). Why: the card
                      CONTAINS a native "Share Game QR" `<button>` (upcoming
                      events). With the handler on the card, Enter on that button
                      bubbled up, was `preventDefault()`ed and navigated to the
@@ -269,7 +267,14 @@ export default function EventDayModal({
                           <div
                             role="button"
                             tabIndex={0}
-                            aria-label={rowLabel}
+                            /* NO aria-label, deliberately (88.3 code-adversarial-review run 4,
+                               2026-08-28): on a role="button" an explicit label REPLACES the
+                               name computed from the subtree, and the <p> below is the only
+                               place the START TIME is rendered — the one field that tells two
+                               events on the same day apart. The name is therefore computed
+                               from the <h4> + <p> content ("Catan Tuesday Crew - 7:00 PM"),
+                               exactly as CalendarListView's EventRow does. Pinned by
+                               EventDayModal.test.tsx (name must contain a clock time). */
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault();
@@ -298,7 +303,11 @@ export default function EventDayModal({
                             </span>
                           )}
                         </div>
-                        <div className="flex gap-4 mt-2 text-sm text-content-muted">
+                        {/* 88.3 UI-REVIEW (2026-08-28) fix 1: `text-content-muted` (warm-600) reads
+                            3.4-3.6:1 on the eight light tints — an AA miss. Forked to primary on the
+                            tinted arm (9.3-9.9:1), the same fork grouplist.js's "Last Game" row uses.
+                            Pinned by groupColourRendering.test.ts test 24. */}
+                        <div className={`flex gap-4 mt-2 text-sm ${tinted ? 'text-content-primary' : 'text-content-muted'}`}>
                           {event.duration_minutes && (
                             <span>Duration: {event.duration_minutes} min</span>
                           )}

@@ -40,7 +40,8 @@ const upcomingEvent = {
   Group: { name: 'Tuesday Crew', background_color: null },
 };
 const selectedDay = { date: future, events: [upcomingEvent] };
-const rowLabel = 'Catan - Tuesday Crew';
+// The row's accessible name is computed from content (no aria-label): game, group AND time.
+const rowName = /Catan.*Tuesday Crew.*\d{1,2}:\d{2}/;
 
 describe('EventDayModal — nested Share Game QR button vs the keyboard-operable row (88.3 H1)', () => {
   beforeEach(() => {
@@ -57,7 +58,7 @@ describe('EventDayModal — nested Share Game QR button vs the keyboard-operable
 
   it('exposes BOTH controls to AT: the row (by its label) and the nested Share button', () => {
     renderModal();
-    expect(screen.getByRole('button', { name: rowLabel })).toBeTruthy();
+    expect(screen.getByRole('button', { name: rowName })).toBeTruthy();
     expect(screen.getByRole('button', { name: /share game qr/i })).toBeTruthy();
   });
 
@@ -84,7 +85,7 @@ describe('EventDayModal — nested Share Game QR button vs the keyboard-operable
   it('Enter on the row (title block) opens the event and does NOT fetch a QR', async () => {
     const { onEventClick } = renderModal();
     const user = userEvent.setup();
-    screen.getByRole('button', { name: rowLabel }).focus();
+    screen.getByRole('button', { name: rowName }).focus();
     await act(async () => { await user.keyboard('{Enter}'); });
     expect(onEventClick).toHaveBeenCalledTimes(1);
     expect(onEventClick).toHaveBeenCalledWith(upcomingEvent);
@@ -93,7 +94,7 @@ describe('EventDayModal — nested Share Game QR button vs the keyboard-operable
 
   it('the Share button is NOT a descendant of the role="button" row (children-presentational guard)', () => {
     renderModal();
-    const row = screen.getByRole('button', { name: rowLabel });
+    const row = screen.getByRole('button', { name: rowName });
     const share = screen.getByRole('button', { name: /share game qr/i });
     expect(row.contains(share)).toBe(false);
   });

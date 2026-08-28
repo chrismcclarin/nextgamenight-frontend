@@ -564,8 +564,8 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
           // Anchored on the accessible name, not on "the next <div" — the next div is the
           // background wash overlay, and a line-order anchor would silently test that.
           const inner = src.slice(expr.end);
-          const nameAt = inner.indexOf('aria-label={rowLabel}');
-          expect(nameAt, `${at}: no element after the card carries aria-label={rowLabel} — the inner keyboard target is gone`).toBeGreaterThan(-1);
+          const nameAt = inner.indexOf('role="button"');
+          expect(nameAt, `${at}: no element after the card carries role="button" — the inner keyboard target is gone`).toBeGreaterThan(-1);
           const innerOpen = inner.lastIndexOf('<div', nameAt);
           // The tag's own `>` is the first one AFTER its className attribute — the handler
           // in between contains `=>`, which a naive first-`>` search would stop on.
@@ -573,9 +573,12 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
           expect(classAt, `${at}: the inner keyboard target has no className (it needs the focus ring)`).toBeGreaterThan(-1);
           const classEnd = inner.indexOf('"', classAt + 'className="'.length);
           const innerTag = inner.slice(innerOpen, inner.indexOf('>', classEnd) + 1);
-          for (const need of ['role="button"', 'tabIndex={0}', 'aria-label={rowLabel}', 'onKeyDown', 'focus-visible:ring-focus-ring']) {
+          for (const need of ['role="button"', 'tabIndex={0}', 'onKeyDown', 'focus-visible:ring-focus-ring']) {
             expect(innerTag, `${at}: the INNER keyboard target (title block) lost ${need}`).toContain(need);
           }
+          // Run-4 H1 (2026-08-28): NO aria-label on the title block — it would replace the
+          // content-computed name and silence the start time rendered in the <p>.
+          expect(innerTag, `${at}: the inner keyboard target must NOT carry aria-label (it silences the time)`).not.toContain('aria-label=');
           expect(innerTag, `${at}: the inner handler must fire on Enter and Space`).toMatch(/'Enter'[\s\S]*' '/);
           expect(innerTag, `${at}: the inner handler must stopPropagation so the card onClick does not double-fire`).toContain('stopPropagation');
           continue;
@@ -1188,5 +1191,19 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       allowListed,
       'the owner-ruling-B day cell must still be present and still be the pointer-only shape this exception describes',
     ).toBe(1);
+  });
+
+  it('24. the day-modal row\'s Duration line forks its ink on the tint (88.3 UI-REVIEW fix 1)', () => {
+    // `text-content-muted` (warm-600) reads 3.4-3.6:1 on the eight light tints — an AA
+    // miss the 2026-08-28 UI audit found. The fix is the same fork grouplist.js's
+    // "Last Game" row already carries; this pins it at the one site that lacked it.
+    const src = code('app/components/EventDayModal.js');
+    const at = src.indexOf('Duration: {event.duration_minutes}');
+    expect(at, 'EventDayModal.js: the Duration line is gone').toBeGreaterThan(-1);
+    const open = src.lastIndexOf('<div', at);
+    const tag = src.slice(open, src.indexOf('>', open) + 1);
+    expect(tag, 'EventDayModal.js: the Duration line must fork to text-content-primary on the tinted arm').toContain(
+      "${tinted ? 'text-content-primary' : 'text-content-muted'}",
+    );
   });
 });
