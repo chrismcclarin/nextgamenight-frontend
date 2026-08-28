@@ -524,7 +524,47 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                    identity is genuinely visible at t = 0.70 — at the
                    previously-ruled 0.87 the eight measured 1.01:1 pairwise and
                    a visible marker would have been mandatory. A decision, not a
-                   cleanup. */
+                   cleanup.
+
+                   DECISION Phase 88.3-cr (CR-14, code-adversarial-review
+                   2026-08-27): SELECTION and FOCUS are now two different
+                   affordances, chosen OVER the shipped shape where the SELECTED
+                   swatch wore `ring-2 ring-focus-ring` — the app's focus idiom —
+                   while the swatch that actually HAD focus showed only the
+                   browser default outline. A sighted keyboard user tabbing
+                   across the eight saw a permanent "focus ring" on a swatch that
+                   was not focused, and no ring on the one that was. Not a WCAG
+                   2.4.7 failure (the default outline satisfies it), which is why
+                   it is LOW — but it is the app's own vocabulary saying the
+                   wrong word.
+                     - FOCUS takes the project string, byte-identical to the one
+                       the group-page header CTAs and both calendar tiles carry.
+                     - SELECTION takes `border-content-primary ring-2
+                       ring-content-primary`: a flush, high-contrast frame. Focus
+                       stays an OFFSET ring, so the two differ in geometry as
+                       well as colour, in both themes.
+                   REJECTED — `ring-accent`, the obvious pick and the one the
+                   review suggested. MEASURED with `src/lib/wcag.ts` against the
+                   rendered t = 0.70 grounds: amber-500 `#f59e0b` scores
+                   1.11-1.18:1 against the eight light tints and 2.15:1 against
+                   the light card. Both are under WCAG 1.4.11's 3:1 for a state
+                   indicator, i.e. a selection ring you cannot see in light mode.
+                   The same measurement condemns the OLD `border-accent` — which
+                   is exactly why the shipped design needed the focus-ring token
+                   to do the visible work, and how the conflation happened.
+                   `content-primary` measures 17.97:1 vs the light card,
+                   9.32-9.87:1 vs the eight tints, 13.06:1 vs the dark card and
+                   12.89-15.47:1 vs the eight raw presets — clear on every
+                   ground the swatch can have, in both themes.
+                   ALSO REJECTED — distinguishing the two by hue alone. In DARK
+                   `--color-focus-ring` is amber-400 and `--color-accent` is
+                   amber-500 (1.29:1 apart): an accent selection ring would read
+                   as "permanently focused" all over again, one shade off.
+                   ALSO REJECTED — a check glyph, which would be the strongest
+                   separation available. Owner ruling R2-2 above rejected exactly
+                   that, and this finding is not a reason to re-open it: the
+                   ruling was about swatch IDENTITY being visible at t = 0.70,
+                   and it still is. A decision, not a cleanup. */
                 const swatchTinted = lightTintGroupBackgroundColor(color.value);
                 const swatchGround = swatchTinted ? color.value : null;
                 const isSelected = backgroundColor === color.value && !backgroundImageUrl;
@@ -532,8 +572,8 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                   <button
                     key={index}
                     onClick={() => handleSelectDefaultColor(color.value)}
-                    className={`p-4 border-2 rounded-lg hover:opacity-80 transition-opacity ${
-                      isSelected ? 'border-accent ring-2 ring-focus-ring' : 'border-line'
+                    className={`p-4 border-2 rounded-lg hover:opacity-80 transition-opacity focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+                      isSelected ? 'border-content-primary ring-2 ring-content-primary' : 'border-line'
                     } ${swatchTinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
                     style={{
                       ...(swatchTinted && {
