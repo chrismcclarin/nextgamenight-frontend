@@ -11,9 +11,23 @@ import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
 function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, timezone }) {
     return (
+        // DECISION Phase 88.3-17 (DEF-88.3-13-04, owner ruling A, 2026-08-27): the whole
+        // game card is one <Link>, and it gains the project focus ring. FOUND BY THE
+        // GATE, NOT BY THE PLAN: plan 88.3-17 Task 2(A) enumerated five unringed
+        // group-page focusables from a hand census and named this file among the
+        // "already correct — do not re-ring" set on the strength of its three BUTTONS.
+        // The widened five-file scan that same task mandates (test 22 in
+        // `groupColourRendering.test.ts`) found a sixth site: this card-sized tab stop,
+        // which had no ring at all and therefore painted the browser default — exactly
+        // the "readable on some items, and not readable on others" the owner reported
+        // page-wide in UAT test 8c. It is ringed here rather than dispositioned PARTIAL
+        // because it takes the same idiom as its three sibling buttons with no new
+        // mechanism. `ring-offset-2` over `ring-inset`: this is a card in a vertical
+        // list with `space-y` between rows, so an outset ring has room and reads as a
+        // card outline rather than an inner line at 375px.
         <Link
             href={`/gameDetail?game_id=${encodeURIComponent(game.id)}&group_id=${encodeURIComponent(groupId)}`}
-            className="block card p-3 md:p-6 hover:shadow-theme-lg transition-shadow hover:border-line-accent"
+            className="block card p-3 md:p-6 hover:shadow-theme-lg transition-shadow hover:border-line-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
         >
             <div className="flex items-start gap-4">
                 <SafeImage

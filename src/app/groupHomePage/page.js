@@ -433,9 +433,21 @@ function GroupHomePage(){
         // src/app/layout.js. Nested mount removed so NotificationBell +
         // friends/page consume the same receivedRequests state.
         <div className="p-4 md:p-6">
-            {/* Breadcrumbs */}
+            {/* Breadcrumbs.
+                DECISION Phase 88.3-17 (DEF-88.3-13-04, owner ruling A, 2026-08-27):
+                the Home link gains the project focus ring, the same string the tab
+                bar below and the header CTAs carry. It is included because the
+                owner's finding was PAGE-WIDE — "when tabbing around the screen like
+                this it's a blue circle, which is readable on some items, and not
+                readable on others" — and a sweep scoped to the calendar would have
+                closed the finding on a narrower surface than it was reported on,
+                leaving this tab stop still painting the browser default. It is the
+                FIRST tab stop on the group page, so it is the first thing that
+                default outline paints on. Chosen OVER a global `a:focus-visible`
+                rule in `globals.css`: that would repaint every link in the app from
+                inside a phase that has no rendered gate on most of them. */}
             <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
-                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
+                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
                 <span className="text-content-muted mx-2">{'>'}</span>
                 <span className="text-content-primary font-semibold wrap-break-word">{Group?.name || 'Group'}</span>
             </nav>

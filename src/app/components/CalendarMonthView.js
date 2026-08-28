@@ -113,11 +113,34 @@ export default function CalendarMonthView({
 }) {
   return (
     <>
-      {/* Month Navigation */}
+      {/* Month Navigation.
+          DECISION Phase 88.3-17 (DEF-88.3-13-04, owner ruling A, 2026-08-27):
+          all three controls in this row gain the project focus ring — the SAME
+          four-utility string the two event tiles below and the three group-page
+          header CTAs already carry, chosen OVER minting a nav-specific
+          treatment. Not decoration: the owner's phone UAT (test 8c)
+          reported "when tabbing around the screen like this it's a blue circle,
+          which is readable on some items, and not readable on others. I wasn't
+          sure I tabbed to today until I hit enter." That blue circle is the
+          BROWSER DEFAULT outline, and it painted here because `.btn` defines no
+          `focus-visible` style and there is no global one (recorded verbatim at
+          `groupHomePage/page.js`'s marker), so these three controls had no ring at
+          all. `ring-*` compiles to `box-shadow`, so it survives the unlayered
+          `.btn { border: none }` that eats border utilities on the two `.btn`
+          sites. `ring-offset-2` over `ring-inset`: these are free-standing
+          controls inside the calendar card's 12px phone padding, not full-bleed
+          rows, so the offset has room at 375px and reads better on the small
+          "Go to Today" text link.
+          WHY NO GATE CAUGHT THIS: a MISSING focus style produces a browser
+          default, which no contrast probe reads as a failure, and
+          `focusAndMotionTreatment.test.ts` only ever forbade VISIBLE bare
+          `focus:` treatments — it never required a ring on every focusable.
+          Task 2(B) of this plan adds that positive scan across the five
+          group-page render-tree files. Removing a ring here reds it. */}
       <div className="flex justify-between items-center mb-4">
         <button
           onClick={() => onNavigateMonth(-1)}
-          className="btn btn-primary"
+          className="btn btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
         >
           &larr; Previous
         </button>
@@ -132,14 +155,14 @@ export default function CalendarMonthView({
           )}
           <button
             onClick={onGoToday}
-            className="text-sm text-content-link hover:text-content-link-hover mt-1"
+            className="text-sm text-content-link hover:text-content-link-hover mt-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
           >
             Go to Today
           </button>
         </div>
         <button
           onClick={() => onNavigateMonth(1)}
-          className="btn btn-primary"
+          className="btn btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
         >
           Next &rarr;
         </button>

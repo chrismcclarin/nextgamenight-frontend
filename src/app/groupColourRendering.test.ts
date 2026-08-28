@@ -195,6 +195,90 @@ function functionBody(src: string, name: string): string {
   return src.slice(open, braceEnd(src, open) + 1);
 }
 
+/**
+ * Every JSX OPENING TAG in a file, with its raw attribute text.
+ *
+ * Added Phase 88.3-17 for the focusable-needs-a-ring scan (DEF-88.3-13-04). A grep
+ * cannot do this job for the same three reasons the rest of this phase's guards are
+ * scanners: every `className` in this repo sits on a different line from its opening
+ * tag (grep is line-based), attribute values contain `{...}` groups with nested
+ * literals and `>` characters, and the tokens involved are quoted inside DECISION
+ * markers all over these files (hence `withoutComments` on every caller).
+ *
+ * Walks attributes with the same `literalEnd` / `braceEnd` pair the rest of this file
+ * uses, so a `>` inside `onClick={() => f(a > b)}` or inside a string does not end the
+ * tag early.
+ */
+function openTags(src: string): { line: number; tag: string; attrs: string }[] {
+  const out: { line: number; tag: string; attrs: string }[] = [];
+  for (const m of src.matchAll(/<([A-Za-z][A-Za-z0-9_.]*)/g)) {
+    const from = m.index ?? 0;
+    let i = from + m[0].length;
+    const attrStart = i;
+    let end = -1;
+    while (i < src.length) {
+      const ch = src[i];
+      if (ch === '"' || ch === "\'" || ch === '`') {
+        i = literalEnd(src, i) + 1;
+        continue;
+      }
+      if (ch === '{') {
+        i = braceEnd(src, i) + 1;
+        continue;
+      }
+      if (ch === '>') {
+        end = i;
+        break;
+      }
+      i += 1;
+    }
+    if (end < 0) continue;
+    out.push({ line: lineAt(src, from), tag: m[1], attrs: src.slice(attrStart, end) });
+  }
+  return out;
+}
+
+/**
+ * The group-page RENDER TREE, per owner ruling A (2026-08-27).
+ *
+ * The owner's UAT test 8c finding was PAGE-WIDE — "when tabbing around the screen like
+ * this it's a blue circle, which is readable on some items, and not readable on others"
+ * — so a scan scoped to `CalendarMonthView.js` would close DEF-88.3-13-04 on a narrower
+ * surface than it was reported on. These are the five files the group page actually
+ * mounts.
+ *
+ * The FLOOR is the anti-vacuity half, counted on 2026-08-27 against the shipped tree.
+ * Without it, a refactor that moved every focusable out of these files into a new
+ * component would shrink the scanned population to zero and stay green forever, which
+ * is the failure mode this phase's gate ledger records fifteen times.
+ */
+const RING_SCAN_FILES: { file: string; floor: number }[] = [
+  { file: 'app/groupHomePage/page.js', floor: 7 },
+  { file: 'app/components/EventCalendar.js', floor: 1 },
+  { file: 'app/components/CalendarMonthView.js', floor: 5 },
+  { file: 'app/components/CalendarListView.js', floor: 2 },
+  { file: 'app/components/GroupGamesList.js', floor: 8 },
+];
+
+/**
+ * Tags whose ring comes from the PRIMITIVE'S OWN base class, not from a utility at the
+ * call site. Asserted once against the primitive itself in test 22 rather than requiring
+ * a redundant `focus-visible:ring-*` at every usage — a call-site requirement here would
+ * be duplicated styling that can drift out of step with the primitive.
+ *
+ * This is an EXEMPTION, recorded as a decision so it reads as one rather than as a hole:
+ * adding a name to this set removes real coverage and must be paid for by a matching
+ * assertion against that primitive's base class.
+ */
+const RING_BEARING_PRIMITIVES = new Set(['Button', 'SelectControl', 'KebabMenu']);
+
+/** Where each exempted primitive's own ring lives, so the exemption is PAID FOR. */
+const PRIMITIVE_RING_SOURCE: Record<string, string> = {
+  Button: 'components/ui/Button.tsx',
+  SelectControl: 'components/ui/Input.tsx',
+  KebabMenu: 'app/components/KebabMenu.js',
+};
+
 /** The mutual-exclusion ternary, as it must appear in a className expression. */
 const EXCLUSION_TERNARY =
   /\?\s*'bg-\[var\(--group-ground-light\)\][^']*'\s*:\s*'([^']*)'/;
@@ -951,5 +1035,95 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
           `(the hard-coded status colours it replaces measured 3.55-4.56 here and FAILED)`,
       ).toBeGreaterThanOrEqual(4.5);
     }
+  });
+  it('22. EVERY focusable in the group-page render tree carries a project focus ring (DEF-88.3-13-04, owner ruling A)', () => {
+    // The primitive exemption, PAID FOR rather than asserted. Each exempted tag is
+    // COUNTED toward its file's floor (so the exemption cannot be used to shrink the
+    // population) and then skipped, on the strength of the primitive's own base class
+    // being checked here. Requiring a redundant `focus-visible:ring-*` at every call
+    // site instead would be duplicated styling that drifts out of step with the
+    // primitive. Adding a name to RING_BEARING_PRIMITIVES removes real coverage and must
+    // be paid for by an entry here — that is the deal, and it is a decision, not a hole.
+    for (const [tag, rel] of Object.entries(PRIMITIVE_RING_SOURCE)) {
+      expect(
+        code(rel),
+        `<${tag}> is exempted at its call sites only because ${rel} carries the ring in its own base class`,
+      ).toContain('focus-visible:ring-');
+    }
+    expect(
+      Object.keys(PRIMITIVE_RING_SOURCE).sort(),
+      'every exempted primitive must name where its ring comes from',
+    ).toEqual([...RING_BEARING_PRIMITIVES].sort());
+
+    const offenders: string[] = [];
+    let scanned = 0;
+    for (const { file, floor } of RING_SCAN_FILES) {
+      const src = code(file);
+      let found = 0;
+      for (const { line, tag, attrs } of openTags(src)) {
+        const isAnchor = tag === 'a' && /\bhref\s*=/.test(attrs);
+        const isFocusable =
+          tag === 'button' ||
+          tag === 'Link' ||
+          isAnchor ||
+          RING_BEARING_PRIMITIVES.has(tag) ||
+          /\btabIndex=\{0\}/.test(attrs);
+        if (!isFocusable) continue;
+        found += 1;
+        if (RING_BEARING_PRIMITIVES.has(tag)) continue;
+        if (!attrs.includes('focus-visible:ring-')) {
+          offenders.push(`${file}:${line} <${tag}> has no focus-visible:ring-* class`);
+        }
+      }
+      scanned += found;
+      // Anti-vacuity, per file: counted 2026-08-27 on the shipped tree.
+      expect(
+        found,
+        `${file} should expose at least ${floor} focusables — a lower count means the population moved out of this file and the scan above is passing on a shrunken set`,
+      ).toBeGreaterThanOrEqual(floor);
+    }
+    // A browser-default outline is what a MISSING ring paints, and no contrast probe
+    // reads that as a failure — which is why this finding survived every gate until a
+    // human tabbed the page. This is the positive statement that was missing.
+    expect(offenders).toEqual([]);
+    // Total anti-vacuity floor: 23 focusables across the five files, counted 2026-08-27
+    // (page.js 7, EventCalendar 1, CalendarMonthView 5, CalendarListView 2,
+    // GroupGamesList 8 — primitives included).
+    expect(scanned, 'the five-file scan must see a real population').toBeGreaterThanOrEqual(23);
+  });
+
+  it('23. no clickable bare <div> in the month view is unfocusable, except the day cell owner ruling B accepted', () => {
+    const src = code('app/components/CalendarMonthView.js');
+    const offenders: string[] = [];
+    let allowListed = 0;
+    for (const { line, tag, attrs } of openTags(src)) {
+      if (tag !== 'div') continue;
+      if (!/\bonClick\s*=/.test(attrs)) continue;
+      // ALLOW-LISTED BY NAME: the day CELL, identified by the one handler only it calls.
+      // Owner ruling B, 2026-08-27: "accept as is" for Phase 88.3 — after plans 16/17 a
+      // keyboard user can open an EVENT tile from the month grid but never the DAY modal
+      // (which hosts the Share-game-QR button) nor create an event from an empty day.
+      // Recorded as accepted-for-now and OWNED BY PHASE 88.6 (DEF-88.3-R1-01, receiving
+      // entry `.planning/deferred/phase-88.6.md`, "[a11y] Calendar day CELL has no
+      // keyboard path"). Plan 88.3-16 adding no keyboard path to it is deliberate, not a
+      // miss. An allow-listed exception with the ruling cited beside it is DISCLOSED; an
+      // un-scanned element is a hole. Removing the ruling without removing this entry
+      // would leave the gate lying — the entry is the disclosure.
+      if (attrs.includes('onDayClick(date, dayEvents)')) {
+        allowListed += 1;
+        continue;
+      }
+      if (!/\brole\s*=/.test(attrs) || !/\btabIndex\s*=/.test(attrs)) {
+        offenders.push(`CalendarMonthView.js:${line} clickable <div> with no role/tabIndex`);
+      }
+    }
+    expect(offenders).toEqual([]);
+    // Vacuity: the allow-listed cell must still BE there. If the day cell is ever given a
+    // keyboard path (88.6's job), this reds and the exception gets deleted with its
+    // deferred entry — which is the point.
+    expect(
+      allowListed,
+      'the owner-ruling-B day cell must still be present and still be the pointer-only shape this exception describes',
+    ).toBe(1);
   });
 });

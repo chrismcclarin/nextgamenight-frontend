@@ -192,9 +192,22 @@ export default function EventCalendar({
         <h2 className="text-2xl font-bold text-content-primary">{title}</h2>
         {showListView && (
           <div className="flex gap-2">
+            {/* DECISION Phase 88.3-17 (DEF-88.3-13-04, owner ruling A, 2026-08-27):
+                the List/Month toggle gains the project focus ring. This is the
+                control the owner named twice in the phone UAT — test 4 ("List view
+                on the calendar doesn't read as a button to me") and test 8c(i) —
+                and plan 88.3-16 Task 1(C) measured its RESTING treatment
+                verify-only (it inherits `.btn-secondary`'s plan-14 fill + border:
+                warm-200 fill 1.31:1 on the white card, warm-300 edge 1.22:1 on the
+                fill), leaving its FOCUS state the one half nothing had touched.
+                `.btn` defines no `focus-visible` style and there is no global one,
+                so until now this painted the browser default. `ring-*` compiles to
+                `box-shadow` and therefore survives the unlayered
+                `.btn { border: none }`; a `focus-visible:border-*` would not.
+                Pinned by the five-file scan in `groupColourRendering.test.ts`. */}
             <button
               onClick={() => setViewMode(viewMode === 'month' ? 'list' : 'month')}
-              className="btn btn-secondary text-sm"
+              className="btn btn-secondary text-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             >
               {viewMode === 'month' ? 'List View' : 'Month View'}
             </button>
