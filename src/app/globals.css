@@ -340,6 +340,10 @@
      every other surface — theme key here, runtime property `--color-bg-accent-subtle` in the
      :root/.dark blocks, so the two names never collide. */
   --color-surface-accent-subtle: var(--color-bg-accent-subtle);
+  /* Phase 88.3-14 (owner ruling 3): the one-step-darker invite / empty-state circle ground,
+     bridged as `bg-surface-accent-subtle-strong`. A separate PAIR, never a re-point of the shared
+     token above — the DECISION marker at the runtime declaration says why. */
+  --color-surface-accent-subtle-strong: var(--color-bg-accent-subtle-strong);
 
   /* content   (tailwind.config.js:41-48) */
   --color-content-primary: var(--color-text-primary);
@@ -354,6 +358,9 @@
      collision-breaker alias, which is why the nine-key alias family further down is not extended. */
   --color-content-accent: var(--color-accent-text);
   --color-content-accent-hover: var(--color-accent-text-hover);
+  /* Phase 88.3-14 (owner ruling 3): the matching one-step-darker glyph ink, bridged as
+     `text-content-accent-strong`. Pairs with `--color-surface-accent-subtle-strong` above. */
+  --color-content-accent-strong: var(--color-accent-text-strong);
   /* Phase 88.3 (Req 6 / OI-1 Option B, UI-SPEC §9.4): the status-as-TEXT keys. ADDITIVE — the
      plan-09 sweep of the 134 `text-status-{x}` sites is their only consumer, which is the whole
      point of Option B: the shared `--color-status-{x}` key keeps the BORDER and solid-fill
@@ -393,6 +400,15 @@
   --color-line-strong: var(--color-border-strong);
   --color-line-accent: var(--color-border-accent);
   --color-line-header: var(--color-border-header);
+  /* Phase 88.3-14 (owner ruling 2): the SECONDARY-CONTROL ring, bridged so `ring-line-control` /
+     `border-line-control` exist for plan 16's JSX consumers. A third border name for a third job
+     with a third band (1.20-1.57:1, the shipped neutral-border range) — deliberately not
+     `--color-line` (the card hairline) and deliberately not `--color-line-strong` (the 3:1
+     input-box edge). The key name differs from the runtime property `--color-border-control`, so
+     neither joins the nine-key `--color-X: var(--color-X)` collision family documented further
+     down and neither needs an alias. Full DECISION marker above the `.btn-secondary` rule. */
+  --color-line-control: var(--color-border-control);
+  --color-line-control-hover: var(--color-border-control-hover);
 
   /* btn       (tailwind.config.js:92-99) -- 4 collision keys, aliased */
   --color-btn-primary: var(--color-btn-primary-bg);
@@ -650,6 +666,28 @@
      error). The values are UI-SPEC §9.1's: light amber-100, dark a warm amber-over-purple-900
      literal with no palette step to point at. */
   --color-bg-accent-subtle: var(--amber-100);
+  /* DECISION Phase 88.3-14 (owner ruling 3, 2026-08-27): the invite / empty-state circle PAIR gets
+     its OWN token pair, one palette step darker each — ground `amber-200`, glyph `amber-900`
+     (declared at `--color-accent-text-strong` below), measured 2026-08-27 via `src/lib/wcag.ts` at
+     **7.28:1**. The owner's words at Req 12 UAT test 5: "You might want to darken it by 1 step when
+     you darken the circle by 1 step, just to keep them good." DISCLOSED, not claimed as a pass: the
+     circle's own edge against a white card goes 1.11:1 -> **1.25:1**. It is still a TINT, not a
+     boundary, and it is not asserted as one.
+     REJECTED — re-pointing the SHARED `--color-bg-accent-subtle` above to amber-200. That is
+     precisely the alternative the DECISION marker directly below already measured and rejected on a
+     ~13-consumer census: "A one-surface pick must not repaint nine unrelated surfaces." This is a
+     NEW pair specifically so that rejection survives rather than being quietly reversed.
+     REJECTED — reusing `--color-accent-text-hover` for the glyph, even though it carries the
+     IDENTICAL light hex (`amber-900`). A HOVER pole doing RESTING duty makes hover and rest
+     indistinguishable on the one element that has both. The shared hex is the price of keeping two
+     jobs named apart, not a duplication to deduplicate.
+     REJECTED — an `amber-700` glyph-only token, which the owner closed on 2026-08-27 when he
+     accepted look-change (b).
+     The DARK arm is BYTE-IDENTICAL to the shared tokens' dark values BY CONSTRUCTION (`#3a3320` and
+     `var(--amber-500)`), so dark renders unchanged; Gate A pins that as an EQUALITY, not a ratio,
+     so a future dark edit to one and not the other reds. Collapsing this pair back onto the shared
+     tokens is a decision, not a cleanup. */
+  --color-bg-accent-subtle-strong: var(--amber-200);
   /* DECISION Phase 88.1 (plan 15, Req 8): the TODAY-marker tint gets its own runtime token at ARM
      B's measured strength — light `amber-200`, dark `#513902` (the `.dark` declaration below) —
      chosen OVER the two alternatives the owner's pick left on the table:
@@ -766,6 +804,11 @@
      8.01 on the page; dark amber-400 is byte-identical to today's dark hover. Deleting this as
      "not in the spec" re-opens that regression — a decision, not a cleanup. */
   --color-accent-text-hover: var(--amber-900);
+  /* Phase 88.3-14 (owner ruling 3): the GLYPH half of the accent-circle-strong pair. Same hex as
+     `--color-accent-text-hover` directly above ON PURPOSE — the full DECISION marker at
+     `--color-bg-accent-subtle-strong` names that reuse as a rejected alternative and says why a
+     hover pole must not do resting duty. Deduplicating these two names re-opens that rejection. */
+  --color-accent-text-strong: var(--amber-900);
 
   /* Borders */
   /* DECISION Phase 88-01 (D-34 / UI-SPEC §5.5 FINDING-1, §10.2): the HAIRLINE contrast fix is
@@ -955,9 +998,20 @@
   --color-btn-primary-bg: var(--purple-600);
   --color-btn-primary-hover: var(--purple-700);
   --color-btn-primary-text: #ffffff;
-  --color-btn-secondary-bg: var(--warm-100);
-  --color-btn-secondary-hover: var(--warm-200);
+  /* Phase 88.3-14 (owner ruling 2): the fill moves warm-100 -> warm-200 and hover warm-200 ->
+     warm-300. warm-100 was BYTE-IDENTICAL to `--color-bg-page`, which is why the button vanished on
+     a page in the Req 12 phone UAT. Every measured ratio and six rejected alternatives are in the
+     DECISION marker above the `.btn-secondary` rule below; changing these two values without
+     reading it will red Gate A. */
+  --color-btn-secondary-bg: var(--warm-200);
+  --color-btn-secondary-hover: var(--warm-300);
   --color-btn-secondary-text: var(--warm-800);
+  /* Phase 88.3-14 (owner ruling 2): the secondary-control RING and its hover step. Bridged as
+     `ring-line-control` / `border-line-control` in `@theme inline` above. Dark is `transparent`
+     (declared in `.dark`, not omitted, so the 1px is unconditional and the theme toggle shifts
+     nothing). Full DECISION marker above `.btn-secondary`. */
+  --color-border-control: var(--warm-300);
+  --color-border-control-hover: var(--warm-400);
 
   /* Success / Error / Warning (functional -- not palette-themed) */
   --color-success: #16a34a;
@@ -1163,6 +1217,11 @@
      the status tints: an `rgba()` amber over the card would shift with whatever sits behind it.
      See the full DECISION marker at the light declaration above. */
   --color-bg-accent-subtle: #3a3320;
+  /* Phase 88.3-14 (owner ruling 3): the dark half of the accent-circle-strong pair, copied
+     VERBATIM from `--color-bg-accent-subtle` directly above so dark renders byte-identically. That
+     duplication is the deliverable, not an oversight — ruling 3 is LIGHT-ONLY. Gate A asserts the
+     equality. Full rationale at the light declaration. */
+  --color-bg-accent-subtle-strong: #3a3320;
   /* DECISION Phase 88.1 (plan 15, Req 8) — ARM B's dark value, MEASURED 2026-08-21
      (`.planning/deferred/phase-88.1.md:68-73`) and REUSED here, never re-derived: it is twice
      `#3a3320`'s delta from the purple-900 card, the same step `amber-100 -> amber-200` makes in
@@ -1191,6 +1250,9 @@
   --color-on-accent: var(--purple-950);
   --color-accent-text: var(--amber-500);
   --color-accent-text-hover: var(--amber-400);
+  /* Phase 88.3-14 (owner ruling 3): copied VERBATIM from `--color-accent-text` two lines above —
+     NOT from `-hover` — so the dark glyph is byte-identical to today's. Gate A asserts it. */
+  --color-accent-text-strong: var(--amber-500);
 
   --color-border: var(--purple-700);
   /* DECISION Phase 88-01 (D-34): darkened one step for the 1.4.11 hairline floor — see the full
@@ -1220,6 +1282,13 @@
   --color-btn-secondary-bg: var(--purple-800);
   --color-btn-secondary-hover: var(--purple-700);
   --color-btn-secondary-text: var(--warm-200);
+  /* Phase 88.3-14 (owner ruling 2): ruling 2 is LIGHT-ONLY. Dark `.btn-secondary` is `purple-800`
+     on a `purple-900` page and already carries a tonal edge, so both control-edge tokens resolve to
+     `transparent` here. DECLARED rather than omitted on purpose: that keeps the 1px border
+     unconditional, so toggling the theme cannot shift layout by a pixel. The dark trio above is
+     byte-UNCHANGED and Gate A pins it. Full rationale above the `.btn-secondary` rule. */
+  --color-border-control: transparent;
+  --color-border-control-hover: transparent;
 
   --color-success: #22c55e;
   --color-error: #ef4444;
@@ -1580,13 +1649,101 @@ body {
   background-color: var(--color-btn-primary-hover);
 }
 
+/* DECISION Phase 88.3-14 (owner ruling 2, 2026-08-27, research-checked): `.btn-secondary` gets an
+   edge the way shipped light modes ACTUALLY do it — a FILL that differs from its ground, plus a
+   1.22:1 hairline RING on top. Not a 3:1 border.
+
+   WHY. The owner ran the Req 12 UAT on a physical phone on 2026-08-27; tests 4 and 7 failed with
+   "I can read the words, but I can't see a button there." The cause is in the tokens, not the
+   markup: light `--color-btn-secondary-bg` was `var(--warm-100)`, BYTE-IDENTICAL to
+   `--color-bg-page`, so on a page the button had no fill contrast at all — and `.btn { border:
+   none }` above had already removed its only other cue.
+
+   TAKEN, every ratio MEASURED 2026-08-27 from the literal hexes via `src/lib/wcag.ts`:
+     - fill `--color-btn-secondary-bg` warm-100 -> **warm-200** `#e8e0d8`: **1.15:1** vs the
+       warm-100 page, **1.31:1** vs a white card. It can never equal the page again.
+     - hover fill warm-200 -> **warm-300** `#d6cbc0`. Required, not cosmetic: leaving hover at
+       warm-200 would make hover byte-identical to rest.
+     - ring `--color-border-control` = **warm-300**: **1.22:1** on the fill, 1.41:1 vs the page,
+       1.60:1 vs a white card. Hover ring `--color-border-control-hover` = warm-400, **1.45:1** on
+       the hover fill.
+     - label `--color-btn-secondary-text` (warm-800) on the new fill: **11.51:1**.
+   All of it sits inside the bands measured across 13 shipped design systems in
+   `.planning/research/LIGHT-MODE-SECONDARY-BUTTONS-SURVEY-2026-08-27.md`: neutral borders
+   1.20-1.57:1, fill-vs-ground 1.06-1.29:1.
+
+   MECHANISM. The `border` is declared on `.btn-secondary` ITSELF, unlayered, AFTER `.btn { border:
+   none }`. An unlayered rule of equal specificity declared later WINS — so `.btn`'s reset stays
+   BYTE-UNTOUCHED and nothing is re-layered. The `@utility card` guardrail below names `.btn` and
+   `.btn-*` as blocks that MUST STAY unlayered; this ADDS a declaration to one of them, it does not
+   move one. Preflight's `box-sizing: border-box` means the 1px eats padding rather than growing the
+   box, so the D-36 phone `min-height: 2.75rem` floor is unaffected; and because the border is
+   declared UNCONDITIONALLY with a `transparent` dark value, the theme toggle cannot shift layout.
+
+   REJECTED — `--color-border-strong`, OR ANY >=3:1 NEUTRAL EDGE. This is the substitution the first
+   version of this plan made, and the research check killed it. Of 13 shipped design systems, **ZERO**
+   put a >=3:1 neutral border on a neutral fill; the entire shipped neutral band is **1.20-1.57**
+   (Geist 1.20, shadcn 1.26, Polaris 1.26, Chakra 1.27, Primer 1.34, Ant 1.41, Fluent 1.53, Radix
+   surface 1.57; Radix's own "strong" step is 1.92). warm-500 here measures **3.15:1 on this fill**,
+   3.63:1 on the page and 4.11:1 on a white card — above every neutral border in the survey — and
+   would read as an INPUT BOX. WCAG 1.4.11's own Understanding text says a control "does not require
+   a visual boundary indicating the hit area". The three surveyed systems that DO ship >=3:1 borders
+   (M3 outlined 4.33, Carbon tertiary 5.00, Bootstrap 4.69) all use the BRAND ACCENT as the stroke
+   on a TRANSPARENT fill, where the border IS the button's identity. warm-400 is defensible only as
+   the hover/pressed ring step — which is exactly where this marker puts it (Radix's a7 -> a8
+   pattern, 1.57 -> 1.92). Gate A pins the ring UNDER 1.60 so this rejection cannot be reversed by
+   an editor who thinks a stronger edge is an improvement.
+
+   REJECTED — A FILL THAT FLIPS BY PARENT SURFACE (warm-100 on a card, white on the page), which is
+   what the survey's own §5 recommends as two variants. A `.btn-secondary` rule that has to know
+   what it is sitting on is fragile: there is no reliable selector for "am I on a card or on the
+   page", it would need a `data-` attribute contract at 29 call sites, and the `data-ground`
+   selector idea was already rejected once in this phase (`groupHomePage/page.js:610-613`).
+   TAKEN INSTEAD: ONE fill, warm-200, that differs from BOTH grounds. The honest trade-off, stated
+   rather than buried: 1.31 vs a white card is ~0.02 ABOVE the top of the survey's observed
+   fill-vs-ground range (M3 tonal 1.29) — our fill reads very slightly heavier on a card than any
+   peer's. That is the price of not branching on the ground, and it was paid deliberately.
+
+   DISCLOSED, NOT REJECTED — A THIRD GROUND WHERE THE FILL IS 1.00:1 AGAIN. `--color-bg-card-hover`
+   is ALSO `var(--warm-200)`, and in this codebase it is a RESTING container surface (member chips,
+   compact month tiles, today cells), not only a hover state. Census 2026-08-27: **7 of the 19
+   non-test files** carrying `btn-secondary` also carry `bg-surface-card-hover` —
+   `FriendInvitePanel.js`, `GroupSettings.js`, `ManageMembers.js`, `NotificationBell.js`,
+   `friends/page.js`, `gameDetail/page.js`, `userProfile/page.js`. On that surface the fill
+   contributes NOTHING and the 1.22:1 ring is the only cue. This is NOT a regression — today the
+   fill equals the PAGE and there is no ring at all — and Gate A pins it with a byte-EQUALITY row so
+   it cannot drift unnoticed. Do NOT "fix" it by moving the fill: a third value reaches all 29 call
+   sites and needs the whole re-measurement above. The disclosure IS the deliverable here.
+
+   REJECTED — `box-shadow: inset 0 0 0 1px`. Viable, and it is the mechanism plan 16 must use for
+   `.btn` elements that carry utilities — but an unlayered `box-shadow` HERE would silently cancel
+   any `shadow-theme-*` utility a call site declares. Verified rather than assumed:
+   `grep -rn 'btn-secondary' src | grep -i shadow` returned **0** across all call sites (2026-08-27).
+
+   REJECTED — a `border-*` UTILITY at the call sites. Dead on arrival: `.btn { border: none }` above
+   is unlayered and beats every `@layer utilities` rule regardless of specificity.
+
+   REJECTED — restoring the resting shadow. Req 3 / OI-2 is an owner ruling and the owner
+   RE-CONFIRMED the no-shadow half on 2026-08-27. The fix is a fill and an edge, not a shadow.
+
+   REJECTED — re-layering `.btn`. That is 88.6's 119-site `Button` migration, guarded by the
+   `@utility card` marker below. This plan ships an INTERIM edge; 88.6 still owns the model, and
+   `.planning/deferred/phase-88.6.md` is amended to say so with these numbers.
+
+   DARK IS DELIBERATELY INERT: both control-edge tokens are `transparent` in `.dark`, and the dark
+   trio (`purple-800` / `purple-700` / `warm-200`) is byte-unchanged. The ruling is LIGHT-ONLY.
+
+   Changing the fill, deleting the ring, or "strengthening" it to `border-strong` is a decision, not
+   a cleanup — and Gate A will go red. */
 .btn-secondary {
   background-color: var(--color-btn-secondary-bg);
   color: var(--color-btn-secondary-text);
+  border: 1px solid var(--color-border-control);
 }
 
 .btn-secondary:hover:not(:disabled) {
   background-color: var(--color-btn-secondary-hover);
+  border-color: var(--color-border-control-hover);
 }
 
 .btn-danger {

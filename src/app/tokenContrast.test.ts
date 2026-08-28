@@ -779,4 +779,139 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expectRatio('light', '--color-btn-primary-text', '--color-btn-primary-bg', 4.5, '§5.11 row 47');
     expectRatio('light', '--color-text-primary', '--color-bg-elevated', 4.5, '§5.11 row 49');
   });
+
+  // ===================================================================================
+  // Phase 88.3-14 — owner rulings 2 and 3, closed at the token layer after the Req 12
+  // phone UAT. APPENDED, never renumbered: rows 32-41 are new coverage, not a re-cut of
+  // Reqs 1-8. Every band below comes from a 2026-08-27 survey of shipped design systems
+  // (`.planning/research/LIGHT-MODE-SECONDARY-BUTTONS-SURVEY-2026-08-27.md`), not from a
+  // floor someone assumed.
+  // ===================================================================================
+
+  it('32. 88.3-14 / ruling 2 — the secondary fill is NOT its ground (the defect that started the ruling)', () => {
+    // An EQUALITY assertion, not a ratio, because the defect was byte-equality: light
+    // `--color-btn-secondary-bg` was `var(--warm-100)`, the same value as `--color-bg-page`,
+    // so on a page the button had no fill at all. The survey's headline finding is that a
+    // fill differing from its ground is the primary "this is a button" cue and that OUR
+    // 1.00:1 case was the only one in 13 systems.
+    const fill = resolve('light', '--color-btn-secondary-bg');
+    const page = resolve('light', '--color-bg-page');
+    const card = resolve('light', '--color-bg-card');
+    expect(fill, `88.3-14 ruling 2 — light --color-btn-secondary-bg (${fill}) must NOT be byte-equal to --color-bg-page (${page}); that equality IS the UAT defect`).not.toBe(page);
+    expect(fill, `88.3-14 ruling 2 — light --color-btn-secondary-bg (${fill}) must NOT be byte-equal to --color-bg-card (${card})`).not.toBe(card);
+  });
+
+  it('33. 88.3-14 / ruling 2 — the DISCLOSED third ground: the fill IS byte-equal to bg-card-hover, and only the ring separates them', () => {
+    // ⚠️ PINNED DISCLOSURE, NOT A PASS. `--color-bg-card-hover` is also `var(--warm-200)`, and
+    // in this codebase it is a RESTING container surface (member chips, compact month tiles,
+    // today cells), not only a hover state. Census 2026-08-27: 7 of the 19 non-test files
+    // carrying `btn-secondary` also carry `bg-surface-card-hover` (FriendInvitePanel,
+    // GroupSettings, ManageMembers, NotificationBell, friends/page, gameDetail/page,
+    // userProfile/page). On that ground the fill contributes NOTHING and the 1.22:1 ring is
+    // the sole cue.
+    //
+    // This is not a regression — before 88.3-14 the fill equalled the PAGE and there was no
+    // ring at all — but it contradicts the plan's headline "a fill that differs from its
+    // ground", so it is asserted rather than left for a reader to discover. A future edit that
+    // moves EITHER token reds this row and forces a re-decision instead of drifting silently.
+    // Do NOT "fix" it by moving the fill: a third value reaches all 29 `.btn-secondary` call
+    // sites and needs the whole re-measurement plan 88.3-14 performed.
+    const fill = resolve('light', '--color-btn-secondary-bg');
+    const cardHover = resolve('light', '--color-bg-card-hover');
+    expect(fill, `88.3-14 ruling 2 — DISCLOSED 1.00:1 ground: light --color-btn-secondary-bg (${fill}) and --color-bg-card-hover (${cardHover}) are the same value on purpose; the ring is the only cue there. If this row reds, one of them moved — that is a decision, not a cleanup`).toBe(cardHover);
+  });
+
+  it('34. 88.3-14 / ruling 2 — the fill sits inside the shipped fill-vs-ground band', () => {
+    // Survey band, observed across 13 systems: 1.06-1.29:1. Our page value (1.15) sits mid-band.
+    // Our CARD value (1.31) is the deliberate TOP-OF-RANGE pick — ~0.02 above M3 tonal's 1.29 —
+    // and it is the price of ONE fill instead of a fill that branches on its parent surface.
+    // The ceiling is 1.40 so that "top of range" cannot quietly become "a new tier".
+    expectRatio('light', '--color-btn-secondary-bg', '--color-bg-page', 1.05, '88.3-14 ruling 2 / fill band');
+    expectRatioBelow('light', '--color-btn-secondary-bg', '--color-bg-page', 1.4, '88.3-14 ruling 2 / fill band');
+    expectRatio('light', '--color-btn-secondary-bg', '--color-bg-card', 1.05, '88.3-14 ruling 2 / fill band');
+    expectRatioBelow('light', '--color-btn-secondary-bg', '--color-bg-card', 1.4, '88.3-14 ruling 2 / fill band');
+  });
+
+  it('35. 88.3-14 / ruling 2 — the ring sits inside the shipped neutral-border band, WITH an upper bound', () => {
+    // ⚠️ THE UPPER BOUND IS THE POINT OF THIS ROW. Of 13 shipped design systems, ZERO put a
+    // >=3:1 neutral border on a neutral fill, and the whole neutral band is 1.20-1.57 (Geist
+    // 1.20 ... Radix surface 1.57; Radix's "strong" step 1.92). A future editor "strengthening"
+    // this ring to `--color-border-strong` (warm-500 — 3.15:1 on this fill) MUST go red here and
+    // change the band as a named decision. Deleting or raising this ceiling re-creates the
+    // input-box look the survey rejects. `--color-border-strong` keeps the 3:1 tier (test 8);
+    // it is for INPUT boxes, where the box is the affordance.
+    expectRatio('light', '--color-border-control', '--color-btn-secondary-bg', 1.2, '88.3-14 ruling 2 / ring band');
+    expectRatioBelow('light', '--color-border-control', '--color-btn-secondary-bg', 1.6, '88.3-14 ruling 2 / ring band (upper bound is deliberate)');
+  });
+
+  it('36. 88.3-14 / ruling 2 — the ring reads on BOTH grounds the button sits on', () => {
+    expectRatio('light', '--color-border-control', '--color-bg-page', 1.2, '88.3-14 ruling 2 / ring vs page');
+    expectRatioBelow('light', '--color-border-control', '--color-bg-page', 2.0, '88.3-14 ruling 2 / ring vs page');
+    expectRatio('light', '--color-border-control', '--color-bg-card', 1.2, '88.3-14 ruling 2 / ring vs card');
+    expectRatioBelow('light', '--color-border-control', '--color-bg-card', 2.0, '88.3-14 ruling 2 / ring vs card');
+  });
+
+  it('37. 88.3-14 / ruling 2 — the label still clears 4.5:1 on the darker fill', () => {
+    // Moving a fill is exactly how a passing label quietly stops passing. warm-800 on warm-200
+    // measures 11.51, so there is enormous headroom — but the assertion is what keeps it true.
+    expectRatio('light', '--color-btn-secondary-text', '--color-btn-secondary-bg', 4.5, '88.3-14 ruling 2 / label on fill');
+  });
+
+  it('38. 88.3-14 / ruling 2 — hover is a real step, and its ring moves with it', () => {
+    const fill = resolve('light', '--color-btn-secondary-bg');
+    const hover = resolve('light', '--color-btn-secondary-hover');
+    expect(hover, `88.3-14 ruling 2 — light --color-btn-secondary-hover (${hover}) must differ from the resting fill (${fill}); leaving hover at warm-200 after the fill moved there would make hover indistinguishable from rest`).not.toBe(fill);
+    expectRatio('light', '--color-border-control-hover', '--color-btn-secondary-hover', 1.2, '88.3-14 ruling 2 / hover ring on hover fill');
+  });
+
+  it('39. 88.3-14 / ruling 2 — dark is INERT: both control-edge tokens are `transparent` and the dark trio is byte-unchanged', () => {
+    // `resolveRaw`, NOT `resolve`: `resolve()` accepts only `none`, `rgb(a)` or a hex and THROWS
+    // TokenContrastParseError on anything else, so calling it on `transparent` would be a throw
+    // rather than a readable failure. A transparent colour has no meaningful ratio; the
+    // assertion is on the declared text.
+    for (const prop of ['--color-border-control', '--color-border-control-hover']) {
+      const raw = resolveRaw('dark', prop);
+      expect(raw, `88.3-14 ruling 2 — dark ${prop} is "${raw}"; ruling 2 is LIGHT-ONLY, so dark must stay transparent. Declared rather than omitted so the 1px border is unconditional and the theme toggle shifts no layout`).toBe('transparent');
+    }
+    // ...and the dark `.btn-secondary` trio did not move while the light one did.
+    expect(resolve('dark', '--color-btn-secondary-bg'), '88.3-14 — dark --color-btn-secondary-bg must still be purple-800').toBe(resolve('dark', '--purple-800'));
+    expect(resolve('dark', '--color-btn-secondary-hover'), '88.3-14 — dark --color-btn-secondary-hover must still be purple-700').toBe(resolve('dark', '--purple-700'));
+    expect(resolve('dark', '--color-btn-secondary-text'), '88.3-14 — dark --color-btn-secondary-text must still be warm-200').toBe(resolve('dark', '--warm-200'));
+  });
+
+  it('40. 88.3-14 — the four new `@theme inline` bridge keys exist', () => {
+    // Without these keys Tailwind emits no utility and plan 88.3-16 has nothing to write into
+    // JSX. Same shape as test 14's bridge assertion, and this is the LOAD-BEARING proof that
+    // the bridges are real — a raw `grep -c` in globals.css would also count the comment lines
+    // the DECISION markers deliberately contain.
+    const theme = blockOf('theme');
+    for (const key of [
+      '--color-line-control',
+      '--color-line-control-hover',
+      '--color-surface-accent-subtle-strong',
+      '--color-content-accent-strong',
+    ]) {
+      expect(theme, `88.3-14 — \`@theme inline\` must expose ${key} or no utility is generated for it`).toMatch(
+        new RegExp(`${key}[ \\t]*:`),
+      );
+    }
+  });
+
+  it('41. 88.3-14 / ruling 3 — the accent-circle-strong pair clears its floors in light and is byte-identical in dark', () => {
+    // 4.5 AND the 3.0 graphical floor: the invite / empty-state circle glyph is a non-text
+    // graphical object under 1.4.11 (same shape as test 15), but amber-900 on amber-200
+    // measures 7.28 so it clears body-copy contrast too — assert both, so a future re-tint that
+    // drops below 4.5 while staying above 3.0 is still visible as a change.
+    expectRatio('light', '--color-accent-text-strong', '--color-bg-accent-subtle-strong', 4.5, '88.3-14 ruling 3 / glyph on the darker circle');
+    expectRatio('light', '--color-accent-text-strong', '--color-bg-accent-subtle-strong', 3.0, '88.3-14 ruling 3 / 1.4.11 graphical floor');
+    // Dark must not move. A byte-EQUALITY against the SHARED counterparts, not a ratio: a
+    // future dark-mode edit to one token and not the other reds here rather than silently
+    // splitting the two circles apart in dark only.
+    expect(resolve('dark', '--color-bg-accent-subtle-strong'), '88.3-14 ruling 3 — dark --color-bg-accent-subtle-strong must be byte-identical to the shared --color-bg-accent-subtle; ruling 3 is LIGHT-ONLY').toBe(resolve('dark', '--color-bg-accent-subtle'));
+    expect(resolve('dark', '--color-accent-text-strong'), '88.3-14 ruling 3 — dark --color-accent-text-strong must be byte-identical to the shared --color-accent-text; ruling 3 is LIGHT-ONLY').toBe(resolve('dark', '--color-accent-text'));
+    // ...and the SHARED light token was NOT re-pointed. That re-point is the alternative the
+    // `--color-bg-accent-subtle` DECISION marker rejected on a ~13-consumer census; this pair
+    // exists precisely so that rejection survives.
+    expect(resolve('light', '--color-bg-accent-subtle'), '88.3-14 ruling 3 — light --color-bg-accent-subtle must still be amber-100; re-pointing it to amber-200 repaints ~13 unrelated consumers and is the REJECTED alternative').toBe(resolve('light', '--amber-100'));
+  });
 });
