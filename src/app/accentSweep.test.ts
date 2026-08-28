@@ -173,11 +173,21 @@ describe('Req 4/5 accent sweep — every failing light-surface accent site reads
   it('4. the migration really happened — the positive floor on the destination token', () => {
     // Without this, DELETING the 27 sites would make test 1 pass. Floors sit below the real
     // 27 / 6 on purpose: adding an accent-text site is not a test edit, removing several is.
+    //
+    // AMENDED plan 88.3-16 (owner ruling 3, 2026-08-27): `text-content-accent-strong` counts
+    // toward the SAME floor. Seven of these sites — the six hand-rolled accent circles plus
+    // the `EmptyState` primitive — moved one palette step darker (amber-800 -> amber-900)
+    // alongside their circle ground, on the owner's instruction "darken it by 1 step when you
+    // darken the circle by 1 step". That is a move WITHIN this sweep's destination family, not
+    // a reversal of it, and the resting count fell 27 -> 20 without a single site regressing.
+    // Counting both tokens keeps the property this floor actually guards — deleting a migrated
+    // site still reds — while not making an owner-ruled colour step read as a deletion. The
+    // floor is deliberately NOT lowered: lowering it would have weakened the gate to fit.
     let resting = 0;
     let hover = 0;
     for (const file of MIGRATE_FILES) {
       const src = read(file);
-      resting += classUses(src, ['text-content-accent']).length;
+      resting += classUses(src, ['text-content-accent', 'text-content-accent-strong']).length;
       hover += classUses(src, ['text-content-accent-hover']).length;
     }
     expect(resting).toBeGreaterThanOrEqual(24);
