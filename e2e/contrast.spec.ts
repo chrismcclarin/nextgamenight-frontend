@@ -758,6 +758,58 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
         `expected ~0.15. This is the DARK-mode dim, distinct from the light-mode alpha-0 assertion.`
     ).toBeGreaterThan(0.1);
     expect(dim.alpha as number).toBeLessThan(0.2);
+
+    /*
+     * DECISION Phase 88.3-cr (CR-12, code-adversarial-review 2026-08-27):
+     * the dark arm's 10% WASH and its BLUR are measured HERE, in rendered pixels,
+     * chosen OVER leaving them pinned only as class strings.
+     *
+     * Req 9's dark "rendered-equivalent" acceptance names four properties — wash,
+     * ring, blur, dim. Three of the four were already rendered-pinned by this test
+     * (the control ratios above cover the ring's effect on legibility, the block
+     * above covers the dim). `dark:bg-white/10` and `dark:backdrop-blur-xs` were
+     * covered ONLY by `groupColourRendering.test.ts` tests 15/16, which are SOURCE
+     * SCANS: they prove the class is written, not that it survives the cascade,
+     * the `darkArm` guard, or a Tailwind compile. That is exactly the gap Gate C
+     * exists to close, and Req 9 read as if it were already closed.
+     *
+     * Manage Members is the site: it is the only edgeless secondary control, and
+     * the only one of the three that takes the wash (see the Req 9(c) amendment —
+     * the other two are amber-filled primaries).
+     *
+     * REJECTED: amending the SPEC acceptance to say "wash/blur pinned at the class
+     * layer" instead. That is the cheaper half of the fork and it makes the
+     * acceptance honest by lowering it, on the one property pair whose whole point
+     * is that the dark arm still looks deliberate.
+     *
+     * The alpha is asserted as a BAND, not `=== 0.1`: Tailwind 4 compiles
+     * `bg-white/10` to `color-mix(in oklab, …)`, Chromium serialises that as
+     * `color(srgb …)`, and the probe's canvas round-trip quantises to 1/255. An
+     * exact compare would be flaky by construction.
+     */
+    const manageMembers = headerControls(page)[0];
+    await expect(manageMembers.locator).toBeVisible({ timeout: 15_000 });
+    const wash = await probeElement(manageMembers.locator, ['background-color', 'backdrop-filter']);
+    const washBg = wash.computed['background-color'];
+    expect(
+      washBg.alpha,
+      `Req 9 (dark, Navy): Manage Members' background measured alpha ${washBg.alpha} ` +
+        `(raw ${JSON.stringify(washBg.raw)}), expected ~0.10 from \`dark:bg-white/10\`. ` +
+        `An alpha of ~0.80 means the LIGHT arm's \`bg-white/80\` is winning and the dark ` +
+        `fork is inert; ~0 means the wash is gone entirely and the control has no ground ` +
+        `of its own over the tinted header.`
+    ).toBeGreaterThan(0.04);
+    expect(washBg.alpha as number).toBeLessThan(0.2);
+    // `backdrop-filter` is not a colour, so the probe hands it back unnormalised in
+    // `raw` — which is what we want: any blur is correct, the absence of one is not.
+    const backdrop = wash.computed['backdrop-filter'].raw;
+    expect(
+      backdrop,
+      `Req 9 (dark, Navy): Manage Members' backdrop-filter is ${JSON.stringify(backdrop)}. ` +
+        `\`dark:backdrop-blur-xs\` must survive to the computed style — it is the half of ` +
+        `the treatment that does visible work over the translucent wash.`
+    ).not.toBe('none');
+    expect(backdrop).toMatch(/blur\(/);
   });
 
   test('event detail: the status token actually landed on the RSVP count (Req 6, dark)', async ({ page }) => {
