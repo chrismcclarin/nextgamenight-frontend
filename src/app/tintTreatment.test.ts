@@ -346,4 +346,133 @@ describe('D-32/D-33 tint treatment (Req 17)', () => {
     const dialog = fs.readFileSync(path.join(SRC, 'components/ui/dialog.tsx'), 'utf8');
     expect(dialog).toMatch(/bg-black\/80/);
   });
+
+  // -------------------------------------------------------------------------
+  // Plan 88.3-16 — owner ruling 3. Appended bare `it(`; nothing above renumbered.
+  //
+  // WHY IT IS HERE: six of the seven accent-circle sites are hand-rolled JSX that
+  // NO test asserts. Only `EmptyState.test.tsx` pins the primitive's class name,
+  // so reverting one invite circle to the shared pair reds nothing at all — the
+  // swap would rest on a one-off SUMMARY grep. This file already owns the
+  // shared-token assertions (test 4 above), so the census negative and the
+  // seven-site positive live together rather than drifting apart.
+  // -------------------------------------------------------------------------
+
+  it('8. all SEVEN accent circles are on the -strong pair, and the shared token census is untouched', () => {
+    const STRONG_BG = 'bg-surface-accent-subtle-strong';
+    const STRONG_TEXT = 'text-content-accent-strong';
+
+    // SEVEN CIRCLES IN FIVE FILES — not seven files. Two of the invite screens
+    // render the circle twice (a success branch and an error/info branch), so a
+    // per-FILE count of 7 is unsatisfiable on this tree and a `-l | wc -l` of 7
+    // could only be reached by inventing sites. Counts are therefore per file,
+    // and the TOTAL is the seven the owner's ruling covers.
+    //
+    // The primitive is listed apart from the hand-rolled four because its glyph
+    // comes from `Icon`, which already defaults to aria-hidden (Icon.tsx) — it
+    // needs no decorative marking and must not be given one here.
+    const PER_FILE: Record<string, number> = {
+      'app/invite/accept/page.js': 1,
+      'app/invite/group/[token]/page.js': 2,
+      'app/invite/game/[token]/page.js': 2,
+      'app/restore/group/[token]/page.tsx': 1,
+      'components/ui/EmptyState.tsx': 1,
+    };
+    const SEVEN = Object.keys(PER_FILE);
+
+    const code = (rel: string) => withoutComments(fs.readFileSync(path.join(SRC, rel), 'utf8'));
+
+    // (a) FILE COUNT, mechanically. `grep -rc` prints per-file counts, not a
+    // total, and this plan set deliberately adds token mentions in a DECISION
+    // marker and in `EmptyState.test.tsx` — so the count is taken over CODE
+    // (comments blanked) in non-test source files, which is what the tree will
+    // actually render. An executor must never "fix" a count by deleting a marker.
+    const carriers = sourceFiles(SRC).filter((f) => {
+      if (/\.test\.[jt]sx?$/.test(f)) return false;
+      return withoutComments(fs.readFileSync(f, 'utf8')).includes(STRONG_BG);
+    });
+    expect(
+      carriers.map((f) => path.relative(SRC, f)).sort(),
+      'the seven accent-circle sites did not move together — the owner ruled the pair moves as a pair',
+    ).toEqual([...SEVEN].sort());
+
+    // (b) the per-file occurrence counts, their total, and the PAIR moving together.
+    let total = 0;
+    for (const rel of SEVEN) {
+      const src = code(rel);
+      const hits = (src.match(new RegExp(STRONG_BG, 'g')) ?? []).length;
+      expect(hits, `${rel}: wrong number of circle classNames carrying ${STRONG_BG}`).toBe(
+        PER_FILE[rel],
+      );
+      total += hits;
+
+      for (const chunk of stringChunks(src).filter((c) => c.text.includes(STRONG_BG))) {
+        expect(chunk.text, `${rel}: an accent circle lost its rounded-full`).toContain(
+          'rounded-full',
+        );
+      }
+
+      // the glyph colour rides with the ground. Moving only the ground drops the
+      // pair from 6.37:1 to 5.69:1; together it measures 7.28:1.
+      let from = 0;
+      for (let i = 0; i < hits; i += 1) {
+        const at = src.indexOf(STRONG_BG, from);
+        expect(
+          src.slice(at, at + 800),
+          `${rel}: a circle moved to the -strong ground but its glyph did not — both halves or neither`,
+        ).toContain(STRONG_TEXT);
+        from = at + 1;
+      }
+    }
+    expect(total, 'the owner ruled on SEVEN circles; a different number is here').toBe(7);
+
+    // (c) the six hand-rolled <svg> glyphs are marked decorative. A bare inline
+    // SVG announces as "image"/"graphic" with no name on some screen readers,
+    // which is an inconsistency with our OWN `Icon` primitive rather than a new
+    // standard. Expected per file: accept 1, invite/group 2, invite/game 2,
+    // restore 1 — baseline was 0 in all four (verified 2026-08-27).
+    const EXPECTED_DECORATIVE: Record<string, number> = {
+      'app/invite/accept/page.js': 1,
+      'app/invite/group/[token]/page.js': 2,
+      'app/invite/game/[token]/page.js': 2,
+      'app/restore/group/[token]/page.tsx': 1,
+    };
+    for (const [rel, n] of Object.entries(EXPECTED_DECORATIVE)) {
+      const src = code(rel);
+      const glyphs = (
+        src.match(new RegExp(`<svg className="w-8 h-8 ${STRONG_TEXT}"[^>]*`, 'g')) ?? []
+      );
+      expect(glyphs.length, `${rel}: expected ${n} accent-circle glyph(s)`).toBe(n);
+      for (const g of glyphs) {
+        expect(g, `${rel}: a decorative accent-circle <svg> lost aria-hidden`).toContain(
+          'aria-hidden="true"',
+        );
+        expect(g, `${rel}: a decorative accent-circle <svg> lost focusable="false"`).toContain(
+          'focusable="false"',
+        );
+      }
+    }
+
+    // (d) THE STANDING NEGATIVE — the ~13-consumer census of the SHARED token is
+    // untouched. Plan 14 minted a separate pair precisely so the census rejection
+    // recorded at `--color-bg-accent-subtle` in globals.css survives; a later
+    // "consistency" sweep that drags these four onto the -strong pair would
+    // repaint surfaces nobody asked about.
+    for (const rel of [
+      'app/components/BallotSection.js',
+      'app/components/PendingMemberBanner.js',
+      'app/components/ManageMembers.js',
+      'app/components/EventScheduler.tsx',
+    ]) {
+      const src = code(rel);
+      expect(src, `${rel}: lost the SHARED bg-surface-accent-subtle`).toMatch(
+        /bg-surface-accent-subtle(?!-strong)/,
+      );
+      expect(
+        src,
+        `${rel}: a shared-token consumer was dragged onto the -strong pair — the ~13-consumer ` +
+          'census rejection at --color-bg-accent-subtle is deliberate',
+      ).not.toContain(STRONG_BG);
+    }
+  });
 });

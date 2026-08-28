@@ -206,8 +206,8 @@ function GameInvitePage() {
         {/* Preview state (unauthenticated) */}
         {status === 'preview' && eventInfo && (
           <div className="text-center">
-            <div className="mx-auto mb-4 w-16 h-16 bg-surface-accent-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-content-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+            <div className="mx-auto mb-4 w-16 h-16 bg-surface-accent-subtle-strong rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-content-accent-strong" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875S10.5 3.09 10.5 4.125c0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 01-.657.643 48.421 48.421 0 01-4.185-.408c-.009-.003-.018-.006-.028-.006A2.794 2.794 0 014.5 3.75 2.25 2.25 0 002.25 6v.776c0 .543.29 1.048.757 1.325a6.016 6.016 0 013.744 1.313c.178.165.424.262.681.262h8.136c.257 0 .503-.097.681-.262a6.016 6.016 0 013.744-1.313c.467-.277.757-.782.757-1.325V6a2.25 2.25 0 00-2.25-2.25 2.794 2.794 0 00-1.88 2.557c-.01 0-.019.003-.028.006a48.421 48.421 0 01-4.185.408.64.64 0 01-.657-.643v0zM12.75 16.5a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 18a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
               </svg>
             </div>
@@ -262,8 +262,8 @@ function GameInvitePage() {
             so the user knows the link wasn't broken. */}
         {status === 'already-joined' && (
           <div className="text-center">
-            <div className="mx-auto mb-4 w-16 h-16 bg-surface-accent-subtle rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-content-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <div className="mx-auto mb-4 w-16 h-16 bg-surface-accent-subtle-strong rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-content-accent-strong" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
