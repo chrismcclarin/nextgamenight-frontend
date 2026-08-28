@@ -84,12 +84,27 @@ const HEADER = 'app/groupHomePage/page.js';
  * consistency fix. The other four already carried `bg-surface-card` before this
  * phase and keep it.
  */
-const RENDER_SITES: { file: string; nullBranch: string }[] = [
-  { file: 'app/components/grouplist.js', nullBranch: 'bg-surface-card hover:bg-surface-hover' },
-  { file: 'app/components/CalendarMonthView.js', nullBranch: '' },
-  { file: 'app/components/CalendarListView.js', nullBranch: 'bg-surface-card' },
-  { file: 'app/components/EventDayModal.js', nullBranch: 'bg-surface-card' },
-  { file: SEED, nullBranch: 'bg-surface-card' },
+const RENDER_SITES: { file: string; nullBranch: string[] }[] = [
+  { file: 'app/components/grouplist.js', nullBranch: ['bg-surface-card hover:bg-surface-hover'] },
+  // AMENDED plan 88.3-16: a per-file SET, not a single string, because this file
+  // has TWO tint-forked tiles whose null branches legitimately DIFFER. The full
+  // tile's is empty (its shipped D-28 null semantics, above); the COMPACT tile's
+  // is its shipped `bg-surface-card-hover` — changing that would be a visual
+  // change on a surface the owner has not been asked about. The second entry
+  // carries its `hover:` class VERBATIM because plan 16 forks hover INSIDE the
+  // ternary (`.hover\:bg-surface-elevated:hover` at (0,2,0) would otherwise beat
+  // the tint background at (0,1,0) and strip a tinted tile's colour under the
+  // pointer). That is also why the cross-expression negative in test 3 was NOT
+  // weakened to strip variant prefixes: the whole ternary — hover class included
+  // — is removed from `rest` before the `bg-surface-` check runs, so nothing
+  // needed loosening. A gate weakened to admit a shape is worse than the shape.
+  {
+    file: 'app/components/CalendarMonthView.js',
+    nullBranch: ['', 'bg-surface-card-hover hover:bg-surface-elevated'],
+  },
+  { file: 'app/components/CalendarListView.js', nullBranch: ['bg-surface-card'] },
+  { file: 'app/components/EventDayModal.js', nullBranch: ['bg-surface-card'] },
+  { file: SEED, nullBranch: ['bg-surface-card'] },
 ];
 
 const TINT = 'lightTintGroupBackgroundColor';
@@ -265,7 +280,11 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
             'a stacked themed class wins the light-mode tie and renders every ' +
             'coloured group white',
         ).not.toBeNull();
-        expect(m![1], `${file}: unexpected no-colour branch`).toBe(nullBranch);
+        expect(
+          nullBranch,
+          `${file}: unexpected no-colour branch '${m![1]}' — legal branches are ` +
+            nullBranch.map((b) => `'${b}'`).join(' | '),
+        ).toContain(m![1]);
 
         // CROSS-EXPRESSION negative, not per-chunk: strip the ternary and NOTHING
         // background-ish may remain anywhere else in the same className.
@@ -348,7 +367,9 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // a black shadow and stroke, painted onto a pale tint in light mode.
     const floors: Record<string, number> = {
       'app/components/grouplist.js': 1,
-      'app/components/CalendarMonthView.js': 1,
+      // 1 -> 2 (plan 88.3-16): the COMPACT tile now forks its text colour too,
+      // on the same wrapper that carries its ground fork.
+      'app/components/CalendarMonthView.js': 2,
       'app/components/CalendarListView.js': 1,
       'app/components/EventDayModal.js': 2,
     };
@@ -381,28 +402,49 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     }
   });
 
-  it('8. the two clickable divs this plan touched are keyboard-operable (R3-C)', () => {
+  it('8. EVERY tint-forked clickable div is keyboard-operable (R3-C)', () => {
     // Both were `<div onClick>` with no keyboard path, while the IDENTICAL
     // interaction one file over (CalendarListView's EventRow) has been
     // reachable all along. Located by the element that carries the ground fork,
     // not by a line number this plan's own edits already moved.
-    for (const file of ['app/components/CalendarMonthView.js', 'app/components/EventDayModal.js']) {
+    //
+    // AMENDED plan 88.3-16: this used to anchor with `.find()` on the FIRST
+    // tint-carrying className in each file, and that is precisely how the
+    // compact month tile went a whole phase with no keyboard path and no tint
+    // while this test stayed green — the full tile answered for both. It now
+    // loops EVERY tint-forked className, and the per-file FLOOR below is the
+    // thing that would have caught the miss: `CalendarMonthView.js` renders TWO
+    // tiles, and a refactor that drops one must red rather than pass on the
+    // survivor.
+    const floors: Record<string, number> = {
+      'app/components/CalendarMonthView.js': 2,
+      'app/components/EventDayModal.js': 1,
+    };
+    for (const [file, floor] of Object.entries(floors)) {
       const src = code(file);
-      const expr = attrExprs(src, 'className').find((e) => e.text.includes(LIGHT_GROUND));
-      expect(expr, `${file}: no tint-forked element to anchor on`).toBeDefined();
-      const tagStart = src.lastIndexOf('<div', expr!.start);
-      const tag = src.slice(tagStart, expr!.end + 1);
+      const exprs = attrExprs(src, 'className').filter((e) => e.text.includes(LIGHT_GROUND));
+      expect(
+        exprs.length,
+        `${file}: fewer tint-forked elements than this file renders — one of its tiles lost ` +
+          'its group ground, which is exactly the regression this floor exists to catch',
+      ).toBeGreaterThanOrEqual(floor);
 
-      expect(tag, `${file}: the clickable div lost role="button"`).toContain('role="button"');
-      expect(tag, `${file}: the clickable div lost tabIndex`).toContain('tabIndex={0}');
-      expect(tag, `${file}: the clickable div lost its keyboard handler`).toContain('onKeyDown');
-      expect(tag, `${file}: the keyboard handler must fire on Enter and Space`).toMatch(
-        /'Enter'[\s\S]*' '/,
-      );
-      expect(tag, `${file}: the clickable div lost its accessible name`).toContain('aria-label=');
-      expect(tag, `${file}: the clickable div lost its focus ring`).toContain(
-        'focus-visible:ring-focus-ring',
-      );
+      for (const expr of exprs) {
+        const tagStart = src.lastIndexOf('<div', expr.start);
+        const tag = src.slice(tagStart, expr.end + 1);
+        const at = `${file}:${lineAt(src, expr.start)}`;
+
+        expect(tag, `${at}: the clickable div lost role="button"`).toContain('role="button"');
+        expect(tag, `${at}: the clickable div lost tabIndex`).toContain('tabIndex={0}');
+        expect(tag, `${at}: the clickable div lost its keyboard handler`).toContain('onKeyDown');
+        expect(tag, `${at}: the keyboard handler must fire on Enter and Space`).toMatch(
+          /'Enter'[\s\S]*' '/,
+        );
+        expect(tag, `${at}: the clickable div lost its accessible name`).toContain('aria-label=');
+        expect(tag, `${at}: the clickable div lost its focus ring`).toContain(
+          'focus-visible:ring-focus-ring',
+        );
+      }
     }
   });
 
@@ -413,6 +455,10 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // whatever the ternary's null branch is while the dark arm still painted.
     const floors: Record<string, number> = {
       'app/components/grouplist.js': 1,
+      // DELIBERATELY STILL 1 after plan 88.3-16, and that is the proof the
+      // computation was HOISTED rather than duplicated: both tiles in this file
+      // read one `const ground = tinted ? groupBgColor : null` gate. A 2 here
+      // would mean a second, independently-drifting ground.
       'app/components/CalendarMonthView.js': 1,
       'app/components/CalendarListView.js': 1,
       'app/components/EventDayModal.js': 1,
@@ -763,6 +809,147 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       expect(expr, `${name} was pointed at the rejected >= 3:1 border token`).not.toMatch(
         /border-line-strong|ring-line-strong/,
       );
+    }
+  });
+
+  it('20. BOTH month tiles carry the ground fork, and only the tinted one carries the tint colour', () => {
+    const file = 'app/components/CalendarMonthView.js';
+    const src = code(file);
+
+    // Keyed on the variant split still existing: a future refactor that collapses
+    // the two tiles into one must red here rather than silently drop a rendering.
+    expect(src, `${file}: the compact/full variant split is gone`).toContain(
+      "variant === 'compact'",
+    );
+
+    const forked = attrExprs(src, 'className').filter((e) => e.text.includes(LIGHT_GROUND));
+    expect(forked.length, `${file}: expected BOTH tiles to carry the ground fork`).toBe(2);
+
+    // (a) THE TEXT-COLOUR FORK MOVES IN LOCKSTEP WITH THE BACKGROUND FORK.
+    // The compact tile's null branch is its shipped `text-content-accent`
+    // (amber-800). `getEventTileTextColor` resolves an uncoloured group to
+    // warm-900, so carrying the tint colour unconditionally — the way the full
+    // tile can, because its null branch is empty (D-28) — would silently
+    // recolour the UNCOLOURED tile's title. That is a visual change on a surface
+    // the owner has not been asked about.
+    const compact = forked.find((e) => e.text.includes('bg-surface-card-hover'));
+    expect(compact, `${file}: the compact tile's ground fork was not found`).toBeDefined();
+    const nullArm = compact!.text.match(/\?\s*'\[color:var\(--t-color-l\)\][^']*'\s*:\s*'([^']*)'/);
+    expect(
+      nullArm,
+      `${file}: the compact tile's TEXT colour is not forked on the same ternary shape as its ground`,
+    ).not.toBeNull();
+    expect(nullArm![1], `${file}: the uncoloured compact tile lost text-content-accent`).toContain(
+      'text-content-accent',
+    );
+    expect(
+      nullArm![1],
+      `${file}: the uncoloured compact tile took the TINT colour — it must not`,
+    ).not.toContain('[color:var(--t-color');
+
+    // (b) NO BARE `[color:` UTILITY OUTSIDE THE COLOUR TERNARY on either tile.
+    // Two equal-specificity `color` declarations in one className stack and the
+    // later-emitted one silently wins — the same cascade trap the ground fork
+    // exists to avoid.
+    for (const expr of forked) {
+      const stripped = expr.text
+        .replace(/\?\s*'\[color:var\(--t-color-l\)\][^']*'\s*:\s*'[^']*'/g, '')
+        .replace(/\[color:var\(--t-color-l\)\]\s*dark:\[color:var\(--t-color\)\]/g, '');
+      expect(
+        stripped,
+        `${file}: a bare [color:…] utility sits outside the colour ternary and will stack`,
+      ).not.toMatch(/\[color:/);
+    }
+
+    // (c) THE COMPACT TILE'S ACCESSIBLE NAME CARRIES ITS RSVP COUNTS. On a
+    // `role="button"` element `aria-label` REPLACES the subtree name, so copying
+    // the full tile's `aria-label={tileLabel}` would silence the RsvpCount child
+    // ("3Y 1M 2N") — the one thing this variant renders and the full tile does
+    // not — for every screen-reader user on the group page.
+    const tagStart = src.lastIndexOf('<div', compact!.start);
+    const compactTag = src.slice(tagStart, compact!.end + 1);
+    expect(
+      compactTag,
+      `${file}: the compact tile's aria-label no longer references the RSVP summary`,
+    ).toMatch(/aria-label=\{[^}]*rsvpLabel/);
+    expect(src, `${file}: the RSVP label expression is gone`).toMatch(/const rsvpLabel\s*=/);
+    // …and the tooltip stays the SHORT form. Read AFTER the className expression:
+    // `compactTag` deliberately stops at the className (that is test 8's slice
+    // rule, which is why the a11y attributes are authored before it), and `title`
+    // sits after it on the same opening tag.
+    expect(
+      src.slice(compact!.end, compact!.end + 500),
+      `${file}: the compact tile lost title={tileLabel} — the visual tooltip stays the short form`,
+    ).toContain('title={tileLabel}');
+
+    // (d) NO RAW `url()`. Hoisting put the API-controlled `groupBgImage` in scope
+    // for a tile that must not paint it. Every background image in this file goes
+    // through the D-06 protocol allowlist (`safeBgImageStyle`), which
+    // `src/lib/safeBgImageStyle.test.ts` pins — a raw `url()` would re-open it.
+    expect(src, `${file}: a raw url() appeared — it must go through safeBgImageStyle`).not.toMatch(
+      /url\(/,
+    );
+    for (const m of src.matchAll(/backgroundImage/g)) {
+      const around = src.slice(Math.max(0, (m.index ?? 0) - 200), (m.index ?? 0) + 200);
+      expect(
+        around,
+        `${file}: a backgroundImage is set outside a safeBgImageStyle() call`,
+      ).toContain('safeBgImageStyle(');
+    }
+  });
+
+  it('21. the compact tile\'s RSVP text clears 4.5:1 on every pinned tint once tinted', () => {
+    // T-88.3-79. These three colours are hard-coded in `RsvpCount.js` and pass
+    // 4.5:1 only against the compact tile's SHIPPED `bg-surface-card-hover`
+    // ground. Once the tile takes `--group-ground-light` they fail on the
+    // majority of preset/status pairings, so plan 16 forks them onto the tile's
+    // own tint pole via a defaulted `inheritColor` prop. This pins BOTH halves:
+    // the wiring, and the number that made it necessary.
+    const rsvp = code('app/components/RsvpCount.js');
+    expect(rsvp, 'RsvpCount lost its inheritColor opt-in').toMatch(/inheritColor\s*=\s*false/);
+    expect(
+      rsvp,
+      'the compact spans no longer drop their status class when inheritColor is set',
+    ).toMatch(/inheritColor \? undefined : token/);
+    // the UNTINTED default is byte-unchanged: all three status tokens still here
+    for (const token of [
+      'text-content-status-success',
+      'text-content-status-warning',
+      'text-content-status-error',
+    ]) {
+      expect(rsvp, `the untinted compact tile lost ${token}`).toContain(token);
+    }
+    // the other call site passes no prop, so it renders exactly as before
+    const list = code('app/components/CalendarListView.js');
+    expect(list, 'CalendarListView started passing inheritColor — it must not').not.toContain(
+      'inheritColor',
+    );
+
+    // …and the compact tile passes it keyed on the SAME `tinted` value that
+    // gates the title fork, never on a second computation.
+    expect(code('app/components/CalendarMonthView.js')).toMatch(/inheritColor=\{!!tinted\}/);
+
+    // The resolved colour when tinted is the tile's own light pole,
+    // `getEventTileTextColor(tint)` = TILE_TEXT_LIGHT_BG, because every rendered
+    // tint lands in the `brightness > 128` tier.
+    const TILE_POLE = '#1e40af';
+    const TINTS: Record<string, string> = {
+      Charcoal: '#bcbcc0',
+      Slate: '#bcbfc4',
+      Navy: '#b9becc',
+      Indigo: '#bcbbc9',
+      Forest: '#b9c2bf',
+      Wine: '#c4b7c1',
+      Espresso: '#c0bcb9',
+      Storm: '#bebebf',
+    };
+    for (const [name, tint] of Object.entries(TINTS)) {
+      const ratio = contrastRatio(TILE_POLE, tint)!;
+      expect(
+        Number(ratio.toFixed(2)),
+        `compact RSVP text on the ${name} tint measures ${ratio.toFixed(2)}:1 — needs >= 4.5 ` +
+          `(the hard-coded status colours it replaces measured 3.55-4.56 here and FAILED)`,
+      ).toBeGreaterThanOrEqual(4.5);
     }
   });
 });

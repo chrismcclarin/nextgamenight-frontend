@@ -33,6 +33,58 @@ const isFuture = (date) => {
 
 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+/*
+ * The tile's text TREATMENT (shadow + stroke) for a given rendered ground.
+ *
+ * DECISION Phase 88.3 (R2-6) — MOVED here from inside the per-event `.map`
+ * closure by plan 88.3-16, reasoning preserved verbatim: the past-date colour
+ * THEME-FORKS. It used to resolve `SUBTEXT_MUTED_ON_LIGHT` in BOTH themes
+ * whenever the tile had a group colour — theme-independent by construction.
+ * That was already wrong on a dark ground and became unreadable once this phase
+ * re-pointed that pole to `#374151` (~1.4:1 on navy), so the dark half takes
+ * `SUBTEXT_MUTED_ON_DARK` and the light half keeps the (now darker) light pole,
+ * measured 5.35-5.65:1 on the tints.
+ * REJECTED: one theme-independent pole, and a `useTheme` read — the fork rides
+ * the same custom-property + `dark:` mechanism as the ground, per the shipped
+ * DECISION at EventScheduler.tsx. A decision, not a cleanup.
+ *
+ * DECISION Phase 88.3-16: this is a MODULE-LEVEL helper taking `groupBgImage`
+ * as an explicit second argument, chosen OVER the inner arrow function that
+ * closed over it and was re-declared once per event inside
+ * `dayEvents.slice(0, 2).map`. Both tile variants now need it, and one
+ * definition is what keeps the two tiles provably identical in their text
+ * treatment. REJECTED: wrapping it (or the per-event ground computation) in
+ * `useMemo`/`useCallback` — the array is bounded at 84 tiles per render of pure
+ * hex arithmetic, and `days`/`activeEvents` change identity on every parent
+ * render anyway, so memoization here is dead weight that reads as a performance
+ * claim nobody measured.
+ *
+ * DEF-88.3-10-02 IS CARRIED THROUGH UNREPAIRED AND ON PURPOSE: the
+ * background-image branch assigns the image URL to `WebkitTextStroke`, which is
+ * not a stroke value. That defect is Phase 88.6's; plan 88.3-16 moved this
+ * function without touching its body. Do not "fix" it here in passing — fix it
+ * where it is owned, with its own test.
+ */
+const tileTextTreatment = (tileGround, groupBgImage) => {
+  if (groupBgImage) {
+    return {
+      textShadow: '2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 2px rgba(0, 0, 0, 0.9)',
+      WebkitTextStroke: groupBgImage,
+    };
+  }
+  // No group colour: the tile is on the themed month
+  // cell, and a text shadow tuned for a coloured ground
+  // only muddies it there.
+  if (!tileGround) return {};
+  const brightness = getBrightness(tileGround);
+  return {
+    textShadow: brightness > 128
+      ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
+      : '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)',
+    WebkitTextStroke: brightness <= 128 ? '0.5px rgba(0, 0, 0, 0.9)' : 'none',
+  };
+};
+
 /**
  * Monthly grid renderer.
  *
@@ -145,27 +197,17 @@ export default function CalendarMonthView({
                   {dayEvents.length > 0 ? (
                     <div className={variant === 'compact' ? 'space-y-0.5' : 'space-y-1'}>
                       {dayEvents.slice(0, 2).map(event => {
-                        if (variant === 'compact') {
-                          const rs = event.rsvp_summary;
-                          const hasRsvps = rs && (rs.yes > 0 || rs.maybe > 0 || rs.no > 0);
-                          const isFutureEvent = event.start_date && new Date(event.start_date) >= new Date();
-                          return (
-                            <div
-                              key={event.id}
-                              className="text-xs p-0.5 bg-surface-card-hover text-content-accent rounded-sm font-medium cursor-pointer hover:bg-surface-elevated transition-colors"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onEventClick(event);
-                              }}
-                            >
-                              <div className="truncate">{event.Game?.name || 'Game Night'}</div>
-                              {hasRsvps && isFutureEvent && (
-                                <RsvpCount rsvpSummary={rs} variant="compact" className="text-[10px] leading-tight mt-0.5" />
-                              )}
-                            </div>
-                          );
-                        }
-                        // Full variant (user-home)
+                        // HOISTED by plan 88.3-16 so BOTH tile variants read ONE
+                        // set of values. Duplicating the ground gate per variant
+                        // would inflate tests 7 and 9's per-file counts without
+                        // adding coverage; hoisting keeps them meaningful.
+                        // CONSEQUENCE, stated rather than discovered: the group
+                        // page now runs this computation for every rendered
+                        // COMPACT tile, where before it ran none. Bounded at 84
+                        // tiles of pure hex arithmetic per render — not a hot
+                        // path, and deliberately not memoized (see the
+                        // tileTextTreatment marker at module level).
+                        //
                         // null when the group has no colour of its own (D-28) —
                         // the tile then keeps the themed month-cell ground.
                         const groupBgColor = resolveGroupBackgroundColor(event.Group?.background_color);
@@ -198,49 +240,17 @@ export default function CalendarMonthView({
                         const ground = tinted ? groupBgColor : null;
                         const groupProfilePic = event.Group?.profile_picture_url;
                         const groupBgImage = event.Group?.background_image_url;
-                        /*
-                         * DECISION Phase 88.3 (R2-6): the past-date colour now
-                         * THEME-FORKS. It used to resolve `SUBTEXT_MUTED_ON_LIGHT`
-                         * in BOTH themes whenever the tile had a group colour —
-                         * theme-independent by construction. That was already
-                         * wrong on a dark ground and became unreadable once this
-                         * phase re-pointed that pole to `#374151` (~1.4:1 on
-                         * navy), so the dark half takes `SUBTEXT_MUTED_ON_DARK`
-                         * and the light half keeps the (now darker) light pole,
-                         * measured 5.35-5.65:1 on the tints.
-                         * REJECTED: one theme-independent pole, and a `useTheme`
-                         * read — the fork rides the same custom-property +
-                         * `dark:` mechanism as the ground, per the shipped
-                         * DECISION at EventScheduler.tsx. A decision, not a cleanup.
-                         */
-                        const tileTextTreatment = (tileGround) => {
-                          if (groupBgImage) {
-                            return {
-                              textShadow: '2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 2px rgba(0, 0, 0, 0.9)',
-                              WebkitTextStroke: groupBgImage,
-                            };
-                          }
-                          // No group colour: the tile is on the themed month
-                          // cell, and a text shadow tuned for a coloured ground
-                          // only muddies it there.
-                          if (!tileGround) return {};
-                          const brightness = getBrightness(tileGround);
-                          return {
-                            textShadow: brightness > 128
-                              ? '1px 1px 2px rgba(255, 255, 255, 0.9)'
-                              : '2px 2px 4px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8)',
-                            WebkitTextStroke: brightness <= 128 ? '0.5px rgba(0, 0, 0, 0.9)' : 'none',
-                          };
-                        };
+                        // The R2-6 past-date theme-fork reasoning now lives with
+                        // `tileTextTreatment` at module level (plan 88.3-16).
                         const tileTextVars = themedTextStyleVars(
                           {
-                            ...tileTextTreatment(groupBgColor),
+                            ...tileTextTreatment(groupBgColor, groupBgImage),
                             color: isPastDate
                               ? (groupBgColor ? SUBTEXT_MUTED_ON_DARK : 'var(--color-content-muted)')
                               : getEventTileTextColor(groupBgColor),
                           },
                           {
-                            ...tileTextTreatment(tinted || groupBgColor),
+                            ...tileTextTreatment(tinted || groupBgColor, groupBgImage),
                             color: isPastDate
                               ? (groupBgColor ? SUBTEXT_MUTED_ON_LIGHT : 'var(--color-content-muted)')
                               : getEventTileTextColor(tinted || groupBgColor),
@@ -248,6 +258,132 @@ export default function CalendarMonthView({
                         );
                         const tileLabel = `${event.Game?.name || 'Game Night'} - ${event.Group?.name || 'Group'}`;
 
+                        if (variant === 'compact') {
+                          const rs = event.rsvp_summary;
+                          const hasRsvps = rs && (rs.yes > 0 || rs.maybe > 0 || rs.no > 0);
+                          const isFutureEvent = event.start_date && new Date(event.start_date) >= new Date();
+                          // The accessible name must carry the RSVP counts. On a
+                          // `role="button"` element `aria-label` REPLACES the name
+                          // computed from the subtree, so the full tile's
+                          // `aria-label={tileLabel}` copied verbatim would SILENCE
+                          // the `<RsvpCount variant="compact">` child below ("3Y 1M
+                          // 2N") for every screen-reader user — on the group page,
+                          // the surface the owner tests on a phone. Built tile-
+                          // locally from the same `rs` the tile already renders, so
+                          // the shared `RsvpCount` (and its CalendarListView.js call
+                          // site) stays byte-identical.
+                          const rsvpLabel = hasRsvps && isFutureEvent
+                            ? `, ${rs.yes || 0} going, ${rs.maybe || 0} maybe, ${rs.no || 0} can't`
+                            : '';
+                          return (
+                            /* DECISION Phase 88.3-16 (owner ruling 5, Req 12 tests 8c(iii) and 11a):
+                               the COMPACT tile — the variant the GROUP page actually mounts
+                               (`groupHomePage/page.js` passes `variant="compact"` to `EventCalendar`,
+                               which forwards it here) — now gets the group tint AND the four R3-C
+                               accessibility attributes the FULL tile received in plan 10. The owner,
+                               on his phone: the compact tile was untinted (11a) and not tabbable
+                               (8c(iii)). This is an IN-SCOPE Req 9 + R3-C MISS, not new scope: Req 9
+                               names the calendar month view and R3-C names the tiles. No gate could
+                               have caught it, because Gate B test 8 anchored with `.find()` on the
+                               FIRST tint-carrying className and the compact tile had no tint to
+                               anchor on — test 8 now loops every one, with a >= 2 floor.
+
+                               THE COLOUR FORK LIVES ON THIS WRAPPER, NOT ON THE `truncate` TITLE.
+                               `RsvpCount` below is a SIBLING of the title inside this wrapper, so
+                               the wrapper is the only element both children can inherit one
+                               tint-pole colour through. REJECTED: putting the fork on the title div
+                               — the wrapper's `text-content-accent` would then stay, and `RsvpCount`
+                               would have nothing correct to inherit.
+
+                               `tileTextVars` is spread ONLY when `tinted`, deliberately unlike the
+                               full tile, which spreads it unconditionally because its null branch is
+                               empty (D-28). `getEventTileTextColor` resolves an uncoloured group to
+                               `UNSET_BG_TILE_TEXT` (warm-900), so spreading it here would silently
+                               recolour the UNCOLOURED tile's title from amber-800 to warm-900 — a
+                               visual change on a surface the owner has not been asked about. Same
+                               reason the null ground branch stays `bg-surface-card-hover` rather
+                               than going empty like the full tile's.
+
+                               HOVER IS FORKED INSIDE THE TERNARY, and that is load-bearing.
+                               `.hover\:bg-surface-elevated:hover` is (0,2,0) and beats
+                               `.bg-[var(--group-ground-light)]` at (0,1,0), so leaving it outside
+                               would make a tinted tile LOSE its group colour under the pointer
+                               (white in light, purple-800 in dark) while its text stayed on the
+                               tint-derived poles — this file's own cascade-order defect, and an
+                               inconsistency with the full tile, which uses `hover:opacity-90` over
+                               its tint. Keeping it inside is also what lets Gate B test 3's
+                               cross-expression negative stay STRICT: the whole ternary is stripped
+                               before the `bg-surface-` check runs, so nothing had to be loosened to
+                               admit this shape. `transition-colors` becomes
+                               `transition-[background-color,opacity]` so the tinted arm's opacity
+                               change animates the way the full tile's does.
+
+                               NO BACKGROUND IMAGE HERE, on purpose. Hoisting put `groupBgImage`
+                               (API-controlled) in scope for this tile, and it must not paint it. If
+                               one is ever added it MUST go through `safeBgImageStyle` exactly as the
+                               full tile does — never a raw `url()`. The new Gate B `it(` asserts
+                               every `url(`/`backgroundImage` in this file sits inside a
+                               `safeBgImageStyle(` call.
+
+                               TARGET SIZE — INHERITED, disclosed, not resized (owner ruling
+                               2026-08-27). `role="button"` promotes this to a first-class
+                               interactive element at one line of `text-xs` plus `p-0.5`: roughly
+                               16-20px tall and ~45px wide inside an 80px day cell at 375px, under
+                               the project's 44x44 floor. The DAY CELL (min-h 80px) is the touch
+                               surface. It is inherited from R3-C rather than introduced here — the
+                               full tile has the same shape (`p-1`, ~24px) and shipped with no size
+                               ruling — and WCAG 2.1 AA has no target-size criterion (2.5.5 is AAA;
+                               2.2's 2.5.8 24px minimum is the eventual bar). PHASE 88.6's
+                               calendar/tile pass owns the size question.
+
+                               THE DAY CELL STAYS POINTER-ONLY THIS PHASE, DELIBERATELY (owner ruling
+                               B, 2026-08-27). After this change a keyboard user can open an EVENT
+                               from the month grid but not the DAY: the cell above is still a bare
+                               `<div onClick>` with no role/tabIndex/key handler. The owner ruled
+                               "accept as is" for 88.3; Phase 88.6 owns it. Its absence is a recorded
+                               decision, not an oversight — do not add a keyboard path to the cell.
+
+                               Any of this is a decision, not a cleanup. */
+                            <div
+                              key={event.id}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={tileLabel + rsvpLabel}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  onEventClick(event);
+                                }
+                              }}
+                              className={`text-xs p-0.5 rounded-sm font-medium cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] hover:opacity-90' : 'bg-surface-card-hover hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}`}
+                              style={{
+                                ...(tinted && {
+                                  '--group-ground': ground,
+                                  '--group-ground-light': tinted,
+                                }),
+                                ...(tinted && tileTextVars),
+                              }}
+                              title={tileLabel}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onEventClick(event);
+                              }}
+                            >
+                              <div className="truncate">{event.Game?.name || 'Game Night'}</div>
+                              {hasRsvps && isFutureEvent && (
+                                <RsvpCount
+                                  rsvpSummary={rs}
+                                  variant="compact"
+                                  inheritColor={!!tinted}
+                                  className="text-[10px] leading-tight mt-0.5"
+                                />
+                              )}
+                            </div>
+                          );
+                        }
+
+                        // Full variant (user-home)
                         return (
                           /* DECISION Phase 88.3 (R3-C, owner ruling 2026-08-25):
                              this tile is keyboard-operable, matching the shipped
