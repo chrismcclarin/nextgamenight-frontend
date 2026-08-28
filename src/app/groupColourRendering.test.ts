@@ -690,4 +690,79 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     );
     expect(marker).toMatch(/is a decision, not a cleanup/);
   });
+
+  // -------------------------------------------------------------------------
+  // Plan 16 — the JSX half of owner ruling 2. Bare `it(`, appended, nothing
+  // renumbered (same rule the plan-11 block above follows).
+  //
+  // WHY THIS EXISTS AT ALL: the two class strings below would otherwise ship
+  // behind nothing but a one-off SUMMARY `grep -c`, which runs once. Phase
+  // 88.6's `Button` migration touches BOTH of these elements, and a migration
+  // that drops `ring-line-control`/`dark:ring-0` from Manage Members, or swaps
+  // the cog back to a bare `bg-surface-elevated`, would go green. That is the
+  // same "coverage that reads as present because a grep was run once" gap this
+  // plan exists to close for the compact month tile (test 8's `.find()` anchor).
+  // -------------------------------------------------------------------------
+
+  it('19. the two edgeless controls carry the plan-14 fill + ring treatment (ruling 2)', () => {
+    // (a) Manage Members — a `.btn`, so its edge can only be a ring: the
+    // unlayered `.btn { border: none }` eats every border utility, while
+    // `ring-*` compiles to `box-shadow`. Located the way tests 15/16 locate the
+    // header controls (the `'btn '` filter), then narrowed by the label text
+    // that follows the className expression — never by a line number.
+    const header = code(HEADER);
+    const controls = attrExprs(header, 'className').filter((e) => /'btn[ ']/.test(e.text));
+    expect(controls.length, 'the three .btn header controls were not found').toBe(3);
+    const manage = controls.find((e) => header.slice(e.end, e.end + 400).includes('Manage Members'));
+    expect(manage, 'the Manage Members control was not found by its label').toBeDefined();
+
+    for (const util of [
+      // the 80% white wash — the boundary on the eight tinted headers
+      // (composited-vs-tint 1.634-1.716, measured 2026-08-27 via src/lib/wcag.ts)
+      'bg-white/80',
+      // the 1px ring — the ONLY cue on the WHITE uncoloured header, where the
+      // wash composites to white and contributes nothing (ring-vs-white 1.595)
+      'ring-1',
+      'ring-line-control',
+      // dark stays byte-equivalent to what shipped: no resting ring there
+      'dark:ring-0',
+    ]) {
+      expect(manage!.text, `Manage Members lost its ${util} — Req 12 test 7 reopens`).toContain(
+        util,
+      );
+    }
+
+    // (b) the home-card cog — NOT a `.btn`, so it takes a real border. Located
+    // by its aria-label, which follows the className on the same opening tag.
+    const gl = code('app/components/grouplist.js');
+    const at = gl.indexOf('aria-label="Customize group"');
+    expect(at, 'the cog lost its aria-label — re-anchor this assertion').toBeGreaterThan(-1);
+    const cog = attrExprs(gl, 'className').filter((e) => e.end < at).pop();
+    expect(cog, 'no className expression precedes the cog aria-label').toBeDefined();
+
+    for (const util of ['bg-btn-secondary', 'dark:bg-surface-elevated', 'border border-line-control']) {
+      expect(cog!.text, `the cog lost its ${util}`).toContain(util);
+    }
+    // The dark arm must stay `dark:`-scoped. An un-prefixed `bg-surface-elevated`
+    // is #ffffff in light and would emit AFTER `.bg-btn-secondary`, killing the
+    // light fill outright — the exact state the owner reported.
+    expect(
+      cog!.text.match(/(^|[^:])bg-surface-elevated/g) ?? [],
+      'the cog has an un-prefixed bg-surface-elevated — the light fill is dead',
+    ).toHaveLength(0);
+
+    // (c) THE NEGATIVE, on both. `--color-border-strong` / warm-500 is the
+    // >= 3:1 neutral-border substitution the first version of this plan proposed
+    // and the shipped-systems survey REJECTED (0 of 13 systems; the shipped
+    // neutral-border band is 1.20-1.57 and warm-500 is 2.3x its top). It must not
+    // creep back in as a "strengthening" edit.
+    for (const [name, expr] of [
+      ['Manage Members', manage!.text],
+      ['the cog', cog!.text],
+    ] as const) {
+      expect(expr, `${name} was pointed at the rejected >= 3:1 border token`).not.toMatch(
+        /border-line-strong|ring-line-strong/,
+      );
+    }
+  });
 });

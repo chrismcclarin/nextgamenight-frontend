@@ -660,11 +660,81 @@ function GroupHomePage(){
                     Any of this is a decision, not a cleanup. */}
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 relative z-20 w-full shrink-0 items-stretch sm:items-center md:justify-end">
                     {userRole && userRole !== 'pending' && (
+                        /* DECISION Phase 88.3-16 (owner ruling 2, research-checked 2026-08-27):
+                           the LIGHT arm of this control now carries an 80% WHITE WASH plus a 1px
+                           RING — `bg-white/80 ring-1 dark:ring-0`. Req 12 test 7,
+                           verbatim: "I can read the words, but I can't see a button there. All other
+                           buttons are readable." Before this it had no bg and no border at all: the
+                           resting shadow was its only edge and Req 3 removed it.
+
+                           THIS ELEMENT RENDERS ON TWO GROUNDS and both are measured (2026-08-27,
+                           `src/lib/wcag.ts`), because `darkArm` is true for all eight presets so the
+                           LIGHT arm is what an UNCOLOURED header gets as well as a tinted one:
+                             - on the eight t = 0.70 tints, the composited wash vs the tint measures
+                               1.634 (Forest) - 1.716 (Wine), Navy 1.660 — the wash IS the boundary;
+                             - on the WHITE uncoloured header the wash composites to white and
+                               contributes NOTHING (1.00), so the RING is the only cue there:
+                               warm-300 vs #ffffff = 1.595. That is the shipped Geist / Fluent / Ant /
+                               shadcn-outline pattern (white fill + a 1.20-1.53 hairline), and it is
+                               why the treatment is a wash AND a ring rather than either alone;
+                             - ring vs the composited wash: 1.418-1.432, inside the shipped
+                               1.20-1.57 neutral-border band;
+                             - DISCLOSURE, not a floor: ring vs the raw tint is only 1.141-1.209. The
+                               ring is an inner edge ON the wash, not a boundary against the tint.
+                               Do not read that number as the tint boundary — the wash's own 1.66 is;
+                             - text `text-content-primary` (warm-900) on the composited wash:
+                               15.97-16.12. The wash did not hurt the label.
+
+                           HOVER IS A DIFFERENT GROUND and is deliberately left alone.
+                           `hover:bg-surface-hover` is (0,2,0) and beats the base `bg-white/80` at
+                           (0,1,0), so on hover the fill becomes the OPAQUE `--color-bg-hover`
+                           (warm-50), not the wash every number above measures: ring 1.505, text
+                           16.949 there. Changing it would repaint a surface the owner has not been
+                           asked about, including on the white header. It is emitted inside
+                           `@media (hover: hover)`, so it is desktop-only and INERT on the phone lane
+                           — it cannot affect the Req 12 phone re-check. If the wash should ever
+                           persist under the pointer, the recorded step is `hover:bg-white/90`.
+
+                           REJECTED, and each matters:
+                             - a >= 3:1 NEUTRAL BORDER (`border-line-strong` / warm-500). This is the
+                               substitution the FIRST version of this plan proposed, and the research
+                               check killed it: 0 of 13 shipped systems put a >= 3:1 neutral border on
+                               a neutral fill, the shipped band is 1.20-1.57, and warm-500 is 2.3x the
+                               strongest shipped neutral border
+                               (`LIGHT-MODE-SECONDARY-BUTTONS-SURVEY-2026-08-27.md`). "Measure upward
+                               until 3:1" is withdrawn, not deferred.
+                             - a BORDER instead of a ring. `.btn { border: none }` is unlayered and
+                               eats every border utility on this element (see the D-10 marker above);
+                               `ring-*` compiles to `box-shadow`, which that reset cannot defeat.
+                               Compile receipt (tailwindcss@4.3.3, 2026-08-27): `.ring-1` emits
+                               `box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow),
+                               var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)`
+                               — the SAME list `.shadow-theme-md` writes, so the existing
+                               `shadow-theme-md` composes with the ring instead of being replaced.
+                               `.focus-visible\:ring-2:focus-visible` is (0,2,0) and emits after
+                               `.ring-1` (0,1,0), so the FOCUS ring still wins when focused; and
+                               `.dark\:ring-0:where(.dark, .dark *)` is (0,1,0) emitted after
+                               `.ring-1`, so the dark arm renders byte-equivalent to what shipped.
+                               Verified from the emitted CSS, not assumed.
+                             - RESTORING THE RESTING SHADOW. Req 3 / OI-2 stands; the owner did not
+                               reject the shadow removal, he reported its consequence.
+                             - a `data-ground` CSS attribute selector — already rejected at the D-10
+                               marker above and still rejected here, for the same reason.
+                             - an OPAQUE light-arm FILL (`bg-btn-secondary`, warm-200). This is the
+                               recorded NEXT STEP, not a discarded idea: it would make this control
+                               consistent with `.btn-secondary` and reads 1.31 on the white header
+                               instead of leaning on the ring. Reach for it if the phone re-check
+                               still says "no button there".
+
+                           Phase 88.6's `Button` migration still owns the real border/ring MODEL;
+                           this is an interim per-site edge. Changing it is a decision, not a
+                           cleanup. */
                         <button
                             onClick={() => setMemberModal(true)}
                             className={
                                 'btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap ' +
-                                'text-content-primary rounded-btn hover:bg-surface-hover transition-all shadow-theme-md ' +
+                                'text-content-primary bg-white/80 ring-1 ring-line-control dark:ring-0 ' +
+                                'rounded-btn hover:bg-surface-hover transition-all shadow-theme-md ' +
                                 'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2' +
                                 // The 10% white wash moves from an inline `style` to
                                 // `dark:bg-white/10`, because an inline declaration cannot

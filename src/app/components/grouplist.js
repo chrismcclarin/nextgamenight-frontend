@@ -460,8 +460,70 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       </button>
                     )}
                     {canEdit && (
+                      /* DECISION Phase 88.3-16 (owner ruling 2, research-checked 2026-08-27):
+                         the cog takes plan 14's secondary-control recipe as plain utilities —
+                         `bg-btn-secondary dark:bg-surface-elevated` (warm-200 fill in light; dark
+                         restored byte-identical to what shipped) plus `border border-line-control`
+                         (warm-300). Req 12 test 7 named this control: in light it was #ffffff on a
+                         white card with no edge at all.
+
+                         IT TAKES A BORDER WHILE MANAGE MEMBERS TAKES A RING, and that difference is
+                         deliberate rather than drift: this element does NOT carry `.btn`, so the
+                         unlayered `.btn { border: none }` reset never reaches it and an ordinary
+                         border utility works; `groupHomePage/page.js`'s Manage Members IS a `.btn`
+                         and can only get an edge through `box-shadow`. Both resolve to the SAME
+                         `--color-border-control` token, so the two render identically despite the
+                         different mechanism. No `dark:border-0` is needed or wanted —
+                         `--color-border-control` is declared `transparent` in the `.dark` block
+                         (`globals.css`), so the border self-cancels there. D-35 requires the colour
+                         in the same class string as the width, which `border border-line-control`
+                         satisfies.
+
+                         THIS ELEMENT SITS ON TWO GROUNDS, and the earlier "it is white on white"
+                         reading was only half true. Its parent is the group card above, whose
+                         className is `tinted ? 'bg-[var(--group-ground-light)] …' : 'bg-surface-card
+                         …'` — so for every COLOURED group the cog's light ground is the tint. Both
+                         measured 2026-08-27 with `src/lib/wcag.ts`:
+                           - on the WHITE (uncoloured) card: fill warm-200 vs #ffffff = 1.306, ring
+                             warm-300 vs the fill = 1.222, ring vs the white card = 1.595;
+                           - on the eight t = 0.70 tints: fill 1.395 (Forest) - 1.477 (Wine), ring
+                             1.141-1.209. SEVEN of the eight fill pairings land ABOVE the 1.40 fill
+                             band top (only Forest, 1.395, is inside it). That is DISCLOSURE, not a
+                             failure: the band bounds a fill against its ground for legibility and
+                             more separation is not a defect. Nothing landed below the 1.05 floor, so
+                             the reserved `bg-white/80` wash substitution was not triggered.
+
+                         THE DIRECTION OF TRAVEL, stated because it is the uncomfortable half:
+                         today's white cog reads ~1.82-1.93 against the tint; the warm-200 fill reads
+                         ~1.39-1.48. So on a COLOURED card this change LOWERS the cog's separation
+                         from its ground (~1.88 -> ~1.44) while RAISING it on the white card the
+                         owner's complaint was actually about, and on the tint the border is an inner
+                         edge rather than a boundary. That trade is the point of one recipe.
+
+                         REJECTED:
+                           - FORKING THE COG'S OWN className on `tinted` (keep `bg-surface-elevated`
+                             when tinted, take `bg-btn-secondary` only in the null branch). It is
+                             legal here — the cog is not part of the card's exclusion ternary that
+                             Gate B test 3 pins — but it makes ONE control render two different
+                             recipes on one screen, and there is no owner ruling for that.
+                           - the `bg-white/80` WASH Manage Members takes. Held in reserve by the
+                             STOP rule above; not needed, because no tinted pairing fell below 1.05.
+                           - a >= 3:1 neutral border (`border-line-strong` / warm-500) — 0 of 13
+                             shipped systems do it; see the survey.
+
+                         TARGET SIZE — disclosed, deliberately NOT fixed here (owner ruling
+                         2026-08-27). `px-3 py-1 text-sm` around a single emoji glyph is ~28px tall
+                         on a phone, under the project's 44x44 floor (CLAUDE.md, Phone-Forward
+                         Design). It is not a `.btn`, so D-36's phone-only `.btn { min-height:
+                         2.75rem }` does not reach it, and the 87.8 D-13/D-14 markers in this file
+                         cover the two `btn btn-primary` CTAs, not this. The recorded fix is the
+                         per-CTA `min-h-11` pattern (D-13); adding it here reflows the card header,
+                         which is a layout change nobody has looked at on a phone. PHASE 88.6 owns
+                         it under the `Button` migration (entry in `.planning/deferred/phase-88.6.md`).
+
+                         Any of this is a decision, not a cleanup. */
                       <button
-                        className="px-3 py-1 bg-surface-elevated text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                        className="px-3 py-1 bg-btn-secondary dark:bg-surface-elevated border border-line-control text-content-primary rounded-btn hover:bg-surface-hover active:opacity-75 text-sm shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSettingsGroup(group);
