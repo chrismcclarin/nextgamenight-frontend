@@ -9,7 +9,7 @@ import {
   resolveGroupGround,
   storedGroupColour,
 } from '../../lib/colorUtils';
-import { GROUP_COLOUR_PRESETS } from '@/lib/groupColourPresets';
+import { GROUP_COLOUR_PRESETS, PRESET_IDS } from '@/lib/groupColourPresets';
 import { logger } from '@/lib/logger';
 import { toast } from 'sonner';
 // Relative (not `@/`) so this `.js` component resolves under vitest, matching
@@ -245,11 +245,24 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
     
     try {
       setSaving(true);
+      /*
+       * The two colour columns are MUTUALLY EXCLUSIVE (CONTEXT D-01, UI-SPEC
+       * 4.1). Which one carries the value is derived from the form state, and
+       * `PRESET_IDS` — the shared table's derived id list, the same source the
+       * backend's allowlist is copied from — is what decides. Deliberately NOT a
+       * hand-rolled hex regex (a second, drifting definition of "is this a
+       * preset") and deliberately NOT `resolveGroupGround`: the resolver is a
+       * RENDER transform and its output must never approach a payload. That is
+       * the whole subject of the security-control marker on the seed above.
+       *
+       * null, not '' — the validator accepts both, but null is what "no colour"
+       * means and it keeps the column from re-acquiring white.
+       */
+      const chosenPreset = PRESET_IDS.includes(backgroundColor) ? backgroundColor : null;
       const settings = {
         profile_picture_url: profilePictureUrl || null,
-        // null, not '' — the validator accepts both, but null is what "no
-        // colour" means and keeps the column from re-acquiring white.
-        background_color: backgroundColor || null,
+        color_preset: chosenPreset,
+        background_color: chosenPreset ? null : backgroundColor || null,
         background_image_url: backgroundImageUrl || null,
       };
       
@@ -273,8 +286,31 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
     setCustomPictureUrl('');
   };
 
-  const handleSelectDefaultColor = (color) => {
-    setBackgroundColor(color);
+  /*
+   * DECISION Phase 88.3.1 (D-06): TAPPING THE ALREADY-SELECTED SWATCH CLEARS IT.
+   * Owner, verbatim: "if you tap the color again, it de-selects and you go back
+   * to default color."
+   *
+   * Eight swatches stay eight, no extra chrome is added, and `aria-pressed` —
+   * which has declared these buttons a TOGGLE since 88.3 — becomes honest, because
+   * until now the toggle only went one way. It also makes the cleared state
+   * REACHABLE: CONTEXT D-01's "both columns null" was a save shape the UI had no
+   * path to, i.e. a dead branch.
+   *
+   * The image fields are cleared on BOTH arms, deliberately. On the SELECT arm
+   * that is the shipped behaviour (a colour replaces an image). On the CLEAR arm
+   * it is the new decision, and the reason is that the live preview is the
+   * contract: "no colour" that still showed a background image would be a preview
+   * that does not match what the user just asked for.
+   *
+   * REJECTED — a ninth "None" swatch: SPEC Req 1 says EXACTLY eight.
+   * REJECTED — a separate "Clear colour" button: new chrome, and owner ruling
+   * R2-2 (marker in the picker below) rejected adding chrome to this picker.
+   * Changing this is a decision, not a cleanup.
+   */
+  const handleSelectDefaultColor = (presetId) => {
+    const isSelected = backgroundColor === presetId && !backgroundImageUrl;
+    setBackgroundColor(isSelected ? '' : presetId);
     setBackgroundImageUrl('');
     setCustomBackgroundUrl('');
   };
