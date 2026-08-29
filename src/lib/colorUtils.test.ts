@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -12,8 +12,11 @@ import {
   isUnsetBackgroundColor,
   lightTintGroupBackgroundColor,
   resolveGroupBackgroundColor,
+  resolveGroupGround,
+  storedGroupColour,
   SUBTEXT_MUTED_ON_LIGHT,
 } from './colorUtils';
+import { logger } from './logger';
 import { contrastRatio, lStar } from './wcag';
 
 /**
@@ -265,5 +268,150 @@ describe('every shipped preset is a DARK ground (pins plan 11 Task 2’s light a
   // 11's light-arm code inherits the wrong premise.
   it.each(PRESETS)('$name ($value) is dark, so the dark-ground text arm applies', ({ value }) => {
     expect(isDarkBackground(value)).toBe(true);
+  });
+});
+
+
+/* ---------------------------------------------------------------------------
+ * Phase 88.3.1 (SPEC Req 4, CONTEXT D-04) — the ONE resolver, and the one
+ * accessor that feeds it.
+ *
+ * Six render sites plus the settings seed used to each do their own
+ * `resolveGroupBackgroundColor` + `lightTintGroupBackgroundColor` pair. Project
+ * tenet: "writing a function 6 times is adding tech debt". These two functions
+ * are the single implementation those seven sites move onto in plans
+ * 88.3.1-07/08/09.
+ * ------------------------------------------------------------------------- */
+
+describe('storedGroupColour — the one accessor for a group’s stored colour', () => {
+  it('prefers the new color_preset id over the legacy background_color', () => {
+    expect(storedGroupColour({ color_preset: 'blue', background_color: '#1e1e2e' })).toBe('blue');
+  });
+
+  it('falls back to background_color when color_preset is absent or null', () => {
+    expect(storedGroupColour({ background_color: '#1e1e2e' })).toBe('#1e1e2e');
+    expect(storedGroupColour({ color_preset: null, background_color: '#1e1e2e' })).toBe('#1e1e2e');
+  });
+
+  it('uses ?? not || — an EMPTY color_preset must NOT fall through to background_color', () => {
+    // plan 88.3.1-02's validator still accepts '' and whitespace, so `||` here
+    // would mask exactly the bad data AMENDMENT T is fixing: the row would
+    // silently render its legacy hex and nobody would ever see the empty id.
+    expect(storedGroupColour({ color_preset: '', background_color: '#1e1e2e' })).toBeNull();
+    expect(storedGroupColour({ color_preset: '   ', background_color: '#1e1e2e' })).toBeNull();
+  });
+
+  it('trims, and normalises a trimmed-empty result to null so the unset-first rule fires', () => {
+    expect(storedGroupColour({ color_preset: '  blue  ' })).toBe('blue');
+    expect(storedGroupColour({ background_color: '   ' })).toBeNull();
+  });
+
+  it('returns null for a group with neither, and does not throw on a missing group', () => {
+    expect(storedGroupColour({})).toBeNull();
+    expect(storedGroupColour(null)).toBeNull();
+    expect(storedGroupColour(undefined)).toBeNull();
+  });
+});
+
+describe('resolveGroupGround — Phase 88.3.1 SPEC Req 4 / D-04', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('resolves a preset id to its dark band, light surface and BOTH inks', () => {
+    expect(resolveGroupGround('blue')).toEqual({
+      preset: 'blue',
+      dark: '#00274d',
+      light: '#c4e1ff',
+      inkDark: '#8ac2fb',
+      inkLight: '#033f6f',
+    });
+  });
+
+  it.each(UNSET_VALUES)('returns null for %p so the themed surface still wins (D-28)', (value) => {
+    expect(resolveGroupGround(value)).toBeNull();
+  });
+
+  it('returns null for a whitespace-only stored value', () => {
+    expect(resolveGroupGround('  ')).toBeNull();
+  });
+
+  it('asks isUnsetBackgroundColor of the STORED value, so #fefefe still gets a ground (Pitfall 8)', () => {
+    // #fefefe is a real colour that tints to exactly #ffffff. Asking "is unset?"
+    // of the RENDERED value would strip this group's ground entirely.
+    const ground = resolveGroupGround('#fefefe');
+    expect(ground).not.toBeNull();
+    expect(ground!.dark).toBe('#fefefe');
+    expect(ground!.light).toBe('#ffffff');
+  });
+
+  it('falls a non-preset hex back to the t = 0.70 tint, with NO ink', () => {
+    expect(resolveGroupGround('#123456')).toEqual({
+      preset: null,
+      dark: '#123456',
+      light: '#b8c2cc',
+      inkDark: null,
+      inkLight: null,
+    });
+    expect(resolveGroupGround('#123456')!.light).toBe(lightTintGroupBackgroundColor('#123456', 0.70));
+  });
+
+  it('normalises the legacy arm’s dark ground to #rrggbb, so it is never half-rendered', () => {
+    // lightTintGroupBackgroundColor deliberately tolerates a missing '#' and
+    // upper case. Echoing the raw stored value would hand the cascade `1e1e2e`
+    // for --group-ground while --group-ground-light got a valid `#bcbcc0` —
+    // coloured in light mode, uncoloured in dark. That is the half-rendered
+    // outcome the "both grounds or neither" return type exists to prevent.
+    expect(resolveGroupGround('1e1e2e')!.dark).toBe('#1e1e2e');
+    expect(resolveGroupGround('#1E1E2E')!.dark).toBe('#1e1e2e');
+    expect(resolveGroupGround('  #1e1e2e  ')!.dark).toBe('#1e1e2e');
+  });
+
+  it('matches the stored id trimmed and case-insensitively — it round-trips through a database', () => {
+    expect(resolveGroupGround('BLUE')).toEqual(resolveGroupGround('blue'));
+    expect(resolveGroupGround('  blue  ')).toEqual(resolveGroupGround('blue'));
+  });
+
+  it('takes exactly ONE argument — no theme, ever (88.3 D-09 REJECTED (2), still binding)', () => {
+    expect(resolveGroupGround.length).toBe(1);
+  });
+
+  it('returns BOTH grounds or null — never a half-populated object (T-88.3-43)', () => {
+    for (const value of ['blue', '#123456', '#fefefe', 'sunset', null, '#ffffff']) {
+      const ground = resolveGroupGround(value);
+      if (ground === null) continue;
+      expect(ground.dark).toBeTruthy();
+      expect(ground.light).toBeTruthy();
+    }
+  });
+
+  it('warns exactly once and returns null for a stored value that is neither preset nor hex (M23)', () => {
+    // The realistic trigger is poly-repo deploy skew: BE ships a ninth preset
+    // first, accepts and stores it, and the older FE renders every group using
+    // it uncoloured with no error, no log and no telemetry. This is the SECOND
+    // layer; plan 88.3.1-02's cross-repo id contract test is the first.
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    expect(resolveGroupGround('sunset')).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toBe('unrecognised stored group colour');
+    expect(warn.mock.calls[0][1]).toEqual({ stored: 'sunset' });
+  });
+
+  it('truncates the warned value, so an oversized stored string cannot bloat the payload', () => {
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    resolveGroupGround('x'.repeat(200));
+    expect(warn.mock.calls[0][1]!.stored).toHaveLength(32);
+  });
+
+  it('does NOT warn on the legacy-hex arm — that arm is valid, supported and LIVE in production', () => {
+    // Every coloured group in production renders through the legacy arm for the
+    // entire window between the FE PR and BE PR-2. Wiring the warn to it would
+    // flood Sentry for that whole window and train everyone to ignore it.
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    resolveGroupGround('#123456');
+    resolveGroupGround('blue');
+    resolveGroupGround(null);
+    resolveGroupGround('#ffffff');
+    expect(warn).not.toHaveBeenCalled();
   });
 });

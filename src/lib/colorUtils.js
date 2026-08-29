@@ -12,6 +12,9 @@
  * fallbacks directly below.
  */
 
+import { logger } from '@/lib/logger';
+import { presetByName } from './groupColourPresets';
+
 /*
  * DECISION Phase 88-22 (D-27/D-29): this file keeps raw numeric colour values
  * ON PURPOSE, chosen OVER converting them to semantic tokens like every other
@@ -227,6 +230,31 @@ export function resolveGroupBackgroundColor(color) {
  * Changing `t`, or reverting to the stored hex in light mode, is a decision,
  * not a cleanup.
  *
+ * ——— AMENDED Phase 88.3.1 (D-04 / UI-SPEC 3.2), original reasoning above KEPT
+ * AS HISTORY:
+ * This function is UNCHANGED and is still the right function — but its SCOPE
+ * has narrowed. It is no longer the preset path. A group's stored value is now
+ * a PRESET ID (`color_preset`), and an id resolves through
+ * `GROUP_COLOUR_PRESETS` to a hand-tuned light surface, so nothing is computed
+ * for it. This function is reached ONLY when the stored value is a non-preset
+ * `#rrggbb` — a legacy row before plan 88.3.1-05's migration runs, or a custom
+ * hex thereafter. That is the COMPATIBILITY path, and it is the LIVE path for
+ * every coloured group in production between the FE PR and BE PR-2.
+ *
+ * BOTH NAMED REJECTIONS ABOVE STAY BINDING. Storing the tint instead of
+ * computing it is still forbidden (it destroys the identity colour; Gate B
+ * test 1, "the tint never reaches the save path" — now extended verbatim to
+ * `inkDark` / `inkLight` / `mutedDark` / `mutedLight`). A per-theme branch
+ * INSIDE this function is still forbidden; the theme fork still lives in the
+ * CSS cascade, which is why `resolveGroupGround` below also takes no theme
+ * argument.
+ *
+ * A LEGACY HEX HAS NO TINTED INK. `resolveGroupGround` returns `inkDark` and
+ * `inkLight` as `null` on this path and every consumer falls back to the plain
+ * poles of UI-SPEC 2.4 — which is exactly why those poles stay exported and
+ * stay measured, and why `colorUtils.test.ts` keeps the eight legacy t = 0.70
+ * tints pinned alongside the new light surfaces rather than replacing them.
+ *
  * @param {string|null|undefined} color - STORED background colour
  * @param {number} [t=0.70] - mix toward white, clamped to [0, 1]
  * @returns {string|null} `#rrggbb`, or null to defer to the themed surface
@@ -248,6 +276,140 @@ export function lightTintGroupBackgroundColor(color, t = 0.70) {
       .padStart(2, '0');
   }
   return out;
+}
+
+/**
+ * The one accessor for a group's stored colour.
+ *
+ * A group carries the new preset id in `color_preset` and the legacy hex in
+ * `background_color`; during the expand window (FE PR shipped, BE PR-2's remap
+ * not yet run) BOTH columns are populated across the estate. Every render site
+ * and the settings seed ask this ONE function which of the two is authoritative,
+ * so "which column wins" is decided in a single place rather than seven.
+ *
+ * TWO OPERATORS THAT LOOK LIKE THE SAME JOB AND ARE NOT:
+ *  - `??` on the COLUMN choice, deliberately not `||`. The backend validator
+ *    (plan 88.3.1-02) still accepts `''` and whitespace, so `||` would silently
+ *    fall through to `background_color` for a group whose `color_preset` is an
+ *    empty string — masking exactly the bad data that fix exists to surface.
+ *  - `|| null` on the RESULT, which normalises a trimmed-empty value to `null`
+ *    so `resolveGroupGround`'s unset-first rule fires instead of a `''` reaching
+ *    the preset lookup.
+ *
+ * @param {{color_preset?: string|null, background_color?: string|null}|null|undefined} group
+ * @returns {string|null} the authoritative stored value, trimmed, or null
+ */
+export function storedGroupColour(group) {
+  const stored = group?.color_preset ?? group?.background_color;
+  return (typeof stored === 'string' ? stored.trim() : stored) || null;
+}
+
+/**
+ * Turn a STORED group colour into the pair of grounds and the pair of inks the
+ * CSS cascade needs — or `null` when the group has no colour of its own.
+ *
+ * This is THE resolver. Six render sites plus the settings seed used to each do
+ * their own `resolveGroupBackgroundColor` + `lightTintGroupBackgroundColor` pair
+ * and hand both to the cascade; they all call this instead.
+ *
+ * TWO RULES THE CALLERS DEPEND ON — restated here because this is the entry
+ * point callers now land on, and the rules must be readable where they land:
+ *  1. `isUnsetBackgroundColor` is asked of the **stored** value, and it is this
+ *     function's FIRST line. `isDarkBackground` / `getTextStyle` /
+ *     `getEventTileTextColor` are asked of the **rendered** ground. A legacy
+ *     `#fefefe` is a real colour that tints to exactly `#ffffff`, so re-asking
+ *     "is unset?" of the rendered value would silently strip that group's
+ *     ground (Pitfall 8).
+ *  2. This is a RENDERING transform. Nothing it returns — neither ground,
+ *     neither ink — may ever reach a save payload. See the marker at
+ *     `GroupSettings.js`'s form-state seed, which is a security control.
+ *
+ * BOTH GROUNDS OR NEITHER. The return is `null` or an object with `dark` AND
+ * `light` both populated — never half. That was T-88.3-43's hand-written
+ * `const ground = tinted ? stored : null` gate at six sites; here it is a
+ * property of the return type.
+ *
+ * DECISION Phase 88.3.1 (D-04): ONE resolver, six consumers, returning PLAIN
+ * VALUES.
+ *
+ * REJECTED (a): a per-consumer preset lookup. Rejected by project tenet, not on
+ * taste — the owner's rule is direct: "writing a function 6 times is adding tech
+ * debt... turning repeated code lines into modular functions to call is part of
+ * what we are doing".
+ * REJECTED (b): returning ready `--group-*` custom-property objects (CONTEXT
+ * D-04 REJECTED (C)). Consumers would spread it, the literal ground key would
+ * vanish from every style expression, and `groupColourRendering.test.ts`
+ * test 9's "the pair is always emitted together" assertion would pass
+ * vacuously. `groupInkVars` below is the only thing in this file that emits
+ * custom properties.
+ * REJECTED (c): a `theme` parameter or a `useTheme` read. 88.3 D-09
+ * REJECTED (2), still binding — the theme fork lives in the CSS cascade, so
+ * there is no hydration fork and no theme-flash window.
+ *
+ * Changing this is a decision, not a cleanup.
+ *
+ * @param {string|null|undefined} stored - the STORED value (`storedGroupColour`)
+ * @returns {{preset: string|null, dark: string, light: string, inkDark: string|null, inkLight: string|null}|null}
+ */
+export function resolveGroupGround(stored) {
+  if (isUnsetBackgroundColor(stored)) return null;
+
+  // Trimmed and lower-cased: a stored id round-trips through a database, and a
+  // case or whitespace difference must not silently demote a preset group to
+  // the legacy arm.
+  const preset = presetByName(stored.trim().toLowerCase());
+  if (preset) {
+    return {
+      preset: preset.name,
+      dark: preset.dark,
+      light: preset.light,
+      inkDark: preset.inkDark,
+      inkLight: preset.inkLight,
+    };
+  }
+
+  const light = lightTintGroupBackgroundColor(stored, 0.70);
+  if (light === null) {
+    /*
+     * DECISION Phase 88.3.1 (M23): this warn fires on THIS arm only — a stored
+     * value that is neither unset, nor a known preset id, nor a parseable hex —
+     * and deliberately NOT on the legacy-hex arm below. The two arms are
+     * separate on purpose; merging them is a decision, not a simplification.
+     *
+     * WHY THE SEPARATION IS THE LOAD-BEARING HALF. The legacy-hex arm is valid,
+     * supported, and is the path EVERY coloured group in production renders
+     * through for the entire window between the FE PR and BE PR-2. Warning on
+     * it would flood Sentry for that whole window and train everyone to ignore
+     * the signal — destroying the value of the one case that matters.
+     *
+     * WHY IT EXISTS AT ALL. Without it an unrecognised `color_preset` renders an
+     * uncoloured card with no error, no log and no telemetry on either side of
+     * the wire — indistinguishable from "the user chose no colour". The
+     * realistic trigger is poly-repo deploy skew: FE ships on Vercel and BE on
+     * Railway from separate repos, so a ninth preset added to BE first is
+     * accepted and stored while the older FE renders every group using it
+     * uncoloured.
+     *
+     * THIS IS THE SECOND LAYER. The primary guard is the cross-repo preset-id
+     * contract test (plan 88.3.1-02), which is what makes an FE/BE divergence
+     * impossible to SHIP. This catches drift arriving by a path no test models:
+     * a hand-run migration, a rollback, a manual DB edit. The two layers fail
+     * independently, which is the requirement.
+     */
+    logger.warn('unrecognised stored group colour', { stored: String(stored).slice(0, 32) });
+    return null;
+  }
+
+  /*
+   * The legacy / custom-hex compatibility path (UI-SPEC 3.2). `dark` is
+   * NORMALISED to `#rrggbb` rather than echoed raw: `lightTintGroupBackgroundColor`
+   * deliberately tolerates a missing `#` and upper case, so echoing the raw
+   * value could hand the cascade `1e1e2e` for the dark ground while the light
+   * twin was a valid `#bcbcc0` — a half-rendered group, which is the one thing
+   * this return type exists to make impossible.
+   */
+  const dark = `#${stored.trim().replace(/^#/, '').toLowerCase()}`;
+  return { preset: null, dark, light, inkDark: null, inkLight: null };
 }
 
 /**
