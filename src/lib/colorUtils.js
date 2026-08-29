@@ -58,6 +58,33 @@ import { presetByName } from './groupColourPresets';
  * So: do NOT delete these tiers, and do NOT "simplify" them now that they run
  * — collapsing the algorithm now would break the light-mode rendering of every
  * coloured group. Still a decision, not a cleanup.
+ *
+ * ——— AMENDED Phase 88.3.1 (UI-SPEC 2.4), both texts above KEPT AS HISTORY:
+ * The computed tint is no longer how a preset renders. The eight presets are
+ * now a TWO-VALUE table (`groupColourPresets.ts`) — a hand-tuned dark band and
+ * a hand-tuned light surface per preset — so the grounds `getTextStyle` sees
+ * for a preset group are table literals, not arithmetic.
+ *
+ * WHAT THAT DID TO THE TIERS. Presets now land at W3C brightness **211-227**
+ * (light surfaces) and **32-47** (dark bands). The `> 180` tier and the `else`
+ * tier are therefore both LIVE with LARGE margin — 31-47 points and 81-96
+ * points — where 88.3's tints cleared 180 by only 8-11. The pin in
+ * `colorUtils.test.ts` moves with them: `getBrightness(light) > 180` AND
+ * `getBrightness(dark) <= 128`, per preset (UI-SPEC 10.1 test 11).
+ *
+ * THE MIDDLE TIER (`128 < brightness <= 180`, poles `#1f2937` + `#4b5563`) is
+ * now UNREACHABLE FROM THE PRESET TABLE — and it survives for a DIFFERENT
+ * reason than D-29 predicted. It is the tier a stored LEGACY or CUSTOM hex
+ * falls into through the `lightTintGroupBackgroundColor(..., 0.70)`
+ * compatibility path (UI-SPEC 3.2), which is the live path for every coloured
+ * group in production until plan 88.3.1-05's remap runs, and permanently for
+ * any non-preset hex. KEEP ALL THREE TIERS. Deleting them is still a decision,
+ * not a cleanup.
+ *
+ * The tinted CARD ink added by this phase does NOT go through these tiers at
+ * all — it is selected per preset per theme by the CSS fork (`groupInkVars`
+ * below). These tiers keep serving the tile poles, the fallback path and the
+ * background-image path, all of which are still live.
  */
 
 // --- Title text color constants (computed poles — see DECISION above) ---
@@ -445,6 +472,138 @@ export function themedTextStyleVars(dark, light) {
     '--t-stroke': dark.WebkitTextStroke || 'none',
     '--t-stroke-l': light.WebkitTextStroke || 'none',
   };
+}
+
+/**
+ * The ONE ink-resolving function: hand the cascade the group's text ink for a
+ * resolved ground, choosing card ink versus tile ink by ARGUMENT.
+ *
+ * Returns `{}` — never a partial object — whenever there is no ink to hand
+ * over, so a spread into a `style` prop emits nothing and whatever the consumer
+ * already computed (its `themedTextStyleVars(getTextStyle(...))` output) stands
+ * untouched.
+ *
+ * DECISION Phase 88.3.1 (D-04 / UI-SPEC 3.4): FOUR NEWLY-MINTED
+ * `--group-ink*` custom properties, and card-vs-tile as a parameter.
+ *
+ * REJECTED: reusing `themedTextStyleVars`'s `--t-*` channel. The MECHANISM is
+ * the load-bearing part, so the number is recorded: that channel is emitted at
+ * SEVEN sites today, and at FIVE of them (`EventDayModal.js:289,:295`,
+ * `CalendarListView.js:879,:883,:913`) the existing emission sits on a
+ * DESCENDANT of the element these vars land on — a descendant redeclaration
+ * wins, so the tinted ink would never reach the text. At `grouplist.js:337` the
+ * two land in the SAME object literal, where plain spread order silently
+ * decides and nothing specifies it. No test reads a computed style, so that
+ * would have shipped green with wrong pixels. Minting is additive:
+ * `themedTextStyleVars` is byte-untouched and its 7 sites keep working.
+ *
+ * REJECTED: replacing `themedTextStyleVars` at the four card sites and emitting
+ * `--t-*` once at the row root. It deletes two live channels — `cardTextBold`
+ * (`grouplist.js:316`, driving `font-semibold` at `:481`) and
+ * `--t-weight`/`--t-weight-l` (`groupHomePage/page.js:403-406`, whose own
+ * comment warns that `inherit` "would silently un-bold the uncoloured header")
+ * — plus the shadow/stroke treatments `getTextStyle` computes for the
+ * background-image path.
+ *
+ * REJECTED: a second `getCardTextStyle` beside `getTextStyle`. UI-SPEC 3.4 is
+ * explicit — one function, one parameter, no second copy — and UI-SPEC 10.1
+ * test 12 asserts exactly one ink-resolving implementation by source scan.
+ * Project tenet: duplication is never a peer option.
+ *
+ * THE MUTED RUNG IS A TABLE LITERAL, NOT A RUNTIME `blend` (M24 / plan 03
+ * AMENDMENT A). `mutedDark` / `mutedLight` are read from `groupColourPresets`,
+ * which carries the derivation and a byte-equality test against `blend`. This
+ * file must NOT import `./wcag`: seven client components import this module and
+ * that would ship ~110 lines of WCAG maths to all of them for 16 values that
+ * are known at module load. `groupColourRendering.test.ts` test 25 enforces the
+ * boundary mechanically. This does NOT re-open `DECISION Phase 88.3-16`
+ * (`CalendarMonthView.js:52-60`) — that marker rejects in-component `useMemo` /
+ * `useCallback` as an unmeasured performance claim; a transcribed table literal
+ * is a different mechanism adopted for a different reason (bundle boundary, not
+ * render cost). The two are not in tension.
+ *
+ * Changing this is a decision, not a cleanup.
+ *
+ * @param {{preset: string|null, dark: string, light: string, inkDark: string|null, inkLight: string|null}|null} ground
+ *        a `resolveGroupGround` result
+ * @param {{surface: 'card'|'tile', hasBackgroundImage: boolean}} options
+ *        `surface` picks the ink family; `hasBackgroundImage` is REQUIRED of
+ *        every caller — see the image arm below
+ * @returns {Record<string, string>} the four `--group-ink*` properties, or `{}`
+ */
+export function groupInkVars(ground, options) {
+  const { surface, hasBackgroundImage } = options || {};
+
+  if (!ground) return {};
+
+  /*
+   * DECISION Phase 88.3.1 (AMENDMENT 7): a group with a background IMAGE gets
+   * NO group ink, chosen OVER emitting the preset's tinted ink over the photo.
+   *
+   * A group can carry a `color_preset` AND an uploaded `background_image_url`
+   * at the same time. `getTextStyle(hasBgImage, ...)` already answers that
+   * correctly — white text, dark stroke, heavy shadow — because a user's photo
+   * is an unmeasurable ground. Returning `{}` here leaves that shipped,
+   * owner-ruled treatment standing. Emitting `blue`'s `#033f6f` (a dark navy
+   * solved for a PALE BLUE card) over an arbitrary photograph is the defect
+   * this closes.
+   *
+   * Note this only became reachable BECAUSE the minting above is correct:
+   * before it the two treatments collided on one channel and the descendant
+   * won; after it they coexist, so the consumer must choose — and nothing told
+   * it to.
+   *
+   * DO NOT re-implement the white/stroke/shadow treatment here. It exists in
+   * `getTextStyle`, it is correct, and duplicating it is the exact tenet
+   * violation this function was written against. Callers must pass the
+   * VALIDATED image flag (the `safeBgImageStyle` result, wave-12 owner ruling
+   * at `grouplist.js:276-280`), never the raw string, so an invalid or relative
+   * URL (FSEC-03) does not trigger the white-text treatment.
+   */
+  if (hasBackgroundImage) return {};
+
+  if (surface === 'tile') {
+    /*
+     * Plain ink on tiles — owner ruling, UI-SPEC 3.3: "when it's small like
+     * that, you need the text to be more distinct." The ink fields are ignored
+     * here whether or not they are present, which is why a legacy hex still
+     * gets tile ink while it gets `{}` on a card.
+     */
+    return {
+      '--group-ink': getEventTileTextColor(ground.dark),
+      '--group-ink-l': getEventTileTextColor(ground.light),
+      '--group-ink-muted': SUBTEXT_MUTED_ON_DARK,
+      '--group-ink-muted-l': SUBTEXT_MUTED_ON_LIGHT,
+    };
+  }
+
+  if (surface === 'card') {
+    const preset = ground.preset ? presetByName(ground.preset) : undefined;
+    /*
+     * The legacy / custom-hex arm (AMENDMENT 3): return `{}`, do NOT re-derive.
+     * `grouplist.js:311-314` and `groupHomePage/page.js:409-415` have already
+     * computed `getTextStyle` / `getSubtitleStyle` against these same grounds
+     * in the same render; re-deriving them here produces byte-identical values
+     * at extra cost. `{}` leaves their existing output standing, which is both
+     * cheaper and correct. This is the LIVE path for the entire FE-deployed
+     * window — BE PR-2 merges last, so until the remap runs every production
+     * group is a legacy hex. It is not an edge case.
+     */
+    if (!preset || !ground.inkDark || !ground.inkLight) return {};
+
+    return {
+      '--group-ink': ground.inkDark,
+      '--group-ink-l': ground.inkLight,
+      // READ from the table, never recomputed (M24) — see the marker above.
+      '--group-ink-muted': preset.mutedDark,
+      '--group-ink-muted-l': preset.mutedLight,
+    };
+  }
+
+  // An unknown surface hands back nothing rather than guessing an ink: `{}` is
+  // always the safe answer, because it leaves the consumer's existing treatment
+  // in place.
+  return {};
 }
 
 // --- Shadow presets ---

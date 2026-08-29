@@ -13,9 +13,12 @@ import {
   lightTintGroupBackgroundColor,
   resolveGroupBackgroundColor,
   resolveGroupGround,
+  groupInkVars,
   storedGroupColour,
+  SUBTEXT_MUTED_ON_DARK,
   SUBTEXT_MUTED_ON_LIGHT,
 } from './colorUtils';
+import { GROUP_COLOUR_PRESETS } from './groupColourPresets';
 import { logger } from './logger';
 import { contrastRatio, lStar } from './wcag';
 
@@ -413,5 +416,158 @@ describe('resolveGroupGround — Phase 88.3.1 SPEC Req 4 / D-04', () => {
     resolveGroupGround(null);
     resolveGroupGround('#ffffff');
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+
+/* ---------------------------------------------------------------------------
+ * Phase 88.3.1 (D-04, UI-SPEC 3.3/3.4) — the ONE ink function.
+ *
+ * Card versus tile is an ARGUMENT, never a second copy. The four properties are
+ * newly minted (`--group-ink*`) rather than reusing `themedTextStyleVars`'s
+ * `--t-*` channel: 5 of that channel's 7 existing emissions sit on a DESCENDANT
+ * of where these land, and a descendant redeclaration wins (AMENDMENT 1).
+ * ------------------------------------------------------------------------- */
+
+describe('groupInkVars — Phase 88.3.1 D-04 / UI-SPEC 3.4', () => {
+  const CARD = { surface: 'card', hasBackgroundImage: false } as const;
+  const TILE = { surface: 'tile', hasBackgroundImage: false } as const;
+
+  it('takes exactly TWO parameters — the ground and the options (never two copies)', () => {
+    expect(groupInkVars.length).toBe(2);
+  });
+
+  it('returns the four tinted values for blue on a CARD, read from the table', () => {
+    expect(groupInkVars(resolveGroupGround('blue'), CARD)).toEqual({
+      '--group-ink': '#8ac2fb',
+      '--group-ink-l': '#033f6f',
+      '--group-ink-muted': '#75abe1',
+      '--group-ink-muted-l': '#205785',
+    });
+  });
+
+  it.each(GROUP_COLOUR_PRESETS)(
+    '$name — the CARD values are the table values, never recomputed',
+    (preset) => {
+      expect(groupInkVars(resolveGroupGround(preset.name), CARD)).toEqual({
+        '--group-ink': preset.inkDark,
+        '--group-ink-l': preset.inkLight,
+        '--group-ink-muted': preset.mutedDark,
+        '--group-ink-muted-l': preset.mutedLight,
+      });
+    },
+  );
+
+  it.each(GROUP_COLOUR_PRESETS)(
+    '$name — the muted rung the FUNCTION returns clears 4.5:1 on its own ground (UI-SPEC 10.1 test 10)',
+    (preset) => {
+      // Asserted on the function's OUTPUT, not just on the table: plan 88.3.1-03
+      // pins the table, this pins that groupInkVars actually hands those values
+      // to the cascade on the right side of the theme fork.
+      const vars = groupInkVars(resolveGroupGround(preset.name), CARD);
+      expect(contrastRatio(vars['--group-ink-muted'], preset.dark)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(vars['--group-ink-muted-l'], preset.light)).toBeGreaterThanOrEqual(4.5);
+    },
+  );
+
+  it('emits NO --t-* property of any name — the collision is impossible by construction', () => {
+    const emitted = [
+      ...Object.keys(groupInkVars(resolveGroupGround('blue'), CARD)),
+      ...Object.keys(groupInkVars(resolveGroupGround('blue'), TILE)),
+    ];
+    expect(emitted.filter((key) => key.startsWith('--t-'))).toEqual([]);
+    expect(new Set(emitted)).toEqual(
+      new Set(['--group-ink', '--group-ink-l', '--group-ink-muted', '--group-ink-muted-l']),
+    );
+  });
+
+  it('ignores the ink fields entirely on a TILE and returns the plain poles (owner ruling)', () => {
+    // "when it's small like that, you need the text to be more distinct."
+    const ground = resolveGroupGround('blue');
+    expect(groupInkVars(ground, TILE)).toEqual({
+      '--group-ink': '#ffffff',
+      '--group-ink-l': '#1e40af',
+      '--group-ink-muted': SUBTEXT_MUTED_ON_DARK,
+      '--group-ink-muted-l': SUBTEXT_MUTED_ON_LIGHT,
+    });
+    // and the tinted ink is genuinely NOT what comes back
+    expect(groupInkVars(ground, TILE)['--group-ink']).not.toBe(ground!.inkDark);
+  });
+
+  it.each(GROUP_COLOUR_PRESETS)('$name — the TILE arm is the plain pole on both bands', (preset) => {
+    expect(groupInkVars(resolveGroupGround(preset.name), TILE)).toEqual({
+      '--group-ink': '#ffffff',
+      '--group-ink-l': '#1e40af',
+      '--group-ink-muted': SUBTEXT_MUTED_ON_DARK,
+      '--group-ink-muted-l': SUBTEXT_MUTED_ON_LIGHT,
+    });
+  });
+
+  it('returns {} for a legacy hex on a CARD — it must NOT re-derive (AMENDMENT 3)', () => {
+    // grouplist.js:311-314 and groupHomePage/page.js:409-415 have ALREADY computed
+    // getTextStyle/getSubtitleStyle against these same grounds in the same render.
+    // Re-deriving produces byte-identical values at extra cost, and is the second
+    // half of the AMENDMENT 1 collision. {} leaves their themedTextStyleVars
+    // output standing — which is the cheaper AND the correct behaviour.
+    //
+    // This is the LIVE path for the whole FE-deployed window: BE PR-2 merges
+    // last, so until the remap runs every production group is a legacy hex.
+    expect(groupInkVars(resolveGroupGround('#123456'), CARD)).toEqual({});
+    expect(
+      groupInkVars(resolveGroupGround('#1e1e2e'), { surface: 'card', hasBackgroundImage: false }),
+    ).toEqual({});
+  });
+
+  it('still returns the plain poles for a legacy hex on a TILE', () => {
+    // The tile arm never reads the ink fields, so their absence changes nothing.
+    expect(groupInkVars(resolveGroupGround('#1e1e2e'), TILE)).toEqual({
+      '--group-ink': '#ffffff',
+      '--group-ink-l': '#1e40af',
+      '--group-ink-muted': SUBTEXT_MUTED_ON_DARK,
+      '--group-ink-muted-l': SUBTEXT_MUTED_ON_LIGHT,
+    });
+  });
+
+  it('returns {} with a background image, so the white/stroke treatment stands (AMENDMENT 7)', () => {
+    // A group can carry a color_preset AND an uploaded background_image_url at
+    // once. getTextStyle(hasBgImage, …) already answers that correctly with
+    // white + dark stroke + heavy shadow, because a user's photo is an
+    // unmeasurable ground. Emitting blue's #033f6f over an arbitrary photograph
+    // is the defect this closes — and it only became reachable once Fork A
+    // minted a separate channel, so the two treatments coexist and the consumer
+    // must choose.
+    expect(
+      groupInkVars(resolveGroupGround('blue'), { surface: 'card', hasBackgroundImage: true }),
+    ).toEqual({});
+    expect(
+      groupInkVars(resolveGroupGround('blue'), { surface: 'tile', hasBackgroundImage: true }),
+    ).toEqual({});
+    // the false case still tints — so the flag is doing the work, not the arm
+    expect(
+      groupInkVars(resolveGroupGround('blue'), { surface: 'card', hasBackgroundImage: false }),
+    ).toEqual({
+      '--group-ink': '#8ac2fb',
+      '--group-ink-l': '#033f6f',
+      '--group-ink-muted': '#75abe1',
+      '--group-ink-muted-l': '#205785',
+    });
+  });
+
+  it('returns {} for no ground at all, so a spread into style emits nothing (D-28)', () => {
+    expect(groupInkVars(null, CARD)).toEqual({});
+    expect(groupInkVars(resolveGroupGround(null), CARD)).toEqual({});
+    expect(groupInkVars(resolveGroupGround('#ffffff'), TILE)).toEqual({});
+  });
+
+  it('returns {} for an unrecognised surface rather than guessing an ink', () => {
+    expect(
+      groupInkVars(resolveGroupGround('blue'), {
+        // the cast is the point: the union is a compile-time guard, and this
+        // pins the RUNTIME behaviour for a value that gets past it (a `.js`
+        // consumer, `checkJs` is false)
+        surface: 'swatch' as unknown as 'card',
+        hasBackgroundImage: false,
+      }),
+    ).toEqual({});
   });
 });
