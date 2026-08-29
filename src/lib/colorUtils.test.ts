@@ -133,29 +133,95 @@ describe('the brightness algorithm is untouched (D-29)', () => {
 
 
 /* ---------------------------------------------------------------------------
- * Phase 88.3 (D-08/D-09, Req 9) — the light-mode group tint.
+ * Phase 88.3 (D-08/D-09, Req 9) — RE-POINTED by Phase 88.3.1 (SPEC Req 4).
  *
- * The presets are read OUT OF `GroupSettings.js` rather than restated here, on
- * purpose. A restated copy drifts silently: the whole point of the
- * `isDarkBackground(preset) === true` pin below is that a future preset edit
- * must red THIS file, and it can only do that if this file reads the shipped
- * array.
+ * The presets are read OUT OF the shipped module by PARSING ITS SOURCE rather
+ * than restated here, and that mechanism survives the re-point unchanged — only
+ * the path, the block regex and the entry regex moved. A restated copy drifts
+ * silently: the whole point of the `isDarkBackground(p.dark) === true` pin at
+ * the bottom of this file is that a future palette edit must red THIS file, and
+ * it can only do that if this file reads the shipped table.
+ *
+ * (The `import { GROUP_COLOUR_PRESETS }` above is a convenience for the
+ * `groupInkVars` cases and is NOT a substitute for this parse: the parse is
+ * what fails loudly if the array is renamed, removed, or reshaped, which an
+ * import would simply fail to compile on without saying why.)
+ *
+ * WHAT CHANGED IN 88.3.1. A group's stored value is now a PRESET ID, and an id
+ * resolves to a hand-tuned two-value row — nothing is computed for it. So the
+ * tint assertions below re-scope onto the eight LEGACY hexes (the compatibility
+ * path, UI-SPEC 3.2) and a NEW set of preset-table assertions sits beside them.
+ * Neither replaces the other; both are live coverage.
  * ------------------------------------------------------------------------- */
 
 const PRESET_SOURCE = fs.readFileSync(
-  path.resolve(__dirname, '../app/components/GroupSettings.js'),
+  path.resolve(__dirname, './groupColourPresets.ts'),
   'utf8',
 );
 
-const PRESETS: { name: string; value: string }[] = (() => {
+type ParsedPreset = {
+  name: string;
+  label: string;
+  dark: string;
+  light: string;
+  inkDark: string;
+  inkLight: string;
+  mutedDark: string;
+  mutedLight: string;
+};
+
+const PRESETS: ParsedPreset[] = (() => {
   const block = PRESET_SOURCE.match(
-    /const DEFAULT_BACKGROUND_COLORS = \[([\s\S]*?)\];/,
+    /const GROUP_COLOUR_PRESETS = \[([\s\S]*?)\] as const;/,
   );
-  if (!block) throw new Error('DEFAULT_BACKGROUND_COLORS not found in GroupSettings.js');
-  return [...block[1].matchAll(/\{\s*name:\s*'([^']+)',\s*value:\s*'(#[0-9a-fA-F]{6})'\s*\}/g)].map(
-    (m) => ({ name: m[1], value: m[2] }),
+  if (!block) throw new Error('GROUP_COLOUR_PRESETS not found in groupColourPresets.ts');
+  const hex = String.raw`(#[0-9a-fA-F]{6})`;
+  const rowRe = new RegExp(
+    String.raw`\{\s*name:\s*'([^']+)',` +
+      String.raw`\s*label:\s*'([^']+)',` +
+      String.raw`\s*dark:\s*'${hex}',` +
+      String.raw`\s*light:\s*'${hex}',` +
+      String.raw`\s*inkDark:\s*'${hex}',` +
+      String.raw`\s*inkLight:\s*'${hex}',` +
+      String.raw`\s*mutedDark:\s*'${hex}',` +
+      String.raw`\s*mutedLight:\s*'${hex}',` +
+      String.raw`\s*\}`,
+    'g',
   );
+  return [...block[1].matchAll(rowRe)].map((m) => ({
+    name: m[1],
+    label: m[2],
+    dark: m[3],
+    light: m[4],
+    inkDark: m[5],
+    inkLight: m[6],
+    mutedDark: m[7],
+    mutedLight: m[8],
+  }));
 })();
+
+/**
+ * The eight LEGACY preset hexes — the values the `GroupSettings.js` swatch
+ * array shipped from Phase 88-22 until this phase, and the values still sitting
+ * in the `background_color` column of every coloured group in production.
+ *
+ * They are a FROZEN LITERAL here rather than read from source, and that is the
+ * one place in this file where a restated copy is right: they are history, not
+ * a live table. They cannot drift, because nothing may edit them — the picker
+ * no longer offers them and plan 88.3.1-05's remap converts them. The only
+ * thing that can change is that a row STOPS existing in production, which is a
+ * migration event, not a source edit.
+ */
+const LEGACY_HEXES: { name: string; value: string }[] = [
+  { name: 'Charcoal', value: '#1e1e2e' },
+  { name: 'Slate', value: '#1e293b' },
+  { name: 'Navy', value: '#172554' },
+  { name: 'Indigo', value: '#1e1b4b' },
+  { name: 'Forest', value: '#14332a' },
+  { name: 'Wine', value: '#3b1030' },
+  { name: 'Espresso', value: '#2c1f14' },
+  { name: 'Storm', value: '#27272a' },
+];
 
 /**
  * The owner-ruled tint strength (2026-08-25, plan adversarial review round 2 —
@@ -166,10 +232,16 @@ const PRESETS: { name: string; value: string }[] = (() => {
 const T = 0.7;
 const L_STAR_FLOOR = 75;
 
-describe('lightTintGroupBackgroundColor — Phase 88.3 D-09', () => {
-  it('reads all eight shipped presets out of GroupSettings.js', () => {
-    // anti-vacuity: every per-preset assertion below is an it.each over this list
+describe('lightTintGroupBackgroundColor — Phase 88.3 D-09, re-scoped to the LEGACY path', () => {
+  it('reads all eight shipped presets out of groupColourPresets.ts', () => {
+    // anti-vacuity: every per-preset assertion below is an it.each over a list
     expect(PRESETS).toHaveLength(8);
+  });
+
+  it('still covers all eight legacy hexes, which are the LIVE fallback in production', () => {
+    // Until plan 88.3.1-05's remap runs, every coloured group in production is
+    // one of these — and a custom hex can reach this path at any time after.
+    expect(LEGACY_HEXES).toHaveLength(8);
   });
 
   it.each(UNSET_VALUES)('returns null for %p so the themed surface still wins (D-28)', (value) => {
@@ -191,27 +263,26 @@ describe('lightTintGroupBackgroundColor — Phase 88.3 D-09', () => {
     expect(lightTintGroupBackgroundColor(value)).toBeNull();
   });
 
-  it.each(PRESETS)('$name tints to a well-formed 6-digit hex', ({ value }) => {
+  it.each(LEGACY_HEXES)('$name tints to a well-formed 6-digit hex', ({ value }) => {
+    // Re-scoped by 88.3.1: this is the COMPATIBILITY path now, not the preset
+    // path. A preset id never reaches this function.
     expect(lightTintGroupBackgroundColor(value)).toMatch(/^#[0-9a-f]{6}$/);
   });
 
-  it.each(PRESETS)(`$name clears the amended SPEC Req 9 floor (L* >= ${L_STAR_FLOOR})`, ({ value }) => {
+  it.each(LEGACY_HEXES)(`$name clears the amended SPEC Req 9 floor (L* >= ${L_STAR_FLOOR})`, ({ value }) => {
     const tinted = lightTintGroupBackgroundColor(value);
     expect(lStar(tinted)).toBeGreaterThanOrEqual(L_STAR_FLOOR);
   });
 
-  it.each(PRESETS)('$name lands in getTextStyle’s brightness > 180 tier (D-29 fulfilled)', ({ value }) => {
-    // Asserted PER PRESET rather than inferred from the L* floor: at t = 0.70 the
-    // margin over 180 is only ~8-11 points (it was ~46-47 at the previously-ruled
-    // 0.87), so a preset edit could flip a tile into the dark-text tier without
-    // ever breaking the L* assertion above.
-    const tinted = lightTintGroupBackgroundColor(value);
-    expect(getBrightness(tinted)).toBeGreaterThan(180);
-    expect(getTextStyle(false, tinted).color).toBe('#1f2937');
-  });
-
-  it.each(PRESETS)('$name keeps the muted pole above 4.5:1 on its own tint (R2-6)', ({ value }) => {
-    // #6b7280, the pre-repoint pole, measures 2.5-2.65 here and FAILS.
+  it.each(LEGACY_HEXES)('$name keeps the muted pole above 4.5:1 on its own tint (R2-6)', ({ value }) => {
+    // KEPT, not re-pointed. This is the only contrast guard on the LIVE fallback
+    // ink path: groupInkVars returns {} for a legacy hex on a card, so the
+    // consumer's plain poles are what get drawn on exactly this tinted ground,
+    // for every coloured group in production until BE PR-2 lands and permanently
+    // for any non-preset hex. The new light-surface cases below are a SECOND
+    // coverage set, not a replacement — deleting this one is a decision
+    // requiring its own `DECISION Phase 88.3.1` marker, not a cleanup.
+    // (#6b7280, the pre-repoint pole, measures 2.5-2.65 here and FAILS.)
     const tinted = lightTintGroupBackgroundColor(value);
     expect(contrastRatio(SUBTEXT_MUTED_ON_LIGHT, tinted)).toBeGreaterThanOrEqual(4.5);
   });
@@ -221,8 +292,13 @@ describe('lightTintGroupBackgroundColor — Phase 88.3 D-09', () => {
   });
 
   it('reproduces the owner-ruled t = 0.70 measurement table exactly', () => {
+    // KEPT and re-scoped, not deleted. The table now pins the tints of the eight
+    // LEGACY hexes as the shipped compatibility path — those hexes are still in
+    // production until plan 88.3.1-05's migration runs, and a custom hex can
+    // reappear at any time. Deleting it would remove the only guard on the
+    // fallback arithmetic.
     const measured = Object.fromEntries(
-      PRESETS.map(({ name, value }) => [name, lightTintGroupBackgroundColor(value)]),
+      LEGACY_HEXES.map(({ name, value }) => [name, lightTintGroupBackgroundColor(value)]),
     );
     expect(measured).toEqual({
       Charcoal: '#bcbcc0',
@@ -262,17 +338,44 @@ describe('lightTintGroupBackgroundColor — Phase 88.3 D-09', () => {
   });
 });
 
-describe('every shipped preset is a DARK ground (pins plan 11 Task 2’s light arm)', () => {
-  // Plan 11 Task 2 builds a dark-ground text arm for the groupHomePage header on
-  // the assumption that every value in DEFAULT_BACKGROUND_COLORS is dark. If a
-  // future palette edit ever ships a genuinely light preset, that assumption
-  // becomes wrong silently — the header would paint white-on-light. This test is
-  // the tripwire: it must go red HERE, in the shared colour module, before plan
-  // 11's light-arm code inherits the wrong premise.
-  it.each(PRESETS)('$name ($value) is dark, so the dark-ground text arm applies', ({ value }) => {
-    expect(isDarkBackground(value)).toBe(true);
+describe('the two-value preset table renders through the right brightness tiers (UI-SPEC 10.1 test 11)', () => {
+  it.each(PRESETS)('$name — light surface $light is in the > 180 tier', ({ light }) => {
+    // Replaces the 88.3 assertion that the computed TINT cleared 180. The
+    // margin is no longer thin: the light surfaces measure 211-227, i.e. 31-47
+    // points of headroom, where 88.3's tints cleared by only 8-11.
+    expect(getBrightness(light)).toBeGreaterThan(180);
+    expect(getTextStyle(false, light).color).toBe('#1f2937');
+  });
+
+  it.each(PRESETS)('$name — dark band $dark is in the <= 128 tier', ({ dark }) => {
+    // 32-47 measured, i.e. 81-96 points of margin below the threshold.
+    expect(getBrightness(dark)).toBeLessThanOrEqual(128);
+    expect(getTextStyle(false, dark).color).toBe('#ffffff');
+  });
+
+  it.each(PRESETS)('$name — the muted pole clears 4.5:1 on the LIGHT SURFACE', ({ light }) => {
+    // The phase's real target, added as NEW cases beside the legacy-tint set
+    // above rather than replacing it. Measured 7.61-7.68:1 across the eight.
+    expect(contrastRatio(SUBTEXT_MUTED_ON_LIGHT, light)).toBeGreaterThanOrEqual(4.5);
   });
 });
+
+describe('every shipped preset’s DARK BAND is dark (pins groupHomePage’s light arm)', () => {
+  // `groupHomePage/page.js:661-670` builds a dark-ground text arm for the header
+  // on the assumption that every preset's rendered DARK-mode ground is dark, and
+  // names THIS test as its only guard. If a future palette edit ever ships a
+  // genuinely light `dark` band, that assumption becomes wrong silently — the
+  // header would paint white-on-light. This is the tripwire: it must go red
+  // HERE, in the shared colour module, before that code inherits the wrong
+  // premise.
+  //
+  // Re-pinned by 88.3.1 from the single stored hex to the table's `dark` band.
+  // Deleting it removes groupHomePage's only guard: a decision, not a cleanup.
+  it.each(PRESETS)('$name ($dark) is dark, so the dark-ground text arm applies', ({ dark }) => {
+    expect(isDarkBackground(dark)).toBe(true);
+  });
+});
+
 
 
 /* ---------------------------------------------------------------------------
