@@ -360,3 +360,142 @@ describe('SPEC-REQ-6 / 88-13 D-04 — one gate, at full strength, with nothing s
     expect(within(dialog).getByRole('button', { name: 'Delete' })).toBeEnabled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 88.3.1 plan 07 — the colour picker: toggle-off (CONTEXT D-06) and the
+// two-column save payload (CONTEXT D-01).
+//
+// AMENDMENT H (Defect 6 / M29): these are REAL behavioural tests on the shipped
+// component, not a source grep plus a browser note. `groupColourRendering.test.ts`
+// is a SOURCE scanner — it can prove the payload is not built from a rendered
+// value, and it cannot prove that clicking a swatch twice clears it. This file
+// already existed (88-13 / 88.2 era) and is extended rather than duplicated.
+// ---------------------------------------------------------------------------
+describe('Phase 88.3.1 D-06 / D-01 — the eight-preset picker', () => {
+  /** The swatch button for a preset, addressed by the accessible name the
+   *  `aria-label` gives it (the visible caption is `aria-hidden`, so the name is
+   *  announced exactly once — asserted below). */
+  const swatch = (label: string): HTMLElement =>
+    screen.getByRole('button', { name: label, pressed: undefined }) ??
+    screen.getByRole('button', { name: label });
+
+  /** The live preview card — the element carrying the "Preview" caption. */
+  const preview = (): HTMLElement =>
+    screen.getByText('Preview').parentElement as HTMLElement;
+
+  /** The single `settings` object handed to the API on save. */
+  async function saveAndCapture(): Promise<Record<string, unknown>> {
+    (groupsAPI.updateGroupSettings as Mock).mockResolvedValue({});
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(groupsAPI.updateGroupSettings as Mock).toHaveBeenCalled());
+    return (groupsAPI.updateGroupSettings as Mock).mock.calls[0][1];
+  }
+
+  const LABELS = ['Red', 'Orange', 'Amber', 'Green', 'Teal', 'Blue', 'Violet', 'Rose'];
+
+  it('renders exactly eight swatches, each with its hue name VISIBLE (AMENDMENT G2)', async () => {
+    renderSettings();
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    const buttons = within(group).getAllByRole('button');
+    expect(buttons).toHaveLength(8);
+
+    for (const label of LABELS) {
+      // announced once: the button carries the aria-label …
+      expect(within(group).getByRole('button', { name: label })).toBeInTheDocument();
+      // … and the caption is visible text that screen readers skip.
+      const caption = within(group).getByText(label, { selector: 'span' });
+      expect(caption).toBeInTheDocument();
+      expect(caption).toHaveAttribute('aria-hidden', 'true');
+    }
+  });
+
+  it('D-06: tapping the SELECTED swatch de-selects it and the preview falls back', async () => {
+    renderSettings();
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    const blue = within(group).getByRole('button', { name: 'Blue' });
+
+    // nothing chosen to begin with
+    for (const label of LABELS) {
+      expect(within(group).getByRole('button', { name: label })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    }
+    expect(preview().className).toContain('bg-surface-card');
+
+    fireEvent.click(blue);
+    expect(blue).toHaveAttribute('aria-pressed', 'true');
+    expect(preview().className).toContain('bg-[var(--group-ground-light)]');
+
+    // the second tap on the SAME swatch clears — this is the whole of D-06
+    fireEvent.click(blue);
+    for (const label of LABELS) {
+      expect(within(group).getByRole('button', { name: label })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    }
+    expect(preview().className).toContain('bg-surface-card');
+  });
+
+  it('D-01 shape 1 — a chosen preset saves the id and NULLS the legacy column', async () => {
+    renderSettings();
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    fireEvent.click(within(group).getByRole('button', { name: 'Teal' }));
+
+    const settings = await saveAndCapture();
+    expect(settings.color_preset).toBe('teal');
+    expect(settings.background_color).toBeNull();
+    // no RENDERED value may ever enter the payload (UI-SPEC 4.1) — not a ground,
+    // not an ink. The teal ground/ink hexes are the concrete instance of that.
+    const json = JSON.stringify(settings);
+    for (const rendered of ['#003538', '#94edf0', '#6cd9dd', '#014548']) {
+      expect(json).not.toContain(rendered);
+    }
+  });
+
+  it('D-01 shape 2 — cleared saves BOTH columns null', async () => {
+    renderSettings();
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    const rose = within(group).getByRole('button', { name: 'Rose' });
+    fireEvent.click(rose);
+    fireEvent.click(rose); // toggle back off
+
+    const settings = await saveAndCapture();
+    expect(settings.color_preset).toBeNull();
+    expect(settings.background_color).toBeNull();
+  });
+
+  it('D-01 shape 3 — a legacy hex group still saves the HEX, with no preset id', async () => {
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, background_color: '#1e1e2e' });
+    await screen.findByRole('group', { name: 'Choose a default color:' });
+
+    const settings = await saveAndCapture();
+    expect(settings.background_color).toBe('#1e1e2e');
+    expect(settings.color_preset).toBeNull();
+  });
+
+  it('AMENDMENT E (Defect 1) — saving an unrelated field does NOT wipe a migrated group\'s colour', async () => {
+    // The data-loss head. After plan 88.3.1-05 a migrated group carries
+    // `color_preset` with `background_color` NULL. A seed that read only the
+    // legacy column would open the picker showing NO colour, and this save would
+    // then send both columns null — silently erasing the group's colour.
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, color_preset: 'blue', background_color: null });
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+
+    // the picker opens ALREADY showing the stored preset …
+    expect(within(group).getByRole('button', { name: 'Blue' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    // … the owner changes something else entirely …
+    fireEvent.click(screen.getByTitle('Dice'));
+
+    // … and the colour survives the save.
+    const settings = await saveAndCapture();
+    expect(settings.color_preset).toBe('blue');
+    expect(settings.background_color).toBeNull();
+    expect(settings.profile_picture_url).toBe('\u{1F3B2}');
+  });
+});
