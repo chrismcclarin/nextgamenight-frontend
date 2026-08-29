@@ -75,10 +75,25 @@ const HEX_EXEMPT: Record<string, string> = {
     'Renders OUTSIDE the app shell. Next.js global-error replaces the root layout, so no ' +
     'stylesheet, no theme variables and no Tailwind are loaded — inline hex is the only ' +
     'thing that can paint it. Marker at the site (88-09 D-20 / DEF-88-22-2).',
+  // Phase 88.3.1 plan 03: the entry BELOW is still earned at this commit — `GroupSettings.js`
+  // still carries its eight raw hexes, so test 4 (the anti-fossil check) is still green on it.
+  // It is deleted by plan 88.3.1-07, the commit that actually empties that array. RESEARCH
+  // Pitfall 1 says the exemption map breaks in BOTH directions and both edits belong in "the
+  // same commit" — the precise reading is that each DIRECTION lands in the commit that causes
+  // it. Adding the new module here and removing this one here would red test 4 instead.
   'app/components/GroupSettings.js':
     'The eight group background-colour PRESETS are DATA, not styling: each value is ' +
     'persisted to `Groups.background_color` and rendered by whoever reads that column. ' +
     'A theme token would change what is written to the database.',
+  'lib/groupColourPresets.ts':
+    'D-04 / D-07: the eight preset rows are DATA, not styling, in three separate ways a ' +
+    'token cannot be. (1) `name` is persisted to `Groups.color_preset` and validated ' +
+    'server-side against the same eight ids. (2) The grounds and inks are fed to ' +
+    '`getBrightness` and to WCAG contrast maths — a `var(--color-*)` reference cannot be read ' +
+    'back as a NUMBER at runtime, so tokenising them deletes the computation rather than ' +
+    'theming it. (3) They are emitted as CSS custom properties per rendered group, i.e. they ' +
+    'are the VALUE a token would hold, not a reference to one. Same reasoning as ' +
+    '`lib/colorUtils.js` above, one layer further out.',
   'app/userProfile/page.js':
     'Google BRAND ART — the four fills of the Google "G" mark. 88-22 registered this ' +
     'exemption and 88-19 tagged each fill `TODO(88-29)` so it could not be confused with a ' +
