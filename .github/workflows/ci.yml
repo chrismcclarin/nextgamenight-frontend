@@ -229,6 +229,22 @@ jobs:
         # would pass if another grew. Adding a test to a suite is never a red build; removing
         # one is, and that is the intended asymmetry.
         #
+        # AMENDMENT Z — Phase 88.3.1 plan 01 (M21, owner-ruled 2026-08-29). Two rows added:
+        # `src/lib/colourDistance.test.ts` and `src/lib/groupColourPresets.test.ts`. The first
+        # is the FE half of a CROSS-REPO fixture: the same four ΔE2000 rows are asserted in
+        # backend tests/unit/colourDistance.test.js, and that pair of suites is the only thing
+        # standing between a divergent CIEDE2000 implementation and a permanently wrong
+        # `Groups.background_color` remap (margins of 0.65 and 0.72). Unregistered, the FE half
+        # was deletable with no red build — which would have left the backend asserting a
+        # contract with nobody on the other end. The second owns the eight-preset palette's
+        # ΔE / hue-gap / contrast floors.
+        #
+        # SEQUENCING, so nobody "fixes" this the wrong way: `groupColourPresets.test.ts` is
+        # minted by plan 88.3.1-03, which runs in wave 2 of the SAME phase branch. Between
+        # wave 1 and wave 2 this row is deliberately ahead of the file, and the existence check
+        # below (plus its lockstep twin in ci-grep-gate.fixture.test.ts) is RED on purpose.
+        # That red is the gate working. Do NOT delete the row to make it green — land plan 03.
+        #
         # The lockstep self-test `src/lib/ci-grep-gate.fixture.test.ts` parses THIS step's
         # file list out of this workflow, located by the step name above, and asserts every
         # listed file exists and really carries at least the stated number of assertions.
@@ -256,6 +272,8 @@ jobs:
             "src/app/legacyOverlayClass.test.ts:5" \
             "src/app/nativeDialogs.test.ts:7" \
             "src/app/groupColourRendering.test.ts:10" \
+            "src/lib/colourDistance.test.ts:9" \
+            "src/lib/groupColourPresets.test.ts:12" \
             "src/test-utils/sourceScan.ts:0" \
           ; do
             f="${entry%:*}"; min="${entry##*:}"
