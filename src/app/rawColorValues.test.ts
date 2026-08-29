@@ -75,16 +75,14 @@ const HEX_EXEMPT: Record<string, string> = {
     'Renders OUTSIDE the app shell. Next.js global-error replaces the root layout, so no ' +
     'stylesheet, no theme variables and no Tailwind are loaded — inline hex is the only ' +
     'thing that can paint it. Marker at the site (88-09 D-20 / DEF-88-22-2).',
-  // Phase 88.3.1 plan 03: the entry BELOW is still earned at this commit — `GroupSettings.js`
-  // still carries its eight raw hexes, so test 4 (the anti-fossil check) is still green on it.
-  // It is deleted by plan 88.3.1-07, the commit that actually empties that array. RESEARCH
-  // Pitfall 1 says the exemption map breaks in BOTH directions and both edits belong in "the
-  // same commit" — the precise reading is that each DIRECTION lands in the commit that causes
-  // it. Adding the new module here and removing this one here would red test 4 instead.
-  'app/components/GroupSettings.js':
-    'The eight group background-colour PRESETS are DATA, not styling: each value is ' +
-    'persisted to `Groups.background_color` and rendered by whoever reads that column. ' +
-    'A theme token would change what is written to the database.',
+  // Phase 88.3.1 plan 07: the group SETTINGS component WAS exempt here, for the eight
+  // raw preset hexes it used to hold. Plan 07 moved that table to `lib/groupColourPresets.ts`
+  // (entry below), so the file carries no hex at all any more and the exemption is DELETED in
+  // the same commit that emptied it. That is what test 4 enforces: this list is deliberately
+  // non-monotonic, so a tokenised file cannot keep a standing permission to regain a raw hex
+  // for free. Plan 03 added the new module's entry and deliberately left this one alone,
+  // because each DIRECTION of the edit belongs in the commit that causes it — removing this
+  // one early would have redded test 4 from the other side.
   'lib/groupColourPresets.ts':
     'D-04 / D-07: the eight preset rows are DATA, not styling, in three separate ways a ' +
     'token cannot be. (1) `name` is persisted to `Groups.color_preset` and validated ' +

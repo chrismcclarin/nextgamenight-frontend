@@ -6,9 +6,11 @@ import PromptScheduleReadOnly from './PromptScheduleReadOnly';
 import SafeImage from './SafeImage';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import {
-  lightTintGroupBackgroundColor,
-  resolveGroupBackgroundColor,
+  resolveGroupGround,
+  storedGroupColour,
 } from '../../lib/colorUtils';
+import { GROUP_COLOUR_PRESETS } from '@/lib/groupColourPresets';
+import { logger } from '@/lib/logger';
 import { toast } from 'sonner';
 // Relative (not `@/`) so this `.js` component resolves under vitest, matching
 // the sibling ManageMembers.js adopter.
@@ -46,17 +48,40 @@ const DEFAULT_PROFILE_PICTURES = [
  * CONSEQUENCE for Req 2's grep gate (plan 88-29): this file needs a SCOPED
  * allowlist entry naming this array, not a bare one. Converting these is a
  * decision — and a cross-stack one — not a cleanup.
+ *
+ * ——— AMENDED Phase 88.3.1 (D-04 / D-07, UI-SPEC 7.2). Everything above is KEPT
+ * AS HISTORY, deliberately: it is the record of what shipped, and one of its
+ * claims is the claim a future reader would otherwise trust.
+ *
+ * WHAT STILL HOLDS, with four values per preset instead of one. The palette stays
+ * RAW hex and D-27's reason is unchanged: the id is PERSISTED to
+ * `Groups.color_preset` and validated server-side; the grounds and inks are fed to
+ * `getBrightness` and to WCAG contrast maths, which need a NUMBER at runtime; and
+ * they are emitted as CSS custom properties per rendered group, i.e. they are the
+ * VALUE a token would hold, not a reference to one. A `var(--color-*)` reference
+ * can be none of those three things.
+ *
+ * WHAT CHANGED (i) — WHERE THE TABLE LIVES. It is now `src/lib/groupColourPresets.ts`,
+ * because it is DATA with two consumers (this picker and `resolveGroupGround` in
+ * `lib/colorUtils.js`) plus an id-only copy on the backend, not one component's
+ * private constant. `rawColorValues.test.ts` gained the new module's exemption in
+ * plan 88.3.1-03 and LOST this file's in plan 88.3.1-07 — the commit that actually
+ * emptied the array — because that list is deliberately non-monotonic (its test 4).
+ *
+ * WHAT CHANGED (ii) — THE SUPERSEDED CLAIM. The sentence above beginning "The
+ * palette being all-dark…" is NO LONGER TRUE and must not be carried forward.
+ * Every preset now carries a LIGHT SURFACE (CIE L* 88.2-88.6) as well as a dark
+ * band (L* 12-25), and light mode paints the light one. The eight near-black
+ * values above measured ΔE2000 1.62 apart once rendered for light mode — sub-JND,
+ * which is why the owner could not tell swatches 1/2/3 or 7/8 apart on his phone
+ * (88.3 UAT test 9a, the finding that created this phase). The replacement
+ * measures 10.48 light / 10.32 dark.
+ *
+ * REJECTED: keeping the array in this file and hanging a second column off it. The
+ * backend validator and the plan-05 migration both need the ids, and a constant
+ * inside a React component cannot be the source of truth for a database column.
+ * Changing this is a decision, not a cleanup.
  */
-const DEFAULT_BACKGROUND_COLORS = [
-  { name: 'Charcoal', value: '#1e1e2e' },
-  { name: 'Slate', value: '#1e293b' },
-  { name: 'Navy', value: '#172554' },
-  { name: 'Indigo', value: '#1e1b4b' },
-  { name: 'Forest', value: '#14332a' },
-  { name: 'Wine', value: '#3b1030' },
-  { name: 'Espresso', value: '#2c1f14' },
-  { name: 'Storm', value: '#27272a' },
-];
 
 export default function GroupSettings({ group, user, onClose, onUpdate, userRole, onGroupDeleted, onOpenManageMembers }) {
   const router = useRouter();
@@ -89,10 +114,34 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
    * Pinned by `src/app/groupColourRendering.test.ts` test 1, which was
    * demonstrated red by routing this line through the tint. Changing it is a
    * decision, not a cleanup.
+   *
+   * ——— AMENDED Phase 88.3.1 (AMENDMENT E / D-01). Everything above is KEPT AS
+   * HISTORY and the control it describes is UNCHANGED — only the accessor moved.
+   *
+   * THE RULE IS THE SAME: this line reads a STORED value and never a RENDERED
+   * one. What changed is that there are now TWO stored columns. Plan 88.3.1-05
+   * migrates groups to `color_preset = '<id>'` with `background_color = NULL`, so
+   * a seed that read the legacy column alone would open this picker showing NO
+   * colour for a migrated group — and saving any unrelated setting would then send
+   * both columns null and WIPE that group's colour. That is the same
+   * data-destruction class the marker above was written against, arriving through
+   * a different door.
+   *
+   * `storedGroupColour(group)` (`lib/colorUtils.js`) is the one accessor all seven
+   * sites ask: `color_preset ?? background_color`, trimmed. `??` and NOT `||`,
+   * deliberately — the backend validator still accepts `''` and whitespace, so
+   * `||` would silently mask a stored empty string as "no colour" instead of
+   * letting it surface. It is a pure COLUMN CHOICE: it reads, it does not
+   * transform, and it is not the resolver.
+   *
+   * STILL REJECTED, verbatim and for the same reason: routing this line through
+   * `lightTintGroupBackgroundColor`, and equally through `resolveGroupGround`.
+   * Both are RENDERING transforms and their output must never approach form
+   * state. The preview and the eight swatches below DO call the resolver — they
+   * paint, they do not persist. Tests 1 and 2 were RE-POINTED to this seed in
+   * plan 88.3.1-07 and demonstrated red against it. A decision, not a cleanup.
    */
-  const [backgroundColor, setBackgroundColor] = useState(
-    resolveGroupBackgroundColor(group.background_color) || ''
-  );
+  const [backgroundColor, setBackgroundColor] = useState(storedGroupColour(group) || '');
   const [backgroundImageUrl, setBackgroundImageUrl] = useState(group.background_image_url || '');
   const [customPictureUrl, setCustomPictureUrl] = useState('');
   const [customBackgroundUrl, setCustomBackgroundUrl] = useState('');
@@ -184,12 +233,12 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
   const knownMemberCount = deletionImpact?.member_count ?? memberCount;
   const isSoleMemberDelete = knownMemberCount !== null && knownMemberCount <= 1;
 
-  // The live preview is a RENDER site: it takes the tint, so it shows what the
-  // card will actually look like in light mode. `previewGround` is gated on the
-  // TINT succeeding, so a value that fails to tint withholds BOTH custom
-  // properties together rather than just the light one (T-88.3-43).
-  const previewTinted = lightTintGroupBackgroundColor(backgroundColor);
-  const previewGround = previewTinted ? backgroundColor : null;
+  // The live preview is a RENDER site: it goes through THE resolver, so it shows
+  // exactly what the card will paint — the preset's light surface in light mode,
+  // its dark band in dark mode. T-88.3-43's "both grounds or neither" gate is no
+  // longer hand-written here: `resolveGroupGround` returns an object carrying both
+  // or `null`, never half a pair, so the ternaries below gate on the object.
+  const previewGround = resolveGroupGround(backgroundColor);
 
   const handleSave = async () => {
     if (!user?.sub) return;
@@ -212,7 +261,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
       if (onUpdate) onUpdate();
       if (onClose) onClose();
     } catch (error) {
-      console.error('Error updating group settings:', error);
+      logger.error('Error updating group settings', error);
       toast.error('Failed to update group settings. Please try again.');
     } finally {
       setSaving(false);
@@ -305,7 +354,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
         router.push('/');
       }
     } catch (error) {
-      console.error('Error deleting group:', error);
+      logger.error('Error deleting group', error);
       toast.error(error.message || 'Failed to delete group. Please try again.');
       // Re-thrown so useConfirmAction keeps the gate OPEN on failure (its
       // contract): closing it would leave the owner looking at a Danger Zone
@@ -484,10 +533,10 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
               stacked shape renders white in light mode. ALSO REJECTED: gating
               the ground on `backgroundColor` alone (T-88.3-43). A decision, not
               a cleanup. */}
-          <div className={`mb-4 p-4 border border-line rounded-lg ${previewTinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`} style={{
-            ...(previewTinted && {
-              '--group-ground': previewGround,
-              '--group-ground-light': previewTinted,
+          <div className={`mb-4 p-4 border border-line rounded-lg ${previewGround ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`} style={{
+            ...(previewGround && {
+              '--group-ground': previewGround.dark,
+              '--group-ground-light': previewGround.light,
             }),
             ...safeBgImageStyle(backgroundImageUrl),
             backgroundSize: 'cover',
@@ -504,8 +553,8 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                 eight as a LABELLED set rather than a bare row of buttons — the
                 visible <p> above is already the label, it just was not wired to
                 them. */}
-            <div className="grid grid-cols-4 gap-2" role="group" aria-labelledby="group-colour-choice">
-              {DEFAULT_BACKGROUND_COLORS.map((color, index) => {
+            <div className="grid grid-cols-4 gap-2 justify-items-center" role="group" aria-labelledby="group-colour-choice">
+              {GROUP_COLOUR_PRESETS.map((preset) => {
                 /* The swatch is a RENDER site, so it shows the tint: a swatch
                    must preview what you will actually get. The stored value it
                    selects (`handleSelectDefaultColor(color.value)`) is the raw
@@ -525,6 +574,46 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                    previously-ruled 0.87 the eight measured 1.01:1 pairwise and
                    a visible marker would have been mandatory. A decision, not a
                    cleanup.
+
+
+                   ——— AMENDED Phase 88.3.1 (AMENDMENT G2, owner ruling
+                   REVERSED 2026-08-29 after he consulted a colour-blind user).
+                   The R2-2 text above is KEPT AS HISTORY, and its measurement
+                   expired with this phase: it is anchored to the t = 0.70
+                   rendered grounds this phase deletes. THE EIGHT SWATCHES NOW
+                   CARRY VISIBLE ONE-WORD LABELS. Owner, verbatim: "I talked with
+                   a person who is colorblind. They wished for the colors to have
+                   names under them."
+
+                   THE NUMBERS THE LABELS EXIST FOR, from
+                   `.planning/research/COLOUR-VISION-DEFICIENCY-AUDIT-2026-08-29.md`:
+                   the eight presets measure ΔE2000 10.48 in normal vision but
+                   1.04 / 0.73 / 2.38 under protanopia / deuteranopia /
+                   tritanopia in light mode (dark: 1.85 / 0.71 / 4.97). The light
+                   band is solved to L* 88.2-88.6, so the set's L* spread is 0.35
+                   and HUE is the only separating channel — precisely the channel
+                   those three conditions take away. `groupColourPresets.test.ts`
+                   test 14 pins all six numbers; it is no longer pinning an
+                   accepted failure, it is guarding the reason these labels exist.
+
+                   The caption is `aria-hidden` and the button keeps its
+                   `aria-label`, so the name is ANNOUNCED EXACTLY ONCE.
+
+                   REJECTED — the stroked-white treatment the same conversation
+                   suggested ("white with a black border, because that can be
+                   read on any color"). Measured: the caption sits on the CARD,
+                   not on the colour, where white is 1.00:1 (it IS the card) and
+                   1.26-1.41:1 on the eight light surfaces. That idiom is a
+                   perceptual rescue for grounds we CANNOT measure — a user's
+                   uploaded photo — and against a KNOWN ground plain
+                   `text-content-secondary` beats it outright. Where the friend IS
+                   right, this codebase already agrees: `colorUtils.js`'s
+                   background-image arm has drawn white-with-a-dark-outline text
+                   for exactly that case since before this phase, and
+                   `groupInkVars`'s image arm (AMENDMENT 7) protects it.
+                   ALSO REJECTED — a check glyph or disc as the CVD mitigation: it
+                   says "this one is selected", not "this one is Teal", so it does
+                   not address the finding at all.
 
                    DECISION Phase 88.3-cr (CR-14, code-adversarial-review
                    2026-08-27): SELECTION and FOCUS are now two different
@@ -565,26 +654,97 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                    that, and this finding is not a reason to re-open it: the
                    ruling was about swatch IDENTITY being visible at t = 0.70,
                    and it still is. A decision, not a cleanup. */
-                const swatchTinted = lightTintGroupBackgroundColor(color.value);
-                const swatchGround = swatchTinted ? color.value : null;
-                const isSelected = backgroundColor === color.value && !backgroundImageUrl;
+
+                /* DECISION Phase 88.3.1 (D-05): THE SWATCH SHOWS THE CURRENT
+                   THEME'S VALUE ONLY — the preset's light surface in light mode,
+                   its dark band in dark mode — because that is exactly what the
+                   card will render. Owner ruling ("follow recommended"). The
+                   mechanism is the shipped one: both custom properties are
+                   emitted and the CSS cascade picks, so there is no theme read in
+                   JS and no hydration fork.
+
+                   REJECTED — a SPLIT CHIP showing both themes at once: at the
+                   44px floor each half is ~22px, the split edge fights the
+                   `border-2 ring-2` selection frame, and it reads as "two
+                   colours" rather than as one preset.
+                   REJECTED — an other-theme DOT in the corner: it collides with
+                   owner ruling R2-2 above (no added chrome), and a pale dot on a
+                   pale surface is invisible in the theme that needs it.
+                   REJECTED — painting the dark band in both themes: it reverses
+                   the target of the whole phase and breaks D-09's principle that
+                   a swatch must preview what you will actually get.
+                   A decision, not a cleanup. */
+
+                /* DECISION Phase 88.3.1 (SPEC Req 7, UI-SPEC 5.1 — swatch
+                   geometry). The three classes below are load-bearing and each
+                   has a number; without those numbers recorded a future reader
+                   deletes them as noise.
+
+                   `max-w-16` (64px) IS REQUIRED. This picker lives inside a
+                   `max-w-2xl` Modal — with no cap the desktop grid renders
+                   146 x 146px swatches.
+
+                   `aspect-square` IS REQUIRED. A stretched grid item measures
+                   72 x 44 at 375px: it clears the touch floor but stops reading
+                   as a colour chip.
+
+                   44 IS A FLOOR, NOT A TARGET (CLAUDE.md, Phone-Forward). 64 is
+                   the target; `min-w-11 min-h-11` is the line that must never be
+                   breached. THE ARITHMETIC at the 375px mobile gate: 4 x 64 +
+                   3 x 8 = 280px inside a ~311px grid — 31px spare across the
+                   whole ROW, not per gap, which is why the cell wrapper is
+                   CENTRED in its ~71.8px column instead of being left to hug the
+                   inline start. At 320px (iPhone SE) the cap never binds and each
+                   chip renders ~58px, still over the floor. This replaces
+                   DEF-88.3-10-01's shipped `p-4`-with-no-content swatch, which
+                   measured ~36 x 36.
+
+                   REJECTED — a fixed `w-16 h-16`: it overflows the 320px
+                   viewport, the narrowest phone this project measures.
+                   REJECTED — the floor classes alone with no cap, which is the
+                   146px desktop chip above. A decision, not a cleanup. */
+
+                /* DECISION Phase 88.3.1 (M33 / AMENDMENT D): the RESTING boundary
+                   below takes the `-strong` rung of the line token, at THIS ONE
+                   SITE. The eight light surfaces sit 1.0277-1.0374:1 from the
+                   page — deliberately so (UI-SPEC 2.6) — which means the fill
+                   says nothing and the boundary is the only cue that eight
+                   tappable controls exist (WCAG 1.4.11 Non-text Contrast). The
+                   shared hairline measures 1.7053-1.7214:1 against those eight
+                   surfaces, under the 3:1 that `globals.css`'s own marker
+                   reserves for CONTROL boundaries; the `-strong` rung measures
+                   3.0361-3.0648:1. It passes by 0.036 at its worst (orange),
+                   which is why `groupColourPresets.test.ts` test 15 pins BOTH
+                   directions — a value change alone would let a future nudge to
+                   either token red it silently.
+
+                   REJECTED — moving the shared `--color-border` token, or
+                   sweeping the 235 hairline sites with it. `globals.css`'s marker
+                   forbids exactly that, and the `-strong` token already exists
+                   for this job. A decision, not a cleanup. */
+                const swatchGround = resolveGroupGround(preset.name);
+                const isSelected = backgroundColor === preset.name && !backgroundImageUrl;
                 return (
-                  <button
-                    key={index}
-                    onClick={() => handleSelectDefaultColor(color.value)}
-                    className={`p-4 border-2 rounded-lg hover:opacity-80 transition-opacity focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
-                      isSelected ? 'border-content-primary ring-2 ring-content-primary' : 'border-line'
-                    } ${swatchTinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
-                    style={{
-                      ...(swatchTinted && {
-                        '--group-ground': swatchGround,
-                        '--group-ground-light': swatchTinted,
-                      }),
-                    }}
-                    title={color.name}
-                    aria-label={color.name}
-                    aria-pressed={backgroundColor === color.value && !backgroundImageUrl}
-                  />
+                  <div key={preset.name} className="flex w-full max-w-16 flex-col items-center gap-1">
+                    <button
+                      onClick={() => handleSelectDefaultColor(preset.name)}
+                      className={`w-full max-w-16 aspect-square min-w-11 min-h-11 border-2 rounded-lg hover:opacity-80 transition-opacity focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+                        isSelected ? 'border-content-primary ring-2 ring-content-primary' : 'border-line-strong'
+                      } ${swatchGround ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
+                      style={{
+                        ...(swatchGround && {
+                          '--group-ground': swatchGround.dark,
+                          '--group-ground-light': swatchGround.light,
+                        }),
+                      }}
+                      title={preset.label}
+                      aria-label={preset.label}
+                      aria-pressed={isSelected}
+                    />
+                    <span aria-hidden="true" className="text-xs text-content-secondary">
+                      {preset.label}
+                    </span>
+                  </div>
                 );
               })}
             </div>
