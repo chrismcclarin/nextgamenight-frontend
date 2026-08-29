@@ -108,7 +108,39 @@ const RENDER_SITES: { file: string; nullBranch: string[] }[] = [
 ];
 
 const TINT = 'lightTintGroupBackgroundColor';
+/** THE resolver (plan 88.3.1-06). Also a RENDER transform — same rule as the tint. */
+const RESOLVER = 'resolveGroupGround';
+/** The shared preset table (plan 88.3.1-03), which is where the raw hexes live now. */
+const TABLE = 'lib/groupColourPresets.ts';
 const LIGHT_GROUND = '--group-ground-light';
+
+/** Why an ink in a payload is the same defect class as a tint in a payload. */
+const INK_BOOM =
+  'UI-SPEC 4.1: the inks and their muted rungs are RESOLVED on the frontend from the ' +
+  'stored id, exactly like the grounds. They are never persisted and never sent. A ' +
+  'payload built from one destroys the group identity the id exists to carry, and it ' +
+  'cannot be recovered from the rendered value.';
+
+/**
+ * The eight `dark` / `light` grounds, byte-pinned.
+ *
+ * RE-POINTED plan 88.3.1-07 from the eight near-black `DEFAULT_BACKGROUND_COLORS`
+ * hexes that used to live in `GroupSettings.js`. They are asserted against
+ * `lib/groupColourPresets.ts` now, because that is where the table moved — and the
+ * point of the assertion is unchanged: these values are CROSS-STACK data, persisted
+ * by id and validated by the backend, so a silent edit here is a silent edit to what
+ * every existing coloured group renders as.
+ */
+const PRESET_GROUNDS: [string, string, string][] = [
+  ['red', '#52151c', '#ffd3d4'],
+  ['orange', '#422200', '#ffd6b1'],
+  ['amber', '#322b00', '#e7e0aa'],
+  ['green', '#004511', '#bde9c2'],
+  ['teal', '#003538', '#94edf0'],
+  ['blue', '#00274d', '#c4e1ff'],
+  ['violet', '#33255a', '#dfd9ff'],
+  ['rose', '#3e133c', '#fdd1f8'],
+];
 
 // ---------------------------------------------------------------------------
 // Expression extraction. `stringChunks` is per STRING LITERAL, which is exactly
@@ -310,17 +342,37 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       'GroupSettings.js’s form-state seed must stay resolveGroupBackgroundColor. ' +
       'See the DECISION Phase 88.3 (D-09 / Pitfall 7) marker at that line.';
 
-    // (a) the seed itself is still the identity resolver
-    expect(gs, boom).toMatch(/useState\(\s*resolveGroupBackgroundColor\(group\.background_color\)/);
+    // (a) the seed still reads a STORED value and never a rendered one.
+    //     RE-POINTED plan 88.3.1-07 (AMENDMENT E): the accessor moved from
+    //     `resolveGroupBackgroundColor(group.background_color)` to
+    //     `storedGroupColour(group)` because there are now TWO stored columns and
+    //     reading only the legacy one wipes a migrated group's colour on the next
+    //     save. The CONTROL is unchanged — what this line forbids is a RENDER
+    //     transform in the seed, and both are named below.
+    expect(gs, boom).toMatch(/useState\(\s*storedGroupColour\(group\)/);
+    expect(gs, boom).not.toMatch(/useState\(\s*resolveGroupGround\(/);
+    expect(gs, boom).not.toMatch(new RegExp(`useState\\(\\s*${TINT}\\(`));
 
-    // (b) the tint appears nowhere inside the save handler
+    // (b) no rendered value appears anywhere inside the save handler — not the
+    //     tint, not the resolver, not an ink or a muted rung, and not a raw hex
+    //     from the table. UI-SPEC 4.1: "the inks are never persisted and never
+    //     sent" extends test 1 verbatim.
     const save = functionBody(gs, 'handleSave');
     expect(save.length, 'handleSave not found — this gate has lost its target').toBeGreaterThan(50);
     expect(save, 'handleSave builds the persisted payload').toContain('background_color:');
+    expect(save, 'handleSave builds the persisted payload').toContain('color_preset:');
     expect(save, boom).not.toContain(TINT);
+    expect(save, boom).not.toContain(RESOLVER);
+    for (const field of ['inkDark', 'inkLight', 'mutedDark', 'mutedLight']) {
+      expect(save, `${field} reached the save path — ${INK_BOOM}`).not.toContain(field);
+    }
+    expect(save, `a raw palette hex reached the save path — ${INK_BOOM}`).not.toMatch(
+      /#[0-9a-fA-F]{3,8}\b/,
+    );
 
-    // (c) and nothing tinted is ever pushed back into the form state
+    // (c) and nothing rendered is ever pushed back into the form state
     expect(gs, boom).not.toMatch(new RegExp(`setBackgroundColor\\([^)]*${TINT}`));
+    expect(gs, boom).not.toMatch(new RegExp(`setBackgroundColor\\([^)]*${RESOLVER}`));
   });
 
   it('2. the decision lives at the PRODUCTION site, with its rejected half named', () => {
@@ -328,7 +380,12 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // editing the code it governs — that is how a deliberate choice gets
     // "restored" as an oversight two phases later (88.1-CODE-REVIEW.md).
     const src = raw(SEED);
-    const at = src.indexOf('useState(\n    resolveGroupBackgroundColor(group.background_color)');
+    // RE-POINTED plan 88.3.1-07 (AMENDMENT I). The anchor WAS
+    // `useState(\n    resolveGroupBackgroundColor(group.background_color)`; AMENDMENT E
+    // rewrites exactly that line, so keeping the old anchor would be unsatisfiable, and
+    // deleting this test is not on the table — it is the only guard that the marker
+    // explaining WHY the seed is not a render transform still sits at the seed.
+    const at = src.indexOf('useState(storedGroupColour(group)');
     expect(at, 'the form-state seed moved — re-anchor this assertion').toBeGreaterThan(-1);
     // Un-wrap the block comment before matching: these markers are prose and the
     // load-bearing phrases wrap across `*`-prefixed lines, so a naive regex would
@@ -344,6 +401,15 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     expect(above).toMatch(/REJECTED/);
     expect(above).toMatch(/replace every `resolveGroupBackgroundColor` call/);
     expect(above).toMatch(/is a decision, not a cleanup/);
+    // The accessor changed, so the marker had to be AMENDED rather than carried
+    // forward — a marker whose stated mechanism no longer matches the line under it
+    // is worse than no marker, because the next reader trusts it.
+    expect(above, 'the seed marker was carried forward unamended past AMENDMENT E').toMatch(
+      /AMENDED Phase 88\.3\.1/,
+    );
+    expect(above, 'the amended marker does not name the resolver as still-rejected').toMatch(
+      /resolveGroupGround/,
+    );
   });
 
   it('3. the themed surface class and the tint pair are MUTUALLY EXCLUSIVE', () => {
@@ -412,36 +478,83 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         calls += 1;
       }
     }
-    // floor set below the real count (6 at time of writing: four resolver render
-    // sites plus GroupSettings' preview and swatches)
-    expect(calls).toBeGreaterThanOrEqual(5);
+    /*
+     * RE-POINTED plan 88.3.1-07. The floor WAS 5 and described a tree where
+     * `GroupSettings.js` still made two direct tint calls. Those two moved onto
+     * `resolveGroupGround` in this plan, so 5 is now the WHOLE remaining
+     * population — grouplist, groupHomePage, CalendarListView, CalendarMonthView
+     * and EventDayModal — and a floor equal to the population is a gate that can
+     * only ever red.
+     *
+     * TODO(88.3.1-09): plans 88.3.1-08 and 88.3.1-09 move those five render sites
+     * onto the resolver too. When 09 lands, this floor drops to its final value —
+     * the tint survives ONLY as `resolveGroupGround`'s internal legacy-hex arm in
+     * `lib/colorUtils.js`, i.e. 1 — and the resolver floor below rises to 7.
+     */
+    expect(calls, 'the tint has stopped being called at all — test 1 would be vacuous')
+      .toBeGreaterThanOrEqual(3);
+
+    /*
+     * The other half, and the reason this test is not simply weakened: as the tint
+     * count falls the RESOLVER count must rise, or the render sites have stopped
+     * resolving a ground at all. At this plan it is 2 — GroupSettings' preview and
+     * its swatch map — plus the declaration, which is skipped the same way.
+     */
+    let resolverCalls = 0;
+    for (const file of sourceFiles(SRC)) {
+      const src = withoutComments(fs.readFileSync(file, 'utf8'));
+      for (const m of src.matchAll(new RegExp(`${RESOLVER}\\s*\\(`, 'g'))) {
+        const before = src.slice(Math.max(0, (m.index ?? 0) - 20), m.index ?? 0);
+        if (/function\s*$/.test(before)) continue;
+        resolverCalls += 1;
+      }
+    }
+    expect(resolverCalls, 'a render site stopped going through THE resolver')
+      .toBeGreaterThanOrEqual(2);
   });
 
-  it('6. the raw preset palette is untouched, and the swatches are named', () => {
-    const src = raw(SEED);
-    // DECISION 88-22 (D-27) is CROSS-STACK: these eight values are persisted and
-    // validated by the backend's ^#[0-9A-Fa-f]{6}$ rule. The tint is a rendering
-    // transform and must never become a stored one.
-    expect(src).toMatch(/DECISION Phase 88-22 \(D-27/);
-    for (const hex of [
-      '#1e1e2e',
-      '#1e293b',
-      '#172554',
-      '#1e1b4b',
-      '#14332a',
-      '#3b1030',
-      '#2c1f14',
-      '#27272a',
-    ]) {
-      expect(src, `preset ${hex} left DEFAULT_BACKGROUND_COLORS`).toContain(`value: '${hex}'`);
+  it('6. the preset palette is untouched IN THE SHARED TABLE, and the swatches are named', () => {
+    /*
+     * RE-POINTED plan 88.3.1-07. The eight values this test used to pin lived in
+     * `GroupSettings.js`; they are now `lib/groupColourPresets.ts`'s two-value rows.
+     * DECISION 88-22 (D-27) is still CROSS-STACK — the id is persisted and validated
+     * by the backend, and the grounds are fed to `getBrightness` and to WCAG maths —
+     * so the assertion follows the data rather than being deleted with the array.
+     */
+    const table = raw(TABLE);
+    expect(table, 'the shared table lost its Phase 88.3.1 decision marker').toMatch(
+      /DECISION Phase 88\.3\.1/,
+    );
+    for (const [name, dark, light] of PRESET_GROUNDS) {
+      expect(table, `preset ${name} lost its dark band`).toContain(`dark: '${dark}'`);
+      expect(table, `preset ${name} lost its light surface`).toContain(`light: '${light}'`);
     }
 
-    // owner ruling R2-2: the swatch identity is visible at t = 0.70, so
-    // aria-label + aria-pressed is the whole accessibility fix — no checkmark.
+    // The picker READS that table — it does not keep a copy. A second copy is how
+    // the migration's tie-break order and the picker's reading order drift apart.
     const gs = code(SEED);
-    expect(gs).toContain('aria-label={color.name}');
+    expect(gs, 'the picker no longer reads the shared table').toContain('GROUP_COLOUR_PRESETS');
+    expect(gs, 'a private palette array came back into the component').not.toMatch(
+      /#[0-9a-fA-F]{3,8}\b/,
+    );
+
+    // D-27's marker stays at this site and its expired claim is superseded IN PLACE,
+    // with the original kept — see the AMENDED block. A future reader who finds only
+    // the original would believe the palette is still all-dark.
+    const src = raw(SEED);
+    expect(src).toMatch(/DECISION Phase 88-22 \(D-27/);
+    expect(src, 'the D-27 header was carried forward unamended').toMatch(
+      /AMENDED Phase 88\.3\.1/,
+    );
+
+    // owner ruling R2-2, as AMENDED by G2: aria-label + aria-pressed remain the
+    // machine-readable half, and the visible one-word caption is the colour-vision
+    // half. `aria-pressed` now compares against the preset ID, and D-06's toggle-off
+    // is what makes it honest in both directions.
+    expect(gs).toContain('aria-label={preset.label}');
+    expect(gs).toMatch(/aria-pressed=\{isSelected\}/);
     expect(gs).toMatch(
-      /aria-pressed=\{backgroundColor === color\.value && !backgroundImageUrl\}/,
+      /const isSelected = backgroundColor === preset\.name && !backgroundImageUrl;/,
     );
   });
 
@@ -612,7 +725,14 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       'app/components/CalendarMonthView.js': 1,
       'app/components/CalendarListView.js': 1,
       'app/components/EventDayModal.js': 1,
-      [SEED]: 2,
+      // RE-POINTED plan 88.3.1-07: `GroupSettings.js` used to be `2` here and is
+      // asserted separately below. Its two hand-written gates did not go MISSING —
+      // they moved INSIDE `resolveGroupGround`, which returns an object carrying
+      // both grounds or `null` and never half a pair. T-88.3-43 stopped being a
+      // gate each caller writes and became a property of the return type, so
+      // requiring the old shape here would pressure a future reader to un-do the
+      // resolver. Plans 88.3.1-08 and 88.3.1-09 move the four files above the same
+      // way, and each one drops out of this map as it lands.
     };
     for (const [file, floor] of Object.entries(floors)) {
       const src = code(file);
@@ -622,9 +742,26 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       expect(gates, `${file}: a ground is not gated on its tint succeeding`).toBeGreaterThanOrEqual(
         floor,
       );
+    }
 
-      // and the pair is always emitted together
-      for (const expr of attrExprs(src, 'style').filter((e) => e.text.includes(LIGHT_GROUND))) {
+    // The SEED's equivalent: both of its render sites go through the resolver, and
+    // no hand-written half-pair gate has crept back in beside it.
+    const seed = code(SEED);
+    expect(
+      (seed.match(new RegExp(`${RESOLVER}\\(`, 'g')) ?? []).length,
+      `${SEED}: a render site stopped going through the resolver, so its two grounds ` +
+        'can drift apart again',
+    ).toBeGreaterThanOrEqual(2);
+    expect(
+      seed,
+      `${SEED}: a hand-written \`ground = tinted ? … : null\` gate came back beside the resolver`,
+    ).not.toMatch(/\b\w*[Gg]round\w*\s*=\s*\w*[Tt]inted\w*\s*\?/);
+
+    // and the pair is always emitted together — EVERY file, the seed included
+    for (const file of [...Object.keys(floors), SEED]) {
+      for (const expr of attrExprs(code(file), 'style').filter((e) =>
+        e.text.includes(LIGHT_GROUND),
+      )) {
         expect(expr.text, `${file}: --group-ground-light emitted without its dark twin`).toContain(
           "'--group-ground':",
         );
@@ -642,15 +779,27 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     expect(wrapper?.text).toContain('group-colour-choice');
   });
 
-  it('11. repo-wide: no save payload is ever built from a tinted value', () => {
+  it('11. repo-wide: no save payload is ever built from a RENDERED value', () => {
     // The narrow version of test 1, widened past GroupSettings.js so a future
-    // surface that learns to write `background_color` inherits the control.
+    // surface that learns to write either colour column inherits the control.
+    //
+    // WIDENED plan 88.3.1-07 in two directions: to the NEW column (`color_preset:`,
+    // which is now the authoritative one) and to the resolver and the ink fields
+    // (UI-SPEC 4.1 — the inks resolve on the frontend from the id and must never be
+    // sent). Both are the same defect class as the tint: a rendered value written to
+    // the column that carries the group's identity, unrecoverably.
+    const FORBIDDEN = [TINT, RESOLVER, 'inkDark', 'inkLight', 'mutedDark', 'mutedLight'];
     for (const file of sourceFiles(SRC)) {
       const src = withoutComments(fs.readFileSync(file, 'utf8'));
-      expect(
-        src,
-        `${path.relative(SRC, file)}: a background_color payload is being built from the tint`,
-      ).not.toMatch(new RegExp(`background_color:\\s*[^,\\n]*${TINT}`));
+      for (const column of ['background_color', 'color_preset']) {
+        for (const rendered of FORBIDDEN) {
+          expect(
+            src,
+            `${path.relative(SRC, file)}: a ${column} payload is being built from ` +
+              `${rendered}. ${INK_BOOM}`,
+          ).not.toMatch(new RegExp(`${column}:\\s*[^,\\n]*${rendered}`));
+        }
+      }
     }
   });
 
@@ -1292,5 +1441,87 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         'TRANSCRIBE the measured literal with its provenance comment — the idiom plan 88.3.1-06 ' +
         'AMENDMENT 2 already chose for the muted rung — rather than pulling in the calculator.',
     ).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase 88.3.1 marker registry.
+  //
+  // RESEARCH Pitfall 7: these belong HERE, beside tests 2 / 17 / 18, which already
+  // assert markers at PRODUCTION sites. `decisionMarkers.test.ts` is scoped to
+  // 87.8's phone-floor markers and has no general registry, so putting them there
+  // would silently widen that file's contract.
+  // -------------------------------------------------------------------------
+
+  it('26. every Phase 88.3.1 decision is recorded at its production site, naming what it rejected', () => {
+    /*
+     * A decision recorded only in a plan is invisible to the next person editing the
+     * code it governs. CLAUDE.md's marker rule is specific about WHY: "what was chosen
+     * AND what was rejected — the rejected alternative is the load-bearing part",
+     * because `uses two-tap` warns nobody while `two-tap OVER a modal` stops the edit.
+     * A marker that names no rejected alternative is the exact failure mode the rule
+     * exists to prevent, so it is asserted rather than trusted.
+     *
+     * The three idioms below are the ones this codebase actually uses for that half.
+     * The literal `REJECTED` is required at least ONCE per file; the softer two are
+     * accepted on individual markers because two shipped plan-06 markers (`M23`,
+     * `AMENDMENT 7`) name their rejected alternative in those words and re-wording a
+     * correct marker to satisfy a gate is how gates start shaping prose instead of
+     * checking it.
+     */
+    const NAMES_A_REJECTED_HALF = /REJECTED|chosen OVER|is a decision, not a/;
+    const MARKER_SITES = [TABLE, 'lib/colorUtils.js', SEED];
+
+    for (const file of MARKER_SITES) {
+      const src = raw(file);
+      const hits = [...src.matchAll(/DECISION Phase 88\.3\.1/g)];
+      expect(
+        hits.length,
+        `${file} carries no DECISION Phase 88.3.1 marker — this phase's decisions at ` +
+          'this site are invisible to the next reader',
+      ).toBeGreaterThanOrEqual(1);
+
+      let literalRejected = 0;
+      for (const hit of hits) {
+        const start = hit.index ?? 0;
+        const close = src.indexOf('*/', start);
+        expect(
+          close,
+          `${file}: a Phase 88.3.1 marker is not inside a block comment, so its extent ` +
+            'cannot be read — put it in one',
+        ).toBeGreaterThan(start);
+        const marker = src.slice(start, close);
+        expect(
+          marker,
+          `${file}: a Phase 88.3.1 marker names no rejected alternative. That is the ` +
+            'half a future reader needs — without it the marker reads as description ' +
+            'and the decision gets "cleaned up".',
+        ).toMatch(NAMES_A_REJECTED_HALF);
+        if (marker.includes('REJECTED')) literalRejected += 1;
+      }
+      expect(
+        literalRejected,
+        `${file}: not one Phase 88.3.1 marker names a REJECTED alternative in so many words`,
+      ).toBeGreaterThanOrEqual(1);
+    }
+
+    // Detector liveness: a marker with no rejected half must actually fail the test above.
+    expect('DECISION Phase 88.3.1 (X): we do it this way.').not.toMatch(NAMES_A_REJECTED_HALF);
+
+    /*
+     * SPEC Req 9's own check. Three claims made by earlier phases expired in this one
+     * and had to be superseded IN PLACE rather than carried forward or deleted:
+     * D-27's "the palette is all-dark" (`GroupSettings.js`), the seed's
+     * "this line stays resolveGroupBackgroundColor" (AMENDMENT E, same file), R2-2's
+     * "no visible labels" (AMENDMENT G2, same file), plus two in `colorUtils.js`.
+     * Deleting an expired claim loses the history; leaving it loses the reader.
+     */
+    const amended = ['lib/colorUtils.js', SEED].reduce(
+      (n, file) => n + (raw(file).match(/AMENDED Phase 88\.3\.1/g) ?? []).length,
+      0,
+    );
+    expect(
+      amended,
+      'an expired claim was carried forward or deleted instead of being superseded in place',
+    ).toBeGreaterThanOrEqual(3);
   });
 });

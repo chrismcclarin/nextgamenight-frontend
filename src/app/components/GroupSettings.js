@@ -726,17 +726,40 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
 
                    44 IS A FLOOR, NOT A TARGET (CLAUDE.md, Phone-Forward). 64 is
                    the target; `min-w-11 min-h-11` is the line that must never be
-                   breached. THE ARITHMETIC at the 375px mobile gate: 4 x 64 +
-                   3 x 8 = 280px inside a ~311px grid — 31px spare across the
-                   whole ROW, not per gap, which is why the cell wrapper is
-                   CENTRED in its ~71.8px column instead of being left to hug the
-                   inline start. At 320px (iPhone SE) the cap never binds and each
-                   chip renders ~58px, still over the floor. This replaces
-                   DEF-88.3-10-01's shipped `p-4`-with-no-content swatch, which
-                   measured ~36 x 36.
+                   breached.
 
-                   REJECTED — a fixed `w-16 h-16`: it overflows the 320px
-                   viewport, the narrowest phone this project measures.
+                   THE ARITHMETIC, MEASURED in a headless browser against this
+                   project's own compiled CSS rather than estimated (the plan and
+                   UI-SPEC 5.1 both said "~311px grid / ~71.8px cell / ~58px at
+                   320px"; those were estimates and the real Modal chrome makes
+                   them wrong in the safe direction). At 375px the Modal is
+                   `w-[calc(100%-1.5rem)]` = 351px and ModalBody adds `p-3`, so
+                   the grid is 327px wide, the cell pitch is 75.75px, and the row
+                   is 4 x 64 + 3 x 8 = 280px — 47px spare across the whole ROW,
+                   not per gap. Chip 64.00 x 64.00, grid `scrollWidth` 327 =
+                   its width, document `scrollWidth` 375 = the viewport, i.e. no
+                   horizontal scroll. At 320px the cap does not bind: grid 272px,
+                   chips 62.00 x 62.00, still no overflow.
+
+                   WHY THE CELL WRAPPER IS CENTRED, with the number. The wrapper
+                   carries `w-full max-w-16`, so it resolves to 64px inside a
+                   75.75px column. MEASURED both ways: without the grid's
+                   centring utility the chip sits at offset 0.00 in its column and
+                   leaves 11.75px dead at the trailing edge — eight chips hugging
+                   the inline start, optically uneven; with it, offset 5.88px,
+                   i.e. centred. Plan 88.3.1-10's e2e measures per-swatch boxes
+                   and grid `scrollWidth`, and BOTH pass under the misalignment,
+                   so nothing downstream catches this.
+
+                   This replaces DEF-88.3-10-01's shipped `p-4`-with-no-content
+                   swatch, measured at 75.75 x 36 — under the floor in one axis
+                   AND not square, which is the pair of defects the two required
+                   classes fix. Grid height, measured, identical in both themes:
+                   80px before, 176px after (the captions of AMENDMENT G2 are
+                   what the extra 96px buys).
+
+                   REJECTED — a fixed `w-16 h-16`: it stops the chip shrinking on
+                   the narrowest phone this project measures.
                    REJECTED — the floor classes alone with no cap, which is the
                    146px desktop chip above. A decision, not a cleanup. */
 
