@@ -1206,4 +1206,91 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       "${tinted ? 'text-content-primary' : 'text-content-muted'}",
     );
   });
+
+  // -------------------------------------------------------------------------
+  // Phase 88.3.1 plan 01, AMENDMENT Y (M28 + M24, owner-ruled 2026-08-29) —
+  // the measurement-module BOUNDARY.
+  //
+  // `src/lib/wcag.ts` and `src/lib/colourDistance.ts` are ~110 lines each of
+  // WCAG / CIELAB / CIEDE2000 / OKLab arithmetic that exists ONLY to be
+  // measured against by tests. Neither has ever had a production importer:
+  // every real import of `wcag.ts` is a `.test.` file (plus `e2e/support/
+  // contrast.ts`, which is outside `src/`), and the six `src/app/**` hits are
+  // comment citations, not imports.
+  //
+  // Keeping them in `src/lib/` was the owner's ruling — a test-only maths
+  // module beside its consumers is the established house shape here, and
+  // moving them would churn every citation for no measured benefit. The guard
+  // below is the OTHER half of that ruling: the shape only stays safe while
+  // nothing production-side imports them.
+  //
+  // This phase is where the boundary nearly broke. `src/lib/colorUtils.js` is
+  // imported by SEVEN client components and gains its first-ever cross-module
+  // import in plan 88.3.1-06; the original plan had it importing `blend` from
+  // `./wcag`, which would have pulled the whole contrast module into seven
+  // client bundles. That was withdrawn (plan 06 AMENDMENT 2 / plan 03
+  // AMENDMENT A) precisely to stop it — but a withdrawal in a plan document is
+  // not a mechanism. This is.
+  //
+  // The ONE sanctioned edge is `colourDistance.ts` -> `wcag.ts` (it imports
+  // `parseHex`, rather than shipping a second hex parser). It is asserted
+  // POSITIVELY below, so the guard cannot pass by scanning nothing.
+  //
+  // Test files are excluded from the population on purpose: measuring is what
+  // they are FOR, and this very file imports `contrastRatio` from `../lib/wcag`
+  // at :58. `sourceFiles` already drops `.test.` / `.spec.` files, which is
+  // exactly the production/test line this guard is drawn on.
+  // -------------------------------------------------------------------------
+
+  it('25. AMENDMENT Y — no production module imports the test-only colour-maths modules', () => {
+    /** Every `from '…'` / `require('…')` / `import('…')` module specifier. */
+    const specifiers = (src: string): string[] => {
+      const out: string[] = [];
+      const re = /(?:\bfrom\s*|\brequire\(\s*|\bimport\(\s*)['"]([^'"]+)['"]/g;
+      let match: RegExpExecArray | null;
+      while ((match = re.exec(src)) !== null) out.push(match[1]);
+      return out;
+    };
+    const isMathsModule = (spec: string): boolean =>
+      /(^|\/)(wcag|colourDistance)$/.test(spec);
+
+    // The sanctioned edge, asserted first: if this ever stops being true the
+    // detector below is scanning for something that no longer exists.
+    const SANCTIONED = 'lib/colourDistance.ts';
+    expect(
+      specifiers(code(SANCTIONED)).filter(isMathsModule),
+      'colourDistance.ts no longer imports parseHex from ./wcag — either the boundary moved or a ' +
+        'second hex parser was hand-rolled; this guard needs rewriting either way',
+    ).toEqual(['./wcag']);
+
+    // Detector liveness on a synthetic line, so a regex that matches nothing
+    // cannot masquerade as a clean tree.
+    expect(specifiers("import { blend } from './wcag';").filter(isMathsModule)).toEqual(['./wcag']);
+    expect(
+      specifiers("const { deltaE2000 } = require('../lib/colourDistance');").filter(isMathsModule),
+    ).toEqual(['../lib/colourDistance']);
+
+    const population = sourceFiles(SRC);
+    // A floor on the scanned population — an empty or collapsed walk is the
+    // vacuity mode this whole file's test 0 exists to rule out.
+    expect(population.length).toBeGreaterThan(50);
+    expect(population.map((f) => path.relative(SRC, f))).toContain('lib/colorUtils.js');
+
+    const offenders: string[] = [];
+    for (const file of population) {
+      const rel = path.relative(SRC, file);
+      if (rel === SANCTIONED) continue; // the one sanctioned edge, pinned above
+      for (const spec of specifiers(withoutComments(fs.readFileSync(file, 'utf8')))) {
+        if (isMathsModule(spec)) offenders.push(`${rel} imports ${spec}`);
+      }
+    }
+    expect(
+      offenders,
+      'a production module now imports src/lib/wcag.ts or src/lib/colourDistance.ts. Those are ' +
+        'test-only measurement modules (~220 lines of WCAG / CIELAB / CIEDE2000 / OKLab maths) and ' +
+        'importing one ships it to the client. If the value is genuinely needed at runtime, ' +
+        'TRANSCRIBE the measured literal with its provenance comment — the idiom plan 88.3.1-06 ' +
+        'AMENDMENT 2 already chose for the muted rung — rather than pulling in the calculator.',
+    ).toEqual([]);
+  });
 });
