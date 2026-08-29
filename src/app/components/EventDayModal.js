@@ -401,9 +401,15 @@ export default function EventDayModal({
                             paints near-white on near-white, about 1.1:1.
 
                             THE NUMBER, STATED HONESTLY: this is a contrast REDUCTION on the tinted
-                            arm — roughly 9.3:1 down to **5.52-6.28:1** — traded deliberately for
-                            the tinted ink the owner asked for, and still comfortably over the 4.5:1
-                            AA floor. It is not an improvement from 1.6:1; no such baseline exists.
+                            arm, not an improvement. Measured 2026-08-29 with `src/lib/wcag.ts`
+                            against the sixteen SHIPPED bands (not the superseded t = 0.70 tints):
+                            the outgoing `text-content-primary` reads **13.27-13.39:1** light
+                            (warm-900) and **10.65-14.53:1** dark (warm-50); the incoming muted rung
+                            reads **5.52-6.28:1** (min 5.5239 on violet light, max 6.2835 on
+                            amber/green dark). Traded deliberately for the tinted ink the owner
+                            asked for, and comfortably over the 4.5:1 AA floor. There is no "we
+                            improved it from 1.6:1" here — no such baseline exists, and a fabricated
+                            one survives into three downstream documents.
 
                             THE `var(…, …)` FALLBACK IS LOAD-BEARING. `groupInkVars` returns `{}`
                             for the LEGACY / custom-hex arm and for the background-image arm, so on

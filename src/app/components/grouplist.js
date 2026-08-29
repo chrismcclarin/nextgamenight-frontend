@@ -585,7 +585,12 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       per theme and is selected by the SAME `dark:` fork that selects the ground, so
                       the pole is a function of the RENDERED ground by construction. Req 8's failure
                       mode — a pole chosen by "does this group have a colour" — cannot occur here.
-                      Measured: the muted rung reads 5.52-6.28:1 across the sixteen surfaces.
+                      Measured 2026-08-29 with `src/lib/wcag.ts` across the sixteen shipped
+                      surfaces: the primary ink reads 8.00-8.08:1 and the 85% muted rung
+                      5.52-6.28:1 (min 5.5239 on violet light, max 6.2835 on amber/green dark).
+                      Both are REDUCTIONS from the outgoing `text-content-primary`, which reads
+                      13.27-13.39:1 light / 10.65-14.53:1 dark on those same bands — traded
+                      deliberately for the tinted ink, and both well over the 4.5:1 AA floor.
 
                       REJECTED: keeping the theme token (`text-content-primary` /
                       `text-content-secondary` / `text-content-muted`) on the tinted arm. It was
