@@ -5,9 +5,10 @@ import { Icon } from '../../components/ui/Icon';
 import {
   getSubtitleStyle,
   getTextStyle,
+  groupInkVars,
   isDarkBackground,
-  lightTintGroupBackgroundColor,
-  resolveGroupBackgroundColor,
+  resolveGroupGround,
+  storedGroupColour,
   themedTextStyleVars,
   SUBTEXT_MUTED_ON_LIGHT,
   SUBTEXT_ON_LIGHT,
@@ -688,12 +689,31 @@ function DateGroup({ group, formatDayHeader, timezone, onEventClick, isSheet = f
  * view on first paint.
  */
 const EventRow = forwardRef(function EventRow({ event, timezone, onClick, isSheet = false }, ref) {
-  // null when the group has no colour of its own (D-28).
-  const groupBgColor = resolveGroupBackgroundColor(event.Group?.background_color);
   const groupBgImage = event.Group?.background_image_url;
   const groupProfilePic = event.Group?.profile_picture_url;
 
   const hasBgImage = !!groupBgImage;
+  /*
+   * DECISION Phase 88.3.1 (plan 08, AMENDMENT AC): a SECOND image flag, derived
+   * from the VALIDATED `safeBgImageStyle` result, sits beside the raw
+   * `hasBgImage` above — and only `groupInkVars` reads it.
+   *
+   * WHY TWO. `safeBgImageStyle` drops relative/invalid URLs (FSEC-03), so a
+   * truthy-but-rejected URL paints NO image: that row is a plain coloured card
+   * and must get its ink. Feeding `groupInkVars` the raw flag would withhold the
+   * ink from exactly those rows and leave Req 8's defect standing on them.
+   *
+   * REJECTED: converging `hasBgImage` onto the validated style here, which is
+   * the wave-12 owner ruling already applied at `grouplist.js`. It is the right
+   * end state, but it CHANGES WHAT THOSE ROWS PAINT (white-on-image treatment ->
+   * plain contrast maths) on a surface this plan was not scoped to re-look at,
+   * and the same divergence exists at `CalendarMonthView.js` and
+   * `groupHomePage/page.js`. Registered as one family in
+   * `.planning/deferred/phase-88.6.md`; converge all four in one pass, with a
+   * rendered check. Deleting either flag here is a decision, not a cleanup.
+   */
+  const bgImageStyle = safeBgImageStyle(groupBgImage);
+  const hasValidBgImage = !!bgImageStyle;
   /*
    * DECISION Phase 88.3 (D-09, cascade fix): the row's ground is a MUTUALLY
    * EXCLUSIVE ternary gated on `tinted`, chosen OVER stacking the tint pair
@@ -706,8 +726,25 @@ const EventRow = forwardRef(function EventRow({ event, timezone, onClick, isShee
    * TINT succeeding so both custom properties turn on or off together
    * (T-88.3-43). This is a decision, not a cleanup.
    */
-  const tinted = lightTintGroupBackgroundColor(groupBgColor);
-  const ground = tinted ? groupBgColor : null;
+  /*
+   * AMENDED Phase 88.3.1 (plan 08, AMENDMENT J) — the D-09 marker above is KEPT
+   * VERBATIM and its Tailwind source-order reasoning is untouched. Two mechanical
+   * facts under it changed: `groupBgColor` is gone (its "ALSO REJECTED: gating on
+   * `groupBgColor` alone" now reads against `rowGroundPair`, unchanged in
+   * substance), and the hand-written `tinted ? … : null` gate is gone because
+   * T-88.3-43 became a property of the resolver's RETURN TYPE — `{dark, light, …}`
+   * or `null`, never half a pair — instead of a gate six callers each rewrite.
+   *
+   * The ACCESSOR is `storedGroupColour(event.Group)`, never `background_color`:
+   * plan 88.3.1-05 migrates coloured groups to `color_preset='<id>',
+   * background_color=NULL`, so reading the legacy column alone renders every
+   * migrated group uncoloured with a fully green suite. REJECTED: a per-site
+   * `?? background_color` ternary — six copies of one rule. A decision, not a
+   * cleanup.
+   */
+  const rowGroundPair = resolveGroupGround(storedGroupColour(event.Group));
+  const ground = rowGroundPair?.dark ?? null;
+  const tinted = rowGroundPair?.light ?? null;
   // No image and no group colour: the row sits on the app's themed surface, so
   // the SHARED fallback resolution owns it. This row's bespoke contrast maths
   // below is computed against a coloured ground and produces dark-on-dark here.
@@ -787,6 +824,16 @@ const EventRow = forwardRef(function EventRow({ event, timezone, onClick, isShee
    * has to mean the text too, or the marker is only half true.
    * REJECTED: leaving the stored hex in and widening the tint
    * validator instead. A decision, not a cleanup.
+   *
+   * AMENDED Phase 88.3.1 (plan 08), everything above KEPT AS HISTORY: the two
+   * function names this marker cites — `resolveGroupBackgroundColor` and the
+   * tint — are no longer CALLED in this file; both moved inside the resolver.
+   * The control is unchanged and is now structural, because `ground` and
+   * `tinted` are destructured from one object and cannot drift apart. The
+   * treatments below are deliberately still fed `ground` / `tinted`: they are
+   * NOT dead code superseded by the card ink, they are the LEGACY and
+   * BACKGROUND-IMAGE fallback the `--group-ink*` chain resolves to, and the live
+   * path for every production group until BE PR-2's remap runs.
    */
   const titleVars = themedTextStyleVars(
     titleTreatment(ground),
@@ -821,7 +868,30 @@ const EventRow = forwardRef(function EventRow({ event, timezone, onClick, isShee
           '--group-ground': ground,
           '--group-ground-light': tinted,
         }),
-        ...safeBgImageStyle(groupBgImage),
+        /*
+         * DECISION Phase 88.3.1 (SPEC Req 4 / UI-SPEC 3.3): the CARD ink pair
+         * rides in the SAME style object as the two grounds, chosen OVER emitting
+         * it at whichever text element consumes it — ink and ground must turn on
+         * and off together, and `groupColourRendering.test.ts` test 9 can only
+         * assert that when both live in one expression.
+         * `hasBackgroundImage` is passed EXPLICITLY: this is a `.js` file, so a
+         * forgotten option degrades silently to `false`, which is the UNSAFE
+         * direction (a preset's tinted ink over a user's photograph).
+         * REJECTED: the raw `hasBgImage` — see the two-flag marker above.
+         *
+         * KNOWN RESIDUAL, recorded so it is not read as an oversight: this row's
+         * title and subtitle still fork on `--t-color*` from
+         * `themedTextStyleVars`, so nothing in THIS file consumes the ink yet.
+         * UI-SPEC 3.3 lists these rows as a CARD surface, but UI-SPEC 3.5's Req 8
+         * list does not include them, and re-inking a title nobody has complained
+         * about is a visual change needing its own look at 375px. The channel is
+         * wired here so that change is a className edit, not a re-plumb.
+         */
+        ...groupInkVars(rowGroundPair, {
+          surface: 'card',
+          hasBackgroundImage: hasValidBgImage,
+        }),
+        ...bgImageStyle,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         position: 'relative',

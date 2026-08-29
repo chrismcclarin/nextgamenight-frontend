@@ -3,9 +3,10 @@ import { useState } from 'react';
 import {
   getSubtitleStyle,
   getTextStyle,
+  groupInkVars,
   isDarkBackground,
-  lightTintGroupBackgroundColor,
-  resolveGroupBackgroundColor,
+  resolveGroupGround,
+  storedGroupColour,
   themedTextStyleVars,
   SUBTEXT_MUTED_ON_LIGHT,
   SUBTEXT_ON_LIGHT,
@@ -96,8 +97,6 @@ export default function EventDayModal({
               {selectedDay.events.map(event => {
                 const eventDate = new Date(event.start_date);
                 const isPastEvent = eventDate < new Date();
-                // null when the group has no colour of its own (D-28).
-                const groupBgColor = resolveGroupBackgroundColor(event.Group?.background_color);
                 const groupProfilePic = event.Group?.profile_picture_url;
                 const groupBgImage = event.Group?.background_image_url;
                 /*
@@ -114,9 +113,54 @@ export default function EventDayModal({
                  * gated on the TINT succeeding so both custom properties turn
                  * on or off together (T-88.3-43). A decision, not a cleanup.
                  */
-                const tinted = lightTintGroupBackgroundColor(groupBgColor);
-                const ground = tinted ? groupBgColor : null;
+                /*
+                 * AMENDED Phase 88.3.1 (plan 08, AMENDMENT J) — the D-09 marker
+                 * above is KEPT VERBATIM and its Tailwind source-order reasoning
+                 * is untouched. Two mechanical facts under it changed:
+                 * `groupBgColor` is gone (its "ALSO REJECTED: gating on
+                 * `groupBgColor` alone" now reads against `rowGroundPair`,
+                 * unchanged in substance), and the hand-written
+                 * `tinted ? … : null` gate is gone because T-88.3-43 became a
+                 * property of the resolver's RETURN TYPE — `{dark, light, …}` or
+                 * `null`, never half a pair — instead of a gate six callers each
+                 * rewrite.
+                 *
+                 * The ACCESSOR is `storedGroupColour(event.Group)`, never
+                 * `background_color`: plan 88.3.1-05 migrates coloured groups to
+                 * `color_preset='<id>', background_color=NULL`, so reading the
+                 * legacy column alone renders every migrated group uncoloured
+                 * with a fully green suite. REJECTED: a per-site `?? background_color`
+                 * ternary — six copies of one rule. A decision, not a cleanup.
+                 */
+                const rowGroundPair = resolveGroupGround(storedGroupColour(event.Group));
+                const ground = rowGroundPair?.dark ?? null;
+                const tinted = rowGroundPair?.light ?? null;
                 const hasBgImage = !!groupBgImage;
+                /*
+                 * DECISION Phase 88.3.1 (plan 08, AMENDMENT AC): a SECOND image
+                 * flag, derived from the VALIDATED `safeBgImageStyle` result,
+                 * sits beside the raw `hasBgImage` above — and only
+                 * `groupInkVars` reads it.
+                 *
+                 * WHY TWO. `safeBgImageStyle` drops relative/invalid URLs
+                 * (FSEC-03), so a truthy-but-rejected URL paints NO image: that
+                 * row is a plain coloured card and must get its ink. Feeding
+                 * `groupInkVars` the raw flag would withhold the ink from exactly
+                 * those rows and leave Req 8's defect standing on them.
+                 *
+                 * REJECTED: converging `hasBgImage` onto the validated style
+                 * here, which is the wave-12 owner ruling already applied at
+                 * `grouplist.js`. It is the right end state, but it CHANGES WHAT
+                 * THOSE ROWS PAINT (white-on-image treatment -> plain contrast
+                 * maths) on a surface this plan was not scoped to re-look at, and
+                 * the same divergence exists at `CalendarListView.js`,
+                 * `CalendarMonthView.js` and `groupHomePage/page.js`. Registered
+                 * as one family in `.planning/deferred/phase-88.6.md`; converge
+                 * all four in one pass, with a rendered check. Deleting either
+                 * flag here is a decision, not a cleanup.
+                 */
+                const bgImageStyle = safeBgImageStyle(groupBgImage);
+                const hasValidBgImage = !!bgImageStyle;
                 // No image and no group colour: the row is on the themed
                 // surface, so the shared fallback resolution owns its text.
                 // Keyed on `ground` (not the stored hex) and therefore declared
@@ -186,6 +230,17 @@ export default function EventDayModal({
                  * has to mean the text too, or the marker is only half true.
                  * REJECTED: leaving the stored hex in and widening the tint
                  * validator instead. A decision, not a cleanup.
+                 *
+                 * AMENDED Phase 88.3.1 (plan 08), everything above KEPT AS
+                 * HISTORY: the two function names this marker cites —
+                 * `resolveGroupBackgroundColor` and the tint — are no longer
+                 * CALLED in this file; both moved inside the resolver. The
+                 * control is unchanged and is now structural, because `ground`
+                 * and `tinted` are destructured from one object and cannot drift
+                 * apart. `rowSubtitleVars` below is NOT dead code superseded by
+                 * the card ink: it is the LEGACY and BACKGROUND-IMAGE fallback
+                 * the "Duration:" line's `--group-ink-muted*` chain resolves to,
+                 * which is why that line now carries it too.
                  */
                 const rowTitleVars = themedTextStyleVars(
                   rowTitleTreatment(ground),
@@ -230,7 +285,25 @@ export default function EventDayModal({
                         '--group-ground': ground,
                         '--group-ground-light': tinted,
                       }),
-                      ...safeBgImageStyle(groupBgImage),
+                      /*
+                       * DECISION Phase 88.3.1 (SPEC Req 4 / UI-SPEC 3.3): the
+                       * CARD ink pair rides in the SAME style object as the two
+                       * grounds, chosen OVER emitting it on the "Duration:" line
+                       * that consumes it — ink and ground must turn on and off
+                       * together, and `groupColourRendering.test.ts` test 9 can
+                       * only assert that when both live in one expression.
+                       * `hasBackgroundImage` is passed EXPLICITLY: this is a
+                       * `.js` file, so a forgotten option degrades silently to
+                       * `false`, the UNSAFE direction (a preset's tinted ink
+                       * painted over a user's photograph).
+                       * REJECTED: the raw `hasBgImage` — see the two-flag marker
+                       * above.
+                       */
+                      ...groupInkVars(rowGroundPair, {
+                        surface: 'card',
+                        hasBackgroundImage: hasValidBgImage,
+                      }),
+                      ...bgImageStyle,
                       backgroundSize: 'cover',
                       backgroundPosition: 'center',
                       position: 'relative',
@@ -303,11 +376,51 @@ export default function EventDayModal({
                             </span>
                           )}
                         </div>
-                        {/* 88.3 UI-REVIEW (2026-08-28) fix 1: `text-content-muted` (warm-600) reads
-                            3.4-3.6:1 on the eight light tints — an AA miss. Forked to primary on the
-                            tinted arm (9.3-9.9:1), the same fork grouplist.js's "Last Game" row uses.
-                            Pinned by groupColourRendering.test.ts test 24. */}
-                        <div className={`flex gap-4 mt-2 text-sm ${tinted ? 'text-content-primary' : 'text-content-muted'}`}>
+                        {/* DECISION Phase 88.3.1 (SPEC Req 8, site 2 of 3 — UI-SPEC 3.5).
+
+                            THE HISTORY THIS REPLACES, CARRIED NOT DELETED. The comment here was
+                            "88.3 UI-REVIEW (2026-08-28) fix 1": `text-content-muted` (warm-600)
+                            reads **3.4**-3.6:1 on the eight light tints — an AA miss — so the line
+                            was forked to `text-content-primary` on the tinted arm (9.3-9.9:1),
+                            matching grouplist.js's "Last Game" row, and pinned by
+                            `groupColourRendering.test.ts` test 24. **That fix is NOT being undone.**
+                            It is superseded by an ink that is solved per preset per theme, so the
+                            3.4-3.6 miss it repaired cannot recur on any of the sixteen surfaces.
+                            The 88.6 register entry "[tint/dark-mode LIMIT] EventDayModal Duration
+                            line" is closed by this marker.
+
+                            CHOSEN: the line reads the 85% muted rung of the CARD ink out of the
+                            cascade — `--group-ink-muted` / `--group-ink-muted-l` — selected by the
+                            SAME `dark:` fork that selects the ground, so the pole is a function of
+                            the RENDERED ground by construction. Req 8's failure mode (a pole chosen
+                            by "does this group have a colour") cannot occur here.
+
+                            REJECTED: keeping the `tinted ? 'text-content-primary' :
+                            'text-content-muted'` theme-token fork. It was correct only while every
+                            shipped preset was dark; on a legacy LIGHT stored hex in dark mode it
+                            paints near-white on near-white, about 1.1:1.
+
+                            THE NUMBER, STATED HONESTLY: this is a contrast REDUCTION on the tinted
+                            arm — roughly 9.3:1 down to **5.52-6.28:1** — traded deliberately for
+                            the tinted ink the owner asked for, and still comfortably over the 4.5:1
+                            AA floor. It is not an improvement from 1.6:1; no such baseline exists.
+
+                            THE `var(…, …)` FALLBACK IS LOAD-BEARING. `groupInkVars` returns `{}`
+                            for the LEGACY / custom-hex arm and for the background-image arm, so on
+                            those rows `--group-ink-muted*` is undefined; without a fallback the
+                            declaration is invalid at computed-value time and `color` INHERITS the
+                            page's ground-blind theme colour — the exact defect this marker closes,
+                            on the arm that is LIVE for the whole window before BE PR-2's remap. The
+                            `style={rowSubtitleVars}` below puts this row's own ground-derived
+                            subtitle treatment on THIS element (the same object the `<p>` above
+                            carries), so `var(--t-color-l)` / `var(--t-color)` is the fallback and it
+                            is computed against the rendered ground. Verified 2026-08-29 that
+                            tailwindcss@4.3.3 in this tree compiles the nested-fallback arbitrary
+                            value and its `dark:` variant. Test 24 moves with this line. */}
+                        <div
+                          className={`flex gap-4 mt-2 text-sm ${tinted ? '[color:var(--group-ink-muted-l,var(--t-color-l))] dark:[color:var(--group-ink-muted,var(--t-color))]' : 'text-content-muted'}`}
+                          style={rowSubtitleVars}
+                        >
                           {event.duration_minutes && (
                             <span>Duration: {event.duration_minutes} min</span>
                           )}
