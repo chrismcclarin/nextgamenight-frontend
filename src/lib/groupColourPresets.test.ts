@@ -13,7 +13,7 @@
  * edit that quietly closes two presets back up reds here.
  *
  * FLOORS, NOT ACTUALS (`88.3.1-RESEARCH.md` Pitfall 6). Every quantity is asserted as a FLOOR or
- * a RANGE with the measured actual recorded in a comment beside it. A `toBe(10.48)` would red on
+ * a RANGE with the measured actual recorded in a comment beside it. A `toBe` pinned to an exact 10.48 would red on
  * a fourth-decimal difference in someone's constants and the "fix" would look like relaxing the
  * guard. The one deliberate exception is test 14, which pins measured values in BOTH directions
  * on purpose — see its own header.
@@ -30,10 +30,17 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { getBrightness } from './colorUtils';
+import {
+  getBrightness,
+  SUBTEXT_MUTED_ON_DARK,
+  SUBTEXT_MUTED_ON_LIGHT,
+  SUBTEXT_ON_LIGHT,
+  TEXT_ON_DARK,
+  TEXT_ON_LIGHT,
+} from './colorUtils';
 import { deltaE2000, oklch } from './colourDistance';
 import { GROUP_COLOUR_PRESETS, PRESET_IDS, presetByName } from './groupColourPresets';
-import { lStar } from './wcag';
+import { blend, contrastRatio, lStar, parseHex } from './wcag';
 
 type Theme = 'light' | 'dark';
 type Preset = (typeof GROUP_COLOUR_PRESETS)[number];
@@ -306,5 +313,467 @@ describe('brightness tiers — the `getTextStyle` fork (UI-SPEC §10.1 test 11)'
     }
     // Anti-vacuity: `getBrightness` is live and ordered, not returning a constant.
     expect(getBrightness('#ffffff')).toBeGreaterThan(getBrightness('#000000'));
+  });
+});
+
+// ============================================================================================
+// UI-SPEC §10.1 tests 8-10, plus 13-16 (AMENDMENTS A and B).
+//
+// Everything below MEASURES rather than greps, so the fixtures are the poles themselves.
+// Provenance convention: `wcag.test.ts:25-52` — every literal carries the file and line it is
+// declared at, because a pole that silently moves would make this whole matrix measure the
+// wrong thing while staying green.
+//
+// Four poles are IMPORTED from `colorUtils.js` rather than restated, because they are exported
+// and importing them is what keeps the matrix honest when one of them moves. The rest are
+// restated: `SUBTITLE_DARK_BG` and `TILE_TEXT_LIGHT_BG` are module-private, and a CSS custom
+// property cannot be imported into vitest at all.
+// ============================================================================================
+
+/** WCAG contrast, with `null` turned into a loud failure rather than a silent `NaN`. */
+function contrast(fg: string, bg: string): number {
+  const c = contrastRatio(fg, bg);
+  if (c === null) throw new Error(`contrastRatio returned null for ${fg} on ${bg}`);
+  return c;
+}
+
+/** `blend` with the same discipline — the ONE alpha compositor (PATTERNS "Don't hand-roll"). */
+function composite(fg: string, alpha: number, bg: string): string {
+  const out = blend(fg, alpha, bg);
+  if (out === null) throw new Error(`blend returned null for ${fg} @${alpha} over ${bg}`);
+  return out;
+}
+
+/**
+ * Composite a shipped `rgba(255, 255, 255, a)` pole over an opaque ground.
+ *
+ * The alpha is PARSED OUT OF THE SHIPPED LITERAL rather than hand-copied, so if someone edits
+ * `colorUtils.js:67` or `:116` this measures the new value instead of a stale one. Measuring
+ * `rgba(255,255,255,0.7)` as if it were opaque white would pass vacuously at a ratio it does
+ * not have — that is the whole reason this helper exists.
+ */
+function compositeWhiteRgba(pole: string, bg: string): string {
+  const m = /^rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*([0-9.]+)\s*\)$/.exec(pole);
+  if (m === null) throw new Error(`not a white rgba pole: ${pole}`);
+  return composite('#ffffff', Number(m[1]), bg);
+}
+
+// --- The seven LIGHT-surface poles (UI-SPEC §2.4, first table) ------------------------------
+// Imported, because they are exported and must not be restated:
+//   TEXT_ON_LIGHT          `#1f2937`  colorUtils.js:61,91,103  (= TITLE_DARK / CONTRAST_DARK)
+//   SUBTEXT_MUTED_ON_LIGHT `#374151`  colorUtils.js:65,88,106  (= SUBTITLE_VERY_LIGHT_BG)
+//   SUBTEXT_ON_LIGHT       `#4b5563`  colorUtils.js:66,105     (= SUBTITLE_MEDIUM_LIGHT_BG)
+/** `TILE_TEXT_LIGHT_BG`, `colorUtils.js:70` — module-private, so restated. */
+const TILE_TEXT_LIGHT_BG = '#1e40af';
+/** token `--color-text-primary` light, `globals.css:864` -> `--warm-900:643`. */
+const CONTENT_PRIMARY_LIGHT = '#1a1614';
+/** token `--color-text-secondary` light, `globals.css:887` -> `--warm-700:641`. */
+const CONTENT_SECONDARY_LIGHT = '#4a3d32';
+/** token `--color-text-muted` light, `globals.css:940` -> `--warm-600:640`. THE BINDING ROW. */
+const CONTENT_MUTED_LIGHT = '#6b5a4c';
+
+// --- The six DARK-band poles (UI-SPEC §2.4, second table) -----------------------------------
+// Imported: TEXT_ON_DARK `#ffffff` (colorUtils.js:62,92,104) and SUBTEXT_MUTED_ON_DARK
+// `rgba(255,255,255,0.7)` (colorUtils.js:116).
+/** `SUBTITLE_DARK_BG`, `colorUtils.js:67` — module-private, so restated byte-for-byte. */
+const SUBTITLE_DARK_BG = 'rgba(255, 255, 255, 0.95)';
+/** token `--color-text-primary` dark, `globals.css:1545` -> `--warm-50:608`. */
+const CONTENT_PRIMARY_DARK = '#faf8f5';
+/** token `--color-text-secondary` dark, `globals.css:1546` -> `--warm-300:632`. */
+const CONTENT_SECONDARY_DARK = '#d6cbc0';
+/** token `--color-text-muted` dark, `globals.css:1547` -> `--warm-400:633`. THE SECOND ROW. */
+const CONTENT_MUTED_DARK = '#b8a898';
+
+/** `--color-border-strong` light, `globals.css:1136` -> `--warm-500:634`. Test 15's boundary. */
+const BORDER_STRONG_LIGHT = '#8c7a6a';
+/** `--color-border` light, `globals.css:1129` -> `--warm-400:633`. The boundary it REPLACED. */
+const BORDER_LIGHT = '#b8a898';
+
+/** SPEC Req 3: a hard 4.5:1 on a group-coloured ground, with NO 3:1 large-text allowance. */
+const TEXT_FLOOR = 4.5;
+
+describe('text contrast on all 16 grounds — SPEC Req 3 (UI-SPEC §10.1 test 8)', () => {
+  it('8. every plain pole clears 4.5:1 on every ground it can meet — 56 light + 48 dark pairings', () => {
+    /*
+     * THE TWO BINDING ROWS, and they pull in OPPOSITE directions (UI-SPEC §2.4):
+     *
+     *   light `content-muted` `#6b5a4c` on `orange` `#ffd6b1` = **4.8576:1**, 8.0% of margin.
+     *     Any future LOWERING of the light band eats this. Measured sweep: L* 88.4 -> 4.86,
+     *     87.0 -> 4.69, 86.0 -> 4.56, 85.5 -> 4.49 FAILS. Roughly 3 L* of headroom, no more.
+     *
+     *   dark `content-muted` `#b8a898` on `green` `#004511` = **4.8902:1**, 8.7% of margin.
+     *     Any future LIFT of the dark green band eats this. 4.39 (FAIL) at L* 27.7.
+     *
+     * So the light band cannot go down and the dark green band cannot go up. Re-run UI-SPEC
+     * §2.4 in full before touching either — the other one is not slack you can spend.
+     */
+    const lightPoles: { name: string; hex: string }[] = [
+      { name: 'TEXT_ON_LIGHT (colorUtils.js:61)', hex: TEXT_ON_LIGHT },
+      { name: 'SUBTEXT_MUTED_ON_LIGHT (colorUtils.js:88)', hex: SUBTEXT_MUTED_ON_LIGHT },
+      { name: 'SUBTEXT_ON_LIGHT (colorUtils.js:66)', hex: SUBTEXT_ON_LIGHT },
+      { name: 'TILE_TEXT_LIGHT_BG (colorUtils.js:70)', hex: TILE_TEXT_LIGHT_BG },
+      { name: 'content-primary light (globals.css:864)', hex: CONTENT_PRIMARY_LIGHT },
+      { name: 'content-secondary light (globals.css:887)', hex: CONTENT_SECONDARY_LIGHT },
+      { name: 'content-muted light (globals.css:940)', hex: CONTENT_MUTED_LIGHT },
+    ];
+    // The imported poles really are the values UI-SPEC §2.4 measured. If one moves, the matrix
+    // below is measuring something else and this line says so first.
+    expect([TEXT_ON_LIGHT, SUBTEXT_MUTED_ON_LIGHT, SUBTEXT_ON_LIGHT, TEXT_ON_DARK]).toEqual([
+      '#1f2937',
+      '#374151',
+      '#4b5563',
+      '#ffffff',
+    ]);
+    expect(SUBTEXT_MUTED_ON_DARK).toEqual('rgba(255, 255, 255, 0.7)');
+
+    const lightRows: { row: string; ratio: number }[] = [];
+    for (const pole of lightPoles) {
+      for (const preset of GROUP_COLOUR_PRESETS) {
+        lightRows.push({
+          row: `${pole.name} on ${preset.name} light`,
+          ratio: contrast(pole.hex, preset.light),
+        });
+      }
+    }
+    // ANTI-VACUITY: 7 poles x 8 surfaces. A filter bug that silently dropped a pole would leave
+    // a green suite measuring less than it claims.
+    expect(lightRows).toHaveLength(56);
+
+    const darkRows: { row: string; ratio: number }[] = [];
+    for (const preset of GROUP_COLOUR_PRESETS) {
+      // The two `rgba(255,255,255,a)` poles are COMPOSITED over the band before measuring.
+      // Uncomposited they measure as opaque white and pass at a ratio they do not have.
+      const opaquePoles: { name: string; hex: string }[] = [
+        { name: 'TEXT_ON_DARK (colorUtils.js:62)', hex: TEXT_ON_DARK },
+        { name: 'SUBTITLE_DARK_BG @0.95 (colorUtils.js:67)', hex: compositeWhiteRgba(SUBTITLE_DARK_BG, preset.dark) },
+        { name: 'SUBTEXT_MUTED_ON_DARK @0.7 (colorUtils.js:116)', hex: compositeWhiteRgba(SUBTEXT_MUTED_ON_DARK, preset.dark) },
+        { name: 'content-primary dark (globals.css:1545)', hex: CONTENT_PRIMARY_DARK },
+        { name: 'content-secondary dark (globals.css:1546)', hex: CONTENT_SECONDARY_DARK },
+        { name: 'content-muted dark (globals.css:1547)', hex: CONTENT_MUTED_DARK },
+      ];
+      for (const pole of opaquePoles) {
+        darkRows.push({
+          row: `${pole.name} on ${preset.name} dark`,
+          ratio: contrast(pole.hex, preset.dark),
+        });
+      }
+    }
+    // ANTI-VACUITY: 6 poles x 8 bands. 56 + 48 = the 104 pairings SPEC Req 3 covers.
+    expect(darkRows).toHaveLength(48);
+
+    for (const { row, ratio } of [...lightRows, ...darkRows]) {
+      expect(ratio, `${row} is only ${ratio.toFixed(4)}:1`).toBeGreaterThanOrEqual(TEXT_FLOOR);
+    }
+
+    // `composite` is a null-checking WRAPPER over `./wcag`'s `blend`, not a second compositor
+    // (PATTERNS "Don't hand-roll" — there is exactly one alpha compositor in this tree).
+    expect(composite('#ffffff', 0.7, '#00274d')).toEqual(blend('#ffffff', 0.7, '#00274d'));
+
+    // The compositing really happened: 70% white on a dark band is nowhere near opaque white's
+    // reading. Without this, a broken `compositeWhiteRgba` would just measure white and pass.
+    const uncomposited = contrast('#ffffff', GROUP_COLOUR_PRESETS[3].dark);
+    const composited = contrast(compositeWhiteRgba(SUBTEXT_MUTED_ON_DARK, GROUP_COLOUR_PRESETS[3].dark), GROUP_COLOUR_PRESETS[3].dark);
+    expect(composited).toBeLessThan(uncomposited - 2);
+
+    // The two binding rows, named at the assertion with the direction each moves.
+    const bindingLight = contrast(CONTENT_MUTED_LIGHT, GROUP_COLOUR_PRESETS[1].light); // orange
+    const bindingDark = contrast(CONTENT_MUTED_DARK, GROUP_COLOUR_PRESETS[3].dark); // green
+    expect(bindingLight).toBeGreaterThanOrEqual(4.85); // actual 4.8576 — LOWERING the light band eats this
+    expect(bindingLight).toBeLessThanOrEqual(4.87);
+    expect(bindingDark).toBeGreaterThanOrEqual(4.88); // actual 4.8902 — LIFTING dark green eats this
+    expect(bindingDark).toBeLessThanOrEqual(4.90);
+  });
+});
+
+describe('the tinted card ink and its 85% rung (UI-SPEC §10.1 tests 9-10, §2.5)', () => {
+  it('9. each preset\'s card ink clears 7.5:1 on its OWN ground, in both themes', () => {
+    // The ink is SOLVED to 8.0:1 (hue = the ground's hue, chroma to the gamut ceiling up to
+    // 0.10, L solved for the ratio), so the floor here is 7.5 with the actual 8.0030-8.0800
+    // recorded rather than asserted. Owner decision 2026-08-28: tinted ink on CARDS, "a touch
+    // or two darker"; calendar TILES keep the plain poles above. "Darker" was read as TOWARD
+    // THE PLAIN POLE, which in dark mode means LIGHTER — his stated reason was that "the
+    // white/dark is easier to read" (UI-SPEC §2.5 assumption 2, and a named line in the Req 10
+    // phone script). The peer that ships tinted ink (Notion) fails AA doing it at 2.51-4.20:1
+    // on 7 of 9 pairs; we do not, because the ink is solved rather than picked by eye.
+    let measured = 0;
+    for (const preset of GROUP_COLOUR_PRESETS) {
+      for (const [ink, own, theme] of [
+        [preset.inkLight, preset.light, 'light'],
+        [preset.inkDark, preset.dark, 'dark'],
+      ] as const) {
+        const ratio = contrast(ink, own);
+        expect(ratio, `${preset.name} ${theme} ink ${ink} on ${own}`).toBeGreaterThanOrEqual(7.5);
+        measured += 1;
+      }
+    }
+    expect(measured).toBeGreaterThanOrEqual(16); // 8 presets x 2 themes, none skipped
+  });
+
+  it('10. the same ink at 85% alpha still clears 4.5:1 — and 0.75 would FAIL', () => {
+    // The muted/secondary rung is the SAME ink at 85% alpha over its own ground: one derived
+    // value, no ninth hand-tuned hex. It is the "Last Game" date and "Duration:" line — the
+    // exact text the owner complained about in 88.3, where it had ~1.6:1.
+    // Actual **5.5239-6.2835**; worst violet light at 5.5239, which is 23% above the floor.
+    let measured = 0;
+    for (const preset of GROUP_COLOUR_PRESETS) {
+      for (const [ink, own, theme] of [
+        [preset.inkLight, preset.light, 'light'],
+        [preset.inkDark, preset.dark, 'dark'],
+      ] as const) {
+        const ratio = contrast(composite(ink, 0.85, own), own);
+        expect(ratio, `${preset.name} ${theme} rung @0.85`).toBeGreaterThanOrEqual(TEXT_FLOOR);
+        measured += 1;
+      }
+    }
+    expect(measured).toBeGreaterThanOrEqual(16);
+
+    /*
+     * "Do not go below 0.85" as a PASSING TEST rather than as prose.
+     *
+     * UI-SPEC §2.5's sweep, re-measured on the rev3 grounds: 0.75 -> 4.30:1 (FAILS), 0.80 ->
+     * 4.88, **0.85 -> 5.52**, 0.90 -> 6.25. The 85% alpha is the one number to change if the
+     * rung ever needs re-tuning, and this is the guard rail under it.
+     *
+     * At 0.75 ALL EIGHT light rungs fail (4.2992 amber .. 4.4379 red). The dark side still
+     * passes at 0.75 (5.14-5.27), which is why the counter-assertion is scoped to light: a
+     * "both themes fail" claim would be false and would invite someone to weaken the test.
+     */
+    const at75Light = GROUP_COLOUR_PRESETS.map((preset) =>
+      contrast(composite(preset.inkLight, 0.75, preset.light), preset.light),
+    );
+    expect(at75Light).toHaveLength(8);
+    for (const ratio of at75Light) {
+      expect(ratio, `a 0.75 light rung measured ${ratio.toFixed(4)} — it should FAIL 4.5`).toBeLessThan(TEXT_FLOOR);
+    }
+  });
+
+  it('13. AMENDMENT A (M24): every stored muted rung re-derives byte-for-byte from `blend`', () => {
+    /*
+     * The rung moved INTO the table (`groupColourPresets.ts`) so that `wcag.ts` never becomes a
+     * production dependency of the seven client components that import `colorUtils.js`. The
+     * cost of storing a derived value is that the literal and its recipe can silently diverge.
+     * This is the test that stops that: the recipe is re-run here, with the SAME `blend`, and
+     * the result must equal the stored hex exactly.
+     *
+     * Recipe: mutedDark = blend(inkDark, 0.85, dark); mutedLight = blend(inkLight, 0.85, light)
+     * — `wcag.ts:275`, per-channel `bg + (fg - bg) * alpha`, rounded, source-over in sRGB.
+     */
+    for (const preset of GROUP_COLOUR_PRESETS) {
+      expect(composite(preset.inkDark, 0.85, preset.dark), `${preset.name} mutedDark`).toEqual(preset.mutedDark);
+      expect(composite(preset.inkLight, 0.85, preset.light), `${preset.name} mutedLight`).toEqual(preset.mutedLight);
+    }
+    // `blend` itself is live and not an identity function — otherwise the equality above is
+    // vacuous. Called directly here, because it is `blend`'s semantics the recipe cites.
+    expect(blend('#000000', 0.5, '#ffffff')).toEqual('#808080');
+    for (const preset of GROUP_COLOUR_PRESETS) {
+      // The rung must actually MOVE off the ink; an alpha of 1.0 would make test 10 measure
+      // test 9 twice and both would stay green.
+      expect(composite(preset.inkDark, 0.85, preset.dark)).not.toEqual(preset.inkDark);
+      expect(composite(preset.inkLight, 0.85, preset.light)).not.toEqual(preset.inkLight);
+    }
+    // The published worst rung reproduces exactly: violet light at 5.5239 -> UI-SPEC §2.6's
+    // "5.52". That reproduction is the transcription check the amendment asked for.
+    const violet = GROUP_COLOUR_PRESETS[6];
+    expect(violet.name).toEqual('violet');
+    const worstRung = contrast(violet.mutedLight, violet.light);
+    expect(worstRung).toBeGreaterThanOrEqual(5.52);
+    expect(worstRung).toBeLessThanOrEqual(5.53);
+  });
+});
+
+// --- Colour-vision-deficiency simulation, for tests 14 and 16 --------------------------------
+//
+// Machado, Oliveira & Fernandes (2009) matrices at severity 1.0, applied in LINEAR RGB —
+// applying them in gamma space is the common error and produces different numbers. Method and
+// its validation: `.planning/research/COLOUR-VISION-DEFICIENCY-AUDIT-2026-08-29.md`,
+// reproducible via `.planning/research/scripts/cvd-audit.js`.
+//
+// The transfer functions are re-implemented here rather than imported because `wcag.ts` does
+// not export a linear-RGB round trip and this is the only consumer. `deltaE2000` and
+// `contrastRatio` are still the repo's own (AMENDMENT Y allows a `.test.` file to import them).
+
+const CVD_MATRICES: Record<string, readonly (readonly number[])[]> = {
+  protanopia: [
+    [0.152286, 1.052583, -0.204868],
+    [0.114503, 0.786281, 0.099216],
+    [-0.003882, -0.048116, 1.051998],
+  ],
+  deuteranopia: [
+    [0.367322, 0.860646, -0.227968],
+    [0.280085, 0.672501, 0.047413],
+    [-0.01182, 0.04294, 0.968881],
+  ],
+  tritanopia: [
+    [1.255528, -0.076749, -0.178779],
+    [-0.078411, 0.930809, 0.147602],
+    [0.004733, 0.691367, 0.3039],
+  ],
+};
+const CVD_TYPES = ['protanopia', 'deuteranopia', 'tritanopia'] as const;
+
+const toLinear = (channel: number): number => {
+  const c = channel / 255;
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+};
+const toChannel = (linear: number): number => {
+  const v = linear <= 0.0031308 ? linear * 12.92 : 1.055 * linear ** (1 / 2.4) - 0.055;
+  return Math.max(0, Math.min(255, Math.round(v * 255)));
+};
+
+/** Simulate `hex` as seen with `type` dichromacy. Returns an opaque `#rrggbb`. */
+function simulate(hex: string, type: (typeof CVD_TYPES)[number]): string {
+  const rgb = parseHex(hex);
+  if (rgb === null) throw new Error(`simulate: unparseable hex ${hex}`);
+  const linear = rgb.map(toLinear);
+  return (
+    '#' +
+    CVD_MATRICES[type]
+      .map((row) => row[0] * linear[0] + row[1] * linear[1] + row[2] * linear[2])
+      .map((v) => toChannel(Math.max(0, Math.min(1, v))).toString(16).padStart(2, '0'))
+      .join('')
+  );
+}
+
+describe('colour-vision deficiency — the measured reason the swatch labels exist', () => {
+  it('14. the palette\'s CVD separation is PINNED at its measured values, in both directions', () => {
+    /*
+     * AMENDMENT B (M32). This test does NOT impose a floor, and that is deliberate.
+     *
+     * The owner initially ruled NO on visible swatch labels, then REVERSED it the same day
+     * after consulting a colour-blind user, who asked for exactly this mitigation: "they wished
+     * for the colors to have names under them". Plan 88.3.1-07 (AMENDMENT G2) ships the labels.
+     *
+     * So this is not an accepted failure being pinned — it is THE MEASURED REASON THE LABELS
+     * EXIST. If a future phase re-solves the palette and the separation improves, someone will
+     * argue the labels are redundant; if it gets worse, the labels become more load-bearing.
+     * Either way the number must be visible and must not move silently. Shape borrowed from
+     * Phase 88.3's Gate A test 49: the assertion encodes the CURRENT value and reds if it moves
+     * in EITHER direction.
+     *
+     * THE CAUSE IS STRUCTURAL AND MEASURED, not an oversight. The light band is solved to
+     * L* 88.2-88.6 (owner round-3 pick), so the set's L* spread is **0.35** and the closest two
+     * are **0.00** apart. Hue is the only separating channel, and CVD is the loss of hue. This
+     * is the exact inverse of the principle Okabe-Ito is built on. ΔE2000 and OKLCH hue gaps
+     * are normal-vision metrics and structurally cannot see it.
+     *
+     * DO NOT re-solve the palette onto a lightness ladder to make this "pass". That would
+     * re-open a look the owner picked from rendered comparisons and destroy the even-against-
+     * the-page property he picked it for. The labels carry the mitigation.
+     *
+     * Measured 2026-08-29 against `./colourDistance`:
+     *   light surfaces  normal 10.48 | protan **1.0361** | deutan **0.7307** | tritan **2.3814**
+     *   dark bands      normal 10.32 | protan **1.8508** | deutan **0.7118** | tritan **4.9718**
+     * Worst pairs: light protan violet/rose, light deutan blue/violet, light tritan red/orange;
+     * dark protan and deutan both orange/amber, dark tritan green/teal.
+     */
+    const EXPECTED: Record<Theme, Record<string, number>> = {
+      light: { protanopia: 1.0361, deuteranopia: 0.7307, tritanopia: 2.3814 },
+      dark: { protanopia: 1.8508, deuteranopia: 0.7118, tritanopia: 4.9718 },
+    };
+    const pairs = presetPairs();
+    expect(pairs).toHaveLength(28);
+
+    for (const theme of THEMES) {
+      for (const type of CVD_TYPES) {
+        const worst = pairs
+          .map(({ a, b }) => distance(simulate(ground(a, theme), type), simulate(ground(b, theme), type)))
+          .reduce((lo, d) => (d < lo ? d : lo));
+        const pinned = EXPECTED[theme][type];
+        expect(worst, `${theme}/${type} CVD separation moved to ${worst.toFixed(4)}`).toBeGreaterThanOrEqual(pinned - 0.01);
+        expect(worst, `${theme}/${type} CVD separation moved to ${worst.toFixed(4)}`).toBeLessThanOrEqual(pinned + 0.01);
+      }
+    }
+
+    // The simulator is live: normal vision is unchanged, and dichromacy really collapses a
+    // red/green pair. Without this, a `simulate` that returned its input would pin the
+    // NORMAL-vision numbers and look identical to a working guard.
+    expect(simulate('#808080', 'deuteranopia')).toEqual('#808080');
+    expect(distance(simulate('#ff0000', 'deuteranopia'), simulate('#00ff00', 'deuteranopia'))).toBeLessThan(
+      distance('#ff0000', '#00ff00'),
+    );
+
+    // The structural cause, asserted so it cannot be re-diagnosed as a hue problem: the light
+    // band's L* spread is under 0.5, i.e. lightness carries no information at all.
+    const lightLs = GROUP_COLOUR_PRESETS.map((p) => lightness(p.light));
+    expect(Math.max(...lightLs) - Math.min(...lightLs)).toBeLessThanOrEqual(0.5); // actual 0.35
+  });
+
+  it('16. the tinted ink and its rung stay above 4.5:1 under all four vision types', () => {
+    /*
+     * The owner's colour-blind consultant raised the general case: "The color of the text and
+     * the color of the background can be a problem sometimes." For THIS system it was measured
+     * on 2026-08-29 and it holds up — WCAG contrast is luminance-based, and luminance largely
+     * survives CVD simulation even when hue does not. That is exactly why test 14 fails and
+     * this one passes: they measure different channels.
+     *
+     * All 64 combinations (8 presets x 2 themes x 4 vision types) are walked. Worst plain ink
+     * on its own ground: **7.3793** (blue, light, tritanopia). Worst muted rung: **5.3217**
+     * (blue, light, tritanopia). Both clear 4.5 everywhere.
+     * Source: `.planning/research/scripts/derive-ink-under-cvd.js`.
+     */
+    let worstInk = Infinity;
+    let worstRung = Infinity;
+    let cells = 0;
+    for (const preset of GROUP_COLOUR_PRESETS) {
+      for (const theme of THEMES) {
+        const own = ground(preset, theme);
+        const inkHex = theme === 'light' ? preset.inkLight : preset.inkDark;
+        const rungHex = theme === 'light' ? preset.mutedLight : preset.mutedDark;
+        for (const type of [null, ...CVD_TYPES] as const) {
+          const seen = (hex: string): string => (type === null ? hex : simulate(hex, type));
+          const inkRatio = contrast(seen(inkHex), seen(own));
+          const rungRatio = contrast(seen(rungHex), seen(own));
+          expect(inkRatio, `${preset.name}/${theme}/${type ?? 'normal'} ink`).toBeGreaterThanOrEqual(TEXT_FLOOR);
+          expect(rungRatio, `${preset.name}/${theme}/${type ?? 'normal'} rung`).toBeGreaterThanOrEqual(TEXT_FLOOR);
+          worstInk = Math.min(worstInk, inkRatio);
+          worstRung = Math.min(worstRung, rungRatio);
+          cells += 1;
+        }
+      }
+    }
+    // ANTI-VACUITY: 8 presets x 2 themes x 4 vision types.
+    expect(cells).toBeGreaterThanOrEqual(64);
+    expect(cells).toBeLessThanOrEqual(64);
+
+    // The two worst cells, pinned so a future palette change cannot quietly erode them.
+    expect(worstInk).toBeGreaterThanOrEqual(7.37); // actual 7.3793, blue / light / tritanopia
+    expect(worstRung).toBeGreaterThanOrEqual(5.32); // actual 5.3217, blue / light / tritanopia
+  });
+});
+
+describe('the swatch resting boundary — M33 (UI-SPEC §10.1 test 15)', () => {
+  it('15. `--color-border-strong` clears 3:1 on every light surface; the old `--color-border` does NOT', () => {
+    /*
+     * M33: the picker swatch's RESTING boundary. A swatch is a colour-only control, so its own
+     * edge is a non-text UI component under WCAG 1.4.11 and needs 3:1 against the fill it
+     * surrounds. `--color-border` light (`#b8a898`, warm-400) does not come close on these pale
+     * surfaces; `--color-border-strong` (`#8c7a6a`, warm-500) does, with almost nothing to
+     * spare.
+     *
+     * Actuals, measured 2026-08-29 (`.planning/research/scripts/derive-swatch-border.js`):
+     *   `#8c7a6a` on the eight light surfaces: **3.0361 - 3.0648** — the floor is met by 1-2%.
+     *   `#b8a898` on the same eight:           **1.7053 - 1.7214** — it FAILS everywhere.
+     *
+     * The counter-assertion is not decoration: it is what documents WHY the boundary changed,
+     * as a passing test rather than as prose that a future reader will not find.
+     * NOTE the margin. At 3.04 there is no headroom — a light band 1 L* lighter would push
+     * `--color-border-strong` under 3:1 too. That is a third constraint on the light band,
+     * pulling the same way as §2.4's 4.86 row.
+     */
+    const NON_TEXT_FLOOR = 3.0;
+    const strong = GROUP_COLOUR_PRESETS.map((p) => contrast(BORDER_STRONG_LIGHT, p.light));
+    const old = GROUP_COLOUR_PRESETS.map((p) => contrast(BORDER_LIGHT, p.light));
+    expect(strong).toHaveLength(8);
+    expect(old).toHaveLength(8);
+
+    for (let i = 0; i < 8; i += 1) {
+      expect(strong[i], `${GROUP_COLOUR_PRESETS[i].name}: border-strong ${strong[i].toFixed(4)}`).toBeGreaterThanOrEqual(NON_TEXT_FLOOR);
+      // ...and the boundary it replaced would fail, which is the reason for the change.
+      expect(old[i], `${GROUP_COLOUR_PRESETS[i].name}: the OLD border ${old[i].toFixed(4)} must not pass`).toBeLessThan(NON_TEXT_FLOOR);
+      expect(old[i]).toBeLessThanOrEqual(1.73); // actual 1.7053-1.7214 — nowhere near 3:1
+    }
+    // The margin is thin and the test says so out loud: pinned under 3.07 so a change that
+    // eats it reds here instead of shipping an invisible swatch edge.
+    expect(Math.max(...strong)).toBeLessThanOrEqual(3.07);
   });
 });
