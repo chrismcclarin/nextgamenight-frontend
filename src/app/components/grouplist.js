@@ -8,8 +8,9 @@ import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { groupsAPI } from '../../lib/api';
 import {
   getTextStyle,
-  lightTintGroupBackgroundColor,
-  resolveGroupBackgroundColor,
+  groupInkVars,
+  resolveGroupGround,
+  storedGroupColour,
   themedTextStyleVars,
 } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
@@ -242,9 +243,6 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
               userRole = userMember?.UserGroup?.role || userMember?.role;
             }
             const canEdit = userRole === 'owner' || userRole === 'admin';
-            // null when the group has no colour of its own — the inline
-            // backgroundColor is then omitted so `bg-surface-card` wins (D-28).
-            const bgColor = resolveGroupBackgroundColor(group.background_color);
             /*
              * DECISION Phase 88.3 (D-09, cascade fix): the card's ground is a
              * MUTUALLY EXCLUSIVE ternary — the themed surface class and its
@@ -271,8 +269,35 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
              * withholds BOTH custom properties together, never just the light
              * one. This is a decision, not a cleanup.
              */
-            const tinted = lightTintGroupBackgroundColor(bgColor);
-            const ground = tinted ? bgColor : null;
+            /*
+             * AMENDED Phase 88.3.1 (plan 08, AMENDMENT J) — the D-09 marker above is
+             * KEPT VERBATIM and every word of its Tailwind source-order reasoning
+             * still holds. Two mechanical facts under it changed, and a marker whose
+             * mechanism no longer matches the line beneath it is worse than none:
+             *
+             *  1. `bgColor` IS GONE. It was
+             *     `resolveGroupBackgroundColor(group.background_color)`, and the
+             *     sentence "ALSO REJECTED: gating on `bgColor` alone" now reads
+             *     against `cardGround` below. The rejection is UNCHANGED in substance
+             *     — this card still refuses to emit one ground without the other.
+             *  2. THE HAND-WRITTEN `tinted ? … : null` GATE IS GONE, and that is the
+             *     point rather than a loss: T-88.3-43 stopped being a gate each of six
+             *     callers writes and became a property of THE RESOLVER'S
+             *     RETURN TYPE (`{dark, light, …}` or `null`, never half a pair). The
+             *     two locals below are destructured from one object, so they cannot
+             *     drift apart. `groupColourRendering.test.ts` test 9 moved with it.
+             *
+             * The ACCESSOR is `storedGroupColour(group)`, never `group.background_color`:
+             * plan 88.3.1-05 migrates every coloured group to
+             * `color_preset='<id>', background_color=NULL`, so reading the legacy
+             * column alone would render every migrated group UNCOLOURED — a failure
+             * with a fully green suite. REJECTED: a per-site `group.color_preset ??
+             * group.background_color` ternary (six copies of one rule; project tenet).
+             * This is a decision, not a cleanup.
+             */
+            const cardGround = resolveGroupGround(storedGroupColour(group));
+            const ground = cardGround?.dark ?? null;
+            const tinted = cardGround?.light ?? null;
             const bgImage = group.background_image_url;
             // Wave-12 review follow-up (owner-ruled fix, 2026-08-21): gate the
             // overlay AND the white-text treatment on the VALIDATED style, not
@@ -307,6 +332,20 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
              * has to mean the text too, or the marker is only half true.
              * REJECTED: leaving the stored hex in and widening the tint
              * validator instead. A decision, not a cleanup.
+             *
+             * AMENDED Phase 88.3.1 (plan 08), everything above KEPT AS HISTORY:
+             * the two function names this marker cites —
+             * `resolveGroupBackgroundColor` and the tint — are no longer CALLED
+             * in this file. Both moved INSIDE the resolver, which returns
+             * `{dark, light, …}` or `null`. The CONTROL is unchanged and is now
+             * structural: `ground` and `tinted` are destructured from one
+             * object, so the asymmetry described above cannot be written here
+             * any more. The two `getTextStyle` calls below are deliberately
+             * still fed `ground` / `tinted` — this is NOT dead code superseded
+             * by the card ink, it is the LEGACY and BACKGROUND-IMAGE fallback
+             * the ink pair's `var(…, …)` chain resolves to (see the Req 8
+             * marker on the "Last Game" row), and it is the live path for every
+             * production group until BE PR-2's remap runs.
              */
             const cardTextDark = getTextStyle(hasBgImage, ground);
             const cardTextVars = themedTextStyleVars(
@@ -332,6 +371,25 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   ...(tinted && {
                     '--group-ground': ground,
                     '--group-ground-light': tinted,
+                  }),
+                  /*
+                   * DECISION Phase 88.3.1 (SPEC Req 4 / UI-SPEC 3.3): the CARD ink
+                   * pair rides in the SAME style object as the two grounds, chosen
+                   * OVER emitting it on the "Last Game" row that consumes it.
+                   * WHY: the ink and the ground must turn on and off together, and
+                   * `groupColourRendering.test.ts` test 9 can only assert that when
+                   * both live in one expression. `hasBackgroundImage` is passed
+                   * EXPLICITLY and is the VALIDATED flag (`!!bgImageStyle`, wave-12
+                   * owner ruling / FSEC-03) — this is a `.js` file, so a forgotten
+                   * option would silently default to `false`, the UNSAFE direction:
+                   * a preset's tinted ink painted over a user's photograph.
+                   * REJECTED: `!!bgImage`, the raw URL — a URL the allowlist rejects
+                   * paints no image, so that card IS a plain coloured card and must
+                   * get its ink. A decision, not a cleanup.
+                   */
+                  ...groupInkVars(cardGround, {
+                    surface: 'card',
+                    hasBackgroundImage: hasBgImage,
                   }),
                   ...cardTextVars,
                   ...bgImageStyle,
@@ -477,16 +535,91 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                     "restore" secondary here. Moving these rows to
                     `text-content-secondary` on the strength of the new 5.43-5.75
                     figures is a DECISION — it wants its own owner ruling and its
-                    own look on a phone — not a cleanup. */}
+                    own look on a phone — not a cleanup.
+
+                    ——— AMENDED Phase 88.3.1 (plan 88.3.1-08, 2026-08-29),
+                    everything above KEPT VERBATIM AS HISTORY ———
+
+                    THE SENTENCE ABOVE SAYS "THE DECISION IS NOT RE-OPENED BY THIS
+                    PLAN." **Plan 88.3.1-08 RE-OPENS IT, DELIBERATELY.** Written here
+                    rather than only in a plan document, because a silent reversal of
+                    a marker that says "not re-opened" is precisely the bulldoze
+                    CLAUDE.md's Evidence Rule exists to stop.
+
+                      - WHO: plan `88.3.1-08`, wave 5 of Phase 88.3.1.
+                      - AUTHORITY: SPEC Req 8 (the three ground-darkness ink sites)
+                        and UI-SPEC 3.5, which names THIS row as site 1 of 3.
+                      - WHY THE PREMISE EXPIRED: every argument above — 88.3's and
+                        88.3-18's alike — is a contest between THEME TOKENS measured
+                        against eight DARK stored presets. Phase 88.3.1 ships a
+                        two-value palette whose LIGHT surfaces (L* ~88.2-88.6) are
+                        real stored renderings, so "which warm-N token wins on a pale
+                        tint" is no longer the question being asked. The row does not
+                        move from primary to secondary; it leaves the theme-token
+                        ramp ENTIRELY for the per-preset, per-theme ink.
+                      - WHAT SURVIVES: the reasoning above still governs the
+                        UNCOLOURED arm, which is untouched (`text-content-secondary`
+                        on the row, `text-content-muted` on the date,
+                        `text-content-primary` on the label). Converging the two arms
+                        remains rejected, for the reason 88.3 gave: the uncoloured
+                        card sits on the themed surface those tokens were designed
+                        against.
+                      - IF YOU ARE HERE TO "RESTORE" `text-content-primary` ON THE
+                        TINTED ARM: that is a decision requiring an owner ruling, not
+                        a cleanup. See the DECISION marker directly below. */}
                 <div className={`border-t border-line pt-3 [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] ${cardTextBold ? 'font-semibold' : ''}`}>
-                  {/* LIMIT Phase 88.3-cr M1 (2026-08-28): these two rows use the THEME token on the
-                      tinted arm, not the ground-derived `--t-color` the title above forks on. Correct
-                      for all eight shipped presets (all dark; `colorUtils.test.ts` pins it); a stored
-                      LIGHT hex would paint near-white on light in dark mode. Registered in
-                      `.planning/deferred/phase-88.6.md` and cross-referenced from phase-88.3.1.md. */}
-                  <div className={`flex flex-wrap items-baseline gap-x-2 text-sm ${tinted ? 'text-content-primary' : 'text-content-secondary'}`}>
-                    <span><strong className="text-content-primary">Last Game:</strong> {lastGame?.name || 'None'}</span>
-                    <span className={`text-xs ${tinted ? 'text-content-primary' : 'text-content-muted'}`}>
+                  {/* DECISION Phase 88.3.1 (SPEC Req 8, site 1 of 3 — UI-SPEC 3.5). This block
+                      REPLACES the 88.3-cr M1 LIMIT block (2026-08-28), which is closed, not lost:
+                      that LIMIT said these two rows take the THEME token on the tinted arm rather
+                      than a ground-derived value, that it holds only because all eight shipped
+                      presets are dark, and that a stored LIGHT hex would paint near-white on light
+                      in dark mode. Registered at `.planning/deferred/phase-88.6.md` ("[tint/dark-mode
+                      LIMIT] grouplist.js Last Game rows") and cross-referenced from
+                      `phase-88.3.1.md`. Phase 88.3.1 is the phase that makes a LIGHT stored value
+                      real, so it is the phase that closes it.
+
+                      CHOSEN: on the tinted arm both spans read the CARD INK PAIR out of the
+                      cascade — `--group-ink` / `--group-ink-l` for the row, the 85% muted rung
+                      `--group-ink-muted` / `--group-ink-muted-l` for the 12px date — exactly as the
+                      card title at `:398` already forks on `--t-color`. The ink is STORED per preset
+                      per theme and is selected by the SAME `dark:` fork that selects the ground, so
+                      the pole is a function of the RENDERED ground by construction. Req 8's failure
+                      mode — a pole chosen by "does this group have a colour" — cannot occur here.
+                      Measured: the muted rung reads 5.52-6.28:1 across the sixteen surfaces.
+
+                      REJECTED: keeping the theme token (`text-content-primary` /
+                      `text-content-secondary` / `text-content-muted`) on the tinted arm. It was
+                      correct only while every shipped preset was dark and stops being correct the
+                      moment a light surface exists; on a legacy LIGHT stored hex in dark mode it
+                      paints near-white on near-white, about 1.1:1.
+
+                      THE `var(…, …)` FALLBACK IS LOAD-BEARING, not defensive noise. `groupInkVars`
+                      returns `{}` for the LEGACY / custom-hex arm (colorUtils AMENDMENT 3) and for
+                      the background-image arm (AMENDMENT 7), so on those cards `--group-ink*` is
+                      undefined. Without the fallback the declaration would be invalid at
+                      computed-value time and `color` would INHERIT the page's theme text colour —
+                      which is ground-blind, i.e. the exact defect this marker closes, surviving on
+                      the one arm that is LIVE for the whole window before BE PR-2's remap runs.
+                      `var(--t-color-l)` / `var(--t-color)` is the card's own `getTextStyle` output,
+                      computed against the rendered ground, and it is emitted on this card's root in
+                      every one of those cases. Verified 2026-08-29 that tailwindcss@4.3.3 in this
+                      tree compiles the nested-fallback arbitrary value and its `dark:` variant. */}
+                  <div className={`flex flex-wrap items-baseline gap-x-2 text-sm ${tinted ? '[color:var(--group-ink-l,var(--t-color-l))] dark:[color:var(--group-ink,var(--t-color))]' : 'text-content-secondary'}`}>
+                    {/* DECISION Phase 88.3.1: the `Last Game:` LABEL moves WITH the row on the
+                        tinted arm — it drops its class and inherits the row's ink — chosen so a
+                        coloured card reads in ONE ink instead of two.
+                        REJECTED (a): keeping `text-content-primary` here unconditionally, which is
+                        what shipped; on a tinted card that renders a two-tone row against the new
+                        ink. This is an AESTHETIC call, not a contrast one, and the numbers say so:
+                        both readings clear 4.5:1 comfortably (warm-900 13.3:1 on the light band,
+                        warm-50 10.65-14.53:1 on the dark band), so a future reader knows the choice
+                        was made on looks and can re-make it on looks.
+                        REJECTED (b): dropping the class outright. That would also re-tone the
+                        UNCOLOURED card, where the shipped look is deliberately a primary label on a
+                        secondary row and nobody has complained about it — an unasked visual change
+                        on a surface outside this phase. Hence the ternary rather than a deletion. */}
+                    <span><strong className={tinted ? undefined : 'text-content-primary'}>Last Game:</strong> {lastGame?.name || 'None'}</span>
+                    <span className={`text-xs ${tinted ? '[color:var(--group-ink-muted-l,var(--t-color-l))] dark:[color:var(--group-ink-muted,var(--t-color))]' : 'text-content-muted'}`}>
                       {formatDate(lastEvent?.start_date || lastEvent?.createdAt, timezone)}
                     </span>
                   </div>
