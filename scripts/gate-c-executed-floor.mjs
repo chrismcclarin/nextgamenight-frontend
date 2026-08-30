@@ -32,18 +32,26 @@
  * threshold-on-a-superset defect — another spec growing would mask this one going
  * to zero. The floor is per-file and per-project.
  *
- * THE FLOOR IS 13, MEASURED, NOT QUOTED. `npx playwright test --list
- * --project=phone` reports 13 tests in `e2e/contrast.spec.ts` on this tree
- * (2026-08-27). The code review that raised CR-09 said 16; that figure is wrong
- * and must not be propagated. Adding a Gate C test is never a red build; removing
- * one is, which is the intended asymmetry.
+ * THE FLOOR IS MEASURED, NOT QUOTED. `npx playwright test --list --project=phone`
+ * reported 13 tests in `e2e/contrast.spec.ts` on 2026-08-27. The code review that
+ * raised CR-09 said 16; that figure is wrong and must not be propagated. Adding a
+ * Gate C test is never a red build; removing one is, which is the intended
+ * asymmetry.
+ *
+ * RAISED 13 -> 15, Phase 88.3.1-W (AMENDMENT W), MEASURED 2026-08-30: the same
+ * command now reports 15, the two new tests being the preset-only ground pins (one
+ * per theme). Raising it in the same commit that adds them is deliberate and is
+ * itself an AMENDMENT W concern — a floor left at 13 would let both new tests be
+ * deleted with the gate still green, which is the SAME "gate that cannot red"
+ * failure the amendment exists to close. `src/lib/ci-grep-gate.fixture.test.ts`
+ * pins the other direction (floor <= declared), so the pair cannot drift apart.
  */
 import { readFileSync, existsSync } from 'node:fs';
 
 const REPORT = process.argv[2] ?? 'playwright-results.json';
 const SPEC = 'e2e/contrast.spec.ts';
 const PROJECT = 'phone';
-const FLOOR = 13;
+const FLOOR = 15;
 
 if (!existsSync(REPORT)) {
   console.error(

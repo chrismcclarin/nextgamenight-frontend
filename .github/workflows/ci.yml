@@ -450,13 +450,29 @@ jobs:
             # merges, or softening this to a bare `jq -r`, is a decision, not a cleanup.
             E2E_COLOURED_GROUP_ID=$(echo "$JSON" | jq -e -r '.coloured_group_id') \
               || { echo "::error::fixture key coloured_group_id missing or null in E2E_FIXTURES_JSON" >&2; exit 1; }
+            # DECISION Phase 88.3.1-W (PLAN-REVIEW Defect 5, owner-ruled 2026-08-30): a SECOND
+            # guarded key, for a SECOND fixture group — chosen OVER reusing
+            # `coloured_group_id`. That group DUAL-WRITES the preset id and the legacy Navy
+            # hex, deliberately (it is what keeps frontend `main` green through the expand
+            # window), so a probe pointed at it renders a colour whether or not this frontend
+            # ever reads `color_preset` — i.e. the cross-repo proof passed identically on the
+            # correct path and the broken one. `e2e-preset-only-group` carries the preset with
+            # `background_color` NULL, so contrast.spec.ts's two AMENDMENT W tests red the
+            # moment a `background_color`-only read site comes back. Same `jq -e` reasoning as
+            # every key above: a bare `jq -r` emits the literal string "null", which satisfies
+            # the spec's `?? fallback` idiom exactly when the guard is needed. REJECTED:
+            # dropping the hex from `e2e-coloured-group` so one group could serve both roles —
+            # that breaks `main`'s e2e before the frontend PR opens (RESEARCH Pitfall 3).
+            E2E_PRESET_ONLY_GROUP_ID=$(echo "$JSON" | jq -e -r '.preset_only_group_id') \
+              || { echo "::error::fixture key preset_only_group_id missing or null in E2E_FIXTURES_JSON" >&2; exit 1; }
             echo "E2E_INVITE_FRIEND_NAME_PHONE=$E2E_INVITE_FRIEND_NAME_PHONE"
             echo "E2E_RSVP_PATH_PHONE=$E2E_RSVP_PATH_PHONE"
             echo "E2E_RESTORE_PATH=$E2E_RESTORE_PATH"
             echo "E2E_EVENT_DETAIL_PATH=$E2E_EVENT_DETAIL_PATH"
             echo "E2E_COLOURED_GROUP_ID=$E2E_COLOURED_GROUP_ID"
+            echo "E2E_PRESET_ONLY_GROUP_ID=$E2E_PRESET_ONLY_GROUP_ID"
           } >> "$GITHUB_ENV"
-          echo "Fixtures minted (group id, availability token, rsvp path + phone rsvp path, invite group + friend, phone invite friend, restore path, event detail path, coloured group)."
+          echo "Fixtures minted (group id, availability token, rsvp path + phone rsvp path, invite group + friend, phone invite friend, restore path, event detail path, coloured group, preset-only group)."
 
       - name: Backend — boot (server.js, :4000) and smoke-wait /health
         working-directory: backend/Sonnet

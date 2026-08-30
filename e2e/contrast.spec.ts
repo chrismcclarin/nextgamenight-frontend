@@ -12,11 +12,24 @@ import {
   forceLightMode,
   groundResolutionOf,
   lStarOfGround,
+  parseHex,
   probeElement,
   ratioAgainstGround,
   vacuityGround,
   type Measurement,
 } from './support/contrast';
+// Phase 88.3.1-W. The PALETTE, imported rather than transcribed — the AMENDMENT W tests below
+// pin the preset-only group's rendered ground to the `blue` preset's own stored values, and
+// this import is what stops that from being a hex literal (see the AMENDED block in
+// `support/contrast.ts`, which carves this out of the "never a hex" decision and explains why
+// the carve-out costs nothing: a palette re-tune moves the assertion with the palette).
+//
+// RELATIVE path, not the tsconfig alias — the same D-OQ-2 reasoning `support/contrast.ts`
+// records for its own `src/lib/wcag` import: Playwright's RUNTIME resolution of tsconfig
+// `paths` has no precedent in this repo and could only be disproved in CI. That module is
+// deliberately import-free, so the transpiler pulls nothing transitive behind it — verified
+// 2026-08-30: `groupColourPresets.ts` has zero `import` statements.
+import { presetByName } from '../src/lib/groupColourPresets';
 
 /**
  * Phase 88.3 SPEC Req 11 — GATE C, the RENDERED contrast pins.
@@ -96,6 +109,10 @@ test.skip(
 // obviously-fake fallback.
 const E2E_GROUP_ID = process.env.E2E_GROUP_ID ?? '1';
 const E2E_COLOURED_GROUP_ID = process.env.E2E_COLOURED_GROUP_ID ?? '1';
+// Phase 88.3.1-W. A SECOND coloured fixture group — `color_preset:'blue'` with
+// `background_color` NULL. See the two AMENDMENT W tests (one in each theme describe) for why
+// `E2E_COLOURED_GROUP_ID` cannot do this job: it dual-writes a usable hex, on purpose.
+const E2E_PRESET_ONLY_GROUP_ID = process.env.E2E_PRESET_ONLY_GROUP_ID ?? '1';
 const E2E_INVITE_GROUP_NAME = process.env.E2E_INVITE_GROUP_NAME ?? 'E2E Invite Group';
 const E2E_EVENT_DETAIL_PATH =
   process.env.E2E_EVENT_DETAIL_PATH ?? `/gameDetail?event_id=1&group_id=${E2E_GROUP_ID}`;
@@ -249,6 +266,136 @@ function todayStripCell(page: Page): Locator {
  * Same token, same tint, same requirement — the reachable half. Substituting the desktop
  * span here would be an unreachable locator, not a stricter test.
  * ======================================================================================= */
+
+/* =========================================================================================
+ * AMENDMENT W (Phase 88.3.1) — the gate that can actually RED on the broken path.
+ * =========================================================================================
+ * THE DEFECT THIS CLOSES (88.3.1-PLAN-REVIEW Defect 5, folding M14/M15; owner-ruled "fix it"
+ * 2026-08-30). `E2E_COLOURED_GROUP_ID` is seeded with `color_preset:'blue'` AND
+ * `background_color:'#172554'`. Both columns are populated, so THIS SPEC RECEIVES A USABLE
+ * HEX WHETHER OR NOT THE FRONTEND EVER READS `color_preset` — every Req 9(ii) assertion above
+ * passes identically on the correct path and on the broken one. SPEC Req 4's cross-repo proof
+ * was, until these two tests, vacuous with respect to the thing this phase exists to do: six
+ * `background_color`-only read sites could have shipped green underneath it.
+ *
+ * WHY THE FIXTURE ABOVE IS NOT SIMPLY FIXED. The dual-write is CORRECT and must stay. Frontend
+ * `main` has never heard of `color_preset`; the Req 9(ii) vacuity guard reds if the coloured
+ * group's ground equals the unset group's, so deleting the hex breaks `main`'s e2e run before
+ * the frontend PR opens (88.3.1-RESEARCH Pitfall 3). Hence a SECOND fixture group rather than
+ * a change to the first — see the `DECISION Phase 88.3.1-W` marker at
+ * `periodictabletopbackend_v2/Sonnet/scripts/e2e-fixtures.js`, which owns that reasoning.
+ *
+ * WHAT MAKES THESE TWO TESTS RED WHERE THE OTHERS CANNOT. `e2e-preset-only-group` carries the
+ * preset with `background_color` NULL. A build whose accessor reads `background_color` only
+ * renders it UNCOLOURED — so the ground stops matching the preset's value AND collapses onto
+ * the unset group's. Both halves are asserted, and they fail with different messages on
+ * purpose: identity says "the resolver is wrong", vacuity says "the fixture is missing".
+ *
+ * WHY AN EQUALITY IS ALLOWED HERE AT ALL — this file's governing decision is "RATIOS and
+ * DELTA-L*, never a hex" (`support/contrast.ts`). It is AMENDED in place there for exactly
+ * this carve-out, with the boundary written down; read it before adding a second equality.
+ * The short version: no floor can distinguish "resolved the preset" from "fell back to a
+ * legacy hex", because both clear every floor. The value IS the requirement here.
+ * ======================================================================================= */
+
+/**
+ * The `blue` preset row — the one `scripts/e2e-fixtures.js` seeds on both coloured groups.
+ *
+ * Resolved at module load and asserted present at module load. If the id ever leaves the
+ * palette, this throws while Playwright is COLLECTING, which reds the run loudly; a lazy
+ * `undefined` would instead surface as an inscrutable "expected undefined" inside one test.
+ */
+const PRESET_ONLY_ID = 'blue';
+const PRESET_ONLY = presetByName(PRESET_ONLY_ID);
+if (!PRESET_ONLY) {
+  throw new Error(
+    `AMENDMENT W: preset '${PRESET_ONLY_ID}' is no longer in src/lib/groupColourPresets.ts. ` +
+      `scripts/e2e-fixtures.js seeds that exact id on e2e-preset-only-group, so the palette and ` +
+      `the backend fixture have drifted — fix them together, do not repoint this spec alone.`
+  );
+}
+
+/**
+ * A palette hex as the string `compositeGround` returns.
+ *
+ * `probeElement` normalises every computed colour through a canvas round-trip and emits
+ * `rgb(r, g, b)` (`support/contrast.ts`), so a raw `#c4e1ff` would never compare equal. The
+ * conversion runs through the SAME `parseHex` the ratio maths uses rather than a local
+ * regex — one parser, so a malformed palette value cannot mean two different things in one
+ * file.
+ */
+function groundStringOf(hex: string, label: string): string {
+  const rgb = parseHex(hex);
+  if (rgb === null) {
+    throw new Error(
+      `AMENDMENT W: the ${label} value '${hex}' in src/lib/groupColourPresets.ts did not parse ` +
+        `as a colour. The palette is malformed — this is not a test-side failure.`
+    );
+  }
+  return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+}
+
+/**
+ * SPEC Req 4, both themes — the preset-only group renders the PRESET's own values.
+ *
+ * Shared by the light and dark tests rather than written twice (project tenet: repeating a
+ * function is tech debt). The two callers differ ONLY in which theme mechanism their describe
+ * already established, which is why each still does its own `assertTheme` inside.
+ *
+ * The UNSET group is read FIRST, from its own load, for the same reason the Req 9(ii) block
+ * gives: the vacuity guard needs both grounds and this order costs two navigations, not three.
+ */
+async function assertPresetGroundLanded(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  const expected = groundStringOf(
+    theme === 'light' ? PRESET_ONLY!.light : PRESET_ONLY!.dark,
+    theme === 'light' ? `'${PRESET_ONLY_ID}' light surface` : `'${PRESET_ONLY_ID}' dark band`
+  );
+
+  await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+  await assertTheme(page, theme);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 15_000 });
+  const unset = await lStarOfGround(page.getByRole('heading', { level: 1 }), `unset header ground (${theme})`);
+
+  await page.goto(`/groupHomePage?id=${E2E_PRESET_ONLY_GROUP_ID}`);
+  await assertTheme(page, theme);
+  const title = page.getByRole('heading', { level: 1 });
+  await expect(title).toBeVisible({ timeout: 15_000 });
+  const presetOnly = await lStarOfGround(title, `preset-only header ground (${theme})`);
+
+  await test.step(`AMENDMENT W — the fixture is carrying a colour at all (${theme})`, async () => {
+    // THE VACUITY GUARD, same shape as Req 9(ii)'s. It exists to separate two failures that
+    // an equality alone reports identically: a MISSING/uncoloured fixture and a WRONG
+    // resolver. ci.yml's `jq -e` on `preset_only_group_id` is the other half — it stops a
+    // missing key becoming the string "null" and driving this probe at `/groupHomePage?id=null`.
+    // Neither layer alone closes the hole.
+    expect(
+      presetOnly.ground,
+      `AMENDMENT W VACUITY GUARD (${theme}): the preset-only group's header ground ` +
+        `(${presetOnly.ground}) is IDENTICAL to the unset group's (${unset.ground}). Either the ` +
+        `E2E_PRESET_ONLY_GROUP_ID fixture is not carrying color_preset, or the frontend rendered ` +
+        `it uncoloured — which is exactly the broken path this test exists to catch, because ` +
+        `e2e-preset-only-group has background_color NULL. Check the fixture FIRST ` +
+        `(scripts/e2e-fixtures.js, e2e-preset-only-group), then storedGroupColour().`
+    ).not.toBe(unset.ground);
+  });
+
+  await test.step(`AMENDMENT W — SPEC Req 4: the PRESET's own value is what rendered (${theme})`, async () => {
+    // THE IDENTITY ASSERTION. `e2e-preset-only-group` has NO legacy hex, so this can only pass
+    // if `storedGroupColour` read `color_preset` and `resolveGroupGround` resolved it through
+    // src/lib/groupColourPresets.ts. `expected` is derived FROM that table, so a palette
+    // re-tune moves this assertion with it and churns nothing.
+    expect(
+      presetOnly.ground,
+      `SPEC Req 4 (${theme}): the preset-only group's header ground measured ` +
+        `${presetOnly.ground}, expected ${expected} — the '${PRESET_ONLY_ID}' preset's ` +
+        `${theme === 'light' ? 'light surface' : 'dark band'} from src/lib/groupColourPresets.ts. ` +
+        `That group stores color_preset='${PRESET_ONLY_ID}' with background_color NULL, so this ` +
+        `fails when a render site went back to reading background_color, when the resolver stopped ` +
+        `consulting the palette, or when the frontend and backend preset tables have drifted. ` +
+        `Do NOT "fix" this by re-adding a hex to the fixture — that re-opens PLAN-REVIEW Defect 5.`
+    ).toBe(expected);
+  });
+}
 
 test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
   // Pitfall 4: `colorScheme` is ORTHOGONAL to the theme class. `playwright.config.ts:51`
@@ -718,6 +865,10 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
     });
   });
 
+  test('groupHomePage (PRESET-ONLY group): the light surface is the PRESET\'s, not a legacy hex (Req 4, AMENDMENT W)', async ({ page }) => {
+    await assertPresetGroundLanded(page, 'light');
+  });
+
   test('header chrome: the mobile menu ring is amber, not the light purple ring (§5.8.2)', async ({ page }) => {
     await page.goto('/');
     await assertTheme(page, 'light');
@@ -919,6 +1070,10 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
         `the treatment that does visible work over the translucent wash.`
     ).not.toBe('none');
     expect(backdrop).toMatch(/blur\(/);
+  });
+
+  test('groupHomePage (PRESET-ONLY group) in dark: the band is the PRESET\'s, not a legacy hex (Req 4, AMENDMENT W)', async ({ page }) => {
+    await assertPresetGroundLanded(page, 'dark');
   });
 
   test('event detail: the status token actually landed on the RSVP count (Req 6, dark)', async ({ page }) => {
