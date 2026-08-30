@@ -155,6 +155,32 @@ afterEach(() => {
 });
 
 describe('CreateEvent + real EventScheduler — week nav re-fires the heatmap fetch (Req 4)', () => {
+  // DECISION Phase 88.3.1 DEF-88.3.1-W-01: the clock is PINNED for this whole describe, and the
+  // pin is load-bearing — not tidy-up. `resolveWeekNav`'s week convention is `weekStartsOn: 1`,
+  // and the last case below navigates ONE DAY FORWARD in day view and asserts that no second
+  // fetch fires. On a Sunday that step legitimately crosses into the next week and fires one, so
+  // the case failed one day in seven against the ambient clock (measured on the same tree: 11/12
+  // under an ambient Sunday, 12/12 under `TZ=Etc/GMT+12`). The remedy is the PIN and explicitly
+  // NOT a widened assertion — a second fetch is CORRECT behaviour on a Sunday, so relaxing the
+  // expectation would delete the property this case exists to prove.
+  //
+  // Wednesday 2026-09-16 at local noon: mid-week in both directions, so `next` and `back` both
+  // stay inside the pinned week. Guarded the same way the CR-01 fixtures below are — an edit
+  // that slid this onto a Sunday must fail LOUDLY rather than silently restoring the flake.
+  const PINNED_WEDNESDAY = new Date(2026, 8, 16, 12, 0, 0);
+
+  beforeEach(() => {
+    expect(PINNED_WEDNESDAY.getDay()).toBe(3);
+    // `shouldAdvanceTime` is REQUIRED — this harness leans on `waitFor`, which never resolves
+    // under frozen timers.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(PINNED_WEDNESDAY);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('fetches the group heatmap for the profile-timezone week on open', async () => {
     await renderAndSettle();
 
@@ -469,7 +495,7 @@ describe('CreateEvent + real EventScheduler — the displayed day survives the h
     // scheduler's guard — which suppresses only the displayed week's MONDAY — lets it through.
     //
     // Wednesday 2026-09-16 at local noon. Its Monday is 2026-09-14, its Sunday 2026-09-20.
-    // Guarded, exactly as the `:391` fixture is: slid onto a Monday or a Sunday this case
+    // Guarded, exactly as the `:417` fixture is: slid onto a Monday or a Sunday this case
     // would go vacuous, so it must fail LOUDLY instead.
     const WEDNESDAY = new Date(2026, 8, 16, 12, 0, 0);
     expect(WEDNESDAY.getDay()).toBe(3);
@@ -485,7 +511,7 @@ describe('CreateEvent + real EventScheduler — the displayed day survives the h
     expect(columnHeaders()[0]).toBe(format(WEDNESDAY, 'dd EEE'));
 
     // Step Next until the header crosses into next week — i.e. until it reads a Monday.
-    // Bounded at seven with an explicit throw naming the last header (the `:432` idiom).
+    // Bounded at seven with an explicit throw naming the last header (the `:458` idiom).
     let steps = 0;
     while (!/Mon$/.test(columnHeaders()[0] ?? '')) {
       if (steps >= 7) {
