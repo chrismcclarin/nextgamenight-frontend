@@ -266,7 +266,50 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
         background_image_url: backgroundImageUrl || null,
       };
       
-      await groupsAPI.updateGroupSettings(group.id, settings);
+      const saved = await groupsAPI.updateGroupSettings(group.id, settings);
+
+      /*
+       * DECISION Phase 88.3.1 (code-review F1, owner ruling 2026-08-30):
+       * CONFIRM THE SERVER UNDERSTOOD `color_preset` BEFORE CALLING THE SAVE DONE.
+       *
+       * The two columns are mutually exclusive, so a preset save ALWAYS sends
+       * `background_color: null`. A backend that predates plan 88.3.1-02 has no
+       * `color_preset` in its destructure and no arm for it in the validator: it
+       * drops the field on the floor, writes the null, and returns 200. The group
+       * is silently uncoloured, the old hex is unrecoverable, and nothing on this
+       * side could tell — the response used to be discarded here.
+       *
+       * The recorded merge order (BE PR-1 -> FE -> BE PR-2) is what PREVENTS that
+       * window. This guard is the second layer, for the case discipline cannot
+       * cover: a Railway instance still serving the old build while the new one
+       * boots. `res.json(group)` returns the Sequelize row, so the key is present
+       * on any backend that has the column and absent on any that does not —
+       * `'color_preset' in saved` is a capability probe, not a value check
+       * (`null` is a legitimate saved value, so a truthiness test would be wrong).
+       *
+       * ONLY the preset arm is guarded. A legacy-hex or cleared save is valid
+       * against BOTH backends and must keep working through the expand window —
+       * gating those too would break the very compatibility this phase needs.
+       *
+       * WHAT THIS DOES NOT DO, stated so nobody assumes otherwise: it does not
+       * PREVENT the wipe, because a single PUT cannot probe first. It converts a
+       * silent irreversible loss into a visible, retryable one, keeps the modal
+       * open so the user's other pending edits survive, and logs the prior stored
+       * value so the colour can be restored by hand. REJECTED: auto-restoring by
+       * firing a second PUT with the old hex — that is a write issued on a
+       * failure path against a server we have just established we do not
+       * understand, and it needs its own owner ruling, not a silent add.
+       */
+      if (chosenPreset && !(saved && typeof saved === 'object' && 'color_preset' in saved)) {
+        logger.error('group settings saved against a backend with no color_preset column', {
+          group_id: group.id,
+          attempted_preset: chosenPreset,
+          previous_stored_colour: group.background_color ?? null,
+        });
+        toast.error('Colour not saved — the server needs updating. Try again in a few minutes.');
+        return;
+      }
+
       // Req 12 receipt (UI-SPEC §6.2). ORDER IS LOAD-BEARING, same reason as
       // D-13's create-event redirect: fire the toast BEFORE onClose() unmounts
       // this surface. Sonner outlives the unmount; the reverse order eats it.
@@ -783,6 +826,29 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                    for this job. A decision, not a cleanup. */
                 const swatchGround = resolveGroupGround(preset.name);
                 const isSelected = backgroundColor === preset.name && !backgroundImageUrl;
+                /*
+                 * DECISION Phase 88.3.1 (code-review F2, owner ruling 2026-08-30):
+                 * THE DARK-MODE RESTING BOUNDARY IS AN ACCEPTED FAILURE, NOT AN OVERSIGHT.
+                 *
+                 * `border-line-strong` was chosen for this edge by M33 / AMENDMENT D on a
+                 * WCAG 1.4.11 argument — a colour-only control needs 3:1 against the fill it
+                 * surrounds. That holds in light mode (3.0361-3.0648, pinned by
+                 * `groupColourPresets.test.ts` test 15). It does NOT hold in dark mode: the
+                 * token resolves to `--purple-500` `#6b7fa3` there, which reads **2.7912**
+                 * against `green`'s dark band. Seven presets pass; `green` does not.
+                 *
+                 * The owner was shown four measured alternatives that all clear the floor
+                 * (`purple-400` 4.02 worst-case, `content-muted` 4.89, `purple-300` 5.95,
+                 * `content-secondary` 7.08) and ruled: leave it, record it. So this is a look
+                 * decision taken WITH the numbers, and changing it is a decision, not a
+                 * cleanup. Test 15b pins the accepted value in both directions, so a drift
+                 * further down reds AND a silent fix that would leave this marker lying reds.
+                 *
+                 * REJECTED: moving `--color-border-strong` itself. It has 27 class usages
+                 * across `src` and `globals.css:1073-1136` records it as the 3:1 control edge
+                 * and forbids nudging it. Any future fix is a `dark:` variant HERE, and it
+                 * updates test 15b in the same commit.
+                 */
                 return (
                   <div key={preset.name} className="flex w-full max-w-16 flex-col items-center gap-1">
                     <button

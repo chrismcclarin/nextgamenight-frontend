@@ -383,13 +383,67 @@ describe('Phase 88.3.1 D-06 / D-01 — the eight-preset picker', () => {
   const preview = (): HTMLElement =>
     screen.getByText('Preview').parentElement as HTMLElement;
 
-  /** The single `settings` object handed to the API on save. */
+  /** The single `settings` object handed to the API on save.
+   *
+   *  The mock echoes a row that CARRIES `color_preset`, because that is what the
+   *  real route returns (`routes/groups.js` -> `res.json(group)`), and because the
+   *  F1 capability guard added 2026-08-30 reads exactly that key. The previous
+   *  `{}` stand-in would now drive the preset cases down the guard's failure arm
+   *  and quietly stop exercising the success path these tests exist to pin. */
   async function saveAndCapture(): Promise<Record<string, unknown>> {
-    (groupsAPI.updateGroupSettings as Mock).mockResolvedValue({});
+    (groupsAPI.updateGroupSettings as Mock).mockImplementation(
+      async (_id: string, sent: Record<string, unknown>) => ({
+        id: GROUP_ID,
+        name: GROUP_NAME,
+        color_preset: sent.color_preset ?? null,
+        background_color: sent.background_color ?? null,
+      }),
+    );
     fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
     await waitFor(() => expect(groupsAPI.updateGroupSettings as Mock).toHaveBeenCalled());
     return (groupsAPI.updateGroupSettings as Mock).mock.calls[0][1];
   }
+
+  /*
+   * F1 (code review 88.3.1, owner ruling 2026-08-30). The old backend's response is
+   * modelled as a row with NO `color_preset` KEY AT ALL — not the key set to null.
+   * That distinction is the whole guard: `null` is a legitimate saved value (a
+   * cleared group), so only key ABSENCE can mean "this server does not have the
+   * column". A test that used `{ color_preset: null }` here would pass while
+   * proving nothing.
+   */
+  const OLD_BACKEND_ROW = { id: GROUP_ID, name: GROUP_NAME, background_color: null };
+
+  it('F1: a PRESET save against a backend with no color_preset column does NOT report success', async () => {
+    (groupsAPI.updateGroupSettings as Mock).mockResolvedValue(OLD_BACKEND_ROW);
+    const onClose = vi.fn();
+    const onUpdate = vi.fn();
+    renderSettings({ onClose, onUpdate });
+
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    fireEvent.click(within(group).getByRole('button', { name: 'Teal' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(toast.error as Mock).toHaveBeenCalled());
+    // The three things that made the wipe silent, each asserted on its own line.
+    expect(toast.success as Mock).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();   // modal stays open, pending edits survive
+    expect(onUpdate).not.toHaveBeenCalled();  // no refetch claiming a good write
+  });
+
+  it('F1: a LEGACY-HEX save against that same old backend still succeeds — the expand window must keep working', async () => {
+    (groupsAPI.updateGroupSettings as Mock).mockResolvedValue(OLD_BACKEND_ROW);
+    const onClose = vi.fn();
+    renderSettings({ onClose }, { id: GROUP_ID, name: GROUP_NAME, background_color: '#1e1e2e' });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(toast.success as Mock).toHaveBeenCalledWith('Settings saved'));
+    expect(toast.error as Mock).not.toHaveBeenCalled();
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    // …and it really did take the non-preset arm, or the case proves nothing.
+    expect((groupsAPI.updateGroupSettings as Mock).mock.calls[0][1].color_preset).toBeNull();
+  });
 
   const LABELS = ['Red', 'Orange', 'Amber', 'Green', 'Teal', 'Blue', 'Violet', 'Rose'];
 

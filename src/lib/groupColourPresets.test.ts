@@ -386,6 +386,16 @@ const CONTENT_MUTED_DARK = '#b8a898';
 
 /** `--color-border-strong` light, `globals.css:1136` -> `--warm-500:634`. Test 15's boundary. */
 const BORDER_STRONG_LIGHT = '#8c7a6a';
+/** `--color-border-strong` DARK, `globals.css:1570` -> `--purple-500:568`. Test 15b's boundary. */
+const BORDER_STRONG_DARK = '#6b7fa3';
+/** `--color-bg-page` light, `globals.css:708` -> `--warm-200:610`. */
+const BG_PAGE_LIGHT = '#e8e0d8';
+/** `--color-bg-card` light, `globals.css:709`. */
+const BG_CARD_LIGHT = '#ffffff';
+/** `--color-bg-page` dark, `globals.css:1504` -> `--purple-950:584`. */
+const BG_PAGE_DARK = '#161d29';
+/** `--color-bg-card` dark, `globals.css:1505` -> `--purple-900:583`. */
+const BG_CARD_DARK = '#232d3e';
 /** `--color-border` light, `globals.css:1129` -> `--warm-400:633`. The boundary it REPLACED. */
 const BORDER_LIGHT = '#b8a898';
 
@@ -775,6 +785,110 @@ describe('the swatch resting boundary — M33 (UI-SPEC §10.1 test 15)', () => {
     // The margin is thin and the test says so out loud: pinned under 3.07 so a change that
     // eats it reds here instead of shipping an invisible swatch edge.
     expect(Math.max(...strong)).toBeLessThanOrEqual(3.07);
+  });
+});
+
+describe('the swatch resting boundary in DARK mode — ACCEPTED FAILURE, owner ruling 2026-08-30', () => {
+  it('15b. DISCLOSED: `green` reads 2.7912 against its own dark band, under the 3:1 this control invoked', () => {
+    /*
+     * ACCEPTED FOREVER — owner ruling 2026-08-30, code review 88.3.1 fork F2, option (b).
+     *
+     * THE FINDING. M33 / AMENDMENT D upgraded this swatch's resting boundary from
+     * `border-line` to `border-line-strong` on an explicit WCAG 1.4.11 argument: a swatch is a
+     * colour-only control, so its edge needs 3:1 against the fill it surrounds. Test 15 above
+     * proves that for LIGHT mode and stops there — `BORDER_STRONG_LIGHT` was, until this test,
+     * the only boundary constant in the file. The dark half was never computed. It does not
+     * hold: in `.dark`, `--color-border-strong` resolves to `--purple-500` `#6b7fa3`, and
+     * against `green`'s dark band `#004511` that is **2.7912**, under the floor the change
+     * itself invoked. The swatch carries no text of its own (the caption is a sibling `<span>`,
+     * `aria-hidden`), so this edge really is the only in-component cue.
+     *
+     * WHY IT IS ACCEPTED AND NOT FIXED. The owner ruled (b): leave it, record it. Four
+     * alternatives were measured and all four clear the floor — `purple-400` #8a9bba (worst
+     * case 4.02), `content-muted` warm-400 (4.89), `purple-300` #b0bdd3 (5.95),
+     * `content-secondary` warm-300 (7.08) — so this is a look decision taken with the numbers
+     * in hand, not an oversight. One preset, one theme, on a control whose selected state is
+     * additionally marked by a `ring-2` and whose accessible name is on the button.
+     *
+     * WHY THIS IS A TEST AND NOT A PARAGRAPH. House precedent: `--color-text-link` was left
+     * under AA by ruling 1c and pinned as a DISCLOSED FAILURE by Gate A tests 48-49 "so it can
+     * never be invisible again". Same treatment. This test PASSES on the accepted value and
+     * REDS if the number moves in either direction — a drift further down is caught, and so is
+     * a silent fix that would leave this record lying.
+     *
+     * DO NOT "fix" this by moving the token. `--color-border-strong` has 27 class usages across
+     * `src`, and `globals.css:1073-1136` records it as the 3:1 control edge and forbids nudging
+     * it. Any future fix is a `dark:` variant at the ONE swatch site
+     * (`GroupSettings.js`, the resting arm), and it must update this test in the same commit.
+     */
+    const NON_TEXT_FLOOR = 3.0;
+    const dark = GROUP_COLOUR_PRESETS.map((p) => contrast(BORDER_STRONG_DARK, p.dark));
+    expect(dark).toHaveLength(8);
+
+    const byName = Object.fromEntries(GROUP_COLOUR_PRESETS.map((p, i) => [p.name, dark[i]]));
+
+    // The accepted failure, pinned to its exact measured value in both directions.
+    expect(byName.green).toBeGreaterThan(2.79);
+    expect(byName.green).toBeLessThan(2.80);
+    expect(byName.green, 'green is the ACCEPTED dark-mode failure').toBeLessThan(NON_TEXT_FLOOR);
+
+    // …and it is the ONLY one. A second preset dropping under 3:1 is NOT covered by the
+    // ruling and must red here rather than join the accepted set silently.
+    const failing = GROUP_COLOUR_PRESETS.filter((p, i) => dark[i] < NON_TEXT_FLOOR).map((p) => p.name);
+    expect(failing, 'only `green` is accepted below 3:1 in dark mode').toEqual(['green']);
+
+    // The other seven, pinned as a band so a palette re-tune that erodes them reds here.
+    const rest = GROUP_COLOUR_PRESETS.filter((p) => p.name !== 'green').map((p) => contrast(BORDER_STRONG_DARK, p.dark));
+    expect(Math.min(...rest)).toBeGreaterThanOrEqual(3.31); // teal 3.3133, the tightest passer
+    expect(Math.max(...rest)).toBeLessThanOrEqual(3.81);    // rose 3.8070
+  });
+});
+
+describe('coloured-surface separation from the surface BEHIND it — recorded, not gated (F4)', () => {
+  it('15c. records how far each ground sits from the page and the card, in both themes', () => {
+    /*
+     * RECORDED BY OWNER RULING 2026-08-30 (code review 88.3.1 fork F4, option (a)).
+     *
+     * UI-SPEC 2.6 recorded the light surfaces sitting ~1.03:1 from the page as DELIBERATE, and
+     * the plan review used exactly that fact to force the picker swatch onto `-strong`. That
+     * reasoning was never carried to the six RENDER consumers, two of which are interactive
+     * controls under WCAG 1.4.11: the group card (`grouplist.js`, `role="button"`) and the
+     * compact month tile (`CalendarMonthView.js`, `role="button"`). Nothing measured them.
+     *
+     * This test is a LEDGER, not a floor. It asserts no minimum, because there is no agreed
+     * one: neither the outgoing t=0.70 tints nor the shipped bands met 3:1, so this is not a
+     * regression — it is a number that had never been written down. Both surfaces additionally
+     * carry text that identifies them, which is why it is recorded rather than gated.
+     *
+     * Its job is to make a future change to the light band VISIBLE here, so the next person to
+     * re-tune the palette sees what it does to surface separation instead of discovering it in
+     * a walkthrough. If an owner ever sets a floor, it replaces the band assertions below.
+     */
+    const lightVsPage = GROUP_COLOUR_PRESETS.map((p) => contrast(BG_PAGE_LIGHT, p.light));
+    const lightVsCard = GROUP_COLOUR_PRESETS.map((p) => contrast(BG_CARD_LIGHT, p.light));
+    const darkVsPage = GROUP_COLOUR_PRESETS.map((p) => contrast(BG_PAGE_DARK, p.dark));
+    const darkVsCard = GROUP_COLOUR_PRESETS.map((p) => contrast(BG_CARD_DARK, p.dark));
+
+    // LIGHT — the group card's fill against the warm-200 page it sits on.
+    expect(Math.min(...lightVsPage)).toBeCloseTo(1.0277, 3); // rose, the closest
+    expect(Math.max(...lightVsPage)).toBeCloseTo(1.0374, 3); // orange, the furthest
+    // LIGHT — the compact month tile's fill against its white day cell.
+    expect(Math.min(...lightVsCard)).toBeCloseTo(1.3417, 3); // rose
+    expect(Math.max(...lightVsCard)).toBeCloseTo(1.3544, 3); // orange
+
+    // DARK — the same two relationships. Wider spread, and the reverse ordering:
+    // `green` is the FURTHEST from the dark page (1.4972) and `rose` the closest (1.0977).
+    expect(Math.min(...darkVsPage)).toBeCloseTo(1.0977, 3);  // rose
+    expect(Math.max(...darkVsPage)).toBeCloseTo(1.4972, 3);  // green
+    expect(Math.min(...darkVsCard)).toBeCloseTo(1.0226, 3);  // red
+    expect(Math.max(...darkVsCard)).toBeCloseTo(1.2262, 3);  // green
+
+    // The shape that matters if anyone reads only one line: in LIGHT mode every ground is
+    // within ~3.7% of the page behind it, and none of the four relationships reaches 3:1.
+    for (const set of [lightVsPage, lightVsCard, darkVsPage, darkVsCard]) {
+      expect(set).toHaveLength(8);
+      expect(Math.max(...set)).toBeLessThan(3.0);
+    }
   });
 });
 
