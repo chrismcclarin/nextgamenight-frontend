@@ -777,3 +777,121 @@ describe('the swatch resting boundary — M33 (UI-SPEC §10.1 test 15)', () => {
     expect(Math.max(...strong)).toBeLessThanOrEqual(3.07);
   });
 });
+
+/**
+ * `--color-border-control` light, `globals.css:1322` -> `--warm-300: #d6cbc0` (`:632`).
+ *
+ * This is the ring on the three `groupHomePage` header controls' LIGHT arm
+ * (`bg-white/80 ring-1 ring-line-control dark:ring-0`, `DECISION Phase 88.3-16`). It is
+ * deliberately NOT `BORDER_LIGHT` (warm-400) or `BORDER_STRONG_LIGHT` (warm-500) above:
+ * `globals.css:1300-1310` records both control edges as HELD at warm-300 by owner ruling 1c,
+ * with the measurement that says why (warm-400 reads 2.3096 on a white card, over Gate A test
+ * 36d's 2.00 ceiling).
+ */
+const CONTROL_RING_LIGHT = '#d6cbc0';
+
+describe('the header controls\' white wash on the NEW light surfaces — RESEARCH Open Question 1', () => {
+  it('16. all sixteen wash/ring readings stay inside the 1.20-1.57 shipped neutral-border band', () => {
+    /*
+     * WHY THIS TEST EXISTS. The three `groupHomePage` header controls' light arm carries an
+     * 80% WHITE WASH plus a 1px ring — the owner's 88.3 Req 12 test 7, verbatim: "I can read
+     * the words, but I can't see a button there." That treatment was measured in 88.3 against
+     * the eight **t = 0.70 tints** and has NEVER been re-measured against the light surfaces
+     * this phase ships, even though UI-SPEC 3.3 puts that header in the CARD bucket so BOTH
+     * its ground and its ink move. Neither SPEC nor UI-SPEC re-ran it; RESEARCH flagged it as
+     * Open Question 1 rather than assuming it still held. This is the answer.
+     *
+     * `e2e/contrast.spec.ts:706-716` already asserts AA on these controls' TEXT against the
+     * Navy fixture group, so CI catches a text regression. It does NOT catch an EDGE one —
+     * a wash that stops separating the control from the ground behind it is invisible to
+     * every text-contrast probe in the tree. This test is that catch.
+     *
+     * THE BASELINE BEING COMPARED AGAINST (88.3, on the superseded t = 0.70 tints, recorded
+     * verbatim in the `DECISION Phase 88.3-16` marker at `groupHomePage/page.js`):
+     *   wash vs tint  **1.634 (Forest) - 1.716 (Wine)**, Navy 1.660 — "the wash IS the boundary"
+     *   ring vs wash  **1.418 - 1.432**
+     *
+     * MEASURED HERE, on the eight rev3 light surfaces (2026-08-29, this tree's `wcag.ts`):
+     *   wash vs ground **1.2605 (teal) - 1.2771 (orange)**  <- fell ~23% from 1.634-1.716
+     *   ring vs wash   **1.4969 (teal) - 1.5095 (green)**   <- rose slightly from 1.418-1.432
+     *
+     * BOTH STAY INSIDE THE 1.20-1.57 SHIPPED NEUTRAL-BORDER BAND, so nothing is broken and
+     * nothing is being changed here — but the ROLES SWAPPED, and that is worth a future
+     * reader's attention rather than a silent pass. The new light surfaces are lighter in
+     * luminance than the old tints, so an 80% white wash over them separates LESS; the ring,
+     * which composites against a slightly lighter wash, separates slightly MORE. The 88.3
+     * marker's sentence "the wash IS the boundary" was true at 1.66 and is no longer the whole
+     * story at 1.27 — the ring now carries as much of the edge as the wash does. That is the
+     * shipped Geist / Fluent / Ant / shadcn-outline pattern (white fill + a 1.20-1.53
+     * hairline) working as intended, which is exactly why the treatment was BOTH a wash and a
+     * ring rather than either alone.
+     *
+     * THE CONTROL MARKUP IS DELIBERATELY NOT CHANGED. Phase 88.6 owns those controls (the
+     * `.btn` -> `Button` migration) and the ROADMAP sequenced 88.3.1 first precisely so 88.6
+     * lands on a stable header. If the wash should ever need to persist harder, the recorded
+     * step is `bg-white/90` — measured here as a comment, not applied.
+     */
+    const BAND_FLOOR = 1.2;
+    const BAND_CEILING = 1.57;
+
+    let readings = 0;
+    const washVsGround: number[] = [];
+    const ringVsWash: number[] = [];
+
+    for (const preset of GROUP_COLOUR_PRESETS) {
+      const wash = composite('#ffffff', 0.8, preset.light);
+
+      const a = contrast(wash, preset.light);
+      expect(
+        a,
+        `${preset.name}: the 80% white wash measures ${a.toFixed(4)} against its own light ` +
+          'surface — the control has lost its boundary against the header ground',
+      ).toBeGreaterThanOrEqual(BAND_FLOOR);
+      expect(a, `${preset.name}: wash vs ground ${a.toFixed(4)} left the shipped band`).toBeLessThanOrEqual(
+        BAND_CEILING,
+      );
+      washVsGround.push(a);
+      readings += 1;
+
+      const b = contrast(CONTROL_RING_LIGHT, wash);
+      expect(
+        b,
+        `${preset.name}: the ring measures ${b.toFixed(4)} on the composited wash — outside ` +
+          'the 1.20-1.57 shipped neutral-border band',
+      ).toBeGreaterThanOrEqual(BAND_FLOOR);
+      expect(b, `${preset.name}: ring vs wash ${b.toFixed(4)} left the shipped band`).toBeLessThanOrEqual(
+        BAND_CEILING,
+      );
+      ringVsWash.push(b);
+      readings += 1;
+    }
+
+    // ANTI-VACUITY: sixteen readings, not zero, not eight.
+    expect(readings, 'the sixteen-reading sweep did not run in full').toBe(16);
+
+    /*
+     * The envelopes, pinned tightly so a future palette edit that erodes either cue reds HERE
+     * rather than shipping. These are the numbers written into the marker above; if they move,
+     * the marker is wrong and must move with them.
+     */
+    expect(Math.min(...washVsGround)).toBeGreaterThanOrEqual(1.25);
+    expect(Math.max(...washVsGround)).toBeLessThanOrEqual(1.29);
+    expect(Math.min(...ringVsWash)).toBeGreaterThanOrEqual(1.48);
+    expect(Math.max(...ringVsWash)).toBeLessThanOrEqual(1.52);
+
+    /*
+     * The LABEL on that composited wash, asserted rather than inherited. `text-content-primary`
+     * measures 13.27-13.39:1 on the BARE new surfaces (UI-SPEC 2.4), but the label does not sit
+     * on the bare surface — it sits on the wash, which is a different (lighter) ground. Measured
+     * **16.86 - 17.00:1**. Cheap to check, and the composited case is the one no other gate in
+     * this file covers.
+     */
+    for (const preset of GROUP_COLOUR_PRESETS) {
+      const wash = composite('#ffffff', 0.8, preset.light);
+      const text = contrast(CONTENT_PRIMARY_LIGHT, wash);
+      expect(text, `${preset.name}: the control label on the wash measures ${text.toFixed(4)}`).toBeGreaterThanOrEqual(
+        TEXT_FLOOR,
+      );
+    }
+  });
+});

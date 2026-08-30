@@ -11,8 +11,9 @@ import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import {
     getTextStyle,
     getSubtitleStyle,
-    resolveGroupBackgroundColor,
-    lightTintGroupBackgroundColor,
+    groupInkVars,
+    resolveGroupGround,
+    storedGroupColour,
     isDarkBackground,
     themedTextStyleVars,
 } from '../../lib/colorUtils';
@@ -319,7 +320,17 @@ function GroupHomePage(){
 
     // null when the group has no colour of its own — the identity header then
     // keeps its themed surface class instead of an inline override (D-28).
-    const headerBgColor = resolveGroupBackgroundColor(Group?.background_color);
+    /*
+     * AMENDED Phase 88.3.1 (plan 09, AMENDMENT J): the ACCESSOR is
+     * `storedGroupColour(Group)`, never `Group?.background_color`. Plan
+     * 88.3.1-05 migrates every coloured group to `color_preset='<id>',
+     * background_color=NULL`, so reading the legacy column alone would render
+     * every migrated group's header UNCOLOURED — a failure with a fully green
+     * suite, because nothing in this tree reads a computed style.
+     * REJECTED: a per-site `color_preset ?? background_color` ternary — six
+     * copies of one rule (project tenet). A decision, not a cleanup.
+     */
+    const headerGroundPair = resolveGroupGround(storedGroupColour(Group));
 
     /*
      * DECISION Phase 88.3 (D-08/D-09): the identity header renders a LIGHT TINT
@@ -350,10 +361,48 @@ function GroupHomePage(){
      * truthy in one arm and unusable in the other.
      *
      * Changing any of this is a decision, not a cleanup.
+     *
+     * AMENDED Phase 88.3.1 (plan 09), the whole block above KEPT AS HISTORY.
+     * Everything it decides still stands — the light tint in light mode, the
+     * stored value in dark, 88-22's themed fallback for the uncoloured header,
+     * and both rejected alternatives (H2's warm-700 plinth, H3's nav-blue band).
+     * Two mechanical facts under it moved. (1) `resolveGroupBackgroundColor` and
+     * `lightTintGroupBackgroundColor` are no longer CALLED here; both moved
+     * inside `resolveGroupGround`, which is now the one place that answers "what
+     * ground does this stored value paint". (2) Its "`ground` is the raw stored
+     * hex GATED ON THE TINT SUCCEEDING" sentence describes a gate this file no
+     * longer writes: T-88.3-43 became a property of the resolver's RETURN TYPE
+     * (`{dark, light, …}` or `null`, never half a pair), so the two locals below
+     * are destructured from ONE object and cannot drift apart. The CONSEQUENCE
+     * the sentence cares about is UNCHANGED and still load-bearing: a value that
+     * resolves to nothing behaves as "no colour" in BOTH arms, so `darkArm`
+     * below still falls to its `!ground` clause rather than one arm seeing a
+     * truthy string the other cannot use.
      */
-    const tinted = lightTintGroupBackgroundColor(headerBgColor);
-    const ground = tinted ? headerBgColor : null;
+    const ground = headerGroundPair?.dark ?? null;
+    const tinted = headerGroundPair?.light ?? null;
     const hasHeaderImage = !!Group?.background_image_url;
+    /*
+     * DECISION Phase 88.3.1 (plan 09, AMENDMENT AC — the two-flag shape plan 08
+     * shipped at `CalendarListView.js` and `EventDayModal.js`): a SECOND image
+     * flag, derived from the VALIDATED `safeBgImageStyle` result, read ONLY by
+     * `groupInkVars`.
+     *
+     * WHY TWO. `safeBgImageStyle` drops relative/invalid URLs (FSEC-03), so a
+     * truthy-but-rejected URL paints NO image: that header IS a plain coloured
+     * card and must get its ink. Feeding `groupInkVars` the raw `hasHeaderImage`
+     * would withhold the ink from exactly those headers.
+     * REJECTED: converging `hasHeaderImage` onto the validated style here. It is
+     * the right end state and is the wave-12 ruling already applied at
+     * `grouplist.js`, but it CHANGES WHAT AN INVALID-URL HEADER PAINTS (the
+     * white-on-image title treatment gives way to plain contrast maths) on a
+     * surface this plan was not scoped to re-look at, and the same divergence is
+     * live at three sibling files. Registered as one 4-site family in
+     * `.planning/deferred/phase-88.6.md`; converge all of them in one pass with a
+     * rendered check. Deleting either flag here is a decision, not a cleanup.
+     */
+    const headerBgImageStyle = safeBgImageStyle(Group?.background_image_url);
+    const hasValidHeaderImage = !!headerBgImageStyle;
 
     /*
      * `darkArm` — the ground-brightness half of the three header controls' fork.
@@ -491,7 +540,45 @@ function GroupHomePage(){
                         '--group-ground': ground,
                         '--group-ground-light': tinted,
                     }),
-                    ...safeBgImageStyle(Group?.background_image_url),
+                    /*
+                     * DECISION Phase 88.3.1 (plan 09, SPEC Req 4 / UI-SPEC 3.3): the
+                     * CARD ink pair rides in the SAME style object as the two grounds,
+                     * chosen OVER emitting it at whichever text element consumes it.
+                     * The ink and the ground must turn on and off together, and
+                     * `groupColourRendering.test.ts` test 9 can only assert that when
+                     * both live in one expression — co-location is what makes the
+                     * invariant mechanical instead of conventional.
+                     *
+                     * `surface: 'card'`, not `'tile'`: UI-SPEC 3.3 puts this header in
+                     * the CARD bucket, so it takes the preset's stored per-theme ink
+                     * (8.00-8.08:1 on its own ground) rather than the tiles' plain
+                     * high-contrast poles. `hasBackgroundImage` is passed EXPLICITLY
+                     * and is the VALIDATED flag: this is a `.js` file, so an omitted
+                     * option degrades silently to `false` — the UNSAFE direction, a
+                     * preset's tinted ink painted over a user's photograph.
+                     * REJECTED: the raw `hasHeaderImage` — see the two-flag marker
+                     * above.
+                     *
+                     * KNOWN RESIDUAL, recorded so it is not read as an oversight: the
+                     * h1 and its subtitle below still fork on `--t-color*` from
+                     * `themedTextStyleVars`, so nothing in THIS file consumes the ink
+                     * yet — exactly as at `grouplist.js`'s card title, at
+                     * `EventDayModal.js`'s title/subtitle and at
+                     * `CalendarListView.js`'s row. All four card TITLES are uniform
+                     * today; what plan 08 moved onto the ink were the SPEC Req 8 sites
+                     * (a theme-token fork keyed on "has a colour"), and this header
+                     * has none — its three controls fork on `darkArm`, which is
+                     * already ground-derived. Re-inking the titles is a real open
+                     * question, it is a FOUR-SITE family rather than a gap in one
+                     * file, and it needs its own look at 375px; registered in
+                     * `.planning/deferred/phase-88.6.md`. The channel is wired here so
+                     * that change is a className edit, not a re-plumb.
+                     */
+                    ...groupInkVars(headerGroundPair, {
+                        surface: 'card',
+                        hasBackgroundImage: hasValidHeaderImage,
+                    }),
+                    ...headerBgImageStyle,
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
                     minHeight: '120px',
@@ -668,6 +755,39 @@ function GroupHomePage(){
                     upgrade path is the ground-derived pole — `getContrastColor(ground)`
                     handed to CSS as a custom property, the same indirection the title
                     already uses above — NOT a theme-token swap.
+
+                    ——— AMENDED Phase 88.3.1 (plan 09), the LIMIT above KEPT AS HISTORY ———
+
+                    THE LIMIT'S PREMISE NEEDED CORRECTING, NOT ITS CONCLUSION. Its
+                    sentence "every shipped preset is dark, so `darkArm` is `true` for
+                    all eight of `DEFAULT_BACKGROUND_COLORS`" is false AS WRITTEN after
+                    this phase: that array no longer exists, and each preset now carries
+                    TWO values — a dark band and a light surface
+                    (`lib/groupColourPresets.ts`). Read literally it would send a future
+                    reader looking for a light preset that "reaches this header", and
+                    there is one in the table.
+
+                    THE CORRECTED PREMISE: every shipped preset's DARK BAND is dark
+                    (W3C brightness 32-47, `getBrightness` <= 128 for all eight, pinned
+                    by `groupColourPresets.test.ts`), and `ground` is the DARK BAND —
+                    `resolveGroupGround(...).dark`. So `darkArm` is still `true` for all
+                    eight and the LIMIT still does not fire. The light surface is only
+                    ever painted in LIGHT mode, where the light-arm classes are the ones
+                    present, so the theme token and the rendered ground still agree.
+                    `darkArm` is therefore BYTE-UNCHANGED by this plan — deliberately.
+
+                    THE GUARD IT NAMES SURVIVES. `colorUtils.test.ts`'s dark-ground
+                    tripwire was RE-PINNED to `p.dark` by plan 88.3.1-06 rather than
+                    deleted, so a future preset whose DARK band stopped being dark still
+                    reds there before it ever reaches this header. And the stated upgrade
+                    path — a ground-derived pole handed to CSS as a custom property, NOT
+                    a theme-token swap — is unchanged and is still the right one.
+
+                    WHAT WOULD ACTUALLY FIRE IT, so the residual is named rather than
+                    implied: a LEGACY light stored hex, which resolves through the
+                    compatibility path with `ground` = that light hex. SPEC Req 6's
+                    migration removes every one of those from the estate, which is why
+                    this is a corrected premise and not an open defect.
 
                     Any of this is a decision, not a cleanup. */}
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 relative z-20 w-full shrink-0 items-stretch sm:items-center md:justify-end">
