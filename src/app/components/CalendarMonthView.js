@@ -580,10 +580,26 @@ export default function CalendarMonthView({
                                  * PLAIN, NOT TINTED, IS AN OWNER RULING, not an oversight:
                                  * "when it's small like that, you need the text to be more
                                  * distinct." A month tile is one line of `text-xs` in a ~49px
-                                 * cell, so it takes the high-contrast poles
-                                 * (`getEventTileTextColor`, 6.44-6.50:1 light / 15.6-18.7:1
-                                 * dark on the shipped bands) rather than the card ink's
-                                 * chromatic 8.00-8.08:1. REJECTED: `surface: 'card'` here,
+                                 * cell, so it takes the high-contrast poles rather than the
+                                 * card ink's chromatic 8.00-8.08:1.
+                                 *
+                                 * MEASURED ON THE SHIPPED BANDS (2026-08-29, this tree's
+                                 * `lib/wcag.ts`), not inherited — the figures in this phase's
+                                 * own documents have been wrong twice:
+                                 *   `getEventTileTextColor` non-past  6.44-6.50:1 light
+                                 *                                     11.29-15.40:1 dark
+                                 *   past-date muted poles             7.61-7.68:1 light
+                                 *                                     6.33-8.10:1 dark
+                                 * NOTE the dark low ends. Both are `green`, whose dark band
+                                 * sits at CIE L* 24.6 by owner direction (BAND EXCEPTION 1 in
+                                 * `groupColourPresets.ts`) rather than at the 12-20 target.
+                                 * UI-SPEC 3.5 publishes "7.27-8.10:1 dark" for the past-date
+                                 * pole; on this tree it is **6.33**-8.10, because green pulls
+                                 * it. Everything still clears AA with room, but green is now
+                                 * the binding row on a FOURTH reading — the palette marker
+                                 * already says nobody may brighten it further without
+                                 * re-running UI-SPEC 2.4, and this is one more reason.
+                                 * REJECTED: `surface: 'card'` here,
                                  * and equally a second `tileInkVars` beside the card one —
                                  * UI-SPEC 3.4 is explicit that one function with one
                                  * parameter is the contract, and duplication is never a peer
