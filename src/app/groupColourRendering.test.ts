@@ -55,6 +55,11 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+// Plan 88.3.1-09: imported so test 21's fixture is CHECKED against the shipped table
+// rather than transcribed from it. A source-scan file importing production data is the
+// exception here, not the rule — it is safe because the assertion is "my fixture still
+// matches yours", which is exactly the drift a transcribed hex hides.
+import { GROUP_COLOUR_PRESETS } from '../lib/groupColourPresets';
 import { contrastRatio } from '../lib/wcag';
 import { lineAt, sourceFiles, stringChunks, withoutComments } from '../test-utils/sourceScan';
 
@@ -497,6 +502,14 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
      * counters below. As the tint count falls the resolver count and the ink count
      * must rise, or the render sites have quietly stopped resolving a ground or
      * stopped inking one.
+     *
+     * ARRIVED, plan 88.3.1-09 (2026-08-29). All six consumers have moved and the
+     * measured population is now exactly **1** — `resolveGroupGround`'s own
+     * internal legacy-hex arm in `lib/colorUtils.js`, and nothing else in `src/`.
+     * The floor and the population agree for the first time since plan 07; this is
+     * the FINAL value and there is no further planned movement, so a future drop
+     * to 0 means the compatibility path itself was deleted and test 1 has gone
+     * vacuous. All three numbers in this test are now final and deliberate.
      */
     expect(calls, 'the tint has stopped being called at all — test 1 would be vacuous')
       .toBeGreaterThanOrEqual(1);
@@ -523,23 +536,36 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
      * RE-POINTED plan 88.3.1-08: 2 -> 5. The two were `GroupSettings.js`'s preview
      * and its swatch map; plan 08 adds grouplist, CalendarListView and
      * EventDayModal, one call each.
-     * TODO(88.3.1-09): rises to 7 when CalendarMonthView and groupHomePage land.
+     *
+     * FINAL VALUE, plan 88.3.1-09 (2026-08-29): 5 -> **7**. SPEC Req 4's "six
+     * consumers, one resolver" is now literally true, and 7 is what that counts on
+     * this tree — `GroupSettings.js` is ONE consumer with TWO render sites (the
+     * live preview and the swatch map), which is the harness's own per-call rule
+     * rather than a per-file one. The seven, enumerated so a future drop names
+     * itself: GroupSettings x2, grouplist, CalendarListView, EventDayModal,
+     * CalendarMonthView (one shared gate feeding BOTH tile variants — a 2 here
+     * would mean the hoist was undone), groupHomePage.
      */
     expect(callsTo(RESOLVER), 'a render site stopped going through THE resolver')
-      .toBeGreaterThanOrEqual(5);
+      .toBeGreaterThanOrEqual(7);
 
     /*
      * NEW plan 88.3.1-08. `groupInkVars` had ZERO production callers before this
      * plan — it was declared, unit-tested and unwired, which is exactly the state
      * a source scan should be able to tell apart from "wired". Three now: the three
      * CARD surfaces plan 08 migrated.
-     * TODO(88.3.1-09): rises as CalendarMonthView (tile ink) and groupHomePage
-     * (card ink) land.
+     *
+     * FINAL VALUE, plan 88.3.1-09 (2026-08-29): 3 -> **6**. It is 6 and not 7
+     * because `CalendarMonthView.js` calls the ink function TWICE — once per tile
+     * variant — while sharing ONE resolver call, and `GroupSettings.js` calls it
+     * not at all (its swatches carry no text at all, owner ruling R2-2, and its
+     * preview label is a plain token; UI-SPEC 3.3). The asymmetry with the 7 above
+     * is real and is recorded here so nobody "fixes" it into agreement.
      */
     expect(
       callsTo('groupInkVars'),
       'the ink function lost a production caller — a card is emitting a ground with no ink',
-    ).toBeGreaterThanOrEqual(3);
+    ).toBeGreaterThanOrEqual(6);
   });
 
   it('6. the preset palette is untouched IN THE SHARED TABLE, and the swatches are named', () => {
@@ -764,11 +790,17 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // with no `--group-ground-light`, and light mode would then fall through to
     // whatever the ternary's null branch is while the dark arm still painted.
     const floors: Record<string, number> = {
-      // DELIBERATELY STILL 1 after plan 88.3-16, and that is the proof the
-      // computation was HOISTED rather than duplicated: both tiles in this file
-      // read one `const ground = tinted ? groupBgColor : null` gate. A 2 here
-      // would mean a second, independently-drifting ground.
-      'app/components/CalendarMonthView.js': 1,
+      // EMPTY as of plan 88.3.1-09, and that is the ARRIVAL rather than a hole.
+      // `CalendarMonthView.js` was the last hand-written gate; its entry read
+      // "DELIBERATELY STILL 1 after plan 88.3-16 … both tiles read one
+      // `const ground = tinted ? groupBgColor : null` gate", and that gate is now
+      // a property of `resolveGroupGround`'s return type instead. The file moved
+      // to RESOLVED below, where BOTH halves are asserted — it calls the resolver
+      // AND has no hand gate beside it — so coverage went UP, not down. The loop
+      // below this map is now the whole anti-vacuity half; it scans six files
+      // where it scanned four, which is exactly the trade the note below
+      // predicted. Do NOT re-add an entry here to "make the map non-empty": that
+      // would require a caller to un-do the resolver.
       // RE-POINTED plan 88.3.1-07: `GroupSettings.js` used to be `2` here and is
       // asserted separately below. Its two hand-written gates did not go MISSING —
       // they moved INSIDE `resolveGroupGround`, which returns an object carrying
@@ -805,12 +837,21 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
      *
      * `calls` is the per-file floor, not a total: the SEED has two render sites
      * (preview + swatch map), the three plan-08 cards have one each.
+     *
+     * COMPLETED plan 88.3.1-09: `CalendarMonthView.js` and `groupHomePage/page.js`
+     * join, and the list is now all six consumers. `CalendarMonthView.js` stays at
+     * **1**, deliberately — its two tile variants share ONE resolver call, which is
+     * the same hoist its old `floors` entry protected. A 2 there would mean a
+     * second, independently-drifting ground had been introduced, so the floor is
+     * doing the identical job on the other side of the migration.
      */
     const RESOLVED: { file: string; calls: number }[] = [
       { file: SEED, calls: 2 },
       { file: 'app/components/grouplist.js', calls: 1 },
       { file: 'app/components/CalendarListView.js', calls: 1 },
       { file: 'app/components/EventDayModal.js', calls: 1 },
+      { file: 'app/components/CalendarMonthView.js', calls: 1 },
+      { file: HEADER, calls: 1 },
     ];
     for (const { file, calls } of RESOLVED) {
       const src = code(file);
@@ -855,12 +896,19 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
      * properties deleted from the same object fails the first branch; deleting the
      * ink spread while keeping the grounds fails the second.
      *
-     * TODO(88.3.1-09): add CalendarMonthView (tile ink) and groupHomePage (card ink).
+     * COMPLETED plan 88.3.1-09: `CalendarMonthView.js` (tile ink, TWO style
+     * expressions — one per variant, both of which must satisfy both branches) and
+     * `groupHomePage/page.js` (card ink) join. All five ground-emitting files are
+     * now covered; `GroupSettings.js` is absent because its swatches carry no text
+     * and its preview label is a plain token, so it emits grounds with no ink BY
+     * DESIGN (UI-SPEC 3.3) — adding it would red correctly-shipped code.
      */
     const INK_SITES = [
       'app/components/grouplist.js',
       'app/components/CalendarListView.js',
       'app/components/EventDayModal.js',
+      'app/components/CalendarMonthView.js',
+      HEADER,
     ] as const;
     for (const file of INK_SITES) {
       const exprs = attrExprs(code(file), 'style');
@@ -985,7 +1033,21 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
 
   it('12. the header ground is the tint, and the uncoloured header keeps 88-22\'s themed surface', () => {
     const src = code(HEADER);
-    expect(src, 'the header ground no longer comes from the tint').toContain(TINT);
+    /*
+     * RE-POINTED plan 88.3.1-09, TINT -> RESOLVER. This line used to assert that the
+     * header called `lightTintGroupBackgroundColor` directly. It no longer does, and
+     * that is the migration rather than a regression: the tint moved INSIDE
+     * `resolveGroupGround`, which is now the single place that answers "what ground
+     * does this stored value paint" for all six consumers (SPEC Req 4). The property
+     * this line has always been protecting — the header derives its ground from the
+     * stored value through the shared path, never from a hardcoded or theme value —
+     * is unchanged, and test 5's counter is what stops the resolver itself from
+     * quietly losing this caller. NOT weakened: `TINT` is still asserted by test 5
+     * (the compatibility path must keep exactly one live call) and the header's own
+     * ground is now additionally covered by test 9's RESOLVED half, which also
+     * forbids a hand-written half-pair gate beside the call.
+     */
+    expect(src, 'the header ground no longer comes from THE resolver').toContain(RESOLVER);
     // 88-22 STANDS. A group with NO colour of its own keeps the themed elevated
     // surface — re-pinning a hardcoded dark value here would re-open the exact
     // D-28 white-card bug 88-22 closed, this time in light mode.
@@ -1340,14 +1402,78 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       `${file}: the compact tile's aria-label no longer references the RSVP summary`,
     ).toMatch(/aria-label=\{[^}]*rsvpLabel/);
     expect(src, `${file}: the RSVP label expression is gone`).toMatch(/const rsvpLabel\s*=/);
-    // …and the tooltip stays the SHORT form. Read AFTER the className expression:
-    // `compactTag` deliberately stops at the className (that is test 8's slice
-    // rule, which is why the a11y attributes are authored before it), and `title`
-    // sits after it on the same opening tag.
+    /*
+     * …and the tooltip stays the SHORT form.
+     *
+     * RE-POINTED plan 88.3.1-09, from `src.slice(compact.end, +500)` to the tile's
+     * WHOLE opening tag via `openTags`. The 500-character window was a heuristic that
+     * measured the wrong thing: `withoutComments` blanks comments to spaces but
+     * PRESERVES their length, so adding a DECISION marker inside the tile's `style`
+     * object pushed `title=` past the window and reddened this assertion while the
+     * attribute was still present and correct. A gate that fires on documentation is
+     * a gate that gets deleted. `openTags` walks attributes with the same
+     * `literalEnd` / `braceEnd` pair the rest of this file uses, so it reads the
+     * exact tag rather than a guess at its length — STRICTER than the window, because
+     * the attribute must now be on THIS tag rather than merely nearby.
+     */
+    const compactOpen = openTags(src).find(
+      (t) => t.attrs.includes('bg-surface-card-hover') && t.attrs.includes(LIGHT_GROUND),
+    );
+    expect(compactOpen, `${file}: the compact tile's opening tag was not found`).toBeDefined();
     expect(
-      src.slice(compact!.end, compact!.end + 500),
+      compactOpen!.attrs,
       `${file}: the compact tile lost title={tileLabel} — the visual tooltip stays the short form`,
     ).toContain('title={tileLabel}');
+
+    /*
+     * (a2) BOTH TILES EMIT TILE-SURFACE INK — new, plan 88.3.1-09.
+     *
+     * SPEC Req 4 / UI-SPEC 3.4: card-vs-tile is ONE ARGUMENT to one function, never a
+     * second implementation. Asserting `surface: 'tile'` HERE, on the two tiles, is
+     * what makes the split real: the generic "exactly one implementation" scan (test
+     * 29) proves no second copy exists, and this proves the surviving one is actually
+     * being asked for the tile family at the two tile sites. Without it a refactor
+     * could hand these tiles `surface: 'card'` — the preset's chromatic 8.00-8.08:1
+     * ink at `text-xs` in a ~49px cell — and every other gate in this file would stay
+     * green, because that is a legal call.
+     *
+     * PLAIN, not tinted, is an OWNER RULING: "when it's small like that, you need the
+     * text to be more distinct" (UI-SPEC 3.3). Changing it is a decision, not a
+     * cleanup.
+     */
+    const inkCalls = [...src.matchAll(/groupInkVars\(/g)];
+    expect(
+      inkCalls.length,
+      `${file}: expected BOTH tile variants to call the ONE ink function`,
+    ).toBe(2);
+    for (const m of inkCalls) {
+      const call = src.slice(m.index ?? 0, braceEnd(src, src.indexOf('{', m.index ?? 0)) + 1);
+      expect(
+        call,
+        `${file}: a month tile asks for a surface other than 'tile' — it would take the ` +
+          "card's chromatic ink at text-xs, against the owner's ruling (UI-SPEC 3.3)",
+      ).toMatch(/surface\s*:\s*'tile'/);
+    }
+
+    /*
+     * (a3) …AND THE TILE'S `color` STILL COMES FROM `--t-color*`, NOT `--group-ink*`.
+     *
+     * This looks like unfinished wiring and is not, so it is pinned rather than left
+     * to be "tidied". `groupInkVars`'s tile muted rungs are THEME-keyed constants
+     * (`SUBTEXT_MUTED_ON_DARK` on the `dark:` arm, always). A past-date tile that
+     * consumed them would ask for 70%-white in dark mode on a legacy LIGHT stored hex
+     * — the ~1.1:1 defect SPEC Req 8 exists to close and that test 28 below asserts
+     * is closed. The past-date pole must be chosen PER ARM from the ground actually
+     * painted in that arm, which only JS can do; UI-SPEC 3.5 therefore locates this
+     * site's Req 8 fix at `tileTextVars` in the component, not in the ink function.
+     */
+    for (const expr of forked) {
+      expect(
+        expr.text,
+        `${file}: a month tile started consuming --group-ink* for its text colour — that ` +
+          'silently re-opens Req 8 on past dates (see UI-SPEC 3.5)',
+      ).not.toContain('--group-ink');
+    }
 
     // (d) NO RAW `url()`. Hoisting put the API-controlled `groupBgImage` in scope
     // for a tile that must not paint it. Every background image in this file goes
@@ -1396,26 +1522,62 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // gates the title fork, never on a second computation.
     expect(code('app/components/CalendarMonthView.js')).toMatch(/inheritColor=\{!!tinted\}/);
 
-    // The resolved colour when tinted is the tile's own light pole,
-    // `getEventTileTextColor(tint)` = TILE_TEXT_LIGHT_BG, because every rendered
-    // tint lands in the `brightness > 128` tier.
+    /*
+     * RE-PINNED plan 88.3.1-09: from the eight **t = 0.70 derived tints** to the eight
+     * **stored LIGHT SURFACES**.
+     *
+     * WHY, and it is not a cosmetic swap. This tile's light-mode ground is no longer
+     * computed by mixing a near-black preset toward white — Phase 88.3.1 replaced that
+     * whole model (withdrawn ruling 4a; the eight old tints measured ΔE2000 **1.62**
+     * apart, sub-JND, which is the UAT finding that created this phase). A group now
+     * stores a preset id and the FE resolves it to a hand-tuned light surface. Leaving
+     * the old hexes here would have kept measuring a ground that nothing paints any
+     * more: the assertion would stay green while the shipped pixels went unmeasured,
+     * which is the worst failure mode a contrast gate has.
+     *
+     * The FLOOR is deliberately unchanged at 4.5 and the actual is deliberately NOT
+     * asserted — that is `groupColourPresets.test.ts`'s job (UI-SPEC 10.1 tests 8-10),
+     * and duplicating a number here would give two places to update and one to forget.
+     * Measured on the new surfaces: **6.44-6.50:1**, comfortably up from the 4.5-5.7
+     * band the tints gave.
+     *
+     * The pole is UNCHANGED: `getEventTileTextColor(light surface)` still resolves to
+     * `TILE_TEXT_LIGHT_BG`, because every light surface is W3C-brighter than 128
+     * (measured 211-227; `groupColourPresets.test.ts` test 11 pins the tier per
+     * preset). `#1e40af` being BLUE rather than near-black is a deliberate shipped
+     * decision (`colorUtils.js:69-71`, "Intentionally different from
+     * getContrastColor"), flagged to the owner as one line at the Req 10 check and
+     * NOT changed by this plan. If he picks near-black, this test still passes and the
+     * literal below moves with the pole.
+     */
     const TILE_POLE = '#1e40af';
-    const TINTS: Record<string, string> = {
-      Charcoal: '#bcbcc0',
-      Slate: '#bcbfc4',
-      Navy: '#b9becc',
-      Indigo: '#bcbbc9',
-      Forest: '#b9c2bf',
-      Wine: '#c4b7c1',
-      Espresso: '#c0bcb9',
-      Storm: '#bebebf',
+    const LIGHT_SURFACES: Record<string, string> = {
+      red: '#ffd3d4',
+      orange: '#ffd6b1',
+      amber: '#e7e0aa',
+      green: '#bde9c2',
+      teal: '#94edf0',
+      blue: '#c4e1ff',
+      violet: '#dfd9ff',
+      rose: '#fdd1f8',
     };
-    for (const [name, tint] of Object.entries(TINTS)) {
-      const ratio = contrastRatio(TILE_POLE, tint)!;
+    // ANTI-VACUITY: eight surfaces, and each must be the hex the shipped table holds.
+    // A rename or a re-sort of the palette reds here rather than silently shrinking
+    // the population this loop measures.
+    expect(Object.keys(LIGHT_SURFACES)).toHaveLength(8);
+    for (const [name, hex] of Object.entries(LIGHT_SURFACES)) {
+      expect(
+        GROUP_COLOUR_PRESETS.find((p) => p.name === name)?.light,
+        `the shipped '${name}' light surface no longer matches this test's fixture`,
+      ).toBe(hex);
+    }
+    for (const [name, surface] of Object.entries(LIGHT_SURFACES)) {
+      const ratio = contrastRatio(TILE_POLE, surface)!;
       expect(
         Number(ratio.toFixed(2)),
-        `compact RSVP text on the ${name} tint measures ${ratio.toFixed(2)}:1 — needs >= 4.5 ` +
-          `(the hard-coded status colours it replaces measured 3.55-4.56 here and FAILED)`,
+        `compact RSVP text on the ${name} light surface measures ${ratio.toFixed(2)}:1 — ` +
+          'needs >= 4.5 (the hard-coded status colours it replaces measured 3.55-4.56 on the ' +
+          'superseded tints and FAILED)',
       ).toBeGreaterThanOrEqual(4.5);
     }
   });
@@ -1630,7 +1792,10 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
    * plan 88.3.1-09 enables it by deleting the `.skip` below — which is a one-token
    * edit that will fail loudly if the work was not actually done.
    */
-  describe.skip('Req 8 site 3 — enabled by plan 88.3.1-09', () => {
+  // ENABLED plan 88.3.1-09 (the one-token edit plan 08 wrote this scope for). The
+  // work it describes landed in this plan's task 1: both past-date arms now key on
+  // `isDarkBackground` of the ground painted in that arm.
+  describe('Req 8 site 3 — enabled by plan 88.3.1-09', () => {
     it('28. CalendarMonthView past-date ink keys on ground DARKNESS, not on "has a colour"', () => {
       const src = code('app/components/CalendarMonthView.js');
       // The defect shape: the dark arm reaches for the muted-on-dark pole whenever the
@@ -1682,6 +1847,167 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
   // at :58. `sourceFiles` already drops `.test.` / `.spec.` files, which is
   // exactly the production/test line this guard is drawn on.
   // -------------------------------------------------------------------------
+
+  it('29. UI-SPEC 10.1 TEST 12 — exactly ONE ink-resolving implementation, and every caller passes a surface AND the validated image flag', () => {
+    /*
+     * UI-SPEC 3.4, verbatim on the point this asserts: "one function, one parameter,
+     * no second copy". The tinted/plain split is card-vs-tile by ARGUMENT — plan
+     * 88.3.1-08 wired four CARD callers and plan 88.3.1-09 wired two TILE ones — and
+     * the whole value of that shape evaporates the moment somebody adds a second
+     * implementation for "just this one surface". Project tenet, owner's words:
+     * duplication is never a peer option.
+     *
+     * WHY THIS IS NOT A GREP FOR `groupInkVars`. A name grep passes against a copy
+     * called `cardInkVars`, which is precisely the outcome §3.4 forbids, so this
+     * scans for the BEHAVIOUR instead: a function that EMITS an ink custom property,
+     * and (independently) a function that READS the `inkDark` / `inkLight` fields.
+     * Two detectors, because they fail independently — a copy that emitted the plain
+     * poles only would slip past the second, and a copy that read the fields but
+     * handed them back as plain values would slip past the first.
+     *
+     * DEMONSTRATED RED, plan 88.3.1-09: a second exported function was added to
+     * `src/lib/` that read `ground.inkDark` / `ground.inkLight` and returned
+     * `{ '--group-ink': … }`; BOTH branches below reddened and named it. Removed
+     * afterwards. Receipt in `88.3.1-09-SUMMARY.md`.
+     *
+     * The scan is comment-blind (`withoutComments`) and skips `.test.` / `.spec.`
+     * files via `sourceFiles`, exactly like tests 5, 9 and 25 — every marker in this
+     * phase QUOTES the property names it governs, so a comment-blind reader is the
+     * only kind that can tell a decision from an implementation.
+     */
+
+    /** The nearest ENCLOSING function name for an offset — declaration forms only. */
+    const owners = (src: string): { at: number; name: string }[] => {
+      const out: { at: number; name: string }[] = [];
+      const re =
+        /function\s+([A-Za-z_$][\w$]*)\s*\(|(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:function\b|\([^;=]{0,160}?\)\s*=>)/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(src)) !== null) out.push({ at: m.index, name: m[1] ?? m[2] });
+      return out;
+    };
+    const ownerOf = (list: { at: number; name: string }[], at: number): string => {
+      let name = '<module scope>';
+      for (const o of list) {
+        if (o.at > at) break;
+        name = o.name;
+      }
+      return name;
+    };
+
+    /** Emits an ink custom property: `'--group-ink…': …` in an object literal. */
+    const EMITS_INK = /'--[\w-]*ink[\w-]*'\s*:/g;
+    /** Reads the resolver's ink FIELDS — the other half of the same job. */
+    const READS_INK_FIELDS = /\.(inkDark|inkLight)\b/g;
+
+    const emitters = new Set<string>();
+    const readers = new Set<string>();
+    let emitHits = 0;
+    let readHits = 0;
+
+    for (const file of sourceFiles(SRC)) {
+      const src = withoutComments(fs.readFileSync(file, 'utf8'));
+      const rel = path.relative(SRC, file);
+      const list = owners(src);
+      for (const m of src.matchAll(EMITS_INK)) {
+        emitters.add(`${rel}#${ownerOf(list, m.index ?? 0)}`);
+        emitHits += 1;
+      }
+      for (const m of src.matchAll(READS_INK_FIELDS)) {
+        readers.add(`${rel}#${ownerOf(list, m.index ?? 0)}`);
+        readHits += 1;
+      }
+    }
+
+    // ANTI-VACUITY, both detectors. A scan that finds nothing proves nothing, and
+    // the realistic way this test dies is a rename that makes both regexes miss.
+    expect(emitHits, 'nothing in src/ emits an ink custom property — this scan is dead')
+      .toBeGreaterThanOrEqual(4);
+    expect(readHits, 'nothing in src/ reads the resolver ink fields — this scan is dead')
+      .toBeGreaterThanOrEqual(2);
+
+    expect(
+      [...emitters].sort(),
+      'a SECOND function emits an ink custom property. UI-SPEC 3.4: one function, one ' +
+        '`surface` parameter, no second copy — a `cardInkVars`/`tileInkVars` pair is the ' +
+        'exact outcome that contract forbids.',
+    ).toEqual(['lib/colorUtils.js#groupInkVars']);
+
+    /*
+     * TWO sanctioned readers, and the SECOND is the PRODUCER rather than a duplicate —
+     * recorded as an exemption so it reads as one rather than as a hole.
+     *
+     *   `resolveGroupGround`  reads `preset.inkDark` / `preset.inkLight` OFF THE TABLE
+     *                         and puts them on the object it returns.
+     *   `groupInkVars`        reads them OFF THAT OBJECT and turns them into custom
+     *                         properties.
+     *
+     * That is one hop each in a single pipeline, both inside `lib/colorUtils.js`, and
+     * neither is an ink-RESOLVING implementation on its own. The exemption is PAID FOR
+     * by the emitter assertion above, which is the half that actually forbids a second
+     * copy: a duplicate must emit somewhere to be useful, and there is exactly one
+     * emitter. What this branch still catches is the realistic evasion the emitter
+     * branch cannot see — a `.js` CONSUMER reaching into `ground.inkLight` itself and
+     * doing the ink maths at the call site, which would show up here as a third entry
+     * in an `app/` file.
+     */
+    expect(
+      [...readers].sort(),
+      'a SECOND function reads the resolver\'s `inkDark`/`inkLight` fields. Resolving ink ' +
+        'is `groupInkVars`\'s job; a consumer reaching into the resolved object itself is ' +
+        'a second implementation wearing a different shape.',
+    ).toEqual(['lib/colorUtils.js#groupInkVars', 'lib/colorUtils.js#resolveGroupGround']);
+
+    /*
+     * …AND EVERY PRODUCTION CALLER PASSES BOTH OPTIONS — repo-wide, not just at the
+     * files test 9 enumerates.
+     *
+     * `hasBackgroundImage` is only COMPILE-enforced for `.ts` callers (`checkJs` is
+     * off) and all six real call sites are `.js`, where omitting it degrades silently
+     * to `false` — the UNSAFE direction, painting a preset's tinted ink over a user's
+     * photograph. Plan 06 AMENDMENT 7 made returning `{}` the protection; this makes
+     * the callers actually reach it. Test 9 asserts the same chain per-file for the
+     * five ground-emitting sites; this is the repo-wide superset, so a SEVENTH caller
+     * added in a file nobody thought to add to that list cannot skip the check.
+     */
+    let calls = 0;
+    for (const file of sourceFiles(SRC)) {
+      const src = withoutComments(fs.readFileSync(file, 'utf8'));
+      const rel = path.relative(SRC, file);
+      for (const m of src.matchAll(/groupInkVars\s*\(/g)) {
+        const before = src.slice(Math.max(0, (m.index ?? 0) - 20), m.index ?? 0);
+        if (/function\s*$/.test(before)) continue; // the declaration itself
+        const call = src.slice(m.index ?? 0, braceEnd(src, src.indexOf('{', m.index ?? 0)) + 1);
+        calls += 1;
+
+        expect(call, `${rel}: a groupInkVars call names no surface`).toMatch(
+          /surface\s*:\s*'(card|tile)'/,
+        );
+
+        const flag = call.match(/hasBackgroundImage\s*:\s*([A-Za-z_$][\w$]*)/);
+        expect(
+          flag,
+          `${rel}: a groupInkVars call omits hasBackgroundImage (or inlines an expression ` +
+            'this scan cannot trace). Omitted, it defaults to false — the UNSAFE direction.',
+        ).not.toBeNull();
+
+        const derived = src.match(new RegExp(`const\\s+${flag![1]}\\s*=\\s*!!\\s*([\\w$]+)`));
+        expect(
+          derived,
+          `${rel}: \`${flag![1]}\` is not derived as \`!!<style>\` — trace it, or it may be ` +
+            'the raw background_image_url string',
+        ).not.toBeNull();
+        expect(
+          src,
+          `${rel}: \`${derived![1]}\` does not come from safeBgImageStyle — the image flag ` +
+            'must be the VALIDATED style, never the raw URL (FSEC-03)',
+        ).toMatch(new RegExp(`const\\s+${derived![1]}\\s*=\\s*safeBgImageStyle\\(`));
+      }
+    }
+    // The six production callers: grouplist, CalendarListView, EventDayModal,
+    // CalendarMonthView x2 (one per tile variant), groupHomePage. Same number test 5
+    // floors, asserted here so the two cannot drift apart silently.
+    expect(calls, 'the ink function lost a production caller').toBeGreaterThanOrEqual(6);
+  });
 
   it('25. AMENDMENT Y — no production module imports the test-only colour-maths modules', () => {
     /** Every `from '…'` / `require('…')` / `import('…')` module specifier. */
