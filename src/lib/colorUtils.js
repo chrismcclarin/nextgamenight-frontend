@@ -140,8 +140,27 @@ export const SUBTEXT_MUTED_ON_LIGHT = TEXT_MUTED_ON_LIGHT_BG;
  * unconditionally on past-date calendar tiles in both themes; once it moved to
  * `#374151` that reading became dark-slate-on-navy (~1.4:1) in dark mode, so
  * the dark half needs its own value. 70% white keeps the "past" dimming legible
- * against every shipped preset (>= 7:1) — same idiom as the 90% white the row
- * subtitles already use, one step dimmer.
+ * against every shipped preset (~~>= 7:1~~ — see the amendment) — same idiom as
+ * the 90% white the row subtitles already use, one step dimmer.
+ *
+ * ——— AMENDED Phase 88.3.1 (plan 10). The struck ">= 7:1" was MEASURED and true
+ * on the eight t = 0.70 tints Phase 88.3 shipped; it expired with the palette,
+ * and this is the number, not the claim, that moved. Re-measured on the eight
+ * bands in `groupColourPresets.ts`, this pole composited over each dark band:
+ * **6.33 - 8.10:1**. The 6.33 is `green`, whose dark band sits at CIE L* 24.6 by
+ * owner direction (BAND EXCEPTION 1 — "make the green a little brighter") rather
+ * than at the 12-20 target, so it reflects more of the 70% white back.
+ *
+ * NOT A DEFECT and NOT a reason to change the alpha: 6.33:1 clears WCAG AA
+ * (4.5:1) with 41% of margin on text that is deliberately DIMMED to read as
+ * past. What it does mean is that `green` is now the binding row on a FOURTH
+ * reading — `groupColourPresets.ts`'s palette marker already forbids brightening
+ * it further without re-running UI-SPEC §2.4, and this is one more reason why.
+ * REJECTED — raising the alpha to restore 7:1 across the set: it would dim the
+ * "past" affordance less on seven bands to fix a number on one, and 7:1 was
+ * never a floor here, only a measurement. A decision, not a cleanup.
+ * The same correction is applied at the consuming site
+ * (`CalendarMonthView.js`, plan 09) and in UI-SPEC §3.5.
  */
 export const SUBTEXT_MUTED_ON_DARK = 'rgba(255, 255, 255, 0.7)';
 
