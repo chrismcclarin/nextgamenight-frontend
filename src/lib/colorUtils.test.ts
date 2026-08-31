@@ -547,6 +547,45 @@ describe('resolveGroupGround — Phase 88.3.1 SPEC Req 4 / D-04', () => {
     resolveGroupGround('#ffffff');
     expect(warn).not.toHaveBeenCalled();
   });
+
+  it('throttles per distinct value with NO window — SSR runs the same per-item loops (round-3 N1)', () => {
+    // The round-2 shape exempted the server arm on the claim "a server render
+    // happens once per request". `resolveGroupGround` runs once per ITEM, so an
+    // SSR month grid with one skewed group emitted one Sentry event per tile
+    // per request. The rule is uniform now: same throttle, both arms.
+    vi.stubGlobal('window', undefined);
+    try {
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+      for (let i = 0; i < 25; i += 1) expect(resolveGroupGround('skew-preset-ssr')).toBeNull();
+      expect(warn, 'the server arm is throttled per VALUE too').toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('at the cap it stops LOGGING, not remembering — saturation must fail closed (round-3 N2)', async () => {
+    // The round-2 shape guarded only the `add` with `size < CAP`, so once the
+    // Set was full every NEW bad value warned on every render — the cap
+    // disabled the throttle instead of the logging. A saturated throttle must
+    // go silent for new values, on every call.
+    //
+    // Fresh module instance: filling the shared Set to its cap would mute the
+    // warn for every later spec in this file (the memo is module state with no
+    // reset hook, by decision — see the marker in colorUtils.js).
+    vi.resetModules();
+    const fresh = await import('./colorUtils');
+    const { logger: freshLogger } = await import('./logger');
+    const warn = vi.spyOn(freshLogger, 'warn').mockImplementation(() => {});
+
+    for (let i = 0; i < 64; i += 1) fresh.resolveGroupGround(`cap-fill-${i}`);
+    expect(warn, 'each distinct value below the cap reports once').toHaveBeenCalledTimes(64);
+
+    for (let i = 0; i < 5; i += 1) fresh.resolveGroupGround('cap-overflow-value');
+    expect(warn, 'a value past the cap never logs — fail closed').toHaveBeenCalledTimes(64);
+
+    fresh.resolveGroupGround('cap-fill-0');
+    expect(warn, 'remembered values stay silent at saturation').toHaveBeenCalledTimes(64);
+  });
 });
 
 

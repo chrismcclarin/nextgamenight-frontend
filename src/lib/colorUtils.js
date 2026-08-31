@@ -489,35 +489,42 @@ export function storedGroupColour(group) {
  * @returns {{preset: string|null, dark: string, light: string, inkDark: string|null, inkLight: string|null}|null}
  */
 /**
- * Distinct unrecognised stored values already reported on THIS CLIENT, this page load
- * (CLUSTER A). Bounded, and deliberately client-only.
+ * Distinct unrecognised stored values already reported by THIS MODULE INSTANCE
+ * (CLUSTER A) — the page load on the client, the process on the server.
  *
- * CORRECTED 2026-08-31 (code review round 2, M4). The first version of this marker
- * said "the lifetime that matters is the page, not the render" and applied the throttle
- * everywhere. That is true after hydration and FALSE on the server: this module is
- * imported by client components that the App Router still server-renders, so on Node it
- * evaluates ONCE PER SERVER PROCESS and the Set would persist across every request and
- * every user until the instance recycled. Two things went wrong with that:
- *   - the Set was unbounded by construction, and
- *   - the drift warn would fire once per PROCESS, so after the first SSR sighting of a
- *     skewed preset id no further server-side event would ever be emitted for it. The
- *     named trigger (poly-repo skew, BE ships a ninth preset first) persists for HOURS,
- *     so the detector went quiet on the surface where it is most likely to fire first.
+ * DECISION Phase 88.3.1 (code review round 3, N1+N2): ONE rule, BOTH arms —
+ * each distinct bad value reports at most once, and at the cap the LOGGING
+ * stops, not the remembering. Chosen over dropping the warn entirely (the other
+ * round-3 option): it is the only drift detector on this path, and the signal
+ * worth keeping is the first sighting of each distinct value. This is the
+ * fourth shape of this throttle; the three before it each failed by adding a
+ * special case:
+ *   v1 unthrottled             — one Sentry event per tile per paint (CLUSTER A);
+ *   v2 process-scoped, no cap  — unbounded, and muted the server arm for the
+ *                                process lifetime on the surface skew reaches
+ *                                first (round 2, M4);
+ *   v3 server-exempt + cap     — the exemption re-created the SSR flood (this
+ *                                resolver runs per ITEM, not per request), and
+ *                                `size < CAP` guarding only the `add` meant a
+ *                                65th distinct value warned on EVERY render —
+ *                                the cap disabled the throttle instead of the
+ *                                logging (round 3, N1+N2).
+ * Accepted with the uniform rule: a long-lived server process reports each
+ * distinct value once per process (repeats are muted, the per-value signal is
+ * not), and past 64 distinct bad values new ones go unreported — 64 concurrent
+ * distinct drift values is an incident already 64 events deep in Sentry, not
+ * drift detection's regime. Changing this is a decision, not a cleanup.
  *
- * The flood this throttle exists to stop is a CLIENT one — re-renders of a month grid,
- * which `CalendarMonthView` deliberately does not memoise. A server render happens once
- * per request, so there is no flood to stop there and no reason to mute it. Hence:
- * server always reports, client throttles per distinct value.
- *
- * REJECTED: a module-level reset hook for tests. It is API surface only tests want. The
- * cost is paid in the test file instead — because the Set outlives each spec, anything
- * asserting ON the warn must use a value no other spec in the module has resolved.
- * `colorUtils.test.ts:486` proved that the hard way: it iterates `'sunset'` for an
- * unrelated assertion and silently consumed the warn the M23 spec was asserting. Those
- * specs now use dedicated `skew-preset-*` values and say so.
+ * REJECTED: a module-level reset hook for tests. It is API surface only tests
+ * want. The cost is paid in the test file instead — because the Set outlives
+ * each spec, anything asserting ON the warn must use a value no other spec in
+ * the module has resolved. `colorUtils.test.ts:486` proved that the hard way:
+ * it iterates `'sunset'` for an unrelated assertion and silently consumed the
+ * warn the M23 spec was asserting. Those specs use dedicated `skew-preset-*`
+ * values, and the saturation spec imports a fresh module instance.
  */
 const WARNED_UNKNOWN_STORED = new Set();
-/** Hard cap, so the Set cannot grow without bound on a long-lived client session. */
+/** Hard cap on DISTINCT values ever logged; at the cap the warn goes silent. */
 const WARNED_UNKNOWN_CAP = 64;
 
 export function resolveGroupGround(stored) {
@@ -589,13 +596,8 @@ export function resolveGroupGround(stored) {
      * immediately preceding event, so any interleaved event resets it).
      */
     const key = String(stored).slice(0, 32);
-    // Server renders are once-per-request: no flood to throttle, and muting them is what
-    // silenced the detector on the surface skew reaches first (M4). Client renders are
-    // the flood, so they keep the per-value throttle.
-    if (typeof window === 'undefined') {
-      logger.warn('unrecognised stored group colour', { stored: key });
-    } else if (!WARNED_UNKNOWN_STORED.has(key)) {
-      if (WARNED_UNKNOWN_STORED.size < WARNED_UNKNOWN_CAP) WARNED_UNKNOWN_STORED.add(key);
+    if (!WARNED_UNKNOWN_STORED.has(key) && WARNED_UNKNOWN_STORED.size < WARNED_UNKNOWN_CAP) {
+      WARNED_UNKNOWN_STORED.add(key);
       logger.warn('unrecognised stored group colour', { stored: key });
     }
     return null;
