@@ -264,6 +264,44 @@ export function storableGroupHex(value) {
 }
 
 /**
+ * True when the picker's form state holds a colour this client does NOT understand —
+ * a value that is non-empty, is not the unset/white sentinel, is not a canonical preset
+ * id, and is not a storable six-digit hex.
+ *
+ * DECISION Phase 88.3.1 (code review round 2, M1): AN UNRECOGNISED COLOUR IS PRESERVED,
+ * NOT NULLED. `handleSave` omits BOTH colour columns when this returns true, so the
+ * route's `if (x !== undefined)` guard leaves whatever is stored exactly as it is.
+ *
+ * WHY THIS EXISTS, stated because the first fix went the wrong way. Round 1 found that
+ * an unrecognised value was forwarded into `background_color`, failed the backend's
+ * six-hex rule and 400'd — blocking every setting on that group. The round-1 fix nulled
+ * the column instead. That was WORSE: the 400 was user-hostile but it PRESERVED the
+ * value, whereas nulling means changing a profile emoji on a skewed group silently and
+ * irreversibly destroys its identity colour, behind a success toast. Omitting the keys
+ * beats both — other settings save, and the colour survives untouched.
+ *
+ * It also aligns the client with a decision the backend had already recorded. The route
+ * carries `REJECTED (2) server-side nulling of the loser — the data layer would be
+ * inventing a second precedence rule ... and silently destroying a value the user did
+ * not clear`. Nulling here was that same rejected behaviour, moved one repo over.
+ *
+ * REJECTED: reusing this to also suppress the D-06 clear. An empty string is how "no
+ * colour" is expressed and it MUST still send both columns null — so `''` and the white
+ * sentinel both return false here, and only a genuinely unrecognised value returns true.
+ *
+ * @param {string|null|undefined} value - the picker's current form state
+ * @returns {boolean} true when both colour columns should be omitted from the payload
+ */
+export function isUnrecognisedStoredColour(value) {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;                          // the D-06 clear, not a mystery value
+  if (isUnsetBackgroundColor(trimmed)) return false;   // white sentinel = unset, handled above
+  if (presetByName(trimmed.toLowerCase())) return false;
+  return storableGroupHex(trimmed) === null;
+}
+
+/**
  * The RENDERED ground for a stored group colour in LIGHT mode: a per-channel
  * linear mix of the stored hex toward white — `round(c + (255 - c) * t)`. Same
  * arithmetic shape as the ratified `-subtle` tint rule (i) at
@@ -451,17 +489,36 @@ export function storedGroupColour(group) {
  * @returns {{preset: string|null, dark: string, light: string, inkDark: string|null, inkLight: string|null}|null}
  */
 /**
- * Distinct unrecognised stored values already reported this page load (CLUSTER A).
- * Module scope on purpose: the lifetime that matters is the page, not the render.
- * Not exported and not resettable — a reset hook would be API surface that only
- * tests want. The cost is real and is paid in the test file instead: because the
- * Set outlives each test, any spec asserting ON the warn must use a value no
- * other spec in the module has already resolved. `colorUtils.test.ts:486` proved
- * that the hard way — it iterates `'sunset'` for an unrelated assertion, which
- * silently consumed the one warn the M23 spec was asserting. Those specs now use
- * dedicated `skew-preset-*` values and say so.
+ * Distinct unrecognised stored values already reported on THIS CLIENT, this page load
+ * (CLUSTER A). Bounded, and deliberately client-only.
+ *
+ * CORRECTED 2026-08-31 (code review round 2, M4). The first version of this marker
+ * said "the lifetime that matters is the page, not the render" and applied the throttle
+ * everywhere. That is true after hydration and FALSE on the server: this module is
+ * imported by client components that the App Router still server-renders, so on Node it
+ * evaluates ONCE PER SERVER PROCESS and the Set would persist across every request and
+ * every user until the instance recycled. Two things went wrong with that:
+ *   - the Set was unbounded by construction, and
+ *   - the drift warn would fire once per PROCESS, so after the first SSR sighting of a
+ *     skewed preset id no further server-side event would ever be emitted for it. The
+ *     named trigger (poly-repo skew, BE ships a ninth preset first) persists for HOURS,
+ *     so the detector went quiet on the surface where it is most likely to fire first.
+ *
+ * The flood this throttle exists to stop is a CLIENT one — re-renders of a month grid,
+ * which `CalendarMonthView` deliberately does not memoise. A server render happens once
+ * per request, so there is no flood to stop there and no reason to mute it. Hence:
+ * server always reports, client throttles per distinct value.
+ *
+ * REJECTED: a module-level reset hook for tests. It is API surface only tests want. The
+ * cost is paid in the test file instead — because the Set outlives each spec, anything
+ * asserting ON the warn must use a value no other spec in the module has resolved.
+ * `colorUtils.test.ts:486` proved that the hard way: it iterates `'sunset'` for an
+ * unrelated assertion and silently consumed the warn the M23 spec was asserting. Those
+ * specs now use dedicated `skew-preset-*` values and say so.
  */
 const WARNED_UNKNOWN_STORED = new Set();
+/** Hard cap, so the Set cannot grow without bound on a long-lived client session. */
+const WARNED_UNKNOWN_CAP = 64;
 
 export function resolveGroupGround(stored) {
   if (isUnsetBackgroundColor(stored)) return null;
@@ -532,8 +589,13 @@ export function resolveGroupGround(stored) {
      * immediately preceding event, so any interleaved event resets it).
      */
     const key = String(stored).slice(0, 32);
-    if (!WARNED_UNKNOWN_STORED.has(key)) {
-      WARNED_UNKNOWN_STORED.add(key);
+    // Server renders are once-per-request: no flood to throttle, and muting them is what
+    // silenced the detector on the surface skew reaches first (M4). Client renders are
+    // the flood, so they keep the per-value throttle.
+    if (typeof window === 'undefined') {
+      logger.warn('unrecognised stored group colour', { stored: key });
+    } else if (!WARNED_UNKNOWN_STORED.has(key)) {
+      if (WARNED_UNKNOWN_STORED.size < WARNED_UNKNOWN_CAP) WARNED_UNKNOWN_STORED.add(key);
       logger.warn('unrecognised stored group colour', { stored: key });
     }
     return null;

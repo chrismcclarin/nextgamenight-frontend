@@ -6,6 +6,7 @@ import PromptScheduleReadOnly from './PromptScheduleReadOnly';
 import SafeImage from './SafeImage';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import {
+  isUnrecognisedStoredColour,
   resolveGroupGround,
   storableGroupHex,
   storedGroupColour,
@@ -303,6 +304,36 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
         background_color: chosenPreset ? null : storableGroupHex(backgroundColor),
         background_image_url: backgroundImageUrl || null,
       };
+
+      /*
+       * DECISION Phase 88.3.1 (code review round 2, M1 — 2026-08-31): A COLOUR THIS
+       * CLIENT DOES NOT UNDERSTAND IS PRESERVED, NOT OVERWRITTEN.
+       *
+       * Deleting both keys means the route's `if (x !== undefined)` destructure
+       * (`routes/groups.js`) never touches either colour column, so an unrelated save —
+       * a profile emoji, a background image — leaves the stored colour exactly as it
+       * was. Every other field on this form still saves normally.
+       *
+       * This CORRECTS the round-1 fix, which nulled the column instead and was worse
+       * than the bug it replaced: the original 400 blocked the save but PRESERVED the
+       * value; nulling destroyed it silently behind a success toast. It was also the
+       * client-side twin of a decision the backend had already rejected in writing —
+       * "REJECTED (2) server-side nulling of the loser ... silently destroying a value
+       * the user did not clear".
+       *
+       * REJECTED: keeping `color_preset: null` while dropping only `background_color`.
+       * The unrecognised value may be sitting in EITHER column (a ninth preset id lives
+       * in `color_preset`), so nulling either one is the same data loss through the
+       * other door. Both go, or neither.
+       */
+      if (isUnrecognisedStoredColour(backgroundColor)) {
+        delete settings.color_preset;
+        delete settings.background_color;
+        logger.warn('group colour left untouched — the stored value is not recognised by this client', {
+          group_id: group.id,
+          stored_colour: String(storedGroupColour(group) ?? '').slice(0, 32),
+        });
+      }
       
       const saved = await groupsAPI.updateGroupSettings(group.id, settings);
 
@@ -339,10 +370,26 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
        * understand, and it needs its own owner ruling, not a silent add.
        */
       if (chosenPreset && !(saved && typeof saved === 'object' && 'color_preset' in saved)) {
-        logger.error('group settings saved against a backend with no color_preset column', {
+        /*
+         * `logger.warn`, NOT `logger.error` (code review round 2, M2/M3 — 2026-08-31).
+         * `logger.error(msg, err)` is `Sentry.captureException(err ?? new Error(msg))`
+         * (`logger.ts`), so passing a context OBJECT as `err` made Sentry capture a
+         * non-Error and render "Object captured as exception with keys: …", burying the
+         * message in `extra.msg`. `warn(msg, ctx)` is the API shaped for structured
+         * context — `captureMessage` at `warning` level with `ctx` as `extra` — which is
+         * what a manual-recovery record has to be: queryable by field.
+         * REJECTED: `logger.error(msg, new Error(msg))` plus a second `logger.warn` for
+         * the context. That restores error severity but emits TWO Sentry events for one
+         * occurrence, and splits the recovery fields away from the alert.
+         * The stored value is `storedGroupColour(group)` — the AUTHORITATIVE column
+         * (`color_preset ?? background_color`), not `background_color` alone (M3): on a
+         * skewed group the colour being lost lives in the preset column, so logging the
+         * legacy one recorded the wrong value on the one path that exists for recovery.
+         */
+        logger.warn('group settings saved against a backend with no color_preset column', {
           group_id: group.id,
           attempted_preset: chosenPreset,
-          previous_stored_colour: group.background_color ?? null,
+          previous_stored_colour: storedGroupColour(group),
         });
         toast.error('Colour not saved — the server needs updating. Try again in a few minutes.');
         return;

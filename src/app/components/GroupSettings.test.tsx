@@ -22,6 +22,10 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+// M2/M3 (code review round 2): the F1 guard's Sentry event is part of its contract —
+// it is the ONLY record from which a wiped colour can be restored by hand — so the
+// channel and the fields are pinned, not just the toast.
+vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
 // Read-only schedule panel does its own fetching and is irrelevant here.
 vi.mock('@/app/components/PromptScheduleReadOnly', () => ({ default: () => null }));
@@ -43,6 +47,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 import GroupSettings from './GroupSettings';
 import { groupsAPI } from '@/lib/api';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -425,6 +430,32 @@ describe('Phase 88.3.1 D-06 / D-01 — the eight-preset picker', () => {
     expect(onUpdate).not.toHaveBeenCalled();  // no refetch claiming a good write
   });
 
+  it('F1/M2/M3: the guard reports through the CONTEXT channel, carrying the authoritative colour', async () => {
+    // The round-1 version called `logger.error(msg, ctxObject)`. `logger.error(msg, err)`
+    // is `Sentry.captureException(err ?? new Error(msg))`, so a plain object was captured
+    // as a non-Error — Sentry renders "Object captured as exception with keys: …" and the
+    // message lands in `extra.msg`. `warn(msg, ctx)` is `captureMessage` with `ctx` as
+    // `extra`, which keeps the recovery fields queryable.
+    (groupsAPI.updateGroupSettings as Mock).mockResolvedValue(OLD_BACKEND_ROW);
+    // A group whose authoritative colour is the PRESET column — the case where logging
+    // `background_color` alone (M3) recorded the wrong value.
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, color_preset: 'teal', background_color: null });
+
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    fireEvent.click(within(group).getByRole('button', { name: 'Blue' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(logger.warn as Mock).toHaveBeenCalled());
+    // The error channel is NOT used — that is the M2 defect, asserted as a negative.
+    expect(logger.error as Mock).not.toHaveBeenCalled();
+
+    const [msg, ctx] = (logger.warn as Mock).mock.calls.at(-1)!;
+    expect(msg).toContain('no color_preset column');
+    expect(ctx).toMatchObject({ group_id: GROUP_ID, attempted_preset: 'blue' });
+    // M3: the AUTHORITATIVE stored colour, not the legacy column (which is null here).
+    expect(ctx.previous_stored_colour).toBe('teal');
+  });
+
   it('F1: a LEGACY-HEX save against that same old backend still succeeds — the expand window must keep working', async () => {
     (groupsAPI.updateGroupSettings as Mock).mockResolvedValue(OLD_BACKEND_ROW);
     const onClose = vi.fn();
@@ -538,16 +569,43 @@ describe('Phase 88.3.1 D-06 / D-01 — the eight-preset picker', () => {
     expect(settings.background_color).toBeNull();
   });
 
-  it('#15: an unknown preset id (BE-first skew) degrades to uncoloured, not unsaveable', async () => {
+  it('#15/M1: an unknown preset id (BE-first skew) is PRESERVED — neither sent nor nulled', async () => {
     renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, color_preset: 'lime' });
     const settings = await saveAndCapture();
-    // A ninth preset shipped backend-first. The older FE cannot render it — that is
-    // the accepted, graceful outcome the M23 marker describes. What must NOT happen
-    // is 'lime' reaching background_color, which 400s and makes the group's settings
-    // permanently unsaveable.
+
+    /*
+     * CORRECTED 2026-08-31 (code review round 2, M1). This case previously asserted
+     * `color_preset === null` and `background_color === null` — i.e. it PINNED THE
+     * WIPE. The round-1 fix nulled an unrecognised colour to stop it 400-ing, and this
+     * test locked that in. It was worse than the bug: the 400 blocked the save but kept
+     * the value; nulling destroys it behind a success toast.
+     *
+     * The keys must be ABSENT, not null. Absence is what makes the route's
+     * `if (x !== undefined)` destructure leave both columns untouched; `null` is a
+     * value and would be written. `toBeNull()` cannot tell those apart, which is
+     * exactly how the wrong behaviour passed review the first time.
+     */
+    expect(settings).not.toHaveProperty('color_preset');
+    expect(settings).not.toHaveProperty('background_color');
+    // …and the rest of the form still saves, which is the whole point of not 400-ing.
+    expect(settings).toHaveProperty('profile_picture_url');
+    expect(settings).toHaveProperty('background_image_url');
+    // The unrecognised value is never echoed back to the server in any field.
+    expect(JSON.stringify(settings)).not.toContain('lime');
+  });
+
+  it('#15/M1: the D-06 clear still sends explicit nulls — preservation must not swallow it', async () => {
+    // The guard must distinguish "a value I do not understand" from "the user cleared
+    // the colour". An empty form state is the D-06 clear and MUST write both columns
+    // null; if the preserve branch caught it, tapping a swatch off would silently do
+    // nothing and the cleared state would be unreachable again.
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, color_preset: 'rose' });
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    fireEvent.click(within(group).getByRole('button', { name: 'Rose' })); // toggles OFF
+
+    const settings = await saveAndCapture();
     expect(settings.color_preset).toBeNull();
     expect(settings.background_color).toBeNull();
-    expect(JSON.stringify(settings)).not.toContain('lime');
   });
 
   it('D-01 shape 3 — a legacy hex group still saves the HEX, with no preset id', async () => {
