@@ -496,14 +496,41 @@ describe('resolveGroupGround — Phase 88.3.1 SPEC Req 4 / D-04', () => {
     // first, accepts and stores it, and the older FE renders every group using
     // it uncoloured with no error, no log and no telemetry. This is the SECOND
     // layer; plan 88.3.1-02's cross-repo id contract test is the first.
+    //
+    // THE VALUE MUST BE UNIQUE IN THIS MODULE. `resolveGroupGround` reports each
+    // distinct unrecognised value at most ONCE per page load (CLUSTER A), and the
+    // memo is module state that outlives a single spec. This spec used to use
+    // `'sunset'` and broke the moment the throttle landed, because `:486` above
+    // iterates `'sunset'` for an unrelated assertion and consumed the warn first.
+    // Anything asserting ON the warn needs its own `skew-preset-*` value.
     const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
-    expect(resolveGroupGround('sunset')).toBeNull();
+    expect(resolveGroupGround('skew-preset-a')).toBeNull();
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0][0]).toBe('unrecognised stored group colour');
-    expect(warn.mock.calls[0][1]).toEqual({ stored: 'sunset' });
+    expect(warn.mock.calls[0][1]).toEqual({ stored: 'skew-preset-a' });
+  });
+
+  it('reports each distinct bad value ONCE, not once per render (CLUSTER A)', () => {
+    // The defect this closes: `resolveGroupGround` is a render-path function with
+    // seven production call sites, five inside per-item loops. `logger.warn` is
+    // `Sentry.captureMessage`, so an unthrottled warn made one skewed group emit
+    // one Sentry event per tile per paint — reproducing the flood the M23 marker
+    // one paragraph earlier rejects for the legacy arm.
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+
+    // Same value, many renders — the shape of a month grid re-painting.
+    for (let i = 0; i < 25; i += 1) expect(resolveGroupGround('skew-preset-b')).toBeNull();
+    expect(warn, 'the warn is throttled per VALUE, not per call').toHaveBeenCalledTimes(1);
+
+    // …but a DIFFERENT bad value is still reported: the signal is per-value, so
+    // throttling must not swallow a second, genuinely new drift.
+    expect(resolveGroupGround('skew-preset-c')).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn.mock.calls[1][1]).toEqual({ stored: 'skew-preset-c' });
   });
 
   it('truncates the warned value, so an oversized stored string cannot bloat the payload', () => {
+    // Unique in this module, per the note on the M23 spec above.
     const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
     resolveGroupGround('x'.repeat(200));
     expect(warn.mock.calls[0][1]!.stored).toHaveLength(32);

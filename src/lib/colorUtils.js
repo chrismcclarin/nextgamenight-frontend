@@ -219,6 +219,50 @@ export function resolveGroupBackgroundColor(color) {
   return isUnsetBackgroundColor(color) ? null : color;
 }
 
+/** A storable legacy colour: exactly six hex digits. The backend enforces the
+ *  same shape (`middleware/validators.js`), and this is the FE half of it. */
+const STORABLE_HEX_PATTERN = /^#[0-9A-Fa-f]{6}$/;
+
+/**
+ * The value that may be written to `Groups.background_color`, or `null`.
+ *
+ * DECISION Phase 88.3.1 (code review #8/#12/#13/#15): THE SAVE PATH FILTERS,
+ * IT DOES NOT FORWARD. `GroupSettings.js`'s picker state holds whatever the
+ * group had stored, and three separate findings showed that forwarding it
+ * verbatim is wrong in three different ways:
+ *
+ *  - **#8** a stored `#ffffff` (the model default — `models/Group.js` still
+ *    defaults the column to white) seeded the picker and was re-persisted on
+ *    every save. That is the mechanism that manufactured the D-28 white cards.
+ *    `isUnsetBackgroundColor` already knew white is "unset"; the save path had
+ *    stopped asking it.
+ *  - **#12** a non-canonical preset id (`'Blue'`) RENDERS fine, because
+ *    `resolveGroupGround` lower-cases before the lookup — but it is not in
+ *    `PRESET_IDS`, so it used to be forwarded into `background_color`, where the
+ *    backend's six-hex-digit rule 400s it. The group's settings modal becomes
+ *    permanently unsaveable, for a value the renderer deliberately tolerates.
+ *  - **#15** the same door, opened by poly-repo skew instead of by bad data: a
+ *    ninth preset added BE-first is stored, the older FE does not know the id,
+ *    forwards it, and 400s — so skew degraded from "renders uncoloured" (the
+ *    graceful outcome the M23 marker describes) to "no group setting can be
+ *    saved at all", which is the opposite.
+ *
+ * REJECTED: a hex regex inline in `handleSave`. Keeping it here means the save
+ * path names no pattern and no colour, which is what `groupColourRendering.test.ts`
+ * test 1(b) enforces — and it gives `resolveGroupBackgroundColor` a production
+ * caller again (#13), instead of leaving it a zero-caller export kept alive by
+ * its own tests.
+ *
+ * @param {string|null|undefined} value - the picker's current form state
+ * @returns {string|null} a six-digit hex safe to persist, or null
+ */
+export function storableGroupHex(value) {
+  const resolved = resolveGroupBackgroundColor(
+    typeof value === 'string' ? value.trim() : value,
+  );
+  return resolved && STORABLE_HEX_PATTERN.test(resolved) ? resolved : null;
+}
+
 /**
  * The RENDERED ground for a stored group colour in LIGHT mode: a per-channel
  * linear mix of the stored hex toward white — `round(c + (255 - c) * t)`. Same
@@ -334,10 +378,19 @@ export function lightTintGroupBackgroundColor(color, t = 0.70) {
  * so "which column wins" is decided in a single place rather than seven.
  *
  * TWO OPERATORS THAT LOOK LIKE THE SAME JOB AND ARE NOT:
- *  - `??` on the COLUMN choice, deliberately not `||`. The backend validator
- *    (plan 88.3.1-02) still accepts `''` and whitespace, so `||` would silently
- *    fall through to `background_color` for a group whose `color_preset` is an
- *    empty string — masking exactly the bad data that fix exists to surface.
+ *  - `??` on the COLUMN choice, deliberately not `||`. **CORRECTED 2026-08-30
+ *    (code review findings #4/#18): the reason this marker used to give was
+ *    stale.** It claimed "the backend validator (plan 88.3.1-02) still accepts
+ *    `''` and whitespace" — it does not. The validator shipped in that same plan
+ *    collapses `''` and whitespace-only to `null` in a `customSanitizer` BEFORE
+ *    the `.custom()` arm sees it (`middleware/validators.js:136-142`), pinned by
+ *    `tests/routes/groups.test.js`. So an empty `color_preset` is not an
+ *    API-reachable state at all.
+ *    `??` is still correct, for the reason that actually holds: it keeps "column
+ *    present but explicitly null" distinguishable from "column absent", and it is
+ *    defence-in-depth against the one writer the validator does not cover — a
+ *    hand-written DB row or a future writer that bypasses the API. The `''` and
+ *    whitespace cases in `colorUtils.test.ts:402-412` remain the right pin.
  *  - `|| null` on the RESULT, which normalises a trimmed-empty value to `null`
  *    so `resolveGroupGround`'s unset-first rule fires instead of a `''` reaching
  *    the preset lookup.
@@ -397,6 +450,19 @@ export function storedGroupColour(group) {
  * @param {string|null|undefined} stored - the STORED value (`storedGroupColour`)
  * @returns {{preset: string|null, dark: string, light: string, inkDark: string|null, inkLight: string|null}|null}
  */
+/**
+ * Distinct unrecognised stored values already reported this page load (CLUSTER A).
+ * Module scope on purpose: the lifetime that matters is the page, not the render.
+ * Not exported and not resettable — a reset hook would be API surface that only
+ * tests want. The cost is real and is paid in the test file instead: because the
+ * Set outlives each test, any spec asserting ON the warn must use a value no
+ * other spec in the module has already resolved. `colorUtils.test.ts:486` proved
+ * that the hard way — it iterates `'sunset'` for an unrelated assertion, which
+ * silently consumed the one warn the M23 spec was asserting. Those specs now use
+ * dedicated `skew-preset-*` values and say so.
+ */
+const WARNED_UNKNOWN_STORED = new Set();
+
 export function resolveGroupGround(stored) {
   if (isUnsetBackgroundColor(stored)) return null;
 
@@ -442,7 +508,34 @@ export function resolveGroupGround(stored) {
      * a hand-run migration, a rollback, a manual DB edit. The two layers fail
      * independently, which is the requirement.
      */
-    logger.warn('unrecognised stored group colour', { stored: String(stored).slice(0, 32) });
+    /*
+     * DECISION Phase 88.3.1 (code review, CLUSTER A — five lenses independently):
+     * ONE EVENT PER DISTINCT BAD VALUE PER PAGE LOAD, not one per render.
+     *
+     * `logger.warn` is `Sentry.captureMessage` (`logger.ts:31-32`) — a real
+     * quota-consuming event, not a console line. This function is a RENDER-path
+     * resolver with seven production call sites, five of them inside per-item
+     * loops (per group card, per calendar tile, per list row, per day-modal row,
+     * per swatch x8), and `CalendarMonthView.js:52-89` deliberately refuses to
+     * memoise its loop. Unthrottled, the marker's own named trigger — poly-repo
+     * skew where BE accepts a ninth preset the FE has not shipped — makes one
+     * affected group emit one Sentry event PER TILE PER PAINT, forever.
+     *
+     * That is precisely the flood the paragraph above rejects for the legacy
+     * arm ("would flood Sentry for that whole window and train everyone to
+     * ignore the signal"). The mitigation there bounded the ARM; this bounds the
+     * RATE. The signal being preserved is per-VALUE, not per-render, so nothing
+     * is lost: the first sighting of each distinct bad value still reports.
+     *
+     * REJECTED: dropping the warn (it is the only drift detector on this path),
+     * and relying on Sentry's `dedupeIntegration` (it compares only against the
+     * immediately preceding event, so any interleaved event resets it).
+     */
+    const key = String(stored).slice(0, 32);
+    if (!WARNED_UNKNOWN_STORED.has(key)) {
+      WARNED_UNKNOWN_STORED.add(key);
+      logger.warn('unrecognised stored group colour', { stored: key });
+    }
     return null;
   }
 

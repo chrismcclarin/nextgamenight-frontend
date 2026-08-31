@@ -3,8 +3,19 @@
  *
  * Phase 88.3.1, CONTEXT D-04: a group's stored `color_preset` is an ID, never a hex. The FE
  * resolves that id to a dark band, a light surface and a per-theme ink through THIS table. The
- * backend carries an id-only copy (`utils/groupColourPresets.js`, plan 88.3.1-02) so it can
- * validate the id; the colour values below never cross the wire in either direction.
+ * backend carries a copy of the eight ids AND their two GROUNDS (`utils/groupColourPresets.js`,
+ * plan 88.3.1-02): the ids for the settings validator's allowlist, the grounds for the one-time
+ * remap's computed nearest-preset arm (`utils/groupColourRemap.js`, which reads `preset[band]`).
+ * The four INK values are frontend-only. No colour value crosses the wire in either direction —
+ * that part of the contract is intact; a group stores an ID.
+ *
+ * **CORRECTED 2026-08-30 (code review #25): this header used to say the backend copy was
+ * "id-only". It is not, and the difference is load-bearing** — D-01's decisive argument, recorded
+ * in three separate markers, is that "a palette re-tune after ui-phase is an FE-only edit with no
+ * data migration". That holds for the INKS. It does NOT hold for the grounds: re-tune a ground
+ * here after the remap has run and the backend copy silently becomes historical data describing
+ * the palette the remap was computed against, while `tests/unit/groupColourPresets.test.js` stays
+ * green because it is pinned to the UI-SPEC rather than to this module.
  *
  * `.ts`, not `.js`, on purpose: the `as const` below is what makes `PresetId` a union of the
  * eight literal ids, so a mistyped id in a consumer is a compile error instead of a silent

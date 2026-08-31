@@ -372,12 +372,6 @@ describe('SPEC-REQ-6 / 88-13 D-04 — one gate, at full strength, with nothing s
 // already existed (88-13 / 88.2 era) and is extended rather than duplicated.
 // ---------------------------------------------------------------------------
 describe('Phase 88.3.1 D-06 / D-01 — the eight-preset picker', () => {
-  /** The swatch button for a preset, addressed by the accessible name the
-   *  `aria-label` gives it (the visible caption is `aria-hidden`, so the name is
-   *  announced exactly once — asserted below). */
-  const swatch = (label: string): HTMLElement =>
-    screen.getByRole('button', { name: label, pressed: undefined }) ??
-    screen.getByRole('button', { name: label });
 
   /** The live preview card — the element carrying the "Preview" caption. */
   const preview = (): HTMLElement =>
@@ -518,6 +512,42 @@ describe('Phase 88.3.1 D-06 / D-01 — the eight-preset picker', () => {
     const settings = await saveAndCapture();
     expect(settings.color_preset).toBeNull();
     expect(settings.background_color).toBeNull();
+  });
+
+  /*
+   * The save-path filter (code review #8/#12/#15). Each case is a value the picker
+   * can legitimately be SEEDED with — `storedGroupColour` reads whatever the two
+   * columns hold — and each used to be forwarded to the backend verbatim.
+   */
+  it('#8: a group storing the model default #ffffff does NOT re-persist it', async () => {
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, background_color: '#ffffff' });
+    const settings = await saveAndCapture();
+    // White is the column's model default, not a chosen colour. Re-persisting it on
+    // every unrelated save is the mechanism that manufactured the D-28 white cards.
+    expect(settings.background_color).toBeNull();
+    expect(settings.color_preset).toBeNull();
+  });
+
+  it('#12: a non-canonical preset id normalises instead of 400-ing the whole save', async () => {
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, color_preset: 'Blue' });
+    const settings = await saveAndCapture();
+    // `resolveGroupGround` lower-cases before the palette lookup, so 'Blue' RENDERS.
+    // The save path now agrees, instead of forwarding it to background_color where
+    // the backend's six-hex-digit rule rejects it and blocks every other setting.
+    expect(settings.color_preset).toBe('blue');
+    expect(settings.background_color).toBeNull();
+  });
+
+  it('#15: an unknown preset id (BE-first skew) degrades to uncoloured, not unsaveable', async () => {
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, color_preset: 'lime' });
+    const settings = await saveAndCapture();
+    // A ninth preset shipped backend-first. The older FE cannot render it — that is
+    // the accepted, graceful outcome the M23 marker describes. What must NOT happen
+    // is 'lime' reaching background_color, which 400s and makes the group's settings
+    // permanently unsaveable.
+    expect(settings.color_preset).toBeNull();
+    expect(settings.background_color).toBeNull();
+    expect(JSON.stringify(settings)).not.toContain('lime');
   });
 
   it('D-01 shape 3 — a legacy hex group still saves the HEX, with no preset id', async () => {

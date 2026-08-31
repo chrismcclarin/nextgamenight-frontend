@@ -7,6 +7,7 @@ import SafeImage from './SafeImage';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import {
   resolveGroupGround,
+  storableGroupHex,
   storedGroupColour,
 } from '../../lib/colorUtils';
 import { GROUP_COLOUR_PRESETS, PRESET_IDS } from '@/lib/groupColourPresets';
@@ -129,9 +130,15 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
    *
    * `storedGroupColour(group)` (`lib/colorUtils.js`) is the one accessor all seven
    * sites ask: `color_preset ?? background_color`, trimmed. `??` and NOT `||`,
-   * deliberately — the backend validator still accepts `''` and whitespace, so
-   * `||` would silently mask a stored empty string as "no colour" instead of
-   * letting it surface. It is a pure COLUMN CHOICE: it reads, it does not
+   * deliberately. **CORRECTED 2026-08-30 (code review #18): the reason given here
+   * was stale.** It said "the backend validator still accepts `''` and
+   * whitespace" — it does not; plan 88.3.1-02's `customSanitizer`
+   * (`middleware/validators.js:136-142`) collapses `''` and whitespace-only to
+   * `null` before validation, so an empty `color_preset` is not API-reachable.
+   * `??` is still right for the reason that holds: it keeps "column present but
+   * explicitly null" distinct from "column absent", and it is defence-in-depth
+   * against a hand-written DB row or a future writer that bypasses the API.
+   * It is a pure COLUMN CHOICE: it reads, it does not
    * transform, and it is not the resolver.
    *
    * STILL REJECTED, verbatim and for the same reason: routing this line through
@@ -258,11 +265,42 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
        * null, not '' — the validator accepts both, but null is what "no colour"
        * means and it keeps the column from re-acquiring white.
        */
-      const chosenPreset = PRESET_IDS.includes(backgroundColor) ? backgroundColor : null;
+      /*
+       * DECISION Phase 88.3.1 (code review #8/#12/#15, 2026-08-30): NORMALISE THE
+       * PRESET ID, AND FILTER THE LEGACY COLUMN — never forward form state raw.
+       *
+       * Lower-casing first closes a divergence the review found: `resolveGroupGround`
+       * lower-cases before the palette lookup ("a case or whitespace difference must
+       * not silently demote a preset group to the legacy arm"), so a stored `'Blue'`
+       * RENDERS correctly — but `PRESET_IDS.includes('Blue')` was false, so it fell
+       * through to `background_color`, failed the backend's six-hex-digit rule and
+       * 400'd. The renderer tolerated the drift; the save path turned it into a
+       * permanently unsaveable group. The two now agree on what a preset id is.
+       *
+       * `storableGroupHex` is the other half: the non-preset arm may only ever
+       * persist a real six-digit hex. It returns null for stored white (which the
+       * model still defaults to, and which re-persisting is what manufactured the
+       * D-28 white cards), and null for any unrecognised string — so poly-repo skew
+       * degrades to "renders uncoloured", the graceful outcome the M23 marker
+       * describes, instead of blocking every setting on the group.
+       *
+       * REJECTED: an inline `/^#[0-9A-Fa-f]{6}$/` test in this handler. The filter
+       * lives in `colorUtils.js` so the save path names no pattern, no colour and no
+       * transform — `groupColourRendering.test.ts` test 1(b) enforces exactly that,
+       * and a regex here would put a second, drifting definition of "is this a
+       * storable colour" one file away from the first.
+       * ALSO REJECTED: normalising at the SEED instead. Tests 1(a) and 2 anchor on
+       * `useState(storedGroupColour(group)` and the seed is deliberately a raw read;
+       * filtering on the way OUT keeps the picker showing what is actually stored
+       * while still refusing to persist it. A decision, not a cleanup.
+       */
+      const normalisedColourChoice =
+        typeof backgroundColor === 'string' ? backgroundColor.trim().toLowerCase() : '';
+      const chosenPreset = PRESET_IDS.includes(normalisedColourChoice) ? normalisedColourChoice : null;
       const settings = {
         profile_picture_url: profilePictureUrl || null,
         color_preset: chosenPreset,
-        background_color: chosenPreset ? null : backgroundColor || null,
+        background_color: chosenPreset ? null : storableGroupHex(backgroundColor),
         background_image_url: backgroundImageUrl || null,
       };
       
@@ -339,6 +377,16 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
    * until now the toggle only went one way. It also makes the cleared state
    * REACHABLE: CONTEXT D-01's "both columns null" was a save shape the UI had no
    * path to, i.e. a dead branch.
+   *
+   * CORRECTED 2026-08-30 (code review #27): the paragraph below described the
+   * CLEAR arm's image reset as "the new decision". It is unreachable. `isSelected`
+   * requires `!backgroundImageUrl`, so a group that has an image never takes the
+   * clear arm — it takes the select arm. `setBackgroundImageUrl('')` on the clear
+   * arm is therefore a defensive no-op, not a behaviour. The reset that actually
+   * fires is the SELECT arm's, and that half of the reasoning stands unchanged.
+   * (Making it reachable would mean dropping `&& !backgroundImageUrl` from
+   * `isSelected`, which also changes `aria-pressed`. That is a separate ruling and
+   * has not been taken.)
    *
    * The image fields are cleared on BOTH arms, deliberately. On the SELECT arm
    * that is the shipped behaviour (a colour replaces an image). On the CLEAR arm

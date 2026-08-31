@@ -701,6 +701,31 @@ export default function CalendarMonthView({
                                * allowlist rejects paints no image, so that tile IS a
                                * plain coloured tile and must get its ink. REJECTED:
                                * `!!groupBgImage`. A decision, not a cleanup.
+                               *
+                               * CAVEAT, recorded 2026-08-30 (code review #2/#28): the rule
+                               * stated above does NOT hold for the COMPACT variant, and that
+                               * is accepted rather than fixed. `tileBgImage` is `null` when
+                               * `variant === 'compact'` (the compact tile paints no image),
+                               * yet `hasValidBgImage` is derived from the FULL image — so a
+                               * compact tile of an image-bearing group is handed
+                               * `hasBackgroundImage: true` and gets `{}` back, i.e. it is
+                               * treated as an image surface while painting no image.
+                               * The impact is PERMANENTLY zero, not merely invisible today:
+                               * month tiles never consume `--group-ink*` at all, by owner
+                               * ruling (UI-SPEC 3.3, "when it's small like that, you need the
+                               * text to be more distinct"), and `groupColourRendering.test.ts`
+                               * :1470-1476 asserts a tile's colour expression never contains
+                               * `--group-ink` because consuming it would re-open SPEC Req 8 on
+                               * past dates at ~1.1:1. So the argument this flag feeds cannot
+                               * reach a rendered pixel on this surface.
+                               * REJECTED: passing `variant === 'compact' ? false :
+                               * hasValidBgImage`. It would make the flag honest but changes a
+                               * call whose result is provably discarded, and test 9's
+                               * derivation scan requires the literal
+                               * `const F = !!X` / `const X = safeBgImageStyle(…)` chain — a
+                               * ternary on the flag itself reds it. Resolve this together with
+                               * the five-site `hasBackgroundImage` convergence that Phase 88.6
+                               * already owns (`.planning/deferred/phase-88.6.md`), not before.
                                */
                               ...groupInkVars(tileGroundPair, {
                                 surface: 'tile',
