@@ -38,7 +38,6 @@
         "src/app/components/FriendshipStatusProvider.js",
         "src/app/components/GameComboInput.js",
         "src/app/components/GroupLibrary.js",
-        "src/app/components/GroupSettings.js",
         "src/app/components/ManageMembers.js",
         "src/app/components/NotificationBell.js",
         "src/app/components/PromptScheduleManager.js",

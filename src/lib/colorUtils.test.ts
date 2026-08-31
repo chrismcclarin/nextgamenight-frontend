@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -12,8 +12,14 @@ import {
   isUnsetBackgroundColor,
   lightTintGroupBackgroundColor,
   resolveGroupBackgroundColor,
+  resolveGroupGround,
+  groupInkVars,
+  storedGroupColour,
+  SUBTEXT_MUTED_ON_DARK,
   SUBTEXT_MUTED_ON_LIGHT,
 } from './colorUtils';
+import { GROUP_COLOUR_PRESETS } from './groupColourPresets';
+import { logger } from './logger';
 import { contrastRatio, lStar } from './wcag';
 
 /**
@@ -127,29 +133,95 @@ describe('the brightness algorithm is untouched (D-29)', () => {
 
 
 /* ---------------------------------------------------------------------------
- * Phase 88.3 (D-08/D-09, Req 9) — the light-mode group tint.
+ * Phase 88.3 (D-08/D-09, Req 9) — RE-POINTED by Phase 88.3.1 (SPEC Req 4).
  *
- * The presets are read OUT OF `GroupSettings.js` rather than restated here, on
- * purpose. A restated copy drifts silently: the whole point of the
- * `isDarkBackground(preset) === true` pin below is that a future preset edit
- * must red THIS file, and it can only do that if this file reads the shipped
- * array.
+ * The presets are read OUT OF the shipped module by PARSING ITS SOURCE rather
+ * than restated here, and that mechanism survives the re-point unchanged — only
+ * the path, the block regex and the entry regex moved. A restated copy drifts
+ * silently: the whole point of the `isDarkBackground(p.dark) === true` pin at
+ * the bottom of this file is that a future palette edit must red THIS file, and
+ * it can only do that if this file reads the shipped table.
+ *
+ * (The `import { GROUP_COLOUR_PRESETS }` above is a convenience for the
+ * `groupInkVars` cases and is NOT a substitute for this parse: the parse is
+ * what fails loudly if the array is renamed, removed, or reshaped, which an
+ * import would simply fail to compile on without saying why.)
+ *
+ * WHAT CHANGED IN 88.3.1. A group's stored value is now a PRESET ID, and an id
+ * resolves to a hand-tuned two-value row — nothing is computed for it. So the
+ * tint assertions below re-scope onto the eight LEGACY hexes (the compatibility
+ * path, UI-SPEC 3.2) and a NEW set of preset-table assertions sits beside them.
+ * Neither replaces the other; both are live coverage.
  * ------------------------------------------------------------------------- */
 
 const PRESET_SOURCE = fs.readFileSync(
-  path.resolve(__dirname, '../app/components/GroupSettings.js'),
+  path.resolve(__dirname, './groupColourPresets.ts'),
   'utf8',
 );
 
-const PRESETS: { name: string; value: string }[] = (() => {
+type ParsedPreset = {
+  name: string;
+  label: string;
+  dark: string;
+  light: string;
+  inkDark: string;
+  inkLight: string;
+  mutedDark: string;
+  mutedLight: string;
+};
+
+const PRESETS: ParsedPreset[] = (() => {
   const block = PRESET_SOURCE.match(
-    /const DEFAULT_BACKGROUND_COLORS = \[([\s\S]*?)\];/,
+    /const GROUP_COLOUR_PRESETS = \[([\s\S]*?)\] as const;/,
   );
-  if (!block) throw new Error('DEFAULT_BACKGROUND_COLORS not found in GroupSettings.js');
-  return [...block[1].matchAll(/\{\s*name:\s*'([^']+)',\s*value:\s*'(#[0-9a-fA-F]{6})'\s*\}/g)].map(
-    (m) => ({ name: m[1], value: m[2] }),
+  if (!block) throw new Error('GROUP_COLOUR_PRESETS not found in groupColourPresets.ts');
+  const hex = String.raw`(#[0-9a-fA-F]{6})`;
+  const rowRe = new RegExp(
+    String.raw`\{\s*name:\s*'([^']+)',` +
+      String.raw`\s*label:\s*'([^']+)',` +
+      String.raw`\s*dark:\s*'${hex}',` +
+      String.raw`\s*light:\s*'${hex}',` +
+      String.raw`\s*inkDark:\s*'${hex}',` +
+      String.raw`\s*inkLight:\s*'${hex}',` +
+      String.raw`\s*mutedDark:\s*'${hex}',` +
+      String.raw`\s*mutedLight:\s*'${hex}',` +
+      String.raw`\s*\}`,
+    'g',
   );
+  return [...block[1].matchAll(rowRe)].map((m) => ({
+    name: m[1],
+    label: m[2],
+    dark: m[3],
+    light: m[4],
+    inkDark: m[5],
+    inkLight: m[6],
+    mutedDark: m[7],
+    mutedLight: m[8],
+  }));
 })();
+
+/**
+ * The eight LEGACY preset hexes — the values the `GroupSettings.js` swatch
+ * array shipped from Phase 88-22 until this phase, and the values still sitting
+ * in the `background_color` column of every coloured group in production.
+ *
+ * They are a FROZEN LITERAL here rather than read from source, and that is the
+ * one place in this file where a restated copy is right: they are history, not
+ * a live table. They cannot drift, because nothing may edit them — the picker
+ * no longer offers them and plan 88.3.1-05's remap converts them. The only
+ * thing that can change is that a row STOPS existing in production, which is a
+ * migration event, not a source edit.
+ */
+const LEGACY_HEXES: { name: string; value: string }[] = [
+  { name: 'Charcoal', value: '#1e1e2e' },
+  { name: 'Slate', value: '#1e293b' },
+  { name: 'Navy', value: '#172554' },
+  { name: 'Indigo', value: '#1e1b4b' },
+  { name: 'Forest', value: '#14332a' },
+  { name: 'Wine', value: '#3b1030' },
+  { name: 'Espresso', value: '#2c1f14' },
+  { name: 'Storm', value: '#27272a' },
+];
 
 /**
  * The owner-ruled tint strength (2026-08-25, plan adversarial review round 2 —
@@ -160,10 +232,16 @@ const PRESETS: { name: string; value: string }[] = (() => {
 const T = 0.7;
 const L_STAR_FLOOR = 75;
 
-describe('lightTintGroupBackgroundColor — Phase 88.3 D-09', () => {
-  it('reads all eight shipped presets out of GroupSettings.js', () => {
-    // anti-vacuity: every per-preset assertion below is an it.each over this list
+describe('lightTintGroupBackgroundColor — Phase 88.3 D-09, re-scoped to the LEGACY path', () => {
+  it('reads all eight shipped presets out of groupColourPresets.ts', () => {
+    // anti-vacuity: every per-preset assertion below is an it.each over a list
     expect(PRESETS).toHaveLength(8);
+  });
+
+  it('still covers all eight legacy hexes, which are the LIVE fallback in production', () => {
+    // Until plan 88.3.1-05's remap runs, every coloured group in production is
+    // one of these — and a custom hex can reach this path at any time after.
+    expect(LEGACY_HEXES).toHaveLength(8);
   });
 
   it.each(UNSET_VALUES)('returns null for %p so the themed surface still wins (D-28)', (value) => {
@@ -185,27 +263,26 @@ describe('lightTintGroupBackgroundColor — Phase 88.3 D-09', () => {
     expect(lightTintGroupBackgroundColor(value)).toBeNull();
   });
 
-  it.each(PRESETS)('$name tints to a well-formed 6-digit hex', ({ value }) => {
+  it.each(LEGACY_HEXES)('$name tints to a well-formed 6-digit hex', ({ value }) => {
+    // Re-scoped by 88.3.1: this is the COMPATIBILITY path now, not the preset
+    // path. A preset id never reaches this function.
     expect(lightTintGroupBackgroundColor(value)).toMatch(/^#[0-9a-f]{6}$/);
   });
 
-  it.each(PRESETS)(`$name clears the amended SPEC Req 9 floor (L* >= ${L_STAR_FLOOR})`, ({ value }) => {
+  it.each(LEGACY_HEXES)(`$name clears the amended SPEC Req 9 floor (L* >= ${L_STAR_FLOOR})`, ({ value }) => {
     const tinted = lightTintGroupBackgroundColor(value);
     expect(lStar(tinted)).toBeGreaterThanOrEqual(L_STAR_FLOOR);
   });
 
-  it.each(PRESETS)('$name lands in getTextStyle’s brightness > 180 tier (D-29 fulfilled)', ({ value }) => {
-    // Asserted PER PRESET rather than inferred from the L* floor: at t = 0.70 the
-    // margin over 180 is only ~8-11 points (it was ~46-47 at the previously-ruled
-    // 0.87), so a preset edit could flip a tile into the dark-text tier without
-    // ever breaking the L* assertion above.
-    const tinted = lightTintGroupBackgroundColor(value);
-    expect(getBrightness(tinted)).toBeGreaterThan(180);
-    expect(getTextStyle(false, tinted).color).toBe('#1f2937');
-  });
-
-  it.each(PRESETS)('$name keeps the muted pole above 4.5:1 on its own tint (R2-6)', ({ value }) => {
-    // #6b7280, the pre-repoint pole, measures 2.5-2.65 here and FAILS.
+  it.each(LEGACY_HEXES)('$name keeps the muted pole above 4.5:1 on its own tint (R2-6)', ({ value }) => {
+    // KEPT, not re-pointed. This is the only contrast guard on the LIVE fallback
+    // ink path: groupInkVars returns {} for a legacy hex on a card, so the
+    // consumer's plain poles are what get drawn on exactly this tinted ground,
+    // for every coloured group in production until BE PR-2 lands and permanently
+    // for any non-preset hex. The new light-surface cases below are a SECOND
+    // coverage set, not a replacement — deleting this one is a decision
+    // requiring its own `DECISION Phase 88.3.1` marker, not a cleanup.
+    // (#6b7280, the pre-repoint pole, measures 2.5-2.65 here and FAILS.)
     const tinted = lightTintGroupBackgroundColor(value);
     expect(contrastRatio(SUBTEXT_MUTED_ON_LIGHT, tinted)).toBeGreaterThanOrEqual(4.5);
   });
@@ -215,8 +292,13 @@ describe('lightTintGroupBackgroundColor — Phase 88.3 D-09', () => {
   });
 
   it('reproduces the owner-ruled t = 0.70 measurement table exactly', () => {
+    // KEPT and re-scoped, not deleted. The table now pins the tints of the eight
+    // LEGACY hexes as the shipped compatibility path — those hexes are still in
+    // production until plan 88.3.1-05's migration runs, and a custom hex can
+    // reappear at any time. Deleting it would remove the only guard on the
+    // fallback arithmetic.
     const measured = Object.fromEntries(
-      PRESETS.map(({ name, value }) => [name, lightTintGroupBackgroundColor(value)]),
+      LEGACY_HEXES.map(({ name, value }) => [name, lightTintGroupBackgroundColor(value)]),
     );
     expect(measured).toEqual({
       Charcoal: '#bcbcc0',
@@ -256,14 +338,405 @@ describe('lightTintGroupBackgroundColor — Phase 88.3 D-09', () => {
   });
 });
 
-describe('every shipped preset is a DARK ground (pins plan 11 Task 2’s light arm)', () => {
-  // Plan 11 Task 2 builds a dark-ground text arm for the groupHomePage header on
-  // the assumption that every value in DEFAULT_BACKGROUND_COLORS is dark. If a
-  // future palette edit ever ships a genuinely light preset, that assumption
-  // becomes wrong silently — the header would paint white-on-light. This test is
-  // the tripwire: it must go red HERE, in the shared colour module, before plan
-  // 11's light-arm code inherits the wrong premise.
-  it.each(PRESETS)('$name ($value) is dark, so the dark-ground text arm applies', ({ value }) => {
-    expect(isDarkBackground(value)).toBe(true);
+describe('the two-value preset table renders through the right brightness tiers (UI-SPEC 10.1 test 11)', () => {
+  it.each(PRESETS)('$name — light surface $light is in the > 180 tier', ({ light }) => {
+    // Replaces the 88.3 assertion that the computed TINT cleared 180. The
+    // margin is no longer thin: the light surfaces measure 211-227, i.e. 31-47
+    // points of headroom, where 88.3's tints cleared by only 8-11.
+    expect(getBrightness(light)).toBeGreaterThan(180);
+    expect(getTextStyle(false, light).color).toBe('#1f2937');
+  });
+
+  it.each(PRESETS)('$name — dark band $dark is in the <= 128 tier', ({ dark }) => {
+    // 32-47 measured, i.e. 81-96 points of margin below the threshold.
+    expect(getBrightness(dark)).toBeLessThanOrEqual(128);
+    expect(getTextStyle(false, dark).color).toBe('#ffffff');
+  });
+
+  it.each(PRESETS)('$name — the muted pole clears 4.5:1 on the LIGHT SURFACE', ({ light }) => {
+    // The phase's real target, added as NEW cases beside the legacy-tint set
+    // above rather than replacing it. Measured 7.61-7.68:1 across the eight.
+    expect(contrastRatio(SUBTEXT_MUTED_ON_LIGHT, light)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe('every shipped preset’s DARK BAND is dark (pins groupHomePage’s light arm)', () => {
+  // `groupHomePage/page.js:661-670` builds a dark-ground text arm for the header
+  // on the assumption that every preset's rendered DARK-mode ground is dark, and
+  // names THIS test as its only guard. If a future palette edit ever ships a
+  // genuinely light `dark` band, that assumption becomes wrong silently — the
+  // header would paint white-on-light. This is the tripwire: it must go red
+  // HERE, in the shared colour module, before that code inherits the wrong
+  // premise.
+  //
+  // Re-pinned by 88.3.1 from the single stored hex to the table's `dark` band.
+  // Deleting it removes groupHomePage's only guard: a decision, not a cleanup.
+  it.each(PRESETS)('$name ($dark) is dark, so the dark-ground text arm applies', ({ dark }) => {
+    expect(isDarkBackground(dark)).toBe(true);
+  });
+});
+
+
+
+/* ---------------------------------------------------------------------------
+ * Phase 88.3.1 (SPEC Req 4, CONTEXT D-04) — the ONE resolver, and the one
+ * accessor that feeds it.
+ *
+ * Six render sites plus the settings seed used to each do their own
+ * `resolveGroupBackgroundColor` + `lightTintGroupBackgroundColor` pair. Project
+ * tenet: "writing a function 6 times is adding tech debt". These two functions
+ * are the single implementation those seven sites move onto in plans
+ * 88.3.1-07/08/09.
+ * ------------------------------------------------------------------------- */
+
+describe('storedGroupColour — the one accessor for a group’s stored colour', () => {
+  it('prefers the new color_preset id over the legacy background_color', () => {
+    expect(storedGroupColour({ color_preset: 'blue', background_color: '#1e1e2e' })).toBe('blue');
+  });
+
+  it('falls back to background_color when color_preset is absent or null', () => {
+    expect(storedGroupColour({ background_color: '#1e1e2e' })).toBe('#1e1e2e');
+    expect(storedGroupColour({ color_preset: null, background_color: '#1e1e2e' })).toBe('#1e1e2e');
+  });
+
+  it('uses ?? not || — an EMPTY color_preset must NOT fall through to background_color', () => {
+    // plan 88.3.1-02's validator still accepts '' and whitespace, so `||` here
+    // would mask exactly the bad data AMENDMENT T is fixing: the row would
+    // silently render its legacy hex and nobody would ever see the empty id.
+    expect(storedGroupColour({ color_preset: '', background_color: '#1e1e2e' })).toBeNull();
+    expect(storedGroupColour({ color_preset: '   ', background_color: '#1e1e2e' })).toBeNull();
+  });
+
+  it('trims, and normalises a trimmed-empty result to null so the unset-first rule fires', () => {
+    expect(storedGroupColour({ color_preset: '  blue  ' })).toBe('blue');
+    expect(storedGroupColour({ background_color: '   ' })).toBeNull();
+  });
+
+  it('returns null for a group with neither, and does not throw on a missing group', () => {
+    expect(storedGroupColour({})).toBeNull();
+    expect(storedGroupColour(null)).toBeNull();
+    expect(storedGroupColour(undefined)).toBeNull();
+  });
+});
+
+describe('resolveGroupGround — Phase 88.3.1 SPEC Req 4 / D-04', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('resolves a preset id to its dark band, light surface and BOTH inks', () => {
+    expect(resolveGroupGround('blue')).toEqual({
+      preset: 'blue',
+      dark: '#00274d',
+      light: '#c4e1ff',
+      inkDark: '#8ac2fb',
+      inkLight: '#033f6f',
+    });
+  });
+
+  it.each(UNSET_VALUES)('returns null for %p so the themed surface still wins (D-28)', (value) => {
+    expect(resolveGroupGround(value)).toBeNull();
+  });
+
+  it('returns null for a whitespace-only stored value', () => {
+    expect(resolveGroupGround('  ')).toBeNull();
+  });
+
+  it('asks isUnsetBackgroundColor of the STORED value, so #fefefe still gets a ground (Pitfall 8)', () => {
+    // #fefefe is a real colour that tints to exactly #ffffff. Asking "is unset?"
+    // of the RENDERED value would strip this group's ground entirely.
+    const ground = resolveGroupGround('#fefefe');
+    expect(ground).not.toBeNull();
+    expect(ground!.dark).toBe('#fefefe');
+    expect(ground!.light).toBe('#ffffff');
+  });
+
+  it('falls a non-preset hex back to the t = 0.70 tint, with NO ink', () => {
+    expect(resolveGroupGround('#123456')).toEqual({
+      preset: null,
+      dark: '#123456',
+      light: '#b8c2cc',
+      inkDark: null,
+      inkLight: null,
+    });
+    expect(resolveGroupGround('#123456')!.light).toBe(lightTintGroupBackgroundColor('#123456', 0.70));
+  });
+
+  it('normalises the legacy arm’s dark ground to #rrggbb, so it is never half-rendered', () => {
+    // lightTintGroupBackgroundColor deliberately tolerates a missing '#' and
+    // upper case. Echoing the raw stored value would hand the cascade `1e1e2e`
+    // for --group-ground while --group-ground-light got a valid `#bcbcc0` —
+    // coloured in light mode, uncoloured in dark. That is the half-rendered
+    // outcome the "both grounds or neither" return type exists to prevent.
+    expect(resolveGroupGround('1e1e2e')!.dark).toBe('#1e1e2e');
+    expect(resolveGroupGround('#1E1E2E')!.dark).toBe('#1e1e2e');
+    expect(resolveGroupGround('  #1e1e2e  ')!.dark).toBe('#1e1e2e');
+  });
+
+  it('matches the stored id trimmed and case-insensitively — it round-trips through a database', () => {
+    expect(resolveGroupGround('BLUE')).toEqual(resolveGroupGround('blue'));
+    expect(resolveGroupGround('  blue  ')).toEqual(resolveGroupGround('blue'));
+  });
+
+  it('takes exactly ONE argument — no theme, ever (88.3 D-09 REJECTED (2), still binding)', () => {
+    expect(resolveGroupGround.length).toBe(1);
+  });
+
+  it('returns BOTH grounds or null — never a half-populated object (T-88.3-43)', () => {
+    for (const value of ['blue', '#123456', '#fefefe', 'sunset', null, '#ffffff']) {
+      const ground = resolveGroupGround(value);
+      if (ground === null) continue;
+      expect(ground.dark).toBeTruthy();
+      expect(ground.light).toBeTruthy();
+    }
+  });
+
+  it('warns exactly once and returns null for a stored value that is neither preset nor hex (M23)', () => {
+    // The realistic trigger is poly-repo deploy skew: BE ships a ninth preset
+    // first, accepts and stores it, and the older FE renders every group using
+    // it uncoloured with no error, no log and no telemetry. This is the SECOND
+    // layer; plan 88.3.1-02's cross-repo id contract test is the first.
+    //
+    // THE VALUE MUST BE UNIQUE IN THIS MODULE. `resolveGroupGround` reports each
+    // distinct unrecognised value at most ONCE per page load (CLUSTER A), and the
+    // memo is module state that outlives a single spec. This spec used to use
+    // `'sunset'` and broke the moment the throttle landed, because `:486` above
+    // iterates `'sunset'` for an unrelated assertion and consumed the warn first.
+    // Anything asserting ON the warn needs its own `skew-preset-*` value.
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    expect(resolveGroupGround('skew-preset-a')).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toBe('unrecognised stored group colour');
+    expect(warn.mock.calls[0][1]).toEqual({ stored: 'skew-preset-a' });
+  });
+
+  it('reports each distinct bad value ONCE, not once per render (CLUSTER A)', () => {
+    // The defect this closes: `resolveGroupGround` is a render-path function with
+    // seven production call sites, five inside per-item loops. `logger.warn` is
+    // `Sentry.captureMessage`, so an unthrottled warn made one skewed group emit
+    // one Sentry event per tile per paint — reproducing the flood the M23 marker
+    // one paragraph earlier rejects for the legacy arm.
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+
+    // Same value, many renders — the shape of a month grid re-painting.
+    for (let i = 0; i < 25; i += 1) expect(resolveGroupGround('skew-preset-b')).toBeNull();
+    expect(warn, 'the warn is throttled per VALUE, not per call').toHaveBeenCalledTimes(1);
+
+    // …but a DIFFERENT bad value is still reported: the signal is per-value, so
+    // throttling must not swallow a second, genuinely new drift.
+    expect(resolveGroupGround('skew-preset-c')).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn.mock.calls[1][1]).toEqual({ stored: 'skew-preset-c' });
+  });
+
+  it('truncates the warned value, so an oversized stored string cannot bloat the payload', () => {
+    // Unique in this module, per the note on the M23 spec above.
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    resolveGroupGround('x'.repeat(200));
+    expect(warn.mock.calls[0][1]!.stored).toHaveLength(32);
+  });
+
+  it('does NOT warn on the legacy-hex arm — that arm is valid, supported and LIVE in production', () => {
+    // Every coloured group in production renders through the legacy arm for the
+    // entire window between the FE PR and BE PR-2. Wiring the warn to it would
+    // flood Sentry for that whole window and train everyone to ignore it.
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    resolveGroupGround('#123456');
+    resolveGroupGround('blue');
+    resolveGroupGround(null);
+    resolveGroupGround('#ffffff');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('throttles per distinct value with NO window — SSR runs the same per-item loops (round-3 N1)', () => {
+    // The round-2 shape exempted the server arm on the claim "a server render
+    // happens once per request". `resolveGroupGround` runs once per ITEM, so an
+    // SSR month grid with one skewed group emitted one Sentry event per tile
+    // per request. The rule is uniform now: same throttle, both arms.
+    vi.stubGlobal('window', undefined);
+    try {
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+      for (let i = 0; i < 25; i += 1) expect(resolveGroupGround('skew-preset-ssr')).toBeNull();
+      expect(warn, 'the server arm is throttled per VALUE too').toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('at the cap it stops LOGGING, not remembering — saturation must fail closed (round-3 N2)', async () => {
+    // The round-2 shape guarded only the `add` with `size < CAP`, so once the
+    // Set was full every NEW bad value warned on every render — the cap
+    // disabled the throttle instead of the logging. A saturated throttle must
+    // go silent for new values, on every call.
+    //
+    // Fresh module instance: filling the shared Set to its cap would mute the
+    // warn for every later spec in this file (the memo is module state with no
+    // reset hook, by decision — see the marker in colorUtils.js).
+    vi.resetModules();
+    const fresh = await import('./colorUtils');
+    const { logger: freshLogger } = await import('./logger');
+    const warn = vi.spyOn(freshLogger, 'warn').mockImplementation(() => {});
+
+    for (let i = 0; i < 64; i += 1) fresh.resolveGroupGround(`cap-fill-${i}`);
+    expect(warn, 'each distinct value below the cap reports once').toHaveBeenCalledTimes(64);
+
+    for (let i = 0; i < 5; i += 1) fresh.resolveGroupGround('cap-overflow-value');
+    expect(warn, 'a value past the cap never logs — fail closed').toHaveBeenCalledTimes(64);
+
+    fresh.resolveGroupGround('cap-fill-0');
+    expect(warn, 'remembered values stay silent at saturation').toHaveBeenCalledTimes(64);
+  });
+});
+
+
+/* ---------------------------------------------------------------------------
+ * Phase 88.3.1 (D-04, UI-SPEC 3.3/3.4) — the ONE ink function.
+ *
+ * Card versus tile is an ARGUMENT, never a second copy. The four properties are
+ * newly minted (`--group-ink*`) rather than reusing `themedTextStyleVars`'s
+ * `--t-*` channel: 5 of that channel's 7 existing emissions sit on a DESCENDANT
+ * of where these land, and a descendant redeclaration wins (AMENDMENT 1).
+ * ------------------------------------------------------------------------- */
+
+describe('groupInkVars — Phase 88.3.1 D-04 / UI-SPEC 3.4', () => {
+  const CARD = { surface: 'card', hasBackgroundImage: false } as const;
+  const TILE = { surface: 'tile', hasBackgroundImage: false } as const;
+
+  it('takes exactly TWO parameters — the ground and the options (never two copies)', () => {
+    expect(groupInkVars.length).toBe(2);
+  });
+
+  it('returns the four tinted values for blue on a CARD, read from the table', () => {
+    expect(groupInkVars(resolveGroupGround('blue'), CARD)).toEqual({
+      '--group-ink': '#8ac2fb',
+      '--group-ink-l': '#033f6f',
+      '--group-ink-muted': '#75abe1',
+      '--group-ink-muted-l': '#205785',
+    });
+  });
+
+  it.each(GROUP_COLOUR_PRESETS)(
+    '$name — the CARD values are the table values, never recomputed',
+    (preset) => {
+      expect(groupInkVars(resolveGroupGround(preset.name), CARD)).toEqual({
+        '--group-ink': preset.inkDark,
+        '--group-ink-l': preset.inkLight,
+        '--group-ink-muted': preset.mutedDark,
+        '--group-ink-muted-l': preset.mutedLight,
+      });
+    },
+  );
+
+  it.each(GROUP_COLOUR_PRESETS)(
+    '$name — the muted rung the FUNCTION returns clears 4.5:1 on its own ground (UI-SPEC 10.1 test 10)',
+    (preset) => {
+      // Asserted on the function's OUTPUT, not just on the table: plan 88.3.1-03
+      // pins the table, this pins that groupInkVars actually hands those values
+      // to the cascade on the right side of the theme fork.
+      const vars = groupInkVars(resolveGroupGround(preset.name), CARD);
+      expect(contrastRatio(vars['--group-ink-muted'], preset.dark)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(vars['--group-ink-muted-l'], preset.light)).toBeGreaterThanOrEqual(4.5);
+    },
+  );
+
+  it('emits NO --t-* property of any name — the collision is impossible by construction', () => {
+    const emitted = [
+      ...Object.keys(groupInkVars(resolveGroupGround('blue'), CARD)),
+      ...Object.keys(groupInkVars(resolveGroupGround('blue'), TILE)),
+    ];
+    expect(emitted.filter((key) => key.startsWith('--t-'))).toEqual([]);
+    expect(new Set(emitted)).toEqual(
+      new Set(['--group-ink', '--group-ink-l', '--group-ink-muted', '--group-ink-muted-l']),
+    );
+  });
+
+  it('ignores the ink fields entirely on a TILE and returns the plain poles (owner ruling)', () => {
+    // "when it's small like that, you need the text to be more distinct."
+    const ground = resolveGroupGround('blue');
+    expect(groupInkVars(ground, TILE)).toEqual({
+      '--group-ink': '#ffffff',
+      '--group-ink-l': '#1e40af',
+      '--group-ink-muted': SUBTEXT_MUTED_ON_DARK,
+      '--group-ink-muted-l': SUBTEXT_MUTED_ON_LIGHT,
+    });
+    // and the tinted ink is genuinely NOT what comes back
+    expect(groupInkVars(ground, TILE)['--group-ink']).not.toBe(ground!.inkDark);
+  });
+
+  it.each(GROUP_COLOUR_PRESETS)('$name — the TILE arm is the plain pole on both bands', (preset) => {
+    expect(groupInkVars(resolveGroupGround(preset.name), TILE)).toEqual({
+      '--group-ink': '#ffffff',
+      '--group-ink-l': '#1e40af',
+      '--group-ink-muted': SUBTEXT_MUTED_ON_DARK,
+      '--group-ink-muted-l': SUBTEXT_MUTED_ON_LIGHT,
+    });
+  });
+
+  it('returns {} for a legacy hex on a CARD — it must NOT re-derive (AMENDMENT 3)', () => {
+    // grouplist.js:311-314 and groupHomePage/page.js:409-415 have ALREADY computed
+    // getTextStyle/getSubtitleStyle against these same grounds in the same render.
+    // Re-deriving produces byte-identical values at extra cost, and is the second
+    // half of the AMENDMENT 1 collision. {} leaves their themedTextStyleVars
+    // output standing — which is the cheaper AND the correct behaviour.
+    //
+    // This is the LIVE path for the whole FE-deployed window: BE PR-2 merges
+    // last, so until the remap runs every production group is a legacy hex.
+    expect(groupInkVars(resolveGroupGround('#123456'), CARD)).toEqual({});
+    expect(
+      groupInkVars(resolveGroupGround('#1e1e2e'), { surface: 'card', hasBackgroundImage: false }),
+    ).toEqual({});
+  });
+
+  it('still returns the plain poles for a legacy hex on a TILE', () => {
+    // The tile arm never reads the ink fields, so their absence changes nothing.
+    expect(groupInkVars(resolveGroupGround('#1e1e2e'), TILE)).toEqual({
+      '--group-ink': '#ffffff',
+      '--group-ink-l': '#1e40af',
+      '--group-ink-muted': SUBTEXT_MUTED_ON_DARK,
+      '--group-ink-muted-l': SUBTEXT_MUTED_ON_LIGHT,
+    });
+  });
+
+  it('returns {} with a background image, so the white/stroke treatment stands (AMENDMENT 7)', () => {
+    // A group can carry a color_preset AND an uploaded background_image_url at
+    // once. getTextStyle(hasBgImage, …) already answers that correctly with
+    // white + dark stroke + heavy shadow, because a user's photo is an
+    // unmeasurable ground. Emitting blue's #033f6f over an arbitrary photograph
+    // is the defect this closes — and it only became reachable once Fork A
+    // minted a separate channel, so the two treatments coexist and the consumer
+    // must choose.
+    expect(
+      groupInkVars(resolveGroupGround('blue'), { surface: 'card', hasBackgroundImage: true }),
+    ).toEqual({});
+    expect(
+      groupInkVars(resolveGroupGround('blue'), { surface: 'tile', hasBackgroundImage: true }),
+    ).toEqual({});
+    // the false case still tints — so the flag is doing the work, not the arm
+    expect(
+      groupInkVars(resolveGroupGround('blue'), { surface: 'card', hasBackgroundImage: false }),
+    ).toEqual({
+      '--group-ink': '#8ac2fb',
+      '--group-ink-l': '#033f6f',
+      '--group-ink-muted': '#75abe1',
+      '--group-ink-muted-l': '#205785',
+    });
+  });
+
+  it('returns {} for no ground at all, so a spread into style emits nothing (D-28)', () => {
+    expect(groupInkVars(null, CARD)).toEqual({});
+    expect(groupInkVars(resolveGroupGround(null), CARD)).toEqual({});
+    expect(groupInkVars(resolveGroupGround('#ffffff'), TILE)).toEqual({});
+  });
+
+  it('returns {} for an unrecognised surface rather than guessing an ink', () => {
+    expect(
+      groupInkVars(resolveGroupGround('blue'), {
+        // the cast is the point: the union is a compile-time guard, and this
+        // pins the RUNTIME behaviour for a value that gets past it (a `.js`
+        // consumer, `checkJs` is false)
+        surface: 'swatch' as unknown as 'card',
+        hasBackgroundImage: false,
+      }),
+    ).toEqual({});
   });
 });

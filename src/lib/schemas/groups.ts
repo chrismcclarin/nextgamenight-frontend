@@ -15,6 +15,20 @@ export const GroupSchema = z.object({
   description: z.string().nullable().optional(),
   profile_picture_url: z.string().nullable().optional(),
   background_url: z.string().nullable().optional(),
+  // Phase 88.3.1 (CONTEXT D-01): the group's colour, as the wire carries it.
+  // TWO fields, both optional and both nullable, because all four combinations
+  // are legitimate: preset only (post-cutover), hex only (legacy / custom),
+  // both (the expand window and the e2e fixture), neither ("no colour", D-06).
+  //   color_preset     — one of the eight preset ids; the frontend resolves it
+  //                      to a ground. Preset WINS over the hex for rendering.
+  //   background_color — a legacy or custom #rrggbb. Still a supported path,
+  //                      not deprecated. Note '#ffffff' means UNSET here for
+  //                      historical reasons (models/Group.js's defaultValue) —
+  //                      see isUnsetBackgroundColor in src/lib/colorUtils.js.
+  // Declared here because the group-colour accessor makes both load-bearing on
+  // six render surfaces; an undeclared field is a real gap, not untidiness.
+  color_preset: z.string().nullable().optional(),
+  background_color: z.string().nullable().optional(),
   created_at: z.string().optional(),
 });
 export type Group = z.infer<typeof GroupSchema>;

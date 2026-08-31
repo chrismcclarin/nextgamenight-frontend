@@ -238,6 +238,38 @@ export function vacuityGround(label: string, ground: GroundResolution): string {
  *
  * Turning any floor below into an equality, or adding a hex literal, is a decision, not a
  * cleanup.
+ *
+ * -----------------------------------------------------------------------------------------
+ * AMENDED Phase 88.3.1-W (AMENDMENT W / PLAN-REVIEW Defect 5, owner-ruled "fix it"
+ * 2026-08-30). The block above is kept VERBATIM and still governs every other assertion in
+ * Gate C. This amendment carves out exactly one narrow class, and names its boundary.
+ * -----------------------------------------------------------------------------------------
+ * WHAT IS CARVED OUT: the two AMENDMENT W tests in `contrast.spec.ts` ("the PRESET's own
+ * values are what render") assert GROUND IDENTITY — the rendered ground of
+ * `E2E_PRESET_ONLY_GROUP_ID` must EQUAL the `blue` preset's `light` / `dark` value. That is
+ * an equality on a colour, which the block above forbids by default.
+ *
+ * WHY IT IS TAKEN ANYWAY, on the block's OWN logic rather than against it. Its test is "is
+ * this the value the requirement is written in?" — that is why a ratio was allowed as the
+ * narrow exception. SPEC Req 4's requirement here is not legibility; it is that the frontend
+ * resolves `color_preset` THROUGH `src/lib/groupColourPresets.ts` rather than reading
+ * `background_color`. A floor cannot see that difference: a wrong resolver, a stale table
+ * or a legacy-hex fallback can all clear any lightness floor while the requirement fails.
+ * The value IS the requirement in this one case, so an equality on it can only fail when the
+ * requirement fails — which is precisely the block's own standard.
+ *
+ * AND THE CHURN OBJECTION IS DISSOLVED, NOT ACCEPTED. The expected value is IMPORTED from
+ * `src/lib/groupColourPresets.ts` (relative path, same D-OQ-2 reasoning as this file's
+ * `wcag` import) and converted with `parseHex`. There is NO hex literal in the spec. A
+ * future palette re-tune moves the assertion with the palette and churns nothing — the
+ * failure mode the block above was written to prevent cannot occur here.
+ *
+ * WHAT IS NOT CHANGED, said plainly so this is not read as a general licence: every ratio and
+ * every delta-L* assertion in Gate C stays floor-based, including the ones in the very tests
+ * this amendment adds a sibling to. Screenshot baselines stay rejected (87.7 D-12). Adding a
+ * hex LITERAL anywhere in `contrast.spec.ts` is still forbidden by the block above, and this
+ * amendment is not authority for a second equality — a new one needs the same argument made
+ * again, in writing.
  * ======================================================================================= */
 
 /** A colour normalised out of whatever Chromium serialised, plus the raw string. */

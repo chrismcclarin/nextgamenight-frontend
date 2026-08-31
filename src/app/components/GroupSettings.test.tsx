@@ -16,12 +16,17 @@
 import * as React from 'react';
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { axe } from 'vitest-axe';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+// M2/M3 (code review round 2): the F1 guard's Sentry event is part of its contract —
+// it is the ONLY record from which a wiped colour can be restored by hand — so the
+// channel and the fields are pinned, not just the toast.
+vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
 // Read-only schedule panel does its own fetching and is irrelevant here.
 vi.mock('@/app/components/PromptScheduleReadOnly', () => ({ default: () => null }));
@@ -43,6 +48,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 import GroupSettings from './GroupSettings';
 import { groupsAPI } from '@/lib/api';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -358,5 +364,287 @@ describe('SPEC-REQ-6 / 88-13 D-04 — one gate, at full strength, with nothing s
     // forbids this surface adding a refusal of its own.
     fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: GROUP_NAME } });
     expect(within(dialog).getByRole('button', { name: 'Delete' })).toBeEnabled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.3.1 plan 07 — the colour picker: toggle-off (CONTEXT D-06) and the
+// two-column save payload (CONTEXT D-01).
+//
+// AMENDMENT H (Defect 6 / M29): these are REAL behavioural tests on the shipped
+// component, not a source grep plus a browser note. `groupColourRendering.test.ts`
+// is a SOURCE scanner — it can prove the payload is not built from a rendered
+// value, and it cannot prove that clicking a swatch twice clears it. This file
+// already existed (88-13 / 88.2 era) and is extended rather than duplicated.
+// ---------------------------------------------------------------------------
+describe('Phase 88.3.1 D-06 / D-01 — the eight-preset picker', () => {
+
+  it('passes an axe audit — the sibling-modal floor this picker shipped without (round-3 #34)', async () => {
+    renderSettings();
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    expect(await axe(group)).toHaveNoViolations();
+  });
+
+  /** The live preview card — the element carrying the "Preview" caption. */
+  const preview = (): HTMLElement =>
+    screen.getByText('Preview').parentElement as HTMLElement;
+
+  /** The single `settings` object handed to the API on save.
+   *
+   *  The mock echoes a row that CARRIES `color_preset`, because that is what the
+   *  real route returns (`routes/groups.js` -> `res.json(group)`), and because the
+   *  F1 capability guard added 2026-08-30 reads exactly that key. The previous
+   *  `{}` stand-in would now drive the preset cases down the guard's failure arm
+   *  and quietly stop exercising the success path these tests exist to pin. */
+  async function saveAndCapture(): Promise<Record<string, unknown>> {
+    (groupsAPI.updateGroupSettings as Mock).mockImplementation(
+      async (_id: string, sent: Record<string, unknown>) => ({
+        id: GROUP_ID,
+        name: GROUP_NAME,
+        color_preset: sent.color_preset ?? null,
+        background_color: sent.background_color ?? null,
+      }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(groupsAPI.updateGroupSettings as Mock).toHaveBeenCalled());
+    return (groupsAPI.updateGroupSettings as Mock).mock.calls[0][1];
+  }
+
+  /*
+   * F1 (code review 88.3.1, owner ruling 2026-08-30). The old backend's response is
+   * modelled as a row with NO `color_preset` KEY AT ALL — not the key set to null.
+   * That distinction is the whole guard: `null` is a legitimate saved value (a
+   * cleared group), so only key ABSENCE can mean "this server does not have the
+   * column". A test that used `{ color_preset: null }` here would pass while
+   * proving nothing.
+   */
+  const OLD_BACKEND_ROW = { id: GROUP_ID, name: GROUP_NAME, background_color: null };
+
+  it('F1: a PRESET save against a backend with no color_preset column does NOT report success', async () => {
+    (groupsAPI.updateGroupSettings as Mock).mockResolvedValue(OLD_BACKEND_ROW);
+    const onClose = vi.fn();
+    const onUpdate = vi.fn();
+    renderSettings({ onClose, onUpdate });
+
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    fireEvent.click(within(group).getByRole('button', { name: 'Teal' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(toast.error as Mock).toHaveBeenCalled());
+    // The three things that made the wipe silent, each asserted on its own line.
+    expect(toast.success as Mock).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();   // modal stays open, pending edits survive
+    expect(onUpdate).not.toHaveBeenCalled();  // no refetch claiming a good write
+  });
+
+  it('F1/M2/M3: the guard reports through the CONTEXT channel, carrying the authoritative colour', async () => {
+    // The round-1 version called `logger.error(msg, ctxObject)`. `logger.error(msg, err)`
+    // is `Sentry.captureException(err ?? new Error(msg))`, so a plain object was captured
+    // as a non-Error — Sentry renders "Object captured as exception with keys: …" and the
+    // message lands in `extra.msg`. `warn(msg, ctx)` is `captureMessage` with `ctx` as
+    // `extra`, which keeps the recovery fields queryable.
+    (groupsAPI.updateGroupSettings as Mock).mockResolvedValue(OLD_BACKEND_ROW);
+    // A group whose authoritative colour is the PRESET column — the case where logging
+    // `background_color` alone (M3) recorded the wrong value.
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, color_preset: 'teal', background_color: null });
+
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    fireEvent.click(within(group).getByRole('button', { name: 'Blue' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(logger.warn as Mock).toHaveBeenCalled());
+    // The error channel is NOT used — that is the M2 defect, asserted as a negative.
+    expect(logger.error as Mock).not.toHaveBeenCalled();
+
+    const [msg, ctx] = (logger.warn as Mock).mock.calls.at(-1)!;
+    expect(msg).toContain('no color_preset column');
+    expect(ctx).toMatchObject({ group_id: GROUP_ID, attempted_preset: 'blue' });
+    // M3: the AUTHORITATIVE stored colour, not the legacy column (which is null here).
+    expect(ctx.previous_stored_colour).toBe('teal');
+  });
+
+  it('F1: a LEGACY-HEX save against that same old backend still succeeds — the expand window must keep working', async () => {
+    (groupsAPI.updateGroupSettings as Mock).mockResolvedValue(OLD_BACKEND_ROW);
+    const onClose = vi.fn();
+    renderSettings({ onClose }, { id: GROUP_ID, name: GROUP_NAME, background_color: '#1e1e2e' });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(toast.success as Mock).toHaveBeenCalledWith('Settings saved'));
+    expect(toast.error as Mock).not.toHaveBeenCalled();
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    // …and it really did take the non-preset arm, or the case proves nothing.
+    expect((groupsAPI.updateGroupSettings as Mock).mock.calls[0][1].color_preset).toBeNull();
+  });
+
+  const LABELS = ['Red', 'Orange', 'Amber', 'Green', 'Teal', 'Blue', 'Violet', 'Rose'];
+
+  it('renders exactly eight swatches, each with its hue name VISIBLE (AMENDMENT G2)', async () => {
+    renderSettings();
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    const buttons = within(group).getAllByRole('button');
+    expect(buttons).toHaveLength(8);
+
+    for (const label of LABELS) {
+      // announced once: the button carries the aria-label …
+      expect(within(group).getByRole('button', { name: label })).toBeInTheDocument();
+      // … and the caption is visible text that screen readers skip.
+      const caption = within(group).getByText(label, { selector: 'span' });
+      expect(caption).toBeInTheDocument();
+      expect(caption).toHaveAttribute('aria-hidden', 'true');
+    }
+  });
+
+  it('D-06: tapping the SELECTED swatch de-selects it and the preview falls back', async () => {
+    renderSettings();
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    const blue = within(group).getByRole('button', { name: 'Blue' });
+
+    // nothing chosen to begin with
+    for (const label of LABELS) {
+      expect(within(group).getByRole('button', { name: label })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    }
+    expect(preview().className).toContain('bg-surface-card');
+
+    fireEvent.click(blue);
+    expect(blue).toHaveAttribute('aria-pressed', 'true');
+    expect(preview().className).toContain('bg-[var(--group-ground-light)]');
+
+    // the second tap on the SAME swatch clears — this is the whole of D-06
+    fireEvent.click(blue);
+    for (const label of LABELS) {
+      expect(within(group).getByRole('button', { name: label })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    }
+    expect(preview().className).toContain('bg-surface-card');
+  });
+
+  it('D-01 shape 1 — a chosen preset saves the id and NULLS the legacy column', async () => {
+    renderSettings();
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    fireEvent.click(within(group).getByRole('button', { name: 'Teal' }));
+
+    const settings = await saveAndCapture();
+    expect(settings.color_preset).toBe('teal');
+    expect(settings.background_color).toBeNull();
+    // no RENDERED value may ever enter the payload (UI-SPEC 4.1) — not a ground,
+    // not an ink. The teal ground/ink hexes are the concrete instance of that.
+    const json = JSON.stringify(settings);
+    for (const rendered of ['#003538', '#94edf0', '#6cd9dd', '#014548']) {
+      expect(json).not.toContain(rendered);
+    }
+  });
+
+  it('D-01 shape 2 — cleared saves BOTH columns null', async () => {
+    renderSettings();
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    const rose = within(group).getByRole('button', { name: 'Rose' });
+    fireEvent.click(rose);
+    fireEvent.click(rose); // toggle back off
+
+    const settings = await saveAndCapture();
+    expect(settings.color_preset).toBeNull();
+    expect(settings.background_color).toBeNull();
+  });
+
+  /*
+   * The save-path filter (code review #8/#12/#15). Each case is a value the picker
+   * can legitimately be SEEDED with — `storedGroupColour` reads whatever the two
+   * columns hold — and each used to be forwarded to the backend verbatim.
+   */
+  it('#8: a group storing the model default #ffffff does NOT re-persist it', async () => {
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, background_color: '#ffffff' });
+    const settings = await saveAndCapture();
+    // White is the column's model default, not a chosen colour. Re-persisting it on
+    // every unrelated save is the mechanism that manufactured the D-28 white cards.
+    expect(settings.background_color).toBeNull();
+    expect(settings.color_preset).toBeNull();
+  });
+
+  it('#12: a non-canonical preset id normalises instead of 400-ing the whole save', async () => {
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, color_preset: 'Blue' });
+    const settings = await saveAndCapture();
+    // `resolveGroupGround` lower-cases before the palette lookup, so 'Blue' RENDERS.
+    // The save path now agrees, instead of forwarding it to background_color where
+    // the backend's six-hex-digit rule rejects it and blocks every other setting.
+    expect(settings.color_preset).toBe('blue');
+    expect(settings.background_color).toBeNull();
+  });
+
+  it('#15/M1: an unknown preset id (BE-first skew) is PRESERVED — neither sent nor nulled', async () => {
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, color_preset: 'lime' });
+    const settings = await saveAndCapture();
+
+    /*
+     * CORRECTED 2026-08-31 (code review round 2, M1). This case previously asserted
+     * `color_preset === null` and `background_color === null` — i.e. it PINNED THE
+     * WIPE. The round-1 fix nulled an unrecognised colour to stop it 400-ing, and this
+     * test locked that in. It was worse than the bug: the 400 blocked the save but kept
+     * the value; nulling destroys it behind a success toast.
+     *
+     * The keys must be ABSENT, not null. Absence is what makes the route's
+     * `if (x !== undefined)` destructure leave both columns untouched; `null` is a
+     * value and would be written. `toBeNull()` cannot tell those apart, which is
+     * exactly how the wrong behaviour passed review the first time.
+     */
+    expect(settings).not.toHaveProperty('color_preset');
+    expect(settings).not.toHaveProperty('background_color');
+    // …and the rest of the form still saves, which is the whole point of not 400-ing.
+    expect(settings).toHaveProperty('profile_picture_url');
+    expect(settings).toHaveProperty('background_image_url');
+    // The unrecognised value is never echoed back to the server in any field.
+    expect(JSON.stringify(settings)).not.toContain('lime');
+  });
+
+  it('#15/M1: the D-06 clear still sends explicit nulls — preservation must not swallow it', async () => {
+    // The guard must distinguish "a value I do not understand" from "the user cleared
+    // the colour". An empty form state is the D-06 clear and MUST write both columns
+    // null; if the preserve branch caught it, tapping a swatch off would silently do
+    // nothing and the cleared state would be unreachable again.
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, color_preset: 'rose' });
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    fireEvent.click(within(group).getByRole('button', { name: 'Rose' })); // toggles OFF
+
+    const settings = await saveAndCapture();
+    expect(settings.color_preset).toBeNull();
+    expect(settings.background_color).toBeNull();
+  });
+
+  it('D-01 shape 3 — a legacy hex group still saves the HEX, with no preset id', async () => {
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, background_color: '#1e1e2e' });
+    await screen.findByRole('group', { name: 'Choose a default color:' });
+
+    const settings = await saveAndCapture();
+    expect(settings.background_color).toBe('#1e1e2e');
+    expect(settings.color_preset).toBeNull();
+  });
+
+  it('AMENDMENT E (Defect 1) — saving an unrelated field does NOT wipe a migrated group\'s colour', async () => {
+    // The data-loss head. After plan 88.3.1-05 a migrated group carries
+    // `color_preset` with `background_color` NULL. A seed that read only the
+    // legacy column would open the picker showing NO colour, and this save would
+    // then send both columns null — silently erasing the group's colour.
+    renderSettings({}, { id: GROUP_ID, name: GROUP_NAME, color_preset: 'blue', background_color: null });
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+
+    // the picker opens ALREADY showing the stored preset …
+    expect(within(group).getByRole('button', { name: 'Blue' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    // … the owner changes something else entirely …
+    fireEvent.click(screen.getByTitle('Dice'));
+
+    // … and the colour survives the save.
+    const settings = await saveAndCapture();
+    expect(settings.color_preset).toBe('blue');
+    expect(settings.background_color).toBeNull();
+    expect(settings.profile_picture_url).toBe('\u{1F3B2}');
   });
 });

@@ -373,9 +373,13 @@ describe('gameDetail Upcoming/history split (fork G, 88-33 Task 7)', () => {
     renderGameDetail({ events: [SESSION, FUTURE_SESSION] });
 
     const upcomingHeading = await screen.findByRole('heading', { name: 'Upcoming (1)' });
-    // History count excludes the future event.
+    // History count excludes the future event. findByRole, NOT getByRole: the
+    // page mirrors historyEvents into filteredEvents via an effect, so one
+    // commit renders "Game Sessions (0 of 1)" before the mirror lands, and a
+    // slow runner can catch that frame (FE PR #26 quality flake, 2026-08-31).
+    // The settled count is still asserted exactly — nothing is widened.
     expect(
-      screen.getByRole('heading', { name: 'Game Sessions (1)' })
+      await screen.findByRole('heading', { name: 'Game Sessions (1)' })
     ).toBeInTheDocument();
 
     // The future event's card lives inside the Upcoming card, with the

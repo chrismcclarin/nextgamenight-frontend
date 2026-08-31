@@ -56,6 +56,29 @@
 // rule for the gate author. `wcag.test.ts` pins the separation mechanically, so a future
 // "unify the colour maths" pass reds instead of shipping.
 //
+// AMENDED Phase 88.3.1 (D-02, 2026-08-29): THE CENSUS ABOVE IS NOW FOUR, NOT THREE. The
+// original three entries are kept verbatim as history — nothing in them changed — and this
+// paragraph adds the fourth:
+//
+//   4. `src/lib/colourDistance.ts` — CIELAB + CIEDE2000 + OKLab/OKLCH. It measures perceptual
+//      DISTANCE between two colours (and hue separation), which is a different question from
+//      every entry above: 1-3 all answer "how legible is this ink on this ground", and 4
+//      answers "would a person see these two grounds as different colours at all". It exists
+//      because SPEC Req 2's ΔE2000 >= 5 floor, SPEC Req 1's >= 30° hue-gap floor and CONTEXT
+//      D-02's nearest-preset remap all need it, and a contrast ratio cannot express any of
+//      them — two backgrounds can sit at an identical contrast ratio against the same ink and
+//      be indistinguishable from each other.
+//
+//      It is NOT a contrast formula and must not be converged onto 1-3, in either direction:
+//      substituting ΔE2000 for a contrast ratio would silently drop every WCAG floor this
+//      phase and 88.3 asserted, and substituting a contrast ratio for ΔE2000 would let two
+//      presets that no user can tell apart pass the distinctness gate. `colourDistance.ts`
+//      imports `parseHex` FROM this file and deliberately exports no lightness of its own —
+//      `lStar` below stays the single lightness implementation in this tree, and
+//      `oklch().L` (0-1, OKLab) is a different scale that is not a substitute for it.
+//
+//      Converging entry 4 onto entries 1-3 is a decision, not a cleanup.
+//
 // ---------------------------------------------------------------------------------------
 // TOTALITY CONTRACT (threat T-88.3-02, ASVS V5).
 // ---------------------------------------------------------------------------------------

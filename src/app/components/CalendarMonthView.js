@@ -3,8 +3,10 @@ import { getEventsForDate, isToday } from '../../lib/calendarUtils';
 import {
   getEventTileTextColor,
   getBrightness,
-  lightTintGroupBackgroundColor,
-  resolveGroupBackgroundColor,
+  groupInkVars,
+  isDarkBackground,
+  resolveGroupGround,
+  storedGroupColour,
   themedTextStyleVars,
   SUBTEXT_MUTED_ON_DARK,
   SUBTEXT_MUTED_ON_LIGHT,
@@ -58,6 +60,28 @@ const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
  * hex arithmetic, and `days`/`activeEvents` change identity on every parent
  * render anyway, so memoization here is dead weight that reads as a performance
  * claim nobody measured.
+ *
+ * AMENDED Phase 88.3.1 (plan 09, M26), everything above KEPT AS HISTORY. The
+ * rejection above rests on a MEASURED premise — "pure hex arithmetic" — and this
+ * plan changed what the per-tile work actually is, so the premise has to be
+ * restated rather than left pointing at code that no longer runs.
+ *
+ * WHAT THE PER-TILE WORK IS NOW. `resolveGroupGround(storedGroupColour(group))`
+ * replaces the old `resolveGroupBackgroundColor` + `lightTintGroupBackgroundColor`
+ * pair. For a PRESET group it is one `??`, one `trim().toLowerCase()` and one
+ * `Map.get` — a table lookup returning stored literals, with NO channel maths at
+ * all. `groupInkVars(..., { surface: 'tile' })` adds two `getEventTileTextColor`
+ * calls (one `getBrightness`, i.e. three multiplies each) plus two constants.
+ * For a LEGACY hex group the old six-channel tint still runs, once, inside the
+ * resolver — exactly the arithmetic that used to run here.
+ *
+ * SO THE REJECTION STILL HOLDS, and it holds MORE strongly than when it was
+ * written: on the path every group takes after the Req 6 migration, a table
+ * lookup is CHEAPER than the arithmetic it replaced. Nothing here got hotter,
+ * and the second half of the original argument is untouched — `days` and
+ * `activeEvents` still change identity on every parent render, so a `useMemo`
+ * would recompute every time and cost strictly more than it saves. REJECTED,
+ * again and for the same reason: memoizing this loop.
  *
  * DECISION Phase 88.3-cr (CR-01, code-adversarial-review 2026-08-27):
  * DEF-88.3-10-02 IS FIXED HERE, reversing plan 88.3-16's "carry it verbatim"
@@ -254,7 +278,20 @@ export default function CalendarMonthView({
                         //
                         // null when the group has no colour of its own (D-28) —
                         // the tile then keeps the themed month-cell ground.
-                        const groupBgColor = resolveGroupBackgroundColor(event.Group?.background_color);
+                        /*
+                         * AMENDED Phase 88.3.1 (plan 09, AMENDMENT J): the ACCESSOR
+                         * is `storedGroupColour(event.Group)`, never
+                         * `event.Group?.background_color`. Plan 88.3.1-05 migrates
+                         * every coloured group to `color_preset='<id>',
+                         * background_color=NULL`, so reading the legacy column alone
+                         * would render every migrated group's tiles UNCOLOURED — a
+                         * failure with a fully green suite, because no test in this
+                         * tree reads a computed style.
+                         * REJECTED: a per-site `color_preset ?? background_color`
+                         * ternary — six copies of one rule (project tenet). A
+                         * decision, not a cleanup.
+                         */
+                        const tileGroundPair = resolveGroupGround(storedGroupColour(event.Group));
                         /*
                          * DECISION Phase 88.3 (D-09, cascade fix): the tile's
                          * ground is a MUTUALLY EXCLUSIVE ternary gated on
@@ -279,11 +316,49 @@ export default function CalendarMonthView({
                          * that fails to tint must withhold BOTH custom
                          * properties (T-88.3-43). This is a decision, not a
                          * cleanup.
+                         *
+                         * AMENDED Phase 88.3.1 (plan 09), the whole block above
+                         * KEPT AS HISTORY. Its Tailwind source-order argument, its
+                         * empty-false-branch D-28 note and its T-88.3-43 rejection
+                         * are all UNCHANGED in substance. Two mechanical facts under
+                         * it moved: `groupBgColor` no longer exists (its "ALSO
+                         * REJECTED: gating on `groupBgColor` alone" now reads against
+                         * `tileGroundPair`), and the hand-written
+                         * `const ground = tinted ? … : null` gate is gone — not
+                         * dropped, PROMOTED: T-88.3-43 became a property of
+                         * `resolveGroupGround`'s return type (`{dark, light, …}` or
+                         * `null`, never half a pair) instead of a gate six callers
+                         * each rewrite, so the two locals below are destructured from
+                         * ONE object and cannot drift apart.
                          */
-                        const tinted = lightTintGroupBackgroundColor(groupBgColor);
-                        const ground = tinted ? groupBgColor : null;
+                        const ground = tileGroundPair?.dark ?? null;
+                        const tinted = tileGroundPair?.light ?? null;
                         const groupProfilePic = event.Group?.profile_picture_url;
                         const groupBgImage = event.Group?.background_image_url;
+                        /*
+                         * DECISION Phase 88.3.1 (plan 09, AMENDMENT AC — the same
+                         * two-flag shape plan 08 shipped at `CalendarListView.js`
+                         * and `EventDayModal.js`): a SECOND image flag derived from
+                         * the VALIDATED `safeBgImageStyle` result, read ONLY by
+                         * `groupInkVars`.
+                         *
+                         * WHY TWO. `safeBgImageStyle` drops relative/invalid URLs
+                         * (FSEC-03), so a truthy-but-rejected URL paints NO image:
+                         * that tile IS a plain coloured tile and must get its ink.
+                         * Feeding `groupInkVars` the raw `groupBgImage` would
+                         * withhold the ink from exactly those tiles.
+                         * REJECTED: converging `tileBgImage` onto the validated
+                         * style here — it CHANGES WHAT AN INVALID-URL TILE PAINTS
+                         * (the image-tuned black shadow/stroke gives way to the
+                         * plain treatment) on a surface this plan was not scoped to
+                         * re-look at, and the same divergence is live at three
+                         * sibling files. Registered as one 4-site family in
+                         * `.planning/deferred/phase-88.6.md`; converge all of them in
+                         * one pass with a rendered check. Deleting either flag here
+                         * is a decision, not a cleanup.
+                         */
+                        const bgImageStyle = safeBgImageStyle(groupBgImage);
+                        const hasValidBgImage = !!bgImageStyle;
                         // CR-01 (88.3-cr): the COMPACT tile renders no image, so
                         // it must not take the image-tuned text treatment either.
                         const tileBgImage = variant === 'compact' ? null : groupBgImage;
@@ -319,18 +394,70 @@ export default function CalendarMonthView({
                          * and re-pointing them would change the past-date pole
                          * on an untinted-but-coloured tile. A decision, not a
                          * cleanup.
+                         *
+                         * ——— AMENDED Phase 88.3.1 (plan 09), everything above KEPT
+                         * VERBATIM AS HISTORY ———
+                         *
+                         * THE `isPastDate` GATES ARE REVERSED HERE, deliberately and
+                         * under authority: SPEC Req 8 and UI-SPEC 3.5 name exactly
+                         * these two arms as the third of three "the pole is chosen by
+                         * 'has a colour' instead of 'is the rendered ground dark'"
+                         * sites. This is not a cleanup that ignored the paragraph
+                         * above; it is the paragraph's premise expiring.
+                         *
+                         * WHY THE PREMISE EXPIRED. "Does this group have a colour at
+                         * all" was a SAFE proxy for "is the ground dark" only while
+                         * every coloured ground WAS dark. Phase 88.3.1 ships eight
+                         * LIGHT surfaces (`groupColourPresets.ts`), so the proxy
+                         * breaks by construction. It was already broken for legacy
+                         * data: on a pre-59-05 light stored hex (`#e3f2fd`,
+                         * `#e8f5e9`, `#f5f5f5`, `#fffde7`) in DARK mode the tile
+                         * paints that near-white hex and the old dark arm asked for
+                         * 70%-white on top of it — about **1.1:1**, i.e. invisible.
+                         * Those presets left the picker at `5bb69a6` but were never
+                         * migrated out of the database, and the backend validator
+                         * checks hex SHAPE only. Registered by the owner 2026-08-28
+                         * ("register and stop. We already have a thing to fix
+                         * colors") and routed to this phase because this phase is
+                         * what makes the light case ordinary rather than legacy.
+                         *
+                         * THE REPLACEMENT IS PER-ARM, and that is the load-bearing
+                         * detail rather than a formality: the DARK arm asks
+                         * `isDarkBackground(ground)` — the dark band, which is what
+                         * dark mode paints — and the LIGHT arm asks
+                         * `isDarkBackground(tinted)` — the light surface, which is
+                         * what light mode paints. One shared predicate would be wrong
+                         * in one theme by definition. It is the same predicate the
+                         * NON-past path in this very file already uses via
+                         * `getEventTileTextColor`.
+                         *
+                         * WHAT IS **NOT** CHANGING, named so the next reader does not
+                         * finish the job: the non-past
+                         * `getEventTileTextColor(ground)` / `(tinted)` pair, and the
+                         * half of the marker above that defends it. Re-pointing THOSE
+                         * would change the pole on an untinted-but-coloured tile —
+                         * a different decision, which this phase is not making
+                         * (UI-SPEC 3.5, "Do not touch").
+                         * REJECTED: deleting the block above and writing a fresh one.
+                         * The reasoning that was correct in 88.3-cr is the record of
+                         * why the old shape shipped; losing it loses the audit trail
+                         * that shows this reversal was made knowingly.
                          */
                         const tileTextVars = themedTextStyleVars(
                           {
                             ...tileTextTreatment(ground, tileBgImage),
                             color: isPastDate
-                              ? (groupBgColor ? SUBTEXT_MUTED_ON_DARK : 'var(--color-content-muted)')
+                              ? (tinted
+                                  ? (isDarkBackground(ground) ? SUBTEXT_MUTED_ON_DARK : SUBTEXT_MUTED_ON_LIGHT)
+                                  : 'var(--color-content-muted)')
                               : getEventTileTextColor(ground),
                           },
                           {
                             ...tileTextTreatment(tinted, tileBgImage),
                             color: isPastDate
-                              ? (groupBgColor ? SUBTEXT_MUTED_ON_LIGHT : 'var(--color-content-muted)')
+                              ? (tinted
+                                  ? (isDarkBackground(tinted) ? SUBTEXT_MUTED_ON_DARK : SUBTEXT_MUTED_ON_LIGHT)
+                                  : 'var(--color-content-muted)')
                               : getEventTileTextColor(tinted),
                           },
                         );
@@ -443,6 +570,70 @@ export default function CalendarMonthView({
                                   '--group-ground': ground,
                                   '--group-ground-light': tinted,
                                 }),
+                                /*
+                                 * DECISION Phase 88.3.1 (plan 09, SPEC Req 4 / UI-SPEC 3.3
+                                 * and 3.4): this tile takes **PLAIN** ink —
+                                 * `groupInkVars(pair, { surface: 'tile' })` — from the SAME
+                                 * one function the four CARD surfaces call, differing by ONE
+                                 * ARGUMENT rather than by a second copy.
+                                 *
+                                 * PLAIN, NOT TINTED, IS AN OWNER RULING, not an oversight:
+                                 * "when it's small like that, you need the text to be more
+                                 * distinct." A month tile is one line of `text-xs` in a ~49px
+                                 * cell, so it takes the high-contrast poles rather than the
+                                 * card ink's chromatic 8.00-8.08:1.
+                                 *
+                                 * MEASURED ON THE SHIPPED BANDS (2026-08-29, this tree's
+                                 * `lib/wcag.ts`), not inherited — the figures in this phase's
+                                 * own documents have been wrong twice:
+                                 *   `getEventTileTextColor` non-past  6.44-6.50:1 light
+                                 *                                     11.29-15.40:1 dark
+                                 *   past-date muted poles             7.61-7.68:1 light
+                                 *                                     6.33-8.10:1 dark
+                                 * NOTE the dark low ends. Both are `green`, whose dark band
+                                 * sits at CIE L* 24.6 by owner direction (BAND EXCEPTION 1 in
+                                 * `groupColourPresets.ts`) rather than at the 12-20 target.
+                                 * UI-SPEC 3.5 publishes "7.27-8.10:1 dark" for the past-date
+                                 * pole; on this tree it is **6.33**-8.10, because green pulls
+                                 * it. Everything still clears AA with room, but green is now
+                                 * the binding row on a FOURTH reading — the palette marker
+                                 * already says nobody may brighten it further without
+                                 * re-running UI-SPEC 2.4, and this is one more reason.
+                                 * REJECTED: `surface: 'card'` here,
+                                 * and equally a second `tileInkVars` beside the card one —
+                                 * UI-SPEC 3.4 is explicit that one function with one
+                                 * parameter is the contract, and duplication is never a peer
+                                 * option in this project.
+                                 *
+                                 * `hasBackgroundImage` is passed EXPLICITLY and is the
+                                 * VALIDATED flag: this is a `.js` file, so an omitted option
+                                 * degrades silently to `false` — the UNSAFE direction.
+                                 *
+                                 * WHY THE TILE'S `color` STILL COMES FROM `--t-color*` AND
+                                 * NOT FROM `--group-ink*`, stated because it looks like an
+                                 * unfinished wiring and is not. `groupInkVars`'s tile muted
+                                 * rungs (`--group-ink-muted*`) are THEME-keyed constants —
+                                 * `SUBTEXT_MUTED_ON_DARK` on the `dark:` arm, always. A
+                                 * past-date tile that consumed them would ask for 70%-white
+                                 * in dark mode on a legacy LIGHT stored hex, which is
+                                 * precisely the ~1.1:1 defect the amended CR-02 block above
+                                 * just closed. The past-date pole has to be chosen per arm
+                                 * from the ground ACTUALLY PAINTED IN THAT ARM, and only JS
+                                 * can do that — which is why UI-SPEC 3.5 locates this site's
+                                 * Req 8 fix at `tileTextVars`, in this file, and not in the
+                                 * ink function. REJECTED: forking the className on
+                                 * `isPastDate` so the non-past arm could read `--group-ink*`
+                                 * — it renders byte-identical pixels (the tile ink IS
+                                 * `getEventTileTextColor`) for a second colour channel and a
+                                 * weaker gate. The ink is emitted so the ground and its ink
+                                 * turn on and off together (test 9) and so `surface: 'tile'`
+                                 * has a real production caller; changing any of this is a
+                                 * decision, not a cleanup.
+                                 */
+                                ...groupInkVars(tileGroundPair, {
+                                  surface: 'tile',
+                                  hasBackgroundImage: hasValidBgImage,
+                                }),
                                 ...(tinted && tileTextVars),
                               }}
                               title={tileLabel}
@@ -497,8 +688,51 @@ export default function CalendarMonthView({
                                 '--group-ground': ground,
                                 '--group-ground-light': tinted,
                               }),
+                              /*
+                               * The FULL tile's half of the tile-ink decision — full
+                               * marker at the compact tile above, not repeated here.
+                               * One difference is real and worth naming: this variant
+                               * DOES paint the background image, so on a group that has
+                               * both a colour and a valid photo `groupInkVars` returns
+                               * `{}` (plan 06 AMENDMENT 7) and `getTextStyle`'s
+                               * owner-ruled white/stroke/shadow treatment stands
+                               * untouched. That is why the flag must be the VALIDATED
+                               * `hasValidBgImage` and not the raw URL: a URL the
+                               * allowlist rejects paints no image, so that tile IS a
+                               * plain coloured tile and must get its ink. REJECTED:
+                               * `!!groupBgImage`. A decision, not a cleanup.
+                               *
+                               * CAVEAT, recorded 2026-08-30 (code review #2/#28): the rule
+                               * stated above does NOT hold for the COMPACT variant, and that
+                               * is accepted rather than fixed. `tileBgImage` is `null` when
+                               * `variant === 'compact'` (the compact tile paints no image),
+                               * yet `hasValidBgImage` is derived from the FULL image — so a
+                               * compact tile of an image-bearing group is handed
+                               * `hasBackgroundImage: true` and gets `{}` back, i.e. it is
+                               * treated as an image surface while painting no image.
+                               * The impact is PERMANENTLY zero, not merely invisible today:
+                               * month tiles never consume `--group-ink*` at all, by owner
+                               * ruling (UI-SPEC 3.3, "when it's small like that, you need the
+                               * text to be more distinct"), and `groupColourRendering.test.ts`
+                               * :1470-1476 asserts a tile's colour expression never contains
+                               * `--group-ink` because consuming it would re-open SPEC Req 8 on
+                               * past dates at ~1.1:1. So the argument this flag feeds cannot
+                               * reach a rendered pixel on this surface.
+                               * REJECTED: passing `variant === 'compact' ? false :
+                               * hasValidBgImage`. It would make the flag honest but changes a
+                               * call whose result is provably discarded, and test 9's
+                               * derivation scan requires the literal
+                               * `const F = !!X` / `const X = safeBgImageStyle(…)` chain — a
+                               * ternary on the flag itself reds it. Resolve this together with
+                               * the five-site `hasBackgroundImage` convergence that Phase 88.6
+                               * already owns (`.planning/deferred/phase-88.6.md`), not before.
+                               */
+                              ...groupInkVars(tileGroundPair, {
+                                surface: 'tile',
+                                hasBackgroundImage: hasValidBgImage,
+                              }),
                               ...tileTextVars,
-                              ...safeBgImageStyle(groupBgImage),
+                              ...bgImageStyle,
                               backgroundSize: 'cover',
                               backgroundPosition: 'center',
                               position: 'relative',
