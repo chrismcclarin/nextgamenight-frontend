@@ -16,6 +16,7 @@
 import * as React from 'react';
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { axe } from 'vitest-axe';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -377,6 +378,12 @@ describe('SPEC-REQ-6 / 88-13 D-04 — one gate, at full strength, with nothing s
 // already existed (88-13 / 88.2 era) and is extended rather than duplicated.
 // ---------------------------------------------------------------------------
 describe('Phase 88.3.1 D-06 / D-01 — the eight-preset picker', () => {
+
+  it('passes an axe audit — the sibling-modal floor this picker shipped without (round-3 #34)', async () => {
+    renderSettings();
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    expect(await axe(group)).toHaveNoViolations();
+  });
 
   /** The live preview card — the element carrying the "Preview" caption. */
   const preview = (): HTMLElement =>

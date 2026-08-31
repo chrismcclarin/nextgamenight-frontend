@@ -948,7 +948,11 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                   <div key={preset.name} className="flex w-full max-w-16 flex-col items-center gap-1">
                     <button
                       onClick={() => handleSelectDefaultColor(preset.name)}
-                      className={`w-full max-w-16 aspect-square min-w-11 min-h-11 border-2 rounded-lg hover:opacity-80 transition-opacity focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+                      /* Hover is a BORDER treatment, not whole-element opacity: opacity dims
+                         the very border whose 3:1 resting contrast the marker above measured
+                         passing by 0.036 at its worst (round-3 #32, WCAG 1.4.11). The hover
+                         colour is the selected state's own border, minus the ring. */
+                      className={`w-full max-w-16 aspect-square min-w-11 min-h-11 border-2 rounded-lg hover:border-content-primary transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
                         isSelected ? 'border-content-primary ring-2 ring-content-primary' : 'border-line-strong'
                       } ${swatchGround ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
                       style={{
@@ -957,7 +961,10 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                           '--group-ground-light': swatchGround.light,
                         }),
                       }}
-                      title={preset.label}
+                      // aria-label ONLY — a title alongside it becomes the accessible
+                      // description and gets read as a second "Red" (round-3 #30, the
+                      // "announced exactly ONCE" acceptance item). Sighted users have
+                      // the visible caption below; do not re-add a tooltip.
                       aria-label={preset.label}
                       aria-pressed={isSelected}
                     />
