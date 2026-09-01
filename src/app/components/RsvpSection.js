@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { rsvpAPI } from '../../lib/api';
 import ClickableMemberName from './ClickableMemberName';
 // Phase 88.5 (SPEC Req 4 / D-07): the status copy/treatment map lifted out of this
@@ -30,6 +30,22 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
 
   const isPastEvent = eventDate ? new Date(eventDate) < new Date() : false;
 
+  // An unsaved, user-typed note draft. While true, NO fetch re-sync may repaint the
+  // textarea — a status tap or identity resolution must never erase typed-but-unsaved
+  // text (adversarial review 2026-09-01 round 2, HIGH: the status-only tap otherwise
+  // REPLACES the draft with the server's old note). A ref, not state: fetchRsvps is a
+  // useCallback([eventId, self?.id]) and a state read inside it would be a stale
+  // closure (the remedy-skeptic's exact objection to the comparison variant).
+  const noteDirty = useRef(false);
+
+  // The same skeptic's second objection, closed: gameDetail's single-event mount keys
+  // this component by refresh counter, NOT event id, so ?event_id=A -> B re-renders
+  // the SAME instance. A draft belongs to the event it was typed under — reset the
+  // protection on event switch so event B's saved note can sync in.
+  useEffect(() => {
+    noteDirty.current = false;
+  }, [eventId]);
+
   const fetchRsvps = useCallback(async () => {
     if (!eventId) return;
     try {
@@ -47,11 +63,13 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
         if (mine) {
           setUserRsvp(mine);
           setSelectedStatus(mine.status);
-          setNote(mine.note || '');
+          // Both note re-syncs are gated on the draft flag (`noteDirty` above): the
+          // saved note may hydrate an untouched box, never overwrite typed text.
+          if (!noteDirty.current) setNote(mine.note || '');
         } else {
           setUserRsvp(null);
           setSelectedStatus(null);
-          setNote('');
+          if (!noteDirty.current) setNote('');
         }
       }
     } catch (err) {
@@ -80,11 +98,16 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
       // Accepted delta, taken knowingly: a status tap no longer saves an unsaved
       // textarea draft as a side effect — `handleSaveNote` below is the SOLE note
       // writer (still `note || null`, so clearing the textarea still clears the note).
+      // The draft SURVIVES the tap in the box (`noteDirty` gates every re-sync);
+      // "not saved" must never degrade to "erased" (round-2 HIGH, 2026-09-01).
       // Re-adding the third argument is a decision, not a cleanup.
       const result = await rsvpAPI.submitRsvp(eventId, status);
       setUserRsvp(result);
       setSelectedStatus(status);
-      if (result.note !== undefined) setNote(result.note || '');
+      // Deliberately NO setNote from the response here: under the status-only tap the
+      // echoed note is the server's OLD saved note, and painting it would erase a
+      // typed-but-unsaved draft (round-2 HIGH). The gated fetchRsvps below re-syncs
+      // an untouched box; a dirty draft survives.
       await fetchRsvps();
       if (onRsvpChange) onRsvpChange(status);
     } catch (err) {
@@ -101,6 +124,8 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
     setError(null);
     try {
       await rsvpAPI.submitRsvp(eventId, selectedStatus, note || null);
+      // The draft is now the saved note — re-syncs may flow again.
+      noteDirty.current = false;
       await fetchRsvps();
     } catch (err) {
       console.error('Error saving note:', err);
@@ -199,6 +224,9 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
               value={note}
               onChange={(e) => {
                 if (e.target.value.length <= 500) {
+                  // User-typed text = an unsaved draft; block fetch re-syncs from
+                  // repainting the box until Save note lands (see `noteDirty`).
+                  noteDirty.current = true;
                   setNote(e.target.value);
                 }
               }}

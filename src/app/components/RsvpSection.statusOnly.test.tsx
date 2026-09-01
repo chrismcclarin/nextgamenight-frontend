@@ -123,6 +123,78 @@ describe('RsvpSection status tap is status-only (owner ruling a, 2026-09-01)', (
     expect(submitRsvp.mock.calls[0]).toHaveLength(2);
   });
 
+  it('a typed-but-unsaved draft SURVIVES a status tap — not saved, but never erased', async () => {
+    const user = userEvent.setup();
+    // Stateful mocks mirroring the real backend: a submit updates the status the
+    // subsequent refetch reports (otherwise the refetch would reset selectedStatus
+    // to the fixture's original and the Save-note assertion below tests nothing).
+    let serverStatus = 'yes';
+    submitRsvp.mockImplementation((_id: string, status: string) => {
+      serverStatus = status;
+      return Promise.resolve({
+        id: 'rsvp-own',
+        status,
+        note: 'running late, start without me',
+      });
+    });
+    getEventRsvps.mockImplementation(() =>
+      Promise.resolve(withOwnRsvp(serverStatus, 'running late, start without me'))
+    );
+    renderSection();
+
+    const textarea = await screen.findByPlaceholderText('Add a note (optional)');
+    await waitFor(() =>
+      expect(textarea).toHaveValue('running late, start without me')
+    );
+
+    // Type a new draft over the saved note, then change status WITHOUT saving.
+    await user.clear(textarea);
+    await user.type(textarea, 'actually bringing snacks');
+    await user.click(
+      screen.getByRole('button', { name: statusConfig.no.buttonText })
+    );
+    await waitFor(() => expect(submitRsvp).toHaveBeenCalledTimes(1));
+
+    // The round-2 HIGH: the response echo and the post-tap refetch both used to
+    // repaint the box with the server's OLD note. The draft must still be here.
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(2));
+    expect(textarea).toHaveValue('actually bringing snacks');
+
+    // And Save note then persists exactly that draft (DR0's carried requirement).
+    await user.click(screen.getByRole('button', { name: 'Save note' }));
+    await waitFor(() => expect(submitRsvp).toHaveBeenCalledTimes(2));
+    expect(submitRsvp).toHaveBeenNthCalledWith(2, EVENT_ID, 'no', 'actually bringing snacks');
+  });
+
+  it('an event switch on the SAME instance re-syncs the new event note despite a stale draft', async () => {
+    // The remedy-skeptic objection, pinned: gameDetail keys this component by refresh
+    // counter, not event id, so ?event_id=A -> B re-renders the SAME instance. A
+    // draft typed under A must not block B's saved note from hydrating.
+    const user = userEvent.setup();
+    getEventRsvps.mockImplementation((id: string) =>
+      Promise.resolve(
+        id === 'evt-B'
+          ? withOwnRsvp('yes', 'note for event B')
+          : withOwnRsvp('yes', 'running late, start without me')
+      )
+    );
+
+    const { rerender } = render(
+      <RsvpSection eventId={EVENT_ID} self={{ id: SELF_UUID }} eventDate={EVENT_DATE} />
+    );
+    const textarea = await screen.findByPlaceholderText('Add a note (optional)');
+    await waitFor(() =>
+      expect(textarea).toHaveValue('running late, start without me')
+    );
+    await user.clear(textarea);
+    await user.type(textarea, 'unsaved draft for A');
+
+    rerender(
+      <RsvpSection eventId="evt-B" self={{ id: SELF_UUID }} eventDate={EVENT_DATE} />
+    );
+    await waitFor(() => expect(textarea).toHaveValue('note for event B'));
+  });
+
   it('Save note still sends an explicit null when the textarea is cleared', async () => {
     const user = userEvent.setup();
     renderSection();
