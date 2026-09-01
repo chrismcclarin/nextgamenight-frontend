@@ -51,9 +51,11 @@ export default function Footer() {
      amber pill). Re-adding any fixed bottom-edge surface to a phone page re-opens everything
      above and this spacer has to come back with it.
 
-     THE VERIFIED NEGATIVE, re-run at deletion time (2026-09-01):
-       grep -rn "fixed.*bottom-0" src --include='*.js' --include='*.jsx' --include='*.tsx'
-     now returns exactly ONE production element — `ui/BottomSheet.tsx:213`, a Radix dialog that
+     THE VERIFIED NEGATIVE, re-run across src/ at deletion time (2026-09-01) — a recursive grep
+     for elements combining position-fixed with a zero bottom offset (the phrasing is left
+     un-quoted on purpose so this note cannot match its own gate; the exact command is in
+     `88.5-07-PLAN.md`'s verification block). It now returns exactly ONE production element —
+     `ui/BottomSheet.tsx:213`, a Radix dialog that
      portals to <body> and only exists while open, so it can never park over the Footer the way a
      persistent bar did. The capital-P Privacy link that CLAUDE.md records as load-bearing for
      Google auth is therefore unoccludable BY CONSTRUCTION now, rather than by a spacer that had
