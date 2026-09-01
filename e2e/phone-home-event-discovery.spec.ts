@@ -385,10 +385,14 @@ async function assertHeroLeadsTheSheet(page: Page, count: number): Promise<void>
   // SPEC Req 2, the sheet twin: the "This week" subheader carries the SAME number as the
   // button. One selector value feeds both (`selectUpcomingWithin7Days`), so a disagreement
   // here means two definitions of "this week" have appeared.
-  const thisWeek = calendarSheet(page).getByRole('heading', { name: /^this week$/i });
+  // Prefix match, not anchored: the subheader's accessible name carries an sr-only
+  // count clause (", N upcoming this week" — ML15/ML0, 2026-09-01) whenever the pill
+  // renders, and this probe only runs when count >= 1, so `/^this week$/` could NEVER
+  // match here. Mirrors the jsdom suite's subSection() helper.
+  const thisWeek = calendarSheet(page).getByRole('heading', { name: /^this week\b/i });
   await guardResolved(
     thisWeek,
-    `the sheet's "This week" subheader — the button announces ${count} upcoming games this week, so the section those events belong to must render (FIXTURE or partition failure; fixture owned by ${FIXTURE_OWNER})`,
+    `the sheet's "This week" subheader — the button announces ${count} upcoming games this week, so the section those events belong to must render (locator, FIXTURE or partition failure; fixture owned by ${FIXTURE_OWNER})`,
   );
   await expect(
     thisWeek.getByText(String(count), { exact: true }),
