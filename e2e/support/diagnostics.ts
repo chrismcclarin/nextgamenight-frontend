@@ -178,16 +178,34 @@ export interface FooterOcclusionProbe {
   authFooterPresent: boolean;
   publicFooterPresent: boolean;
   loadingPlaceholderLikely: boolean;
-  spacerPresent: boolean;
-  spacerRect: { top: number; bottom: number; height: number } | null;
-  barRect: { top: number; bottom: number; height: number } | null;
+  /**
+   * RE-POINTED Phase 88.5 plan 10. This used to be `spacerPresent` / `spacerRect` /
+   * `barRect` — three fields naming the phone bottom event bar and the Footer clearance
+   * spacer it drove, BOTH of which were deleted in plan 88.5-07. Left as they were they
+   * would have reported `false` / `null` forever: a diagnostic that can only ever say one
+   * thing tells a future reader nothing, and worse, it would have kept pointing an
+   * investigation at an element that no longer exists.
+   *
+   * The replacement is the GENERAL form, matching the inverted assertion it feeds
+   * (`phone-home-event-discovery.spec.ts`, "no fixed element occludes the Footer /Privacy
+   * link"): every `fixed`/`sticky` element on the page with a non-zero box, described.
+   * Whatever occludes the link next will appear here without this file being edited again.
+   */
+  fixedOrStickyElements: Array<{
+    tag: string;
+    position: string;
+    ariaLabel: string | null;
+    top: number;
+    bottom: number;
+    height: number;
+  }>;
   privacyLinkRect: { top: number; bottom: number; height: number } | null;
   privacyHref: string | null;
   scrollTop: number;
   /** `scrollHeight - clientHeight` of the scrolling element. `scrollTop` short of this
    *  means `window.scrollTo(0, document.body.scrollHeight)` did NOT reach the bottom —
-   *  which explains a link bottom below the bar's top far more cheaply than a missing
-   *  56px spacer does. */
+   *  which explains a link bottom below an occluder's top far more cheaply than a missing
+   *  56px spacer did. */
   maxScrollTop: number;
   documentScrollHeight: number;
   bodyScrollHeight: number;
@@ -442,7 +460,7 @@ export async function probePointPath(
 }
 
 /**
- * Footer / phone-bar occlusion state, plus the two things the recorded failure cannot be
+ * Footer occlusion state, plus the two things the recorded failure cannot be
  * read without: whether the page actually scrolled to the bottom (`scrollTop` vs
  * `maxScrollTop`), and which footer variant rendered.
  *
@@ -465,8 +483,24 @@ export async function probeFooterOcclusion(page: Page): Promise<FooterOcclusionP
       (a) => (a.textContent ?? '').trim() === 'Privacy',
     );
     const footerEl = document.querySelector('footer');
-    const spacer = document.querySelector('[data-testid="phone-bottom-bar-spacer"]');
-    const bar = document.querySelector('[aria-label^="Open upcoming events"]');
+
+    // Every fixed/sticky element with a real box — the general form of the old bar/spacer
+    // pair. See the interface's RE-POINTED note for why the specific ones are gone.
+    const fixedOrStickyElements = Array.from(document.body.querySelectorAll('*'))
+      .map((el) => ({ el, position: window.getComputedStyle(el).position }))
+      .filter(({ position }) => position === 'fixed' || position === 'sticky')
+      .map(({ el, position }) => {
+        const r = el.getBoundingClientRect();
+        return {
+          tag: el.tagName.toLowerCase(),
+          position,
+          ariaLabel: el.getAttribute('aria-label'),
+          top: round(r.top),
+          bottom: round(r.bottom),
+          height: round(r.height),
+        };
+      })
+      .filter((entry) => entry.height > 0);
 
     const se = document.scrollingElement ?? document.documentElement;
 
@@ -477,9 +511,7 @@ export async function probeFooterOcclusion(page: Page): Promise<FooterOcclusionP
       // (`Footer.js:43`) — so "no <footer>, no Report Bug" is the fingerprint of a page
       // whose auth state had not resolved when the probe fired.
       loadingPlaceholderLikely: !footerEl && !reportBug,
-      spacerPresent: Boolean(spacer),
-      spacerRect: box(spacer),
-      barRect: box(bar),
+      fixedOrStickyElements,
       privacyLinkRect: box(privacy ?? null),
       privacyHref: privacy ? privacy.getAttribute('href') : null,
       scrollTop: round(se.scrollTop),

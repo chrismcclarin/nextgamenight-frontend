@@ -519,13 +519,29 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // DEVIATION FROM THE PLAN, recorded here rather than silently: the plan asks for a
       // "Card-hosted LINK" on this surface. VERIFIED 2026-08-26 — at 375px the home page
       // renders no `role=link` inside a card: `EventCalendar` and `UpcomingEventsCard` are
-      // both behind `hidden md:flex` (`UserHomePage.js:273`), `PhoneEventBar` and
-      // `UpcomingEventsCard`'s rows are `<button>`s, and the only links on the page are the
+      // both behind `hidden md:flex` (`UserHomePage.js:273`), `UpcomingEventsCard`'s rows
+      // are `<button>`s, and the only links on the page are the
       // header nav and the footer, neither of which is card-hosted. The group card ITSELF
       // is `role="button"` (`grouplist.js:303`) and its ground IS the white card, so it
       // covers Req 7's card GROUND, which is what SPEC:179-182 actually enumerates (page,
       // card, today tint, primary button). The LINK component type is covered on
       // groupHomePage ("Plan Game Session") and in the header menu (surface 10).
+      //
+      // AMENDED Phase 88.5 plan 10 — the CONCLUSION above is unchanged; one of the grounds
+      // it rested on is. The phone bottom event bar named in the original list was deleted
+      // in plan 88.5-07, so it can no longer be cited as a reason the page has no
+      // card-hosted link. RE-VERIFIED 2026-09-01 against the post-88.5 tree, and the
+      // conclusion holds on the remaining grounds plus two new ones:
+      //   - the desktop column is still behind `hidden md:flex` (`UserHomePage.js:386` —
+      //     the cite above moved with the removal, the gate did not change);
+      //   - `NextGameNightCard`'s hero, the only new card-hosted control in the sheet, is a
+      //     `<button>` (`NextGameNightCard.tsx:280`), not a link;
+      //   - `MemberChipStack`'s chips on the group card are `role="button"` spans
+      //     (`MemberChipStack.tsx:350`, `ClickableMemberName.js:438`), deliberately so —
+      //     see their nested-interactive markers.
+      // So the count of `role=link` inside a card at 375px is still zero, and this step
+      // still measures the Button primitive plus the card ground. Nothing here needs to
+      // change; deleting this note would lose the re-verification.
       const cardRing = await focusRingMeasurement(page, card, 'card-hosted control focus ring (Req 7)');
       expectRatio('card-hosted control focus ring (Req 7)', cardRing, NON_TEXT);
     });
