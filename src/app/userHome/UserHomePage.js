@@ -14,13 +14,20 @@ import UpcomingCountPill from '../components/UpcomingCountPill';
 // Req 11b (88.1-10): the phone calendar surface hosts the BARE list view — see
 // the DECISION marker at its mount for why it is not the calendar component.
 import CalendarListView from '../components/CalendarListView';
+// SPEC Req 3-4 (88.5-05/08): the calendar sheet's hero. It never selects its own event —
+// the shared `selectNextUpcoming` below does, and the result is handed down.
+import NextGameNightCard from '../components/NextGameNightCard';
 import { BottomSheet } from '../../components/ui/BottomSheet';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
 import { eventsAPI } from '../../lib/api';
 // The ONE definition of "upcoming" (88.1-05, extended 88.5): the count the button
 // shows and the rows the sheet lists come from this selector, so they cannot disagree.
-import { selectUpcomingWithin7Days } from '../../lib/upcomingEvents';
+import {
+    hasLiveStatus,
+    selectNextUpcoming,
+    selectUpcomingWithin7Days,
+} from '../../lib/upcomingEvents';
 // Phase 87.3-07 (D-02): the viewer's User.id UUID resolves via the shared
 // ['users','self'] query instead of an ad-hoc getUser self-fetch.
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
@@ -151,6 +158,56 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
        timer here would re-render the whole page on a clock nobody is watching. */
     const now = new Date();
     const upcomingWithin7Days = selectUpcomingWithin7Days(upcomingEvents, now);
+
+    /* SPEC Req 3 (88.5-08): the hero's event, selected ONCE, from the SAME `now` as the count
+       above. The hero receives the RESULT, never the list — a second "next" definition inside
+       the card is exactly what `src/lib/upcomingEvents.ts` exists to prevent. */
+    const nextUpcoming = selectNextUpcoming(upcomingEvents, now);
+
+    /* DECISION Phase 88.5 (OWNER RULING 2a, 2026-08-31) — the HAPPENING-NOW classification
+       lives HERE, in the page that owns the clock, and travels to the sheet as an id SET.
+
+       CHOSEN: classify once here, hand `CalendarListView` two id sets, and let it partition its
+       existing date groups by set membership alone. REJECTED: letting the sheet decide, which
+       needs its own copy of the live/future test and its own `now` — a second (and, with the
+       hero, a third) definition of "upcoming" that can disagree with the number on the button.
+       That is threat T-88.5-25, and it is the same defect one level down that
+       `upcomingEvents.ts:5-30` records for the count itself.
+
+       MEMBERSHIP is exactly `hasLiveStatus(event)` AND `start <= now`, against the ONE `now`
+       above. `hasLiveStatus` is the NAMED import from the shared module and is the ONLY status
+       test in this file — there is deliberately no inline `.status` equality comparison anywhere.
+       (Worded WITHOUT the literal operator on purpose: the acceptance gate for this task greps
+       for that pattern, and a marker that trips its own gate is noise, not a record — the same
+       correction plan 88.5-07 had to make to the Footer clearance marker.)
+       There is also NO date-key or future-range derivation here: the raw list is the same one
+       `futureGroups` already limits to today-or-future by date key, so a second range test would
+       be a duplicate, possibly timezone-divergent derivation of the same boundary.
+
+       NOT COUNTED, deliberately: this set is disjoint from the this-week set by construction (an
+       already-started event fails `selectUpcomingWithin7Days`'s exclusive lower bound), and it
+       never reaches the pill or the button label. An event in progress is not "upcoming", so
+       counting it would make the badge promise something the counted section does not contain.
+
+       NaN: an unparseable `start_date` is dropped EXPLICITLY rather than left to fail the
+       comparison silently — OWNER RULING O1a, the same rule `isLiveUpcoming` applies.
+
+       NOT MEMOIZED, and that is deliberate rather than an oversight: `now` is a fresh `Date` on
+       every render (it has to be — see the ONE CLOCK note above), so any `useMemo` keyed on it
+       would miss on every render and buy nothing but indirection. A user's upcoming-event list
+       is a handful of rows; two passes over it per render is not a cost worth obscuring. */
+    const nowMs = now.getTime();
+    const thisWeekIds = new Set(upcomingWithin7Days.map((event) => event.id));
+    const happeningNowIds = new Set(
+        (Array.isArray(upcomingEvents) ? upcomingEvents : [])
+            .filter((event) => {
+                if (!hasLiveStatus(event)) return false;
+                const startMs = new Date(event.start_date).getTime();
+                if (Number.isNaN(startMs)) return false;
+                return startMs <= nowMs;
+            })
+            .map((event) => event.id)
+    );
 
     /* SUPPRESSION, carried verbatim from the deleted phone bottom bar (88.1 plan 08, which
        carried it from DECISION Phase 88-33) and re-stated in full on `UpcomingCountPill.tsx`,
@@ -418,7 +475,13 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
 
                 Like the 11a sheet above, this mount deliberately carries NO `md:hidden`: it
                 portals to <body>, and hiding an OPEN dialog's content leaves a visible overlay
-                plus a focus trap on invisible content. The BUTTON carries the viewport gate. */}
+                plus a focus trap on invisible content. The BUTTON carries the viewport gate.
+
+                AMENDED Phase 88.5 (SPEC Req 3): the sheet now LEADS WITH A HERO — the
+                "Next game night" card mounted below, above the list. All FOUR choices recorded
+                above are otherwise unchanged and still stand, item 3 emphatically so: the hero
+                reads RSVPs for its own single event and the list rows' md-gated RSVP block is
+                untouched. */}
             <BottomSheet
                 open={calendarSheetOpen}
                 onClose={() => setCalendarSheetOpen(false)}
@@ -438,12 +501,57 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                         reportContext="Calendar sheet (home page, phone)"
                     />
                 ) : (
-                    <CalendarListView
-                        events={upcomingEvents}
-                        onEventClick={handleCalendarSheetEventClick}
-                        loading={upcomingPending}
-                        variant="sheet"
-                    />
+                    <>
+                        {/* DECISION Phase 88.5 (SPEC Req 3): the hero is a `shrink-0` SIBLING
+                            ABOVE the list, inside THIS branch, and gated on the events fetch
+                            being SETTLED. Three separate choices, each with a real rejection:
+
+                            (a) SIBLING, not a child of `CalendarListView`. That component
+                                early-returns a loading skeleton before it renders any section
+                                (RESEARCH Pitfall 5), so a hero mounted inside it would vanish
+                                on exactly the render where "what's next?" is least answerable.
+                                `shrink-0` lives on the card's own `Card` className, so the sheet
+                                body's flex column gives it its natural height and lets the list
+                                below take the remaining space.
+
+                            (b) INSIDE THE THIRD BRANCH, not above the fork. Placing it above
+                                would paint event details over an identity-error or fetch-error
+                                banner — a surface claiming to know the next game night while
+                                telling the user it could not load the calendar (T-88.5-26).
+
+                            (c) GATED ON `upcomingPending`, not merely on "is there a selected
+                                event". The fetch effect never clears `upcomingEvents` before a
+                                refetch, so during that window the array still holds the PRIOR,
+                                possibly since-cancelled list. A hero gated only on selection
+                                would present a stale row as the current answer while the list
+                                beside it is knowingly re-fetching. This reuses the SAME pending
+                                signal `CalendarListView` gates its own skeleton on — a second
+                                loading flag here could drift from it.
+
+                            The hero is handed an ALREADY-SELECTED event, so there is no second
+                            definition of "next" anywhere in the tree. Zero upcoming needs no
+                            branch of its own: `NextGameNightCard` returns null for a null event
+                            (verified at its `if (!event) return null`), which is also why there
+                            is no skeleton implying an event exists. */}
+                        {!upcomingPending && (
+                            <NextGameNightCard
+                                event={nextUpcoming}
+                                selfUuid={selfUuid ?? null}
+                                onEventClick={handleCalendarSheetEventClick}
+                            />
+                        )}
+                        <CalendarListView
+                            events={upcomingEvents}
+                            onEventClick={handleCalendarSheetEventClick}
+                            loading={upcomingPending}
+                            variant="sheet"
+                            /* The two id sets and the one count — see the OWNER RULING 2a
+                               marker above. The sheet partitions by membership only. */
+                            happeningNowIds={happeningNowIds}
+                            thisWeekIds={thisWeekIds}
+                            upcomingCount={upcomingCount}
+                        />
+                    </>
                 )}
             </BottomSheet>
 
