@@ -221,7 +221,12 @@ async function mockEvents(value: unknown[] | Error) {
 
 /** Open the 11b sheet through its only entry point and return the dialog. */
 async function openCalendarSheet(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole('button', { name: /^calendar$/i }));
+  // Phase 88.5: end-anchored name regex relaxed to `/^calendar\b/i` — the button's
+  // accessible name gains a count ("Calendar, {n} upcoming games this week",
+  // UI-SPEC 6.1.5, plan 88.5-07). Prefix + word boundary, NOT a bare substring:
+  // it must still exclude any other control whose name merely contains "calendar".
+  // Do not re-tighten to an end anchor.
+  await user.click(await screen.findByRole('button', { name: /^calendar\b/i }));
   return screen.getByRole('dialog', { name: SHEET_TITLE });
 }
 
@@ -297,7 +302,9 @@ describe('Req 11b — the Calendar button and its sheet', () => {
     // Sample BEFORE opening. The absolute count at mount is a property of the
     // test environment's effect semantics, not of this plan — what Req 11b's "no
     // second fetch" actually means is that OPENING THE SHEET adds none.
-    await screen.findByRole('button', { name: /^calendar$/i });
+    // Phase 88.5: relaxed to a prefix for the counted accessible name — see the
+    // note in openCalendarSheet above.
+    await screen.findByRole('button', { name: /^calendar\b/i });
     const fn = await getEventsMock();
     const callsBeforeOpen = fn.mock.calls.length;
     expect(callsBeforeOpen).toBeGreaterThan(0);

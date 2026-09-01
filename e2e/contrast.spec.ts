@@ -503,7 +503,13 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // Req 7 target 1 of 4 — the `Button` primitive. `UserHomePage.js:245` renders the
       // phone-only Calendar entry point through it (`md:hidden`, so it exists ONLY at this
       // width). Located by role and name; the Icon inside is decorative.
-      const button = page.getByRole('button', { name: 'Calendar', exact: true });
+      // Phase 88.5: was an exact-string name match on "Calendar". Relaxed to a prefix
+      // regex because the button's accessible name gains a count ("Calendar, {n}
+      // upcoming games this week", UI-SPEC 6.1.5, plan 88.5-07). `exact` is dropped
+      // deliberately — Playwright ignores/rejects it alongside a RegExp; the `\b`
+      // is what keeps this from matching unrelated "calendar…" controls. Do not
+      // re-tighten to an exact string.
+      const button = page.getByRole('button', { name: /^Calendar\b/ });
       await expect(button).toBeVisible({ timeout: 15_000 });
       const buttonRing = await focusRingMeasurement(page, button, 'Button primitive focus ring (Req 7)');
       expectRatio('Button primitive focus ring (Req 7)', buttonRing, NON_TEXT);

@@ -157,7 +157,12 @@ async function assertDarkTheme(page: Page): Promise<void> {
 
 const phoneBar = (page: Page) =>
   page.getByRole('button', { name: /^open upcoming events/i });
-const calendarButton = (page: Page) => page.getByRole('button', { name: /^calendar$/i });
+/** Phase 88.5: end-anchored name regex relaxed to `/^calendar\b/i` — the accessible
+ *  name gains a count ("Calendar, {n} upcoming games this week", UI-SPEC 6.1.5, plan
+ *  88.5-07). Prefix + word boundary, not a bare substring. Do NOT apply the same
+ *  relaxation to `calendarSheet` on the next line: that targets the DIALOG, whose
+ *  name stays exactly "Calendar". */
+const calendarButton = (page: Page) => page.getByRole('button', { name: /^calendar\b/i });
 const upcomingSheet = (page: Page) => page.getByRole('dialog', { name: 'Upcoming events' });
 const calendarSheet = (page: Page) => page.getByRole('dialog', { name: 'Calendar' });
 /** The desktop right column's own heading (`UpcomingEventsCard.js:140`). It stays in the
