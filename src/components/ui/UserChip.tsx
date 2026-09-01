@@ -30,9 +30,31 @@ export interface UserChipProps extends React.HTMLAttributes<HTMLDivElement> {
 
 const FALLBACK_LABEL = 'Unknown user';
 
-function initialsOf(label: string): string {
+/**
+ * Initials for an avatar fallback / member chip.
+ *
+ * DECISION Phase 88.5 (D-10): a SINGLE-token label yields TWO characters
+ * (`'boardgamer'` -> `'BO'`) rather than the one character this returned before —
+ * chosen because most labels in this app are one-token usernames, where a lone `'B'`
+ * reads as noise in a chip. Multi-token labels keep the first letter of the first two
+ * tokens. The accepted consequence is that `UserChip`'s own avatar fallback (its one
+ * existing render path) now shows two characters for single-token names too; that is
+ * the change, not a side effect to undo.
+ *
+ * The `null`/`undefined` guard closes a crash path: a caller with neither a username
+ * nor an email to pass in used to reach `.trim()` on a non-string.
+ *
+ * Exported (Phase 88.5) so `MemberChipStack` reuses it instead of forking it.
+ */
+function initialsOf(label: string | null | undefined): string {
+  if (!label) return '?';
   const parts = label.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
+  if (parts.length === 1) {
+    // D-10: two characters from the single token — `.slice(0, 2)` on a one-character
+    // token yields that one character, never a padded value.
+    return parts[0].slice(0, 2).toUpperCase();
+  }
   return parts
     .slice(0, 2)
     .map((p) => p[0]?.toUpperCase() ?? '')
@@ -77,4 +99,4 @@ const UserChip = React.forwardRef<HTMLDivElement, UserChipProps>(
 
 UserChip.displayName = 'UserChip';
 
-export { UserChip };
+export { UserChip, initialsOf };
