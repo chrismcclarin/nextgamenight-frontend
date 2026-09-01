@@ -21,7 +21,8 @@ export interface UpcomingCountPillProps {
    * The count to show, or `null` for SUPPRESSED.
    *
    * `null` and `0` are NOT the same thing and must not be folded together
-   * (carried from `PhoneEventBar.tsx:94-119`):
+   * (carried from the phone bottom bar deleted in plan 88.5-07; the code is in git history
+   * at 88.1 plan 08, and this component is now the owner of the rule):
    *   - `0`    — "we counted, and there are none". The host control still says
    *              so in its accessible name; only the visual dot is suppressed.
    *   - `null` — "we are not making a count claim at all", because identity is
@@ -91,7 +92,7 @@ export interface UpcomingCountPillProps {
 
    ------------------------------------------------------------------------------------------
    SUPPRESSION — carried history. This reasoning is inherited VERBATIM IN SUBSTANCE from
-   `PhoneEventBar.tsx`'s `DECISION Phase 88.1 (Req 11a, carrying DECISION Phase 88-33 forward)`
+   the phone bottom bar's `DECISION Phase 88.1 (Req 11a, carrying DECISION Phase 88-33 forward)`
    block, because that file is DELETED in plan 88.5-07 and the reasoning must not die with it.
    Plan 88.5-07 owns the record of the SURFACE reversal; this marker owns the SUPPRESSION rule.
 
@@ -117,7 +118,7 @@ const UpcomingCountPill = React.forwardRef<HTMLSpanElement, UpcomingCountPillPro
         // The number is already in the HOST control's accessible name
         // (UI-SPEC §6.1.5: "Calendar, 3 upcoming games this week"), so the pill
         // is decorative to assistive tech. Announcing it twice is noise — the
-        // shipped precedent is `PhoneEventBar.tsx:161-163`.
+        // shipped precedent is the phone bottom bar's own pill (88.1 plan 08, deleted 88.5-07).
         aria-hidden="true"
         className={[
           'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5',

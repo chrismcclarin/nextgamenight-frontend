@@ -26,7 +26,8 @@
  *    exactly why the distinction erodes: someone types `count > 0` over the null branch and the
  *    behaviour is unchanged until the backend is slow, at which point a stale `events=[]` reads
  *    as a confident "none". That is the bug `DECISION Phase 88-33` fixed on `UpcomingEventsCard`
- *    and `PhoneEventBar.tsx:81-93` carried forward. Tests 2 and 3 pin the two states SEPARATELY,
+ *    and the phone bottom bar (88.1 plan 08, deleted in 88.5-07) carried forward. Tests 2 and 3
+ *    pin the two states SEPARATELY,
  *    with their different reasons written down, so deleting either one is visible.
  *
  * 4. THE COUNT BEING ANNOUNCED TWICE. The span is `aria-hidden="true"`: the number reaches
@@ -135,7 +136,7 @@ describe('UpcomingCountPill (SPEC Req 2 / UI-SPEC §6.1)', () => {
   });
 
   it('8. the named and default exports are the SAME component', () => {
-    // Both are exported (the `PhoneEventBar.tsx:178-179` house idiom). Two call sites import it
+    // Both are exported (the house idiom the deleted phone bottom bar also used). Two call sites import it
     // in plans 07 and 08; if the exports ever diverged, one site could get a stale copy.
     expect(Named).toBe(UpcomingCountPill);
   });
