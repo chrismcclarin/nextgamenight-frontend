@@ -20,6 +20,10 @@ import { formatTime, formatWithTzAbbr } from '../../lib/datetime';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
 import RsvpCount from './RsvpCount';
+// SPEC Req 2 (88.5-08): the TWIN of the Calendar button's count pill. Same component,
+// so the per-theme fill fork it owns cannot drift between the two instances. It renders
+// the number this file is HANDED; nothing here counts anything.
+import UpcomingCountPill from './UpcomingCountPill';
 
 /**
  * CalendarListView — Phase 64 Plan 03 (CAL-06), Today-delineator revision.
@@ -134,12 +138,29 @@ const CONTAINER_HEIGHT_FULL = 600;
      is ~300px; a 48px thumbnail plus the group avatar and gaps would take a third of it, and the
      NAME is what Req 11b's "readable game text" acceptance is about. If it is ever un-hidden it
      MUST stay on `SafeImage` (untrusted remote URL, T-88.1-25) — never a bare <img>. */
+/* A shared, frozen empty set for the two id-set props below. A `new Set()` default in the
+   parameter list would allocate a fresh identity on EVERY render, which would defeat the
+   partition memo's dep check for every caller that does not pass the props (i.e. both
+   desktop arms). */
+const EMPTY_ID_SET = new Set();
+
 export default function CalendarListView({
   events,
   onEventClick,
   timezone: timezoneProp,
   loading = false,
   variant = 'full',
+  /* SPEC Req 2 / OWNER RULING 2a (88.5-08), sheet arm only. These are the ONLY inputs to the
+     three-way split below, and they are computed ONCE in `UserHomePage` against ONE shared
+     `now` clock (see its `DECISION Phase 88.5 (OWNER RULING 2a)` marker). This file performs
+     NO date or status comparison of its own to decide membership — a second derivation here
+     is precisely the disagreement threat T-88.5-25 names. */
+  happeningNowIds = EMPTY_ID_SET,
+  thisWeekIds = EMPTY_ID_SET,
+  /* The number the Calendar button already shows, handed down so the twin pill is the SAME
+     value rather than a second count. `null` means "no claim is being made" (pending/error);
+     `UpcomingCountPill` owns that rule. */
+  upcomingCount = null,
 }) {
   // The phone bottom-sheet arm. Derived once here so the height and the row's
   // game-name treatment can never disagree about which surface they are on.
@@ -151,6 +172,10 @@ export default function CalendarListView({
   const uid = useId();
   const upcomingHeadingId = `${uid}-upcoming`;
   const pastPanelId = `${uid}-past`;
+  // 88.5-08 (D-04): the two sub-section headings, derived from the SAME `useId` value for
+  // the same collision reason. The happening-now group needs no id — it has no heading.
+  const thisWeekId = `${uid}-this-week`;
+  const laterId = `${uid}-later`;
   // COLLAPSED by default — see the Req 12 DECISION marker at the section fork.
   const [pastExpanded, setPastExpanded] = useState(false);
 
@@ -265,6 +290,45 @@ export default function CalendarListView({
     () => (isSheet ? groupByDate([...visiblePast].reverse()) : []),
     [isSheet, visiblePast, timezone] // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  /* SPEC Req 2 / D-04 / OWNER RULING 2a, sheet arm only — the three-way partition of the
+     upcoming section.
+
+     SPLIT BY EVENT, NOT BY GROUP, and that is the load-bearing choice: a single calendar day
+     can hold a game that already started AND one that has not, so assigning the whole date
+     group to one bucket wholesale would put an uncounted row inside the counted section (or
+     vice versa) and make the pill's number disagree with the rows underneath it — the exact
+     defect the single-selector constraint exists to prevent. A day that straddles a boundary
+     therefore renders its date header in BOTH sub-sections, each carrying only its own rows.
+
+     Membership is pure SET LOOKUP against the two props. `futureGroups` is untouched — still
+     the existing `k >= todayKey` date-key split — and Later needs no test of its own: it is
+     everything left over by elimination, which is why a cancelled or completed future event
+     lands there without this file ever reading `.status`. */
+  const { happeningNowGroups, thisWeekGroups, laterGroups } = useMemo(() => {
+    if (!isSheet) {
+      return { happeningNowGroups: [], thisWeekGroups: [], laterGroups: [] };
+    }
+    const happening = [];
+    const week = [];
+    const later = [];
+    for (const group of futureGroups) {
+      const happeningItems = [];
+      const weekItems = [];
+      const laterItems = [];
+      for (const ev of group.items) {
+        if (happeningNowIds.has(ev.id)) happeningItems.push(ev);
+        else if (thisWeekIds.has(ev.id)) weekItems.push(ev);
+        else laterItems.push(ev);
+      }
+      // Each bucket keeps the group's own key/sample, so `formatDayHeader`, ordering and
+      // timezone handling are byte-identical to the undivided render.
+      if (happeningItems.length > 0) happening.push({ ...group, items: happeningItems });
+      if (weekItems.length > 0) week.push({ ...group, items: weekItems });
+      if (laterItems.length > 0) later.push({ ...group, items: laterItems });
+    }
+    return { happeningNowGroups: happening, thisWeekGroups: week, laterGroups: later };
+  }, [isSheet, futureGroups, happeningNowIds, thisWeekIds]);
 
   const hasAnyEvents = pastGroups.length > 0 || futureGroups.length > 0;
 
@@ -471,14 +535,56 @@ export default function CalendarListView({
               divider's own Phase 88-27 colour decision stays untouched by not touching it.
 
               Collapsing these two sections back into one chronological feed re-opens the owner's
-              walkthrough finding. It is a decision, not a cleanup. */}
+              walkthrough finding. It is a decision, not a cleanup.
+
+              AMENDED Phase 88.5 (D-04, OWNER RULING 2a) — section 1 now SUBDIVIDES; everything
+              above is unchanged. The two-section upcoming-versus-past structure, the collapsed
+              past disclosure, the absent TodayDivider and the untouched desktop arms all stand
+              exactly as recorded. What changed is INSIDE section 1, which now reads, in order:
+
+                1. HAPPENING NOW — events in `futureGroups` that have a live status and whose
+                   start is at or before the shared `now`. Rendered FIRST, with NO header of any
+                   kind, and NOT counted by the pill. Ruling: an event that has already started
+                   is not "upcoming", so it must not inflate a badge that promises "this week";
+                   but at game night it is the single most relevant row in the sheet, so it must
+                   not be buried either. First, unlabelled, uncounted.
+                2. THIS WEEK — exactly `selectUpcomingWithin7Days`, carrying the twin count pill.
+                3. LATER — everything else in the future range by elimination, date-ordered.
+                   This includes CANCELLED and COMPLETED future events, which render with today's
+                   ordinary row treatment because no per-status row styling exists in this file.
+                   That is no worse than shipped (they had no treatment under the single header
+                   either); building one is out of scope here and is registered against Phase 88.6
+                   in `.planning/deferred/phase-88.6.md`.
+
+              REJECTED, each a real defect avoided:
+                (a) WORDING-ONLY SCOPING of the single existing section — retitle it and leave one
+                    list. The count and the list then still disagree about which events the number
+                    counts, which is the whole complaint.
+                (b) HOISTING THE WHOLE REMAINDER above This week, cancelled events included. That
+                    gives a cancelled game top billing over the games still actually happening.
+                (c) HIDING non-live events from the sheet entirely. An information regression —
+                    the member who cancelled still needs to see that it is off.
+
+              HEADING OUTLINE (DR2-7b): the two new `<h4>` sub-section headings sit between the
+              outer `<h3>` and `DateGroup`'s own day header, which ships as an `<h4>`. Left alone
+              that would flatten the outline, so `DateGroup` and `EventRow` take a `headingLevel`
+              prop DEFAULTING to today's level — the desktop arms and the happening-now group pass
+              nothing and are unchanged — and the This-week/Later groups demote to `h5`/`h6`.
+              Neither `<h4>` may be named after the outer heading: a second heading with that
+              string inside the Calendar dialog is the strict-mode collision the `aria-labelledby`
+              construction above the scroll region exists to avoid. */}
           {isSheet ? (
             <>
-              {/* Section 1 — upcoming. Labelled by the `<h3>` above rather than by a heading of
-                  its own; `futureGroups` is already soonest-first and includes TODAY's events
-                  (the split is `k >= todayKey`). */}
+              {/* Section 1 — upcoming, now subdivided (see the AMENDED paragraph above). Labelled
+                  by the `<h3>` above rather than by a heading of its own; `futureGroups` is
+                  already soonest-first and includes TODAY's events (the split is
+                  `k >= todayKey`). */}
               <section aria-labelledby={upcomingHeadingId} className="space-y-6">
-                {futureGroups.map((group) => (
+                {/* 1. HAPPENING NOW — deliberately NO subheader, not even plain text. These rows
+                    sit directly under the outer `<h3>`, which is their only heading, so their
+                    `DateGroup` keeps the DEFAULT heading levels (h4 day header, h5 row title):
+                    there is no intervening sub-section heading to demote beneath. */}
+                {happeningNowGroups.map((group) => (
                   <DateGroup
                     key={group.key}
                     group={group}
@@ -489,13 +595,71 @@ export default function CalendarListView({
                   />
                 ))}
 
-                {/* Section-scoped, NOT the shared "No events" line: with past events collapsed
-                    below, "No events" would be false whenever the group has history. */}
-                {futureGroups.length === 0 && (
-                  <div className="flex items-center justify-center pt-4">
-                    <p className="text-content-secondary text-sm">No upcoming events</p>
+                {/* 2. THIS WEEK — the only sub-section that carries the pill. */}
+                {thisWeekGroups.length > 0 && (
+                  <div className="space-y-3">
+                    <h4
+                      id={thisWeekId}
+                      className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-content-secondary"
+                    >
+                      This week
+                      <UpcomingCountPill count={upcomingCount} />
+                    </h4>
+                    <section aria-labelledby={thisWeekId} className="space-y-6">
+                      {thisWeekGroups.map((group) => (
+                        <DateGroup
+                          key={group.key}
+                          group={group}
+                          formatDayHeader={formatDayHeader}
+                          timezone={timezone}
+                          onEventClick={onEventClick}
+                          isSheet={isSheet}
+                          headingLevel="h5"
+                          rowHeadingLevel="h6"
+                        />
+                      ))}
+                    </section>
                   </div>
                 )}
+
+                {/* 3. LATER — never carries the pill. */}
+                {laterGroups.length > 0 && (
+                  <div className="space-y-3">
+                    <h4
+                      id={laterId}
+                      className="text-xs font-semibold uppercase tracking-[0.08em] text-content-secondary"
+                    >
+                      Later
+                    </h4>
+                    <section aria-labelledby={laterId} className="space-y-6">
+                      {laterGroups.map((group) => (
+                        <DateGroup
+                          key={group.key}
+                          group={group}
+                          formatDayHeader={formatDayHeader}
+                          timezone={timezone}
+                          onEventClick={onEventClick}
+                          isSheet={isSheet}
+                          headingLevel="h5"
+                          rowHeadingLevel="h6"
+                        />
+                      ))}
+                    </section>
+                  </div>
+                )}
+
+                {/* Section-scoped, NOT the shared "No events" line: with past events collapsed
+                    below, "No events" would be false whenever the group has history. Gated on
+                    ALL THREE sub-sections being empty (D-04) — the three partition
+                    `futureGroups` exhaustively, so an event anywhere in the future range keeps
+                    this line off. */}
+                {happeningNowGroups.length === 0 &&
+                  thisWeekGroups.length === 0 &&
+                  laterGroups.length === 0 && (
+                    <div className="flex items-center justify-center pt-4">
+                      <p className="text-content-secondary text-sm">No upcoming events</p>
+                    </div>
+                  )}
               </section>
 
               {/* Section 2 — the past disclosure. Renders only when there IS history. */}
@@ -653,13 +817,32 @@ const TodayDivider = forwardRef(function TodayDivider({ label }, ref) {
 /**
  * One date-group section (date header + its event rows). Extracted so the
  * past and future renders share identical chrome.
+ *
+ * DECISION Phase 88.5 (DR2-7b): `headingLevel` (this group's day header) and
+ * `rowHeadingLevel` (its rows' titles) are props that DEFAULT to the levels this
+ * component has always rendered — `h4` and `h5`. That default is the whole point and is
+ * not a formality: both desktop arms and the sheet's happening-now group pass nothing, so
+ * their rendered DOM is byte-identical to before the sheet gained sub-sections. Only the
+ * sheet's This-week/Later groups, which now nest one level below an `<h4>` sub-section
+ * heading, demote to `h5`/`h6` so no two structurally-nested headings share a level.
+ * Hard-coding either level back is a decision, not a cleanup: it flattens the outline.
  */
-function DateGroup({ group, formatDayHeader, timezone, onEventClick, isSheet = false }) {
+function DateGroup({
+  group,
+  formatDayHeader,
+  timezone,
+  onEventClick,
+  isSheet = false,
+  headingLevel = 'h4',
+  rowHeadingLevel = 'h5',
+}) {
+  // Capitalised so JSX treats it as a component; the value is a lowercase intrinsic tag.
+  const DayHeading = headingLevel;
   return (
     <section key={group.key} className="space-y-2">
-      <h4 className="text-sm font-semibold text-content-secondary uppercase tracking-wide pb-1 border-b border-line">
+      <DayHeading className="text-sm font-semibold text-content-secondary uppercase tracking-wide pb-1 border-b border-line">
         {formatDayHeader(group.sample)}
-      </h4>
+      </DayHeading>
       <div className="space-y-2">
         {group.items.map((event) => (
           <EventRow
@@ -667,6 +850,7 @@ function DateGroup({ group, formatDayHeader, timezone, onEventClick, isSheet = f
             event={event}
             timezone={timezone}
             isSheet={isSheet}
+            headingLevel={rowHeadingLevel}
             onClick={() => onEventClick && onEventClick(event)}
           />
         ))}
@@ -688,7 +872,13 @@ function DateGroup({ group, formatDayHeader, timezone, onEventClick, isSheet = f
  * Forwards a ref so CalendarListView can scroll the next-upcoming row into
  * view on first paint.
  */
-const EventRow = forwardRef(function EventRow({ event, timezone, onClick, isSheet = false }, ref) {
+const EventRow = forwardRef(function EventRow(
+  { event, timezone, onClick, isSheet = false, headingLevel = 'h5' },
+  ref
+) {
+  // See the `headingLevel` DECISION on `DateGroup` above — the default IS the shipped
+  // level, so every caller that passes nothing renders exactly what it rendered before.
+  const TitleHeading = headingLevel;
   const groupBgImage = event.Group?.background_image_url;
   const groupProfilePic = event.Group?.profile_picture_url;
 
@@ -940,7 +1130,7 @@ const EventRow = forwardRef(function EventRow({ event, timezone, onClick, isShee
                 majority of rows — passing the letter of "lift the sm: gate" while failing
                 Req 11b's "readable game text" acceptance. Desktop keeps `truncate` so the
                 fixed-height card cannot reflow. */}
-            <h5
+            <TitleHeading
               className={`${
                 isSheet
                   ? 'font-semibold text-base min-w-0 line-clamp-2'
@@ -949,7 +1139,7 @@ const EventRow = forwardRef(function EventRow({ event, timezone, onClick, isShee
               style={titleVars}
             >
               {eventTitle}
-            </h5>
+            </TitleHeading>
             <span className={`text-sm [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]`} style={subtitleVars}>
               {startTime}
             </span>
