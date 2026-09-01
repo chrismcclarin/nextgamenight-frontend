@@ -71,7 +71,17 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
     setSubmitting(status);
     setError(null);
     try {
-      const result = await rsvpAPI.submitRsvp(eventId, status, note || null);
+      // DECISION Phase 88.5 (adversarial code review 2026-09-01, owner ruling a): a
+      // status tap is STATUS-ONLY — no third `note` argument — chosen OVER the previous
+      // `note || null` forwarding. Forwarding wiped a saved note whenever local `note`
+      // state was stale-empty (identity unresolved when fetchRsvps landed, or a failed
+      // fetch): `note || null` turned '' into an explicit clear. With the key absent,
+      // POST /rsvp preserves the saved note (routes/rsvp.js, hoisted `noteUpdate`).
+      // Accepted delta, taken knowingly: a status tap no longer saves an unsaved
+      // textarea draft as a side effect — `handleSaveNote` below is the SOLE note
+      // writer (still `note || null`, so clearing the textarea still clears the note).
+      // Re-adding the third argument is a decision, not a cleanup.
+      const result = await rsvpAPI.submitRsvp(eventId, status);
       setUserRsvp(result);
       setSelectedStatus(status);
       if (result.note !== undefined) setNote(result.note || '');
