@@ -6,9 +6,11 @@ import GroupList from '../components/grouplist';
 import EventCalendar from '../components/EventCalendar';
 import FriendInvitePanel from '../components/FriendInvitePanel';
 import UpcomingEventsCard from '../components/UpcomingEventsCard';
-// Req 11a (88.1-08): the phone-only Upcoming Events surface — a bottom bar plus
-// the bottom sheet it opens. The desktop right column below is untouched.
-import PhoneEventBar from '../components/PhoneEventBar';
+// SPEC Req 2 (88.5-04/07): the amber count pill. ONE component, rendered at two
+// use sites from ONE count — here on the Calendar button, and beside the sheet's
+// "This week" subheader. It owns the look and the render/no-render rule; this
+// page owns the count and its announcement.
+import UpcomingCountPill from '../components/UpcomingCountPill';
 // Req 11b (88.1-10): the phone calendar surface hosts the BARE list view — see
 // the DECISION marker at its mount for why it is not the calendar component.
 import CalendarListView from '../components/CalendarListView';
@@ -16,6 +18,9 @@ import { BottomSheet } from '../../components/ui/BottomSheet';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
 import { eventsAPI } from '../../lib/api';
+// The ONE definition of "upcoming" (88.1-05, extended 88.5): the count the button
+// shows and the rows the sheet lists come from this selector, so they cannot disagree.
+import { selectUpcomingWithin7Days } from '../../lib/upcomingEvents';
 // Phase 87.3-07 (D-02): the viewer's User.id UUID resolves via the shared
 // ['users','self'] query instead of an ad-hoc getUser self-fetch.
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
@@ -49,9 +54,6 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
        fires at all; both are needed and they are checked in that order at the render site. */
     const [upcomingError, setUpcomingError] = useState(null);
     const [upcomingRetryKey, setUpcomingRetryKey] = useState(0);
-    // Req 11a: the phone sheet's open state. The page owns it because the bar
-    // (the invoker) and the sheet are siblings, not parent/child.
-    const [upcomingSheetOpen, setUpcomingSheetOpen] = useState(false);
     // Req 11b: the phone calendar sheet's open state, owned here for the same
     // reason as the 11a sheet above — the button and the sheet are siblings.
     const [calendarSheetOpen, setCalendarSheetOpen] = useState(false);
@@ -131,6 +133,49 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
        `upcomingLoading` back in is a decision to restore the lie, not a simplification. */
     const upcomingPending = upcomingLoading || (!selfUuid && !selfIdentityErrorState.showError);
 
+    /* SPEC Req 2 (88.5-07): ONE clock, ONE selector call, ONE value per render.
+       `now` is passed EXPLICITLY rather than leaning on the selector's `new Date()`
+       default so the button's pill, the sheet's twin pill (plan 88.5-08) and the
+       sheet's "This week" membership provably share one instant inside one render —
+       that shared derivation IS Req 2's acceptance, not a style preference. Letting
+       any of the three call the selector again with its own default re-opens the
+       disagreement this selector exists to prevent (upcomingEvents.ts:5-30).
+
+       The array is held, not just its length: plan 88.5-08 needs the id set to decide
+       which rows belong to "This week".
+
+       ACCEPTED LAG, carried verbatim from the deleted phone bottom bar (88.1 plan 08; the
+       code is in git history, the record is in `88.5-07-SUMMARY.md`): the window is
+       measured at RENDER time and is not timer-refreshed, so an event crossing the
+       7-day boundary between this render and the sheet opening can lag by one row. A
+       timer here would re-render the whole page on a clock nobody is watching. */
+    const now = new Date();
+    const upcomingWithin7Days = selectUpcomingWithin7Days(upcomingEvents, now);
+
+    /* SUPPRESSION, carried verbatim from the deleted phone bottom bar (88.1 plan 08, which
+       carried it from DECISION Phase 88-33) and re-stated in full on `UpcomingCountPill.tsx`,
+       the surviving owner of this rule. `null` is NOT `0`: `null` means "we are making no count claim",
+       `0` means "we counted, and there are none". While the events load is pending, or while
+       either error state is active, `upcomingEvents` holds `[]` meaning "not fetched yet" —
+       see DECISION Phase 88-33 above for why that window is up to ~60s with the backend
+       unreachable. Rendering it as a confident zero is the exact lie 88-33 fixed on
+       UpcomingEventsCard. Collapsing this into a plain `count === 0` check restores that bug
+       and changes nothing observable until the backend is slow — a decision, not a cleanup. */
+    const upcomingCount =
+        upcomingPending || selfIdentityErrorState.showError || upcomingErrorState.showError
+            ? null
+            : upcomingWithin7Days.length;
+
+    /* UI-SPEC 6.1.5, exact ruled copy. The pill is `aria-hidden`, so this label is the ONLY
+       carrier of the number for assistive tech. `0` falls into the PLURAL arm on purpose;
+       only `null` (suppressed) drops the count clause entirely. */
+    const calendarButtonLabel =
+        upcomingCount === null
+            ? 'Calendar'
+            : upcomingCount === 1
+                ? 'Calendar, 1 upcoming game this week'
+                : `Calendar, ${upcomingCount} upcoming games this week`;
+
     /* Req 11b event tap. The CLOSE ORDERING IS THE POINT and is not incidental style:
        `setCalendarSheetOpen(false)` runs on the line BEFORE `router.push`, copying
        `EventCalendar.js:241-243` (`setSelectedDay(null)` then `onEmptyDayClick(dateStr)`).
@@ -154,21 +199,6 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
         } else {
             router.push(`/gameDetail?game_id=${event.game_id}&group_id=${event.group_id}`);
         }
-    };
-
-    /* Req 11a event tap (WR-02). Same ordering, same reason as its sibling directly above —
-       close first, navigate second; the rationale block at `handleCalendarSheetEventClick` is
-       the canonical statement of WHY and is deliberately not restated here. The ordering IS the
-       point: navigating first strands the destination behind an open Radix overlay and focus
-       trap.
-
-       DELIBERATELY NOT COPIED from the sibling: its future-vs-past `game_id` fork. This card's
-       URL has always been event-id-only, and the 11a sheet lists FUTURE events only
-       (`selectUpcomingWithin7Days`), so importing that fork would add a branch whose second arm
-       is unreachable. Do not "finish" it. */
-    const handleUpcomingSheetEventClick = (event) => {
-        setUpcomingSheetOpen(false);
-        router.push(`/gameDetail?event_id=${event?.id}&group_id=${event?.group_id}`);
     };
 
     const handleGroupSelect = (group) => {
@@ -201,16 +231,18 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
     };
 
     return (
-        /* Req 11a bottom clearance for THIS page's own content: `pb-14` (56px) below `md`
-           clears the fixed bar. The desktop override is `md:pb-6` and must NEVER be zeroed:
-           Tailwind emits `padding-bottom` utilities AFTER the `md:p-6` shorthand, so a
-           zeroed desktop bottom-padding override would win the cascade
-           and silently drop desktop bottom padding from 1.5rem to 0, contradicting this
-           plan's own "at >=768px the layout is pixel-identical" acceptance with no gate to
-           catch it (padding-budget.spec.ts is phone-only). The FOOTER's clearance is a
-           separate problem solved in Footer.js — Footer is a sibling of <main>, so no amount
-           of padding here can reach it. */
-        <div className="user-home-container p-4 md:p-6 pb-14 md:pb-6">
+        /* AMENDED Phase 88.5 (SPEC Req 1): the Req 11a phone bottom clearance (56px below `md`)
+           is RETIRED — the fixed phone bottom event bar it cleared no longer exists, so it was a
+           56px dead band at the bottom of every phone viewport with nothing under it (RESEARCH
+           Pitfall 1).
+
+           The DESKTOP bottom-padding override on the class below STAYS and must still NEVER be
+           zeroed — that half of the original 88.1 record is unchanged and is why this note
+           survives the removal: Tailwind emits `padding-bottom` utilities AFTER the `md:p-6`
+           shorthand, so a zeroed desktop override wins the cascade and silently drops desktop
+           bottom padding from 1.5rem to 0, with no gate to catch it (padding-budget.spec.ts is
+           phone-only). */
+        <div className="user-home-container p-4 md:p-6 md:pb-6">
             {removedBannerVisible && removedFromName && (
                 <div
                     role="status"
@@ -240,17 +272,41 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                     "Making it stand out more" re-opens that rule. The explicit `min-h-11 min-w-11`
                     pair is the 44px touch floor in BOTH dimensions: `.btn`'s phone floor (88-01
                     D-36) sets height only, so a narrow control would pass at full height and still
-                    fail R4. */}
+                    fail R4.
+
+                    AMENDED Phase 88.5 (D-02) — a CORRECTION and an AMENDMENT, in that order.
+
+                    CORRECTION: the premise above is FALSE as written. This page does NOT spend its
+                    one accent on "+ Create New Group" — that CTA is `btn btn-primary`, which is
+                    purple-600 (`grouplist.js:137-139`, `globals.css:1217`), not the accent family.
+                    The home page spends ZERO amber today, so the count pill below is its only amber
+                    element. The `variant="secondary"` CONCLUSION still stands and is unchanged —
+                    only the reason given for it was wrong.
+
+                    AMENDMENT: the one-anchor rule is amended to scope the accent BUDGET to ACTION
+                    FILLS, exempting small non-interactive status badges — <=20px, never an
+                    interactive fill, one per surface, and with the information also available as
+                    text (here, in the button's own `aria-label`). The pill is legal BECAUSE of that
+                    amendment, not because the budget was ignored; a future reader who deletes it
+                    "to restore the one-anchor rule" is undoing a ruling. The three design-document
+                    halves of this amendment are plan 88.5-11's. The button itself stays
+                    `variant="secondary"` — "making it stand out more" is still rejected. */}
                 <div className="md:hidden">
                     <Button
                         variant="secondary"
                         onClick={() => setCalendarSheetOpen(true)}
                         aria-haspopup="dialog"
+                        aria-label={calendarButtonLabel}
                         className="min-h-11 min-w-11 gap-2"
                     >
-                        {/* Decorative — the visible label below is the accessible name. */}
+                        {/* Decorative — the explicit aria-label above is the accessible name. */}
                         <Icon name="CalendarDays" size={20} />
                         Calendar
+                        {/* SPEC Req 2: the count rides the Calendar button, separated by the
+                            button's own shipped `gap-2`. NO `ml-auto` — the shipped button is
+                            auto-width and its width is out of scope (UI-SPEC 6.1.2). The pill is
+                            `aria-hidden`; the number reaches AT through `calendarButtonLabel`. */}
+                        <UpcomingCountPill count={upcomingCount} />
                     </Button>
                 </div>
 
@@ -303,58 +359,30 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 </div>
             </div>
 
-            {/* Req 11a (UI-SPEC S3): the phone-only Upcoming Events surface. `PhoneEventBar`
-                carries its own `md:hidden` gate on its root, so the viewport gate lives with
-                the element it hides. The sheet deliberately does NOT carry one: `BottomSheet`
-                portals to <body>, so a hidden wrapper would not reach it anyway, and hiding an
-                OPEN Radix dialog's content leaves a visible overlay plus a focus trap on
-                invisible content. It can only ever be opened by the bar, which is phone-only.
+            {/* DECISION Phase 88.5 (SPEC Req 1) — A SURFACE REVERSAL, recorded here at the site
+                it removes. The phone-only fixed bottom event bar and the Req-11a "Upcoming events"
+                BottomSheet it opened both stood at this spot and are GONE; both component files are
+                deleted (see `88.5-07-SUMMARY.md`; the code is in git history at 88.1).
 
-                The bar is wired to the SAME pending/error values the desktop card gets. That
-                wiring is load-bearing, not boilerplate: per DECISION Phase 88-33 below, the
-                identity-resolution window is indistinguishable from a truthful zero unless the
-                caller tells the bar which one it is. Dropping `pending` here makes the bar
-                claim "none in the next 7 days" before the fetch has fired. */}
-            <PhoneEventBar
-                events={upcomingEvents}
-                pending={upcomingPending}
-                identityErrorState={selfIdentityErrorState}
-                eventsErrorState={upcomingErrorState}
-                onOpen={() => setUpcomingSheetOpen(true)}
-            />
-            <BottomSheet
-                open={upcomingSheetOpen}
-                onClose={() => setUpcomingSheetOpen(false)}
-                /* Matches the bar's visible label so the tap has an obvious destination. */
-                title="Upcoming events"
-                height="content"
-            >
-                {/* ML-17, re-hosted verbatim: the upcoming-events fetch gates on selfUuid, so
-                    on TERMINAL identity failure it never fires — degrade with the compact
-                    banner instead of the misleading empty state. Checked FIRST, exactly as in
-                    the desktop column; flipping this with the card's own branches silently
-                    restores a shipped bug (DECISION Phase 88-18, UpcomingEventsCard.js:154-160). */}
-                {selfIdentityErrorState.showError ? (
-                    <FetchErrorBanner state={selfIdentityErrorState} compact />
-                ) : (
-                    /* DECISION Phase 88-18, CARRIED INTO THE SHEET (Req 11a): like the desktop
-                       call site above, this card is deliberately given NO CTA prop, so its empty
-                       state ships without the contract row's "Plan Game Session" button. Every
-                       planning route needs a group_id (`groupPlanning/page.js:59-68`) and
-                       UserHome has none in scope, so a CTA here could only link to a group-less
-                       groupPlanning page that renders empty sections. Do NOT "complete" this by
-                       wiring a bare /groupPlanning link — if a group picker ever lands on this
-                       surface, pass the CTA in from here. */
-                    <UpcomingEventsCard
-                        events={upcomingEvents}
-                        loading={upcomingPending}
-                        showGroupName={true}
-                        viewerDbUserId={selfUuid ?? null}
-                        errorState={upcomingErrorState}
-                        onEventClick={handleUpcomingSheetEventClick}
-                    />
-                )}
-            </BottomSheet>
+                WHAT THIS SUPERSEDES: Phase 88.1's M3 ruling that the bottom bar was "the designed
+                phone presentation" of the desktop right column's content. THE GROUND: the owner's
+                phone walkthrough, 2026-08-28 — "I didn't notice or see the bottom bar." A surface
+                nobody sees is not a presentation of anything. The upcoming COUNT it carried now
+                rides the Calendar button above as an amber `UpcomingCountPill`, and the 7-day list
+                it opened is the calendar sheet below, which was always one tap away on the same
+                screen.
+
+                WHAT IS **NOT** REVERSED — read this before "fixing" anything nearby. M3's PRINCIPLE
+                stands: the phone gets a DESIGNED presentation, never the desktop column simply
+                un-hidden. The viewport gate on the desktop-only right column above is untouched and
+                must stay. Deleting that gate to "restore event discovery on phones" would reinstate
+                the exact layout M3 rejected, at the exact moment its designed replacement lands.
+
+                REJECTED: keeping the bar alongside the pill. That leaves two competing CTAs for one
+                fact, at the bottom edge of a 375px viewport, on the surface whose whole complaint
+                was that the bar went unnoticed. Re-adding a fixed bottom bar to this page is a
+                decision that also re-opens the Footer clearance retired in `Footer.js` — see the
+                AMENDED Phase 88.5 paragraph there. */}
 
             {/* Req 11b (UI-SPEC S4): the phone calendar sheet.
 
