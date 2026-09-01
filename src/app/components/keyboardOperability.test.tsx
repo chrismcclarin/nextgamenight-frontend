@@ -39,6 +39,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import PromptScheduleSection from './PromptScheduleSection';
 import ClickableMemberName from './ClickableMemberName';
+import MemberChipStack from './MemberChipStack';
 import { FriendshipContext } from './FriendshipStatusProvider';
 
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -221,5 +222,127 @@ describe('ClickableMemberName username is keyboard-operable (87.8-08 -> 88-28)',
     // anti-vacuity: the strip must not have eaten the code it is scanning
     expect(src).toContain('setIsOpen');
     expect(raw, 'the decision is recorded at the site').toContain('DECISION Phase 88-28');
+  });
+});
+
+/* ============================================================================================
+ * Phase 88.5 (SPEC Req 5) — the THREE new interactive descendants inside `grouplist.js`'s
+ * `role="button"` card.
+ *
+ * WHY THIS FILE GREW RATHER THAN A NEW ONE BEING WRITTEN
+ * -----------------------------------------------------
+ * The property pinned above is "a control inside the group card is operable by keyboard AND
+ * does not also activate the card". 88.5-09 replaces that card's member NAME-PILL row — whose
+ * only interactive descendant was the `ClickableMemberName` span tests 4-6 cover — with
+ * `MemberChipStack`, which adds a collapsed stack trigger and a `Show less` control beside the
+ * per-member triggers. Same card, same property, same failure mode: this is the file that owns
+ * it.
+ *
+ * WHY THE `not.toHaveBeenCalled()` HALF NEEDS A CONTROL, AND TEST 12 IS IT
+ * -----------------------------------------------------------------------
+ * `expect(spy).not.toHaveBeenCalled()` is the most vacuous assertion shape there is — it also
+ * passes when the wrapper was never wired, when the event never reached the descendant, and
+ * when the query silently matched nothing. Test 12 fires the SAME key on an UNGUARDED
+ * descendant of the same wrapper and requires the spy to fire, which is the only thing that
+ * makes tests 8-11 mean "stopPropagation is doing this" rather than "nothing happened".
+ *
+ * NESTED-INTERACTIVE IS NOT WHAT THESE PIN. The card being a `role="button"` with focusable
+ * descendants is a KNOWN, pre-existing defect owned by Phase 88.6
+ * (`.planning/deferred/phase-88.6.md`), and 88.5 makes it worse by adding descendants to it.
+ * These tests pin the per-descendant floor that phase committed to instead; they are not a
+ * substitute for the structural fix, and they must NOT be read as closing that item.
+ * ========================================================================================== */
+
+const CHIP_MEMBERS = [
+  { id: 'self', username: 'me' },
+  { id: 'u1', username: 'ada' },
+  { id: 'u2', username: 'grace' },
+];
+
+const CHIP_STACK_NAME = 'Members: ada, grace. Show all members.';
+
+/**
+ * Mirrors `grouplist.js:359-370`: the stack renders inside a `role="button"` card carrying its
+ * own click AND key handler. One spy behind both, because "expanding also navigated to the
+ * group" is the same defect whichever handler fired.
+ */
+function renderChipStack() {
+  const onCardActivate = vi.fn();
+  const utils = render(
+    <FriendshipContext.Provider value={friendshipValue as never}>
+      <div role="button" tabIndex={0} onClick={onCardActivate} onKeyDown={onCardActivate}>
+        <MemberChipStack members={CHIP_MEMBERS} selfUuid="self" />
+        {/* test 12's control: a descendant of the SAME wrapper that guards nothing */}
+        <span role="button" tabIndex={0} data-testid="unguarded">
+          unguarded
+        </span>
+      </div>
+    </FriendshipContext.Provider>,
+  );
+  return { ...utils, onCardActivate };
+}
+
+const chipStackTrigger = () => screen.getByRole('button', { name: CHIP_STACK_NAME });
+
+describe('MemberChipStack descendants are keyboard-operable inside the card (88.5 SPEC Req 5)', () => {
+  it('8. ENTER on the collapsed stack EXPANDS it and does not fire the card handler', () => {
+    const { onCardActivate } = renderChipStack();
+    const trigger = chipStackTrigger();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    // the OUTCOME, not the attribute: `Show less` only exists in the expanded row
+    expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
+    expect(onCardActivate).not.toHaveBeenCalled();
+  });
+
+  it('9. SPACE also expands it, is preventDefault-ed, and does not fire the card handler', () => {
+    const { onCardActivate } = renderChipStack();
+    // fireEvent returns false when a listener called preventDefault. Space's default on a
+    // `role="button"` SPAN is PAGE SCROLL — a span synthesises no click for either key, so
+    // both are only handled because the handler says so, and a one-key implementation would
+    // pass test 8 alone.
+    expect(
+      fireEvent.keyDown(chipStackTrigger(), { key: ' ' }),
+      'Space must be preventDefault-ed: its default on a non-button is page scroll',
+    ).toBe(false);
+    expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
+    expect(onCardActivate).not.toHaveBeenCalled();
+  });
+
+  it('10. ENTER on an expanded chip OPENS the popover and does not fire the card handler', async () => {
+    const { onCardActivate } = renderChipStack();
+    fireEvent.keyDown(chipStackTrigger(), { key: 'Enter' });
+    // the expansion itself is not what is under test here
+    onCardActivate.mockClear();
+
+    const chip = screen.getByRole('button', { name: 'ada' });
+    fireEvent.keyDown(chip, { key: 'Enter' });
+    // the popover's own control is the proof the friend flow is REACHED — D-15 suppresses the
+    // inline indicator on chips, so the popover is the ONLY path to it from this row.
+    await screen.findByRole('button', { name: 'Add friend' });
+    expect(onCardActivate).not.toHaveBeenCalled();
+  });
+
+  it('11. ENTER on `Show less` COLLAPSES and does not fire the card handler', () => {
+    const { onCardActivate } = renderChipStack();
+    fireEvent.keyDown(chipStackTrigger(), { key: 'Enter' });
+    onCardActivate.mockClear();
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Show less' }), { key: 'Enter' });
+    expect(screen.queryByRole('button', { name: 'Show less' })).not.toBeInTheDocument();
+    expect(chipStackTrigger()).toHaveAttribute('aria-expanded', 'false');
+    expect(onCardActivate).not.toHaveBeenCalled();
+  });
+
+  it('12. ANTI-VACUITY: the card handler DOES fire for an unguarded descendant', () => {
+    // Without this, tests 8-11 pass for a wrapper that was never wired, for a key that never
+    // reached anything, and for a `stopPropagation` that was deleted along with the handler
+    // that called it. Same wrapper, same key, one descendant that guards nothing.
+    const { onCardActivate } = renderChipStack();
+    fireEvent.keyDown(screen.getByTestId('unguarded'), { key: 'Enter' });
+    expect(
+      onCardActivate,
+      'the card handler cannot fire at all — every not.toHaveBeenCalled() above is vacuous',
+    ).toHaveBeenCalledTimes(1);
   });
 });
