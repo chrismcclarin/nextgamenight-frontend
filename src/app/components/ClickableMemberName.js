@@ -48,8 +48,35 @@ import { FriendshipContext } from './FriendshipStatusProvider';
  *   tolerance branch (D-06).
  * @param {string} props.username - Display name
  * @param {React.ReactNode} [props.children] - Optional custom render (defaults to username span)
+ * @param {boolean} [props.showInlineIndicator=true] - Opt OUT of the inline md:hidden indicator
+ *   sibling (see the DECISION Phase 88.5 marker below). Default `true` = today's behaviour.
  */
-export default function ClickableMemberName({ userId, username, children }) {
+/* DECISION Phase 88.5 (D-15): `showInlineIndicator` is an OPT-OUT defaulting to `true`,
+   chosen so that the member CHIPS introduced by this phase can suppress the inline
+   `md:hidden` indicator sibling while all ~9 shipped member ROW render sites
+   (groupHomePage, ManageMembers, gameDetail, RsvpSection) stay byte-unchanged. An opt-IN
+   would have flipped every one of those rows, silently stripping touch users of their
+   friend affordance — which is why the default is `true` and must stay `true`.
+
+   REJECTED, both named on purpose:
+     (a) Widening the chip row's `gap-3` to absorb the `+` button's hit extension. It breaks
+         the ruled 12px chip geometry AND still leaves literal `✓ Friend` text inside a chip
+         row that is supposed to carry status by ring alone.
+     (b) Forking the component into a chip-only variant. The project's duplication tenet
+         rejects that outright — it is never a peer option.
+
+   THE ARITHMETIC THAT FORCED THIS: the `none`-status `+` sibling carries a 10px horizontal
+   hit extension (`after:-inset-x-2.5`, below) and the next chip carries 6px of its own.
+   10 + 6 = 16px reaching into a 12px gap — a 4px OVERLAP. That is precisely the tap-stealing
+   failure mode `DECISION Phase 87.8 D-13` exists to prevent, and here a mis-tap is not a
+   recoverable UI action: it sends a stranger a friend request (the social harm the
+   `AMENDED Phase 88-28 (D-37)` block below names).
+
+   STATUS IS STILL CONVEYED, so WCAG 1.4.1 (use of colour) holds without the inline text: the
+   chip carries friend/pending in its RING (solid green / dashed amber) AND in its accessible
+   name, and the two-tap popover — never gated by this prop — remains the add-friend path.
+   Turning this into an opt-in, or defaulting it to `false`, is a decision, not a cleanup. */
+export default function ClickableMemberName({ userId, username, children, showInlineIndicator = true }) {
   const { getStatus, sendRequest } = useContext(FriendshipContext);
   const [isOpen, setIsOpen] = useState(false);
   const [sent, setSent] = useState(false);
@@ -420,7 +447,9 @@ export default function ClickableMemberName({ userId, username, children }) {
       >
         {children || username}
       </span>
-      {renderMobileIndicator()}
+      {/* D-15: gated at the CALL SITE, deliberately not inside renderMobileIndicator — the
+          function stays byte-unchanged and the diff stays readable. */}
+      {showInlineIndicator && renderMobileIndicator()}
       {isOpen && (
         <FloatingPortal>
           {/* MED#16: focus manager on KEYBOARD open only — initial focus lands on

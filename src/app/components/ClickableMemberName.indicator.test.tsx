@@ -57,7 +57,12 @@ function renderName(status: Status, props?: { showInlineIndicator?: boolean }) {
   const value = { getStatus: () => status, sendRequest };
   return render(
     <FriendshipContext.Provider value={value as never}>
-      <div role="button" tabIndex={0}>
+      {/* aria-label is on the CARD deliberately: without it the card's accessible name is
+          computed from its contents, which is "ada ✓ Friend" while the indicator renders and
+          bare "ada" once it is suppressed — so `getByRole('button', {name: 'ada'})` would
+          match the trigger in one arm and BOTH nodes in the other. Labelling the card keeps
+          the trigger query unambiguous in every arm without weakening it. */}
+      <div role="button" tabIndex={0} aria-label="open group">
         <ClickableMemberName userId="u1" username="ada" {...props} />
       </div>
     </FriendshipContext.Provider>,
