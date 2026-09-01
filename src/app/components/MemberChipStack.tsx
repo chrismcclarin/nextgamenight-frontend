@@ -354,8 +354,28 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
           aria-expanded={false}
           aria-controls={rowId}
           aria-label={collapsedName(labels, overflow)}
+          /*
+           * DECISION Phase 88.5 plan 10 (SPEC Req 5, R4): `min-w-11` is PAIRED with
+           * `min-h-11`, chosen OVER the height floor alone this control shipped with.
+           *
+           * MEASURED in chromium at 375px, which is the only place it is visible — jsdom has
+           * no layout, so `MemberChipStack.test.tsx` cannot see this and did not:
+           *   4 non-self members -> 32 + 3 x 24 (the -ml-2 overlap) + 4 (pr-1) = 108 x 44
+           *   1 non-self member  -> 32 + 4                                     =  36 x 44
+           * `min-h-11` sets NO min-width, so the one-member stack was a 36px-wide tap target
+           * — under the 44px floor this project treats as a floor and not a target, on a
+           * group shape (the viewer plus one other person) that is ordinary rather than rare.
+           * This is the same `min-h-11 min-w-11` pairing the Calendar button carries at
+           * `UserHomePage.js:357` and for exactly the same reason.
+           *
+           * It costs nothing in the common case: at two members the stack is already 60px
+           * wide, so the utility is inert. At one member it adds 8px of INVISIBLE tappable
+           * width beside the chip — the trigger paints no background, so nothing about the
+           * rendering changes. Removing it is a decision, not a cleanup, and
+           * `touch-targets.spec.ts`'s collapsed-stack case exists to fail it.
+           */
           className={cn(
-            'inline-flex min-h-11 cursor-pointer items-center rounded-full pr-1',
+            'inline-flex min-h-11 min-w-11 cursor-pointer items-center rounded-full pr-1',
             'active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2'
           )}
           onClick={(e) => activate(e, true)}
