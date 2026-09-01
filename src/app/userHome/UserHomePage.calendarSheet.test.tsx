@@ -346,7 +346,13 @@ function calendarButton(): HTMLElement {
  * asserts the WIRING (subheader id ↔ section label) at the same time as it finds the element.
  */
 function subSection(dialog: HTMLElement, name: 'This week' | 'Later'): HTMLElement {
-  const heading = within(dialog).getByRole('heading', { level: 4, name });
+  // Prefix match, not exact: the This-week subheader's accessible name carries an
+  // sr-only count clause (", N upcoming this week" — ML15, 2026-09-01) whenever the
+  // pill shows one, mirroring the Calendar button's counted name.
+  const heading = within(dialog).getByRole('heading', {
+    level: 4,
+    name: new RegExp(`^${name}\\b`),
+  });
   const section = dialog.querySelector(`section[aria-labelledby="${heading.id}"]`);
   expect(section, `no <section> is labelled by the "${name}" subheader`).not.toBeNull();
   return section as HTMLElement;
@@ -648,8 +654,11 @@ describe('Req 12 — upcoming first, past collapsed', () => {
       // EXTENDED by plan 88.5-08 (D-04): NONE of the three sub-sections may render as an
       // empty shell — not the happening-now group (which would show a bare date header), not
       // This week, not Later. The empty line stands only when all three are empty.
-      expect(within(dialog).queryByRole('heading', { level: 4, name: 'This week' })).toBeNull();
-      expect(within(dialog).queryByRole('heading', { level: 4, name: 'Later' })).toBeNull();
+      // Prefix regexes, not exact names: the This-week heading's name can carry the
+      // sr-only count clause (ML15), and an exact-name null-check would pass VACUOUSLY
+      // against a counted heading that wrongly rendered here.
+      expect(within(dialog).queryByRole('heading', { level: 4, name: /^This week\b/ })).toBeNull();
+      expect(within(dialog).queryByRole('heading', { level: 4, name: /^Later\b/ })).toBeNull();
       expect(rowOrder(dialog)).toEqual([]);
       // No hero either (SPEC Req 3), and still NO CTA — the 88-18 rule.
       expect(within(dialog).queryByText('Next game night')).toBeNull();
@@ -689,7 +698,7 @@ describe('Phase 88.5 — Happening now / This week / Later', () => {
 
     expect(calendarButton()).toHaveAccessibleName('Calendar, 2 upcoming games this week');
 
-    const heading = within(dialog).getByRole('heading', { level: 4, name: 'This week' });
+    const heading = within(dialog).getByRole('heading', { level: 4, name: /^This week\b/ });
     // The twin pill's digits. It is `aria-hidden` (the count is in the button's name), which is
     // why the heading's own accessible name above is still exactly "This week".
     expect(within(heading).getByText('2')).toBeInTheDocument();
@@ -707,7 +716,7 @@ describe('Phase 88.5 — Happening now / This week / Later', () => {
 
     expect(rowOrder(dialog)).toEqual(['Root', 'Catan', 'Brass']);
 
-    const thisWeekHeading = within(dialog).getByRole('heading', { level: 4, name: 'This week' });
+    const thisWeekHeading = within(dialog).getByRole('heading', { level: 4, name: /^This week\b/ });
     const rootRow = within(dialog).getByRole('button', { name: /Root/ });
     expect(precedes(rootRow, thisWeekHeading)).toBe(true);
 
@@ -749,8 +758,14 @@ describe('Phase 88.5 — Happening now / This week / Later', () => {
     expect(levelText(3)).toEqual(['Upcoming events']);
     // h4 = the happening-now group's DAY header (it has no sub-section heading above it, so it
     // keeps `DateGroup`'s default level) plus the two sub-section headings. "This week1" is the
-    // subheader with its twin pill seated inside it.
-    expect(levelText(4)).toEqual(['Friday, September 4', 'This week1', 'Later']);
+    // subheader with its twin pill seated inside it, followed by the sr-only count clause
+    // (", 1 upcoming this week" — ML15, 2026-09-01) that announces what the aria-hidden pill
+    // only shows.
+    expect(levelText(4)).toEqual([
+      'Friday, September 4',
+      'This week1, 1 upcoming this week',
+      'Later',
+    ]);
     // h5 = the happening-now ROW title (default `EventRow` level), then This-week/Later's day
     // headers, demoted one level beneath their `h4` sub-section heading.
     expect(levelText(5)).toEqual(['Root', 'Friday, September 4', 'Monday, September 14']);

@@ -670,7 +670,12 @@ export const rsvpAPI = {
   // without wiping the member's saved note. Do NOT "normalize" this by always
   // sending `note: note ?? null`; that would re-introduce the wipe the backend fix
   // exists to close. Pinned by a test in api.test.ts.
-  submitRsvp: (event_id: string, status: string, note?: string) =>
+  // `note?: string | null` — null is a LEGITIMATE wire value (explicit clear:
+  // RsvpSection's Save note sends `note || null`). Narrowing this to `string`
+  // would make the TS conversion of RsvpSection "fix" `note || null` into
+  // `note || undefined`, silently breaking note deletion (adversarial review
+  // 2026-09-01, ML4). Pinned in api.test.ts (explicit-null case).
+  submitRsvp: (event_id: string, status: string, note?: string | null) =>
     apiFetch('/rsvp', {
       method: 'POST',
       body: JSON.stringify({ event_id, status, note }),

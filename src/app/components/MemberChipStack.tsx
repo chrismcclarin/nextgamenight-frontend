@@ -212,7 +212,11 @@ const HIT_EXTENSION = "relative after:absolute after:-inset-1.5 after:content-['
  * repo-wide accessibility gate, not a cleanup. Every shipped site inlines it for the same reason.
  */
 
-const memberLabel = (m: ChipMember): string => m.username || m.email || '';
+// Terminal fallback mirrors UserChip's FALLBACK_LABEL idiom: a member row with
+// neither username nor email must still carry an identity token in every
+// constructed accessible name — `''` here produced "Members: , Bob" and a
+// ", friend" sr-only carrier with no name (adversarial review 2026-09-01, ML16).
+const memberLabel = (m: ChipMember): string => m.username || m.email || 'Unknown member';
 
 /*
  * DECISION Phase 88.5 (D-15, UI-SPEC section 10 row A-8, WCAG 1.4.1): each expanded chip's
@@ -496,6 +500,13 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
               ref={lessRef}
               role="button"
               tabIndex={0}
+              // The disclosure relationship, carried on BOTH controls: the collapsed
+              // trigger says expanded=false; this control says expanded=true and
+              // points at the same always-mounted row panel, so an AT user landing
+              // here cold has the programmatic link to what it collapses
+              // (adversarial review 2026-09-01, ML18).
+              aria-expanded={true}
+              aria-controls={rowId}
               className={cn(
                 HIT_EXTENSION,
                 'inline-flex min-h-11 cursor-pointer items-center rounded-xs px-1',

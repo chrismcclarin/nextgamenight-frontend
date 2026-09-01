@@ -141,6 +141,20 @@ describe('rsvpAPI.submitRsvp — undefined note is dropped from the wire body', 
     expect('note' in body).toBe(false);
   });
 
+  it('SENDS the note key with value null when null is passed (explicit clear — the RsvpSection Save-note path)', async () => {
+    const fetchMock = okJson();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await rsvpAPI.submitRsvp('e1', 'yes', null);
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    // The key must be PRESENT (`null` serializes, unlike `undefined`) — the
+    // backend's clear semantics key on presence, and the signature admits null
+    // for exactly this caller (api.ts submitRsvp comment, ML4).
+    expect('note' in body).toBe(true);
+    expect(body.note).toBeNull();
+  });
+
   it('SENDS the note key when a note is passed — including an empty string (explicit clear)', async () => {
     const fetchMock = okJson();
     vi.stubGlobal('fetch', fetchMock);

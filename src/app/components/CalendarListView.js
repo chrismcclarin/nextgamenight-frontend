@@ -138,10 +138,10 @@ const CONTAINER_HEIGHT_FULL = 600;
      is ~300px; a 48px thumbnail plus the group avatar and gaps would take a third of it, and the
      NAME is what Req 11b's "readable game text" acceptance is about. If it is ever un-hidden it
      MUST stay on `SafeImage` (untrusted remote URL, T-88.1-25) — never a bare <img>. */
-/* A shared, frozen empty set for the two id-set props below. A `new Set()` default in the
-   parameter list would allocate a fresh identity on EVERY render, which would defeat the
-   partition memo's dep check for every caller that does not pass the props (i.e. both
-   desktop arms). */
+/* A shared, frozen empty set for the two id-set props below: a stable identity so callers
+   that do not pass the props (both desktop arms) get the same default object every render.
+   (The partition below is a plain compute, not a memo — ML8 — so this is about not
+   allocating a throwaway Set per render, not about dependency checks.) */
 const EMPTY_ID_SET = new Set();
 
 export default function CalendarListView({
@@ -304,8 +304,14 @@ export default function CalendarListView({
      Membership is pure SET LOOKUP against the two props. `futureGroups` is untouched — still
      the existing `k >= todayKey` date-key split — and Later needs no test of its own: it is
      everything left over by elimination, which is why a cancelled or completed future event
-     lands there without this file ever reading `.status`. */
-  const { happeningNowGroups, thisWeekGroups, laterGroups } = useMemo(() => {
+     lands there without this file ever reading `.status`.
+
+     PLAIN COMPUTE, deliberately NOT a useMemo: the only caller that passes the id-set props
+     (`UserHomePage`) builds them as fresh `new Set(...)` identities on every render — its own
+     documented "NOT MEMOIZED" stance — so a memo keyed on them could never hit and only
+     obscured the cost (adversarial review 2026-09-01, ML8). Two passes over a handful of
+     rows per render is the same cost profile UserHomePage already accepts on its side. */
+  const { happeningNowGroups, thisWeekGroups, laterGroups } = (() => {
     if (!isSheet) {
       return { happeningNowGroups: [], thisWeekGroups: [], laterGroups: [] };
     }
@@ -328,7 +334,7 @@ export default function CalendarListView({
       if (laterItems.length > 0) later.push({ ...group, items: laterItems });
     }
     return { happeningNowGroups: happening, thisWeekGroups: week, laterGroups: later };
-  }, [isSheet, futureGroups, happeningNowIds, thisWeekIds]);
+  })();
 
   const hasAnyEvents = pastGroups.length > 0 || futureGroups.length > 0;
 
@@ -604,6 +610,14 @@ export default function CalendarListView({
                     >
                       This week
                       <UpcomingCountPill count={upcomingCount} />
+                      {/* The pill is aria-hidden BY CONTRACT — its host announces the
+                          number (UpcomingCountPill.tsx doc). The Calendar button honours
+                          that; this heading is the other host and must too, or the count
+                          is sighted-only here (adversarial review 2026-09-01, ML15).
+                          Same visibility condition as the pill: null = no claim, 0 = none. */}
+                      {upcomingCount !== null && upcomingCount > 0 && (
+                        <span className="sr-only">, {upcomingCount} upcoming this week</span>
+                      )}
                     </h4>
                     <section aria-labelledby={thisWeekId} className="space-y-6">
                       {thisWeekGroups.map((group) => (

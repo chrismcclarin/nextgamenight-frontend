@@ -112,6 +112,13 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
      * the effect below — a guard that re-runs the thing it guards is not a guard.
      */
     const submittedRef = React.useRef(false);
+    // Which event the mounted card currently shows. `handleRsvp`'s continuations
+    // compare their captured id against this so a submit that resolves AFTER the
+    // `event` prop flipped (the old hero's start time passed and a re-render
+    // reselected) cannot write the OLD event's status onto the NEW hero or arm the
+    // stale-guard against the new event's own read (adversarial review 2026-09-01,
+    // ML0). Kept in sync by the reset effect below.
+    const eventIdRef = React.useRef<string | null | undefined>(null);
 
     // The when-line, composed from the SHARED formatters the list rows below already
     // use. There is deliberately no second date formatter in this file.
@@ -177,6 +184,7 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
       `RsvpSection` onto the same helper belongs to 88.6's error pass, not here.
     */
     React.useEffect(() => {
+      eventIdRef.current = eventId;
       submittedRef.current = false;
       setViewerStatus(UNKNOWN);
       if (!eventId || !selfUuid) return;
@@ -214,14 +222,19 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
 
       setSubmitting(next);
       setErrorMessage('');
+      // Captured so the continuations below can tell whether the card still shows
+      // the event this write was for (see `eventIdRef`, ML0).
+      const submittedFor = eventId;
       try {
         /*
           DECISION Phase 88.5 (SPEC Req 4): the hero calls `submitRsvp` with NO note
           argument, and that is SAFE rather than lossy. Plan 88.5-01 made `POST /rsvp`
           status-only — the note write is conditional on the request body carrying a
-          `note` key, at both the primary update and the race-retry path
-          (`routes/rsvp.js:413` and `:438`) — and `JSON.stringify` DROPS an undefined
-          `note`, so no key is sent and the saved note is preserved.
+          `note` key, via the hoisted `noteUpdate` at the top of POST / in
+          `routes/rsvp.js`, spread at both the primary update and the race-retry
+          path — and `JSON.stringify` DROPS an undefined `note`, so no key is sent
+          and the saved note is preserved. (Cite is the stable `noteUpdate` anchor,
+          not line numbers — the old `:413`/`:438` cites drifted; ML6/ML12.)
 
           REJECTED: forwarding a note from here. The hero has no note field to forward
           from, and adding one would reintroduce exactly the coupling the backend patch
@@ -234,12 +247,19 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
           a second round trip to be told so is latency for nothing.
         */
         await rsvpAPI.submitRsvp(eventId, next);
+        // The write succeeded — but only reflect it if the card still shows the
+        // event it was for. After a hero flip, the old event's answer is neither
+        // the new hero's status nor a reason to discard the new event's read.
+        if (eventIdRef.current !== submittedFor) return;
         // Arm the stale-guard only on SUCCESS: if the write failed, nothing was written,
         // so a later read landing is the truth and must be allowed through.
         submittedRef.current = true;
         setViewerStatus(next);
       } catch (err) {
         logger.error('hero next-game-night RSVP submit failed', err);
+        // Same hero-flip guard as the success path: an error banner about the OLD
+        // event would read as a failure of the NEW hero's buttons.
+        if (eventIdRef.current !== submittedFor) return;
         /*
           DECISION Phase 88.5 (SPEC Req 4): failure copy comes from the shared
           `getFetchErrorMessage`, chosen OVER `RsvpSection.js:82`'s hard-coded string —
@@ -291,10 +311,14 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
           </span>
           {/*
             DECISION Phase 88.5 (SPEC Req 3): the when-line is a span, NOT a heading —
-            and specifically never a level-5 one. `UserHomePage.calendarSheet.test.tsx`'s
-            `rowOrder()` helper reads `getAllByRole('heading', { level: 5 })` inside the
-            dialog to assert LIST ORDER, so a level-5 hero would silently prepend itself
-            to that list and break a pin in a different file. Promoting this to a heading
+            the hero must not enter the sheet dialog's heading outline at ANY level.
+            The sheet suite pins that outline as exactly h3>h4>h5>h6 with no extra
+            heading (`UserHomePage.calendarSheet.test.tsx`, outline pin), and its
+            `rowOrder()` helper is structure-based (re-pointed by plan 88.5-08 —
+            DR2-7b — precisely so it survives heading-level changes), so a hero
+            heading would red the outline pin, not silently corrupt row order.
+            (Rationale refreshed 2026-09-01, ML11 — the old text cited the
+            pre-88.5-08 level-5 `rowOrder()` mechanism.) Promoting this to a heading
             is a decision, not a cleanup.
           */}
           <span className="mt-1 block text-lg font-bold leading-tight text-content-primary">
@@ -399,12 +423,19 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
                   )}
                 >
                   {isFlight ? (
-                    <span
-                      // The shipped spinner, swapped in PLACE so the button element —
-                      // and therefore DOM focus — survives the submit.
-                      className="inline-block animate-spin h-4 w-4 border-2 border-line-strong border-t-transparent rounded-full"
-                      aria-hidden="true"
-                    />
+                    <>
+                      <span
+                        // The shipped spinner, swapped in PLACE so the button element —
+                        // and therefore DOM focus — survives the submit.
+                        className="inline-block animate-spin h-4 w-4 border-2 border-line-strong border-t-transparent rounded-full"
+                        aria-hidden="true"
+                      />
+                      {/* The button deliberately KEEPS focus in flight (aria-disabled,
+                          D-08/A-5) — so it must keep an accessible NAME too, or the
+                          focused control announces as nothing for the whole round trip
+                          (WCAG 4.1.2; adversarial review 2026-09-01, ML13). */}
+                      <span className="sr-only">{HERO_BUTTON_TEXT[key]}, saving</span>
+                    </>
                   ) : (
                     HERO_BUTTON_TEXT[key]
                   )}
