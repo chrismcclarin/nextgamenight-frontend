@@ -284,6 +284,26 @@ describe('MemberChipStack — collapsed stack', () => {
     expect(control).toHaveAttribute('tabindex', '0');
   });
 
+  it('18b. carries BOTH touch-floor utilities — min-h-11 AND min-w-11 (Phase 88.5 plan 10, R4)', () => {
+    // A CLASS-STRING pin, deliberately, and the reason is that this is the only layer that
+    // can hold it at all: jsdom has no layout, so no rendered assertion here can measure a
+    // width. MEASURED in chromium at 375px while writing `touch-targets.spec.ts`'s
+    // collapsed-stack case:
+    //     4 non-self members -> 32 + 3 x 24 (the -ml-2 overlap) + 4 (pr-1) = 108 x 44
+    //     1 non-self member  -> 32 + 4                                     =  36 x 44
+    // `min-h-11` sets no min-width, so the ONE-member stack — the viewer plus one other
+    // person, an ordinary group shape — was a 36px-wide tap target under a 44px floor.
+    //
+    // The e2e pin that found this cannot GUARD it: the seeded fixture's first group has
+    // three non-self members, so the stack is 84px wide there and the assertion passes
+    // whether or not `min-w-11` is present. This test is the guard. Dropping either utility
+    // is a decision, not a cleanup.
+    renderStack({ members: MEMBERS.slice(0, 2) });
+    const control = screen.getByRole('button', { name: /Show all members/ });
+    expect(control.className).toContain('min-h-11');
+    expect(control.className).toContain('min-w-11');
+  });
+
   it('19. names its members and its overflow, with `and 1 more` in the singular', () => {
     renderStack({ members: MEMBERS.slice(0, 6) });
     expect(
