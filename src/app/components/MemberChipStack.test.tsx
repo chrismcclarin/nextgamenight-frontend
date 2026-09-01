@@ -248,7 +248,9 @@ const collapsed = () => screen.getByRole('button', { name: COLLAPSED_NAME });
 describe('MemberChipStack — collapsed stack', () => {
   it('15. shows four member chips plus a `+2`, and never the viewer', () => {
     renderStack();
-    for (const initials of ['MA', 'RI', 'AD', 'GR']) {
+    // 'mary kay' is two tokens -> 'MK'; the other three are single tokens -> the D-10
+    // two-character branch.
+    for (const initials of ['MK', 'RI', 'AD', 'GR']) {
       expect(screen.getByText(initials)).toBeInTheDocument();
     }
     expect(screen.getByText('+2')).toBeInTheDocument();
@@ -372,7 +374,7 @@ describe('MemberChipStack — expanded row', () => {
     fireEvent.click(collapsed());
     const chip = screen.getByRole('button', { name: 'mary kay, friend' });
     // ...and the visible glyph is excluded from that name: it is the sr-only carrier talking.
-    expect(chip.textContent).toContain('MA');
+    expect(chip.textContent).toContain('MK');
   });
 
   it('28. A-8: a pending chip states identity AND "friend request pending"', () => {
@@ -424,19 +426,22 @@ describe('MemberChipStack — expanded row', () => {
     expect(screen.queryByRole('button', { name: /^hedy/ })).not.toBeInTheDocument();
     const carrier = screen.getByText('hedy');
     expect(carrier.className).toContain('sr-only');
-    expect(carrier.closest('[role="button"]')).toBeNull();
-    expect(carrier.closest('[tabindex]')).toBeNull();
+    // Scoped to the chip's OWN wrapper: `closest()` would otherwise walk out to the enclosing
+    // group card, which is legitimately a `role="button"` with a tabindex.
+    const wrapper = carrier.parentElement as HTMLElement;
+    expect(wrapper.getAttribute('role')).toBeNull();
+    expect(wrapper.getAttribute('tabindex')).toBeNull();
+    expect(wrapper.getAttribute('aria-expanded')).toBeNull();
     // Identity is never initials-only — today's degraded state still renders the username.
     expect(screen.getByText('HE')).toBeInTheDocument();
   });
 
   it('33. the chip row is a 12px wrap in BOTH axes', () => {
     renderStack();
-    fireEvent.click(collapsed());
-    const row = document.getElementById(
-      screen.getByRole('button', { name: 'Show less' }).getAttribute('aria-controls') ??
-        '__none__',
-    );
+    const control = collapsed();
+    const rowId = control.getAttribute('aria-controls') as string;
+    fireEvent.click(control);
+    const row = document.getElementById(rowId);
     // The row is the panel `aria-controls` points at, so this cannot drift onto some other div.
     expect(row?.className).toContain('flex-wrap');
     expect(row?.className).toContain('gap-3');
@@ -501,10 +506,18 @@ describe('MemberChipStack — source properties the render cannot see', () => {
     // stretch the invisible hit target over the ENTIRE card, and combined with the chips'
     // `stopPropagation` every tap on the card would open a member popover instead of
     // navigating. The shipped pairing at `ClickableMemberName.js:333` is the precedent.
-    const lines = COMPONENT_SRC.split('\n').filter((l) => l.includes('after:absolute'));
+    // Comments are blanked first: the DECISION marker explaining this pairing necessarily
+    // NAMES the utility it is about, and a comment-blind gate would red on the explanation —
+    // the DEF-88-25-02 / DEF-88-27-01 failure shape, whose pressure is to delete the why.
+    const code = COMPONENT_SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    const lines = code.split('\n').filter((l) => l.includes('after:absolute'));
     expect(lines.length).toBeGreaterThan(0);
     for (const line of lines) expect(line).toContain('relative');
-    expect(COMPONENT_SRC).toContain('after:-inset-1.5');
+    expect(code).toContain('after:-inset-1.5');
+    // Anti-vacuity: the detector must be able to SEE an un-anchored pseudo.
+    expect(
+      "after:absolute after:-inset-1.5".split('\n').filter((l) => l.includes('after:absolute')),
+    ).toHaveLength(1);
   });
 
   it('39. propagation is stopped on BOTH handlers of BOTH span controls', () => {
