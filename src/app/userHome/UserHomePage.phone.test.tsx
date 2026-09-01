@@ -1,23 +1,60 @@
-// Phase 88.1 plan 08 — Req 11a phone-surface pins.
+// Phase 88.1 plan 08 — Req 11a phone-surface pins,
+// RE-POINTED IN FULL BY PHASE 88.5 PLAN 07 (SPEC Req 1 / Req 2).
 //
-// What these lock, in order of how badly a regression would hurt:
-//   1. COUNT INTEGRITY. `UserHomePage.js` passes the RAW, unfiltered event list to
-//      `UpcomingEventsCard` on purpose, so a bar reading `events.length` would
-//      advertise a number the sheet does not show. The fixture below is built so
-//      raw length (5) and filtered length (2) DIFFER — a regression to
-//      `events.length` fails these tests instead of passing them silently.
-//   2. TRUTHFULNESS WHILE PENDING / ERRORED (DECISION Phase 88-33, re-pinned for the
-//      bar). `events=[]` means "not fetched yet" during the identity-resolution
-//      window and on terminal identity failure; rendering it as "none in the next 7
-//      days" is the exact lie 88-33 fixed on the card.
-//   3. The sheet's branch ORDER — identity error, then fetch error, then empty. An
-//      errored fetch also has zero events, so flipping those silently restores the
-//      88-18 bug in its new host.
-//   4. Three dismiss paths (Esc + close button here; outside tap is E2E).
-//   5. The Footer spacer appears ONLY when the bar is mounted.
+// WHAT CHANGED, so the next reader does not re-derive the coverage map. The phone-only
+// fixed bottom event bar and the "Upcoming events" sheet it opened are DELETED (plan
+// 88.5-07: the owner could not see the bar — "I didn't notice or see the bottom bar",
+// 2026-08-28). Every pin below that had the bar as its subject was re-pointed, inverted or
+// retired against a named green replacement; NOTHING was deleted while red and nothing is
+// skipped, which is SPEC Req 1's acceptance. Where each block went:
+//
+//   COUNT + SUPPRESSION  -> the Calendar button's amber pill and its aria-label
+//                           (UI-SPEC 6.1.5). Same contract, new carrier.
+//   THE 11a SHEET        -> retired. Four of its five pins are covered by name in the
+//                           SIBLING suite `UserHomePage.calendarSheet.test.tsx`, which was
+//                           run green before each deletion:
+//                             Escape close        -> "closes on Escape"
+//                             close button        -> "has exactly one dismiss-labelled
+//                                                     close control and closes on it"
+//                             ML-17 identity      -> "terminal identity failure degrades to
+//                                                     the compact notice, never the empty state"
+//                             88-18 fetch error   -> "a failed events fetch shows the calendar
+//                                                     error copy, never the empty state"
+//                           The fifth ("opens on one tap, named Upcoming events") had no
+//                           replacement and needed none: the surface is gone.
+//   FOOTER SPACER        -> INVERTED. With the bar deleted there is one state, not two, so
+//                           these now pin that NO spacer renders on any of the three return
+//                           paths. They are what keeps the retirement honest rather than
+//                           incidental (Footer.js, AMENDED Phase 88.5).
+//   THE BAR'S DARK-THEME -> retired with no replacement. It pinned the bar's own always-dark
+//   TEXT COLOUR             header text token; the element no longer exists, and re-homing a
+//                           ruling about a surface that is gone would be theatre.
+//   ROW OPERABILITY+AXE  -> re-pointed at the CALENDAR sheet, kept HERE (the sibling suite is
+//                           owned by plans 88.5-01/08). None of these four is covered there,
+//                           so retiring them would have been a real coverage loss — and the
+//                           axe pin is the ONLY axe assertion on any bottom sheet in the repo,
+//                           on the very sheet plan 88.5-08 is about to add a hero card and an
+//                           RSVP toggle to. "closes the sheet BEFORE navigating" IS covered
+//                           there twice ("leaves no open sheet behind…", "navigates by GAME
+//                           id…") and was retired.
+//
+// What these lock now, in order of how badly a regression would hurt:
+//   1. COUNT INTEGRITY. `UserHomePage.js` passes the RAW, unfiltered event list on purpose,
+//      so a button reading `events.length` would advertise a number the sheet does not show.
+//      The fixture below is built so raw length (5) and filtered length (2) DIFFER — a
+//      regression to `events.length` fails these tests instead of passing them silently.
+//   2. TRUTHFULNESS WHILE PENDING / ERRORED (DECISION Phase 88-33, re-pinned for the button).
+//      `events=[]` means "not fetched yet" during the identity-resolution window and on
+//      terminal identity failure; announcing it as a count is the exact lie 88-33 fixed.
+//   3. THE EXACT RULED COPY, all four states including the SINGULAR arm — the pill is
+//      `aria-hidden`, so the label is the only carrier of the number, and an off-by-one
+//      plural is the classic silent copy defect.
+//   4. Calendar-sheet rows stay operable (pointer AND keyboard) and the open sheet stays
+//      axe-clean.
+//   5. The Footer reserves NO bottom space on any return path.
 //
 // Geometry (heights, viewport units, occlusion) is deliberately NOT asserted: jsdom has no
-// layout, so a pixel assertion here would be theatre. That is plan 88.1-10's job.
+// layout, so a pixel assertion here would be theatre. That is the phone e2e's job.
 import * as React from 'react';
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -28,7 +65,14 @@ import { axe } from 'vitest-axe';
 import { selectUpcomingWithin7Days } from '@/lib/upcomingEvents';
 
 const SELF_UUID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-const SHEET_TITLE = 'Upcoming events';
+const SHEET_TITLE = 'Calendar';
+
+/** UI-SPEC 6.1.5, verbatim. The suppressed arm is the bare label. */
+const NAME_SUPPRESSED = 'Calendar';
+const nameFor = (n: number) =>
+  n === 1
+    ? 'Calendar, 1 upcoming game this week'
+    : `Calendar, ${n} upcoming games this week`;
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -36,7 +80,7 @@ const at = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
 
 /**
  * DISCRIMINATING fixture: 5 raw rows, 2 of which are "upcoming".
- * A bar counting `events.length` would say 5 over a sheet showing 2.
+ * A button counting `events.length` would say 5 over a sheet showing 2.
  */
 const EVENTS = [
   {
@@ -88,6 +132,9 @@ const EVENTS = [
 
 const FILTERED = selectUpcomingWithin7Days(EVENTS);
 
+/** Exactly ONE upcoming row — the fixture for the singular arm of UI-SPEC 6.1.5. */
+const ONE_UPCOMING = [EVENTS[0], EVENTS[1]];
+
 // Mutable identity, mirroring UserHomePage.identity.test.tsx's harness.
 const h = vi.hoisted(() => ({
   selfUuid: undefined as string | undefined,
@@ -95,6 +142,11 @@ const h = vi.hoisted(() => ({
   // Footer's third return path. Defaults false, so every pre-existing case sees the resolved
   // auth state it saw before.
   authLoading: false,
+  /* Footer's PUBLIC return path. Added by 88.5-07: the inverted spacer pins have to cover all
+     three paths, and with only `authLoading` this harness could reach two of them — the
+     logged-out case would silently have rendered the AUTH footer and duplicated its
+     neighbour. Defaults false, so every other case keeps the signed-in state it had. */
+  loggedOut: false,
 }));
 
 /* WR-02: `useRouter` returned a FRESH `vi.fn()` on every call, so nothing could ever assert on
@@ -122,7 +174,9 @@ vi.mock('@auth0/nextjs-auth0/client', () => ({
   useUser: () =>
     h.authLoading
       ? { user: undefined, isLoading: true }
-      : { user: { sub: 'auth0|self' }, isLoading: false },
+      : h.loggedOut
+        ? { user: undefined, isLoading: false }
+        : { user: { sub: 'auth0|self' }, isLoading: false },
 }));
 
 vi.mock('next/navigation', () => ({
@@ -148,12 +202,32 @@ vi.mock('@/lib/api', async (importOriginal) => {
       // Never settles by default: the in-flight attempt against a dead backend.
       getUserEvents: vi.fn(() => new Promise(() => {})),
     },
+    /* Phase 88.5-07 (threat T-88.5-25) — rsvpAPI MUST be stubbed here too, not just
+       eventsAPI. This factory spreads the ACTUAL module and overrode `eventsAPI` alone, so
+       `rsvpAPI` passed straight through to the real client. That was harmless only while
+       nothing in this file opened the calendar sheet; the re-pointed row/axe pins below do
+       open it, and `NextGameNightCard` (plan 88.5-05, mounted into that sheet by plan
+       88.5-08) fires getEventRsvps on open — which would reach the real apiFetch and
+       therefore a real jsdom network call from a unit run. Do NOT drop either override
+       "because this test isn't about RSVPs": the NETWORK REACH is what breaks, not the
+       assertion. The sibling `UserHomePage.calendarSheet.test.tsx` carries its own copy
+       (plan 88.5-01) — that fix does not cover this file. */
+    rsvpAPI: {
+      ...actual.rsvpAPI,
+      // Neutral default = the "no RSVPs yet" state, shaped exactly like the route
+      // (routes/rsvp.js:536 returns { rsvps, summary } with all three counts).
+      getEventRsvps: vi.fn(() =>
+        Promise.resolve({ rsvps: [], summary: { yes: 0, maybe: 0, no: 0 } })
+      ),
+      submitRsvp: vi.fn(() =>
+        Promise.resolve({ id: 'rsvp-mock', status: 'yes', note: null })
+      ),
+    },
   };
 });
 
 import UserHome from './UserHomePage';
 import Footer from '../components/Footer';
-import PhoneEventBar from '../components/PhoneEventBar';
 
 /** UserHomePage is `.js`, so its inferred prop type has every prop REQUIRED. */
 function renderHome() {
@@ -175,11 +249,20 @@ async function mockEvents(value: unknown[] | Error) {
   else fn.mockResolvedValue(value);
 }
 
-const findBar = (name: string | RegExp) =>
+/** The phone Calendar button, found by its FULL accessible name (the count is in it). */
+const findCalendarButton = (name: string | RegExp) =>
   screen.findByRole('button', { name });
 
-async function openSheet(user: ReturnType<typeof userEvent.setup>, name: string | RegExp) {
-  await user.click(await findBar(name));
+/**
+ * Open the calendar sheet through the Calendar button — the page's only phone entry
+ * point now that the bar is gone.
+ *
+ * The name regex is a PREFIX with a word boundary, not an end anchor: the button's
+ * accessible name carries the count (UI-SPEC 6.1.5). It must still exclude any other
+ * control whose name merely contains "calendar". Do not re-tighten to an end anchor.
+ */
+async function openCalendarSheet(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await findCalendarButton(/^calendar\b/i));
   return screen.getByRole('dialog', { name: SHEET_TITLE });
 }
 
@@ -187,6 +270,7 @@ beforeEach(() => {
   h.selfUuid = SELF_UUID;
   h.isError = false;
   h.authLoading = false;
+  h.loggedOut = false;
   nav.push.mockClear();
 });
 
@@ -195,127 +279,93 @@ afterEach(() => {
   h.selfUuid = undefined;
   h.isError = false;
   h.authLoading = false;
+  h.loggedOut = false;
   vi.restoreAllMocks();
 });
 
-describe('Req 11a — the phone bottom bar count', () => {
+describe('SPEC Req 2 — the Calendar button carries the upcoming count', () => {
   it('the fixture actually discriminates: raw length differs from the filtered count', () => {
-    // If this ever stops holding, pin 2 below is vacuous.
+    // If this ever stops holding, the pin below is vacuous.
     expect(FILTERED).toHaveLength(2);
     expect(EVENTS.length).not.toBe(FILTERED.length);
   });
 
-  it('counts the SELECTOR result, not the raw list it is handed', async () => {
+  it('counts the SELECTOR result, not the raw list the page is handed', async () => {
     await mockEvents(EVENTS);
     renderHome();
 
-    const bar = await findBar(
-      `Open upcoming events, ${FILTERED.length} in the next 7 days`
-    );
+    const button = await findCalendarButton(nameFor(FILTERED.length));
     // The visible pill carries the same filtered number as the accessible name.
-    expect(bar).toHaveTextContent(
-      new RegExp(`^Upcoming events${FILTERED.length}$`)
-    );
+    expect(button).toHaveTextContent(new RegExp(`^Calendar${FILTERED.length}$`));
     // The raw-length name must not exist anywhere.
     expect(
-      screen.queryByRole('button', {
-        name: `Open upcoming events, ${EVENTS.length} in the next 7 days`,
-      })
+      screen.queryByRole('button', { name: nameFor(EVENTS.length) })
     ).toBeNull();
   });
 
-  it('hides the count pill at zero and says "none in the next 7 days"', async () => {
+  it('hides the pill at zero but still says "0" in the accessible name', async () => {
     await mockEvents([]);
     renderHome();
 
-    const bar = await findBar('Open upcoming events, none in the next 7 days');
-    // The pill is the only thing that would add a number to the bar's own text.
-    expect(bar).toHaveTextContent(/^Upcoming events$/);
-  });
-});
-
-describe('Req 11a — the sheet', () => {
-  it('opens on one tap, is named "Upcoming events", and shows the same rows the card shows', async () => {
-    const user = userEvent.setup();
-    await mockEvents(EVENTS);
-    renderHome();
-
-    const sheet = await openSheet(user, /Open upcoming events/);
-
-    expect(within(sheet).getByText('Catan')).toBeInTheDocument();
-    expect(within(sheet).getByText('Wingspan')).toBeInTheDocument();
-    // The rows the selector drops must not appear.
-    expect(within(sheet).queryByText('Yesterdays Game')).toBeNull();
-    expect(within(sheet).queryByText('Far Future Game')).toBeNull();
-    expect(within(sheet).queryByText('Cancelled Game')).toBeNull();
+    // UI-SPEC 6.1.5: 0 falls into the PLURAL arm, and the label still states it —
+    // only the visual dot is suppressed at 0 (UpcomingCountPill.tsx).
+    const button = await findCalendarButton('Calendar, 0 upcoming games this week');
+    // The pill is the only thing that would add a number to the button's own text.
+    expect(button).toHaveTextContent(/^Calendar$/);
   });
 
-  it('closes on Escape', async () => {
-    const user = userEvent.setup();
-    await mockEvents(EVENTS);
-    renderHome();
-
-    await openSheet(user, /Open upcoming events/);
-    await user.keyboard('{Escape}');
-
-    await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: SHEET_TITLE })).toBeNull()
-    );
-  });
-
-  it('closes from the close button', async () => {
-    const user = userEvent.setup();
-    await mockEvents(EVENTS);
-    renderHome();
-
-    const sheet = await openSheet(user, /Open upcoming events/);
-    await user.click(within(sheet).getByRole('button', { name: 'Close' }));
-
-    await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: SHEET_TITLE })).toBeNull()
-    );
-  });
-
-  it('shows the ML-17 identity banner, NOT the empty state, on terminal identity failure', async () => {
-    const user = userEvent.setup();
+  /* VALIDATION Wave 0: no test covered the SINGULAR arm, and an off-by-one plural is the
+     classic silent copy defect — it reads fine to whoever wrote it and is only ever heard
+     by a screen-reader user. All four states of UI-SPEC 6.1.5 are pinned as EXACT strings
+     here, so re-wording the copy has to be a decision. */
+  it('matches UI-SPEC 6.1.5 exactly in all four states, including the singular', async () => {
+    // (a) SUPPRESSED — identity still resolving, so no count clause at all.
     h.selfUuid = undefined;
-    h.isError = true;
     renderHome();
+    expect(await findCalendarButton(NAME_SUPPRESSED)).toBeInTheDocument();
+    cleanup();
 
-    const sheet = await openSheet(user, 'Open upcoming events');
-
-    // FetchErrorBanner's retry control reads "Retry" (FetchErrorBanner.tsx:85).
-    expect(within(sheet).getByRole('button', { name: /Retry/ })).toBeInTheDocument();
-    expect(within(sheet).queryByText('Nothing on the calendar')).toBeNull();
-  });
-
-  it('shows the 88-18 fetch-error treatment, NOT "Nothing on the calendar"', async () => {
-    const user = userEvent.setup();
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    await mockEvents(new Error('boom'));
+    // (b) ZERO — counted, and it is none. Plural arm.
+    h.selfUuid = SELF_UUID;
+    await mockEvents([]);
     renderHome();
-
-    const sheet = await openSheet(user, 'Open upcoming events');
-
     expect(
-      await within(sheet).findByText("We couldn't load your upcoming events")
+      await findCalendarButton('Calendar, 0 upcoming games this week')
     ).toBeInTheDocument();
-    expect(within(sheet).queryByText('Nothing on the calendar')).toBeNull();
+    cleanup();
+
+    // (c) EXACTLY ONE — the singular arm, which nothing else covers.
+    await mockEvents(ONE_UPCOMING);
+    renderHome();
+    expect(
+      await findCalendarButton('Calendar, 1 upcoming game this week')
+    ).toBeInTheDocument();
+    // Non-vacuity on the NUMBER as well as the grammar: the plural form at 1 must not exist.
+    expect(
+      screen.queryByRole('button', { name: 'Calendar, 1 upcoming games this week' })
+    ).toBeNull();
+    cleanup();
+
+    // (d) MANY — plural arm again, with the fixture's filtered count.
+    await mockEvents(EVENTS);
+    renderHome();
+    expect(
+      await findCalendarButton('Calendar, 2 upcoming games this week')
+    ).toBeInTheDocument();
   });
 });
 
-describe('Req 11a — the bar never claims a truthful zero it does not have (DECISION Phase 88-33)', () => {
-  const NO_COUNT_NAME = 'Open upcoming events';
+describe('SPEC Req 2 — the button never claims a count it does not have (DECISION Phase 88-33)', () => {
+  /** Any accessible name that makes a numeric claim. The suppressed arm has none. */
+  const ANY_COUNT_CLAIM = /upcoming games? this week/;
 
   it('makes no count claim while identity is still resolving', async () => {
     h.selfUuid = undefined;
     h.isError = false;
     renderHome();
 
-    expect(await findBar(NO_COUNT_NAME)).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: /none in the next 7 days/ })
-    ).toBeNull();
+    expect(await findCalendarButton(NAME_SUPPRESSED)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: ANY_COUNT_CLAIM })).toBeNull();
   });
 
   it('makes no count claim on terminal identity failure', async () => {
@@ -323,10 +373,8 @@ describe('Req 11a — the bar never claims a truthful zero it does not have (DEC
     h.isError = true;
     renderHome();
 
-    expect(await findBar(NO_COUNT_NAME)).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: /none in the next 7 days/ })
-    ).toBeNull();
+    expect(await findCalendarButton(NAME_SUPPRESSED)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: ANY_COUNT_CLAIM })).toBeNull();
   });
 
   it('makes no count claim when the events fetch failed', async () => {
@@ -334,16 +382,14 @@ describe('Req 11a — the bar never claims a truthful zero it does not have (DEC
     await mockEvents(new Error('boom'));
     renderHome();
 
-    // Wait for the rejection to settle, then re-check: the bar holds events=[]
-    // here too, and an errored fetch is not a clear calendar.
+    // Wait for the rejection to settle, then re-check: the page holds events=[] here
+    // too, and an errored fetch is not a clear calendar.
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: NO_COUNT_NAME })
+        screen.getByRole('button', { name: NAME_SUPPRESSED })
       ).toBeInTheDocument()
     );
-    expect(
-      screen.queryByRole('button', { name: /none in the next 7 days/ })
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: ANY_COUNT_CLAIM })).toBeNull();
   });
 
   it('DOES make the zero claim once the fetch has genuinely returned nothing', async () => {
@@ -351,108 +397,99 @@ describe('Req 11a — the bar never claims a truthful zero it does not have (DEC
     renderHome();
 
     expect(
-      await findBar('Open upcoming events, none in the next 7 days')
+      await findCalendarButton('Calendar, 0 upcoming games this week')
     ).toBeInTheDocument();
   });
 });
 
-describe('Footer clearance for the fixed bar', () => {
-  it('reserves no space when no phone bar is mounted', () => {
+/* INVERTED by plan 88.5-07 (SPEC Req 1). These four cases used to pin that the Footer
+   reserved 56px exactly when a phone bottom bar was mounted. The bar is deleted and its
+   presence store with it, so there is ONE state now, not two — and these are what keep that
+   retirement HONEST rather than incidental: they fail if anyone re-introduces the spacer
+   without re-introducing the bar it existed for. The auth-LOADING path is kept as its own
+   case because it is 88.1-20 IN-01's own pin; its intent (all THREE return paths honour the
+   contract) survives the inversion, only the contract flipped. See the AMENDED Phase 88.5
+   paragraph in Footer.js for the evidence the clearance is no longer needed. */
+describe('SPEC Req 1 — the Footer reserves no bottom space on any return path', () => {
+  const SPACER = 'phone-bottom-bar-spacer';
+
+  it('renders no spacer on the logged-out (public) path', () => {
+    h.loggedOut = true;
     render(<Footer />);
-    expect(screen.queryByTestId('phone-bottom-bar-spacer')).toBeNull();
+    // POSITIVE CONTROL, and a DISCRIMINATING one: without the "Report bug" absence this
+    // case cannot tell the public footer from the auth footer, and would silently
+    // duplicate its neighbour below if the harness ever stopped reaching this branch.
+    expect(screen.getByRole('link', { name: 'Privacy' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /report bug/i })).toBeNull();
+    expect(screen.queryByTestId(SPACER)).toBeNull();
   });
 
-  it('reserves space once a phone bar is mounted', async () => {
-    render(
-      <>
-        <PhoneEventBar events={[]} onOpen={vi.fn()} />
-        <Footer />
-      </>
-    );
-    expect(
-      await screen.findByTestId('phone-bottom-bar-spacer')
-    ).toBeInTheDocument();
-  });
-
-  // 88.1-20 (88.1-REVIEW.md IN-01): the auth-LOADING branch returned a bare placeholder and
-  // dropped the spacer — the one return path that did not honour the contract. This is a
-  // CONTRACT pin, not an occlusion pin: in the loading state the footer renders no links, and
-  // plan 19 measured this branch and REFUTED it as the cause of the CI occlusion failure.
-  it('reserves space in the auth-LOADING branch too, when a phone bar is mounted', async () => {
-    h.authLoading = true;
-    render(
-      <>
-        <PhoneEventBar events={[]} onOpen={vi.fn()} />
-        <Footer />
-      </>
-    );
-    expect(
-      await screen.findByTestId('phone-bottom-bar-spacer')
-    ).toBeInTheDocument();
-  });
-
-  it('reserves NO space while auth is loading if no phone bar is mounted', () => {
-    h.authLoading = true;
+  it('renders no spacer on the logged-in (auth) path', () => {
     render(<Footer />);
-    expect(screen.queryByTestId('phone-bottom-bar-spacer')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Privacy' })).toBeInTheDocument();
+    // The other half of the discriminator above — this branch DOES carry Report bug.
+    expect(
+      screen.getByRole('button', { name: /report bug/i })
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId(SPACER)).toBeNull();
   });
-});
 
-// Plan 88.1-17 Task 4 — the owner's dark-theme walkthrough defect (2026-08-24).
-//
-// This is a CLASS pin, not a colour measurement: jsdom has no colour, and the whole
-// point is to stop the theme-flipping token from coming back. `text-content-inverse`
-// resolves to #ffffff in light and purple-950 under `.dark`, while `bg-surface-header`
-// is warm-800/warm-900 — dark in BOTH themes. The pairing therefore rendered near-black
-// text on a near-black bar in dark theme, and the owner could not see the bar at all.
-describe('Req 11a — the bar is readable in BOTH themes', () => {
-  it('bar text stays white on the always-dark header surface (does not use the theme-flipping inverse token)', () => {
-    render(<PhoneEventBar events={[]} onOpen={vi.fn()} />);
-
-    const bar = screen.getByRole('button', { name: /open upcoming events/i })
-      .parentElement as HTMLElement;
-    // Confirm we grabbed the bar container itself before asserting about its text token.
-    expect(bar).toHaveClass('fixed', 'bottom-0', 'bg-surface-header');
-
-    expect(bar).toHaveClass('text-white');
-    expect(bar).not.toHaveClass('text-content-inverse');
+  it('renders no spacer on the auth-LOADING path (88.1-20 IN-01, inverted)', () => {
+    h.authLoading = true;
+    const { container } = render(<Footer />);
+    // The loading branch renders a bare placeholder and no links, so the positive
+    // control is that the branch rendered SOMETHING at all.
+    expect(container.firstChild).not.toBeNull();
+    expect(screen.queryByTestId(SPACER)).toBeNull();
   });
-});
 
-describe('Req 11a — tapping a row in the sheet (WR-02 / WR-03)', () => {
-  // WR-02: the sheet is a focus-trapped Radix dialog. Navigating without closing it leaves the
-  // destination page mounted BEHIND an overlay that still traps focus — the user lands on
-  // gameDetail and cannot reach it. The desktop column has no sheet, so the teardown belongs to
-  // the CALLER, not to the card: `UpcomingEventsCard` takes an optional `onEventClick`.
-  const CATAN_URL = '/gameDetail?event_id=e-soon&group_id=g1';
-
-  it('closes the sheet BEFORE navigating', async () => {
-    const user = userEvent.setup();
+  it('renders no spacer anywhere on the home page itself', async () => {
     await mockEvents(EVENTS);
-    renderHome();
-
-    const sheet = await openSheet(user, /Open upcoming events/);
-    await user.click(within(sheet).getByText('Catan'));
-
-    // Asserted on the DOM after the click rather than by spying on call order: a
-    // navigate-then-close implementation leaves the dialog mounted, which is the actual harm.
-    await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: SHEET_TITLE })).toBeNull()
+    render(
+      <>
+        <UserHome
+          GroupList={null}
+          getGroupList={vi.fn()}
+          onCreateGroup={vi.fn()}
+          groupListRefreshKey={0}
+          onMemberAdded={vi.fn()}
+        />
+        <Footer />
+      </>
     );
-    expect(nav.push).toHaveBeenCalledTimes(1);
-    expect(nav.push).toHaveBeenCalledWith(CATAN_URL);
+
+    // The page is the one surface that used to mount the bar, so it is the one that
+    // would bring the spacer back with it.
+    await findCalendarButton(/^calendar\b/i);
+    expect(screen.queryByTestId(SPACER)).toBeNull();
   });
+});
+
+/* RE-POINTED at the CALENDAR sheet by plan 88.5-07. These pinned row operability and
+   accessibility on the deleted 11a sheet; the calendar sheet is the surviving phone list and
+   NONE of these four is covered in `UserHomePage.calendarSheet.test.tsx`, so retiring them
+   would have been a real coverage loss. They stay in THIS file so plan ownership is clean —
+   plans 88.5-01 and 88.5-08 own the sibling suite.
+
+   The rows are `div role="button" tabIndex=0` with a HAND-ROLLED Enter/Space handler
+   (`CalendarListView.js:854-864`), not native buttons. That is exactly why the keyboard cases
+   below are not redundant with the click case: a native button gets Enter/Space for free, a
+   div gets them only for as long as that handler survives. */
+describe('SPEC Req 1 — calendar-sheet rows stay operable and accessible', () => {
+  const CATAN_URL = '/gameDetail?event_id=e-soon&group_id=g1';
 
   it('rows are real buttons, reachable inside the focus trap', async () => {
     const user = userEvent.setup();
     await mockEvents(EVENTS);
     renderHome();
 
-    const sheet = await openSheet(user, /Open upcoming events/);
+    const sheet = await openCalendarSheet(user);
 
-    // Pre-fix the row is a `div` with an onClick and no role at all, so this cannot resolve.
-    const row = within(sheet).getByRole('button', { name: /Catan/ });
+    const row = await within(sheet).findByRole('button', { name: /Catan/ });
     expect(row).toBeInTheDocument();
+    // A div with an onClick and no tabIndex is reachable by pointer only — the focus
+    // trap would skip it entirely.
+    expect(row).toHaveAttribute('tabindex', '0');
   });
 
   it('Enter on a focused row navigates', async () => {
@@ -460,8 +497,8 @@ describe('Req 11a — tapping a row in the sheet (WR-02 / WR-03)', () => {
     await mockEvents(EVENTS);
     renderHome();
 
-    const sheet = await openSheet(user, /Open upcoming events/);
-    const row = within(sheet).getByRole('button', { name: /Catan/ });
+    const sheet = await openCalendarSheet(user);
+    const row = await within(sheet).findByRole('button', { name: /Catan/ });
     row.focus();
     expect(document.activeElement).toBe(row);
 
@@ -474,36 +511,42 @@ describe('Req 11a — tapping a row in the sheet (WR-02 / WR-03)', () => {
     await mockEvents(EVENTS);
     renderHome();
 
-    const sheet = await openSheet(user, /Open upcoming events/);
-    const row = within(sheet).getByRole('button', { name: /Catan/ });
+    const sheet = await openCalendarSheet(user);
+    const row = await within(sheet).findByRole('button', { name: /Catan/ });
     row.focus();
 
     await user.keyboard(' ');
     expect(nav.push).toHaveBeenCalledWith(CATAN_URL);
   });
 
-  it('axe passes on the OPEN sheet with rows rendered', async () => {
+  /* The ONLY axe assertion on any bottom sheet in this repo — and plan 88.5-08 is about to
+     add a hero card and an RSVP segmented control to this exact sheet. Dropping it opens a
+     real regression window on the surface most about to change. */
+  it('axe passes on the OPEN calendar sheet with rows rendered', async () => {
     const user = userEvent.setup();
     // The POPULATED fixture, not the empty state — the point is the rows themselves.
     await mockEvents(EVENTS);
     renderHome();
 
-    const sheet = await openSheet(user, /Open upcoming events/);
-    expect(within(sheet).getByText('Catan')).toBeInTheDocument();
+    const sheet = await openCalendarSheet(user);
+    expect(await within(sheet).findByText('Catan')).toBeInTheDocument();
 
     expect(await axe(sheet)).toHaveNoViolations();
   });
 });
 
-// Plan 88.1-21 (88.1-CODE-REVIEW.md) — the bar's trigger opens a dialog and must say so.
-describe('Req 11a — the bar trigger announces the sheet it opens', () => {
-  it('carries aria-haspopup="dialog", matching the sibling Calendar trigger', () => {
-    // The desktop-side Calendar button that opens the same class of bottom sheet already does
-    // this (`userHome/UserHomePage.js:248`). Without it a screen-reader user is told only
-    // "button" and gets no warning that activation moves focus into a modal.
-    render(<PhoneEventBar events={[]} onOpen={vi.fn()} />);
+// Plan 88.1-21 (88.1-CODE-REVIEW.md), re-pointed by 88.5-07 — the trigger opens a dialog and
+// must say so. The bar carried this; the Calendar button it replaces already does
+// (`UserHomePage.js`), and this pin is what stops the counted `aria-label` rewrite from
+// dropping it.
+describe('SPEC Req 1 — the phone trigger announces the sheet it opens', () => {
+  it('the Calendar button carries aria-haspopup="dialog" alongside its counted name', async () => {
+    await mockEvents(EVENTS);
+    renderHome();
 
-    const trigger = screen.getByRole('button', { name: /open upcoming events/i });
+    // Found by the COUNTED name on purpose: the attribute and the new label have to
+    // coexist on one control, which is the thing that regressed elsewhere.
+    const trigger = await findCalendarButton(nameFor(FILTERED.length));
     expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
   });
 });
