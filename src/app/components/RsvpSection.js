@@ -2,6 +2,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { rsvpAPI } from '../../lib/api';
 import ClickableMemberName from './ClickableMemberName';
+// Phase 88.5 (SPEC Req 4 / D-07): the status copy/treatment map lifted out of this
+// component body so the home hero card reads the SAME object. Its 87.7 D-18 marker
+// travelled with it.
+import { statusConfig } from './rsvpStatusConfig';
 import { Textarea } from '../../components/ui/Input';
 
 /**
@@ -100,49 +104,6 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
     yes: rsvps.filter(r => r.status === 'yes'),
     maybe: rsvps.filter(r => r.status === 'maybe'),
     no: rsvps.filter(r => r.status === 'no'),
-  };
-
-  // DECISION Phase 87.7 D-18 (object-literal shape): `activeBg` and `hoverBg` are EMPTY STRINGS
-  // on purpose, not by accident. They held `bg-status-*/10` / `hover:bg-status-*/10`, which on
-  // Tailwind v3 generated no class at all (a `/N` modifier on a `var()`-backed colour), so these
-  // rows have always rendered untinted. The tokens were REMOVED rather than: (a) dropped to their
-  // base class, which paints a SOLID status-coloured block — the exact regression being avoided; or
-  // (b) reimplemented via `color-mix`, a deliberate visual change this phase forbids. The KEYS are
-  // kept with '' rather than deleted so consumers reading `cfg.activeBg` / `cfg.hoverBg` still get a
-  // string. Class strings living in an object literal — not a className attribute — is why the
-  // census sweep is whole-file; a className-scoped matcher finds none of these five sites.
-  // Designing the real tints is PHASE 88's; full site list in
-  // `.planning/phases/87.7-*/87.7-OPACITY-CENSUS.md`. One of exactly two markers for this strip
-  // (see ParticipantRow.js for the className shape). Filling these back in is a decision, not a
-  // cleanup.
-  const statusConfig = {
-    yes: {
-      label: "You're going!",
-      textColor: 'text-content-status-success',
-      activeBg: 'bg-status-success-subtle',
-      activeBorder: 'border-status-success',
-      hoverBg: 'hover:bg-status-success-subtle',
-      buttonText: 'Yes',
-      sectionTitle: 'Going',
-    },
-    maybe: {
-      label: "You're a maybe",
-      textColor: 'text-content-status-warning',
-      activeBg: 'bg-status-warning-subtle',
-      activeBorder: 'border-status-warning',
-      hoverBg: 'hover:bg-status-warning-subtle',
-      buttonText: 'Maybe',
-      sectionTitle: 'Maybe',
-    },
-    no: {
-      label: "You're not going",
-      textColor: 'text-content-secondary',
-      activeBg: 'bg-surface-elevated',
-      activeBorder: 'border-line-strong',
-      hoverBg: 'hover:bg-status-error-subtle',
-      buttonText: 'No',
-      sectionTitle: "Can't Make It",
-    },
   };
 
   if (loading) {
