@@ -17,8 +17,14 @@ import * as React from 'react';
 
 import { useTimezone } from '@/app/components/TimezoneProvider';
 import { Card } from '@/components/ui/Card';
+import { StatusRegion } from '@/components/ui/StatusRegion';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { rsvpAPI } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { formatTime, formatWithTzAbbr } from '@/lib/datetime';
+import { logger } from '@/lib/logger';
+
+import { statusConfig, type RsvpStatusKey } from './rsvpStatusConfig';
 
 /**
  * The minimal structural shape the hero reads off the `getUserEvents` wire.
@@ -39,6 +45,40 @@ export interface NextGameNightEvent {
   Group?: { name?: string | null } | null;
 }
 
+/**
+ * "I have not read the viewer's answer yet" — a real state, distinct from "the viewer
+ * has not answered" (`null`). The status row renders EMPTY for it. Claiming "no answer"
+ * before the answer arrives is the card-level twin of D-03's count suppression.
+ */
+const UNKNOWN = 'unknown' as const;
+
+type ViewerStatus = RsvpStatusKey | null | typeof UNKNOWN;
+
+/**
+ * The two keys the hero maps, in order.
+ *
+ * DECISION Phase 88.5 (SPEC Req 4 / D-07): a TWO-key subset of the shared
+ * `statusConfig`, chosen OVER (a) rendering all three keys and OVER (b) declaring a
+ * private `{yes, no}` map here. `maybe` and notes stay on the event page by owner
+ * ruling — the tap-through is DESIGNED, not missing — and (b) would be the THIRD status
+ * idiom that `DECISION Phase 88-27` exists to prevent. Everything except the button TEXT
+ * still comes from the shared object, so the hero and the event page cannot disagree
+ * about what an RSVP looks like or says. Adding `maybe` here is a decision, not a
+ * cleanup: it changes what the hero is FOR.
+ */
+const HERO_KEYS = ['yes', 'no'] as const satisfies readonly RsvpStatusKey[];
+
+/**
+ * DECISION Phase 88.5 (SPEC Req 4): the hero OVERRIDES `statusConfig`'s generic
+ * `buttonText` (`Yes` / `No`) with the ruled first-person copy, and only that field.
+ * The label, the text colour, the active/hover treatment all still come from the shared
+ * object. This is a surface-specific copy override, not drift from the config.
+ */
+const HERO_BUTTON_TEXT: Record<(typeof HERO_KEYS)[number], string> = {
+  yes: "I'm in",
+  no: "Can't make it",
+};
+
 export interface NextGameNightCardProps {
   /**
    * The ALREADY-SELECTED next event — whatever the shared "next upcoming" selector in
@@ -56,11 +96,22 @@ export interface NextGameNightCardProps {
 }
 
 const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProps>(
-  function NextGameNightCard({ event, onEventClick }, ref) {
+  function NextGameNightCard({ event, selfUuid, onEventClick }, ref) {
     const { timezone: ctxTimezone } = useTimezone();
     const timezone = ctxTimezone || null;
 
     const startDate = event?.start_date;
+    const eventId = event?.id;
+
+    const [viewerStatus, setViewerStatus] = React.useState<ViewerStatus>(UNKNOWN);
+    const [submitting, setSubmitting] = React.useState<RsvpStatusKey | null>(null);
+    const [errorMessage, setErrorMessage] = React.useState('');
+
+    /**
+     * The stale-guard. A REF, not state, so setting it neither re-renders nor re-triggers
+     * the effect below — a guard that re-runs the thing it guards is not a guard.
+     */
+    const submittedRef = React.useRef(false);
 
     // The when-line, composed from the SHARED formatters the list rows below already
     // use. There is deliberately no second date formatter in this file.
@@ -99,6 +150,117 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
     const navigateLabel = `${['Next game night', whenLine, groupName]
       .filter(Boolean)
       .join(', ')} — open event`;
+
+    /*
+      DECISION Phase 88.5 (SPEC Req 4 / D-08): the viewer's own status is read with ONE
+      `rsvpAPI.getEventRsvps(event.id)` fired when the sheet opens (i.e. on this card's
+      mount), keyed by the event id and GATED on identity resolution.
+
+      REJECTED: setting `include_rsvp_summary` on the home page's event fetch. It would
+      not even answer the question — `rsvp_summary` is AGGREGATE counts, not the viewer's
+      own row — and un-gating it is precisely the side effect D-08 forbids
+      (`UserHomePage.js`'s `DECISION Phase 88.1 plan-10 D-06` item 3: "PHONE ROWS CARRY NO
+      RSVP COUNTS, BY CONSTRUCTION"). This effect touches neither the page fetch nor the
+      list rows' md-gated RSVP block.
+
+      THE GATE IS LOAD-BEARING, not a micro-optimisation. Returning early while `selfUuid`
+      is null means identity-resolving-after-mount produces exactly ONE fetch total, never
+      one before resolution whose answer belongs to nobody and a second after.
+
+      THE ASYNC-GATING RULE is carried in spirit from `RsvpSection.js:41-56`: while the
+      viewer is unresolved, the status is left UNKNOWN — never resolved to "not mine".
+
+      TELEMETRY DIVERGENCE, deliberate: `RsvpSection.js:58` uses `console.error` for this
+      same rejection. This call upgrades that to the house `logger.error`, which IS
+      `Sentry.captureException(err ?? new Error(msg))` (`src/lib/logger.ts:29`) — so a
+      read failure is observable even though the UI stays silent about it. Converging
+      `RsvpSection` onto the same helper belongs to 88.6's error pass, not here.
+    */
+    React.useEffect(() => {
+      submittedRef.current = false;
+      setViewerStatus(UNKNOWN);
+      if (!eventId || !selfUuid) return;
+
+      let cancelled = false;
+      rsvpAPI
+        .getEventRsvps(eventId)
+        .then((data) => {
+          // The stale-guard: a slow initial read must never clobber a fresh submit.
+          if (cancelled || submittedRef.current) return;
+          const mine = (data?.rsvps ?? []).find((row) => row.User?.id === selfUuid);
+          setViewerStatus(mine ? mine.status : null);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          logger.error('hero next-game-night RSVP status read failed', err);
+          // An unknown status is not a failure the viewer must act on: empty row, no
+          // banner. It is reported above so it is not invisible.
+          setViewerStatus(UNKNOWN);
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }, [eventId, selfUuid]);
+
+    const handleRsvp = async (next: RsvpStatusKey) => {
+      if (!eventId) return;
+      // In-flight re-tap: a no-op, so the pressed button can stay focusable
+      // (`aria-disabled`) without allowing a second mutation.
+      if (submitting) return;
+      // Same-status re-tap: also a no-op. Re-writing the answer the server already holds
+      // is a request with no effect and a failure mode for no reason.
+      if (viewerStatus === next) return;
+
+      setSubmitting(next);
+      setErrorMessage('');
+      try {
+        /*
+          DECISION Phase 88.5 (SPEC Req 4): the hero calls `submitRsvp` with NO note
+          argument, and that is SAFE rather than lossy. Plan 88.5-01 made `POST /rsvp`
+          status-only — the note write is conditional on the request body carrying a
+          `note` key, at both the primary update and the race-retry path
+          (`routes/rsvp.js:413` and `:438`) — and `JSON.stringify` DROPS an undefined
+          `note`, so no key is sent and the saved note is preserved.
+
+          REJECTED: forwarding a note from here. The hero has no note field to forward
+          from, and adding one would reintroduce exactly the coupling the backend patch
+          was written to remove. Adding a third argument to this call is a decision, not
+          a cleanup — and it would silently wipe members' notes.
+
+          No optimistic flip: set submitting, await, then reflect. Mirrors
+          `RsvpSection.js:69-77` — and deliberately NOT its `:78` post-submit
+          `await fetchRsvps()` refetch. The hero's own row is exactly what it just wrote;
+          a second round trip to be told so is latency for nothing.
+        */
+        await rsvpAPI.submitRsvp(eventId, next);
+        // Arm the stale-guard only on SUCCESS: if the write failed, nothing was written,
+        // so a later read landing is the truth and must be allowed through.
+        submittedRef.current = true;
+        setViewerStatus(next);
+      } catch (err) {
+        logger.error('hero next-game-night RSVP submit failed', err);
+        /*
+          DECISION Phase 88.5 (SPEC Req 4): failure copy comes from the shared
+          `getFetchErrorMessage`, chosen OVER `RsvpSection.js:82`'s hard-coded string —
+          which is the exact idiom that helper was written to replace (it derives copy
+          from `ApiError.code` instead of painting an upstream message at the user,
+          `DECISION Phase 88-25`). The divergence from `RsvpSection` is NOTED here and
+          deliberately not "fixed" in this file: converging that component is 88.6's
+          error pass.
+
+          Inline, not a toast: the sheet is a focus-trapping dialog at `z-50` and the
+          toaster's stacking over it is unverified.
+        */
+        setErrorMessage(
+          getFetchErrorMessage(err, {
+            fallback: 'Could not save your RSVP. Please try again.',
+          })
+        );
+      } finally {
+        setSubmitting(null);
+      }
+    };
 
     // SPEC Req 3 / UI-SPEC §8: with no upcoming event there is NO hero — and no
     // skeleton, which would imply an event exists.
@@ -151,6 +313,120 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
             <span className="mt-1 block text-sm text-content-secondary">{groupName}</span>
           ) : null}
         </button>
+
+        <div className="mt-3 space-y-2">
+          {/*
+            Status sentence — the non-colour carrier for the toggle's selected state
+            (WCAG 1.4.1). Its copy and colour come FROM `statusConfig`; nothing here is
+            re-authored. UNKNOWN renders an EMPTY row on purpose: never claim "you have
+            not answered" before the answer arrives.
+          */}
+          <div className="min-h-5 text-sm">
+            {viewerStatus === UNKNOWN ? null : viewerStatus ? (
+              <p className={cn('font-medium', statusConfig[viewerStatus].textColor)}>
+                {statusConfig[viewerStatus].label}
+              </p>
+            ) : (
+              <p className="text-content-muted">RSVP to this event</p>
+            )}
+          </div>
+
+          {/*
+            The segmented toggle. `role="group"` + a label naming the event is what
+            distinguishes this pair from any other control pair on the page for a screen
+            reader that lands on one of the buttons.
+          */}
+          <div
+            role="group"
+            aria-label={`RSVP for ${whenLine}`}
+            className="flex rounded-card border border-line overflow-hidden"
+          >
+            {HERO_KEYS.map((key, idx) => {
+              const config = statusConfig[key];
+              const isSelected = viewerStatus === key;
+              const isFlight = submitting === key;
+              const otherInFlight = submitting !== null && !isFlight;
+
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  aria-pressed={isSelected}
+                  /*
+                    DECISION Phase 88.5 (SPEC Req 4 / UI-SPEC A-5, narrowed): the PRESSED
+                    button gets `aria-disabled`, NEVER the native `disabled` attribute.
+                    A natively-disabled element is removed from the focus order, so in a
+                    real browser focus drops to `<body>` mid-submit and a keyboard or
+                    switch user is stranded at the top of a focus-trapping sheet. The
+                    re-tap it needs to block is blocked in the HANDLER instead. Only the
+                    UNPRESSED button — which nobody is standing on — loses interactivity
+                    outright. Swapping this back to `disabled` is a decision, not a
+                    cleanup.
+                  */
+                  aria-disabled={isFlight || undefined}
+                  disabled={otherInFlight}
+                  onClick={() => handleRsvp(key)}
+                  className={cn(
+                    'flex-1 min-h-11 px-3 text-sm font-medium active:opacity-75 transition-colors',
+                    'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset',
+                    /*
+                      DECISION Phase 88.5 (SPEC Req 4): the 2px selected ring is reserved
+                      on BOTH states as `border-2 border-transparent`, chosen OVER
+                      `RsvpSection.js:168`'s shape (which adds `border-2` only when
+                      active). Two reasons, both real: (a) the width is present at rest,
+                      so selecting a button no longer nudges the row by 2px; (b) the
+                      repo's `borderExplicitness` gate flags an uncoloured width utility,
+                      and `RsvpSection` needs a standing allow-list entry to ship its
+                      shape — that gate says in as many words not to add an entry to make
+                      a test green, so the code names its own colour instead. The divider
+                      is the per-SIDE `border-l-line` (the shipped `Banner.tsx:47` idiom)
+                      so it cannot repaint the whole ring.
+
+                      44px FLOOR: `min-h-11`, and it is not optional. Do NOT "restore" the
+                      horizontal+vertical padding pairing shipped at `RsvpSection.js:165`
+                      in place of it — `text-sm` (20px line) plus that 16px of vertical
+                      padding computes to about 36px and fails the touch floor
+                      (D-07 constraint i). Phone-forward: 44x44 is a floor, not a target.
+                    */
+                    'border-2 border-transparent',
+                    idx > 0 && 'border-l border-l-line',
+                    isSelected
+                      ? // Subtle tint + ring, NEVER a solid status block
+                        // (`DECISION Phase 87.7 D-18`).
+                        [config.activeBg, config.activeBorder, 'text-content-primary']
+                      : ['bg-surface-card', config.hoverBg, 'text-content-secondary'],
+                    otherInFlight && 'opacity-50 cursor-not-allowed'
+                  )}
+                >
+                  {isFlight ? (
+                    <span
+                      // The shipped spinner, swapped in PLACE so the button element —
+                      // and therefore DOM focus — survives the submit.
+                      className="inline-block animate-spin h-4 w-4 border-2 border-line-strong border-t-transparent rounded-full"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    HERO_BUTTON_TEXT[key]
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/*
+            EMPTY-FIRST, ALWAYS MOUNTED — `StatusRegion`'s documented contract
+            (`StatusRegion.tsx:9-12`): a screen reader announces CHANGES to a live region,
+            not the conditional mount of a new one. Wrapping this in `{error && …}` would
+            make the failure silent for exactly the users who need it most. Only its text
+            content changes. Do not add `empty:hidden` either — a region that is
+            `display:none` until it has something to say has the same defect.
+          */}
+          <StatusRegion
+            politeness="assertive"
+            className="text-content-status-error"
+            message={errorMessage}
+          />
+        </div>
       </Card>
     );
   }
