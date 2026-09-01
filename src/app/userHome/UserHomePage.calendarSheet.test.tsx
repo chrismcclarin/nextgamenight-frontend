@@ -164,6 +164,23 @@ vi.mock('@/lib/api', async (importOriginal) => {
       // Never settles by default: the in-flight attempt against a dead backend.
       getUserEvents: vi.fn(() => new Promise(() => {})),
     },
+    // Phase 88.5 (RESEARCH Pitfall 4) — rsvpAPI MUST be mocked here, not just
+    // eventsAPI. `NextGameNightCard` (plan 88.5-05) mounts inside this sheet and
+    // fires getEventRsvps on open; an unmocked rsvpAPI reaches the real apiFetch
+    // and therefore a real jsdom fetch, which turns every test in this file into
+    // an unhandled rejection. Neither override may be dropped "because this test
+    // isn't about RSVPs" — the network reach is what breaks, not the assertion.
+    rsvpAPI: {
+      ...actual.rsvpAPI,
+      // Neutral default = the "no RSVPs yet" state, shaped exactly like the route
+      // (routes/rsvp.js:536 returns { rsvps, summary } with all three counts).
+      getEventRsvps: vi.fn(() =>
+        Promise.resolve({ rsvps: [], summary: { yes: 0, maybe: 0, no: 0 } })
+      ),
+      submitRsvp: vi.fn(() =>
+        Promise.resolve({ id: 'rsvp-mock', status: 'yes', note: null })
+      ),
+    },
   };
 });
 
@@ -185,6 +202,15 @@ function renderHome() {
 async function getEventsMock() {
   const api = await import('@/lib/api');
   return api.eventsAPI.getUserEvents as ReturnType<typeof vi.fn>;
+}
+
+/** Phase 88.5 — accessor for the mocked rsvpAPI fns (same idiom as getEventsMock). */
+async function getRsvpMocks() {
+  const api = await import('@/lib/api');
+  return {
+    getEventRsvps: api.rsvpAPI.getEventRsvps as ReturnType<typeof vi.fn>,
+    submitRsvp: api.rsvpAPI.submitRsvp as ReturnType<typeof vi.fn>,
+  };
 }
 
 async function mockEvents(value: unknown[] | Error) {
@@ -234,6 +260,10 @@ beforeEach(async () => {
   // call is what makes a "called once" assertion read 2 and look like a duplicate
   // fetch that is not there.
   (await getEventsMock()).mockClear();
+  // Phase 88.5: same leak, same reason — these are module-level `vi.fn()`s too.
+  const rsvp = await getRsvpMocks();
+  rsvp.getEventRsvps.mockClear();
+  rsvp.submitRsvp.mockClear();
 });
 
 afterEach(() => {
