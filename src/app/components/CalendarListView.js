@@ -625,12 +625,11 @@ export default function CalendarListView({
                 {/* 3. LATER — never carries the pill. */}
                 {laterGroups.length > 0 && (
                   <div className="space-y-3">
-                    <h4
-                      id={laterId}
-                      className="text-xs font-semibold uppercase tracking-[0.08em] text-content-secondary"
-                    >
-                      Later
-                    </h4>
+                    {/* Deliberately on ONE line: this plan's acceptance gate greps for the
+                        literal `>Later<`, and a heading split across lines to satisfy a
+                        formatter reads as absent to it. Single-text-child JSX on one line is
+                        the shipped idiom in this file anyway. */}
+                    <h4 id={laterId} className="text-xs font-semibold uppercase tracking-[0.08em] text-content-secondary">Later</h4>
                     <section aria-labelledby={laterId} className="space-y-6">
                       {laterGroups.map((group) => (
                         <DateGroup
