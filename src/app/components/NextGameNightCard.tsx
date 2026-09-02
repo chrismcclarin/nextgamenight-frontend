@@ -392,6 +392,11 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
                   onClick={() => handleRsvp(key)}
                   className={cn(
                     'flex-1 min-h-11 px-3 text-sm font-medium active:opacity-75 transition-colors',
+                    // End buttons inherit the container's corner radius: without this the
+                    // buttons are square-cornered inside a rounded overflow-hidden group,
+                    // and the clip shaves the selected 2px border off exactly at the
+                    // corner arcs (owner UAT finding, 2026-09-01).
+                    'first:rounded-l-[inherit] last:rounded-r-[inherit]',
                     'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset',
                     /*
                       DECISION Phase 88.5 (SPEC Req 4): the 2px selected ring is reserved
