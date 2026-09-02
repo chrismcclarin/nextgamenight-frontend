@@ -232,11 +232,22 @@ const memberLabel = (m: ChipMember): string => m.username || m.email || 'Unknown
  * the inert branch below), so it has no interactive accessible name to construct.
  */
 function accessibleName(label: string, status: MemberStatus): string {
-  if (status === 'accepted') return `${label}, friend`;
+  return `${label}${statusSuffix(status)}`;
+}
+
+/*
+ * The status HALF of the accessible name, separated (2026-09-01, owner-directed UAT
+ * amendment): the expanded row now renders the member's NAME as visible text beside the
+ * chip, so the visible label carries identity and only this suffix stays sr-only —
+ * composing `accessibleName` whole alongside a visible label would make AT read the
+ * name twice.
+ */
+function statusSuffix(status: MemberStatus): string {
+  if (status === 'accepted') return ', friend';
   if (status === 'pending_sent' || status === 'pending_received') {
-    return `${label}, friend request pending`;
+    return ', friend request pending';
   }
-  return label;
+  return '';
 }
 
 /**
@@ -448,10 +459,12 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
                 return (
                   <span
                     key={m.id ?? `inert-${i}`}
-                    className="relative inline-flex items-center justify-center"
+                    className="relative inline-flex items-center justify-center gap-1.5"
                   >
                     <MemberChip label={label} status={status} tinted={tinted} />
-                    <span className="sr-only">{label}</span>
+                    {/* Visible name (owner-directed UAT amendment 2026-09-01): identity is
+                        text, same carrier as the interactive chips below. */}
+                    <span className="text-[0.8rem] text-content-secondary">{label}</span>
                   </span>
                 );
               }
@@ -479,9 +492,23 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
                   username={label}
                   showInlineIndicator={false}
                 >
-                  <span className={cn(HIT_EXTENSION, 'inline-flex items-center justify-center')}>
+                  {/*
+                    DECISION Phase 88.5 (owner-directed UAT amendment, 2026-09-01): the
+                    expanded chip renders its NAME as visible text beside the glyph —
+                    chosen OVER the ruled mockup's bare spaced chips, after the owner hit
+                    the initials-collision problem live (two "DA" members) and peer
+                    research showed every shipped stack pattern pairs chips with a text
+                    identity surface (Primer/Google/Meta). One tap now reveals every name
+                    instead of one popover per member. The visible label is the identity
+                    carrier; only the status suffix stays sr-only (no double-speak). Text
+                    treatment matches the pre-88.5 member row (text-[0.8rem]
+                    content-secondary). Reverting to bare chips is a decision, not a
+                    cleanup.
+                  */}
+                  <span className={cn(HIT_EXTENSION, 'inline-flex items-center justify-center gap-1.5')}>
                     <MemberChip label={label} status={status} tinted={tinted} />
-                    <span className="sr-only">{accessibleName(label, status)}</span>
+                    <span className="text-[0.8rem] text-content-secondary">{label}</span>
+                    <span className="sr-only">{statusSuffix(status)}</span>
                   </span>
                 </ClickableMemberName>
               );

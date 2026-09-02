@@ -445,7 +445,10 @@ describe('MemberChipStack — expanded row', () => {
     fireEvent.click(collapsed());
     expect(screen.queryByRole('button', { name: /^hedy/ })).not.toBeInTheDocument();
     const carrier = screen.getByText('hedy');
-    expect(carrier.className).toContain('sr-only');
+    // VISIBLE, not sr-only (owner-directed UAT amendment 2026-09-01): the expanded row's
+    // identity carrier is on-screen text for everyone — the initials-collision fix.
+    expect(carrier.className).not.toContain('sr-only');
+    expect(carrier.className).toContain('text-content-secondary');
     // Scoped to the chip's OWN wrapper: `closest()` would otherwise walk out to the enclosing
     // group card, which is legitimately a `role="button"` with a tabindex.
     const wrapper = carrier.parentElement as HTMLElement;
