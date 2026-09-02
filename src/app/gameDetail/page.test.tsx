@@ -296,20 +296,20 @@ export async function openParticipantsModal(
 }
 
 /** The Game Sessions card, scoped from its heading. */
-export async function sessionsSection(): Promise<HTMLElement> {
-  const heading = await screen.findByRole('heading', { name: /^Game Sessions \(/ });
-  return heading.closest('div')?.parentElement as HTMLElement;
-}
-
 /**
- * The Game Sessions section once the history→filteredEvents mirror has SETTLED.
- * The page renders "Game Sessions (0 of 1)" for one commit before the mirror effect
- * lands (page.js: the count is `filtered.length === history.length ? N : "X of N"`),
- * and `sessionsSection()` matches that transient frame too — the 88-33-vintage race
- * behind the "0 of 1" flake (see 240a463, 2bbe1ea). With no filter active the settled
- * heading is the plain "(N)" form, so waiting for exactly that form waits for the rows.
+ * The Game Sessions section, resolved only once the history→filteredEvents mirror has
+ * SETTLED. The page renders "Game Sessions (0 of 1)" for one commit before the mirror
+ * effect lands (page.js: the count is `filtered.length === history.length ? N : "X of N"`);
+ * a helper that resolved on ANY "Game Sessions (" heading handed callers a section with
+ * no rows yet, and every synchronous row query after it was a lottery on a slow CI
+ * runner — the 88-33-vintage race behind the "0 of 1" flake (240a463, 2bbe1ea, and two
+ * CI-only failures on FE PR #28, 2026-09-02, on two different tests in the same file).
+ * With no filter active the settled heading is the plain "(N)" form, so waiting for
+ * exactly that form waits for the rows. Every caller here scopes right after render
+ * with no filter applied; a test that asserts a filtered "(X of N)" heading queries it
+ * directly (see the "(1 of 2)" assertion) and must not use this helper.
  */
-export async function settledSessionsSection(): Promise<HTMLElement> {
+export async function sessionsSection(): Promise<HTMLElement> {
   const heading = await screen.findByRole('heading', { name: /^Game Sessions \(\d+\)$/ });
   return heading.closest('div')?.parentElement as HTMLElement;
 }
@@ -532,7 +532,7 @@ describe('gameDetail role-gated session affordances', () => {
     renderGameDetail({ role: 'member' });
     // Absence assertions must run AFTER the row lands, or they pass vacuously on
     // the "(0 of 1)" frame where no row exists yet.
-    const sessions = await settledSessionsSection();
+    const sessions = await sessionsSection();
     expect(within(sessions).queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
     expect(within(sessions).queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
     // The phone affordance is gated by the same check — a kebab with no items
@@ -548,10 +548,9 @@ describe('gameDetail role-gated session affordances', () => {
 // aborts. These two pins are the mitigation the threat register names.
 describe('gameDetail session-delete gate (D-40, dialog tier)', () => {
   async function openDeleteFromKebab(user: ReturnType<typeof userEvent.setup>) {
-    // settledSessionsSection + findByRole: the kebab lives in a session ROW, which
-    // is absent on the transient "(0 of 1)" frame — the CI-only failure on
-    // 2026-09-02 (FE PR #28 push run) caught exactly that frame.
-    const sessions = await settledSessionsSection();
+    // sessionsSection() now resolves only on the settled heading (rows present);
+    // findByRole keeps the kebab query itself retrying too.
+    const sessions = await sessionsSection();
     await user.click(await within(sessions).findByRole('button', { name: 'Session actions' }));
     await user.click(within(sessions).getByRole('menuitem', { name: 'Delete' }));
     return screen.findByRole('dialog');
