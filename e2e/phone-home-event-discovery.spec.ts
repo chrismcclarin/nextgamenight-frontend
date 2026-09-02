@@ -265,9 +265,26 @@ const COUNTED_CALENDAR_LABEL = /^Calendar, (\d+) upcoming games? this week$/;
  * assertion that the number reaches assistive tech at all. A bare "Calendar" means the count
  * is SUPPRESSED (`count === null`: identity or events fetch pending/errored), which on a
  * seeded account is a fixture or backend failure, never a pass.
+ *
+ * WAIT FOR THE SETTLED FORM FIRST. The label is the bare "Calendar" for every frame between
+ * mount and the upcoming-events fetch resolving (`UserHomePage.js:222-234` — `upcomingCount`
+ * is `null` while `upcomingPending`), so a one-shot read straight after `page.goto` races that
+ * fetch and lost ~1 CI run in 4 on `main` (2026-09-02, runs 33681277058 / 33681279703, both
+ * with the fixture rows present). The retrying assertion below polls until the counted form
+ * appears (Playwright's expect timeout), and only THEN is the label read once for the exact
+ * count. Same class as the gameDetail "0 of 1" race fixed in FE #28 (`sessionsSection()`):
+ * assert on the settled state, never on a transient frame. The one-shot read is kept
+ * deliberately — it is what turns the label into a number, and its message still names the
+ * fixture owner if the settled label ever fails the shape.
  */
 async function readCalendarCount(page: Page): Promise<number> {
-  const label = (await calendarButton(page).first().getAttribute('aria-label')) ?? '';
+  const button = calendarButton(page).first();
+  await expect(
+    button,
+    `the Calendar button never announced a counted name — SPEC Req 2 / UI-SPEC 6.1.5 requires "Calendar, {n} upcoming game(s) this week" once the upcoming-events fetch resolves. A name still bare after the expect timeout means the count is SUPPRESSED (identity or events fetch pending/errored — \`UserHomePage.js:222-224\`), and since the pill is aria-hidden that name is the only place the number exists for assistive tech. On the seeded account this is a FIXTURE or backend failure owned by ${FIXTURE_OWNER}, not a pass.`,
+  ).toHaveAccessibleName(COUNTED_CALENDAR_LABEL);
+
+  const label = (await button.getAttribute('aria-label')) ?? '';
   const match = COUNTED_CALENDAR_LABEL.exec(label);
   expect(
     match,
