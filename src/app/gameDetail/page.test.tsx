@@ -301,6 +301,19 @@ export async function sessionsSection(): Promise<HTMLElement> {
   return heading.closest('div')?.parentElement as HTMLElement;
 }
 
+/**
+ * The Game Sessions section once the history→filteredEvents mirror has SETTLED.
+ * The page renders "Game Sessions (0 of 1)" for one commit before the mirror effect
+ * lands (page.js: the count is `filtered.length === history.length ? N : "X of N"`),
+ * and `sessionsSection()` matches that transient frame too — the 88-33-vintage race
+ * behind the "0 of 1" flake (see 240a463, 2bbe1ea). With no filter active the settled
+ * heading is the plain "(N)" form, so waiting for exactly that form waits for the rows.
+ */
+export async function settledSessionsSection(): Promise<HTMLElement> {
+  const heading = await screen.findByRole('heading', { name: /^Game Sessions \(\d+\)$/ });
+  return heading.closest('div')?.parentElement as HTMLElement;
+}
+
 /** The Game Sessions header row (title + filter toggle), scoped from the heading. */
 export async function sessionsHeader(): Promise<HTMLElement> {
   const heading = await screen.findByRole('heading', { name: /^Game Sessions \(/ });
@@ -517,7 +530,9 @@ describe('gameDetail role-gated session affordances', () => {
 
   it('hides them from a plain member in BOTH layouts', async () => {
     renderGameDetail({ role: 'member' });
-    const sessions = await sessionsSection();
+    // Absence assertions must run AFTER the row lands, or they pass vacuously on
+    // the "(0 of 1)" frame where no row exists yet.
+    const sessions = await settledSessionsSection();
     expect(within(sessions).queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
     expect(within(sessions).queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
     // The phone affordance is gated by the same check — a kebab with no items
@@ -533,8 +548,11 @@ describe('gameDetail role-gated session affordances', () => {
 // aborts. These two pins are the mitigation the threat register names.
 describe('gameDetail session-delete gate (D-40, dialog tier)', () => {
   async function openDeleteFromKebab(user: ReturnType<typeof userEvent.setup>) {
-    const sessions = await sessionsSection();
-    await user.click(within(sessions).getByRole('button', { name: 'Session actions' }));
+    // settledSessionsSection + findByRole: the kebab lives in a session ROW, which
+    // is absent on the transient "(0 of 1)" frame — the CI-only failure on
+    // 2026-09-02 (FE PR #28 push run) caught exactly that frame.
+    const sessions = await settledSessionsSection();
+    await user.click(await within(sessions).findByRole('button', { name: 'Session actions' }));
     await user.click(within(sessions).getByRole('menuitem', { name: 'Delete' }));
     return screen.findByRole('dialog');
   }
