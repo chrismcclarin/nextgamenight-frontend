@@ -48,8 +48,35 @@ import { FriendshipContext } from './FriendshipStatusProvider';
  *   tolerance branch (D-06).
  * @param {string} props.username - Display name
  * @param {React.ReactNode} [props.children] - Optional custom render (defaults to username span)
+ * @param {boolean} [props.showInlineIndicator=true] - Opt OUT of the inline md:hidden indicator
+ *   sibling (see the DECISION Phase 88.5 marker below). Default `true` = today's behaviour.
  */
-export default function ClickableMemberName({ userId, username, children }) {
+/* DECISION Phase 88.5 (D-15): `showInlineIndicator` is an OPT-OUT defaulting to `true`,
+   chosen so that the member CHIPS introduced by this phase can suppress the inline
+   `md:hidden` indicator sibling while all ~9 shipped member ROW render sites
+   (groupHomePage, ManageMembers, gameDetail, RsvpSection) stay byte-unchanged. An opt-IN
+   would have flipped every one of those rows, silently stripping touch users of their
+   friend affordance — which is why the default is `true` and must stay `true`.
+
+   REJECTED, both named on purpose:
+     (a) Widening the chip row's `gap-3` to absorb the `+` button's hit extension. It breaks
+         the ruled 12px chip geometry AND still leaves literal `✓ Friend` text inside a chip
+         row that is supposed to carry status by ring alone.
+     (b) Forking the component into a chip-only variant. The project's duplication tenet
+         rejects that outright — it is never a peer option.
+
+   THE ARITHMETIC THAT FORCED THIS: the `none`-status `+` sibling carries a 10px horizontal
+   hit extension (`after:-inset-x-2.5`, below) and the next chip carries 6px of its own.
+   10 + 6 = 16px reaching into a 12px gap — a 4px OVERLAP. That is precisely the tap-stealing
+   failure mode `DECISION Phase 87.8 D-13` exists to prevent, and here a mis-tap is not a
+   recoverable UI action: it sends a stranger a friend request (the social harm the
+   `AMENDED Phase 88-28 (D-37)` block below names).
+
+   STATUS IS STILL CONVEYED, so WCAG 1.4.1 (use of colour) holds without the inline text: the
+   chip carries friend/pending in its RING (solid green / dashed amber) AND in its accessible
+   name, and the two-tap popover — never gated by this prop — remains the add-friend path.
+   Turning this into an opt-in, or defaulting it to `false`, is a decision, not a cleanup. */
+export default function ClickableMemberName({ userId, username, children, showInlineIndicator = true }) {
   const { getStatus, sendRequest } = useContext(FriendshipContext);
   const [isOpen, setIsOpen] = useState(false);
   const [sent, setSent] = useState(false);
@@ -278,8 +305,8 @@ export default function ClickableMemberName({ userId, username, children }) {
     //           `after:-inset-y-1` ceiling: at 4px the two extensions meet
     //           exactly at the gap midpoint, which is the "terminates exactly
     //           at the gap" sentence above.
-    //         EXACTLY AT THE BOUNDARY (2) — `grouplist.js:336` `flex flex-wrap
-    //           gap-2` and `gameDetail/page.js:2182` `space-y-2`, both 8px.
+    //         EXACTLY AT THE BOUNDARY (2) — `grouplist.js:477` `flex flex-wrap
+    //           gap-2 mb-3` and `gameDetail/page.js:2182` `space-y-2`, both 8px.
     //           Not constrained, but they are the next things to check if the
     //           extension is ever grown.
     //         ROOMY (6) — `ManageMembers.js:440,472` (`space-y-3` + `p-4`
@@ -293,6 +320,30 @@ export default function ClickableMemberName({ userId, username, children }) {
     //       keep dense, and doing it as a side effect of an a11y sweep would
     //       be the silent override this project's Evidence Rule forbids.
     //       `RsvpSection.js:289`'s `space-y-1` is unchanged, on purpose.
+    //
+    // AMENDED Phase 88.5 (SPEC Req 5) — the grouplist cite above was CORRECTED
+    // and one of the enumerated sites has changed shape. Nothing above is
+    // deleted; this paragraph is the delta.
+    //
+    //   CITE DRIFT: the 88-28 re-derivation wrote `grouplist.js:336`. Verified
+    //   2026-08-31 by reading the file: the container is `grouplist.js:477`,
+    //   `flex flex-wrap gap-2 mb-3`. Same container, same 8px, moved line. The
+    //   cite above is corrected in place.
+    //
+    //   SEMANTIC CHANGE: after Phase 88.5 that site is no longer a `gap-2`
+    //   flex-wrap of ClickableMemberNames at all. 88.5-09 replaces it with a
+    //   `MemberChipStack` whose expanded row is a `gap-3` (12px) flex-wrap of
+    //   chip triggers passing `showInlineIndicator={false}` (D-15, marker at the
+    //   top of this file), so the home group card renders NO inline `+` and NO
+    //   hit extension. The "+ crowds this row" premise therefore no longer
+    //   describes the home group card, and it must not be re-derived from the
+    //   line above without reading the current markup.
+    //
+    //   THE 88-28 RULING IS UNTOUCHED. 44x32 stays ACCEPTED FOREVER for the
+    //   sites that DO still render the inline `+` — RsvpSection (the one
+    //   constrained lever), gameDetail and ManageMembers. 88.5 removes the
+    //   control from ONE surface; it does not reopen the size decision, and the
+    //   `touch-targets.spec.ts` assertion still must NOT be tightened to 44x44.
     //
     // DECISION Phase 87.8 (D-13): invisible pseudo-element hit extension
     // chosen OVER visible min-height growth (the per-CTA token technique at
@@ -420,7 +471,9 @@ export default function ClickableMemberName({ userId, username, children }) {
       >
         {children || username}
       </span>
-      {renderMobileIndicator()}
+      {/* D-15: gated at the CALL SITE, deliberately not inside renderMobileIndicator — the
+          function stays byte-unchanged and the diff stays readable. */}
+      {showInlineIndicator && renderMobileIndicator()}
       {isOpen && (
         <FloatingPortal>
           {/* MED#16: focus manager on KEYBOARD open only — initial focus lands on

@@ -43,7 +43,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { sourceFiles } from '../test-utils/sourceScan';
+import { sourceFiles, withoutComments } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -183,5 +183,205 @@ describe('D-37 — the add-friend 44x32 marker is amended in place, and the leve
     expect(/ACCEPTED FOREVER/.test(decoy)).toBe(false);
     // and the D-36 marker matcher must not match an arbitrary 87.8 comment
     expect('/* DECISION Phase 87.8 (D-12): pressed state */'.match(FLOOR_MARKER)).toBeNull();
+  });
+});
+
+/* ---------------------------------------------------------------------------------------------
+ * Phase 88.5 — the six records this phase must not lose (plan 88.5-11, SPEC Req 1/4/5/6).
+ *
+ * WHY THESE SIX AND NOT "THE 88.5 MARKERS" IN GENERAL. Each one below is a property a future
+ * refactor can delete WITHOUT breaking a single behavioural test, which is precisely the set
+ * this suite exists for:
+ *
+ *   1. THE REVERSAL. 88.5 removed a surface 88.1 ruled to be "the designed phone presentation".
+ *      The marker recording that reversal is the only place a future planner learns that the
+ *      absence of a phone bottom bar is a DECISION rather than an omission — and, just as
+ *      importantly, which half of 88.1 M3 still stands.
+ *   2. THE 88.1 MARKERS. Four of them describe a world that no longer exists. D-36/D-37's rule
+ *      (AMEND, NEVER DELETE) applies to them exactly as it applied to 87.8's: a deleted marker
+ *      takes the reasoning with it, and "it's stale" is the worst of the three options.
+ *   3. THE BAR IS ACTUALLY GONE. A marker claiming a removal is worthless if the thing is still
+ *      mounted somewhere — test 5's shape, applied to this phase.
+ *   4/5. TWO SINGLE-SOURCE FAMILIES. `statusConfig` (SPEC Req 4, VALIDATION's Req-4 row) and the
+ *      `upcomingEvents` selector family (SPEC Req 3 / D-06 / T-88.5-25). Both were extracted
+ *      SPECIFICALLY so a second definition cannot appear; nothing else fails when one does.
+ *   6. THE D-15 OPT-OUT. Its default (`true`) is what keeps ~9 shipped member rows byte-unchanged;
+ *      flipping it silently strips touch users of their friend affordance on all of them.
+ *
+ * HYGIENE (this file's own rules, applied):
+ *   - Anything COUNTED is counted against comment-stripped source (`withoutComments`), so a
+ *     marker that names the token it forbids cannot invalidate its own gate. That failure shape
+ *     is live here: `gameDetail/page.js:41` mentions `statusConfig` in prose, and `UserHomePage.js`
+ *     had to word a marker around its own gate for exactly this reason.
+ *   - Nothing asserts a threshold on a superset. Every marker check reads the MARKER BLOCK (via
+ *     `block()` below), not "the string appears somewhere in the file" — the failure mode this
+ *     file's header dissects at :23-36.
+ *   - Test 20 is the anti-vacuity control, in the shape of test 11: it demonstrates on fixtures
+ *     that these readers reject near-misses, rather than asserting that they would.
+ * ------------------------------------------------------------------------------------------- */
+
+const read = (rel: string): string => fs.readFileSync(path.join(SRC, rel), 'utf8');
+const code = (rel: string): string => withoutComments(read(rel));
+const rel = (abs: string): string => path.relative(SRC, abs).split(path.sep).join('/');
+
+/**
+ * The comment block that OPENS with `head`, up to the end of that comment.
+ *
+ * Reading the block rather than the file is what makes these content checks: an unrelated
+ * mention of "88.1" elsewhere in a 1200-line component cannot satisfy an assertion about the
+ * amendment. Throws — loudly and by name — when the marker is gone, because a missing marker is
+ * the exact thing being guarded against and a silent `''` would make every later assertion vacuous.
+ */
+function block(src: string, head: string): string {
+  const start = src.indexOf(head);
+  if (start < 0) throw new Error(`marker not found: ${head}`);
+  const end = src.indexOf('*/', start);
+  return src.slice(start, end < 0 ? src.length : end);
+}
+
+describe('Phase 88.5 — the surface reversal and its records are pinned', () => {
+  const UHP = read('app/userHome/UserHomePage.js');
+
+  it('12. the REVERSAL is on the record, and names what it supersedes', () => {
+    const marker = block(UHP, 'DECISION Phase 88.5 (SPEC Req 1)');
+    expect(marker).toMatch(/A SURFACE REVERSAL/);
+    expect(marker).toMatch(/WHAT THIS SUPERSEDES/);
+    expect(marker).toMatch(/88\.1/);
+    expect(marker).toMatch(/M3/);
+    // A reversal with no rejected alternative is a changelog entry, not a decision.
+    expect(marker).toMatch(/REJECTED/);
+  });
+
+  it('13. and states what is NOT reversed — the principle, and the column that stays hidden', () => {
+    const marker = block(UHP, 'DECISION Phase 88.5 (SPEC Req 1)');
+    // The half a future reader would otherwise "restore": M3's PRINCIPLE survives the removal
+    // of M3's SURFACE. Without this sentence, "the bar was wrong" reads as "un-hide the column".
+    expect(marker).toMatch(/NOT\*{0,2} REVERSED/);
+    expect(marker).toMatch(/DESIGNED presentation/);
+    expect(marker).toMatch(/right column/);
+    expect(marker).toMatch(/untouched/);
+    // ...and the claim is not lying: the column really is still viewport-gated. Asserted in
+    // CODE, so deleting the gate reds this test even if the marker still says it is there.
+    expect(code('app/userHome/UserHomePage.js')).toContain('hidden md:flex');
+  });
+
+  it('14. the four 88.1 markers were AMENDED, not deleted', () => {
+    // Same rule as D-36/D-37 above, applied to this phase's supersessions. Each is read as a
+    // BLOCK: the amendment must live inside the marker it amends, not merely in the same file.
+    expect(block(UHP, 'DECISION Phase 88.1 (plan 10, Req 11b)')).toMatch(/AMENDED Phase 88\.5/);
+
+    const footer = read('app/components/Footer.js');
+    const spacer = block(footer, 'DECISION Phase 88.1 (Req 11a');
+    expect(spacer).toMatch(/EXTENDED Phase 88\.1-20/); // 88.1's own amendment survives 88.5's
+    expect(spacer).toMatch(/AMENDED Phase 88\.5/);
+    expect(spacer).toMatch(/RETIRED/); // the amendment states the OUTCOME, not just that it looked
+
+    const clv = read('app/components/CalendarListView.js');
+    expect(block(clv, 'DECISION Phase 88.1-17')).toMatch(/AMENDED Phase 88\.5 \(D-04/);
+
+    // 88.1-05 is the selector module's founding decision — 88.5 extends the family it created
+    // rather than superseding it, so this one must simply still be here.
+    expect(read('lib/upcomingEvents.ts')).toContain('DECISION Phase 88.1-05');
+  });
+
+  it('15. the bar really is gone — zero PhoneEventBar references in any source file', () => {
+    // Against the real tree via the shared scan, not a shell grep: `sourceFiles` crosses every
+    // extension and directory, and excludes `.test.`/`.spec.` files (so this suite's own mention
+    // of the name cannot satisfy or invalidate it). Comments stripped, so a future marker is free
+    // to name the deleted component in prose without reding this.
+    const offenders = sourceFiles(SRC)
+      .filter((f) => withoutComments(fs.readFileSync(f, 'utf8')).includes('PhoneEventBar'))
+      .map(rel);
+    expect(offenders).toEqual([]);
+    // and the files themselves are deleted, not merely unreferenced
+    expect(fs.existsSync(path.join(SRC, 'app/components/PhoneEventBar.tsx'))).toBe(false);
+    expect(fs.existsSync(path.join(SRC, 'app/components/PhoneEventBar.js'))).toBe(false);
+  });
+});
+
+describe('Phase 88.5 — the two single-source families cannot grow a second definition', () => {
+  it('16. `statusConfig` is declared in exactly ONE module, and both consumers import it', () => {
+    // SPEC Req 4 / VALIDATION Req-4: the mechanical form of "no third RSVP idiom". Comment-
+    // stripped, because `gameDetail/page.js:41` names `statusConfig` in prose — a raw grep here
+    // would report a third "definition" that is a sentence.
+    const declarers = sourceFiles(SRC)
+      .filter((f) => /\bconst\s+statusConfig\b/.test(withoutComments(fs.readFileSync(f, 'utf8'))))
+      .map(rel);
+    expect(declarers).toEqual(['app/components/rsvpStatusConfig.ts']);
+
+    for (const consumer of ['app/components/RsvpSection.js', 'app/components/NextGameNightCard.tsx']) {
+      expect(code(consumer)).toMatch(/import\s*\{[^}]*\bstatusConfig\b[^}]*\}\s*from\s*'\.\/rsvpStatusConfig'/);
+    }
+  });
+
+  it('17. `selectNextUpcoming` is the ONLY "next" definition, and nothing re-inlines its predicate', () => {
+    const declarers = sourceFiles(SRC)
+      .filter((f) => /\b(?:const|function)\s+selectNextUpcoming\b/.test(withoutComments(fs.readFileSync(f, 'utf8'))))
+      .map(rel);
+    expect(declarers).toEqual(['lib/upcomingEvents.ts']);
+
+    // D-06 rejection (d): "a private inline copy of the live/future check inside CalendarListView
+    // or any other sheet-side consumer — a third, unpinned definition of upcoming (T-88.5-25)."
+    // The live-status literals are the fingerprint of that copy: any component re-deriving
+    // "is this event live" has to name them, and `hasLiveStatus` is the only thing that may.
+    const statusTesters = sourceFiles(SRC)
+      .filter((f) => /['"]in_progress['"]/.test(withoutComments(fs.readFileSync(f, 'utf8'))))
+      .map(rel);
+    expect(statusTesters).toEqual(['lib/upcomingEvents.ts']);
+  });
+});
+
+describe('Phase 88.5 — the D-15 indicator opt-out is marked at both required sites', () => {
+  it('18. the PROP carries its marker, its default, and the arithmetic that forced it', () => {
+    const cmn = read('app/components/ClickableMemberName.js');
+    const marker = block(cmn, 'DECISION Phase 88.5 (D-15)');
+    expect(marker).toMatch(/showInlineIndicator/);
+    expect(marker).toMatch(/OPT-OUT/);
+    // The default is the load-bearing half: an opt-IN silently flips ~9 shipped member rows.
+    expect(marker).toMatch(/must stay `true`/);
+    expect(marker).toMatch(/REJECTED/);
+    // ...and the default really is `true` in the signature, not just in the prose.
+    expect(code('app/components/ClickableMemberName.js')).toMatch(/showInlineIndicator\s*=\s*true/);
+  });
+
+  it('19. the CHIP CALL SITE carries its own marker, and really passes false', () => {
+    const stack = read('app/components/MemberChipStack.tsx');
+    const marker = block(stack, 'DECISION Phase 88.5 (D-15)');
+    expect(marker).toMatch(/showInlineIndicator=\{false\}/);
+    // WCAG 1.4.1: suppressing the indicator is only legal because a text carrier replaces it.
+    expect(marker).toMatch(/accessible name|1\.4\.1/i);
+    expect(code('app/components/MemberChipStack.tsx')).toMatch(/showInlineIndicator=\{false\}/);
+  });
+});
+
+describe('Phase 88.5 — ANTI-VACUITY: the readers above reject near-misses', () => {
+  it('20. demonstrated on fixtures, not asserted', () => {
+    // (a) A marker with the right HEAD but none of the content must not satisfy test 12/13.
+    const thinReversal = '/* DECISION Phase 88.5 (SPEC Req 1): removed the bar. */';
+    expect(thinReversal).toContain('DECISION Phase 88.5 (SPEC Req 1)'); // a grep gate would pass
+    const thin = block(thinReversal, 'DECISION Phase 88.5 (SPEC Req 1)');
+    expect(/REJECTED/.test(thin)).toBe(false); // ...these do not
+    expect(/NOT\*{0,2} REVERSED/.test(thin)).toBe(false);
+    expect(/DESIGNED presentation/.test(thin)).toBe(false);
+
+    // (b) An 88.1 marker in a file that mentions "AMENDED Phase 88.5" SOMEWHERE ELSE must not
+    //     satisfy test 14 — the amendment has to be inside the block it amends.
+    const decoyFile =
+      '/* DECISION Phase 88.1 (plan 10, Req 11b): variant=secondary */\n' +
+      'const x = 1;\n' +
+      '/* AMENDED Phase 88.5 (D-02): an unrelated marker further down the file */';
+    expect(decoyFile).toContain('AMENDED Phase 88.5'); // file-level check would pass
+    expect(/AMENDED Phase 88\.5/.test(block(decoyFile, 'DECISION Phase 88.1 (plan 10, Req 11b)'))).toBe(false);
+
+    // (c) The declaration counters must not fire on PROSE — the live shape at gameDetail:41.
+    const prose = "// renders an RSVP maybe (RsvpSection's statusConfig, rsvp/[token]'s config map)";
+    expect(prose).toContain('statusConfig'); // a raw grep would count this as a definition
+    expect(/\bconst\s+statusConfig\b/.test(withoutComments(prose))).toBe(false);
+    const markerNamingItsOwnToken =
+      "/* DECISION: no component may test for 'in_progress' itself — use hasLiveStatus. */";
+    expect(/['"]in_progress['"]/.test(withoutComments(markerNamingItsOwnToken))).toBe(false);
+
+    // (d) A missing marker must FAIL LOUDLY rather than degrade to an empty, always-green block.
+    expect(() => block('nothing here', 'DECISION Phase 88.5 (SPEC Req 1)')).toThrow(/marker not found/);
   });
 });

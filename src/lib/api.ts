@@ -7,7 +7,7 @@ import type { Group, GroupList, GroupMemberList, GroupInvitePreview } from './sc
 import type {
   Event,
   EventList,
-  RsvpList,
+  RsvpEventResponse,
   EventBringList,
   Ballot,
 } from './schemas/events';
@@ -658,15 +658,39 @@ export const eventsAPI = {
  * API functions for RSVPs (event responses: yes/no/maybe)
  */
 export const rsvpAPI = {
-  // Create or update an RSVP for an event
-  submitRsvp: (event_id: string, status: string, note?: string) =>
+  // Create or update an RSVP for an event.
+  //
+  // DECISION Phase 88.5 (Owner Ruling 1a): an omitted/`undefined` `note` argument
+  // is DROPPED from the serialized body by JSON.stringify — the request carries no
+  // `note` key at all, NOT `note: null` and NOT `note: undefined`. That dropped-key
+  // behaviour is load-bearing, not incidental: post-88.5 the backend
+  // (routes/rsvp.js POST /) treats an ABSENT `note` key as "preserve the existing
+  // note" and a PRESENT one (including `null`/`""`) as "write this value" — which
+  // is what lets a status-only tap (the hero card, plan 88.5-05) change status
+  // without wiping the member's saved note. Do NOT "normalize" this by always
+  // sending `note: note ?? null`; that would re-introduce the wipe the backend fix
+  // exists to close. Pinned by a test in api.test.ts.
+  // `note?: string | null` — null is a LEGITIMATE wire value (explicit clear:
+  // RsvpSection's Save note sends `note || null`). Narrowing this to `string`
+  // would make the TS conversion of RsvpSection "fix" `note || null` into
+  // `note || undefined`, silently breaking note deletion (adversarial review
+  // 2026-09-01, ML4). Pinned in api.test.ts (explicit-null case).
+  submitRsvp: (event_id: string, status: string, note?: string | null) =>
     apiFetch('/rsvp', {
       method: 'POST',
       body: JSON.stringify({ event_id, status, note }),
     }),
-  // Get all RSVPs for an event (includes summary counts)
+  // Get all RSVPs for an event (includes summary counts).
+  //
+  // DECISION Phase 88.5 (RESEARCH B-2): this was typed apiFetch-of-RsvpList — an
+  // ARRAY — which was simply wrong. The route returns an OBJECT,
+  // `{ rsvps, summary }` (periodictabletopbackend_v2/Sonnet/routes/rsvp.js:536).
+  // The wrong type survived because every consumer was `.js` (RsvpSection.js:33-35,
+  // gameDetail/page.js:588 and :832) so TS never checked it; all three already read
+  // `data.rsvps` / `data.summary`, i.e. they always treated it as the object. Do not
+  // revert to RsvpList.
   getEventRsvps: (event_id: string) =>
-    apiFetch<RsvpList>(`/rsvp/event/${event_id}`),
+    apiFetch<RsvpEventResponse>(`/rsvp/event/${event_id}`),
 };
 
 /**

@@ -2142,4 +2142,114 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       'an expired claim was carried forward or deleted instead of being superseded in place',
     ).toBeGreaterThanOrEqual(3);
   });
+
+  it('30. the member chip forks its fill on the TINT, in BOTH disclosure states (88.5 SPEC Req 5)', () => {
+    /*
+     * Phase 88.5 puts member-initials chips on the home group card, and a chip is the first
+     * thing this phase family has drawn ON TOP of a tinted ground rather than beside it. The
+     * neutral chip fill measures 1.11:1 against the blue preset tint — an INVISIBLE chip — so
+     * the tinted card swaps the whole chip to a white wash with the card's own ink
+     * (UI-SPEC 6.5.4 / D-11). That is the same class of property test 9 above pins for the two
+     * grounds: a rendering that is well-formed in isolation and wrong on a coloured card.
+     *
+     * THE LIKELY DEFECT IS A HALF-APPLIED ARM. The chips render in TWO disclosure states — the
+     * collapsed overlapping stack and the expanded wrapped row — and an implementation that
+     * forks only the collapsed one looks completely correct until a card is expanded. A test
+     * that renders the collapsed state cannot see it, so both states are named below, told
+     * apart by the collapsed-only `separated` prop.
+     *
+     * WHY THE ARM IS GATED ON `!hasBgImage` AT THE CALL SITE, AND WHY THAT IS PINNED HERE.
+     * Verified 2026-09-01 at `colorUtils.js:739`: `groupInkVars` returns `{}` for a card with a
+     * background PHOTO, so the tinted chip's `var(--group-ink-l, var(--t-color-l))` chain falls
+     * through to `--t-color-l` — which `getTextStyle`'s image branch sets to WHITE. White
+     * initials on a `bg-white/85` chip. The neutral arm is opaque and needs no ink derivation,
+     * so a photo card takes it. UI-SPEC 6.5.4 groups "tinted / photo" into one arm and its
+     * stated fallback mechanism is wrong for the photo half; its CONCLUSION (the chip stays
+     * legible over the photograph) is what the gate preserves. Removing the `!hasBgImage` half
+     * is a decision that makes chips invisible on photo cards, not a simplification.
+     *
+     * Source scan, same reasons as everything else in this file: these class strings are quoted
+     * inside the DECISION markers that forbid changing them, and every className here spans
+     * lines.
+     */
+    const CHIPS = 'app/components/MemberChipStack.tsx';
+    const CARD = 'app/components/grouplist.js';
+
+    // dead-detector control, test 0's shape — the scan must see CODE and not COMMENTS, or
+    // every assertion below is green on a file that says the opposite of what it does.
+    expect(fs.existsSync(path.join(SRC, CHIPS)), `missing chip component ${CHIPS}`).toBe(true);
+    expect(withoutComments("const a = 'bg-white/85';")).toContain('bg-white/85');
+    expect(withoutComments('// bg-white/85 lives in a marker here\nconst x = 1;')).not.toContain(
+      'bg-white/85',
+    );
+
+    const src = code(CHIPS);
+
+    // (a) BOTH arms, byte-exact. `bg-white/85` and `ring-black/25` are RAW PALETTE, not project
+    //     semantic tokens, so `tintTreatment.test.ts`'s `parseAlphaToken(token, semantic)`
+    //     detector does not fire on them and they must NOT be "fixed" into a semantic token —
+    //     the shipped `bg-white/80` at `groupHomePage/page.js` is the precedent.
+    expect(src, 'the tinted chip lost its white wash').toMatch(
+      /TINTED_FILL\s*=\s*'bg-white\/85 ring-1 ring-black\/25'/,
+    );
+    expect(src, 'the tinted chip stopped taking the card ink through the shipped fallback chain')
+      .toMatch(
+        /TINTED_INK\s*=\s*\n?\s*'\[color:var\(--group-ink-l,var\(--t-color-l\)\)\] dark:\[color:var\(--group-ink,var\(--t-color\)\)\]'/,
+      );
+    expect(src, 'the untinted chip lost the card-hover fill').toMatch(
+      /NEUTRAL_FILL\s*=\s*'bg-surface-card-hover'/,
+    );
+    expect(src, 'the untinted chip lost its secondary ink').toMatch(
+      /neutralInk\s*=\s*isOverflow\s*\?\s*'text-content-muted'\s*:\s*'text-content-secondary'/,
+    );
+
+    // (b) ONE fork, and it keys on the TINT ALONE. A `tinted && separated ?` — the shape that
+    //     applies the arm to the collapsed stack only — fails here, which is the anti-vacuity
+    //     probe recorded in 88.5-09-SUMMARY.md.
+    const FILL_FORK =
+      /(?:^|[^\w.])tinted\s*\?\s*`\$\{TINTED_FILL\} \$\{TINTED_INK\}`\s*:\s*`\$\{NEUTRAL_FILL\} \$\{neutralInk\}`/g;
+    expect(
+      (src.match(FILL_FORK) ?? []).length,
+      'the chip fill arm is not selected in exactly one place by the tint alone — either a ' +
+        'second fork appeared (the two states can now drift) or the one fork grew a condition ' +
+        'beyond the tint (the arm is half-applied)',
+    ).toBe(1);
+
+    // (c) EVERY chip render passes the flag, in BOTH states. `separated` is the collapsed-only
+    //     cut-out ring, so it is what tells the two states apart in source.
+    const chipSites = openTags(src).filter((t) => t.tag === 'MemberChip');
+    const collapsedSites = chipSites.filter((t) => /\bseparated\b/.test(t.attrs));
+    const expandedSites = chipSites.filter((t) => !/\bseparated\b/.test(t.attrs));
+    expect(
+      collapsedSites.length,
+      'the COLLAPSED stack renders no chips — the scan population is empty and this test pins ' +
+        'nothing',
+    ).toBeGreaterThanOrEqual(2); // the member chips + the `+N`
+    expect(
+      expandedSites.length,
+      'the EXPANDED row renders no chips — an arm applied only to the collapsed state would be ' +
+        'invisible to this test',
+    ).toBeGreaterThanOrEqual(2); // the interactive chip + the inert `unknown` chip
+    for (const site of [...collapsedSites, ...expandedSites]) {
+      expect(
+        site.attrs,
+        `MemberChipStack.tsx:${site.line}: a chip renders without the tint flag, so this ` +
+          'disclosure state keeps the neutral fill on a coloured card (1.11:1 — invisible)',
+      ).toMatch(/\btinted\b/);
+    }
+
+    // (d) the call site hands over the CARD's own flag, gated on the photo case.
+    const stackSites = openTags(code(CARD)).filter((t) => t.tag === 'MemberChipStack');
+    expect(stackSites.length, `${CARD} stopped rendering the chip stack`).toBe(1);
+    expect(
+      stackSites[0].attrs,
+      `${CARD}: the chip stack no longer reads the card's own tint flag`,
+    ).toMatch(/tinted=\{[^}]*\btinted\b/);
+    expect(
+      stackSites[0].attrs,
+      `${CARD}: the \`!hasBgImage\` gate is gone — on a background-photo card the tinted arm ` +
+        'resolves its ink to WHITE through --t-color-l, painting white initials on a white ' +
+        'chip. See the DECISION Phase 88.5 marker above this call site.',
+    ).toMatch(/tinted=\{[^}]*!hasBgImage/);
+  });
 });

@@ -134,6 +134,88 @@ async function assertDarkTheme(page: Page): Promise<void> {
   await expect(page.locator('html')).toHaveClass(/dark/);
 }
 
+interface EffectiveGeometry {
+  ownWidth: number;
+  ownHeight: number;
+  effectiveWidth: number;
+  effectiveHeight: number;
+  /** The computed `::after` insets of whichever element carried the extension. Zeros when
+   *  nothing did — which for a control that is SUPPOSED to have one is a probe/markup
+   *  failure, not a pass, and every caller says so in its message. */
+  insets: { left: number; right: number; top: number; bottom: number };
+  /** `the control itself` / `<span> inside it` / `nothing`. Named in failure messages so a
+   *  regression report says WHERE the extension went, not just that the number shrank. */
+  extendedBy: string;
+}
+
+/**
+ * The EFFECTIVE hit area of a control: its own border box UNIONED with whatever a
+ * negative-inset `::after` pseudo-element extends it by, on itself or on any descendant.
+ *
+ * WHY NOT `boundingBox()`. A pseudo-element extension does not change the originating
+ * element's own rect — `getBoundingClientRect()` on the add-friend "+" reads 24x24 and on an
+ * expanded member chip reads 32x32, both of which are the DESIGNED visible sizes and neither
+ * of which is the tappable area. A naive `boundingBox()` check would fail those controls for
+ * entirely the wrong reason and would then be "fixed" by growing them visibly, which is the
+ * exact outcome 87.8 D-13 rejected.
+ *
+ * WHY DESCENDANTS COUNT. `MemberChipStack` puts the extension on an inner wrapper span
+ * (`HIT_EXTENSION`, `MemberChipStack.tsx:200`) rather than on the `role="button"` trigger
+ * itself, because the trigger is `ClickableMemberName`'s own element. A pointer landing on
+ * that pseudo hits the wrapper, which is INSIDE the trigger, so the tap reaches the trigger —
+ * the extension really is part of the control's hit area, and measuring only the trigger's
+ * own `::after` would report no extension at all.
+ *
+ * EXTRACTED Phase 88.5 plan 10 from the add-friend test that first wrote this arithmetic
+ * inline (87.8-08). It is now measured at five call sites; five copies of one rule is the
+ * kind of drift this project treats as debt rather than as a style question. The arithmetic
+ * is byte-for-byte the one it replaced — negative insets EXTEND the box, positive ones are
+ * ignored — so the add-friend numbers (24 + 10 + 10 = 44, 24 + 4 + 4 = 32) are unchanged.
+ */
+async function readEffectiveGeometry(locator: Locator): Promise<EffectiveGeometry> {
+  return locator.first().evaluate((el) => {
+    const px = (v: string) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : 0);
+    const own = el.getBoundingClientRect();
+
+    let left = own.left;
+    let right = own.right;
+    let top = own.top;
+    let bottom = own.bottom;
+    let insets = { left: 0, right: 0, top: 0, bottom: 0 };
+    let extendedBy = 'nothing — no negative-inset ::after on this control or inside it';
+
+    for (const node of [el, ...Array.from(el.querySelectorAll('*'))]) {
+      const after = window.getComputedStyle(node, '::after');
+      // No pseudo at all — `content: none` is what an element with no ::after rule reports.
+      if (after.content === 'none') continue;
+      const i = {
+        left: px(after.left),
+        right: px(after.right),
+        top: px(after.top),
+        bottom: px(after.bottom),
+      };
+      // A NON-negative inset shrinks or matches the box; only negative ones extend it.
+      if (i.left >= 0 && i.right >= 0 && i.top >= 0 && i.bottom >= 0) continue;
+      const r = node.getBoundingClientRect();
+      left = Math.min(left, r.left + Math.min(0, i.left));
+      right = Math.max(right, r.right - Math.min(0, i.right));
+      top = Math.min(top, r.top + Math.min(0, i.top));
+      bottom = Math.max(bottom, r.bottom - Math.min(0, i.bottom));
+      insets = i;
+      extendedBy = node === el ? 'the control itself' : `<${node.tagName.toLowerCase()}> inside it`;
+    }
+
+    return {
+      ownWidth: own.width,
+      ownHeight: own.height,
+      effectiveWidth: right - left,
+      effectiveHeight: bottom - top,
+      insets,
+      extendedBy,
+    };
+  });
+}
+
 /** MEASUREMENT ONLY (plan 88.1-19): the IN-PAGE box of a CTA, in CSS pixels. Read-only.
  *  Paired with Playwright's own `boundingBox()`, which is visual-viewport-SCALED, this is
  *  what separates "the button is short" from "the page is scaled". Asserts nothing. */
@@ -154,6 +236,29 @@ function readCtaBox(locator: Locator) {
     };
   });
 }
+
+/* --- Phase 88.5 locators (SPEC Req 2 / 3 / 5) -----------------------------------------
+ *
+ * SELECTOR POLICY, unchanged: role / label / text only. The Calendar button's accessible
+ * name carries a count as of plan 88.5-07 ("Calendar, {n} upcoming games this week",
+ * UI-SPEC 6.1.5), so it is matched by PREFIX + word boundary — not an exact string, and not
+ * a bare substring either. The `calendarSheet` DIALOG's name stays exactly "Calendar"; do
+ * not relax that one to match.
+ */
+const calendarButton = (page: Page) => page.getByRole('button', { name: /^calendar\b/i });
+const calendarSheet = (page: Page) => page.getByRole('dialog', { name: 'Calendar' });
+
+/** The COLLAPSED member-chip stack on a home group card. Its accessible name is built by
+ *  `MemberChipStack.tsx`'s `collapsedName()` — "Members: {names}[ and N more]. Show all
+ *  members." — and the chips inside it are `aria-hidden` glyphs, so that name is the only
+ *  thing there is to match on. */
+const collapsedChipStack = (page: Page) =>
+  page.getByRole('button', { name: /^members: .*show all members\.$/i });
+
+/** The control that collapses an EXPANDED chip stack back. Only a stack that is currently
+ *  expanded renders one, so this doubles as the "is it expanded" signal. */
+const showLessControl = (page: Page) =>
+  page.getByRole('button', { name: 'Show less', exact: true });
 
 /**
  * Wait until a freshly-opened dialog has finished ANIMATING IN, so geometry read inside it is
@@ -207,6 +312,260 @@ async function settleOpenAnimation(page: Page, target: Locator, label: string): 
     .toBe(true);
 }
 
+/** One `elementFromPoint` reading, resolved against the two members of a pair. */
+interface HitProbe {
+  x: number;
+  y: number;
+  insideA: boolean;
+  insideB: boolean;
+  tag: string;
+  text: string;
+}
+
+interface PairProbe {
+  axis: 'x' | 'y';
+  /** The measured gap between the two boxes, in CSS px. `gap-3` is 12. */
+  gap: number;
+  /** The larger of the two controls' `::after` extensions, in CSS px. `-inset-1.5` is 6. */
+  extension: number;
+  aLabel: string;
+  bLabel: string;
+  /** 2px inside A's near edge — must land in A, never in B. */
+  nearEdgeA: HitProbe;
+  /** 2px inside B's near edge — must land in B, never in A. */
+  nearEdgeB: HitProbe;
+  /** `extension - 2` past A's near edge, inside A's OWN claimed extension zone. */
+  extensionA: HitProbe;
+  /** `extension - 2` past B's near edge, inside B's OWN claimed extension zone. */
+  extensionB: HitProbe;
+}
+
+interface ChipRowProbe {
+  itemCount: number;
+  chipPair: PairProbe | null;
+  showLessPair: PairProbe | null;
+  /** Every item in the row with its label and box — quoted into failure messages so a red
+   *  run says what the row actually contained. */
+  diagnostics: string;
+}
+
+/**
+ * Probe the expanded chip row's tap isolation — the whole thing in ONE synchronous evaluate.
+ *
+ * WHY THE EDGES AND NEVER THE CENTRES (copied from the D-13 test at this file's add-friend
+ * isolation case, because the reasoning is identical and re-deriving it invites a weaker
+ * version): a mis-sized or regressed extension only ever reaches a few pixels past the
+ * boundary it is violating — the CENTRE of a neighbouring chip is the one point that failure
+ * mode can never reach, so a centre probe cannot fail and is vacuous on BOTH axes.
+ *
+ * FOUR probes per pair, because the near-edge pair alone is NOT falsifiable here and that is
+ * worth stating rather than discovering later. A chip's extension is 6px and the row gap is
+ * 12px, so even at `gap-2` (8px) each extension stops 2px short of the neighbour's own box:
+ * the classic "2px inside the neighbour" probe would stay green through exactly the
+ * regression this test exists to catch. The two EXTENSION probes are the falsifiable pair —
+ * they ask whether each control still owns the zone it claims. At `gap-3` chip A owns
+ * [A.right, A.right+6] and chip B owns [B.left-6, B.left] and the two meet exactly, so
+ * A.right+4 resolves to A. At `gap-2` those zones OVERLAP by 4px, B's pseudo paints later in
+ * tree order and therefore wins the hit test, and A.right+4 resolves to B. Both pairs are
+ * asserted: the near-edge probes pin the guarantee everyone reads the test for, the extension
+ * probes are the ones with teeth.
+ *
+ * `scrollIntoView({ block: 'center' })` first, synchronously, and every rect read after it:
+ * `elementFromPoint` only resolves points inside the viewport, and assertions do not
+ * auto-scroll — only actions do (run 30838155400 recorded "hit: none" for exactly this).
+ * Nothing is CLICKED here, unlike the add-friend D-13 case: a chip tap opens a member
+ * popover rather than mutating anything, so there is no side effect whose absence could be
+ * asserted, and a popover mounting mid-probe would cover the remaining points.
+ */
+async function probeExpandedChipRow(row: Locator): Promise<ChipRowProbe> {
+  return row.evaluate((rowEl) => {
+    rowEl.scrollIntoView({ block: 'center', inline: 'nearest' });
+
+    const px = (v: string) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : 0);
+    const round = (n: number) => Math.round(n * 100) / 100;
+
+    const items = Array.from(rowEl.children).filter(
+      (el) => el.getBoundingClientRect().height > 0,
+    ) as HTMLElement[];
+
+    const labelOf = (el: HTMLElement) =>
+      (el.getAttribute('aria-label') ?? el.textContent ?? '').trim().slice(0, 40) || '<unlabelled>';
+    const isShowLess = (el: HTMLElement) => (el.textContent ?? '').trim() === 'Show less';
+
+    /** The largest negative `::after` inset on the element or anything inside it, in px. */
+    const extensionOf = (el: HTMLElement) => {
+      let ext = 0;
+      for (const node of [el, ...Array.from(el.querySelectorAll('*'))]) {
+        const after = window.getComputedStyle(node, '::after');
+        if (after.content === 'none') continue;
+        ext = Math.max(ext, -px(after.left), -px(after.right), -px(after.top), -px(after.bottom));
+      }
+      return ext;
+    };
+
+    const hit = (x: number, y: number, a: HTMLElement, b: HTMLElement) => {
+      const el = document.elementFromPoint(x, y);
+      return {
+        x: round(x),
+        y: round(y),
+        insideA: el !== null && (el === a || a.contains(el)),
+        insideB: el !== null && (el === b || b.contains(el)),
+        tag: el instanceof Element ? el.tagName : 'none',
+        text: (el?.textContent ?? '').trim().slice(0, 40),
+      };
+    };
+
+    const probePair = (a: HTMLElement, b: HTMLElement) => {
+      const extA = extensionOf(a);
+      const extB = extensionOf(b);
+      // BOTH must carry an extension or the extension probes below would ask a control that
+      // claims no zone whether it owns one. An `unknown`-status chip is deliberately inert
+      // (MemberChipStack's RESEARCH B-5 marker) and has none — skip such a pair rather than
+      // reporting a failure that is really a fixture shape.
+      if (extA === 0 || extB === 0) return null;
+      const ext = Math.max(extA, extB);
+      const ra = a.getBoundingClientRect();
+      const rb = b.getBoundingClientRect();
+
+      if (rb.left >= ra.right - 1) {
+        // B sits to the RIGHT of A. The probe line must be inside both boxes vertically.
+        const overlapTop = Math.max(ra.top, rb.top);
+        const overlapBottom = Math.min(ra.bottom, rb.bottom);
+        if (overlapBottom - overlapTop < 2) return null;
+        const y = (overlapTop + overlapBottom) / 2;
+        return {
+          axis: 'x' as const,
+          gap: round(rb.left - ra.right),
+          extension: ext,
+          aLabel: labelOf(a),
+          bLabel: labelOf(b),
+          nearEdgeA: hit(ra.right - 2, y, a, b),
+          nearEdgeB: hit(rb.left + 2, y, a, b),
+          extensionA: hit(ra.right + (ext - 2), y, a, b),
+          extensionB: hit(rb.left - (ext - 2), y, a, b),
+        };
+      }
+
+      if (rb.top >= ra.bottom - 1) {
+        // B sits BELOW A (the row wrapped). `gap-3` sets the row gap as well as the column
+        // gap, so the arithmetic is identical on this axis.
+        const overlapLeft = Math.max(ra.left, rb.left);
+        const overlapRight = Math.min(ra.right, rb.right);
+        if (overlapRight - overlapLeft < 2) return null;
+        const x = (overlapLeft + overlapRight) / 2;
+        return {
+          axis: 'y' as const,
+          gap: round(rb.top - ra.bottom),
+          extension: ext,
+          aLabel: labelOf(a),
+          bLabel: labelOf(b),
+          nearEdgeA: hit(x, ra.bottom - 2, a, b),
+          nearEdgeB: hit(x, rb.top + 2, a, b),
+          extensionA: hit(x, ra.bottom + (ext - 2), a, b),
+          extensionB: hit(x, rb.top - (ext - 2), a, b),
+        };
+      }
+
+      return null;
+    };
+
+    // CONSECUTIVE pairs only — in a flex row, DOM-consecutive is also layout-adjacent, and a
+    // non-consecutive pair would measure a "gap" that spans a whole chip.
+    let chipPair = null;
+    const chips = items.filter((el) => !isShowLess(el));
+    for (let i = 0; i < chips.length - 1 && chipPair === null; i += 1) {
+      chipPair = probePair(chips[i], chips[i + 1]);
+    }
+
+    let showLessPair = null;
+    const showLessIndex = items.findIndex(isShowLess);
+    if (showLessIndex > 0) {
+      showLessPair = probePair(items[showLessIndex - 1], items[showLessIndex]);
+    }
+    if (showLessPair === null && showLessIndex >= 0 && showLessIndex < items.length - 1) {
+      showLessPair = probePair(items[showLessIndex], items[showLessIndex + 1]);
+    }
+    // Wrapped-row fallback (2026-09-01, expanded chips carry visible names): chip+name
+    // items are wide enough that "Show less" can wrap onto a row of its own, where its
+    // DOM-consecutive neighbour is the RIGHTMOST chip above — no x-overlap, both probes
+    // above return null. Its layout-adjacent partner is then whichever chip sits directly
+    // ABOVE it; scan every item and let probePair's own overlap guards reject the
+    // non-adjacent ones. The vertical probes have the same teeth: `gap-3` sets the row
+    // gap to 12px, so 6+6 extension zones meet exactly on the y axis too.
+    if (showLessPair === null && showLessIndex >= 0) {
+      for (let i = 0; i < items.length && showLessPair === null; i += 1) {
+        if (i === showLessIndex) continue;
+        showLessPair = probePair(items[i], items[showLessIndex]);
+      }
+    }
+
+    const diagnostics = items
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        return `"${labelOf(el)}" [${round(r.left)},${round(r.top)} ${round(r.width)}x${round(r.height)} ext:${extensionOf(el)}]`;
+      })
+      .join(' | ');
+
+    return { itemCount: items.length, chipPair, showLessPair, diagnostics };
+  });
+}
+
+/**
+ * Assert one pair is isolated: neither control's hit extension reaches into the other's box,
+ * and each still owns the extension zone it claims.
+ *
+ * `expectedGap` is asserted directly as well as through the hit tests. That looks redundant
+ * and is not: it is the assertion that names the BROKEN TERM. A regression report reading
+ * "the expanded chip row's gap is 8px, expected 12 (gap-3) — 6 + 6 = 12 means an extension
+ * terminates EXACTLY at the gap, and 8 makes two 6px extensions overlap by 4px" is actionable
+ * where "probe at (191,402) resolved the wrong element" is a debugging session. The hit tests
+ * are what prove the CONSEQUENCE is real rather than arithmetic on paper.
+ */
+function assertPairIsolated(
+  pair: PairProbe | null,
+  what: string,
+  expectedGap: number,
+  diagnostics: string,
+): void {
+  if (pair === null) return; // the caller has already failed on the null; keep TS happy.
+
+  const context = `${what} (${pair.aLabel} / ${pair.bLabel}), separated on the ${pair.axis} axis by ${pair.gap}px with a ${pair.extension}px extension each. Row: ${diagnostics}`;
+
+  expect(
+    pair.gap,
+    `${what}: the measured gap is ${pair.gap}px, expected ${expectedGap} (gap-3). Each control carries a ${pair.extension}px hit extension, and 6 + 6 = 12 is what makes an extension terminate EXACTLY at the gap. Dropping one step on the spacing scale re-opens the tap-stealing defect 87.8 D-13 was written against — that is a decision, not a density tweak (MemberChipStack.tsx's own marker says so). ${context}`,
+  ).toBeCloseTo(expectedGap, 0);
+
+  // The GUARANTEE: neither extension reaches inside the other control's own box.
+  expect(
+    pair.nearEdgeB.insideA,
+    `${what}: the point 2px inside ${pair.bLabel}'s near edge (${pair.nearEdgeB.x},${pair.nearEdgeB.y}) resolved to ${pair.aLabel} — its extension has crossed the gap INTO its neighbour, so a tap meant for one member opens the other's popover (hit: <${pair.nearEdgeB.tag}> "${pair.nearEdgeB.text}"). ${context}`,
+  ).toBe(false);
+  expect(
+    pair.nearEdgeB.insideB,
+    `${what}: the point 2px inside ${pair.bLabel}'s near edge did not land inside ${pair.bLabel} at all (hit: <${pair.nearEdgeB.tag}> "${pair.nearEdgeB.text}") — the probe geometry is off; fix the probe, not the layout. ${context}`,
+  ).toBe(true);
+  expect(
+    pair.nearEdgeA.insideB,
+    `${what}: the point 2px inside ${pair.aLabel}'s near edge (${pair.nearEdgeA.x},${pair.nearEdgeA.y}) resolved to ${pair.bLabel} (hit: <${pair.nearEdgeA.tag}> "${pair.nearEdgeA.text}"). ${context}`,
+  ).toBe(false);
+  expect(
+    pair.nearEdgeA.insideA,
+    `${what}: the point 2px inside ${pair.aLabel}'s near edge did not land inside ${pair.aLabel} at all (hit: <${pair.nearEdgeA.tag}> "${pair.nearEdgeA.text}") — probe geometry, not layout. ${context}`,
+  ).toBe(true);
+
+  // THE FALSIFIABLE PAIR: each control still owns its own extension zone. These are the two
+  // that go red at gap-2, where the zones overlap and the later pseudo wins the hit test.
+  expect(
+    pair.extensionA.insideA,
+    `${what}: ${pair.aLabel}'s own hit extension no longer owns the point ${pair.extension - 2}px past its edge (${pair.extensionA.x},${pair.extensionA.y}) — it resolved to <${pair.extensionA.tag}> "${pair.extensionA.text}"${pair.extensionA.insideB ? `, which belongs to ${pair.bLabel}` : ''}. Two ${pair.extension}px extensions across a ${pair.gap}px gap overlap by ${2 * pair.extension - pair.gap}px, and the pseudo-element later in tree order wins. ${context}`,
+  ).toBe(true);
+  expect(
+    pair.extensionB.insideB,
+    `${what}: ${pair.bLabel}'s own hit extension no longer owns the point ${pair.extension - 2}px past its edge (${pair.extensionB.x},${pair.extensionB.y}) — it resolved to <${pair.extensionB.tag}> "${pair.extensionB.text}"${pair.extensionB.insideA ? `, which belongs to ${pair.aLabel}` : ''}. ${context}`,
+  ).toBe(true);
+}
+
 test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (phone project)', () => {
   // Inverse of the tailwind-v4-styles.spec.ts:57 guard: this file is phone-only.
   // Both projects match every spec (playwright.config.ts:44, :87), so without this
@@ -228,6 +587,33 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     const inviteMember = page.getByRole('button', { name: /invite member to group/i });
     await guardResolved(inviteMember, 'the per-card "Invite Member" CTA (grouplist.js census row 5)');
     await assertMin44(inviteMember, '"Invite Member"');
+
+    // Census row (ADDED Phase 88.5 plan 10, SPEC Req 2): the phone-only Calendar button —
+    // now with the amber count pill rendered INSIDE it (`UserHomePage.js:352-367`). The
+    // floor is the explicit `min-h-11 min-w-11` pair at that call site, not `.btn`'s
+    // phone-only height floor, and this assertion is the one that would catch the pill
+    // pushing the control off it in some later layout change.
+    const calendar = calendarButton(page);
+    await guardResolved(calendar, 'the phone Calendar button (SPEC Req 2 — the counted entry point)');
+    await assertMin44(calendar, 'the Calendar button (with the count pill inside it)');
+
+    // And measured as an EFFECTIVE hit area too, for a reason that is not redundant: a real
+    // <button> must reach the floor with its OWN box. If these two numbers ever diverge, the
+    // control has quietly started depending on a pseudo-element to look big enough to tap,
+    // which is the D-13 technique — legitimate for a 24px inline glyph, wrong for a CTA.
+    const calendarGeometry = await readEffectiveGeometry(calendar);
+    expect(
+      calendarGeometry.effectiveHeight,
+      `the Calendar button's effective height is ${calendarGeometry.effectiveHeight}px < 44px (own ${calendarGeometry.ownHeight}px, extended by ${calendarGeometry.extendedBy}) — the floor is the min-h-11 at its own call site`,
+    ).toBeGreaterThanOrEqual(44);
+    expect(
+      calendarGeometry.effectiveWidth,
+      `the Calendar button's effective width is ${calendarGeometry.effectiveWidth}px < 44px (own ${calendarGeometry.ownWidth}px) — min-h-11 sets NO min-width; the paired min-w-11 is the mechanism`,
+    ).toBeGreaterThanOrEqual(44);
+    expect(
+      calendarGeometry.effectiveHeight,
+      `the Calendar button's effective height (${calendarGeometry.effectiveHeight}px) exceeds its own box (${calendarGeometry.ownHeight}px) — something has added a hit extension (${calendarGeometry.extendedBy}) to a control that is supposed to reach 44px on its own geometry. That is a decision, not a cleanup: it makes the tappable area invisible.`,
+    ).toBeCloseTo(calendarGeometry.ownHeight, 1);
 
     // R6: the surface's primary CTA gives live pressed feedback.
     await assertPressedOpacity(page, createGroup, '"+ Create New Group"');
@@ -493,23 +879,11 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     // The button's OWN box is 24x24 BY DESIGN (w-6 h-6 — D-13 technique 2: the control
     // must not visibly grow). Do NOT assert on boundingBox(); measure the effective
     // hit area the ::after pseudo-element adds instead.
-    const geometry = await addFriend.first().evaluate((el) => {
-      const rect = el.getBoundingClientRect();
-      const after = getComputedStyle(el, '::after');
-      const px = (v: string) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : 0);
-      // Negative insets EXTEND the box: effective = own size + |left| + |right| etc.
-      const left = px(after.left);
-      const right = px(after.right);
-      const top = px(after.top);
-      const bottom = px(after.bottom);
-      return {
-        ownWidth: rect.width,
-        ownHeight: rect.height,
-        effectiveWidth: rect.width + Math.max(0, -left) + Math.max(0, -right),
-        effectiveHeight: rect.height + Math.max(0, -top) + Math.max(0, -bottom),
-        insets: { left, right, top, bottom },
-      };
-    });
+    //
+    // Phase 88.5 plan 10: the arithmetic that used to be written inline here is now the
+    // shared `readEffectiveGeometry` helper, unchanged in substance — four more controls
+    // need exactly this measurement and five copies of it would drift.
+    const geometry = await readEffectiveGeometry(addFriend);
 
     expect(
       geometry.effectiveWidth,
@@ -709,5 +1083,190 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     // does not use .btn, which is what carries cursor elsewhere). The helper releases
     // the pointer away from the element, so no friend request is sent by this probe.
     await assertPressedOpacity(page, addFriend, 'add-friend "+"');
+  });
+
+  /* ==========================================================================================
+   * Phase 88.5 plan 10 — the five NEW tappable families (UI-SPEC section 12 item 10, A-9).
+   *
+   * Everything below is geometry at 375px, which is the only layer that can see it: jsdom has
+   * no layout, so `MemberChipStack.test.tsx` can pin the class strings and the DOM shape but
+   * cannot measure a single one of these numbers. The 32 + 6 + 6 = 44 chip arithmetic and the
+   * "an extension terminates exactly at the 12px gap" claim are unfalsifiable anywhere else.
+   * ========================================================================================== */
+
+  test('R4 (SPEC Req 4): the calendar sheet hero\'s RSVP controls clear the 44px floor', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await assertDarkTheme(page);
+
+    await guardResolved(calendarButton(page), 'the phone Calendar button (the route to the hero)');
+    await calendarButton(page).click();
+    const sheet = calendarSheet(page);
+    await expect(sheet).toBeVisible();
+
+    for (const name of ["I'm in", "Can't make it"]) {
+      const control = sheet.getByRole('button', { name, exact: true });
+      await guardResolved(
+        control,
+        `the hero's "${name}" RSVP control — the hero only renders when the seeded account has an upcoming event (NextGameNightCard returns null for a null event), so a miss here is a FIXTURE failure owned by periodictabletopbackend_v2/Sonnet/scripts/e2e-fixtures.js`,
+      );
+      // The sheet is a Radix dialog and geometry read at `toBeVisible()` is read at
+      // animation START — see this helper's own block for the 43.913 -> 43.9915 measurement
+      // that made it necessary.
+      await settleOpenAnimation(page, control, `the hero's "${name}" control`);
+
+      const geometry = await readEffectiveGeometry(control);
+      // THE MECHANICAL FORM OF A PROHIBITION. `NextGameNightCard.tsx:370` carries `min-h-11`
+      // and its marker says in as many words not to "restore" `RsvpSection.js:165`'s
+      // `px-3 py-2` pairing in its place: `text-sm` (20px line) plus 16px of vertical padding
+      // computes to about 36px, which fails this floor. That is the regression this assertion
+      // exists to catch, so the number is named here rather than left to a diff review.
+      expect(
+        geometry.effectiveHeight,
+        `the hero's "${name}" control measures ${geometry.effectiveHeight}px tall (own box ${geometry.ownHeight}px, extended by ${geometry.extendedBy}) — expected >= 44 from the min-h-11 at NextGameNightCard.tsx:370. Copying RsvpSection's px-3 py-2 pairing here computes to about 36px, which is exactly the prohibition D-07 constraint (i) records.`,
+      ).toBeGreaterThanOrEqual(44);
+      expect(
+        geometry.effectiveWidth,
+        `the hero's "${name}" control measures ${geometry.effectiveWidth}px wide — the two buttons are flex-1 halves of a full-width segmented group, so anything under 44 means the group itself collapsed`,
+      ).toBeGreaterThanOrEqual(44);
+      // Same non-redundancy argument as the Calendar button above: a real <button> reaches
+      // the floor on its OWN box. A divergence here means a pseudo-element started carrying
+      // the difference.
+      expect(
+        geometry.effectiveHeight,
+        `the hero's "${name}" control needs a hit extension (${geometry.extendedBy}) to reach its effective ${geometry.effectiveHeight}px from an own box of ${geometry.ownHeight}px — the D-13 invisible-extension technique is for inline glyphs, not for a CTA that is supposed to BE 44px tall`,
+      ).toBeCloseTo(geometry.ownHeight, 1);
+    }
+  });
+
+  test('R4 (SPEC Req 5): the COLLAPSED member-chip stack is one target and clears 44x44', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await assertDarkTheme(page);
+
+    const stack = collapsedChipStack(page);
+    await guardResolved(
+      stack,
+      'the collapsed member-chip stack on a home group card — it renders only for a group with at least one NON-SELF member (UI-SPEC section 8: a viewer-only group renders no stack at all), so a miss here is a FIXTURE failure',
+    );
+
+    const geometry = await readEffectiveGeometry(stack);
+    expect(
+      geometry.effectiveHeight,
+      `the collapsed chip stack measures ${geometry.effectiveHeight}px tall (own ${geometry.ownHeight}px) — expected >= 44 from the min-h-11 on the trigger. The chips inside it are 32px, so the trigger's own height utility is the entire mechanism`,
+    ).toBeGreaterThanOrEqual(44);
+    // WIDTH IS THE DIMENSION ACTUALLY AT RISK, and it is not symmetrical with height.
+    // MEASURED in chromium at 375px (plan 88.5-10): a four-member stack is
+    // 32 + 3 x 24 (the -ml-2 overlap) + 4 (pr-1) = 108px and clears the floor by miles; a
+    // ONE-member stack is 32 + 4 = 36px and does NOT. `min-h-11` sets no min-width — the same
+    // asymmetry `assertMin44`'s own comment records for the census CTAs — so the paired
+    // `min-w-11` added to the trigger by this plan is what makes the single-member case legal.
+    // A group of the viewer plus one other person is an ordinary shape, not an edge case.
+    expect(
+      geometry.effectiveWidth,
+      `the collapsed chip stack measures ${geometry.effectiveWidth}px wide (own ${geometry.ownWidth}px) — expected >= 44. A one-member group renders a single 32px chip plus pr-1 = 36px, which is under the floor unless the trigger carries min-w-11 alongside min-h-11`,
+    ).toBeGreaterThanOrEqual(44);
+  });
+
+  test('R4 + D-13 (SPEC Req 5): each EXPANDED chip is 32 + 6 + 6 = 44, and no chip steals its neighbour\'s taps', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await assertDarkTheme(page);
+
+    const stack = collapsedChipStack(page);
+    await guardResolved(stack, 'the collapsed member-chip stack (the route to the expanded row)');
+    await stack.first().click();
+
+    await guardResolved(
+      showLessControl(page),
+      'the "Show less" control — its presence IS the expanded state, so a miss here means the stack did not expand (the trigger stopPropagation may have stopped working and the tap navigated to the group instead)',
+    );
+
+    // The expanded row: `Show less`'s parent. Reached this way rather than by a test id
+    // because the row is a plain div with no role — and its `useId`-derived id contains
+    // colons, which are not valid in a bare CSS id selector.
+    const row = showLessControl(page).first().locator('xpath=..');
+    const chipTriggers = row.getByRole('button').filter({ hasNotText: 'Show less' });
+    await guardResolved(
+      chipTriggers,
+      'the expanded chip triggers — the seeded account needs a group with at least TWO non-self members for the isolation probe below to be constructible; that is a FIXTURE failure, not a pass',
+      2,
+    );
+
+    // (1) EVERY chip's effective geometry, one at a time through the shared helper. The
+    // trigger's own box is the 32px chip; the 6px symmetric extension lives on the wrapper
+    // span INSIDE it (HIT_EXTENSION), which is why `boundingBox()` would report 32 here and
+    // fail for the wrong reason.
+    const chipCount = await chipTriggers.count();
+    for (let i = 0; i < chipCount; i += 1) {
+      const geometry = await readEffectiveGeometry(chipTriggers.nth(i));
+      expect(
+        geometry.effectiveWidth,
+        `expanded chip ${i + 1} of ${chipCount} has an effective width of ${geometry.effectiveWidth}px — expected 32 + 6 + 6 = 44 (own box ${geometry.ownWidth}px, extended by ${geometry.extendedBy}, insets ${JSON.stringify(geometry.insets)}). A broken sum names which term moved: a 32 means the extension is missing entirely, a 40 means after:-inset-1.5 became after:-inset-1`,
+      ).toBeGreaterThanOrEqual(44);
+      expect(
+        geometry.effectiveHeight,
+        `expanded chip ${i + 1} of ${chipCount} has an effective height of ${geometry.effectiveHeight}px — expected 32 + 6 + 6 = 44 (own box ${geometry.ownHeight}px, extended by ${geometry.extendedBy}, insets ${JSON.stringify(geometry.insets)})`,
+      ).toBeGreaterThanOrEqual(44);
+      expect(
+        geometry.extendedBy,
+        `expanded chip ${i + 1} reaches its floor on its OWN box (${geometry.ownWidth}x${geometry.ownHeight}) with no hit extension found — either the chip grew visibly, which D-13 rejects, or the HIT_EXTENSION pseudo is not applying and the 44px is coming from somewhere unintended`,
+      ).not.toContain('nothing');
+    }
+
+    // (2) TAP ISOLATION at the gap edges.
+    const probe = await probeExpandedChipRow(row);
+    expect(
+      probe.chipPair,
+      `no adjacent pair of extension-carrying chips could be constructed from the ${probe.itemCount} items in the expanded row — the probe cannot be built, so fix the probe or the fixture, never the geometry. Row: ${probe.diagnostics}`,
+    ).not.toBeNull();
+    assertPairIsolated(probe.chipPair, 'two adjacent expanded member chips', 12, probe.diagnostics);
+  });
+
+  test('R4 + D-13 (SPEC Req 5): the "Show less" control clears 44x44 and steals no neighbouring tap', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await assertDarkTheme(page);
+
+    const stack = collapsedChipStack(page);
+    await guardResolved(stack, 'the collapsed member-chip stack (the route to "Show less")');
+    await stack.first().click();
+
+    const showLess = showLessControl(page);
+    await guardResolved(
+      showLess,
+      'the "Show less" control — the only way back out of an expanded stack on a phone, and the one revealed-state control in this phase that would otherwise ship with no geometry assertion at all',
+    );
+
+    const geometry = await readEffectiveGeometry(showLess);
+    expect(
+      geometry.effectiveHeight,
+      `"Show less" has an effective height of ${geometry.effectiveHeight}px (own ${geometry.ownHeight}px, extended by ${geometry.extendedBy}, insets ${JSON.stringify(geometry.insets)}) — expected >= 44 from min-h-11 plus its own 6px symmetric extension`,
+    ).toBeGreaterThanOrEqual(44);
+    expect(
+      geometry.effectiveWidth,
+      `"Show less" has an effective width of ${geometry.effectiveWidth}px (own ${geometry.ownWidth}px) — expected >= 44 from the text-xs word pair plus px-1 plus 6 + 6 of extension. This is a TEXT control, so its width follows its copy: shortening the label is a decision that has to keep clearing this floor`,
+    ).toBeGreaterThanOrEqual(44);
+    expect(
+      geometry.extendedBy,
+      `"Show less" carries no hit extension (own box ${geometry.ownWidth}x${geometry.ownHeight}) — it is written with the same HIT_EXTENSION constant as the chips (MemberChipStack.tsx:200, applied at :500) precisely so a 12px-gap row cannot leave it as the one un-extended target`,
+    ).not.toContain('nothing');
+
+    const row = showLess.first().locator('xpath=..');
+    const probe = await probeExpandedChipRow(row);
+    expect(
+      probe.showLessPair,
+      `"Show less" has no adjacent extension-carrying neighbour in the expanded row, so the isolation probe cannot be built — fix the probe or the fixture, never the geometry. Row: ${probe.diagnostics}`,
+    ).not.toBeNull();
+    assertPairIsolated(
+      probe.showLessPair,
+      '"Show less" and its immediate neighbour',
+      12,
+      probe.diagnostics,
+    );
   });
 });

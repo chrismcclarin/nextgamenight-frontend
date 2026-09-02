@@ -1104,6 +1104,13 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // carries ONE inline amber in both themes, so the accent CTA is theme-invariant BY DESIGN. A
     // future "dark needs its own amber" edit reds here rather than silently splitting the two CTAs
     // apart in one theme. Same idiom as test 41's dark byte-equalities.
+    //
+    // NOTE Phase 88.5 (owner ruling 2026-08-31) — a deliberate dark FORK now exists in
+    // `components/UpcomingCountPill.tsx` and DOES NOT CONTRADICT this equality. The pill forks at
+    // its USE SITE (`dark:[background-color:var(--amber-500)]` + `dark:[color:var(--warm-900)]`),
+    // reading a different token family in dark rather than re-pointing this one; that is why it
+    // could not be spelled `.btn-accent`. This row therefore stays green and stays the guard on
+    // the accent CTA family. Tests 51-52 below own the pill's own floors and its fork.
     for (const key of ['--color-btn-accent-bg', '--color-btn-accent-hover', '--color-btn-accent-text']) {
       const light = resolve('light', key);
       const dark = resolve('dark', key);
@@ -1278,5 +1285,67 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     }
     // The primary button FILL sits on the page as a non-text UI boundary (1.4.11, 3:1).
     expectRatio('light', '--color-btn-primary-bg', '--color-bg-page', 3.0, '88.3-cr3 M3 / primary button fill on the page (1.4.11)');
+  });
+
+  // ===================================================================================
+  // Phase 88.5 — the upcoming-count pill (owner ruling 2026-08-31: 3:1 acceptance KEPT,
+  // dark arm forked)
+  //
+  // SPEC Req 2's acceptance — "contrast pins for pill-on-ground in both themes (3:1
+  // non-text) and white-on-amber-700 (4.5:1)" — is asserted here AS WRITTEN. The UI-SPEC
+  // draft proposed relaxing it to ink-on-fill only; the owner DECLINED ("we made that
+  // acceptance for a reason") and ruled the DARK ARM of the pill forks instead, to the
+  // shipped `--amber-500` with `--warm-900` ink. Full contract: `88.5-UI-SPEC.md` §6.1.3,
+  // §12 items 5-6, §13 Flag 1. The pill itself is `components/UpcomingCountPill.tsx`.
+  //
+  // WHY BOTH USE SITES ARE PINNED SEPARATELY: the pill renders on TWO grounds — the
+  // `.btn-secondary` fill of the home Calendar button (plan 88.5-07) and the sheet's
+  // `bg-surface-card` (plan 88.5-08). They are different tokens in both themes, so one
+  // pairing cannot stand in for the other; a re-tint of either ground must red here.
+  // ===================================================================================
+
+  it('51. 88.5 — the count pill clears its floors in BOTH themes, at BOTH use sites', () => {
+    // Ink on fill (4.5, AA text). The digits are text, small and semibold.
+    expectRatio('light', '--color-btn-accent-text', '--color-btn-accent-bg', 4.5, '88.5 Req 2 / LIGHT arm — white on amber-700 (5.0216)');
+    expectRatio('dark', '--warm-900', '--amber-500', 4.5, '88.5 Req 2 / DARK arm — warm-900 on amber-500 (8.3660). White here is 2.1477, an AA failure: the ink MUST fork with the fill');
+
+    // Fill vs ground, use site 1 — the home Calendar button (3.0, WCAG 1.4.11 non-text).
+    expectRatio('light', '--color-btn-accent-bg', '--color-btn-secondary-bg', 3.0, '88.5 Req 2 / LIGHT pill on the Calendar button fill (4.4321)');
+    expectRatio('dark', '--amber-500', '--color-btn-secondary-bg', 3.0, '88.5 Req 2 / DARK pill on the Calendar button fill (5.2506). amber-700 here is 2.2456 — this is the number the fork exists to fix');
+
+    // Fill vs ground, use site 2 — the sheet's "This week" subheader on `bg-surface-card`.
+    expectRatio('light', '--color-btn-accent-bg', '--color-bg-card', 3.0, '88.5 Req 2 / LIGHT twin pill on the sheet card (5.0216)');
+    expectRatio('dark', '--amber-500', '--color-bg-card', 3.0, '88.5 Req 2 / DARK twin pill on the sheet card (6.4483). amber-700 here is 2.7578');
+  });
+
+  it('52. 88.5 — the pill\'s two theme arms are DIFFERENT ON PURPOSE (a theme-equal pill is a regression)', () => {
+    // THIS ROW EXISTS BECAUSE THE FORK LOOKS LIKE A DUPLICATE. A reader tidying
+    // `UpcomingCountPill.tsx` sees two colour pairs where every other accent surface in the app
+    // has one (test 45 pins that family byte-equal across themes) and deletes the `dark:` half.
+    // Test 51 alone would NOT catch that: it measures TOKENS, and the tokens would still resolve.
+    // Only this row knows that collapsing the arms is what puts the dark pill at 2.2456 on its
+    // own button.
+    //
+    // Asserted in the DARK block, because that is the theme where the `dark:` variant wins and
+    // therefore the theme where the two spellings must disagree.
+    const darkForkFill = resolve('dark', '--amber-500');
+    const lightArmFill = resolve('dark', '--color-btn-accent-bg');
+    expect(
+      darkForkFill,
+      `88.5 (owner ruling 2026-08-31) — the pill's DARK fill --amber-500 (${darkForkFill}) must NOT be byte-equal to the light arm's --color-btn-accent-bg (${lightArmFill}). A theme-equal pill is a REGRESSION, not a simplification: amber-700 measures 2.2456:1 on the dark button fill and 2.7578:1 on the dark sheet, under SPEC Req 2's 3:1 acceptance — which the owner KEPT rather than relax. Re-unifying the arms is a decision, not a cleanup`,
+    ).not.toBe(lightArmFill);
+
+    const darkForkInk = resolve('dark', '--warm-900');
+    const lightArmInk = resolve('dark', '--color-btn-accent-text');
+    expect(
+      darkForkInk,
+      `88.5 (owner ruling 2026-08-31) — the pill's DARK ink --warm-900 (${darkForkInk}) must NOT be byte-equal to the light arm's --color-btn-accent-text (${lightArmInk}). The ink forks WITH the fill by necessity: white on amber-500 is 2.1477:1, an AA failure`,
+    ).not.toBe(lightArmInk);
+
+    // Anti-vacuity: all four resolve to real hexes, so the two inequalities above cannot be
+    // passing because a lookup quietly returned something unparseable.
+    for (const hex of [darkForkFill, lightArmFill, darkForkInk, lightArmInk]) {
+      expect(hex, `88.5 — anti-vacuity: the fork comparison resolved "${hex}"`).toMatch(/^#[0-9a-f]{6}$/i);
+    }
   });
 });

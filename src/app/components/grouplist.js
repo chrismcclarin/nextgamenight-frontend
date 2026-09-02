@@ -17,7 +17,7 @@ import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
 import { formatDate } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
 import SafeImage from './SafeImage';
-import ClickableMemberName from './ClickableMemberName';
+import MemberChipStack from './MemberChipStack';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
@@ -474,21 +474,62 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                     </span>
                   </div>
 
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {groupUsers
-                    .filter((member) => member.id !== selfUuid)
-                    .slice(0, 4)
-                    .map((member, index) => (
-                      <span key={member.id || index} className="bg-surface-card-hover text-content-secondary px-2 py-1 rounded-md text-[0.8rem] border border-line">
-                        <ClickableMemberName userId={member.id} username={member.username || member.email} />
-                      </span>
-                    ))}
-                  {groupUsers.filter((member) => member.id !== selfUuid).length > 4 && (
-                    <span className="bg-surface-card-hover text-content-muted px-2 py-1 rounded-md text-[0.8rem] border border-line font-medium">
-                      +{groupUsers.length - 5} more
-                    </span>
-                  )}
-                </div>
+                {/*
+                 * DECISION Phase 88.5 (SPEC Req 5, UI-SPEC 6.5): the members render as an
+                 * expandable INITIALS-CHIP STACK, chosen OVER keeping the wrapped row of
+                 * name pills that shipped here (owner ruling 2026-08-25 — the pills ate the
+                 * card's vertical budget on a 375px phone and long usernames wrapped the row
+                 * to three lines). The self-exclusion filter, the 4-chip truncation and the
+                 * `+N` arithmetic all moved INSIDE `MemberChipStack`, deliberately: it derives
+                 * `+N` from the self-filtered array rather than carrying the shipped raw-length
+                 * form (member count minus five), which is correct only on the unstated premise
+                 * that the viewer is in the list and understates by one while `selfUuid` is
+                 * still resolving. Re-inlining any of it here is a decision, not a cleanup.
+                 *
+                 * NESTED-INTERACTIVE — THIS CHANGE MATERIALLY WORSENS A KNOWN DEFERRED DEFECT,
+                 * AND THAT IS RECORDED RATHER THAN ABSORBED. This card is itself a
+                 * `role="button"` with its own Enter/Space handler (`:359-370`), and
+                 * `.planning/deferred/phase-88.6.md` already owns that as an open a11y item
+                 * (same shape as 88.3 code-review H1). The stack adds TWO more interactive
+                 * descendants to it (the collapsed stack trigger and `Show less`) on top of the
+                 * per-member triggers that were already here. The STRUCTURAL remedy — move the
+                 * keyboard target onto the title block and leave pointer `onClick` on the card
+                 * — is Phase 88.6's and was deliberately NOT attempted here, because it rewrites
+                 * this card's whole interaction model mid-phase.
+                 *
+                 * This phase's floor instead: every new descendant guards its OWN activation
+                 * with `stopPropagation` on BOTH `onClick` and `onKeyDown` (and `preventDefault`
+                 * on Space, whose default on a non-button is page scroll), and the guard is
+                 * PINNED — `keyboardOperability.test.tsx` tests 8-11 and
+                 * `MemberChipStack.test.tsx` tests 22-25 / 35-36 fail if any of it is removed.
+                 *
+                 * The stack trigger is a `role="button"` SPAN, matching the shipped
+                 * `ClickableMemberName` idiom used elsewhere inside this same card (its own
+                 * 87.8 D-13 / D-14 / AF-2 markers). NOT because a span dodges
+                 * axe's `nested-interactive` rule — it does not: axe keys on ARIA role and
+                 * focusability, so a `role="button" tabIndex={0}` span is exactly as
+                 * nested-interactive as a native `<button>` would be, and there is no axe pin on
+                 * the home group list today to catch either. The span is chosen for IDIOM
+                 * CONSISTENCY with the shipped pattern, and the rule violation is the
+                 * pre-existing, 88.6-owned condition named above.
+                 *
+                 * `tinted` is gated on `!hasBgImage`, and that gate is LOAD-BEARING (verified
+                 * 2026-09-01, `colorUtils.js:739`). The tinted chip arm paints `bg-white/85` and
+                 * takes its initials from `var(--group-ink-l, var(--t-color-l))`. On a card with
+                 * a background PHOTO `groupInkVars` returns `{}`, so that chain falls through to
+                 * `--t-color-l`, which `getTextStyle`'s image branch sets to WHITE — white
+                 * initials on a white chip. The neutral arm is opaque and isolates the chip from
+                 * the photograph without needing any ink derivation, so a photo card takes it.
+                 * UI-SPEC 6.5.4 groups "tinted / photo" into one arm; its stated fallback
+                 * mechanism is wrong for the photo half, and its CONCLUSION (the chip must be
+                 * legible against the photograph) is what this gate preserves. Removing the
+                 * `!hasBgImage` half makes chips invisible on photo cards.
+                 */}
+                <MemberChipStack
+                  members={groupUsers}
+                  selfUuid={selfUuid}
+                  tinted={!!tinted && !hasBgImage}
+                />
 
                 {/* 87.8-13 walkthrough F-9: name + date on ONE line (owner call —
                     the stacked date read as a stray row). flex-wrap keeps long

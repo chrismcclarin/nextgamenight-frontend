@@ -6,7 +6,7 @@
 // classification block, which stubs global fetch to pin the WR-04 contract.
 import { afterEach, vi } from 'vitest';
 
-import { ApiError, apiFetch, mapErrorToCode } from './api';
+import { ApiError, apiFetch, mapErrorToCode, rsvpAPI } from './api';
 
 describe('ApiError — shape', () => {
   it('is both an Error and an ApiError, carrying code + status + details', () => {
@@ -95,5 +95,76 @@ describe('apiFetch — network-failure classification (WR-04)', () => {
     const abort = new DOMException('The user aborted a request.', 'AbortError');
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abort));
     await expect(apiFetch('/users/me')).rejects.toBe(abort);
+  });
+});
+
+// Phase 88.5 (Owner Ruling 1a) — wire-level pin for the note-preservation
+// contract. The backend distinguishes "no opinion about the note" (key ABSENT)
+// from "clear the note" (key present, null/empty). That distinction only holds
+// because JSON.stringify DROPS an undefined-valued key. If a future refactor of
+// submitRsvp normalizes `note` to `null`, every status-only hero-card tap starts
+// wiping the tapper's saved note again — silently, with no type error and no
+// failing component test. This test is the thing that catches it.
+describe('rsvpAPI.submitRsvp — undefined note is dropped from the wire body', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const okJson = () =>
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => '{"id":"r1","status":"yes"}',
+    });
+
+  it('omits the note key entirely when note is not passed', async () => {
+    const fetchMock = okJson();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await rsvpAPI.submitRsvp('e1', 'yes');
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    // Presence, not truthiness: `'note' in body` must be false. A `note: null`
+    // or `note: undefined` key here would be a REGRESSION, not an equivalent.
+    expect('note' in body).toBe(false);
+    expect(Object.keys(body).sort()).toEqual(['event_id', 'status']);
+    expect(body).toEqual({ event_id: 'e1', status: 'yes' });
+  });
+
+  it('omits the note key when note is explicitly undefined', async () => {
+    const fetchMock = okJson();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await rsvpAPI.submitRsvp('e1', 'maybe', undefined);
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect('note' in body).toBe(false);
+  });
+
+  it('SENDS the note key with value null when null is passed (explicit clear — the RsvpSection Save-note path)', async () => {
+    const fetchMock = okJson();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await rsvpAPI.submitRsvp('e1', 'yes', null);
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    // The key must be PRESENT (`null` serializes, unlike `undefined`) — the
+    // backend's clear semantics key on presence, and the signature admits null
+    // for exactly this caller (api.ts submitRsvp comment, ML4).
+    expect('note' in body).toBe(true);
+    expect(body.note).toBeNull();
+  });
+
+  it('SENDS the note key when a note is passed — including an empty string (explicit clear)', async () => {
+    const fetchMock = okJson();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await rsvpAPI.submitRsvp('e1', 'yes', '');
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    // The other half of the contract: an explicit clear must still reach the
+    // backend as a present key, or a member could never delete their own note.
+    expect('note' in body).toBe(true);
+    expect(body.note).toBe('');
   });
 });

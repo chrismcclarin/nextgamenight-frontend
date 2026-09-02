@@ -89,6 +89,21 @@ export type Rsvp = z.infer<typeof RsvpSchema>;
 export const RsvpListSchema = z.array(RsvpSchema);
 export type RsvpList = z.infer<typeof RsvpListSchema>;
 
+// rsvpAPI (L668) — GET /rsvp/event/:event_id response wrapper.
+// The route ALWAYS returns both keys and always all three counts: it seeds
+// `const summary = { yes: 0, maybe: 0, no: 0 }` then increments
+// (periodictabletopbackend_v2/Sonnet/routes/rsvp.js:519-524) and returns
+// `{ rsvps: shapedRsvps, summary }` (:536) — so nothing here is `.optional()`.
+export const RsvpEventResponseSchema = z.object({
+  rsvps: RsvpListSchema,
+  summary: z.object({
+    yes: z.number(),
+    maybe: z.number(),
+    no: z.number(),
+  }),
+});
+export type RsvpEventResponse = z.infer<typeof RsvpEventResponseSchema>;
+
 // rsvpPublicAPI (L318) — magic-link respond result.
 export const RsvpPublicResponseSchema = z.object({
   success: z.boolean().optional(),

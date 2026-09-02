@@ -1,7 +1,11 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { rsvpAPI } from '../../lib/api';
 import ClickableMemberName from './ClickableMemberName';
+// Phase 88.5 (SPEC Req 4 / D-07): the status copy/treatment map lifted out of this
+// component body so the home hero card reads the SAME object. Its 87.7 D-18 marker
+// travelled with it.
+import { statusConfig } from './rsvpStatusConfig';
 import { Textarea } from '../../components/ui/Input';
 
 /**
@@ -26,6 +30,22 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
 
   const isPastEvent = eventDate ? new Date(eventDate) < new Date() : false;
 
+  // An unsaved, user-typed note draft. While true, NO fetch re-sync may repaint the
+  // textarea — a status tap or identity resolution must never erase typed-but-unsaved
+  // text (adversarial review 2026-09-01 round 2, HIGH: the status-only tap otherwise
+  // REPLACES the draft with the server's old note). A ref, not state: fetchRsvps is a
+  // useCallback([eventId, self?.id]) and a state read inside it would be a stale
+  // closure (the remedy-skeptic's exact objection to the comparison variant).
+  const noteDirty = useRef(false);
+
+  // The same skeptic's second objection, closed: gameDetail's single-event mount keys
+  // this component by refresh counter, NOT event id, so ?event_id=A -> B re-renders
+  // the SAME instance. A draft belongs to the event it was typed under — reset the
+  // protection on event switch so event B's saved note can sync in.
+  useEffect(() => {
+    noteDirty.current = false;
+  }, [eventId]);
+
   const fetchRsvps = useCallback(async () => {
     if (!eventId) return;
     try {
@@ -43,11 +63,13 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
         if (mine) {
           setUserRsvp(mine);
           setSelectedStatus(mine.status);
-          setNote(mine.note || '');
+          // Both note re-syncs are gated on the draft flag (`noteDirty` above): the
+          // saved note may hydrate an untouched box, never overwrite typed text.
+          if (!noteDirty.current) setNote(mine.note || '');
         } else {
           setUserRsvp(null);
           setSelectedStatus(null);
-          setNote('');
+          if (!noteDirty.current) setNote('');
         }
       }
     } catch (err) {
@@ -67,10 +89,25 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
     setSubmitting(status);
     setError(null);
     try {
-      const result = await rsvpAPI.submitRsvp(eventId, status, note || null);
+      // DECISION Phase 88.5 (adversarial code review 2026-09-01, owner ruling a): a
+      // status tap is STATUS-ONLY — no third `note` argument — chosen OVER the previous
+      // `note || null` forwarding. Forwarding wiped a saved note whenever local `note`
+      // state was stale-empty (identity unresolved when fetchRsvps landed, or a failed
+      // fetch): `note || null` turned '' into an explicit clear. With the key absent,
+      // POST /rsvp preserves the saved note (routes/rsvp.js, hoisted `noteUpdate`).
+      // Accepted delta, taken knowingly: a status tap no longer saves an unsaved
+      // textarea draft as a side effect — `handleSaveNote` below is the SOLE note
+      // writer (still `note || null`, so clearing the textarea still clears the note).
+      // The draft SURVIVES the tap in the box (`noteDirty` gates every re-sync);
+      // "not saved" must never degrade to "erased" (round-2 HIGH, 2026-09-01).
+      // Re-adding the third argument is a decision, not a cleanup.
+      const result = await rsvpAPI.submitRsvp(eventId, status);
       setUserRsvp(result);
       setSelectedStatus(status);
-      if (result.note !== undefined) setNote(result.note || '');
+      // Deliberately NO setNote from the response here: under the status-only tap the
+      // echoed note is the server's OLD saved note, and painting it would erase a
+      // typed-but-unsaved draft (round-2 HIGH). The gated fetchRsvps below re-syncs
+      // an untouched box; a dirty draft survives.
       await fetchRsvps();
       if (onRsvpChange) onRsvpChange(status);
     } catch (err) {
@@ -87,6 +124,8 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
     setError(null);
     try {
       await rsvpAPI.submitRsvp(eventId, selectedStatus, note || null);
+      // The draft is now the saved note — re-syncs may flow again.
+      noteDirty.current = false;
       await fetchRsvps();
     } catch (err) {
       console.error('Error saving note:', err);
@@ -100,49 +139,6 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
     yes: rsvps.filter(r => r.status === 'yes'),
     maybe: rsvps.filter(r => r.status === 'maybe'),
     no: rsvps.filter(r => r.status === 'no'),
-  };
-
-  // DECISION Phase 87.7 D-18 (object-literal shape): `activeBg` and `hoverBg` are EMPTY STRINGS
-  // on purpose, not by accident. They held `bg-status-*/10` / `hover:bg-status-*/10`, which on
-  // Tailwind v3 generated no class at all (a `/N` modifier on a `var()`-backed colour), so these
-  // rows have always rendered untinted. The tokens were REMOVED rather than: (a) dropped to their
-  // base class, which paints a SOLID status-coloured block — the exact regression being avoided; or
-  // (b) reimplemented via `color-mix`, a deliberate visual change this phase forbids. The KEYS are
-  // kept with '' rather than deleted so consumers reading `cfg.activeBg` / `cfg.hoverBg` still get a
-  // string. Class strings living in an object literal — not a className attribute — is why the
-  // census sweep is whole-file; a className-scoped matcher finds none of these five sites.
-  // Designing the real tints is PHASE 88's; full site list in
-  // `.planning/phases/87.7-*/87.7-OPACITY-CENSUS.md`. One of exactly two markers for this strip
-  // (see ParticipantRow.js for the className shape). Filling these back in is a decision, not a
-  // cleanup.
-  const statusConfig = {
-    yes: {
-      label: "You're going!",
-      textColor: 'text-content-status-success',
-      activeBg: 'bg-status-success-subtle',
-      activeBorder: 'border-status-success',
-      hoverBg: 'hover:bg-status-success-subtle',
-      buttonText: 'Yes',
-      sectionTitle: 'Going',
-    },
-    maybe: {
-      label: "You're a maybe",
-      textColor: 'text-content-status-warning',
-      activeBg: 'bg-status-warning-subtle',
-      activeBorder: 'border-status-warning',
-      hoverBg: 'hover:bg-status-warning-subtle',
-      buttonText: 'Maybe',
-      sectionTitle: 'Maybe',
-    },
-    no: {
-      label: "You're not going",
-      textColor: 'text-content-secondary',
-      activeBg: 'bg-surface-elevated',
-      activeBorder: 'border-line-strong',
-      hoverBg: 'hover:bg-status-error-subtle',
-      buttonText: 'No',
-      sectionTitle: "Can't Make It",
-    },
   };
 
   if (loading) {
@@ -201,7 +197,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                   key={status}
                   onClick={() => handleStatusClick(status)}
                   disabled={!!submitting}
-                  className={`flex-1 px-3 py-2 text-sm font-medium active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset
+                  className={`flex-1 px-3 py-2 text-sm font-medium active:opacity-75 transition-colors first:rounded-l-[inherit] last:rounded-r-[inherit] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset
                     ${idx > 0 ? 'border-l border-line' : ''}
                     ${isActive
                       ? `${config.activeBg} ${config.activeBorder} border-2 text-content-primary`
@@ -228,6 +224,9 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
               value={note}
               onChange={(e) => {
                 if (e.target.value.length <= 500) {
+                  // User-typed text = an unsaved draft; block fetch re-syncs from
+                  // repainting the box until Save note lands (see `noteDirty`).
+                  noteDirty.current = true;
                   setNote(e.target.value);
                 }
               }}
