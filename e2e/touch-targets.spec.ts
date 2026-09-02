@@ -485,6 +485,19 @@ async function probeExpandedChipRow(row: Locator): Promise<ChipRowProbe> {
     if (showLessPair === null && showLessIndex >= 0 && showLessIndex < items.length - 1) {
       showLessPair = probePair(items[showLessIndex], items[showLessIndex + 1]);
     }
+    // Wrapped-row fallback (2026-09-01, expanded chips carry visible names): chip+name
+    // items are wide enough that "Show less" can wrap onto a row of its own, where its
+    // DOM-consecutive neighbour is the RIGHTMOST chip above — no x-overlap, both probes
+    // above return null. Its layout-adjacent partner is then whichever chip sits directly
+    // ABOVE it; scan every item and let probePair's own overlap guards reject the
+    // non-adjacent ones. The vertical probes have the same teeth: `gap-3` sets the row
+    // gap to 12px, so 6+6 extension zones meet exactly on the y axis too.
+    if (showLessPair === null && showLessIndex >= 0) {
+      for (let i = 0; i < items.length && showLessPair === null; i += 1) {
+        if (i === showLessIndex) continue;
+        showLessPair = probePair(items[i], items[showLessIndex]);
+      }
+    }
 
     const diagnostics = items
       .map((el) => {
