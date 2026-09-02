@@ -87,6 +87,18 @@ const CHIP_BASE =
  * `@theme inline` block: neither `white` nor `black` is among them.
  */
 const TINTED_FILL = 'bg-white/85 ring-1 ring-black/25';
+/*
+ * The card's ink chain — SELF-RESOLVING on every card arm, which is why the visible
+ * member-name text and "Show less" below use it UNCONDITIONALLY (UI re-audit BLOCKER,
+ * 2026-09-01): `--group-ink-l` is set on tinted-preset cards (preset ink);
+ * `groupInkVars` returns `{}` for photo cards so the chain falls to `--t-color-l`,
+ * which `getTextStyle`'s image branch sets to WHITE (correct over a photograph); and
+ * neutral cards always carry `cardTextVars`, so the fallback resolves to the legacy
+ * card text colour. A bare `text-content-secondary` on this text reproduced the
+ * ~1.1:1 near-invisible failure grouplist's own history fixed twice — and a
+ * `tinted ?` fork would still have missed the photo arm (tinted is deliberately
+ * false there). Same idiom as grouplist's "Last Game" row (Req 8 marker).
+ */
 const TINTED_INK =
   '[color:var(--group-ink-l,var(--t-color-l))] dark:[color:var(--group-ink,var(--t-color))]';
 
@@ -464,7 +476,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
                     <MemberChip label={label} status={status} tinted={tinted} />
                     {/* Visible name (owner-directed UAT amendment 2026-09-01): identity is
                         text, same carrier as the interactive chips below. */}
-                    <span className="text-[0.8rem] text-content-secondary">{label}</span>
+                    <span className={cn('text-xs', TINTED_INK)}>{label}</span>
                   </span>
                 );
               }
@@ -507,7 +519,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
                   */}
                   <span className={cn(HIT_EXTENSION, 'inline-flex items-center justify-center gap-1.5')}>
                     <MemberChip label={label} status={status} tinted={tinted} />
-                    <span className="text-[0.8rem] text-content-secondary">{label}</span>
+                    <span className={cn('text-xs', TINTED_INK)}>{label}</span>
                     <span className="sr-only">{statusSuffix(status)}</span>
                   </span>
                 </ClickableMemberName>
@@ -537,7 +549,7 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
               className={cn(
                 HIT_EXTENSION,
                 'inline-flex min-h-11 cursor-pointer items-center rounded-xs px-1',
-                'text-xs text-content-secondary',
+                cn('text-xs', TINTED_INK),
                 'active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2'
               )}
               onClick={(e) => activate(e, false)}

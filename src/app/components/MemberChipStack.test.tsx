@@ -448,7 +448,12 @@ describe('MemberChipStack — expanded row', () => {
     // VISIBLE, not sr-only (owner-directed UAT amendment 2026-09-01): the expanded row's
     // identity carrier is on-screen text for everyone — the initials-collision fix.
     expect(carrier.className).not.toContain('sr-only');
-    expect(carrier.className).toContain('text-content-secondary');
+    // And it rides the card's SELF-RESOLVING ink chain, never a bare content token: a
+    // literal `text-content-secondary` here measured ~1.1:1 on tinted presets and is
+    // unreadable over photo cards (UI re-audit BLOCKER, 2026-09-01). The chain resolves
+    // per card arm via --group-ink / --t-color, so it is asserted on EVERY arm.
+    expect(carrier.className).toContain('--group-ink');
+    expect(carrier.className).not.toContain('text-content-secondary');
     // Scoped to the chip's OWN wrapper: `closest()` would otherwise walk out to the enclosing
     // group card, which is legitimately a `role="button"` with a tabindex.
     const wrapper = carrier.parentElement as HTMLElement;
@@ -457,6 +462,23 @@ describe('MemberChipStack — expanded row', () => {
     expect(wrapper.getAttribute('aria-expanded')).toBeNull();
     // Identity is never initials-only — today's degraded state still renders the username.
     expect(screen.getByText('HE')).toBeInTheDocument();
+  });
+
+  it('32b. every visible text carrier in the expanded row rides the card ink chain — on the TINTED arm too', () => {
+    // The UI re-audit's gap (2026-09-01): the default-arm pin above cannot catch a
+    // tinted-only regression. The chain is UNCONDITIONAL by design, so the assertion is
+    // identical on this arm — what this pins is that nobody re-forks it on `tinted` and
+    // reintroduces a bare content token for one arm (the ~1.1:1 failure class).
+    renderStack({ tinted: true });
+    fireEvent.click(collapsed());
+    for (const name of ['rita', 'ada']) {
+      const carrier = screen.getByText(name);
+      expect(carrier.className, `${name}'s visible label`).toContain('--group-ink');
+      expect(carrier.className, `${name}'s visible label`).not.toContain('text-content-secondary');
+    }
+    const less = screen.getByText('Show less');
+    expect(less.className).toContain('--group-ink');
+    expect(less.className).not.toContain('text-content-secondary');
   });
 
   it('33. the chip row is a 12px wrap in BOTH axes', () => {
