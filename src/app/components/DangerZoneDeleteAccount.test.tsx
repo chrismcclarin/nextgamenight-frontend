@@ -13,6 +13,8 @@ import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { withoutComments } from '../../test-utils/sourceScan';
+
 import { ApiError } from '@/lib/api';
 import DangerZoneDeleteAccount, {
   classifyDeleteError,
@@ -438,7 +440,11 @@ describe('Phase 88.8 — source-level invariants', () => {
   // Resolved from the vitest root (the frontend package dir), NOT from
   // import.meta.url — vite rewrites that to an http:// URL under the jsdom
   // environment and readFileSync rejects it.
-  const fromRoot = (rel: string) => readFileSync(resolve(process.cwd(), rel), 'utf8');
+  // COMMENTS BLANKED via the repo's shared scanner: both files below describe
+  // these invariants in prose, so a raw text scan would match the comment about
+  // the rule rather than the code obeying it.
+  const fromRoot = (rel: string) =>
+    withoutComments(readFileSync(resolve(process.cwd(), rel), 'utf8'));
   const componentSource = fromRoot('src/app/components/DangerZoneDeleteAccount.tsx');
 
   it('places the not_provisioned arm ABOVE the already-gone lane', () => {
