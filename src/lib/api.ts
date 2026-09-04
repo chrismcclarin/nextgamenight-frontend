@@ -117,6 +117,21 @@ export type ApiErrorCode =
   // in queryClient.ts NON_RETRYABLE_API_CODES.
   | 'already_member'
   | 'invite_pending'
+  // Phase 88.8 (BOPS-05, SPEC R7 / D-19): registered BE-side in ERROR_REGISTRY by
+  // plan 07 as `not_provisioned` @404. Emitted by BOTH deletion endpoints
+  // (DELETE /users/me and GET /users/me/deletion-blockers) when the caller's
+  // token is valid but there is no Users row AND no deletion tombstone — i.e.
+  // "you never had an account here". That is a THIRD state, distinct from
+  // `account_deleted` (410, "your account was deleted") and from the generic
+  // forward-compat `not_found` (404, "the thing you asked for is missing"); the
+  // BE registry comment records that reusing `not_found` was rejected for
+  // exactly this reason. Same VERBATIM pass-through hazard as the two 409s
+  // above: `mapErrorToCode` returns `body.code` unchanged, so without this
+  // member the code lands outside `ApiErrorCode` and every Record keyed on it
+  // misses silently. The set moves together — union here,
+  // MESSAGE_BY_CODE in useFetchErrorState.ts, NON_RETRYABLE_API_CODES in
+  // queryClient.ts, and its own arm in classifyDeleteError.
+  | 'not_provisioned'
   | 'internal'
   | 'network'
   | 'config';

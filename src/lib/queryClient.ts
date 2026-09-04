@@ -87,6 +87,16 @@ const NON_RETRYABLE_API_CODES: ReadonlyArray<string> = [
   // regression of D2 that no other gate would catch.
   'already_member',
   'invite_pending',
+  // Phase 88.8 (BOPS-05, SPEC R7 / D-19): the never-provisioned 404 registered
+  // BE-side by plan 07. "You have no stored data yet" is a TERMINAL state, not a
+  // transient failure — a second identical request returns the same 404. Without
+  // this row it classifies as neither a listed terminal nor a status-mapped
+  // fallback (it carries its own envelope code), so shouldRetry retries it once:
+  // every occurrence doubles, and the user's message arrives one round trip
+  // later. Worse on the DELETE path, where the retry re-issues a
+  // STATE-CHANGING DELETE /users/me. Same silent-regression shape as the two
+  // invite 409s above.
+  'not_provisioned',
 ];
 
 /**
