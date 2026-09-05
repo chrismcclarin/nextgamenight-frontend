@@ -40,10 +40,13 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
      to the PUBLIC feedback writer, which ACCEPTS the client `user_email`, so the value
      really is the reply-to on this path (the server-derived address is the /github
      route, which this form never calls) — but it is now PERCEIVABLE and REACHABLE:
-     `aria-disabled` instead of native `disabled` (a natively-disabled Submit left the
-     tab order with no label change and no announcement — the keyboard dead end DR-C
-     rejects one file over), the press blocked in the handler, and a fixed status line
-     while the row loads. And the ERROR case is disclosed: a signed-in reporter whose
+     the SELF-ROW gate is `aria-disabled` (a natively-disabled Submit left the tab order
+     with no label change and no announcement — the keyboard dead end DR-C rejects one
+     file over), the press blocked in the handler, and a fixed status line while the row
+     loads. STATED PRECISELY (round 4 #26/#30): the PRE-EXISTING empty-field gate stays
+     natively `disabled` — a validity gate on a pre-88.8 form, consistent with every other
+     form in the app; DR-C's no-native-disabled rule is scoped to the Email section, and
+     converting it is a decision for the Button migration, not this fix. And the ERROR case is disclosed: a signed-in reporter whose
      address could not be loaded (the self query errored, or the row carries no usable
      address) is told the reply-to is missing — never given the stale session address,
      never blocked from filing. */
@@ -327,14 +330,15 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
 
           {/* Round 3 DR3: one always-mounted polite region for the loading state, so a
               gated Submit is explained and announced instead of silently unavailable. */}
-          <p role="status" className="text-xs text-content-muted min-h-4">
-            {selfNotReady ? 'Loading your details — one moment' : ''}
+          {/* Round 4 #31: the reply-to disclosure rides the SAME live region, so its
+              asynchronous appearance is a change in an existing region and is announced. */}
+          <p id="feedback-submit-status" role="status" className="text-xs text-content-muted min-h-4">
+            {selfNotReady
+              ? 'Loading your details — one moment'
+              : replyToUnavailable
+                ? "We couldn't load your email address, so we won't be able to reply to this."
+                : ''}
           </p>
-          {replyToUnavailable && !selfNotReady && (
-            <p className="text-xs text-content-muted">
-              We couldn&apos;t load your email address, so we won&apos;t be able to reply to this.
-            </p>
-          )}
 
           {/* Buttons */}
           <div className="flex gap-3 justify-end">
@@ -350,6 +354,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
               type="submit"
               disabled={submitting || !subject.trim() || !description.trim()}
               aria-disabled={selfNotReady ? 'true' : undefined}
+              aria-describedby="feedback-submit-status"
               className="btn btn-primary"
             >
               {submitting ? 'Submitting...' : 'Submit'}

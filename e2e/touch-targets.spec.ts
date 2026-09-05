@@ -1325,7 +1325,8 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
      controls" while the section has SEVEN, so a partial census was reading as a
      complete gate. "Cancel" is now measured. The seventh — "Use my sign-in address"
      — is NOT reachable from this fixture and is named here rather than silently
-     omitted: it renders only when `self.email_changed_at` is non-null, which
+     omitted: it renders only when the SERVER answers `revert_available: true`
+     (round 2 HIGH-B; the earlier `email_changed_at` keying is gone), which
      requires a COMPLETED verification, and completing one needs the 8-character
      code out of a real mail that CI never sends (no provider key, so every send in
      CI is a refusal). Measuring it needs a seeded already-changed user, which is a

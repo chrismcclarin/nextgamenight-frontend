@@ -171,7 +171,10 @@ describe('EmailAddressSection — unresolved and unavailable', () => {
     mockSelf.mockReturnValue(selfState(undefined, true));
     renderSection();
 
-    expect(screen.getByText(/couldn't load the address/i)).toBeInTheDocument();
+    // Round 4 #29: the copy is now ALSO announced through the sr-only live region, so it
+    // appears twice — once visible, once for assistive tech. Assert both halves.
+    expect(screen.getAllByText(/couldn't load the address/i)).toHaveLength(2);
+    expect(screen.getByRole('status')).toHaveTextContent(/couldn't load the address/i);
     expect(screen.queryAllByRole('button')).toHaveLength(0);
     // The stale-value defect this whole correction removes.
     expect(screen.queryByText(/@/)).not.toBeInTheDocument();

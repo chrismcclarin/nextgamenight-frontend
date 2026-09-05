@@ -127,6 +127,9 @@ const RESEND_COOLDOWN_ERROR = 'You can ask for another code in a moment';
    pressed it got nothing back for a whole network round trip. */
 const ACTION_BUSY_ERROR = 'Wait for the current step to finish, then try again';
 const TOO_LONG_EMAIL_ERROR = 'That email address is too long';
+/* Round 4 #19: the five handlers used to `return` silently when the self row carried no
+   id — a dead button with no message. It is a contract failure, said as one. */
+const SELF_UNAVAILABLE_ERROR = "We couldn't load your account details — reload the page and try again";
 const MAIL_REFUSED_COPY =
   "We couldn't send the code just now. Your change is still waiting — use Resend code to try again.";
 const UNCHANGED_COPY = "That's already the address we use for you";
@@ -541,6 +544,13 @@ export function EmailAddressSection() {
   };
 
   const handleCancelEdit = () => {
+    // Round 4 #2/#28: Cancel consults the lane like its five siblings — cancelling during
+    // an in-flight Save dropped the section to idle and the landing response then yanked
+    // the user into awaiting-code, stealing focus into a panel they had just left.
+    if (mutating) {
+      setEmailError(ACTION_BUSY_ERROR);
+      return;
+    }
     setEmailError(null);
     setState('idle');
     setFocusTarget('change');
@@ -569,7 +579,10 @@ export function EmailAddressSection() {
       setEmailError(MALFORMED_EMAIL_ERROR);
       return;
     }
-    if (!selfId) return;
+    if (!selfId) {
+      setEmailError(SELF_UNAVAILABLE_ERROR);
+      return;
+    }
 
     setEmailError(null);
     setNotice(null);
@@ -660,15 +673,20 @@ export function EmailAddressSection() {
       setCodeError(OUT_OF_ALPHABET_ERROR);
       return;
     }
-    if (!selfId) return;
+    if (!selfId) {
+      setActionError(SELF_UNAVAILABLE_ERROR);
+      return;
+    }
 
     setCodeError(null);
     setState('verifying');
     try {
       const body = await usersAPI.verifyEmailChange(selfId, normaliseEmailChangeCode(codeInput));
       if (!isUsableMutationBody(body)) {
+        // Round 4 #1: a contract/transport failure is NOT a verdict on the code — it is
+        // still live for its 30 minutes — so the typed 8 characters are KEPT and Verify can
+        // simply be pressed again. Clearing belongs to the outcome-bearing branch below.
         setState('awaiting-code');
-        clearCodeField();
         setCodeError(messageFor(null));
         setFocusTarget('code');
         return;
@@ -716,7 +734,10 @@ export function EmailAddressSection() {
       setActionError(RESEND_COOLDOWN_ERROR);
       return;
     }
-    if (!selfId) return;
+    if (!selfId) {
+      setActionError(SELF_UNAVAILABLE_ERROR);
+      return;
+    }
     setActionError(null);
     setBusy('resend');
     try {
@@ -754,7 +775,10 @@ export function EmailAddressSection() {
       setActionError(ACTION_BUSY_ERROR);
       return;
     }
-    if (!selfId) return;
+    if (!selfId) {
+      setActionError(SELF_UNAVAILABLE_ERROR);
+      return;
+    }
     setActionError(null);
     setBusy('discard');
     try {
@@ -786,7 +810,10 @@ export function EmailAddressSection() {
       setRevertError(ACTION_BUSY_ERROR);
       return;
     }
-    if (!selfId) return;
+    if (!selfId) {
+      setRevertError(SELF_UNAVAILABLE_ERROR);
+      return;
+    }
     setRevertError(null);
     setBusy('revert');
     try {
@@ -849,9 +876,17 @@ export function EmailAddressSection() {
   const showUnavailable = state === 'unavailable' || (preHydration && selfQuery.isError);
   const showUnresolved = !showUnavailable && (state === 'unresolved' || (preHydration && !self));
 
+  /* Round 4 #29: the loading→failed transition happened in plain <p>s below the always-
+     mounted region (which lived in the main return only), so it reached no assistive tech.
+     The region is now rendered in BOTH early arms, the failure copy is announced through
+     it, and the section is aria-busy while unresolved. */
+  React.useEffect(() => {
+    if (showUnavailable) setAnnouncement(UNAVAILABLE_COPY);
+  }, [showUnavailable]);
   if (showUnavailable) {
     return (
       <section className="card p-3 md:p-6 mb-6" aria-labelledby={`${reactId}-title`}>
+        <StatusRegion className="sr-only">{announcement}</StatusRegion>
         <h2 id={`${reactId}-title`} className="text-xl font-bold text-content-primary mb-1">
           {SECTION_TITLE}
         </h2>
@@ -868,7 +903,8 @@ export function EmailAddressSection() {
 
   if (showUnresolved) {
     return (
-      <section className="card p-3 md:p-6 mb-6" aria-labelledby={`${reactId}-title`}>
+      <section className="card p-3 md:p-6 mb-6" aria-labelledby={`${reactId}-title`} aria-busy="true">
+        <StatusRegion className="sr-only">{announcement}</StatusRegion>
         <h2 id={`${reactId}-title`} className="text-xl font-bold text-content-primary mb-1">
           {SECTION_TITLE}
         </h2>
@@ -971,6 +1007,7 @@ export function EmailAddressSection() {
               ref={revertRef}
               variant="ghost"
               onClick={handleRevert}
+              aria-describedby={revertError ? `${reactId}-revert-error` : undefined}
               aria-disabled={mutating ? 'true' : undefined}
               className="max-md:min-h-11"
             >
@@ -983,7 +1020,7 @@ export function EmailAddressSection() {
         <p className="text-xs text-content-muted mt-1">{REVERT_HELPER}</p>
       )}
       {revertError && (
-        <p role="alert" className="text-content-status-error text-xs mt-1">
+        <p id={`${reactId}-revert-error`} role="alert" className="text-content-status-error text-xs mt-1">
           {revertError}
         </p>
       )}
@@ -1044,7 +1081,12 @@ export function EmailAddressSection() {
             >
               {LABEL_SAVE}
             </Button>
-            <Button variant="ghost" onClick={handleCancelEdit} className="max-md:min-h-11">
+            <Button
+              variant="ghost"
+              onClick={handleCancelEdit}
+              aria-disabled={mutating ? 'true' : undefined}
+              className="max-md:min-h-11"
+            >
               {LABEL_CANCEL}
             </Button>
           </div>
@@ -1154,6 +1196,7 @@ export function EmailAddressSection() {
                  would re-announce the whole banner. */
               variant={resendPromoted ? 'secondary' : 'ghost'}
               onClick={handleResend}
+              aria-describedby={actionError ? `${reactId}-action-error` : undefined}
               aria-disabled={cooldown || mutating ? 'true' : undefined}
               className="max-md:min-h-11"
             >
@@ -1162,6 +1205,7 @@ export function EmailAddressSection() {
             <Button
               variant="ghost"
               onClick={handleDiscard}
+              aria-describedby={actionError ? `${reactId}-action-error` : undefined}
               aria-disabled={mutating ? 'true' : undefined}
               className="max-md:min-h-11"
             >
@@ -1175,7 +1219,7 @@ export function EmailAddressSection() {
               user has not mistyped and may not have touched. Mirrors the shape of
               the revert error below. */}
           {actionError && (
-            <p role="alert" className="text-content-status-error text-xs mt-2">
+            <p id={`${reactId}-action-error`} role="alert" className="text-content-status-error text-xs mt-2">
               {actionError}
             </p>
           )}
