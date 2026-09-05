@@ -1,7 +1,8 @@
 'use client';
 import { useState, useRef } from 'react';
-import { useUser as Auth } from '@auth0/nextjs-auth0/client';
 import { feedbackAPI } from '../../lib/api';
+import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { isSyntheticAddress } from '../../lib/syntheticAddress';
 import { DialogTitle } from '../../components/ui/dialog';
 import { Modal } from './Modal';
 import { Input, Textarea, SelectControl } from '@/components/ui/Input';
@@ -10,7 +11,14 @@ const MAX_FILE_SIZE_MB = 2;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 export default function FeedbackForm({ onClose, initialType = 'bug', initialSubject = '', initialDescription = '' }) {
-  const { user } = Auth();
+  // Phase 88.8 plan 13 Task 3(b): the contact handle is the APP address off the
+  // shared self row, never the Auth0 SESSION claim. The Auth0 hook that used to
+  // live here had exactly ONE consumer (the `user_email` line below) and was
+  // removed with it — re-verified by grep before deleting, not taken on trust.
+  // This component is mounted only while the modal is open (Footer.js:173-175),
+  // so the hook costs one already-deduplicated query at most; logged out it does
+  // not fire at all (`enabled: Boolean(user?.sub)`).
+  const { self } = useSelfIdentity();
   const [type, setType] = useState(initialType);
   const [subject, setSubject] = useState(initialSubject);
   const [description, setDescription] = useState(initialDescription);
@@ -84,11 +92,33 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
       // form rides the public transport, so any user_id would be client-asserted
       // and unverifiable — the backend ignores it. user_email is the contact
       // handle for follow-up.
+      //
+      // Phase 88.8 plan 13 (SPEC R12): that handle is `Users.email` — the address
+      // this app actually uses — and there is NO session-email fallback left. A
+      // wrong address here is worse than none: it is precisely the value D-42's
+      // move and the account-deletion scrub will not match.
+      //
+      // WHY A SYNTHETIC ADDRESS SENDS NULL, AND WHAT THAT COSTS. `user_email` is a
+      // CONTACT HANDLE: `routes/feedback.js` puts it in the admin mail's From line
+      // (`:162`, `:183`) and, when truthy, in `replyTo` (`:204`). Putting the
+      // provisioning sentinel there publishes a non-address as if someone could be
+      // reached at it. Sending null instead means the From line falls back to its
+      // existing 'Anonymous' literal and the options object carries NO `replyTo`
+      // key at all — because `:204` is a conditional spread, not an assignment.
+      // That is the CORRECT outcome: there is no inbox behind
+      // `<sub>@auth0.local`. The test is the BROAD `@auth0` substring per
+      // DECISION Phase 88.2 NIX-AUTH0, never `@auth0.local` alone.
+      //
+      // CROSS-REPO PAIRING: `88.8-09-PLAN.md` Task 4 adds the SAME broad guard
+      // server-side to BOTH feedback writers, so this client fix is defence in
+      // depth on an unauthenticated endpoint rather than the only control.
+      // Neither repo's CI can see the other.
+      const appAddress = self?.email;
       const feedbackBody = {
         type,
         subject: subject.trim(),
         description: description.trim(),
-        user_email: user?.email || null,
+        user_email: appAddress && !isSyntheticAddress(appAddress) ? appAddress : null,
         screenshot_base64,
         screenshot_filename,
       };

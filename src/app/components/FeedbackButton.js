@@ -164,7 +164,32 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
         // defence-in-depth); window.location.search is never appended.
         pageUrl: scrubFeedbackPageUrl(pathname),
         userName: user.name || user.nickname || 'Unknown',
-        userEmail: user.email || '',
+        /* DECISION Phase 88.8 (plan 13 Task 3(c), SPEC R12): the `userEmail`
+           field is DROPPED from this body entirely and the server derives it —
+           chosen OVER fixing its VALUE. The defect originates in a client
+           asserting an identity the server already owns, on a route that is
+           already behind the auth gate; `88.8-09-PLAN.md` Task 4 derives
+           `user_email` server-side from `Users.email`, which is correct by
+           construction and strictly better than any client value.
+
+           REJECTED, all three:
+           (i)  adding `useSelfIdentity()` here. This component is mounted in
+                `layout.js:93` on EVERY page, and that hook carries a SIDE
+                EFFECT — a resolved `account_deleted` 410 redirects the window to
+                the logout/goodbye path (`useSelfIdentity.ts:112-116`). Making
+                that fire app-wide is a real behavioural change with nothing to
+                do with feedback, and it is not this phase's to make.
+           (ii) reading the cached row non-reactively with `getQueryData` — no
+                fetch and no side effect, but it yields nothing on any page that
+                never resolved the self row, so the value would be silently
+                absent depending on which page the user was on.
+           (iii) keeping the session email — the stale value this task exists to
+                remove: after an address change it is the address the user just
+                moved away from.
+
+           `userName` above is DELIBERATELY KEPT: it is a display name, not a
+           contact handle, and nothing downstream tries to reach anyone at it.
+           Re-adding an address field here is a decision, not a cleanup. */
         label: getCategoryLabel(category),
         userAgent: navigator.userAgent,
       });

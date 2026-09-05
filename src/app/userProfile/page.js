@@ -829,6 +829,39 @@ function Profile(){
         if (!self) return;
         profileInitRef.current = true;
         setUserData(self);
+        /* DECISION Phase 88.8 (plan 13 Task 3(d)): the THREE username-fallback
+           chains that derive a display NAME from the session email's local part
+           — this one, the terminal-arm one above, and the edit-cancel one in the
+           header below — are a DELIBERATE NON-CHANGE, together with the
+           `user?.email` entry in this effect's dependency array (which must keep
+           listing it while those chains exist). Chosen OVER converging them onto
+           the app address in the same pass that fixed the three ADDRESS sites.
+
+           WHY EACH ONE STAYS:
+           - The terminal-arm chain runs inside `selfQuery.isError`, where `self`
+             is unavailable BY DEFINITION. There is no app address to use there;
+             it is not fixable, only removable.
+           - This chain and the header's sit behind `self.username ||` and
+             `userData?.username ||`. After this phase provisioning always writes
+             a non-empty username (`models/User.js` `username` is NOT NULL with a
+             len[1,50] backstop, and plan 04's chain ends in the 'User' literal),
+             so these arms are unreachable in practice.
+           - Changing them would plant a THIRD spelling of the fallback for no
+             visible effect, and would spread email-derived display names — the
+             same shape plan 04 is removing from the backend chain.
+
+           AND `isSyntheticAddress` IS DELIBERATELY NOT APPLIED HERE. That helper
+           guards ADDRESSES — values rendered or transmitted as a way to reach
+           someone. These four sites consume the SESSION email's local part as a
+           display NAME, which is a different thing with a different failure
+           mode, and the session email is never synthetic anyway (the sentinel
+           lives in `Users.email`, not in the Auth0 claim). Applying it here would
+           spread the address rule onto a name path. `src/lib/syntheticAddress.ts`
+           names these same lines as its excluded sites; the two records must
+           agree, so amend both or neither.
+
+           This is a RECORDED NON-CHANGE under the milestone-tenet rule, not
+           deferred debt. */
         setUsername(self.username || user?.name || user?.email?.split('@')[0] || '');
         // Initialize phone state
         if (self.phone && self.phone_verified) {
@@ -1462,7 +1495,48 @@ function Profile(){
                                         </button>
                                     </div>
                                 )}
-                                <p className="text-sm md:text-base text-content-secondary truncate">{user.email}</p>
+                                {/* THE ADDRESS THIS APP USES, not the Auth0 SESSION claim
+                                    (Phase 88.8 plan 13, SPEC R12). Until this phase this line
+                                    rendered `user.email` — the session claim — which after an
+                                    address change would show the address the user had just
+                                    moved AWAY from, while the Email section a few hundred
+                                    pixels below showed the new one.
+
+                                    `self`, NOT `userData`. `userData` is set ONCE inside the
+                                    ref-guarded init effect (`setUserData(self)` above) and
+                                    never re-read, so it does not see the cache patch the Email
+                                    section writes after a successful change or revert — the
+                                    header would keep the old address until a full remount.
+                                    `self` comes straight from the immortal query, which
+                                    `patchSelfCache` writes into, so the header and the section
+                                    move in the SAME paint. That link is the whole point.
+
+                                    THE `?? user.email` TAIL IS DELIBERATE and is the ONE place
+                                    in the app where the session address survives. It covers the
+                                    terminal arm above, where `profileLoaded` flips true but
+                                    `self` was never resolved: with no fallback this line would
+                                    render blank. Do not "tidy" it to `self?.email` alone.
+
+                                    THE SYNTHETIC GUARD IS THE REGRESSION FIX FOR THIS VERY
+                                    CHANGE. `Users.email` is where the provisioning sentinel
+                                    lives, so switching this line to it is exactly what would
+                                    put `google-oauth2-105...@auth0.local` on screen — for the
+                                    population this phase exists to repair, whose header would
+                                    REGRESS from a working address to a sentinel. The test is
+                                    the BROAD `@auth0` substring per DECISION Phase 88.2
+                                    NIX-AUTH0 (services/groupOwnershipOfferService.js:97-114),
+                                    never `@auth0.local` alone. And a synthetic value does NOT
+                                    fall through to `user.email`: substituting a real session
+                                    address for the app address is the stale-value defect this
+                                    whole task removes.
+
+                                    NO_ADDRESS_ON_FILE is IMPORTED from the section, not
+                                    re-spelled here — one fixed string, one spelling. */}
+                                <p className="text-sm md:text-base text-content-secondary truncate">
+                                    {isSyntheticAddress(self?.email ?? user.email)
+                                        ? NO_ADDRESS_ON_FILE
+                                        : (self?.email ?? user.email)}
+                                </p>
                                 {userData?.username && userData.username !== user.name && (
                                     <p className="text-xs text-content-muted mt-1">
                                         Display name: {userData.username} (from Google: {user.name})

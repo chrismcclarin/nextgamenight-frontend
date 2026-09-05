@@ -28,6 +28,22 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
+// Phase 88.8 plan 13 Task 3(b): FeedbackForm now reads the contact handle off
+// the shared self row. This suite is about the MODAL migration, not identity, so
+// the hook is stubbed rather than wrapping every render in a QueryClientProvider
+// — without it `useQueryClient` throws and all four FeedbackForm cases fail for
+// a reason that has nothing to do with what they assert. The address behaviour
+// itself is pinned in FeedbackForm.test.tsx.
+vi.mock('@/lib/hooks/useSelfIdentity', () => ({
+  SELF_IDENTITY_KEY: ['users', 'self'],
+  useSelfIdentity: () => ({
+    self: { id: 'u-1', email: 'self@example.test' },
+    selfUuid: 'u-1',
+    query: { isError: false, error: null, isPending: false, refetch: vi.fn() },
+    isPending: false,
+  }),
+}));
+
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>();
   return {
