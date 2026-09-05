@@ -167,9 +167,11 @@ export function getEnvelopeDetails<T>(err: ApiError): T | undefined {
 
 /**
  * The GET /users/me/deletion-blockers pre-flight shape (Phase 87.2). Resolves
- * 200 for any authenticated caller — `groups` is empty when not blocked and
- * non-empty (each group's TOTAL member count) when the caller owns active
- * groups. `memberCount` is the group's whole-membership count (pinned in plan
+ * 200 for a PROVISIONED authenticated caller — `groups` is empty when not
+ * blocked and non-empty (each group's TOTAL member count) when the caller owns
+ * active groups. AMENDED Phase 88.8 (round 3 #15): it now also rejects with
+ * 404 `not_provisioned` (valid token, no Users row, no tombstone) and 410
+ * `account_deleted` (tombstone present) — three outcomes, not one. `memberCount` is the group's whole-membership count (pinned in plan
  * 87.2-04) — render it as the member count, NOT an "others" count. This
  * endpoint NEVER rejects with `owner_of_active_groups`; that code arrives only
  * on the DELETE response (the server-side TOCTOU re-check, D-10).
@@ -808,9 +810,10 @@ export const usersAPI = {
     }),
 
   // Account-deletion pre-flight (Phase 87.2 / D-11). Resolves 200 { groups }
-  // for an authenticated caller — empty array when nothing blocks deletion,
+  // for a PROVISIONED caller — empty array when nothing blocks deletion,
   // non-empty (owned active groups + TOTAL member counts) when the owner gate
-  // would fire. NEVER rejects with owner_of_active_groups; that arrives only on
+  // would fire; rejects 404 `not_provisioned` / 410 `account_deleted` for a
+  // caller with no row (Phase 88.8 R7 — see the DeletionBlockerGroup docblock). NEVER rejects with owner_of_active_groups; that arrives only on
   // the DELETE (the server-side TOCTOU re-check). Caller derives from the Auth0
   // token server-side — no user_id in the path (self-scoped /users/me).
   getDeletionBlockers: () =>
@@ -834,7 +837,9 @@ export const usersAPI = {
   // Shape follows the shipped `savePhone` above: the function takes SCALARS and
   // builds the JSON body HERE, in api.ts. The request key is `email` (and
   // `code` on verify) and it is PINNED ON BOTH SIDES — the backend refuses a
-  // body carrying any other key (`routes/users.js:1226-1229`, `:1760-1763`),
+  // body carrying any other key (`routes/users.js`, the `keys[0] !== 'email'` /
+  // `keys[0] !== 'code'` guards in the request and verify handlers — cite the SYMBOL,
+  // the line numbers drifted twice in one phase),
   // and `src/lib/api.test.ts` asserts the exact serialised key set by stubbing
   // `fetch` and calling the REAL function. A mock-level assertion would prove
   // nothing: these take scalars, so a module-boundary mock never sees a body at

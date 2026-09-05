@@ -38,7 +38,7 @@ import { GameSchema } from './shared';
  * roster would simply never load. One bad row must not cost the whole list.
  *
  * WHY NULLABLE: the backend stores null for password-connection logins (no
- * vendor `picture` claim), and routes/events.js:47 emits an EXPLICIT null for
+ * vendor `picture` claim), and routes/events.js:66 emits an EXPLICIT null for
  * name-only (custom) participants.
  * WHY OPTIONAL: only twelve backend projections were widened; the same schemas
  * still type payloads from surfaces that were deliberately NOT widened.
@@ -81,7 +81,7 @@ export type RsvpStatus = z.infer<typeof RsvpStatusSchema>;
 // the DECISION block above NestedUserIdentitySchema. NOTE the contrast with
 // `user_id` directly above: on THIS row the key is ALWAYS present. The
 // serializer writes `picture_url: ep.User?.picture_url ?? null` for members
-// (routes/events.js:25) and a hand-written `picture_url: null` for custom
+// (routes/events.js:44) and a hand-written `picture_url: null` for custom
 // participants (:47), so absence never occurs here — `.optional()` is tolerance
 // for older cached payloads, NOT a signal that the backend sometimes drops it.
 export const EventParticipationSchema = z.object({

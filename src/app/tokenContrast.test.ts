@@ -1408,6 +1408,36 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       expect(MASKED, `88.8 HIGH-A — expected the rule \`${sel}\` in globals.css`).toContain(`${sel} {`);
     }
 
+    // (b2) Round 3 #39: the SAME principle one primitive over. Scan every non-test source
+    // file under src/ for an `opacity-<n>` utility within 400 characters AFTER an
+    // `aria-disabled=` attribute — the shape Modal.tsx's close glyph shipped
+    // (`aria-disabled={closeDisabled}` … `closeDisabled && 'cursor-not-allowed opacity-50'`).
+    // A heuristic window, stated as such: it catches the pattern as written in this repo
+    // (attribute, then the gated class string a few lines below) and reds loudly on a false
+    // positive, which is the right direction for a contrast gate. Variant-prefixed utilities
+    // are NOT offenders: `active:opacity-75` is the recorded PRESS dim (87.8 D-12, an
+    // instant opacity dim on an ~80ms tap, deliberately), and `disabled:opacity-*` is the
+    // native, WCAG-exempt state — only a BARE `opacity-<n>` applied to a gated control is.
+    const SRC_ROOT = path.join(__dirname, '..');
+    const srcFiles = fs
+      .readdirSync(SRC_ROOT, { recursive: true, withFileTypes: true })
+      .filter((d) => d.isFile() && /\.(tsx|jsx|js|ts)$/.test(d.name) && !/\.test\./.test(d.name))
+      .map((d) => path.join(d.parentPath ?? d.path, d.name));
+    expect(srcFiles.length, 'anti-vacuity: the src/** walk found no source files').toBeGreaterThan(50);
+    const utilityOffenders: string[] = [];
+    for (const file of srcFiles) {
+      const text = fs.readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, '');
+      for (const m of text.matchAll(/aria-disabled=/g)) {
+        const window = text.slice(m.index, m.index + 400);
+        const hit = /(?<![\w:-])opacity-\d+\b/.exec(window);
+        if (hit) utilityOffenders.push(`${path.relative(SRC_ROOT, file)} (${hit[0]})`);
+      }
+    }
+    expect(
+      utilityOffenders,
+      `88.8 round 3 #39 — an aria-disabled control pairs with an opacity utility: ${utilityOffenders.join(' | ')}. Element opacity composites the label with the ground; express the gated state in colour`,
+    ).toEqual([]);
+
     // (c) Ghost's gated ink lives in Button.tsx as a utility (alive because `.btn` sets no
     // `color`). Scan the ghost variant string for it, comments stripped.
     const buttonSrc = fs

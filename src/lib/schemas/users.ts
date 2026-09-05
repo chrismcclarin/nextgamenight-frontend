@@ -69,7 +69,7 @@ export const UserSchema = z.object({
   phone_verified: z.boolean().optional(),
   // ── SELF-READ-ONLY fields (Phase 88.8 plan 12; D-36, D-39) ─────────────────
   // Both reach the wire ONLY through GET /users/:user_id, which loads the caller
-  // through `User.scope('withContactInfo')` (routes/users.js:331) and returns
+  // through `User.scope('withContactInfo')` (routes/users.js, the self GET handler) and returns
   // `toSelfWire(user, pendingEmailChange)` (:403) — exactly like `email` above.
   // They are absent from every OTHER-user payload, and plan 08's wire sweep
   // asserts `email_changed_at` absent (recursively) on all six widened payloads.
@@ -87,7 +87,7 @@ export const UserSchema = z.object({
   email_changed_at: z.string().nullable().optional(),
   // `pending_email_change` — plan 09's DERIVED toSelfWire field (D-39), not a
   // column: `{ address: row.target, expires_at: row.expires_at }` or null
-  // (routes/users.js:103, projectPendingEmailChange at :986). Plain strings
+  // (routes/users.js `toSelfWire`, `projectPendingEmailChange`). Plain strings
   // inside for the same A10 reason (`expires_at` is a Date server-side and
   // arrives as an ISO string). Plan 09 assigns the key UNCONDITIONALLY, so it is
   // present on ALL FOUR toSelfWire responses — value `null` on the three write
@@ -125,7 +125,7 @@ export type User = z.infer<typeof UserSchema>;
 // the MUTATION body, and that body carries FIVE keys, two of which
 // (`outcome`, `verification_sent`) were declared nowhere in this repo. All five
 // are load-bearing: the backend's own comment above `emailChangeBody`
-// (routes/users.js:990-1003) records that a key missing from THIS body keeps its
+// (routes/users.js, the `emailChangeBody` docblock) records that a key missing from THIS body keeps its
 // pre-mutation value in the `staleTime: Infinity` self cache forever, which is
 // why `email_changed_at` rides along and why dropping any of them "is a
 // decision, not a cleanup".

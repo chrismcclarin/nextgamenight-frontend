@@ -173,16 +173,19 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
            construction and strictly better than any client value.
 
            REJECTED, all three:
-           (i)  adding `useSelfIdentity()` here. This component is mounted in
-                `layout.js:93` on EVERY page, and that hook carries a SIDE
-                EFFECT — a resolved `account_deleted` 410 redirects the window to
-                the logout/goodbye path (`useSelfIdentity.ts:112-116`). Making
-                that fire app-wide is a real behavioural change with nothing to
-                do with feedback, and it is not this phase's to make.
+           (i)  adding `useSelfIdentity()` here. CORRECTED round 3 #19: an earlier
+                version of this note rejected it as making the hook's 410-redirect
+                side effect "fire app-wide" — but it ALREADY does: `layout.js:44`
+                mounts `TimezoneProvider`, which calls `useSelfIdentity()`
+                unconditionally (`TimezoneProvider.js:54`) around this very button.
+                The true ground is the one above: the route is behind the auth
+                gate and the SERVER owns the identity; a client must not assert
+                an address the server can derive. Rejected on that ground alone.
            (ii) reading the cached row non-reactively with `getQueryData` — no
-                fetch and no side effect, but it yields nothing on any page that
-                never resolved the self row, so the value would be silently
-                absent depending on which page the user was on.
+                fetch and no side effect. Rejected for the SAME ground as (i), not
+                the one an earlier version gave ("yields nothing on a page that
+                never resolved the row" — false for the same reason: the app-root
+                provider resolves it on every page).
            (iii) keeping the session email — the stale value this task exists to
                 remove: after an address change it is the address the user just
                 moved away from.

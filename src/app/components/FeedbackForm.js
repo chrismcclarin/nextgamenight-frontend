@@ -36,6 +36,20 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
      settled both read false, so the logged-out path files with a null handle as
      it always has. */
   const selfNotReady = selfQuery.isFetching;
+  /* Round 3 DR3 (three lenses converged here). The guard above is KEPT — this form posts
+     to the PUBLIC feedback writer, which ACCEPTS the client `user_email`, so the value
+     really is the reply-to on this path (the server-derived address is the /github
+     route, which this form never calls) — but it is now PERCEIVABLE and REACHABLE:
+     `aria-disabled` instead of native `disabled` (a natively-disabled Submit left the
+     tab order with no label change and no announcement — the keyboard dead end DR-C
+     rejects one file over), the press blocked in the handler, and a fixed status line
+     while the row loads. And the ERROR case is disclosed: a signed-in reporter whose
+     address could not be loaded (the self query errored, or the row carries no usable
+     address) is told the reply-to is missing — never given the stale session address,
+     never blocked from filing. */
+  const replyToUnavailable =
+    selfQuery.isError === true ||
+    (self !== undefined && !(self?.email && !isSyntheticAddress(self.email)));
   const [type, setType] = useState(initialType);
   const [subject, setSubject] = useState(initialSubject);
   const [description, setDescription] = useState(initialDescription);
@@ -78,6 +92,8 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // DR3: the press is blocked HERE while the self row loads (aria-disabled, not native).
+    if (selfNotReady) return;
 
     if (!subject.trim() || !description.trim()) {
       setError('Please fill in all required fields');
@@ -309,6 +325,17 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
             </div>
           )}
 
+          {/* Round 3 DR3: one always-mounted polite region for the loading state, so a
+              gated Submit is explained and announced instead of silently unavailable. */}
+          <p role="status" className="text-xs text-content-muted min-h-4">
+            {selfNotReady ? 'Loading your details — one moment' : ''}
+          </p>
+          {replyToUnavailable && !selfNotReady && (
+            <p className="text-xs text-content-muted">
+              We couldn&apos;t load your email address, so we won&apos;t be able to reply to this.
+            </p>
+          )}
+
           {/* Buttons */}
           <div className="flex gap-3 justify-end">
             <button
@@ -321,7 +348,8 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
             </button>
             <button
               type="submit"
-              disabled={submitting || selfNotReady || !subject.trim() || !description.trim()}
+              disabled={submitting || !subject.trim() || !description.trim()}
+              aria-disabled={selfNotReady ? 'true' : undefined}
               className="btn btn-primary"
             >
               {submitting ? 'Submitting...' : 'Submit'}

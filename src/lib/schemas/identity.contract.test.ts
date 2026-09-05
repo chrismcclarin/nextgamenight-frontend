@@ -118,7 +118,7 @@ export const CAPTURED_ROSTER_MEMBER_BODY = {
 // users.js: /users/:user_id + every self-write echo ride toSelfWire, which
 // aliases user_id = id — the self row's flat user_id is the caller's own UUID.
 // Phase 88.8 plans 02/09/12 (D-36, D-39): GET /users/:user_id loads the caller
-// through User.scope('withContactInfo') (routes/users.js:331) and returns
+// through User.scope('withContactInfo') (routes/users.js, the self GET handler) and returns
 // toSelfWire(user, pendingEmailChange) (:403). That restores `email` and
 // `email_changed_at` (both excluded by the model defaultScope) and assigns the
 // DERIVED `pending_email_change` UNCONDITIONALLY, so the key is present on all
@@ -133,7 +133,7 @@ export const CAPTURED_SELF_BODY = {
   username: 'alice',
   email: 'alice@example.com',
   email_changed_at: '2026-09-01T12:00:00.000Z',
-  // projectPendingEmailChange (routes/users.js:986): { address: row.target,
+  // projectPendingEmailChange (routes/users.js, symbol of that name): { address: row.target,
   // expires_at: row.expires_at } — expires_at is a Date server-side and arrives
   // as an ISO string, which is why the schema declares plain strings inside.
   pending_email_change: {
@@ -198,7 +198,7 @@ const ROUTE_EMITTED_KEYS = {
   // task text said to add the field to "the roster, RSVP and brings lists"; the
   // shipped serializers do not put it at the top level of either row. Both
   // shapers copy exactly one field up (`json.user_id = json.User?.id` —
-  // routes/rsvp.js:530-532, routes/eventBrings.js:52-56) and pass the nested
+  // routes/rsvp.js `toRsvpWire` (~:586), routes/eventBrings.js:52-56) and pass the nested
   // `User` object through toJSON untouched. Adding picture_url here would force
   // a fixture to invent a key the wire does not carry — which is the precise
   // defect this file exists to catch. The field IS pinned for both payloads,
@@ -224,7 +224,7 @@ const ROUTE_EMITTED_KEYS = {
   friendSearch: ['id', 'username'],
   // Phase 88.8 plan 12 (D-36 / D-39). NOT an exhaustive emission pin, unlike
   // every list above, and the difference is deliberate: toSelfWire is a bare
-  // `user.toJSON()` plus two assignments (routes/users.js:100-105), so the self
+  // `user.toJSON()` plus a strip and three assignments (routes/users.js `toSelfWire`), so the self
   // body carries the WHOLE Users row minus the defaultScope exclusions. Pinning
   // that exactly would mean re-listing ~20 columns here and re-editing this file
   // on every unrelated column add. These are the self-identity fields Phase 88.8
@@ -246,14 +246,14 @@ export const CAPTURED_PARTICIPANT_BODY = {
   // Phase 88.8 plan 08: the serializer HAND-COPIES onto a fresh object, so the
   // five widened EventParticipation -> User includes change nothing on the wire
   // without this line. `picture_url: ep.User?.picture_url ?? null`
-  // (routes/events.js:25) — the `?? null` means the key is ALWAYS present here.
+  // (routes/events.js:44) — the `?? null` means the key is ALWAYS present here.
   picture_url: AVATAR,
 };
 
 export const CAPTURED_CUSTOM_PARTICIPANT_BODY = {
   user_id: null, // custom (name-only) participants carry an explicit null
   username: 'drop-in dave',
-  // An EXPLICIT null, not an omitted key (routes/events.js:47). A name-only row
+  // An EXPLICIT null, not an omitted key (routes/events.js:66). A name-only row
   // has no user behind it, so there is no avatar — but an absent key and a null
   // key are DIFFERENT on the wire and this file exists to pin exactly that kind
   // of difference. Removing this line to "simplify the fixture" un-pins it.
@@ -380,7 +380,7 @@ describe('identity contract — fixtures stay in lockstep with route emissions',
   });
 
   it('participant rows carry picture_url; the name-only row carries an EXPLICIT null, not an absent key', () => {
-    // routes/events.js:25 (`?? null`) and :47 (hand-written null).
+    // routes/events.js:44 (`?? null`) and :66 (hand-written null).
     expect(Object.keys(CAPTURED_PARTICIPANT_BODY)).toContain('picture_url');
     expect(Object.keys(CAPTURED_CUSTOM_PARTICIPANT_BODY)).toContain('picture_url');
     expect(CAPTURED_CUSTOM_PARTICIPANT_BODY.picture_url).toBeNull();

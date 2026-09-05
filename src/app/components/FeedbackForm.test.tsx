@@ -30,13 +30,17 @@ vi.mock('@auth0/nextjs-auth0/client', () => ({ useUser: () => ({ user: null }) }
 
 // Phase 88.8 plan 13 Task 3(b): the contact handle is `Users.email` off the
 // shared self row, never the Auth0 session claim.
-const h = vi.hoisted(() => ({ self: undefined as undefined | Record<string, unknown> }));
+const h = vi.hoisted(() => ({
+  self: undefined as undefined | Record<string, unknown>,
+  // Round 3 DR3: per-test overrides for the query flags the submit gate reads.
+  query: {} as Record<string, unknown>,
+}));
 vi.mock('../../lib/hooks/useSelfIdentity', () => ({
   SELF_IDENTITY_KEY: ['users', 'self'],
   useSelfIdentity: () => ({
     self: h.self,
     selfUuid: h.self?.id as string | undefined,
-    query: { isError: false, error: null, isPending: !h.self, refetch: vi.fn() },
+    query: { isError: false, error: null, isPending: !h.self, refetch: vi.fn(), ...h.query },
     isPending: !h.self,
   }),
 }));
@@ -175,5 +179,66 @@ describe('FeedbackForm user_email — the APP address, never the Auth0 session c
       const body = await submit();
       expect(body.user_email).not.toBe(SESSION_EMAIL);
     }
+  });
+});
+
+/**
+ * Code review round 3 DR3 (owner ruling 2026-09-05) — the self-row gate on Submit is
+ * PERCEIVABLE and REACHABLE, and the missing-reply-to case is DISCLOSED. Three lenses
+ * converged on the round-1 guard: it natively disabled Submit with no label change and
+ * no announcement while the self row loaded (a keyboard dead end), and dropped the
+ * handle silently when the self query errored.
+ */
+describe('FeedbackForm — round 3 DR3: the loading gate answers, the error case is disclosed', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.self = undefined;
+    h.query = {};
+    fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ success: true }) }));
+    vi.stubGlobal('fetch', fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    h.query = {};
+  });
+
+  it('while the self row is FETCHING, Submit is aria-disabled (never natively), stays in the tab order, explains itself, and a press files nothing', async () => {
+    h.query = { isFetching: true };
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    await user.type(screen.getByPlaceholderText(/Brief description/i), 'A subject');
+    await user.type(screen.getByPlaceholderText(/provide as much detail/i), 'A description here.');
+
+    const submit = screen.getByRole('button', { name: /^Submit$/i });
+    expect(submit).toHaveAttribute('aria-disabled', 'true');
+    expect(submit).not.toHaveAttribute('disabled');
+    expect(screen.getByRole('status')).toHaveTextContent(/loading your details/i);
+
+    await user.click(submit);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('when the self query ERRORED, the reporter is told the reply-to is missing, and can still file (user_email null, never the session address)', async () => {
+    h.query = { isError: true, isFetching: false };
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    expect(screen.getByText(/couldn't load your email address/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Submit$/i })).not.toHaveAttribute('aria-disabled', 'true');
+
+    await user.type(screen.getByPlaceholderText(/Brief description/i), 'A subject');
+    await user.type(screen.getByPlaceholderText(/provide as much detail/i), 'A description here.');
+    await user.click(screen.getByRole('button', { name: /^Submit$/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.user_email).toBeNull();
+  });
+
+  it('a settled row WITH a usable address shows neither the loading line nor the missing-reply-to line', () => {
+    h.self = { id: 'u1', email: APP_EMAIL };
+    render(<FeedbackForm onClose={() => {}} />);
+    expect(screen.getByRole('status')).toHaveTextContent('');
+    expect(screen.queryByText(/couldn't load your email address/i)).not.toBeInTheDocument();
   });
 });

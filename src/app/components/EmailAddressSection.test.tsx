@@ -406,7 +406,9 @@ describe('EmailAddressSection — editing and Save', () => {
     await user.type(screen.getByLabelText(/new email address/i), NEW);
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    await waitFor(() => expect(screen.getAllByText(/couldn't send the code just now/i).length).toBe(2));
+    // ONCE, not twice (round 3 #38): the error-tone Banner is itself an assertive live
+    // region, so the section no longer echoes this copy into its own status region.
+    await waitFor(() => expect(screen.getAllByText(/couldn't send the code just now/i).length).toBe(1));
     expect(screen.queryByText(/we sent a code to/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Resend code' })).toBeInTheDocument();
   });
@@ -865,10 +867,147 @@ describe('EmailAddressSection — revert (D-38)', () => {
 
     await user.click(screen.getByRole('button', { name: 'Use my sign-in address' }));
 
-    await waitFor(() => expect(screen.getByText(/something looks off with that request/i)).toBeInTheDocument());
+    // Round 3 #22: a `validation` envelope from a BODYLESS route is not a form error —
+    // the section overrides the shared copy with a reload-the-page message.
+    await waitFor(() => expect(screen.getByText(/that action is no longer available/i)).toBeInTheDocument());
+    expect(screen.queryByText(/something looks off with that request/i)).not.toBeInTheDocument();
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Use my sign-in address' }))
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Code review round 3 (owner ruling 2026-09-05) — the lane is symmetric, the gate
+// answers, stale errors clear, validators match the backend, the region is proven
+// ---------------------------------------------------------------------------
+
+describe('EmailAddressSection — round 3: symmetric lane, answering gate, stale errors, validators', () => {
+  it('#1/#35 — Verify pressed during an in-flight Resend is BLOCKED with a busy message, and fires no verify', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    let releaseResend: (v: unknown) => void = () => {};
+    api.resendEmailChangeCode.mockReturnValue(new Promise((res) => { releaseResend = res; }));
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Resend code' }));
+    expect(api.resendEmailChangeCode).toHaveBeenCalledTimes(1);
+
+    const verify = screen.getByRole('button', { name: 'Verify' });
+    expect(verify).toHaveAttribute('aria-disabled', 'true'); // the lane, not only its own state
+    expect(verify).not.toHaveAttribute('disabled');
+    await user.click(verify);
+    expect(api.verifyEmailChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/wait for the current step to finish/i);
+
+    releaseResend(body({ outcome: 'code_sent' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Verify' })).not.toHaveAttribute('aria-disabled', 'true'));
+  });
+
+  it('#34 — a gated Discard press answers with a fixed alert instead of silence', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    let releaseVerify: (v: unknown) => void = () => {};
+    api.verifyEmailChange.mockReturnValue(new Promise((res) => { releaseVerify = res; }));
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    await user.click(screen.getByRole('button', { name: 'Discard change' }));
+    expect(api.cancelEmailChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/wait for the current step to finish/i);
+
+    releaseVerify(body({ outcome: 'verified', email: NEW, pending_email_change: null, verification_sent: false, email_changed_at: '2026-09-04T00:00:00.000Z' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument());
+  });
+
+  it('#35 — Change carries aria-disabled and answers while a Revert is in flight (no edit is started)', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW({ email_changed_at: '2026-09-04T00:00:00.000Z' })));
+    renderSection();
+    let releaseRevert: (v: unknown) => void = () => {};
+    api.revertEmailToSignIn.mockReturnValue(new Promise((res) => { releaseRevert = res; }));
+
+    await user.click(screen.getByRole('button', { name: 'Use my sign-in address' }));
+    const change = screen.getByRole('button', { name: 'Change' });
+    expect(change).toHaveAttribute('aria-disabled', 'true');
+    await user.click(change);
+    expect(screen.queryByLabelText(/new email address/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(/wait for the current step to finish/i);
+
+    releaseRevert(body({ outcome: 'reverted', email: REAL, pending_email_change: null, verification_sent: false, email_changed_at: null }));
+    await waitFor(() => expect(api.revertEmailToSignIn).toHaveBeenCalledTimes(1));
+  });
+
+  it('#36 — after a rejected code the emptied field loses aria-invalid on the first keystroke', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    api.verifyEmailChange.mockResolvedValue(body({ outcome: 'invalid', verification_sent: false }));
+    const code = screen.getByLabelText(/code from the email/i);
+    await user.type(code, 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(screen.getByLabelText(/code from the email/i)).toHaveAttribute('aria-invalid', 'true'));
+    expect(screen.getByLabelText(/code from the email/i)).toHaveValue('');
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'A');
+    expect(screen.getByLabelText(/code from the email/i)).not.toHaveAttribute('aria-invalid', 'true');
+    expect(screen.queryByText(/that code isn't right/i)).not.toBeInTheDocument();
+  });
+
+  it('#16 — the client validators match the backend: `a@b..com` and a 300-character address are refused before any request', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    const field = screen.getByLabelText(/new email address/i);
+
+    await user.type(field, 'a@b..com');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByRole('alert')).toHaveTextContent(/doesn't look like an email address/i);
+    expect(api.requestEmailChange).not.toHaveBeenCalled();
+
+    await user.clear(field);
+    await user.type(field, `${'a'.repeat(290)}@example.com`);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByRole('alert')).toHaveTextContent(/too long/i);
+    expect(api.requestEmailChange).not.toHaveBeenCalled();
+  });
+
+  it('#40 — the always-mounted status region actually RECEIVES text on the code-sent, unchanged and resend paths', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    // The section's OWN region is the sr-only one; an info Banner mounts a second
+    // polite region while it is visible, so select by class rather than by role alone.
+    const region = () => screen.getAllByRole('status').find((el) => el.classList.contains('sr-only'))!;
+    api.requestEmailChange.mockResolvedValueOnce(body({ outcome: 'unchanged', pending_email_change: null, verification_sent: false }));
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), REAL);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(region()).toHaveTextContent(/already the address we use/i));
+
+    api.requestEmailChange.mockResolvedValueOnce(body({ outcome: 'code_sent' }));
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(region()).toHaveTextContent(/we sent a code to/i));
+  });
+
+  it('#40 — the region receives the RESEND wording too (hydrated straight into awaiting-code, so no cooldown is armed)', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    const region = () => screen.getAllByRole('status').find((el) => el.classList.contains('sr-only'))!;
+    api.resendEmailChangeCode.mockResolvedValue(body({ outcome: 'code_sent' }));
+    await user.click(screen.getByRole('button', { name: 'Resend code' }));
+    await waitFor(() => expect(region()).toHaveTextContent(/we sent a new code to/i));
+  });
+
+  it('#40 — the EDITING state passes the automated a11y audit too', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    const { container } = renderSection();
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    expect(screen.getByLabelText(/new email address/i)).toBeInTheDocument();
+    expect(await axe(container)).toHaveNoViolations();
   });
 });
 

@@ -120,6 +120,13 @@ const ADDRESS_TAKEN_ERROR =
   'Another account already uses that address. Ask us for help if it should be yours.';
 const RATE_LIMITED_ERROR = "You've asked for too many codes. Try again in a little while.";
 const RESEND_COOLDOWN_ERROR = 'You can ask for another code in a moment';
+/* Round 3 #34/#35: the in-flight gate ANSWERS. DR-C's contract is "every gate is
+   aria-disabled with the press blocked in the handler AND a fixed error naming what is
+   missing" — the validity gates and the cooldown all did; the `mutating` gate returned
+   bare, so a keyboard or switch user who reached a control announced as unavailable and
+   pressed it got nothing back for a whole network round trip. */
+const ACTION_BUSY_ERROR = 'Wait for the current step to finish, then try again';
+const TOO_LONG_EMAIL_ERROR = 'That email address is too long';
 const MAIL_REFUSED_COPY =
   "We couldn't send the code just now. Your change is still waiting — use Resend code to try again.";
 const UNCHANGED_COPY = "That's already the address we use for you";
@@ -182,7 +189,13 @@ export function checkCode(raw: string): CodeCheck {
    addresses the server accepts — the same class of defect as an over-strict
    code gate. This catches only the obvious typo so the user is not made to wait
    for a round trip to be told there is no `@`. */
-const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
+/* Round 3 #16: BOTH halves mirror the backend's validators — `EMAIL_FORMAT` and
+   `EMAIL_MAX_LENGTH` in routes/users.js (the same pairing the `email`/`code` request
+   keys already carry). The looser shape this replaced accepted `a@b..com` and had no
+   cap, so those inputs skipped the field message here and came back as the backend's
+   generic "Validation failed" envelope. Neither repo's CI can see the other. */
+const EMAIL_MAX_LENGTH = 255;
 
 const RESEND_COOLDOWN_MS = 30_000;
 
@@ -198,9 +211,18 @@ type SectionState =
 
 type FocusTarget = 'change' | 'email' | 'code' | 'resend' | 'revert' | null;
 
-/** The shared error copy for a thrown failure, with the two NAMED envelopes. */
+/* Round 3 #22: the bodyless routes (resend with nothing pending, revert with nothing to
+   revert or no verified claim) answer the `validation` envelope, and the shared copy
+   for that code is form-validation prose ("Something looks off with that request") —
+   wrong for a button press with no input. Overridden HERE, in this section's byCode
+   map, never in the shared Record other surfaces consume. */
+const STALE_ACTION_ERROR = 'That action is no longer available — reload the page to see the current state';
+
+/** The shared error copy for a thrown failure, with the NAMED envelopes overridden. */
 function messageFor(error: unknown): string {
-  return getFetchErrorMessage(error, { byCode: { rate_limited: RATE_LIMITED_ERROR } });
+  return getFetchErrorMessage(error, {
+    byCode: { rate_limited: RATE_LIMITED_ERROR, validation: STALE_ACTION_ERROR },
+  });
 }
 
 function isRateLimited(error: unknown): boolean {
@@ -262,9 +284,13 @@ export function EmailAddressSection() {
      `{notice && <Banner …>}`. So pressing Save and landing on "That's already the
      address we use for you" announced NOTHING (WCAG 4.1.3), and neither did the
      first "We sent a code to …".
-     This region is mounted for the section's whole life and is the ONLY thing that
-     speaks; the visible sent-line and Banner keep their look and are no longer
-     relied on to announce. Chosen OVER making `Banner` itself always-mounted,
+     This region is mounted for the section's whole life and speaks for the messages
+     whose visible home CANNOT announce — the plain-text sent line and the info Banner
+     (a polite region that is conditionally mounted). AMENDED round 3 #38: it does NOT
+     double what already announces — an error-tone Banner is an assertive live region
+     of its own, and the toaster is a permanently mounted polite region — so the
+     refused-mail copy and the discard receipt are no longer announce()d here. One
+     rule: each message is announced exactly once, by whichever surface owns it. Chosen OVER making `Banner` itself always-mounted,
      which would paint an empty coloured box, and OVER changing the `Banner`
      primitive to take a `live={false}` prop — Banner has consumers well outside
      this phase and that is a shared-surface change this finding does not justify. */
@@ -499,6 +525,13 @@ export function EmailAddressSection() {
   /* ── HANDLERS ─────────────────────────────────────────────────────────── */
 
   const handleChange = () => {
+    // Round 3 #35: Change is a lane consumer too — pressed during an in-flight Revert it
+    // moved the section to editing, which the resolving revert then stomped back to idle,
+    // destroying a half-typed address with no announcement.
+    if (mutating) {
+      setRevertError(ACTION_BUSY_ERROR);
+      return;
+    }
     setEmailInput('');
     setEmailError(null);
     setNotice(null);
@@ -516,10 +549,20 @@ export function EmailAddressSection() {
   const handleSave = async () => {
     // DR-C: the press is blocked in the HANDLER, and the gated control tells
     // the user what is missing rather than doing nothing.
-    if (state === 'saving') return;
+    // Round 3 #1/#35: the lane is SYMMETRIC — Save consults `mutating`, not only its
+    // own state, so a Save pressed while a Revert is in flight cannot start an edit the
+    // resolving revert then stomps back to idle. And it answers (#34).
+    if (mutating) {
+      setEmailError(ACTION_BUSY_ERROR);
+      return;
+    }
     const value = emailInput.trim();
     if (!value) {
       setEmailError(EMPTY_EMAIL_ERROR);
+      return;
+    }
+    if (value.length > EMAIL_MAX_LENGTH) {
+      setEmailError(TOO_LONG_EMAIL_ERROR);
       return;
     }
     if (!EMAIL_SHAPE.test(value)) {
@@ -576,8 +619,9 @@ export function EmailAddressSection() {
           // A mail the PROVIDER refused. Never the "code sent" line — the token
           // survives (the owner's 2026-09-04 ruling) so Resend is the remedy.
           setSentLine(null);
+          // Not announce()d here (round 3 #38): an error-tone Banner is itself an
+          // assertive live region, so the region would say it twice.
           setNotice({ tone: 'error', text: MAIL_REFUSED_COPY });
-          announce(MAIL_REFUSED_COPY);
           setResendPromoted(true);
         }
         setFocusTarget('code');
@@ -596,7 +640,14 @@ export function EmailAddressSection() {
   };
 
   const handleVerify = async () => {
-    if (state === 'verifying') return;
+    // Round 3 #1/#35: Verify consults the shared lane. Before this it guarded on its
+    // own state only, so Resend-then-Verify let the verify race the resend's revoke and
+    // the user was told "That code isn't right" about a code that was right — the exact
+    // class HIGH-2 closed for the three secondary actions, left open on the primary one.
+    if (mutating) {
+      setActionError(ACTION_BUSY_ERROR);
+      return;
+    }
     const check = checkCode(codeInput);
     if (check === 'incomplete') {
       // No api call. The section KNOWS locally that it never sent this code, so
@@ -657,7 +708,10 @@ export function EmailAddressSection() {
   };
 
   const handleResend = async () => {
-    if (mutating) return;
+    if (mutating) {
+      setActionError(ACTION_BUSY_ERROR);
+      return;
+    }
     if (cooldown) {
       setActionError(RESEND_COOLDOWN_ERROR);
       return;
@@ -684,8 +738,7 @@ export function EmailAddressSection() {
         startCooldown();
       } else {
         setSentLine(null);
-        setNotice({ tone: 'error', text: MAIL_REFUSED_COPY });
-        announce(MAIL_REFUSED_COPY);
+        setNotice({ tone: 'error', text: MAIL_REFUSED_COPY }); // announces itself (#38)
         setResendPromoted(true);
       }
     } catch (error) {
@@ -697,7 +750,10 @@ export function EmailAddressSection() {
   };
 
   const handleDiscard = async () => {
-    if (mutating) return;
+    if (mutating) {
+      setActionError(ACTION_BUSY_ERROR);
+      return;
+    }
     if (!selfId) return;
     setActionError(null);
     setBusy('discard');
@@ -716,8 +772,7 @@ export function EmailAddressSection() {
       setResendPromoted(false);
       setNotice(null);
       setState('idle');
-      toast.success(DISCARDED_RECEIPT);
-      announce(DISCARDED_RECEIPT);
+      toast.success(DISCARDED_RECEIPT); // the toaster is a polite live region (#38)
       setFocusTarget('change');
     } catch (error) {
       setActionError(messageFor(error));
@@ -727,7 +782,10 @@ export function EmailAddressSection() {
   };
 
   const handleRevert = async () => {
-    if (mutating) return;
+    if (mutating) {
+      setRevertError(ACTION_BUSY_ERROR);
+      return;
+    }
     if (!selfId) return;
     setRevertError(null);
     setBusy('revert');
@@ -825,8 +883,10 @@ export function EmailAddressSection() {
 
   const inEditing = state === 'editing' || state === 'saving';
   const inAwaiting = state === 'awaiting-code' || state === 'verifying';
-  const saveGated = state === 'saving' || emailInput.trim().length === 0;
-  const verifyGated = state === 'verifying' || checkCode(codeInput) !== 'ok';
+  // Round 3 #35: the primary gates carry the lane, so their ARIA state is right exactly
+  // when the one-lane contract says they are unavailable (WCAG 4.1.2).
+  const saveGated = mutating || emailInput.trim().length === 0;
+  const verifyGated = mutating || checkCode(codeInput) !== 'ok';
 
   return (
     <section className="card p-3 md:p-6 mb-6" aria-labelledby={`${reactId}-title`}>
@@ -875,7 +935,13 @@ export function EmailAddressSection() {
       {/* ── IDLE / VERIFIED ───────────────────────────────────────────────── */}
       {(state === 'idle' || state === 'verified') && (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-          <Button ref={changeRef} variant="ghost" onClick={handleChange} className="max-md:min-h-11">
+          <Button
+            ref={changeRef}
+            variant="ghost"
+            onClick={handleChange}
+            aria-disabled={mutating ? 'true' : undefined}
+            className="max-md:min-h-11"
+          >
             {LABEL_CHANGE}
           </Button>
           {/* DECISION Phase 88.8 D-38: the revert affordance is ABSENT from the
@@ -943,7 +1009,12 @@ export function EmailAddressSection() {
                  (FormField.tsx:104-108), and an alert on every keystroke talks
                  over the person mid-entry. The phone block above records
                  exactly this reason at page.js:1524-1533. */
-              onChange={(e) => setEmailInput(e.target.value)}
+              onChange={(e) => {
+                setEmailInput(e.target.value);
+                // Round 3 #36: resuming entry clears the stale error (and its
+                // aria-invalid); validation itself still runs only on Save and blur.
+                if (emailError) setEmailError(null);
+              }}
               /* ENTER SUBMITS (code review #36). There is no <form> here — the
                  section lives inside the profile page's own markup and a nested
                  form would be invalid — so the key handler IS the submit
@@ -959,7 +1030,8 @@ export function EmailAddressSection() {
               }}
               onBlur={() => {
                 const v = emailInput.trim();
-                if (v && !EMAIL_SHAPE.test(v)) setEmailError(MALFORMED_EMAIL_ERROR);
+                if (v && v.length > EMAIL_MAX_LENGTH) setEmailError(TOO_LONG_EMAIL_ERROR);
+                else if (v && !EMAIL_SHAPE.test(v)) setEmailError(MALFORMED_EMAIL_ERROR);
               }}
             />
           </FormField>
@@ -1041,7 +1113,14 @@ export function EmailAddressSection() {
               aria-describedby={codeHintId}
               className="uppercase"
               value={codeInput}
-              onChange={(e) => setCodeInput(e.target.value)}
+              onChange={(e) => {
+                setCodeInput(e.target.value);
+                /* Round 3 #36: every failed verify EMPTIES this field and then sets
+                   `codeError`, so the input sat `aria-invalid="true"` describing content
+                   that no longer existed, and typing eight fresh characters never cleared
+                   it (WCAG 3.3.1 pointing at nothing). First keystroke clears it. */
+                if (codeError) setCodeError(null);
+              }}
               /* ENTER SUBMITS — see the email field. A one-time-code input that
                  does not accept Enter is the worst offender of the two: the user
                  has just typed 8 characters and the natural next keystroke does
