@@ -222,6 +222,18 @@ export function EmailAddressSection() {
   );
   const [resendPromoted, setResendPromoted] = React.useState(false);
   const [cooldown, setCooldown] = React.useState(false);
+  /* DECISION Phase 88.8 (code review HIGH-2, 2026-09-05): ONE in-flight lane for the
+     three secondary actions, and every handler consults `state` as well — chosen OVER
+     a per-button flag, which is what the first implementation effectively had (none at
+     all) and which leaves the controls unable to see each other. The cross-lane clause
+     is the load-bearing half: Discard rendered live during a `verifying` round trip,
+     and POST /email/cancel revokes the very token the verify is consuming, so the user
+     was told "That code isn't right" about a code that was right — the exact false
+     report this section's docblock says it exists to prevent. Per DR-C the press is
+     blocked in the HANDLER and the control stays MOUNTED and focusable under
+     `aria-disabled`; it never carries the native `disabled` attribute. */
+  const [busy, setBusy] = React.useState<null | 'resend' | 'discard' | 'revert'>(null);
+  const mutating = busy !== null || state === 'saving' || state === 'verifying';
   const [focusTarget, setFocusTarget] = React.useState<FocusTarget>(null);
 
   const hydratedRef = React.useRef(false);
@@ -560,13 +572,14 @@ export function EmailAddressSection() {
   };
 
   const handleResend = async () => {
-    if (state === 'verifying') return;
+    if (mutating) return;
     if (cooldown) {
       setCodeError(RESEND_COOLDOWN_ERROR);
       return;
     }
     if (!selfId) return;
     setCodeError(null);
+    setBusy('resend');
     try {
       const body = await usersAPI.resendEmailChangeCode(selfId);
       if (!isUsableMutationBody(body)) {
@@ -590,11 +603,15 @@ export function EmailAddressSection() {
     } catch (error) {
       setCodeError(messageFor(error));
       if (isRateLimited(error)) startCooldown();
+    } finally {
+      setBusy(null);
     }
   };
 
   const handleDiscard = async () => {
+    if (mutating) return;
     if (!selfId) return;
+    setBusy('discard');
     try {
       const body = await usersAPI.cancelEmailChange(selfId);
       if (!isUsableMutationBody(body)) {
@@ -613,12 +630,16 @@ export function EmailAddressSection() {
       setFocusTarget('change');
     } catch (error) {
       setCodeError(messageFor(error));
+    } finally {
+      setBusy(null);
     }
   };
 
   const handleRevert = async () => {
+    if (mutating) return;
     if (!selfId) return;
     setRevertError(null);
+    setBusy('revert');
     try {
       const body = await usersAPI.revertEmailToSignIn(selfId);
       if (!isUsableMutationBody(body)) {
@@ -657,6 +678,12 @@ export function EmailAddressSection() {
     } catch (error) {
       setRevertError(messageFor(error));
       setFocusTarget('revert');
+    } finally {
+      /* Fires after a SUCCESSFUL revert has already unmounted its own button (the
+         cache patch flips `hasChangedBefore` false). Harmless — the section itself
+         is still mounted, so this is a state write on a live component, and it
+         leaves the lane clean for the next action. */
+      setBusy(null);
     }
   };
 
@@ -768,6 +795,7 @@ export function EmailAddressSection() {
               ref={revertRef}
               variant="ghost"
               onClick={handleRevert}
+              aria-disabled={mutating ? 'true' : undefined}
               className="max-md:min-h-11"
             >
               {LABEL_REVERT}
@@ -900,12 +928,17 @@ export function EmailAddressSection() {
                  would re-announce the whole banner. */
               variant={resendPromoted ? 'secondary' : 'ghost'}
               onClick={handleResend}
-              aria-disabled={cooldown ? 'true' : undefined}
+              aria-disabled={cooldown || mutating ? 'true' : undefined}
               className="max-md:min-h-11"
             >
               {LABEL_RESEND}
             </Button>
-            <Button variant="ghost" onClick={handleDiscard} className="max-md:min-h-11">
+            <Button
+              variant="ghost"
+              onClick={handleDiscard}
+              aria-disabled={mutating ? 'true' : undefined}
+              className="max-md:min-h-11"
+            >
               {LABEL_DISCARD}
             </Button>
           </div>

@@ -884,6 +884,103 @@ describe('EmailAddressSection — DR-C: no control carries the native `disabled`
   });
 });
 
+describe('EmailAddressSection — HIGH-2: the three secondary actions have an in-flight lane', () => {
+  /* WHY THIS SUITE REACHES awaiting-code THROUGH `verification_sent: false` AND NOT
+     THROUGH `body()`. The default body carries `verification_sent: true`, which runs
+     `startCooldown()` and sets a 30-SECOND cooldown; this file uses no fake timers and
+     vitest.config.mts caps a test at 20s, so the cooldown can never lapse inside a
+     test. A Resend assertion written on that path passes VACUOUSLY — `handleResend`
+     returns at the cooldown guard before it ever calls the api, so `aria-disabled` is
+     present for the wrong reason and the in-flight path is never exercised. The
+     provider-refused body lands in the same state with NO cooldown, which is the only
+     door into the code under test. Every test below therefore also asserts the api WAS
+     called — that assertion is the anti-vacuity guard, not a formality. */
+  const refused = () => body({ verification_sent: false });
+
+  const reachAwaitingCode = async (user: ReturnType<typeof userEvent.setup>) => {
+    api.requestEmailChange.mockResolvedValue(refused());
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByLabelText(/code from the email/i)).toBeInTheDocument());
+  };
+
+  it('a double-pressed Resend fires ONE request — the second press is blocked while the first is in flight', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    await reachAwaitingCode(user);
+
+    let release: (v: unknown) => void = () => {};
+    api.resendEmailChangeCode.mockReturnValue(new Promise((res) => { release = res; }));
+
+    const resend = screen.getByRole('button', { name: 'Resend code' });
+    expect(resend).not.toHaveAttribute('aria-disabled', 'true');
+    await user.click(resend);
+
+    // ANTI-VACUITY: we got past the cooldown guard and actually called the api.
+    expect(api.resendEmailChangeCode).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Resend code' })).toHaveAttribute('aria-disabled', 'true');
+    // DR-C: gated, never natively disabled, and still in the tab order.
+    expect(screen.getByRole('button', { name: 'Resend code' })).not.toHaveAttribute('disabled');
+
+    await user.click(screen.getByRole('button', { name: 'Resend code' }));
+    expect(api.resendEmailChangeCode).toHaveBeenCalledTimes(1);
+
+    release(refused());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Resend code' })).not.toHaveAttribute('aria-disabled', 'true')
+    );
+  });
+
+  it('Discard is blocked while a VERIFY is in flight — the cross-lane guard', async () => {
+    /* The harm this closes: POST /email/cancel revokes the very token the verify is
+       consuming, so an unguarded Discard mid-verify made the server answer "that code
+       isn't right" about a code that WAS right. */
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    await reachAwaitingCode(user);
+
+    let releaseVerify: (v: unknown) => void = () => {};
+    api.verifyEmailChange.mockReturnValue(new Promise((res) => { releaseVerify = res; }));
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    expect(api.verifyEmailChange).toHaveBeenCalledTimes(1);
+
+    const discard = screen.getByRole('button', { name: 'Discard change' });
+    expect(discard).toHaveAttribute('aria-disabled', 'true');
+    expect(discard).not.toHaveAttribute('disabled');
+    await user.click(discard);
+    expect(api.cancelEmailChange).not.toHaveBeenCalled();
+
+    releaseVerify(
+      body({ outcome: 'verified', email: NEW, pending_email_change: null, verification_sent: false, email_changed_at: '2026-09-04T00:00:00.000Z' })
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument());
+  });
+
+  it('a double-pressed Revert fires ONE request', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW({ email_changed_at: '2026-09-04T00:00:00.000Z' })));
+    renderSection();
+
+    let release: (v: unknown) => void = () => {};
+    api.revertEmailToSignIn.mockReturnValue(new Promise((res) => { release = res; }));
+
+    const revert = screen.getByRole('button', { name: 'Use my sign-in address' });
+    await user.click(revert);
+    expect(api.revertEmailToSignIn).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Use my sign-in address' })).toHaveAttribute('aria-disabled', 'true');
+
+    await user.click(screen.getByRole('button', { name: 'Use my sign-in address' }));
+    expect(api.revertEmailToSignIn).toHaveBeenCalledTimes(1);
+
+    release(body({ outcome: 'reverted', email: REAL, pending_email_change: null, verification_sent: false, email_changed_at: null }));
+    await waitFor(() => expect(api.revertEmailToSignIn).toHaveBeenCalledTimes(1));
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Composition + a11y
 // ---------------------------------------------------------------------------
