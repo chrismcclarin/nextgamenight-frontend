@@ -1292,6 +1292,31 @@
   --color-btn-secondary-bg: var(--warm-100);
   --color-btn-secondary-hover: var(--warm-300);
   --color-btn-secondary-text: var(--warm-800);
+  /* DECISION Phase 88.8 code review round 2 HIGH-A (owner ruling 2026-09-05): the GATED
+     state of an `aria-disabled` `.btn` is expressed in COLOUR, on these tokens — chosen OVER
+     the element `opacity: .5` dim that round 1 shipped, which composited the LABEL as well as
+     the fill and put the primary CTA's white text at **2.0974:1** on its own fill (measured:
+     white on purple-600 over the white card, 5.6617 ungated). That was the RESTING state of
+     both new email panels, and WCAG's inactive-component exemption does not apply because
+     DR-C keeps these controls deliberately ACTIVE (focusable, pressable, answering with a
+     message). `tokenContrast.test.ts` could not see it — it reads token pairs, not element
+     opacity — so this is also what lets Gate A assert the gated state at all (test 53).
+     The principle, per variant: the INK recedes to a muted step, and the FILL recedes only
+     where the ungated ink would otherwise lose its floor.
+     MEASURED 2026-09-05 (light): primary gated purple-700 on purple-200 **5.4938**, fill
+     ΔL* 42.93 from the ungated purple-600; secondary gated warm-600 on warm-100 **5.8069**
+     (ink ΔL* 24.10 from warm-800), its ring stepping warm-300 -> warm-200; ghost gated ink
+     is `--color-text-muted` on the card (6.5793), set in `Button.tsx` because ghost has no
+     legacy class and no fill. Accent and danger have NO gated arm yet — zero gated call
+     sites exist for either (verified 2026-09-05: all five are primary/secondary/ghost in
+     `EmailAddressSection.tsx`) — a future gated `.btn-accent`/`.btn-danger` must mint its pair
+     here and its rule beside the others, not fall back to opacity. Full cascade marker at
+     `.btn[aria-disabled='true']`. */
+  --color-btn-primary-gated-bg: var(--purple-200);
+  --color-btn-primary-gated-text: var(--purple-700);
+  --color-btn-secondary-gated-bg: var(--warm-100);
+  --color-btn-secondary-gated-text: var(--warm-600);
+  --color-btn-secondary-gated-border: var(--warm-200);
   /* Phase 88.3-14 (owner ruling 2): the secondary-control RING and its hover step. Bridged as
      `ring-line-control` / `border-line-control` in `@theme inline` above. Dark is `transparent`
      (declared in `.dark`, not omitted, so the 1px is unconditional and the theme toggle shifts
@@ -1599,6 +1624,19 @@
   --color-btn-secondary-bg: var(--purple-800);
   --color-btn-secondary-hover: var(--purple-700);
   --color-btn-secondary-text: var(--warm-200);
+  /* Phase 88.8 round 2 HIGH-A: the dark gated arms. Primary gated is purple-200 on purple-700
+     (**5.4938**) — purple-700 rather than purple-800 ON PURPOSE: purple-800 is the dark
+     `.btn-secondary` resting fill, and a gated Verify (primary) sits beside a promoted Resend
+     (secondary) in the awaiting-code panel, so sharing that fill would make a REFUSING primary
+     read as an ACTIVE secondary. Secondary gated keeps its fill and recedes its ink to warm-400
+     (**4.8815**, ΔL* 19.79 from warm-200); its ring stays `transparent` like
+     `--color-border-control` above (declared, not omitted, so the 1px never shifts). Ghost
+     gated ink is `--color-text-muted` on the card (5.9963). Light marker carries the rule. */
+  --color-btn-primary-gated-bg: var(--purple-700);
+  --color-btn-primary-gated-text: var(--purple-200);
+  --color-btn-secondary-gated-bg: var(--purple-800);
+  --color-btn-secondary-gated-text: var(--warm-400);
+  --color-btn-secondary-gated-border: transparent;
   /* Phase 88.3-14 (owner ruling 2): ruling 2 is LIGHT-ONLY. Dark `.btn-secondary` is `purple-800`
      on a `purple-900` page and already carries a tonal edge, so both control-edge tokens resolve to
      `transparent` here. DECLARED rather than omitted on purpose: that keeps the 1px border
@@ -1933,9 +1971,9 @@ body {
   cursor: not-allowed;
 }
 
-/* DECISION Phase 88.8 (plan 13, DR-C): `.btn[aria-disabled="true"]` MIRRORS
-   `.btn:disabled` above, and the five unlayered `:not(:disabled)` rules below
-   are narrowed to exclude it too — chosen OVER a call-site
+/* DECISION Phase 88.8 (plan 13, DR-C): `.btn[aria-disabled="true"]` takes a GATED
+   treatment of its own, and the five unlayered `:not(:disabled)` rules below are
+   narrowed to exclude it too — chosen OVER a call-site
    `cursor-not-allowed opacity-50` utility pair, which is the obvious fix and
    CANNOT WORK HERE.
 
@@ -1948,11 +1986,11 @@ body {
    (`cursor-not-allowed opacity-50 hover:text-content-muted`), which works there
    only because that `×` is NOT a `.btn`.
 
-   WITHOUT BOTH HALVES an `aria-disabled` button does not dim AND still wins
-   hover highlight and press-dim from the five `:not(:disabled)` rules — so it
-   reads as actively interactive while refusing every press. The `:active` rule
-   is the sharp one: at (0,3,0) it beats a bare (0,2,0) `[aria-disabled]` rule
-   and BRIGHTENS a gated control to `opacity: 0.75` on press.
+   WITHOUT BOTH HALVES an `aria-disabled` button does not read as gated AND still
+   wins hover highlight and press-dim from the five `:not(:disabled)` rules — so
+   it reads as actively interactive while refusing every press. The `:active`
+   rule is the sharp one: at (0,3,0) it beats a bare (0,2,0) `[aria-disabled]`
+   rule and BRIGHTENS a gated control to `opacity: 0.75` on press.
 
    MEASURED BLAST RADIUS AT THE TIME OF THE EDIT (2026-09-04): ZERO shipped
    `.btn` call sites. Only two non-test source files use `aria-disabled` at all —
@@ -1965,30 +2003,56 @@ body {
 
    `aria-disabled` is used rather than the native attribute because a natively
    disabled element leaves the focus order — see the DR-C marker at the bottom of
-   `src/app/components/EmailAddressSection.tsx`. Removing this rule would not
+   `src/app/components/EmailAddressSection.tsx`. Removing these rules would not
    break layout; it would make a gated control look pressable.
 
-   AMENDED 2026-09-05 (code review #34): the dim rule below now carries
-   `:not(:focus-visible)`, which also moves it from (0,2,0) to (0,3,0) — strictly
-   safer against the `:active` rule this block warns about, not weaker. The split
-   exists because element `opacity` multiplies the focus ring too, and halving the
-   ring on a control DR-C deliberately keeps focusable defeats the point of
-   keeping it focusable. */
-.btn[aria-disabled='true']:not(:focus-visible) {
-  opacity: 0.5;
+   AMENDED 2026-09-05 (code review #34): the dim rule gained `:not(:focus-visible)`
+   so element opacity would stop halving the focus ring. SUPERSEDED the same day —
+   kept as history because it explains the shape round 2 found.
+
+   AMENDED 2026-09-05 (code review round 2 HIGH-A, owner ruling): the gated state
+   is NO LONGER an element `opacity` dim at all. `opacity` composites the LABEL
+   with the fill, so a gated `.btn-primary` measured **2.0974:1** (white on
+   purple-600 at .5 over the white card) — the RESTING state of Save and Verify —
+   and the round-1 `:not(:focus-visible)` split left it at full contrast only
+   while focused. `.btn:disabled { opacity: .5 }` above is UNCHANGED and
+   correct: a natively disabled control IS inactive and WCAG 1.4.3 exempts it;
+   an `aria-disabled` control under DR-C is not, and does not.
+
+   The gated state is now COLOUR, one rule per variant on the
+   `--color-btn-*-gated-*` tokens (light marker at `--color-btn-primary-gated-bg`):
+     - `.btn-primary[aria-disabled]`   (0,2,0) beats `.btn-primary` (0,1,0) — fill
+       AND ink swap, because white ink cannot keep 4.5:1 on any lighter fill.
+     - `.btn-secondary[aria-disabled]` (0,2,0) — ink and ring recede, fill stays.
+     - ghost has NO class and NO fill (`Button.tsx`, Tailwind utilities; a grep for
+       `btn-ghost` returns zero) — its gated ink is `aria-disabled:text-content-muted`
+       IN `Button.tsx`, which is alive because `.btn` sets no `color`. Its ground
+       is `--color-bg-card`, named rather than tokenised.
+     - `.btn[aria-disabled]` itself sets ONLY the cursor. REJECTED: one generic
+       unlayered gated colour pair on `.btn[aria-disabled]` — at (0,2,0) it beats
+       every `.btn-*` variant, flattens them to one grey, and gives ghost a fill it
+       must not have. REJECTED: ghost's gated colours as `aria-disabled:bg-*`
+       utilities — dead the moment any unlayered rule sets that property.
+   The focus ring is a Tailwind `box-shadow` utility and no longer interacts with
+   the gated look at all, so the `:focus-visible` split is gone. The hover rules
+   below stay narrowed with `:not([aria-disabled='true'])`; the press rule too.
+   `.btn-accent` / `.btn-danger` carry no gated arm (zero gated call sites) —
+   see the token marker for what a future one must do. Gate A test 53 pins every
+   gated pair AND scans this file for any `aria-disabled` rule that reaches for
+   `opacity` again. */
+.btn[aria-disabled='true'] {
   cursor: not-allowed;
 }
 
-/* A GATED CONTROL AT FULL OPACITY WHILE FOCUSED (code review #34, 2026-09-05).
-   `opacity` on the element multiplies EVERYTHING it paints, the `focus-visible`
-   ring included — and this section's whole DR-C posture is that gated controls
-   stay in the tab order precisely so keyboard and switch users can reach them.
-   Dimming their ring to half strength is the one place that posture undoes
-   itself. `:not(:focus-visible)` keeps the dimmed look everywhere it matters and
-   restores full contrast at the moment the ring has to be seen; the cursor rule
-   rides along, which is correct — a focused control is not being hovered. */
-.btn[aria-disabled='true']:focus-visible {
-  cursor: not-allowed;
+.btn-primary[aria-disabled='true'] {
+  background-color: var(--color-btn-primary-gated-bg);
+  color: var(--color-btn-primary-gated-text);
+}
+
+.btn-secondary[aria-disabled='true'] {
+  background-color: var(--color-btn-secondary-gated-bg);
+  color: var(--color-btn-secondary-gated-text);
+  border-color: var(--color-btn-secondary-gated-border);
 }
 
 /* DECISION Phase 87.8 (D-12): pressed state is an INSTANT OPACITY DIM, chosen OVER a

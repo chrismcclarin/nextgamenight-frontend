@@ -75,8 +75,17 @@ const buttonVariants = cva(
         // UTILITY and sits outside that CSS entirely — so a gated ghost Resend
         // still lit up on hover and read as pressable. The comment was true of
         // the legacy `.btn-*` classes and false of this one.
+        // `aria-disabled:text-content-muted` added 2026-09-05 (code review round 2
+        // HIGH-A): the gated state is COLOUR, not element opacity, for every
+        // variant. primary/secondary get theirs from `.btn-*[aria-disabled]` rules
+        // in globals.css; ghost has no legacy class, so its gated ink lives here.
+        // ALIVE, not dead: `.btn` declares no `color`, so no unlayered rule can
+        // beat this utility (a gated `bg-*` utility WOULD be dead — see the
+        // `.btn[aria-disabled]` marker). Its ground is the card; Gate A test 53
+        // pins `--color-text-muted` on `--color-bg-card` in both themes and scans
+        // this string.
         ghost:
-          'bg-transparent text-content-secondary hover:bg-surface-hover aria-disabled:hover:bg-transparent',
+          'bg-transparent text-content-secondary hover:bg-surface-hover aria-disabled:hover:bg-transparent aria-disabled:text-content-muted',
       },
       size: {
         default: '',
