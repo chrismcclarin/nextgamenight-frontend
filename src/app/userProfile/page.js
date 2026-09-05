@@ -19,6 +19,12 @@ import { formatDate, toLocalDateString } from '../../lib/dateUtils';
 import { formatTime } from '../../lib/datetime';
 import SafeImage from '../components/SafeImage';
 import DangerZoneDeleteAccount from '../components/DangerZoneDeleteAccount';
+// Phase 88.8 plan 13. NO_ADDRESS_ON_FILE is IMPORTED rather than re-spelled: the
+// header below renders the same fixed string as the section does when the
+// resolved address is the provisioning sentinel, and two spellings of one fixed
+// string on one page is the drift this phase keeps finding.
+import { EmailAddressSection, NO_ADDRESS_ON_FILE } from '../components/EmailAddressSection';
+import { isSyntheticAddress } from '../../lib/syntheticAddress';
 import { useTutorial } from '../components/tutorial/TutorialProvider';
 import { useTimezone } from '../components/TimezoneProvider';
 import { useTheme } from 'next-themes';
@@ -1735,6 +1741,17 @@ function Profile(){
                         </div>
                     </div>
                 </div>
+
+                {/* Email (Phase 88.8 plan 13, SPEC R12 / D-29): the address this
+                    app uses to reach you — its OWN top-level card, mounted between
+                    the profile card and the Theme card. The mount is deliberately
+                    THIN: the section owns its own state, its own data (the shared
+                    self row) and its own card chrome, so the page passes nothing.
+                    There is NO return-parameter effect for this feature —
+                    verification completes inline in the section (D-09 as re-ruled
+                    2026-09-03), nothing arrives on this page by URL, and the
+                    ONBD-04 return effect must NOT be cloned for it. */}
+                <EmailAddressSection />
 
                 {/* Theme Setting */}
                 <div className="card p-3 md:p-6 mb-6">

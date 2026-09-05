@@ -1933,6 +1933,45 @@ body {
   cursor: not-allowed;
 }
 
+/* DECISION Phase 88.8 (plan 13, DR-C): `.btn[aria-disabled="true"]` MIRRORS
+   `.btn:disabled` above, and the five unlayered `:not(:disabled)` rules below
+   are narrowed to exclude it too — chosen OVER a call-site
+   `cursor-not-allowed opacity-50` utility pair, which is the obvious fix and
+   CANNOT WORK HERE.
+
+   WHY THE CALL-SITE VERSION LOSES, and it is a cascade fact rather than a
+   preference: `.btn { cursor: pointer }` is authored UNLAYERED, and an unlayered
+   author rule beats EVERY `@layer utilities` rule regardless of specificity —
+   this file states that in its own words at the D-36 marker below. A
+   `cursor-not-allowed` utility at the call site would silently do nothing. The
+   house precedent for the call-site pattern is `Modal.tsx:260`
+   (`cursor-not-allowed opacity-50 hover:text-content-muted`), which works there
+   only because that `×` is NOT a `.btn`.
+
+   WITHOUT BOTH HALVES an `aria-disabled` button does not dim AND still wins
+   hover highlight and press-dim from the five `:not(:disabled)` rules — so it
+   reads as actively interactive while refusing every press. The `:active` rule
+   is the sharp one: at (0,3,0) it beats a bare (0,2,0) `[aria-disabled]` rule
+   and BRIGHTENS a gated control to `opacity: 0.75` on press.
+
+   MEASURED BLAST RADIUS AT THE TIME OF THE EDIT (2026-09-04): ZERO shipped
+   `.btn` call sites. Only two non-test source files use `aria-disabled` at all —
+   `Modal.tsx:255` (a `DialogClose` styled with bare utilities) and
+   `NextGameNightCard.tsx:390` (className `flex-1 min-h-11 px-3 …`) — and
+   NEITHER wears `.btn`. So these edits change the rendered behaviour of exactly
+   zero existing controls; they are forward compatibility for
+   `EmailAddressSection.tsx`, which is the first `.btn` consumer of
+   `aria-disabled`, and for the rest of the Button migration.
+
+   `aria-disabled` is used rather than the native attribute because a natively
+   disabled element leaves the focus order — see the DR-C marker at the bottom of
+   `src/app/components/EmailAddressSection.tsx`. Removing this rule would not
+   break layout; it would make a gated control look pressable. */
+.btn[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* DECISION Phase 87.8 (D-12): pressed state is an INSTANT OPACITY DIM, chosen OVER a
    background-colour swap and OVER a scale/translate press.
    - Background swap loses, MEASURED: `--theme-transition` (declared above — background-color,
@@ -1957,8 +1996,18 @@ body {
    controls — so DESKTOP is still deliberately floorless at ~37px until the Button migration sets
    each height with intent. The full derivation lives at the media block's own marker below; the
    old sentence is amended rather than deleted so a reader who remembers it can find where it went.
+   AMENDED BY PHASE 88.8 (plan 13, DR-C) — the SELECTOR was narrowed, the RULE was
+   not. It now reads `.btn:active:not(:disabled):not([aria-disabled="true"])`, so a
+   control gated with `aria-disabled` no longer brightens to 0.75 on press while
+   refusing the press. The press behaviour of every LIVE button is unchanged, and
+   0.75 is untouched. MEASURED BLAST RADIUS AT THE TIME OF THAT EDIT: zero shipped
+   `.btn` call sites carried `aria-disabled` (the only two users of the attribute,
+   `Modal.tsx:255` and `NextGameNightCard.tsx:390`, are not `.btn`s), so nothing
+   rendered differently on the day it landed. The amendment is recorded here rather
+   than replacing this marker, so a reader who remembers the original selector can
+   see where it went.
    Removing or retuning this press rule is a decision, not a cleanup. */
-.btn:active:not(:disabled) {
+.btn:active:not(:disabled):not([aria-disabled='true']) {
   opacity: 0.75;
 }
 
@@ -1967,7 +2016,7 @@ body {
   color: var(--color-btn-primary-text);
 }
 
-.btn-primary:hover:not(:disabled) {
+.btn-primary:hover:not(:disabled):not([aria-disabled='true']) {
   background-color: var(--color-btn-primary-hover);
 }
 
@@ -2038,7 +2087,7 @@ body {
   color: var(--color-btn-accent-text);
 }
 
-.btn-accent:hover:not(:disabled) {
+.btn-accent:hover:not(:disabled):not([aria-disabled='true']) {
   background-color: var(--color-btn-accent-hover);
 }
 
@@ -2180,7 +2229,7 @@ body {
   border: 1px solid var(--color-border-control);
 }
 
-.btn-secondary:hover:not(:disabled) {
+.btn-secondary:hover:not(:disabled):not([aria-disabled='true']) {
   background-color: var(--color-btn-secondary-hover);
   border-color: var(--color-border-control-hover);
 }
@@ -2190,7 +2239,7 @@ body {
   color: white;
 }
 
-.btn-danger:hover:not(:disabled) {
+.btn-danger:hover:not(:disabled):not([aria-disabled='true']) {
   opacity: 0.9;
 }
 
