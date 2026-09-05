@@ -1321,7 +1321,19 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
    * rejects an all-viewport floor by name and the house phone-only form is
    * `max-md:min-h-11`.
    */
-  test('R4 (SPEC R12): all five Email-section controls measure >= 44x44 at 375px', async ({ page }) => {
+  /* CENSUS SCOPE, CORRECTED 2026-09-05 (code review #39). The title said "all five
+     controls" while the section has SEVEN, so a partial census was reading as a
+     complete gate. "Cancel" is now measured. The seventh — "Use my sign-in address"
+     — is NOT reachable from this fixture and is named here rather than silently
+     omitted: it renders only when `self.email_changed_at` is non-null, which
+     requires a COMPLETED verification, and completing one needs the 8-character
+     code out of a real mail that CI never sends (no provider key, so every send in
+     CI is a refusal). Measuring it needs a seeded already-changed user, which is a
+     fixture change this spec does not own. It carries the same `max-md:min-h-11`
+     as its five measured siblings and is rendered by the same `Button`, so the
+     risk is bounded — but bounded is not measured, and this comment is the record
+     of that difference. */
+  test('R4 (SPEC R12): six of the seven Email-section controls measure >= 44x44 at 375px', async ({ page }) => {
     // Component under test: src/app/components/EmailAddressSection.tsx, mounted on
     // /userProfile between the profile card and the Theme card. Named here as a
     // cross-reference only — every locator below is role + accessible name, per
@@ -1342,6 +1354,12 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     const save = page.getByRole('button', { name: 'Save', exact: true });
     await guardResolved(save, 'the Email section "Save" action (editing state)');
     await assertMin44(save, '"Save" (Email section, editing)');
+
+    // 2b. EDITING — Cancel, Save's sibling in the same row. Added 2026-09-05; it
+    //     was omitted from the original census with no stated reason.
+    const cancel = page.getByRole('button', { name: 'Cancel', exact: true });
+    await guardResolved(cancel, 'the Email section "Cancel" action (editing state)');
+    await assertMin44(cancel, '"Cancel" (Email section, editing)');
 
     // 3. AWAITING-CODE — Verify, Resend code and Discard change. Reached with a
     //    real Save; both response arms land here.

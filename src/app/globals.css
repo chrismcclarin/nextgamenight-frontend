@@ -1966,9 +1966,28 @@ body {
    `aria-disabled` is used rather than the native attribute because a natively
    disabled element leaves the focus order — see the DR-C marker at the bottom of
    `src/app/components/EmailAddressSection.tsx`. Removing this rule would not
-   break layout; it would make a gated control look pressable. */
-.btn[aria-disabled='true'] {
+   break layout; it would make a gated control look pressable.
+
+   AMENDED 2026-09-05 (code review #34): the dim rule below now carries
+   `:not(:focus-visible)`, which also moves it from (0,2,0) to (0,3,0) — strictly
+   safer against the `:active` rule this block warns about, not weaker. The split
+   exists because element `opacity` multiplies the focus ring too, and halving the
+   ring on a control DR-C deliberately keeps focusable defeats the point of
+   keeping it focusable. */
+.btn[aria-disabled='true']:not(:focus-visible) {
   opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* A GATED CONTROL AT FULL OPACITY WHILE FOCUSED (code review #34, 2026-09-05).
+   `opacity` on the element multiplies EVERYTHING it paints, the `focus-visible`
+   ring included — and this section's whole DR-C posture is that gated controls
+   stay in the tab order precisely so keyboard and switch users can reach them.
+   Dimming their ring to half strength is the one place that posture undoes
+   itself. `:not(:focus-visible)` keeps the dimmed look everywhere it matters and
+   restores full contrast at the moment the ring has to be seen; the cursor rule
+   rides along, which is correct — a focused control is not being hovered. */
+.btn[aria-disabled='true']:focus-visible {
   cursor: not-allowed;
 }
 

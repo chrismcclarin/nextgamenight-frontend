@@ -69,8 +69,14 @@ const buttonVariants = cva(
         danger: 'btn-danger',
         // No legacy class exists for ghost, and `.btn` sets no background,
         // so utilities are the correct tool here.
+        // `aria-disabled:hover:` narrowing added 2026-09-05 (code review #37): the
+        // DECISION block in globals.css claims the `:not(:disabled)` hover rules
+        // were narrowed for gated controls, but ghost's hover is a Tailwind
+        // UTILITY and sits outside that CSS entirely — so a gated ghost Resend
+        // still lit up on hover and read as pressable. The comment was true of
+        // the legacy `.btn-*` classes and false of this one.
         ghost:
-          'bg-transparent text-content-secondary hover:bg-surface-hover',
+          'bg-transparent text-content-secondary hover:bg-surface-hover aria-disabled:hover:bg-transparent',
       },
       size: {
         default: '',

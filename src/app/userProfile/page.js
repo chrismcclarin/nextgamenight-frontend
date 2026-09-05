@@ -1532,10 +1532,20 @@ function Profile(){
 
                                     NO_ADDRESS_ON_FILE is IMPORTED from the section, not
                                     re-spelled here — one fixed string, one spelling. */}
+                                {/* FALSY-SAFE (code review #38, 2026-09-05). The FE
+                                    `isSyntheticAddress` returns FALSE for a non-string
+                                    (syntheticAddress.ts — it guards `typeof value !==
+                                    'string'`), unlike the backend's, which treats blank
+                                    as synthetic. So a missing address took the ELSE arm
+                                    and rendered nothing: a blank line here while the
+                                    section below correctly said "No email address on
+                                    file". Same shape as the section's own guard,
+                                    `currentAddress && !currentIsSynthetic`. */}
                                 <p className="text-sm md:text-base text-content-secondary truncate">
-                                    {isSyntheticAddress(self?.email ?? user.email)
-                                        ? NO_ADDRESS_ON_FILE
-                                        : (self?.email ?? user.email)}
+                                    {(() => {
+                                        const addr = self?.email ?? user.email;
+                                        return addr && !isSyntheticAddress(addr) ? addr : NO_ADDRESS_ON_FILE;
+                                    })()}
                                 </p>
                                 {userData?.username && userData.username !== user.name && (
                                     <p className="text-xs text-content-muted mt-1">

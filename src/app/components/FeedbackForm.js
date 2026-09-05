@@ -18,7 +18,24 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
   // This component is mounted only while the modal is open (Footer.js:173-175),
   // so the hook costs one already-deduplicated query at most; logged out it does
   // not fire at all (`enabled: Boolean(user?.sub)`).
-  const { self } = useSelfIdentity();
+  const { self, query: selfQuery } = useSelfIdentity();
+  /* HOLD SUBMIT UNTIL THE SELF ROW LANDS (code review #7/#17, 2026-09-05). The
+     contact handle moved from the immediately-available Auth0 session claim to an
+     ASYNC react-query fetch, so a fast submit filed the row with `user_email:
+     null` — a signed-in reporter silently losing their reply-to, with no signal
+     anywhere. It matters most at the SECOND mount site the original change did not
+     enumerate: `FetchErrorBanner.tsx` opens this form on a failed fetch, and on
+     that path the self row is by definition not resolved.
+     THE PREDICATE IS `isFetching`, NOT `isPending`, and that distinction is the
+     whole correctness of this guard: in react-query v5 a DISABLED query still
+     reports `isPending: true` (pending means "no data", not "working"), so keying
+     on it disabled the submit button forever for every logged-OUT reporter — the
+     hook is `enabled: Boolean(user?.sub)`. Caught by three existing
+     FeedbackForm tests. `isFetching` is true only while a request is actually in
+     flight, which is exactly the window this guard exists for; disabled and
+     settled both read false, so the logged-out path files with a null handle as
+     it always has. */
+  const selfNotReady = selfQuery.isFetching;
   const [type, setType] = useState(initialType);
   const [subject, setSubject] = useState(initialSubject);
   const [description, setDescription] = useState(initialDescription);
@@ -304,7 +321,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
             </button>
             <button
               type="submit"
-              disabled={submitting || !subject.trim() || !description.trim()}
+              disabled={submitting || selfNotReady || !subject.trim() || !description.trim()}
               className="btn btn-primary"
             >
               {submitting ? 'Submitting...' : 'Submit'}
