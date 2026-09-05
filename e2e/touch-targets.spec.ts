@@ -24,10 +24,19 @@ import { attachDiagnostics, probeOverflowCulprits, probeViewport } from './suppo
  * per-site `active:opacity-75` utilities fire on :active, which touch does drive.
  *
  * MECHANISM UNDER TEST (R4): each census CTA grows from a PER-CTA `min-h-11` utility
- * added at its own call site by plan 87.8-01 Task 2(a) — NOT from any global `.btn`
- * rule. `.btn` (globals.css:756-767) declares no min-height and no height, which is
- * exactly why the layered utility applies. If a geometry assertion fails, the failure
- * is at that call site's className, not in globals.css.
+ * added at its own call site by plan 87.8-01 Task 2(a). If a geometry assertion fails,
+ * look first at that call site's className.
+ *
+ * CORRECTED Phase 88.8 plan 13 (comment only, no behavioural change). This paragraph
+ * previously read "`.btn` (globals.css:756-767) declares no min-height and no height",
+ * and BOTH halves are now wrong: `.btn` lives near `globals.css:1917`, and Phase 88-01
+ * (D-36) later added a PHONE-WIDTH `min-height: 2.75rem` floor at `globals.css:2227-2231`.
+ * An executor reading the stale claim would reasonably conclude the floor does not exist
+ * and add a redundant utility — and the house phone-only form is `max-md:min-h-11`, never
+ * a bare `min-h-11` (the D-36 block rejects an all-viewport floor by name because it
+ * deforms the `w-8 h-8` steppers). The `D-36:` test below is the one that measures the
+ * floor itself; the per-CTA utility is still what holds the census CTAs above it on
+ * DESKTOP, where `.btn` is deliberately floorless.
  *
  * CENSUS SOURCE: the SPEC R4 re-census list in 87.8-01-SUMMARY.md (8 CTAs, file:line +
  * text per row). This spec asserts every phone-reachable census CTA, not a hardcoded
@@ -1268,5 +1277,118 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       12,
       probe.diagnostics,
     );
+  });
+
+  /**
+   * DECISION Phase 88.8 DR-A: the 44x44 proof for the Email section is PLAYWRIGHT
+   * GEOMETRY here, chosen OVER a vitest `min-height`/`min-width` assertion in the
+   * section's colocated suite. The rejected option is not merely weaker — it cannot
+   * measure anything. `vitest.config.mts:56` is `environment: 'jsdom'` with no `css`
+   * key; `vitest.setup.ts` loads jest-dom, axe and a `matchMedia` stub only; and the
+   * 44px floor lives in a MEDIA-QUERY rule (`globals.css:2227-2231`). In this repo's
+   * own jsdom the media rule never applies, the window is 1024px rather than 375px,
+   * `getBoundingClientRect()` returns all zeros and `parseFloat` yields `NaN` — at
+   * which point an executor lands on the meaningless-but-green class-string assertion
+   * that eleven shipped tests already use. `src/app/components/controlSizeFloor.test.tsx`
+   * carries an explicit shipped REFUSAL to do this: "Deliberately NOT asserted here:
+   * the 44px touch-target floor ... Adding a height assertion to this file would smuggle
+   * that decision in." The SPEC names the browser project three times as the proof
+   * mechanism and vitest zero times. Do not move this back into vitest.
+   *
+   * EVERY CONTROL IN THE SECTION IS REACHABLE NOW, which is a change worth recording.
+   * Under the pre-A12 design the `Change` action lived in a verified state CI could not
+   * reach without minting a live code, so it was routed to Phase 88.6 as UNMEASURED.
+   * After SPEC A12 the IDLE state is the default and `Change` is the first thing on
+   * screen, so all five phone-reachable controls are measured here.
+   *
+   * NO MAIL, NO BACKEND CHANGE, NO FIXTURE EDIT AND NO `page.route` (this suite has zero
+   * `page.route` usage today). Both response arms of Save render the SAME three controls:
+   * the send-success arm and the provider-refused arm (`verification_sent: false`) both
+   * land in awaiting-code, the second with an error banner and Resend promoted. So the
+   * test is provider-agnostic by construction — `services/emailService.js` no-ops without
+   * `RESEND_API_KEY`, and `.github/workflows/ci.yml` references no mail provider at all.
+   *
+   * SEQUENCING — this test drives LIVE backend endpoints, so it cannot pass until the
+   * backend is merged. `ci.yml` resolves the e2e job's backend checkout as
+   * `${{ github.event.inputs.backend-ref || 'main' }}`, so a default run pins the backend
+   * to `main`. Plan 14 merges the backend FIRST, so by the time the frontend PR merges,
+   * `main` does carry plan 09's endpoints — but the frontend PR's OWN CI may have run
+   * BEFORE that backend merge, in which case this test is red for a reason that is not a
+   * defect. Re-run the frontend PR's e2e after the backend merge, or dispatch it with
+   * `backend-ref` pointed at the backend branch (the established cross-repo pattern).
+   * Do NOT "fix" a pre-merge red by weakening the assertion or skipping the test, and do
+   * NOT "repair" a genuine red by adding a bare `min-h-11` — `globals.css:2197-2226`
+   * rejects an all-viewport floor by name and the house phone-only form is
+   * `max-md:min-h-11`.
+   */
+  /* CENSUS SCOPE, CORRECTED 2026-09-05 (code review #39). The title said "all five
+     controls" while the section has SEVEN, so a partial census was reading as a
+     complete gate. "Cancel" is now measured. The seventh — "Use my sign-in address"
+     — is NOT reachable from this fixture and is named here rather than silently
+     omitted: it renders only when `self.email_changed_at` is non-null, which
+     requires a COMPLETED verification, and completing one needs the 8-character
+     code out of a real mail that CI never sends (no provider key, so every send in
+     CI is a refusal). Measuring it needs a seeded already-changed user, which is a
+     fixture change this spec does not own. It carries the same `max-md:min-h-11`
+     as its five measured siblings and is rendered by the same `Button`, so the
+     risk is bounded — but bounded is not measured, and this comment is the record
+     of that difference. */
+  test('R4 (SPEC R12): six of the seven Email-section controls measure >= 44x44 at 375px', async ({ page }) => {
+    // Component under test: src/app/components/EmailAddressSection.tsx, mounted on
+    // /userProfile between the profile card and the Theme card. Named here as a
+    // cross-reference only — every locator below is role + accessible name, per
+    // this file's selector policy.
+    await page.goto('/userProfile');
+    await assertDarkTheme(page);
+
+    // Selectors are role + accessible name ONLY, per this file's stated policy.
+    // 1. IDLE — Change is the default-state control after SPEC A12.
+    const change = page.getByRole('button', { name: 'Change', exact: true });
+    await guardResolved(change, 'the Email section "Change" action (idle state)');
+    await assertMin44(change, '"Change" (Email section, idle)');
+
+    // 2. EDITING — Save. It carries `aria-disabled` while the field is empty and
+    //    is deliberately NOT natively disabled (DR-C), so it is present and
+    //    measurable from the moment the editing state renders.
+    await change.click();
+    const save = page.getByRole('button', { name: 'Save', exact: true });
+    await guardResolved(save, 'the Email section "Save" action (editing state)');
+    await assertMin44(save, '"Save" (Email section, editing)');
+
+    // 2b. EDITING — Cancel, Save's sibling in the same row. Added 2026-09-05; it
+    //     was omitted from the original census with no stated reason.
+    const cancel = page.getByRole('button', { name: 'Cancel', exact: true });
+    await guardResolved(cancel, 'the Email section "Cancel" action (editing state)');
+    await assertMin44(cancel, '"Cancel" (Email section, editing)');
+
+    // 3. AWAITING-CODE — Verify, Resend code and Discard change. Reached with a
+    //    real Save; both response arms land here.
+    await page.getByLabel(/new email address/i).fill('e2e-email-census@example.com');
+    await save.click();
+
+    const verify = page.getByRole('button', { name: 'Verify', exact: true });
+    await guardResolved(verify, 'the Email section "Verify" action (awaiting-code state)');
+    await assertMin44(verify, '"Verify" (Email section, awaiting-code)');
+
+    const resend = page.getByRole('button', { name: 'Resend code', exact: true });
+    await guardResolved(resend, 'the Email section "Resend code" action');
+    await assertMin44(resend, '"Resend code" (Email section, awaiting-code)');
+
+    const discard = page.getByRole('button', { name: 'Discard change', exact: true });
+    await guardResolved(discard, 'the Email section "Discard change" action');
+    await assertMin44(discard, '"Discard change" (Email section, awaiting-code)');
+
+    // 4. RETURN THE FIXTURE TO IDLE. This is NOT optional housekeeping, and the
+    //    reason became LITERALLY true on 2026-09-04 rather than nearly true.
+    //    CI names no mail provider and `emailService.js` no-ops without a key, so
+    //    every send in CI is a provider refusal. Under plan 09's PREVIOUS
+    //    behaviour a refused send DESTROYED its token, so the fixture self-cleaned
+    //    and this step was belt-and-braces. The owner's 2026-09-04 ruling KEEPS
+    //    the token on a refusal, so the row now genuinely survives the run and
+    //    genuinely re-hydrates the section into awaiting-code for every later spec
+    //    that opens this page. Plan 09's cancel route exists for exactly this.
+    //    Removing this step is a decision, not a cleanup.
+    await discard.click();
+    await expect(page.getByRole('button', { name: 'Change', exact: true })).toBeVisible();
   });
 });

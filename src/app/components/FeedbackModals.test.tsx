@@ -28,6 +28,22 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
+// Phase 88.8 plan 13 Task 3(b): FeedbackForm now reads the contact handle off
+// the shared self row. This suite is about the MODAL migration, not identity, so
+// the hook is stubbed rather than wrapping every render in a QueryClientProvider
+// — without it `useQueryClient` throws and all four FeedbackForm cases fail for
+// a reason that has nothing to do with what they assert. The address behaviour
+// itself is pinned in FeedbackForm.test.tsx.
+vi.mock('@/lib/hooks/useSelfIdentity', () => ({
+  SELF_IDENTITY_KEY: ['users', 'self'],
+  useSelfIdentity: () => ({
+    self: { id: 'u-1', email: 'self@example.test' },
+    selfUuid: 'u-1',
+    query: { isError: false, error: null, isPending: false, refetch: vi.fn() },
+    isPending: false,
+  }),
+}));
+
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>();
   return {
@@ -40,6 +56,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
   };
 });
 
+import { feedbackAPI } from '@/lib/api';
 import FeedbackButton from './FeedbackButton';
 import FeedbackForm from './FeedbackForm';
 import { FeedbackModalProvider } from './FeedbackModalProvider';
@@ -139,5 +156,35 @@ describe('FeedbackForm — Req 9 modal migration proof (both states)', () => {
     // the DialogTitle, which is the ONLY thing giving it an accessible name.
     const dialog = await screen.findByRole('dialog', { name: 'Thank You!' });
     expect(await axe(dialog)).toHaveNoViolations();
+  });
+});
+
+/**
+ * Phase 88.8 plan 13 Task 3(c) — FeedbackButton sends NO address at all.
+ *
+ * The defect originates in a CLIENT asserting an identity the server already
+ * owns, on a route that is already behind the auth gate. `88.8-09-PLAN.md`
+ * Task 4 derives `user_email` server-side from `Users.email` — correct by
+ * construction and strictly better than any client value.
+ */
+describe('FeedbackButton — the request body carries no address key (88.8 R12)', () => {
+  it('submits an EXACT key set with no address field of any spelling', async () => {
+    const user = await openFeedbackModal();
+    await screen.findByRole('dialog');
+    await user.type(
+      screen.getByPlaceholderText(/what happened|tell us|describe/i),
+      'Something went wrong on this page.'
+    );
+    await user.click(screen.getByRole('button', { name: /^Send$|^Submit$/i }));
+
+    await waitFor(() => expect(feedbackAPI.submitGitHubFeedback).toHaveBeenCalled());
+    const arg = (feedbackAPI.submitGitHubFeedback as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    // An EXACT key-set assertion, not a `toBeUndefined` — a RENAMED field
+    // (`email`, `contactEmail`) would pass the weaker form.
+    expect(Object.keys(arg).sort()).toEqual(
+      ['category', 'label', 'pageUrl', 'text', 'userAgent', 'userName'].sort()
+    );
+    // userName is DELIBERATELY kept: it is a display name, not a contact handle.
+    expect(arg.userName).toBe('Self');
   });
 });

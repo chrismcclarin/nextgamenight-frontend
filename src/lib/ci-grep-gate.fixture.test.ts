@@ -525,6 +525,17 @@ describe('Req 19 / gate-hygiene — the drift-gate registry step (parsed from ci
       'src/app/borderExplicitness.test.ts', //           Req 16 — explicit border colours
       'src/app/tintTreatment.test.ts', //                Req 17 — opaque tints
       'src/app/focusAndMotionTreatment.test.ts', //      Req 4  — focus + reduced motion
+      // Phase 88.8 plan 13 (owner ruling 2026-09-04). NAMED here, not merely present
+      // as a registry row, for the same reason every other file on this list is: a
+      // count is satisfiable by any N rows, so a row that gets dropped while another
+      // is added would pass the count test above. This suite is the ONLY thing in
+      // either repo pinning the BROAD `@auth0` test (DECISION Phase 88.2 NIX-AUTH0)
+      // against a narrowing to `@auth0.local`, and a narrowed helper silently puts
+      // the provisioning sentinel into the profile header, into the Email section
+      // and into the admin mail's Reply-To. `colourDistance.test.ts` carries the same
+      // cross-repo-guard argument (Amendment Z) and is NOT named here; that is a gap
+      // in the earlier amendment rather than a precedent to copy.
+      'src/lib/syntheticAddress.test.ts', //             Phase 88.8 R12 — the broad @auth0 guard
       'src/test-utils/sourceScan.ts', //                 the scanner all of them share
     ]) {
       expect(files, `registry lost ${required}`).toContain(required);

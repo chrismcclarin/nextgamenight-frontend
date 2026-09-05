@@ -408,10 +408,18 @@ test.describe('SPEC R2 — horizontal padding budget on the eight walked surface
   test('userProfile theme card: padding chain stays within budget', async ({ page }) => {
     await page.goto('/userProfile');
 
-    // Anchor: the "Theme" <h2> (userProfile/page.js:1510) inside the `card p-3 md:p-6`
-    // at :1509. Unconditional — it renders for every authenticated user, unlike the
-    // SMS block (entitlement-gated) or the Google Calendar block (connection-state
+    // Anchor: the "Theme" <h2> inside its `card p-3 md:p-6`. Unconditional — it
+    // renders for every authenticated user, unlike the SMS block
+    // (entitlement-gated) or the Google Calendar block (connection-state
     // dependent), either of which would make this test fixture-fragile.
+    //
+    // CORRECTED Phase 88.8 plan 13 (comment only, no behavioural change). This
+    // comment cited `userProfile/page.js:1510` / `:1509`; the real positions were
+    // already `:1741` / `:1740` before this plan and have moved again since, because
+    // plan 13 mounts the new Email card immediately ABOVE this one. The test itself
+    // locates by role and accessible name, so it was never affected — but a stale
+    // line anchor sends the next reader to the wrong element, which is how anchor
+    // drift bit this phase six times. Line numbers are deliberately not restated.
     const anchor = page.getByRole('heading', { name: 'Theme', exact: true });
     await expect(anchor).toBeVisible({ timeout: 15_000 });
 

@@ -1348,4 +1348,105 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
       expect(hex, `88.5 — anti-vacuity: the fork comparison resolved "${hex}"`).toMatch(/^#[0-9a-f]{6}$/i);
     }
   });
+
+  // ===================================================================================
+  // Phase 88.8 — the GATED (`aria-disabled`) button state (code review round 2 HIGH-A,
+  // owner ruling 2026-09-05: colour, not element opacity)
+  //
+  // WHY THIS ROW EXISTS: round 1 shipped the gated state as `.btn[aria-disabled] { opacity: .5 }`.
+  // `opacity` composites the LABEL with the fill, so the primary CTA's white ink measured
+  // 2.0974:1 on its own fill — the RESTING state of Save and Verify — while test 31 sat GREEN
+  // on the same pair, because this file reads TOKENS and cannot see an element-level opacity.
+  // The fix moved the state onto `--color-btn-*-gated-*` tokens, which is what makes it
+  // assertable here at all. Two halves: (a) every gated pair clears the floor in both themes,
+  // (b) a SOURCE SCAN that no `aria-disabled` rule in globals.css reaches for `opacity` again —
+  // because the token pins alone would stay green if someone re-added the dim beside them.
+  // ===================================================================================
+
+  it('53. 88.8 HIGH-A — every GATED button pair clears 4.5:1 in BOTH themes, the gated fill is visibly distinct, and no aria-disabled rule uses opacity', () => {
+    for (const theme of ['light', 'dark'] as const) {
+      // Primary: fill AND ink swap (white ink cannot keep 4.5 on any lighter fill).
+      expectRatio(theme, '--color-btn-primary-gated-text', '--color-btn-primary-gated-bg', 4.5, '88.8 HIGH-A / gated primary label');
+      // The gated primary fill must read as a DIFFERENT control from the ungated one — the whole
+      // point of the state. ΔL* floor 8 is under both measured arms (light 42.93, dark 8.63) and
+      // above what a theme-transition rounding could produce.
+      expectDelta(theme, '--color-btn-primary-gated-bg', '--color-btn-primary-bg', 8, '88.8 HIGH-A / gated primary fill vs resting fill');
+      // Secondary: ink recedes, fill stays.
+      expectRatio(theme, '--color-btn-secondary-gated-text', '--color-btn-secondary-gated-bg', 4.5, '88.8 HIGH-A / gated secondary label');
+      expectDelta(theme, '--color-btn-secondary-gated-text', '--color-btn-secondary-text', 8, '88.8 HIGH-A / gated secondary ink vs resting ink');
+      // Ghost has no class and no fill: its gated ink is `text-content-muted` on the CARD ground
+      // (the ground is named, not tokenised — there is no `--color-btn-ghost-*` and a
+      // `transparent` row would throw in resolve()).
+      expectRatio(theme, '--color-text-muted', '--color-bg-card', 4.5, '88.8 HIGH-A / gated ghost label on the card');
+    }
+    // The dark primary gated fill is DELIBERATELY not the dark secondary resting fill: a gated
+    // Verify (primary) sits beside a promoted Resend (secondary) in the awaiting-code panel, and a
+    // shared fill would make a REFUSING primary read as an ACTIVE secondary.
+    expect(
+      resolve('dark', '--color-btn-primary-gated-bg'),
+      '88.8 HIGH-A — dark --color-btn-primary-gated-bg must NOT equal dark --color-btn-secondary-bg (see the .dark token marker)',
+    ).not.toBe(resolve('dark', '--color-btn-secondary-bg'));
+
+    // (b) SOURCE SCAN on the comment-masked stylesheet: every rule whose selector mentions
+    // `aria-disabled` and whose body sets `opacity`. `.btn:disabled { opacity: .5 }` is NOT
+    // matched — it is the native attribute, WCAG-exempt, and deliberately unchanged.
+    // A selector that only EXCLUDES the state — `:not([aria-disabled='true'])`, the narrowed
+    // hover/press rules — is not a gated rule; the `:not(...)` clauses are stripped before the
+    // test so those five rules stay out of the offender list.
+    const offenders: string[] = [];
+    for (const m of MASKED.matchAll(/([^{}]*\[aria-disabled[^{}]*)\{([^}]*)\}/g)) {
+      const positive = m[1].replace(/:not\([^)]*\)/g, '');
+      if (/\[aria-disabled/.test(positive) && /\bopacity\s*:/.test(m[2])) offenders.push(m[1].trim());
+    }
+    expect(
+      offenders,
+      `88.8 HIGH-A — an aria-disabled rule sets opacity again: ${offenders.join(' | ')}. Element opacity composites the label with the fill; the gated state is COLOUR (see the .btn[aria-disabled] marker)`,
+    ).toEqual([]);
+    // Anti-vacuity: the three gated colour rules must exist, so an empty offender list is not
+    // the result of the rules having been deleted wholesale.
+    for (const sel of [".btn[aria-disabled='true']", ".btn-primary[aria-disabled='true']", ".btn-secondary[aria-disabled='true']"]) {
+      expect(MASKED, `88.8 HIGH-A — expected the rule \`${sel}\` in globals.css`).toContain(`${sel} {`);
+    }
+
+    // (b2) Round 3 #39: the SAME principle one primitive over. Scan every non-test source
+    // file under src/ for an `opacity-<n>` utility within 400 characters AFTER an
+    // `aria-disabled=` attribute — the shape Modal.tsx's close glyph shipped
+    // (`aria-disabled={closeDisabled}` … `closeDisabled && 'cursor-not-allowed opacity-50'`).
+    // A heuristic window, stated as such: it catches the pattern as written in this repo
+    // (attribute, then the gated class string a few lines below) and reds loudly on a false
+    // positive, which is the right direction for a contrast gate. Variant-prefixed utilities
+    // are NOT offenders: `active:opacity-75` is the recorded PRESS dim (87.8 D-12, an
+    // instant opacity dim on an ~80ms tap, deliberately), and `disabled:opacity-*` is the
+    // native, WCAG-exempt state — only a BARE `opacity-<n>` applied to a gated control is.
+    const SRC_ROOT = path.join(__dirname, '..');
+    const srcFiles = fs
+      .readdirSync(SRC_ROOT, { recursive: true, withFileTypes: true })
+      .filter((d) => d.isFile() && /\.(tsx|jsx|js|ts)$/.test(d.name) && !/\.test\./.test(d.name))
+      .map((d) => path.join(d.parentPath ?? d.path, d.name));
+    expect(srcFiles.length, 'anti-vacuity: the src/** walk found no source files').toBeGreaterThan(50);
+    const utilityOffenders: string[] = [];
+    for (const file of srcFiles) {
+      const text = fs.readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, '');
+      for (const m of text.matchAll(/aria-disabled=/g)) {
+        const window = text.slice(m.index, m.index + 400);
+        const hit = /(?<![\w:-])opacity-\d+\b/.exec(window);
+        if (hit) utilityOffenders.push(`${path.relative(SRC_ROOT, file)} (${hit[0]})`);
+      }
+    }
+    expect(
+      utilityOffenders,
+      `88.8 round 3 #39 — an aria-disabled control pairs with an opacity utility: ${utilityOffenders.join(' | ')}. Element opacity composites the label with the ground; express the gated state in colour`,
+    ).toEqual([]);
+
+    // (c) Ghost's gated ink lives in Button.tsx as a utility (alive because `.btn` sets no
+    // `color`). Scan the ghost variant string for it, comments stripped.
+    const buttonSrc = fs
+      .readFileSync(path.join(__dirname, '..', 'components', 'ui', 'Button.tsx'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/^[ \t]*\/\/.*$/gm, '');
+    const ghostLine = /ghost:\s*'([^']*)'/.exec(buttonSrc);
+    expect(ghostLine, '88.8 HIGH-A — LOCATOR failure: no `ghost: \'…\'` variant string found in Button.tsx').not.toBeNull();
+    expect(ghostLine![1], '88.8 HIGH-A — the ghost variant must carry `aria-disabled:text-content-muted`').toContain('aria-disabled:text-content-muted');
+    expect(ghostLine![1], '88.8 HIGH-A — the ghost variant must NOT carry an `aria-disabled:opacity-*` utility').not.toMatch(/aria-disabled:opacity/);
+  });
 });
