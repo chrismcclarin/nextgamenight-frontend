@@ -72,6 +72,7 @@ import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import { ApiError, usersAPI } from '@/lib/api';
 import { patchSelfCache } from '@/lib/hooks/selfIdentityCache';
 import { useSelfIdentity } from '@/lib/hooks/useSelfIdentity';
+import { EmailChangeResponseSchema } from '@/lib/schemas/users';
 import type { EmailChangeResponse } from '@/lib/schemas/users';
 import { isSyntheticAddress } from '@/lib/syntheticAddress';
 
@@ -121,6 +122,7 @@ const RESEND_COOLDOWN_ERROR = 'You can ask for another code in a moment';
 const MAIL_REFUSED_COPY =
   "We couldn't send the code just now. Your change is still waiting — use Resend code to try again.";
 const UNCHANGED_COPY = "That's already the address we use for you";
+const PENDING_ADDRESS_LABEL = 'The address waiting to be verified';
 const CODE_FORMAT_HINT = '8 characters, letters and numbers. Dashes are optional.';
 const REVERT_HELPER = 'This puts your address back to the one you sign in with.';
 
@@ -162,7 +164,14 @@ export type CodeCheck = 'ok' | 'incomplete' | 'out-of-alphabet';
 
 export function checkCode(raw: string): CodeCheck {
   const normalised = normaliseEmailChangeCode(raw);
-  if (normalised.length < CODE_LENGTH) return 'incomplete';
+  // LENGTH IS TESTED FIRST AND ON BOTH SIDES (code review #8, 2026-09-05). This
+  // read `< CODE_LENGTH`, so nine VALID symbols — reachable, the input allows
+  // maxLength 9 — fell through to the alphabet test, which is an exact `{8}`
+  // match, and the user was told "That code has a character we don't use" about
+  // a code containing no such character. The wrong-length message is the honest
+  // one for both too-short and too-long; the alphabet message now fires only
+  // when the alphabet is genuinely the problem.
+  if (normalised.length !== CODE_LENGTH) return 'incomplete';
   if (!CODE_ALPHABET.test(normalised)) return 'out-of-alphabet';
   return 'ok';
 }
@@ -203,7 +212,17 @@ function isRateLimited(error: unknown): boolean {
  * absence of a key means something entirely different.
  */
 function isUsableMutationBody(body: EmailChangeResponse | undefined | null): boolean {
-  return Boolean(body && typeof body.email === 'string' && body.email.length > 0);
+  /* RUNTIME-VALIDATED SINCE 2026-09-05 (code review #16). The schema block in
+     `lib/schemas/users.ts` says a `switch` here that misses an outcome literal is
+     "a TYPE error rather than a runtime fall-through" — but that only holds if the
+     value actually IS the declared type, and nothing checked. `apiFetch<T>` is a
+     generic CAST, not a parse (`lib/api.ts:848`), and `EmailChangeResponseSchema`
+     had zero call sites in the repo. So the stated safety net did not exist: a
+     ninth outcome literal, or a body missing `verification_sent`, reached the UI
+     unchallenged — exactly the silent fall-through the comment claims is
+     impossible. Parsing here rather than in `lib/api.ts` keeps the blast radius at
+     this one section instead of every apiFetch consumer. */
+  return EmailChangeResponseSchema.safeParse(body).success && (body?.email?.length ?? 0) > 0;
 }
 
 export function EmailAddressSection() {
@@ -233,6 +252,36 @@ export function EmailAddressSection() {
      blocked in the HANDLER and the control stays MOUNTED and focusable under
      `aria-disabled`; it never carries the native `disabled` attribute. */
   const [busy, setBusy] = React.useState<null | 'resend' | 'discard' | 'revert'>(null);
+  /* ONE ALWAYS-MOUNTED ANNOUNCEMENT LANE (code review #32/#33, 2026-09-05).
+     `StatusRegion`'s own contract is EMPTY-FIRST — "screen readers announce
+     CHANGES to a live region, not the conditional mount of a new one"
+     (StatusRegion.tsx docblock). Both of this section's live surfaces broke it by
+     being conditionally mounted WITH their content already present: the sent-code
+     line lives inside the `inAwaiting &&` block, and the `unchanged` Banner is
+     `{notice && <Banner …>}`. So pressing Save and landing on "That's already the
+     address we use for you" announced NOTHING (WCAG 4.1.3), and neither did the
+     first "We sent a code to …".
+     This region is mounted for the section's whole life and is the ONLY thing that
+     speaks; the visible sent-line and Banner keep their look and are no longer
+     relied on to announce. Chosen OVER making `Banner` itself always-mounted,
+     which would paint an empty coloured box, and OVER changing the `Banner`
+     primitive to take a `live={false}` prop — Banner has consumers well outside
+     this phase and that is a shared-surface change this finding does not justify. */
+  const [announcement, setAnnouncement] = React.useState('');
+  /* A REPEAT Resend re-set a byte-identical string, so React rendered nothing and
+     the region never changed — the second half of #32. Handled by giving Resend
+     its own wording (`We sent a NEW code to …`) rather than by a clear-then-set
+     timer: a timer would make every announcement asynchronous, which is worse to
+     test and worse to reason about, for a case the 30-second cooldown already
+     rate-limits. RESIDUAL, stated rather than hidden: two resends to the SAME
+     address more than 30s apart announce identical text, and the second is
+     silent. The visible line and the toast still change. */
+  const announce = setAnnouncement;
+  /* Failures of Resend / Discard / Revert used to be written into `codeError`,
+     which `FormField` turns into `aria-invalid="true"` on the code input — marking
+     a field the user has not mistyped, and often has not touched (code review #35).
+     Those failures are about the ACTION, not the field, so they get their own lane. */
+  const [actionError, setActionError] = React.useState<string | null>(null);
   const mutating = busy !== null || state === 'saving' || state === 'verifying';
   const [focusTarget, setFocusTarget] = React.useState<FocusTarget>(null);
 
@@ -266,7 +315,18 @@ export function EmailAddressSection() {
   const selfId = self?.id;
   const currentAddress = self?.email ?? null;
   const currentIsSynthetic = isSyntheticAddress(currentAddress);
-  const pendingAddress = self?.pending_email_change?.address ?? null;
+  /* SURVIVES A NULL CACHE PATCH (code review #1, 2026-09-05). On `outcome:
+     'expired'` the server's body carries `pending_email_change: null` — its loader
+     filters on `expires_at > now()`, and an expired row fails that — and
+     `applyToCache` writes that null into the immortal self cache. The awaiting
+     panel then rendered "Not verified yet" above an EMPTY address line at the exact
+     moment the user is being asked to re-verify that address. Remembering the last
+     non-null value keeps the address on screen; the cache stays the source of
+     truth whenever it HAS one. */
+  const livePendingAddress = self?.pending_email_change?.address ?? null;
+  const lastPendingAddressRef = React.useRef<string | null>(null);
+  if (livePendingAddress) lastPendingAddressRef.current = livePendingAddress;
+  const pendingAddress = livePendingAddress ?? lastPendingAddressRef.current;
   const hasChangedBefore = Boolean(self?.email_changed_at);
 
   /* ── HYDRATION, ONE SHOT ──────────────────────────────────────────────────
@@ -472,10 +532,22 @@ export function EmailAddressSection() {
       applyToCache(body);
 
       if (body.outcome === 'unchanged') {
-        setState('idle');
+        /* STAY IN awaiting-code IF A CHANGE IS STILL PENDING (code review #5,
+           2026-09-05). The server deliberately leaves an existing pending change
+           alone on this outcome (`88.8-09-PLAN.md:202`, and revoking it would
+           destroy a live verification on an ambiguous signal) — but the section
+           used to drop to idle anyway while writing that still-live
+           `pending_email_change` into the immortal self cache. The user read
+           "cancelled"; the system meant "still pending"; and the one-shot
+           hydration effect put the section back into awaiting-code for that other
+           address on the next mount. The server was truthful and the client was
+           not, so the client is what changed. */
+        const stillPending = Boolean(body.pending_email_change);
+        setState(stillPending ? 'awaiting-code' : 'idle');
         setNotice({ tone: 'info', text: UNCHANGED_COPY });
+        announce(UNCHANGED_COPY);
         setSentLine(null);
-        setFocusTarget('change');
+        setFocusTarget(stillPending ? 'code' : 'change');
         return;
       }
       if (body.outcome === 'code_sent') {
@@ -484,7 +556,9 @@ export function EmailAddressSection() {
         clearCodeField();
         setCodeError(null);
         if (body.verification_sent) {
-          setSentLine(`We sent a code to ${body.pending_email_change?.address ?? value}`);
+          const line = `We sent a code to ${body.pending_email_change?.address ?? value}`;
+          setSentLine(line);
+          announce(line);
           setNotice(null);
           setResendPromoted(false);
           startCooldown();
@@ -493,6 +567,7 @@ export function EmailAddressSection() {
           // survives (the owner's 2026-09-04 ruling) so Resend is the remedy.
           setSentLine(null);
           setNotice({ tone: 'error', text: MAIL_REFUSED_COPY });
+          announce(MAIL_REFUSED_COPY);
           setResendPromoted(true);
         }
         setFocusTarget('code');
@@ -574,34 +649,37 @@ export function EmailAddressSection() {
   const handleResend = async () => {
     if (mutating) return;
     if (cooldown) {
-      setCodeError(RESEND_COOLDOWN_ERROR);
+      setActionError(RESEND_COOLDOWN_ERROR);
       return;
     }
     if (!selfId) return;
-    setCodeError(null);
+    setActionError(null);
     setBusy('resend');
     try {
       const body = await usersAPI.resendEmailChangeCode(selfId);
       if (!isUsableMutationBody(body)) {
-        setCodeError(messageFor(null));
+        setActionError(messageFor(null));
         return;
       }
       applyToCache(body);
       sentThisSessionRef.current = true;
       if (body.verification_sent) {
-        setSentLine(
-          `We sent a code to ${body.pending_email_change?.address ?? pendingAddress ?? ''}`.trim()
-        );
+        const line = `We sent a new code to ${
+          body.pending_email_change?.address ?? pendingAddress ?? ''
+        }`.trim();
+        setSentLine(line);
+        announce(line);
         setNotice(null);
         setResendPromoted(false);
         startCooldown();
       } else {
         setSentLine(null);
         setNotice({ tone: 'error', text: MAIL_REFUSED_COPY });
+        announce(MAIL_REFUSED_COPY);
         setResendPromoted(true);
       }
     } catch (error) {
-      setCodeError(messageFor(error));
+      setActionError(messageFor(error));
       if (isRateLimited(error)) startCooldown();
     } finally {
       setBusy(null);
@@ -611,25 +689,28 @@ export function EmailAddressSection() {
   const handleDiscard = async () => {
     if (mutating) return;
     if (!selfId) return;
+    setActionError(null);
     setBusy('discard');
     try {
       const body = await usersAPI.cancelEmailChange(selfId);
       if (!isUsableMutationBody(body)) {
-        setCodeError(messageFor(null));
+        setActionError(messageFor(null));
         return;
       }
       applyToCache(body);
       sentThisSessionRef.current = false;
       clearCodeField();
       setCodeError(null);
+      setActionError(null);
       setSentLine(null);
       setResendPromoted(false);
       setNotice(null);
       setState('idle');
       toast.success(DISCARDED_RECEIPT);
+      announce(DISCARDED_RECEIPT);
       setFocusTarget('change');
     } catch (error) {
-      setCodeError(messageFor(error));
+      setActionError(messageFor(error));
     } finally {
       setBusy(null);
     }
@@ -771,6 +852,15 @@ export function EmailAddressSection() {
         </p>
       </div>
 
+      {/* THE SECTION'S ONE LIVE REGION — mounted for the whole life of the section,
+          empty until something happens, so every message is a CHANGE and therefore
+          announced. Visually hidden because each message also has a visible home
+          (the sent-code line, the Banner, a toast); this exists so the visible one
+          does not have to be conditionally mounted to be heard. See the
+          `announce()` docblock above for why the conditional mounts could not
+          announce on their own. */}
+      <StatusRegion className="sr-only">{announcement}</StatusRegion>
+
       {/* ── IDLE / VERIFIED ───────────────────────────────────────────────── */}
       {(state === 'idle' || state === 'verified') && (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
@@ -834,6 +924,19 @@ export function EmailAddressSection() {
                  over the person mid-entry. The phone block above records
                  exactly this reason at page.js:1524-1533. */
               onChange={(e) => setEmailInput(e.target.value)}
+              /* ENTER SUBMITS (code review #36). There is no <form> here — the
+                 section lives inside the profile page's own markup and a nested
+                 form would be invalid — so the key handler IS the submit
+                 affordance. Without it the only way to save was to reach the
+                 button, which on a phone means dismissing the keyboard first.
+                 It routes through the SAME handler as the button, so the DR-C
+                 gating and the in-flight guard apply identically. */
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void handleSave();
+                }
+              }}
               onBlur={() => {
                 const v = emailInput.trim();
                 if (v && !EMAIL_SHAPE.test(v)) setEmailError(MALFORMED_EMAIL_ERROR);
@@ -866,12 +969,25 @@ export function EmailAddressSection() {
             <Icon name="Clock" size={16} className="text-content-status-warning shrink-0" />
             <span className="text-sm text-content-primary">{NOT_VERIFIED_LABEL}</span>
           </div>
-          <p className="text-base text-content-primary break-words mb-2">{pendingAddress}</p>
+          {/* LABELLED, not a bare paragraph (code review #40). The current address
+              two blocks up has "The address we use now" over it; this one had
+              nothing tying it to the "Not verified yet" state above or naming what
+              it IS, so a screen-reader user met an unexplained address. */}
+          <p className="text-xs text-content-muted">{PENDING_ADDRESS_LABEL}</p>
+          <p className="text-base text-content-primary break-words mb-2">
+            {pendingAddress ?? ''}
+          </p>
 
-          {/* Empty-first status region. Resend is a SIBLING of it, never inside
-              it — a control inside a live region is re-announced whenever the
-              region's text changes. */}
-          <StatusRegion className="text-content-secondary mb-2">{sentLine ?? ''}</StatusRegion>
+          {/* PLAIN TEXT SINCE 2026-09-05 (code review #32). This was a
+              `StatusRegion`, but it sits inside the `inAwaiting &&` block, so it
+              mounted WITH its content and never announced the first send — the
+              defect. The section now has exactly ONE live region, always mounted,
+              up beside the current address; this is its visible twin. Deliberately
+              NOT a second `StatusRegion`: two polite regions carrying the same
+              sentence is a duplicate announcement, and it also made
+              `getByRole('status')` ambiguous for six existing tests, which is the
+              cheap signal that the markup was wrong. */}
+          <p className="text-content-secondary text-sm mb-2">{sentLine ?? ''}</p>
 
           <FormField
             label="Code from the email"
@@ -906,6 +1022,17 @@ export function EmailAddressSection() {
               className="uppercase"
               value={codeInput}
               onChange={(e) => setCodeInput(e.target.value)}
+              /* ENTER SUBMITS — see the email field. A one-time-code input that
+                 does not accept Enter is the worst offender of the two: the user
+                 has just typed 8 characters and the natural next keystroke does
+                 nothing. Same handler as the button, so the DR-C gate and the
+                 in-flight guard apply identically. */
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void handleVerify();
+                }
+              }}
             />
           </FormField>
 
@@ -942,6 +1069,17 @@ export function EmailAddressSection() {
               {LABEL_DISCARD}
             </Button>
           </div>
+          {/* THE ACTION LANE'S VISIBLE HOME (code review #35). A Resend cooldown,
+              a refused Resend or a failed Discard is a fact about the ACTION and
+              belongs beside the buttons — not in the code field's error slot,
+              where `FormField` would set `aria-invalid="true"` on an input the
+              user has not mistyped and may not have touched. Mirrors the shape of
+              the revert error below. */}
+          {actionError && (
+            <p role="alert" className="text-content-status-error text-xs mt-2">
+              {actionError}
+            </p>
+          )}
         </div>
       )}
     </section>

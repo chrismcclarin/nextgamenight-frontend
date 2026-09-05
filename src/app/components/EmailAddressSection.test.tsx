@@ -377,7 +377,11 @@ describe('EmailAddressSection — editing and Save', () => {
     await user.type(screen.getByLabelText(/new email address/i), NEW);
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    await waitFor(() => expect(screen.getByText(`We sent a code to ${NEW}`)).toBeInTheDocument());
+    /* getAllBy since 2026-09-05 (code review #32): the sentence now appears TWICE
+       by design — once as the visible line, once inside the always-mounted
+       `role="status"` region that actually announces it. Both copies are the
+       point; asserting on exactly one would re-introduce the ambiguity. */
+    await waitFor(() => expect(screen.getAllByText(`We sent a code to ${NEW}`).length).toBe(2));
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByLabelText(/code from the email/i))
     );
@@ -394,7 +398,7 @@ describe('EmailAddressSection — editing and Save', () => {
     await user.type(screen.getByLabelText(/new email address/i), NEW);
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    await waitFor(() => expect(screen.getByText(/couldn't send the code just now/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText(/couldn't send the code just now/i).length).toBe(2));
     expect(screen.queryByText(/we sent a code to/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Resend code' })).toBeInTheDocument();
   });
@@ -412,7 +416,8 @@ describe('EmailAddressSection — editing and Save', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() =>
-      expect(screen.getByText("That's already the address we use for you")).toBeInTheDocument()
+      // Twice: the visible Banner and the live region that announces it (#33).
+      expect(screen.getAllByText("That's already the address we use for you").length).toBe(2)
     );
     expect(screen.queryByText(/we sent a code to/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument();
@@ -727,7 +732,11 @@ describe('EmailAddressSection — Resend and Discard', () => {
     await user.type(screen.getByLabelText(/new email address/i), NEW);
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    await waitFor(() => expect(screen.getByText(`We sent a code to ${NEW}`)).toBeInTheDocument());
+    /* getAllBy since 2026-09-05 (code review #32): the sentence now appears TWICE
+       by design — once as the visible line, once inside the always-mounted
+       `role="status"` region that actually announces it. Both copies are the
+       point; asserting on exactly one would re-introduce the ambiguity. */
+    await waitFor(() => expect(screen.getAllByText(`We sent a code to ${NEW}`).length).toBe(2));
     expect(screen.queryByText('That code has expired')).not.toBeInTheDocument();
   });
 
@@ -978,6 +987,101 @@ describe('EmailAddressSection — HIGH-2: the three secondary actions have an in
 
     release(body({ outcome: 'reverted', email: REAL, pending_email_change: null, verification_sent: false, email_changed_at: null }));
     await waitFor(() => expect(api.revertEmailToSignIn).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('EmailAddressSection — code-review fixes 2026-09-05', () => {
+  it('#8: a too-LONG but valid-alphabet code is reported as wrong length, not as a bad character', () => {
+    // Reachable: the input allows maxLength 9, and these are all alphabet symbols.
+    expect(checkCode('AB12CD345')).toBe('incomplete');
+    expect(checkCode('AB12CD34')).toBe('ok');
+    // The alphabet message still fires when the alphabet really is the problem.
+    expect(checkCode('AB12CD3U')).toBe('out-of-alphabet');
+  });
+
+  it('#35: a Resend failure does NOT mark the untouched code input aria-invalid', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    api.requestEmailChange.mockResolvedValue(body({ verification_sent: false }));
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByLabelText(/code from the email/i)).toBeInTheDocument());
+
+    // One alert already on screen: the provider-refused Banner.
+    const alertsBefore = screen.getAllByRole('alert').length;
+
+    api.resendEmailChangeCode.mockRejectedValue(new Error('transport died'));
+    await user.click(screen.getByRole('button', { name: 'Resend code' }));
+
+    // The failure IS reported — as a second alert, beside the controls...
+    await waitFor(() => expect(screen.getAllByRole('alert').length).toBe(alertsBefore + 1));
+    // ...but NOT as a fault of a field the user has not typed into.
+    expect(screen.getByLabelText(/code from the email/i)).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('#36: Enter submits from the email field and from the code field', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    api.requestEmailChange.mockResolvedValue(body({ verification_sent: false }));
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.type(screen.getByLabelText(/new email address/i), '{Enter}');
+    await waitFor(() => expect(api.requestEmailChange).toHaveBeenCalledTimes(1));
+
+    await waitFor(() => expect(screen.getByLabelText(/code from the email/i)).toBeInTheDocument());
+    api.verifyEmailChange.mockResolvedValue(
+      body({ outcome: 'verified', email: NEW, pending_email_change: null, verification_sent: false, email_changed_at: '2026-09-04T00:00:00.000Z' })
+    );
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34{Enter}');
+    await waitFor(() => expect(api.verifyEmailChange).toHaveBeenCalledTimes(1));
+  });
+
+  it('#5: `unchanged` with a change still pending stays in awaiting-code instead of lying about it', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    // The server deliberately leaves the pending change alone and echoes it.
+    api.requestEmailChange.mockResolvedValue(
+      body({ outcome: 'unchanged', verification_sent: false })
+    );
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), REAL);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(screen.getAllByText("That's already the address we use for you").length).toBe(2)
+    );
+    // The section does NOT claim the pending change is gone.
+    expect(screen.getByLabelText(/code from the email/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Discard change' })).toBeInTheDocument();
+  });
+
+  it('#1: an expired verify keeps the pending address on screen even though the body nulls it', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW({ pending_email_change: { address: NEW, expires_at: '2026-09-04T13:00:00.000Z' } })));
+    renderSection();
+
+    await waitFor(() => expect(screen.getByLabelText(/code from the email/i)).toBeInTheDocument());
+    expect(screen.getByText(NEW)).toBeInTheDocument();
+
+    /* The server nulls pending_email_change on `expired` — its loader filters on
+       expires_at > now(). Before the fix this blanked the address line at exactly
+       the moment the user is asked to re-verify it. */
+    api.verifyEmailChange.mockResolvedValue(
+      body({ outcome: 'expired', pending_email_change: null, verification_sent: false })
+    );
+    mockSelf.mockReturnValue(selfState(ROW({ pending_email_change: null })));
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    await waitFor(() => expect(api.verifyEmailChange).toHaveBeenCalled());
+    expect(screen.getByText(NEW)).toBeInTheDocument();
   });
 });
 
