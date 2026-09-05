@@ -11,7 +11,7 @@ import type {
   EventBringList,
   Ballot,
 } from './schemas/events';
-import type { User } from './schemas/users';
+import type { EmailChangeResponse, User } from './schemas/users';
 import type { AvailabilityList } from './schemas/availability';
 import type { GameList, UserGameList } from './schemas/shared';
 
@@ -822,6 +822,54 @@ export const usersAPI = {
   // (no toast-then-wait) so no authenticated fetch re-provisions a JIT ghost row.
   deleteAccount: () =>
     apiFetch<{ message: string }>('/users/me', { method: 'DELETE' }),
+
+  // ── Email change (Phase 88.8 plan 13, SPEC R12 / D-09 as re-ruled) ─────────
+  //
+  // All five go through the AUTHENTICATED client. The public direct-to-backend
+  // helper is deliberately NOT used by this feature: the original design's
+  // public verification PAGE is retired (the mail carries a code, not a link),
+  // and a function here reaching for `publicFetch` would be the tell that the
+  // retired design had crept back.
+  //
+  // Shape follows the shipped `savePhone` above: the function takes SCALARS and
+  // builds the JSON body HERE, in api.ts. The request key is `email` (and
+  // `code` on verify) and it is PINNED ON BOTH SIDES — the backend refuses a
+  // body carrying any other key (`routes/users.js:1226-1229`, `:1760-1763`),
+  // and `src/lib/api.test.ts` asserts the exact serialised key set by stubbing
+  // `fetch` and calling the REAL function. A mock-level assertion would prove
+  // nothing: these take scalars, so a module-boundary mock never sees a body at
+  // all, and the line below would never execute. Neither repo's CI can see the
+  // other; those two assertions are the whole contract.
+  //
+  // All five answer the SAME 200 body (`EmailChangeResponse`). Resend, cancel
+  // and revert take NO body — each is its own route precisely so a destructive
+  // or re-sending intent cannot ride in on an address-shaped payload.
+  requestEmailChange: (user_id: string, email: string) =>
+    apiFetch<EmailChangeResponse>(`/users/${encodeURIComponent(user_id)}/email`, {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  verifyEmailChange: (user_id: string, code: string) =>
+    apiFetch<EmailChangeResponse>(`/users/${encodeURIComponent(user_id)}/email/verify`, {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+
+  resendEmailChangeCode: (user_id: string) =>
+    apiFetch<EmailChangeResponse>(`/users/${encodeURIComponent(user_id)}/email/resend`, {
+      method: 'POST',
+    }),
+
+  cancelEmailChange: (user_id: string) =>
+    apiFetch<EmailChangeResponse>(`/users/${encodeURIComponent(user_id)}/email/cancel`, {
+      method: 'POST',
+    }),
+
+  revertEmailToSignIn: (user_id: string) =>
+    apiFetch<EmailChangeResponse>(`/users/${encodeURIComponent(user_id)}/email/revert`, {
+      method: 'POST',
+    }),
 };
 
 /**

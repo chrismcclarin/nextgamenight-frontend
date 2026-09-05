@@ -18,6 +18,25 @@ import { z } from 'zod';
 //               (friendships Requester/Addressee, rsvp/brings User) and dropped
 //               it from /friendships/search (BE-12) — those surfaces emit
 //               [id, username] only.
+// `PendingEmailChangeSchema` — plan 09's DERIVED pending-change projection
+// (`{ address: row.target, expires_at: row.expires_at }`, routes/users.js
+// `projectPendingEmailChange`). Plain strings inside, per plan 12's A10
+// reasoning: `expires_at` is a Date server-side and arrives as an ISO string,
+// and one unexpected value must not fail a whole parse.
+//
+// EXTRACTED from `UserSchema` by plan 13 (was an inline `z.object` there),
+// because the SAME shape now appears in TWO places: the self row below, and
+// `EmailChangeResponseSchema` at the bottom of this section — the ONE pinned
+// mutation body all five email-change routes answer with. Two inline copies of
+// one wire shape is exactly the drift this phase keeps finding; a named schema
+// is what stops the self-read spelling and the mutation-echo spelling diverging
+// while both still parse. Shape is byte-equivalent to what plan 12 shipped.
+export const PendingEmailChangeSchema = z.object({
+  address: z.string(),
+  expires_at: z.string(),
+});
+export type PendingEmailChange = z.infer<typeof PendingEmailChangeSchema>;
+
 export const UserSchema = z.object({
   id: z.uuid().optional(),
   user_id: z.uuid().optional(),
@@ -75,13 +94,7 @@ export const UserSchema = z.object({
   // echoes — and a consumer never has to distinguish absent from null.
   // `.optional()` here is belt-and-braces for older cached payloads, NOT a
   // signal that the key is sometimes missing.
-  pending_email_change: z
-    .object({
-      address: z.string(),
-      expires_at: z.string(),
-    })
-    .nullable()
-    .optional(),
+  pending_email_change: PendingEmailChangeSchema.nullable().optional(),
   // `orphaned_at` also crosses on the self wire (it is not in the defaultScope
   // exclude list) and is DELIBERATELY left undeclared: it is operational state
   // that is never non-null on a row that can log in (models/User.js:193-195), so
@@ -92,6 +105,63 @@ export const UserSchema = z.object({
   notification_preferences: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 export type User = z.infer<typeof UserSchema>;
+
+// ── THE EMAIL-CHANGE MUTATION BODY (Phase 88.8 plan 13, D-39 / SPEC R12) ──────
+//
+// THE GAP THIS CLOSES, STATED PLAINLY. Plan 12 typed the SELF ROW — it added
+// `email_changed_at` and `pending_email_change` to `UserSchema`. It did NOT type
+// the MUTATION body, and that body carries FIVE keys, two of which
+// (`outcome`, `verification_sent`) were declared nowhere in this repo. All five
+// are load-bearing: the backend's own comment above `emailChangeBody`
+// (routes/users.js:990-1003) records that a key missing from THIS body keeps its
+// pre-mutation value in the `staleTime: Infinity` self cache forever, which is
+// why `email_changed_at` rides along and why dropping any of them "is a
+// decision, not a cleanup".
+//
+// DECISION Phase 88.8 (plan 13): the two mutation-only keys get their OWN
+// schema, chosen OVER adding `outcome` and `verification_sent` to `UserSchema`.
+// `UserSchema` is not just the self row — `FriendshipSchema` embeds it for the
+// nested Requester/Addressee rows and `UserListSchema` wraps it, so declaring an
+// `outcome` there would say that a group roster entry may legally carry one.
+// These are properties of a REQUEST's result, not of a person. Rejected also:
+// leaving the body untyped and reading it as `any` at the section — that is
+// precisely how an unhandled ninth outcome literal would reach the UI as a
+// silent fall-through to the generic error message, rendering a SUCCESSFUL
+// address change as a failure.
+//
+// THE ENUM IS CLOSED AND IS EXACTLY EIGHT LITERALS. Plan 09 ships these eight
+// and pins them with its own closed-enum test; the D-41 invite-move skip is
+// telemetry-only and deliberately adds no ninth. Because this is a `z.enum` the
+// inferred type is a union, so a `switch` in the section that misses a literal
+// is a TYPE error rather than a runtime fall-through. Widening it without
+// widening the section's classifier is therefore a build failure by design.
+// Neither repo's CI can see the other, so this list and
+// `routes/users.js`'s are the only two ends of the contract.
+export const EmailChangeOutcomeSchema = z.enum([
+  'code_sent',
+  'unchanged',
+  'cancelled',
+  'verified',
+  'expired',
+  'invalid',
+  'address_taken',
+  'reverted',
+]);
+export type EmailChangeOutcome = z.infer<typeof EmailChangeOutcomeSchema>;
+
+// The ONE 200 body all five routes answer with (routes/users.js
+// `emailChangeBody`). `email` is `null` only when the caller's row could not be
+// re-read, which the section treats as a CONTRACT ERROR on a mutation — never as
+// a successful send. `pending_email_change` reuses the shared shape above so the
+// self-read spelling and this echo cannot diverge.
+export const EmailChangeResponseSchema = z.object({
+  outcome: EmailChangeOutcomeSchema,
+  email: z.string().nullable(),
+  pending_email_change: PendingEmailChangeSchema.nullable(),
+  verification_sent: z.boolean(),
+  email_changed_at: z.string().nullable(),
+});
+export type EmailChangeResponse = z.infer<typeof EmailChangeResponseSchema>;
 
 export const UserListSchema = z.array(UserSchema);
 export type UserList = z.infer<typeof UserListSchema>;

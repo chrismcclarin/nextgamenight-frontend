@@ -6,7 +6,7 @@
 // classification block, which stubs global fetch to pin the WR-04 contract.
 import { afterEach, vi } from 'vitest';
 
-import { ApiError, apiFetch, mapErrorToCode, rsvpAPI } from './api';
+import { ApiError, apiFetch, mapErrorToCode, rsvpAPI, usersAPI } from './api';
 
 describe('ApiError — shape', () => {
   it('is both an Error and an ApiError, carrying code + status + details', () => {
@@ -166,5 +166,137 @@ describe('rsvpAPI.submitRsvp — undefined note is dropped from the wire body', 
     // backend as a present key, or a member could never delete their own note.
     expect('note' in body).toBe(true);
     expect(body.note).toBe('');
+  });
+});
+
+// Phase 88.8 plan 13 (SPEC R12) — WIRE-LEVEL pins for the five email-change
+// calls. These stub `fetch` and call the REAL client function, so the
+// body-construction line in api.ts actually executes.
+//
+// WHY NOT AT THE MOCK. The section's colocated suite mocks `usersAPI` at the
+// module boundary, which makes it structurally blind to the wire: the functions
+// take SCALARS, so a module-boundary mock never receives a body object at all
+// and `JSON.stringify` never runs. An assertion there would be checking the
+// mock's own arguments. The backend suite has the mirror-image blindness — it is
+// written by whoever wrote the route, so it agrees with itself. A request-key
+// mismatch is invisible to BOTH CIs; in production every Save would return the
+// validation envelope and the field would read "Something looks off with that
+// request", killing R12 silently. These assertions are the only thing standing
+// there. The exact key-SET check (not a `toMatchObject`) is deliberate: an added
+// alias key must fail, and the backend refuses any body carrying a second key
+// (routes/users.js:1226-1229, :1760-1763).
+//
+// NO `grep`-based key gate is added on api.ts. The body is written in ES6
+// shorthand, so there is no colon after the key and a colon-anchored grep fails
+// a CORRECT implementation; and the same pattern matches the TypeScript
+// parameter annotation, so it passes the WRONG one. Inverted on both arms.
+describe('usersAPI email-change calls — the serialised wire body, path and method', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const okJson = () =>
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () =>
+        '{"outcome":"code_sent","email":"a@b.c","pending_email_change":null,"verification_sent":true,"email_changed_at":null}',
+    });
+
+  const callOf = (fetchMock: ReturnType<typeof vi.fn>) => {
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    return { url, init };
+  };
+
+  it('requestEmailChange POSTs exactly { email } to /users/:id/email', async () => {
+    const fetchMock = okJson();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await usersAPI.requestEmailChange('u-1', 'new@example.com');
+
+    const { url, init } = callOf(fetchMock);
+    expect(url).toContain('/users/u-1/email');
+    expect(url).not.toContain('/email/');
+    expect(init.method).toBe('POST');
+    const body = JSON.parse(init.body as string);
+    // EXACT key set: an added alias (`new_email`, `address`) must fail here,
+    // because the backend refuses a body with more than the one key.
+    expect(Object.keys(body).sort()).toEqual(['email']);
+    expect(body.email).toBe('new@example.com');
+  });
+
+  it('verifyEmailChange POSTs exactly { code } to /users/:id/email/verify', async () => {
+    const fetchMock = okJson();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await usersAPI.verifyEmailChange('u-1', 'AB12CD34');
+
+    const { url, init } = callOf(fetchMock);
+    expect(url).toContain('/users/u-1/email/verify');
+    expect(init.method).toBe('POST');
+    const body = JSON.parse(init.body as string);
+    expect(Object.keys(body).sort()).toEqual(['code']);
+    expect(body.code).toBe('AB12CD34');
+  });
+
+  it('resendEmailChangeCode POSTs NO body to /users/:id/email/resend', async () => {
+    const fetchMock = okJson();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await usersAPI.resendEmailChangeCode('u-1');
+
+    const { url, init } = callOf(fetchMock);
+    expect(url).toContain('/users/u-1/email/resend');
+    expect(init.method).toBe('POST');
+    // A resend that accepted an address would be a second REQUEST endpoint
+    // wearing the first one's name (SPEC A11) — the address comes from the
+    // stored token row, never from the client.
+    expect(init.body).toBeUndefined();
+  });
+
+  it('cancelEmailChange POSTs NO body to /users/:id/email/cancel', async () => {
+    const fetchMock = okJson();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await usersAPI.cancelEmailChange('u-1');
+
+    const { url, init } = callOf(fetchMock);
+    expect(url).toContain('/users/u-1/email/cancel');
+    expect(init.method).toBe('POST');
+    // A route that accepts no address cannot discard the wrong thing.
+    expect(init.body).toBeUndefined();
+  });
+
+  it('revertEmailToSignIn POSTs NO body to /users/:id/email/revert', async () => {
+    const fetchMock = okJson();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await usersAPI.revertEmailToSignIn('u-1');
+
+    const { url, init } = callOf(fetchMock);
+    expect(url).toContain('/users/u-1/email/revert');
+    expect(init.method).toBe('POST');
+    expect(init.body).toBeUndefined();
+  });
+
+  it('percent-encodes the user_id path segment on every one of the five', async () => {
+    // The id can be an Auth0 sub (`auth0|abc`) as well as a UUID — matchesSelf
+    // accepts either (middleware/objectAuth.js:59-84) — and a raw `|` in a path
+    // is not a legal URL character.
+    const calls: Array<[string, () => Promise<unknown>]> = [
+      ['email', () => usersAPI.requestEmailChange('auth0|a b', 'x@y.z')],
+      ['email/verify', () => usersAPI.verifyEmailChange('auth0|a b', 'AB12CD34')],
+      ['email/resend', () => usersAPI.resendEmailChangeCode('auth0|a b')],
+      ['email/cancel', () => usersAPI.cancelEmailChange('auth0|a b')],
+      ['email/revert', () => usersAPI.revertEmailToSignIn('auth0|a b')],
+    ];
+    for (const [suffix, run] of calls) {
+      const fetchMock = okJson();
+      vi.stubGlobal('fetch', fetchMock);
+      await run();
+      const { url } = callOf(fetchMock);
+      expect(url).toContain(`/users/auth0%7Ca%20b/${suffix}`);
+      vi.unstubAllGlobals();
+    }
   });
 });
