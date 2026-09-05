@@ -81,6 +81,7 @@ type SelfRow = {
   email: string | null;
   email_changed_at?: string | null;
   pending_email_change?: { address: string; expires_at: string } | null;
+  revert_available?: boolean | null;
 };
 
 function selfState(row: SelfRow | undefined, isError = false) {
@@ -92,12 +93,18 @@ function selfState(row: SelfRow | undefined, isError = false) {
   };
 }
 
+// `revert_available` (round 2 HIGH-B) defaults to the SERVER'S answer for the
+// common case — available exactly when `email_changed_at` is set and the claim is
+// verified and real, which every fixture below models — so the existing revert
+// tests keep meaning "the timestamp is set and the server agrees". The
+// fail-closed tests override it explicitly.
 const ROW = (over: Partial<SelfRow> = {}): SelfRow => ({
   id: 'u-uuid-1',
   user_id: 'u-uuid-1',
   email: REAL,
   email_changed_at: null,
   pending_email_change: null,
+  revert_available: Boolean(over.email_changed_at),
   ...over,
 });
 
@@ -107,6 +114,7 @@ const body = (over: Record<string, unknown> = {}) => ({
   pending_email_change: { address: NEW, expires_at: '2026-09-04T13:00:00.000Z' },
   verification_sent: true,
   email_changed_at: null,
+  revert_available: Boolean(over.email_changed_at),
   ...over,
 });
 
@@ -771,6 +779,33 @@ describe('EmailAddressSection — revert (D-38)', () => {
     mockSelf.mockReturnValue(selfState(ROW({ email_changed_at: '2026-09-04T00:00:00.000Z' })));
     renderSection();
     expect(screen.getByRole('button', { name: 'Use my sign-in address' })).toBeInTheDocument();
+  });
+
+  // Round 2 HIGH-B (owner ruling 2026-09-05). The gate is the SERVER's answer, and it
+  // fails CLOSED: with the timestamp set but the server saying no (an unverified or
+  // synthetic claim on the access token — the wave-8 window), the control must not
+  // render an action the route would refuse. Cross-finding C4: the engine's own remedy
+  // rendered the button on an ABSENT key, so absence is asserted separately from false.
+  it.each([
+    ['revert_available is FALSE', false],
+    ['revert_available is NULL (a default-scope echo)', null],
+    ['revert_available is ABSENT', undefined],
+  ])('is ABSENT from the DOM when email_changed_at is set but %s — the gate fails closed', (_label, value) => {
+    const row = ROW({ email_changed_at: '2026-09-04T00:00:00.000Z' });
+    if (value === undefined) delete row.revert_available;
+    else row.revert_available = value;
+    mockSelf.mockReturnValue(selfState(row));
+    renderSection();
+    expect(screen.queryByRole('button', { name: 'Use my sign-in address' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/sign-in address/i)).not.toBeInTheDocument();
+  });
+
+  it('is PRESENT only on the literal true — a truthy non-boolean does not open the gate', () => {
+    const row = ROW({ email_changed_at: '2026-09-04T00:00:00.000Z' });
+    (row as Record<string, unknown>).revert_available = 'yes';
+    mockSelf.mockReturnValue(selfState(row));
+    renderSection();
+    expect(screen.queryByRole('button', { name: 'Use my sign-in address' })).not.toBeInTheDocument();
   });
 
   it('a SUCCESSFUL revert unmounts the control and hands focus to Change — NOT to document.body', async () => {

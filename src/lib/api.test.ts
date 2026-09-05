@@ -200,7 +200,7 @@ describe('usersAPI email-change calls — the serialised wire body, path and met
       ok: true,
       status: 200,
       text: async () =>
-        '{"outcome":"code_sent","email":"a@b.c","pending_email_change":null,"verification_sent":true,"email_changed_at":null}',
+        '{"outcome":"code_sent","email":"a@b.c","pending_email_change":null,"verification_sent":true,"email_changed_at":null,"revert_available":false}',
     });
 
   const callOf = (fetchMock: ReturnType<typeof vi.fn>) => {

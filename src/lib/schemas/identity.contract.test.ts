@@ -140,6 +140,9 @@ export const CAPTURED_SELF_BODY = {
     address: 'alice.new@example.com',
     expires_at: '2026-09-04T13:00:00.000Z',
   },
+  // Round 2 HIGH-B: SERVER-computed, assigned unconditionally by toSelfWire —
+  // true/false on the self GET (withContactInfo), null on the three write echoes.
+  revert_available: true,
 };
 
 // rsvp.js: event RSVP list item — EventRsvp.toJSON() (PK `id`) + nested User
@@ -227,11 +230,11 @@ const ROUTE_EMITTED_KEYS = {
   // on every unrelated column add. These are the self-identity fields Phase 88.8
   // makes load-bearing, asserted as a SUBSET below — and asserted ABSENT from
   // every other-user list, which is the half that actually protects PII.
-  selfIdentityFields: ['id', 'user_id', 'username', 'email', 'email_changed_at', 'pending_email_change'],
+  selfIdentityFields: ['id', 'user_id', 'username', 'email', 'email_changed_at', 'pending_email_change', 'revert_available'],
   // Fields that must NEVER appear on an OTHER-user payload. The backend half of
   // this pin is plan 08's wire sweep, which asserts all three absent at any
   // depth on all six widened payloads.
-  neverOnOtherUsers: ['email', 'phone', 'email_changed_at', 'pending_email_change'],
+  neverOnOtherUsers: ['email', 'phone', 'email_changed_at', 'pending_email_change', 'revert_available'],
 } as const;
 
 // events.js formatEventWithCustomParticipants: participant roster — flat
@@ -657,12 +660,13 @@ describe('identity contract — self-read-only email-change fields (88.8 D-36 / 
         });
       }
     }
-    // And the self body DOES carry three of them — proving the check above is
+    // And the self body DOES carry four of them — proving the check above is
     // discriminating, not just asserting that nothing anywhere has these keys.
     const selfKeys = collectKeys(CAPTURED_SELF_BODY);
     expect(selfKeys).toContain('email');
     expect(selfKeys).toContain('email_changed_at');
     expect(selfKeys).toContain('pending_email_change');
+    expect(selfKeys).toContain('revert_available');
   });
 });
 

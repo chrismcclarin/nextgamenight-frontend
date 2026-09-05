@@ -17,7 +17,8 @@
  *     editing, saving, awaiting-code, verifying, verified. TWO more exist only
  *     because the data arrives asynchronously: `unresolved` and `unavailable`.
  *   - Hydration is ONE-SHOT and comes from the self identity row ALONE (D-39) —
- *     `email`, `email_changed_at`, `pending_email_change`. The section issues no
+ *     `email`, `email_changed_at`, `pending_email_change`, and the server-computed
+ *     `revert_available` (round 2 HIGH-B). The section issues no
  *     fetch of its own; a section-level GET would duplicate the immortal self
  *     query on every profile mount.
  *   - After every mutation it patches the identity cache from the RESPONSE BODY
@@ -327,7 +328,15 @@ export function EmailAddressSection() {
   const lastPendingAddressRef = React.useRef<string | null>(null);
   if (livePendingAddress) lastPendingAddressRef.current = livePendingAddress;
   const pendingAddress = livePendingAddress ?? lastPendingAddressRef.current;
-  const hasChangedBefore = Boolean(self?.email_changed_at);
+  /* The revert affordance is gated on the SERVER's answer, never on
+     `email_changed_at` alone (code review round 2 HIGH-B, owner ruling
+     2026-09-05). The revert route also demands a verified, non-synthetic claim
+     on the ACCESS token, which this component cannot read — `useUser()` exposes
+     the SESSION token, and the two disagree exactly during the wave-8 window —
+     so a client-side gate here was advertising an action the route refused.
+     `=== true` is the whole gate: `null` (a default-scope echo), `false` and an
+     ABSENT key all fail CLOSED. Do not loosen this to a truthiness check. */
+  const revertAvailable = self?.revert_available === true;
 
   /* ── HYDRATION, ONE SHOT ──────────────────────────────────────────────────
      The idiom is already shipped in this component's host page at
@@ -475,6 +484,7 @@ export function EmailAddressSection() {
         email: body.email,
         email_changed_at: body.email_changed_at,
         pending_email_change: body.pending_email_change,
+        revert_available: body.revert_available,
       });
     },
     [queryClient]
@@ -735,10 +745,10 @@ export function EmailAddressSection() {
         toast.success(REVERTED_RECEIPT);
         /* THIS CONTROL DELETES ITSELF ON SUCCESS, WHICH IS WHY THE FOCUS MOVE
            IS EXPLICIT. The affordance renders only while
-           `self.email_changed_at` is non-null; plan 09 returns
-           `email_changed_at: null` on `outcome: 'reverted'` and the line above
-           patches that into the cache — so the button the user just activated
-           is gone on the next paint. React does not relocate focus when the
+           `self.revert_available === true`; the backend answers a successful
+           revert with `revert_available: false` (and `email_changed_at: null`)
+           and the line above patches that into the cache — so the button the
+           user just activated is gone on the next paint. React does not relocate focus when the
            active element unmounts; the browser drops it to `<body>`, which on
            this page returns a keyboard or switch user to the top of a long
            profile with no announcement that anything happened. Change is the
@@ -753,15 +763,16 @@ export function EmailAddressSection() {
       } else {
         setRevertError(messageFor(null));
       }
-      // A FAILED revert leaves `email_changed_at` untouched, so the control is
-      // still mounted: leave the user standing on the control that failed.
+      // A FAILED revert leaves `email_changed_at` and `revert_available`
+      // untouched, so the control is still mounted: leave the user standing on
+      // the control that failed.
       setFocusTarget('revert');
     } catch (error) {
       setRevertError(messageFor(error));
       setFocusTarget('revert');
     } finally {
       /* Fires after a SUCCESSFUL revert has already unmounted its own button (the
-         cache patch flips `hasChangedBefore` false). Harmless — the section itself
+         cache patch flips `revertAvailable` false). Harmless — the section itself
          is still mounted, so this is a state write on a live component, and it
          leaves the lane clean for the next action. */
       setBusy(null);
@@ -867,20 +878,29 @@ export function EmailAddressSection() {
           <Button ref={changeRef} variant="ghost" onClick={handleChange} className="max-md:min-h-11">
             {LABEL_CHANGE}
           </Button>
-          {/* DECISION Phase 88.8 D-38: the revert affordance is keyed on
-              `self.email_changed_at` and is ABSENT from the DOM when that is
-              null — chosen OVER rendering it permanently inert. A user who has
-              never changed their address has nothing to revert TO that differs
-              from what they already have, and a permanently-inert control is
-              worse than no control: it advertises an action that can never work.
+          {/* DECISION Phase 88.8 D-38: the revert affordance is ABSENT from the
+              DOM when a revert is not available — chosen OVER rendering it
+              permanently inert. A user who has never changed their address has
+              nothing to revert TO that differs from what they already have, and
+              a permanently-inert control is worse than no control: it
+              advertises an action that can never work.
+
+              AMENDED 2026-09-05 (code review round 2 HIGH-B, owner ruling): the
+              key is the SERVER-computed `self.revert_available === true`, no
+              longer `self.email_changed_at` alone. The route's precondition
+              also reads the ACCESS token's claim, which this component cannot
+              see, so keying on the timestamp rendered a control the route would
+              refuse — the very "advertises an action that cannot work" this
+              decision rejects. The server answers the route's own question and
+              this gate fails CLOSED on null, false and absent.
 
               A SYNTHETIC idle state therefore renders no revert affordance, and
               that is a CONSEQUENCE of this keying rather than a missing feature:
               `email_changed_at` is null on those rows by construction — nobody
               has changed the address, which is exactly why it is still the
-              provisioning sentinel. Do not add a revert control for a user with
-              nothing to revert to. */}
-          {hasChangedBefore && (
+              provisioning sentinel — so the server answers false. Do not add a
+              revert control for a user with nothing to revert to. */}
+          {revertAvailable && (
             <Button
               ref={revertRef}
               variant="ghost"
@@ -893,7 +913,7 @@ export function EmailAddressSection() {
           )}
         </div>
       )}
-      {(state === 'idle' || state === 'verified') && hasChangedBefore && (
+      {(state === 'idle' || state === 'verified') && revertAvailable && (
         <p className="text-xs text-content-muted mt-1">{REVERT_HELPER}</p>
       )}
       {revertError && (

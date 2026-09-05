@@ -95,6 +95,18 @@ export const UserSchema = z.object({
   // `.optional()` here is belt-and-braces for older cached payloads, NOT a
   // signal that the key is sometimes missing.
   pending_email_change: PendingEmailChangeSchema.nullable().optional(),
+  // `revert_available` — code review round 2 HIGH-B (owner ruling 2026-09-05), a
+  // SERVER-computed DERIVED toSelfWire field: whether the D-38 revert route would
+  // accept THIS caller right now (`email_changed_at` set AND a verified,
+  // non-synthetic claim on the ACCESS token — a value this repo cannot read,
+  // because `useUser()` exposes the SESSION token). Three-valued on the wire:
+  // `true` / `false` on rows loaded with contact info (the self GET, every
+  // email-change body), `null` on the three default-scope write echoes where the
+  // backend did not load the column. THE ONLY RENDER GATE IS `=== true` —
+  // `null`, `false` and an ABSENT key all mean "not available" (cross-finding
+  // C4: a gate that renders on an absent key fails OPEN). `.optional()` is for
+  // older cached payloads, not a licence to read absence as anything but no.
+  revert_available: z.boolean().nullable().optional(),
   // `orphaned_at` also crosses on the self wire (it is not in the defaultScope
   // exclude list) and is DELIBERATELY left undeclared: it is operational state
   // that is never non-null on a row that can log in (models/User.js:193-195), so
@@ -160,6 +172,12 @@ export const EmailChangeResponseSchema = z.object({
   pending_email_change: PendingEmailChangeSchema.nullable(),
   verification_sent: z.boolean(),
   email_changed_at: z.string().nullable(),
+  // SIXTH key (round 2 HIGH-B): rides on every mutation body for the same
+  // mechanical reason as `email_changed_at` — the section patches the immortal
+  // self cache from this body, so a verify must say revert is now available
+  // and a revert must say it no longer is. `null` only when the backend could
+  // not re-read the row (`email: null`, already a contract error here).
+  revert_available: z.boolean().nullable(),
 });
 export type EmailChangeResponse = z.infer<typeof EmailChangeResponseSchema>;
 
