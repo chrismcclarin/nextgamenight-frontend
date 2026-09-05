@@ -7,15 +7,62 @@
 import { z } from 'zod';
 import { GameSchema } from './shared';
 
-// Nested User include shared by the rsvp/bring list responses. Post-PR-C
-// (87.3 plan 09) the Sequelize include attributes are ['id', 'username'] —
-// the sub `user_id` was stripped from every nested User include (Req 1).
+// Nested User include shared by the rsvp/bring list responses (and, on the
+// frontend, structurally identical to the friendships Requester/Addressee
+// includes — those are typed via UserSchema in users.ts, not by this schema).
+// Post-PR-C (87.3 plan 09) the Sequelize include attributes were
+// ['id', 'username'] — the sub `user_id` was stripped from every nested User
+// include (Req 1). Phase 88.8 plan 08 widened all four of them to the shared
+// chip projection PUBLIC_USER_ATTRS = ['id', 'username', 'picture_url']
+// (periodictabletopbackend_v2/Sonnet/utils/publicUserAttrs.js:69; call sites
+// routes/rsvp.js:523/:565, routes/eventBrings.js:40, routes/friendships.js:36/:41).
 //   `id` — the Users.id UUID. Phase 87.3 PR-B (D-04): the permanent is-me
 //          compare target (`rsvp.User.id === selfUuid`), tightened to z.uuid().
 //          Optional to tolerate an absent User association.
+//   `picture_url` — see the canonical decision block immediately below. THIS is
+//          the one place the reasoning is written out; the three other
+//          declarations of this field (EventParticipationSchema below,
+//          groups.ts GroupMemberSchema, users.ts UserSchema) point back here.
+/*
+ * DECISION Phase 88.8 plan 12 (SPEC R11 as amended by A6 and A10, CONTEXT
+ * D-25): `picture_url` is declared as a PLAIN `z.string()` — chosen OVER
+ * `z.url()`, which was the obvious option and is the wrong one.
+ *
+ * WHY NOT A URL VALIDATOR. Validation lives at the single backend WRITE point
+ * (Phase 88.8 plan 04: https scheme only, length-capped to the column, which is
+ * `DataTypes.STRING` = varchar(255) at models/User.js:137-141). T-88.8-41's own
+ * rationale is "one validation point beats two that can disagree". A frontend
+ * URL check that ever disagreed with an already-stored value would turn ONE
+ * member's avatar into a ZodError on the WHOLE roster parse — and
+ * src/lib/queryClient.ts:105,:110 classifies a ZodError as NEVER-RETRY, so that
+ * roster would simply never load. One bad row must not cost the whole list.
+ *
+ * WHY NULLABLE: the backend stores null for password-connection logins (no
+ * vendor `picture` claim), and routes/events.js:47 emits an EXPLICIT null for
+ * name-only (custom) participants.
+ * WHY OPTIONAL: only twelve backend projections were widened; the same schemas
+ * still type payloads from surfaces that were deliberately NOT widened.
+ *
+ * WHY THE DECLARATION EXISTS AT ALL — read this before "tidying" it away.
+ * These schemas are TYPING-ONLY today (see the file header, and the identical
+ * headers in groups.ts and users.ts). Nothing runtime-parses them, so an
+ * undeclared key is NOT stripped at runtime — it simply does not exist to
+ * TypeScript. The declaration is what (a) lets a typed consumer read
+ * `picture_url` without an `as` cast and (b) lets identity.contract.test.ts —
+ * the ONE place these schemas are parsed — pin the wire shape. It becomes
+ * load-bearing at RUNTIME only if one of these endpoints is ever migrated to
+ * `validatedQueryFn`, whose `schema.parse` drops undeclared keys; adopting it
+ * carries the contract-test obligation in the FOUNDATION RULE at
+ * src/lib/validatedQueryFn.ts:13-24.
+ *
+ * Do NOT write "this schema layer strips unknown keys" anywhere near here. It
+ * is false today, and it would teach the next reader that a parse guard exists
+ * where none does.
+ */
 export const NestedUserIdentitySchema = z.object({
   id: z.uuid().optional(),
   username: z.string().nullable().optional(),
+  picture_url: z.string().nullable().optional(),
 });
 export type NestedUserIdentity = z.infer<typeof NestedUserIdentitySchema>;
 
@@ -30,9 +77,17 @@ export type RsvpStatus = z.infer<typeof RsvpStatusSchema>;
 // `.nullish()`: the BE derives the member arm via `ep.User?.id`, so an absent
 // User association DROPS the key (undefined ≠ null) — the same absent-
 // association state the nested includes tolerate with `.optional()`.
+// `picture_url` — Phase 88.8 plan 12; the canonical reasoning for this field is
+// the DECISION block above NestedUserIdentitySchema. NOTE the contrast with
+// `user_id` directly above: on THIS row the key is ALWAYS present. The
+// serializer writes `picture_url: ep.User?.picture_url ?? null` for members
+// (routes/events.js:25) and a hand-written `picture_url: null` for custom
+// participants (:47), so absence never occurs here — `.optional()` is tolerance
+// for older cached payloads, NOT a signal that the backend sometimes drops it.
 export const EventParticipationSchema = z.object({
   user_id: z.uuid().nullish(),
   username: z.string().nullable().optional(),
+  picture_url: z.string().nullable().optional(),
   status: RsvpStatusSchema.nullable().optional(),
 });
 export type EventParticipation = z.infer<typeof EventParticipationSchema>;
