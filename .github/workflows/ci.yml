@@ -245,6 +245,30 @@ jobs:
         # below (plus its lockstep twin in ci-grep-gate.fixture.test.ts) is RED on purpose.
         # That red is the gate working. Do NOT delete the row to make it green — land plan 03.
         #
+        # AMENDMENT — Phase 88.8 plan 13 (owner-ruled 2026-09-04). Two rows added:
+        # `src/lib/syntheticAddress.test.ts` and
+        # `src/app/components/EmailAddressSection.test.tsx`.
+        #
+        # The helper's suite is the one that MUST be here, and it is registered on the
+        # same argument Amendment Z used for colourDistance.test.ts. It is the ONLY thing
+        # in either repo pinning the BROAD `@auth0` test against a later narrowing to
+        # `@auth0.local`. `DECISION Phase 88.2 NIX-AUTH0` is a WRITTEN decision, not an
+        # enforced one — nothing else reds if someone "tidies" the helper to the narrow
+        # test, and the narrow test silently stops guarding every `@auth0`-shaped
+        # placeholder that is not exactly `.local`. The consequence is not cosmetic: the
+        # provisioning sentinel would be rendered in the profile header, rendered in the
+        # Email section, and transmitted as the admin mail's Reply-To. Unregistered, that
+        # guard was deletable with a fully green build.
+        #
+        # No `grep` gate is added on the helper's IMPLEMENTATION, deliberately:
+        # `'@auth0.local'` contains `'@auth0'`, so a substring grep is satisfied by exactly
+        # the narrow form it would be meant to forbid. The suite's bare-`@auth0` case is
+        # the gate.
+        #
+        # The section's own suite is registered for the ordinary reason: it is the only
+        # coverage of the eight-state machine, of the four outcome literals that must not
+        # collapse into one another, and of the DR-C no-native-`disabled` sweep.
+        #
         # The lockstep self-test `src/lib/ci-grep-gate.fixture.test.ts` parses THIS step's
         # file list out of this workflow, located by the step name above, and asserts every
         # listed file exists and really carries at least the stated number of assertions.
@@ -274,6 +298,8 @@ jobs:
             "src/app/groupColourRendering.test.ts:10" \
             "src/lib/colourDistance.test.ts:9" \
             "src/lib/groupColourPresets.test.ts:12" \
+            "src/lib/syntheticAddress.test.ts:8" \
+            "src/app/components/EmailAddressSection.test.tsx:50" \
             "src/test-utils/sourceScan.ts:0" \
           ; do
             f="${entry%:*}"; min="${entry##*:}"

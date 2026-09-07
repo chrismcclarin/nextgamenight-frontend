@@ -37,6 +37,10 @@
  *      NOTHING was deleted, so keep the session and the modal open with a
  *      safe-retry message. Destroying the session here would break the SPEC's
  *      retryable path.
+ *      Phase 88.8 (D-19): the never-provisioned 404 joins this lane — same
+ *      non-destructive outcome, same surviving session — but carries its OWN
+ *      copy (NOT_PROVISIONED_MESSAGE), because a plain retry can never resolve
+ *      it and a reload can. Still THREE lanes, not four.
  *
  * On success (and ambiguous outcomes) navigation is IMMEDIATE via
  * window.location — no toast-then-wait — so no authenticated fetch re-provisions
@@ -66,6 +70,14 @@ const DEFINITIVE_FAILURE_MESSAGE =
 // fall back to a generic blocked explanation in the failure-message slot.
 const BLOCKED_NO_DETAILS_MESSAGE =
   'You still own groups with other members. Transfer ownership, then try again.';
+// Phase 88.8 (BOPS-05, SPEC R7 / D-19). The DEFINITIVE lane's second copy, for
+// the never-provisioned 404 registered BE-side by plan 07. The generic
+// DEFINITIVE_FAILURE_MESSAGE says "try again", which for this outcome is advice
+// that can never work: a repeat DELETE returns the same 404 forever. Reloading
+// is what resolves it, because a reload runs the just-in-time provisioning
+// fetch that creates the row. Wording is D-19's discuss-agreed string verbatim.
+const NOT_PROVISIONED_MESSAGE =
+  "There's no account data to delete yet. Reload the page and try again.";
 
 /**
  * Classify a DELETE rejection into the three outcome lanes. The ApiError seam
@@ -84,6 +96,26 @@ export function classifyDeleteError(err: unknown): DeleteOutcome {
     if (err.code === 'network') return 'ambiguous';
     // 2b. Proxy abort — a BFF 504/408 can arrive AFTER the backend committed.
     if (err.status === 504 || err.status === 408) return 'ambiguous';
+    // DECISION Phase 88.8 D-19 / SPEC R7: the never-provisioned 404 gets its OWN
+    // arm, placed deliberately ABOVE the already-gone lane below — chosen OVER
+    // letting it keep falling through to `return 'definitive'` at the bottom,
+    // which is what it does today and which produces the SAME value.
+    //
+    // What is true right now, so nobody "simplifies" this away as dead code:
+    // the already-gone lane matches only `not_found`, `account_deleted` and a
+    // bare status 410. A `not_provisioned` envelope arrives with that exact code
+    // (mapErrorToCode passes body.code VERBATIM) and status 404, so it misses
+    // all three and reaches the definitive fall-through. Behaviourally identical
+    // — today.
+    //
+    // The arm earns its place on ORDER, not value. The lane below is the
+    // logout->goodbye lane: widen it to "every 404" (an easy, plausible future
+    // edit) and a user who never had an account would be signed out and shown a
+    // page telling them their account was permanently deleted. Sitting above it
+    // makes that widening impossible to make by accident. The COPY split is the
+    // part that changes behaviour today, and it lives at the definitive branch
+    // in handleDelete — see NOT_PROVISIONED_MESSAGE.
+    if (err.code === 'not_provisioned') return 'definitive';
     // 2c. Already gone — repeat-DELETE tombstone / missing row.
     if (
       err.code === 'not_found' ||
@@ -206,8 +238,15 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
         return;
       }
       // Definitive failure — the transaction rolled back; keep the session so
-      // the SPEC-designed retry stays possible.
-      setFailureMessage(DEFINITIVE_FAILURE_MESSAGE);
+      // the SPEC-designed retry stays possible. Phase 88.8: the never-provisioned
+      // 404 shares this lane (nothing was deleted, nothing was lost, the session
+      // survives) but NOT its copy — "try again" can never succeed for it, so it
+      // gets the reload instruction instead.
+      setFailureMessage(
+        err instanceof ApiError && err.code === 'not_provisioned'
+          ? NOT_PROVISIONED_MESSAGE
+          : DEFINITIVE_FAILURE_MESSAGE
+      );
       setDeleting(false);
     }
   }, [confirmText]);

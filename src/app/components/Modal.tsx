@@ -258,7 +258,12 @@ function ModalHeader({ children, className, closeDisabled = false, closeClassNam
           // Unavailable presentation only — stays focusable (a real `disabled`
           // would drop keyboard focus mid-interaction); the consumer's onClose
           // guard is what makes the click inert. See `closeDisabled` doc above.
-          closeDisabled && 'cursor-not-allowed opacity-50 hover:text-content-muted',
+          // Round 3 #39: NO element opacity — it composited this glyph's muted ink
+          // at 50% over the modal ground, under 4.5:1, on a control that stays
+          // active (the same defect HIGH-A removed from `.btn`). The gated look is
+          // the resting muted ink with the hover step removed and the cursor;
+          // tokenContrast test 53 now scans src/** for aria-disabled + opacity-*.
+          closeDisabled && 'cursor-not-allowed hover:text-content-muted',
           closeClassName
         )}
       >

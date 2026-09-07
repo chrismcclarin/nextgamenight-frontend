@@ -11,7 +11,7 @@ import type {
   EventBringList,
   Ballot,
 } from './schemas/events';
-import type { User } from './schemas/users';
+import type { EmailChangeResponse, User } from './schemas/users';
 import type { AvailabilityList } from './schemas/availability';
 import type { GameList, UserGameList } from './schemas/shared';
 
@@ -117,6 +117,21 @@ export type ApiErrorCode =
   // in queryClient.ts NON_RETRYABLE_API_CODES.
   | 'already_member'
   | 'invite_pending'
+  // Phase 88.8 (BOPS-05, SPEC R7 / D-19): registered BE-side in ERROR_REGISTRY by
+  // plan 07 as `not_provisioned` @404. Emitted by BOTH deletion endpoints
+  // (DELETE /users/me and GET /users/me/deletion-blockers) when the caller's
+  // token is valid but there is no Users row AND no deletion tombstone — i.e.
+  // "you never had an account here". That is a THIRD state, distinct from
+  // `account_deleted` (410, "your account was deleted") and from the generic
+  // forward-compat `not_found` (404, "the thing you asked for is missing"); the
+  // BE registry comment records that reusing `not_found` was rejected for
+  // exactly this reason. Same VERBATIM pass-through hazard as the two 409s
+  // above: `mapErrorToCode` returns `body.code` unchanged, so without this
+  // member the code lands outside `ApiErrorCode` and every Record keyed on it
+  // misses silently. The set moves together — union here,
+  // MESSAGE_BY_CODE in useFetchErrorState.ts, NON_RETRYABLE_API_CODES in
+  // queryClient.ts, and its own arm in classifyDeleteError.
+  | 'not_provisioned'
   | 'internal'
   | 'network'
   | 'config';
@@ -152,9 +167,11 @@ export function getEnvelopeDetails<T>(err: ApiError): T | undefined {
 
 /**
  * The GET /users/me/deletion-blockers pre-flight shape (Phase 87.2). Resolves
- * 200 for any authenticated caller — `groups` is empty when not blocked and
- * non-empty (each group's TOTAL member count) when the caller owns active
- * groups. `memberCount` is the group's whole-membership count (pinned in plan
+ * 200 for a PROVISIONED authenticated caller — `groups` is empty when not
+ * blocked and non-empty (each group's TOTAL member count) when the caller owns
+ * active groups. AMENDED Phase 88.8 (round 3 #15): it now also rejects with
+ * 404 `not_provisioned` (valid token, no Users row, no tombstone) and 410
+ * `account_deleted` (tombstone present) — three outcomes, not one. `memberCount` is the group's whole-membership count (pinned in plan
  * 87.2-04) — render it as the member count, NOT an "others" count. This
  * endpoint NEVER rejects with `owner_of_active_groups`; that code arrives only
  * on the DELETE response (the server-side TOCTOU re-check, D-10).
@@ -793,9 +810,10 @@ export const usersAPI = {
     }),
 
   // Account-deletion pre-flight (Phase 87.2 / D-11). Resolves 200 { groups }
-  // for an authenticated caller — empty array when nothing blocks deletion,
+  // for a PROVISIONED caller — empty array when nothing blocks deletion,
   // non-empty (owned active groups + TOTAL member counts) when the owner gate
-  // would fire. NEVER rejects with owner_of_active_groups; that arrives only on
+  // would fire; rejects 404 `not_provisioned` / 410 `account_deleted` for a
+  // caller with no row (Phase 88.8 R7 — see the DeletionBlockerGroup docblock). NEVER rejects with owner_of_active_groups; that arrives only on
   // the DELETE (the server-side TOCTOU re-check). Caller derives from the Auth0
   // token server-side — no user_id in the path (self-scoped /users/me).
   getDeletionBlockers: () =>
@@ -807,6 +825,56 @@ export const usersAPI = {
   // (no toast-then-wait) so no authenticated fetch re-provisions a JIT ghost row.
   deleteAccount: () =>
     apiFetch<{ message: string }>('/users/me', { method: 'DELETE' }),
+
+  // ── Email change (Phase 88.8 plan 13, SPEC R12 / D-09 as re-ruled) ─────────
+  //
+  // All five go through the AUTHENTICATED client. The public direct-to-backend
+  // helper is deliberately NOT used by this feature: the original design's
+  // public verification PAGE is retired (the mail carries a code, not a link),
+  // and a function here reaching for `publicFetch` would be the tell that the
+  // retired design had crept back.
+  //
+  // Shape follows the shipped `savePhone` above: the function takes SCALARS and
+  // builds the JSON body HERE, in api.ts. The request key is `email` (and
+  // `code` on verify) and it is PINNED ON BOTH SIDES — the backend refuses a
+  // body carrying any other key (`routes/users.js`, the `keys[0] !== 'email'` /
+  // `keys[0] !== 'code'` guards in the request and verify handlers — cite the SYMBOL,
+  // the line numbers drifted twice in one phase),
+  // and `src/lib/api.test.ts` asserts the exact serialised key set by stubbing
+  // `fetch` and calling the REAL function. A mock-level assertion would prove
+  // nothing: these take scalars, so a module-boundary mock never sees a body at
+  // all, and the line below would never execute. Neither repo's CI can see the
+  // other; those two assertions are the whole contract.
+  //
+  // All five answer the SAME 200 body (`EmailChangeResponse`). Resend, cancel
+  // and revert take NO body — each is its own route precisely so a destructive
+  // or re-sending intent cannot ride in on an address-shaped payload.
+  requestEmailChange: (user_id: string, email: string) =>
+    apiFetch<EmailChangeResponse>(`/users/${encodeURIComponent(user_id)}/email`, {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  verifyEmailChange: (user_id: string, code: string) =>
+    apiFetch<EmailChangeResponse>(`/users/${encodeURIComponent(user_id)}/email/verify`, {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+
+  resendEmailChangeCode: (user_id: string) =>
+    apiFetch<EmailChangeResponse>(`/users/${encodeURIComponent(user_id)}/email/resend`, {
+      method: 'POST',
+    }),
+
+  cancelEmailChange: (user_id: string) =>
+    apiFetch<EmailChangeResponse>(`/users/${encodeURIComponent(user_id)}/email/cancel`, {
+      method: 'POST',
+    }),
+
+  revertEmailToSignIn: (user_id: string) =>
+    apiFetch<EmailChangeResponse>(`/users/${encodeURIComponent(user_id)}/email/revert`, {
+      method: 'POST',
+    }),
 };
 
 /**

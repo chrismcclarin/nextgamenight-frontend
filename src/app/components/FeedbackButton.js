@@ -164,7 +164,35 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
         // defence-in-depth); window.location.search is never appended.
         pageUrl: scrubFeedbackPageUrl(pathname),
         userName: user.name || user.nickname || 'Unknown',
-        userEmail: user.email || '',
+        /* DECISION Phase 88.8 (plan 13 Task 3(c), SPEC R12): the `userEmail`
+           field is DROPPED from this body entirely and the server derives it —
+           chosen OVER fixing its VALUE. The defect originates in a client
+           asserting an identity the server already owns, on a route that is
+           already behind the auth gate; `88.8-09-PLAN.md` Task 4 derives
+           `user_email` server-side from `Users.email`, which is correct by
+           construction and strictly better than any client value.
+
+           REJECTED, all three:
+           (i)  adding `useSelfIdentity()` here. CORRECTED round 3 #19: an earlier
+                version of this note rejected it as making the hook's 410-redirect
+                side effect "fire app-wide" — but it ALREADY does: `layout.js:44`
+                mounts `TimezoneProvider`, which calls `useSelfIdentity()`
+                unconditionally (`TimezoneProvider.js:54`) around this very button.
+                The true ground is the one above: the route is behind the auth
+                gate and the SERVER owns the identity; a client must not assert
+                an address the server can derive. Rejected on that ground alone.
+           (ii) reading the cached row non-reactively with `getQueryData` — no
+                fetch and no side effect. Rejected for the SAME ground as (i), not
+                the one an earlier version gave ("yields nothing on a page that
+                never resolved the row" — false for the same reason: the app-root
+                provider resolves it on every page).
+           (iii) keeping the session email — the stale value this task exists to
+                remove: after an address change it is the address the user just
+                moved away from.
+
+           `userName` above is DELIBERATELY KEPT: it is a display name, not a
+           contact handle, and nothing downstream tries to reach anyone at it.
+           Re-adding an address field here is a decision, not a cleanup. */
         label: getCategoryLabel(category),
         userAgent: navigator.userAgent,
       });

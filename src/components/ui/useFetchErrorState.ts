@@ -57,6 +57,23 @@ const MESSAGE_BY_CODE: Record<FetchErrorCode, string> = {
   owner_of_active_groups:
     'You still own active groups. Transfer ownership or delete them, then try again.',
   account_deleted: 'This account has already been deleted.',
+  // Phase 88.8 (BOPS-05, SPEC R7 / D-19): the never-provisioned 404 registered
+  // BE-side by plan 07. The Record is EXHAUSTIVE over ApiErrorCode (see the
+  // 88-33 note below) so widening the union without this entry is a build
+  // failure by design — that is the ONE site in this sweep that fails loudly;
+  // the union, NON_RETRYABLE_API_CODES and classifyDeleteError all fail silently.
+  //
+  // DECISION Phase 88.8 D-19: this Record gets a SURFACE-NEUTRAL wording, chosen
+  // OVER pasting D-19's discuss-agreed string ("There's no account data to
+  // delete yet. Reload the page and try again.") verbatim. That string names the
+  // DELETE flow, and this Record is the generic query-fallback copy for ANY
+  // query — the same generic-here / richer-at-the-surface split already used for
+  // account_deleted, already_restored and the two invite 409s. D-19's exact
+  // wording IS used, verbatim, at the one surface that renders it today:
+  // NOT_PROVISIONED_MESSAGE in DangerZoneDeleteAccount.tsx. Both say the same
+  // thing — reload, because reloading runs the just-in-time provisioning fetch.
+  not_provisioned:
+    "Your account isn't set up yet. Reload the page and try again.",
   // 88-CODE-REVIEW D2 (owner-ratified copy, 2026-08-06): generic fallback for a
   // code-less 409 — surfaces override per outcome via byCode (friends, polls).
   conflict: "That can't be done — it may already be settled. Refresh to see the latest state.",
