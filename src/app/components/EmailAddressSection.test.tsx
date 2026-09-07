@@ -1276,6 +1276,211 @@ describe('EmailAddressSection — code-review fixes 2026-09-05', () => {
 // Composition + a11y
 // ---------------------------------------------------------------------------
 
+/* ---------------------------------------------------------------------------
+   POST-MERGE FIX SET (code review round 5 MED/LOW, 2026-09-07)
+
+   Round 5 #32 recorded the gap these close: the round-4 frontend fix set shipped five
+   behaviour changes and ONE changed assertion, so the suite was green whichever way the
+   keep-the-code rule went and a later "restore the symmetry" tidy would have passed. Each
+   test below pins a branch that had no assertion in either direction.
+   --------------------------------------------------------------------------- */
+
+describe('EmailAddressSection — post-merge fix set (round 5)', () => {
+  const unusable = { outcome: 'verified', email: '', verification_sent: false };
+
+  it('#1 — a TRANSPORT failure keeps the typed code, so Verify can be pressed again without re-transcribing it', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    api.verifyEmailChange.mockRejectedValue(new ApiError('offline', 'network', 0, {}));
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(screen.getByText(/couldn't reach the server/i)).toBeInTheDocument());
+
+    // THE POINT OF THE FIX: the 8 characters survive a network blip. Before this they
+    // were wiped and had to be re-read off a phone's mail client.
+    expect(screen.getByLabelText(/code from the email/i)).toHaveValue('AB12CD34');
+    // And a second press actually re-sends THE SAME code — the anti-vacuity half.
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(api.verifyEmailChange).toHaveBeenCalledTimes(2));
+    expect(api.verifyEmailChange).toHaveBeenLastCalledWith('u-uuid-1', 'AB12CD34');
+  });
+
+  it('#22 — an UNREADABLE answer keeps the code but points at Resend, never claiming the code is still good', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    api.verifyEmailChange.mockResolvedValue(unusable);
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    // The server may already have burnt the nonce on this branch, so the copy names the
+    // escape hatch instead of asserting the code is live.
+    await waitFor(() => expect(screen.getByText(/use resend code/i)).toBeInTheDocument());
+    expect(screen.getByLabelText(/code from the email/i)).toHaveValue('AB12CD34');
+    expect(screen.queryByText(/that code isn't right/i)).not.toBeInTheDocument();
+  });
+
+  it('#2 — Cancel WORKS during an in-flight Save, and the landing response does not drag the user into awaiting-code', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    let release: (v: unknown) => void = () => {};
+    api.requestEmailChange.mockReturnValue(new Promise((res) => { release = res; }));
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(api.requestEmailChange).toHaveBeenCalledTimes(1); // anti-vacuity: it is in flight
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    // The press is HONOURED, not swallowed: round 4 gated it and the focus steal happened
+    // anyway when the response landed.
+    expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/new email address/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change' })).toHaveFocus();
+
+    release(body({ outcome: 'code_sent' }));
+    // The section stays where the user left it — no code panel, no focus theft — and says
+    // what happened, because a pending change they do not know about is a surprise on the
+    // next reload.
+    /* Two nodes carry it, exactly as the `unchanged` copy does: the visible info Banner
+       (a POLITE region that is conditionally mounted, so it announces nothing on its own)
+       and the section's always-mounted region, which is what actually speaks. That
+       pairing is the documented rule in this file's announce() docblock, not a slip. */
+    await waitFor(() => expect(screen.getAllByText(/request had already reached us/i)).toHaveLength(2));
+    expect(screen.queryByLabelText(/code from the email/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change' })).toHaveFocus();
+    // The sr-only one is the section's always-mounted region — the surface that announces.
+    const regions = screen.getAllByRole('status');
+    expect(regions.some((r) => r.className.includes('sr-only'))).toBe(true);
+    expect(regions.find((r) => r.className.includes('sr-only'))).toHaveTextContent(
+      /request had already reached us/i
+    );
+  });
+
+  it('#35/#39 — a busy Save answers in the ACTION lane: the email input is never marked invalid, and both controls point at the message', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    let release: (v: unknown) => void = () => {};
+    api.requestEmailChange.mockReturnValue(new Promise((res) => { release = res; }));
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(api.requestEmailChange).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(api.requestEmailChange).toHaveBeenCalledTimes(1); // the second press is blocked
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(/wait for the current step to finish/i);
+    // THE DEFECT THIS CLOSES: the busy line used to live in the FormField lane, which
+    // stamps aria-invalid on an address the user has not mistyped (WCAG 4.1.2).
+    expect(screen.getByLabelText(/new email address/i)).not.toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveAttribute('aria-describedby', alert.id);
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveAttribute('aria-describedby', alert.id);
+
+    release(body({ outcome: 'code_sent' }));
+    await waitFor(() => expect(screen.getByLabelText(/code from the email/i)).toBeInTheDocument());
+  });
+
+  it('#33/#35 — a self row with NO id gates the controls in ARIA as well as in the handler, and answers in the action lane', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState({ ...ROW(), id: undefined } as unknown as Parameters<typeof selfState>[0]));
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    const save = screen.getByRole('button', { name: 'Save' });
+    // DR-C's FIRST half, which round 4 shipped without: announced as unavailable...
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(save).not.toHaveAttribute('disabled'); // ...and never natively disabled
+
+    await user.click(save);
+    expect(api.requestEmailChange).not.toHaveBeenCalled();
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(/couldn't load your account details/i);
+    expect(screen.getByLabelText(/new email address/i)).not.toHaveAttribute('aria-invalid', 'true');
+    expect(save).toHaveAttribute('aria-describedby', alert.id);
+  });
+
+  it('#33 — Verify, Resend and Discard carry the same aria-disabled when the self row has no id', async () => {
+    mockSelf.mockReturnValue(
+      selfState({
+        ...ROW({ pending_email_change: { address: NEW, expires_at: 'z' } }),
+        id: undefined,
+      } as unknown as Parameters<typeof selfState>[0])
+    );
+    renderSection();
+
+    for (const name of ['Verify', 'Resend code', 'Discard change']) {
+      const control = screen.getByRole('button', { name });
+      expect(control).toHaveAttribute('aria-disabled', 'true');
+      expect(control).not.toHaveAttribute('disabled');
+    }
+    noApiCalls();
+  });
+
+  it('#33 — the revert control carries it too', () => {
+    mockSelf.mockReturnValue(
+      selfState({
+        ...ROW({ email_changed_at: '2026-09-04T00:00:00.000Z' }),
+        id: undefined,
+      } as unknown as Parameters<typeof selfState>[0])
+    );
+    renderSection();
+    const revert = screen.getByRole('button', { name: 'Use my sign-in address' });
+    expect(revert).toHaveAttribute('aria-disabled', 'true');
+    expect(revert).not.toHaveAttribute('disabled');
+  });
+
+  it('#16/#19/#29 — a SYNTHETIC address is refused before the request, with copy naming the real reason', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    // A real, deliverable domain that the BROAD NIX-AUTH0 predicate matches — the exact
+    // input that used to be told to "reload the page", forever.
+    await user.type(screen.getByLabelText(/new email address/i), 'chris@auth0.com');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(screen.getByText(/reserved by our sign-in system/i)).toBeInTheDocument();
+    expect(screen.queryByText(/reload the page/i)).not.toBeInTheDocument();
+    // The address never leaves the browser.
+    expect(api.requestEmailChange).not.toHaveBeenCalled();
+  });
+
+  it('#29 — the SERVER\'s `validation` refusal on Save lands on the same copy, not on "reload the page"', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    api.requestEmailChange.mockRejectedValue(new ApiError('Validation failed', 'validation', 400, {}));
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(screen.getByText(/reserved by our sign-in system/i)).toBeInTheDocument());
+    expect(screen.queryByText(/no longer available/i)).not.toBeInTheDocument();
+  });
+
+  it('#29 — and the override is SCOPED: the bodyless routes keep the stale-action copy', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    api.resendEmailChangeCode.mockRejectedValue(new ApiError('Validation failed', 'validation', 400, {}));
+
+    await user.click(screen.getByRole('button', { name: 'Resend code' }));
+
+    // A resend with nothing pending genuinely IS stale state — the reason the override
+    // exists at all — so this copy must not have been collateral damage.
+    await waitFor(() => expect(screen.getByText(/no longer available/i)).toBeInTheDocument());
+    expect(screen.queryByText(/reserved by our sign-in system/i)).not.toBeInTheDocument();
+  });
+});
+
 describe('EmailAddressSection — composition and accessibility', () => {
   it('every control has an accessible name and the section passes an automated a11y audit (idle)', async () => {
     mockSelf.mockReturnValue(selfState(ROW({ email_changed_at: '2026-09-04T00:00:00.000Z' })));

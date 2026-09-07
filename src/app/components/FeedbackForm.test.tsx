@@ -242,3 +242,103 @@ describe('FeedbackForm — round 3 DR3: the loading gate answers, the error case
     expect(screen.queryByText(/couldn't load your email address/i)).not.toBeInTheDocument();
   });
 });
+
+/* ---------------------------------------------------------------------------
+   POST-MERGE FIX SET (code review round 5 MED/LOW, 2026-09-07) — #37/#41/#8/#40.
+   --------------------------------------------------------------------------- */
+
+describe('FeedbackForm — post-merge fix set (round 5)', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  const fillAndSubmit = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.type(screen.getByPlaceholderText(/Brief description/i), 'A subject');
+    await user.type(screen.getByPlaceholderText(/provide as much detail/i), 'A description here.');
+    await user.click(screen.getByRole('button', { name: /^Submit$/i }));
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.self = { id: 'u1', email: APP_EMAIL };
+    h.query = {};
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    h.self = undefined;
+    h.query = {};
+  });
+
+  it('#37 — a FAILED submit is announced through a live region and named by Submit`s aria-describedby', async () => {
+    // The harm: the red box painted and assistive tech was told nothing, so a keyboard or
+    // screen-reader reporter believed the report had gone.
+    fetchMock = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+
+    const alertRegion = screen.getByRole('alert');
+    // ALWAYS MOUNTED AND EMPTY FIRST — a region that mounts WITH its content announces
+    // nothing, which is the shape this fix replaces.
+    expect(alertRegion).toHaveTextContent('');
+
+    await fillAndSubmit(user);
+
+    await waitFor(() => expect((screen.getByRole('alert').textContent ?? '').length).toBeGreaterThan(0));
+    const submit = screen.getByRole('button', { name: /^Submit$/i });
+    expect(submit.getAttribute('aria-describedby')).toContain(screen.getByRole('alert').id);
+    // The gate line is still referenced too — the failure JOINS it, never replaces it.
+    expect(submit.getAttribute('aria-describedby')).toContain(screen.getByRole('status').id);
+  });
+
+  it('#41 — the reply-to warning arrives as a CHANGE to the already-mounted region, not as a new node', async () => {
+    /* What the round-4 comment over-claimed: `selfNotReady` is `isFetching`, false on a
+       warm cache and false for a settled errored query, so the sentence could be present
+       on the region`s very first commit — which announces nothing. The text is now set
+       from an effect, and the region is the SAME DOM node before and after, which is what
+       makes the first appearance an announceable change.
+       WHAT THIS CANNOT PROVE, stated rather than implied: RTL`s render flushes effects
+       inside act(), so no assertion here can observe the one commit between mount and
+       effect. Node identity across the transition is the observable half. */
+    fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ success: true }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { rerender } = render(<FeedbackForm onClose={() => {}} />);
+    const before = screen.getByRole('status');
+    expect(before).toHaveTextContent('');
+
+    h.self = { id: 'u1', email: SYNTHETIC };
+    rerender(<FeedbackForm onClose={() => {}} />);
+
+    const after = screen.getByRole('status');
+    expect(after).toBe(before);
+    expect(after).toHaveTextContent(/couldn't load your email address/i);
+  });
+
+  it('#8/#40 — two concurrently mounted forms carry DISTINCT ids, and each Submit points at its OWN status line', () => {
+    fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ success: true }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    /* Two mount sites exist today (Footer, and FetchErrorBanner, which can appear more
+       than once), so the hard-coded `feedback-submit-status` could resolve a Submit`s
+       description to the OTHER form`s status line. Queried through the DOM rather than
+       the accessibility tree on purpose: a modal marks its siblings aria-hidden, which
+       would hide one of the two from a role query and make this pass vacuously. */
+    render(
+      <>
+        <FeedbackForm onClose={() => {}} />
+        <FeedbackForm onClose={() => {}} />
+      </>
+    );
+
+    const statuses = Array.from(document.querySelectorAll('[role="status"]'));
+    expect(statuses).toHaveLength(2);
+    const ids = statuses.map((n) => n.id);
+    expect(ids[0]).toBeTruthy();
+    expect(ids[0]).not.toBe(ids[1]);
+    expect(ids).not.toContain('feedback-submit-status');
+
+    const submits = Array.from(document.querySelectorAll('button[type="submit"]'));
+    expect(submits).toHaveLength(2);
+    submits.forEach((btn, i) => {
+      expect(btn.getAttribute('aria-describedby')).toContain(ids[i]);
+      expect(btn.getAttribute('aria-describedby')).not.toContain(ids[i === 0 ? 1 : 0]);
+    });
+  });
+});
