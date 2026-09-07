@@ -321,6 +321,16 @@ export function EmailAddressSection() {
      a field the user has not mistyped, and often has not touched (code review #35).
      Those failures are about the ACTION, not the field, so they get their own lane. */
   const [actionError, setActionError] = React.useState<string | null>(null);
+  /* THE EDITING BLOCK'S OWN ACTION LANE (round 5 #35/#39). The rule one lane up applies
+     verbatim here and the editing block had no surface to apply it to: Cancel's busy gate
+     and Save's missing-self-row gate were written into `emailError`, which `FormField`
+     turns into `aria-invalid="true"` on the email input — telling assistive tech the
+     address the user typed is wrong when the address is not the problem at all (WCAG
+     4.1.2). `emailError` now carries ONLY the field's own verdicts (empty, too long,
+     malformed, and the reserved-domain refusal); everything that is a fact about the
+     ACTION lands here, beside the buttons, exactly as `actionError` does for the
+     awaiting-code block and `revertError` for the idle one. */
+  const [editActionError, setEditActionError] = React.useState<string | null>(null);
   const mutating = busy !== null || state === 'saving' || state === 'verifying';
   const [focusTarget, setFocusTarget] = React.useState<FocusTarget>(null);
 
@@ -546,6 +556,7 @@ export function EmailAddressSection() {
     }
     setEmailInput('');
     setEmailError(null);
+    setEditActionError(null);
     setNotice(null);
     setRevertError(null);
     setState('editing');
@@ -557,10 +568,11 @@ export function EmailAddressSection() {
     // an in-flight Save dropped the section to idle and the landing response then yanked
     // the user into awaiting-code, stealing focus into a panel they had just left.
     if (mutating) {
-      setEmailError(ACTION_BUSY_ERROR);
+      setEditActionError(ACTION_BUSY_ERROR);
       return;
     }
     setEmailError(null);
+    setEditActionError(null);
     setState('idle');
     setFocusTarget('change');
   };
@@ -572,7 +584,9 @@ export function EmailAddressSection() {
     // own state, so a Save pressed while a Revert is in flight cannot start an edit the
     // resolving revert then stomps back to idle. And it answers (#34).
     if (mutating) {
-      setEmailError(ACTION_BUSY_ERROR);
+      // Round 5 #35: the same class as Cancel's gate — a fact about the LANE, never a
+      // verdict on the typed address, so it must not stamp aria-invalid on the input.
+      setEditActionError(ACTION_BUSY_ERROR);
       return;
     }
     const value = emailInput.trim();
@@ -589,11 +603,14 @@ export function EmailAddressSection() {
       return;
     }
     if (!selfId) {
-      setEmailError(SELF_UNAVAILABLE_ERROR);
+      // Round 5 #35: "we couldn't load your account details" is a fact about the SECTION,
+      // not about the address in the field.
+      setEditActionError(SELF_UNAVAILABLE_ERROR);
       return;
     }
 
     setEmailError(null);
+    setEditActionError(null);
     setNotice(null);
     setState('saving');
     try {
@@ -943,8 +960,16 @@ export function EmailAddressSection() {
   const inAwaiting = state === 'awaiting-code' || state === 'verifying';
   // Round 3 #35: the primary gates carry the lane, so their ARIA state is right exactly
   // when the one-lane contract says they are unavailable (WCAG 4.1.2).
-  const saveGated = mutating || emailInput.trim().length === 0;
-  const verifyGated = mutating || checkCode(codeInput) !== 'ok';
+  /* Round 5 #33: `!selfId` joins the gate expressions. Round 4 gave the self-row gate
+     DR-C's SECOND half only (a fixed error naming what is missing) and not its first, so
+     a screen-reader or switch user was told the control was available, pressed it, and
+     got an error instead of an action. DR-C's contract is both halves together
+     (`:123-127`), and the five controls already carry the shape for `mutating` and the
+     cooldown — this is the same shape applied to the one condition that was missing it,
+     not a new rule. Still `aria-disabled`, never native `disabled`. */
+  const selfRowMissing = !selfId;
+  const saveGated = mutating || emailInput.trim().length === 0 || selfRowMissing;
+  const verifyGated = mutating || checkCode(codeInput) !== 'ok' || selfRowMissing;
 
   return (
     <section className="card p-3 md:p-6 mb-6" aria-labelledby={`${reactId}-title`}>
@@ -1037,7 +1062,7 @@ export function EmailAddressSection() {
               variant="secondary"
               onClick={handleRevert}
               aria-describedby={revertError ? `${reactId}-revert-error` : undefined}
-              aria-disabled={mutating ? 'true' : undefined}
+              aria-disabled={mutating || selfRowMissing ? 'true' : undefined}
               className="max-md:min-h-11"
             >
               {LABEL_REVERT}
@@ -1080,6 +1105,9 @@ export function EmailAddressSection() {
                 // Round 3 #36: resuming entry clears the stale error (and its
                 // aria-invalid); validation itself still runs only on Save and blur.
                 if (emailError) setEmailError(null);
+                // Round 5 #35: the action lane is cleared on the same keystroke, so a
+                // stale busy line cannot outlive the step it was about.
+                if (editActionError) setEditActionError(null);
               }}
               /* ENTER SUBMITS (code review #36). There is no <form> here — the
                  section lives inside the profile page's own markup and a nested
@@ -1105,6 +1133,7 @@ export function EmailAddressSection() {
             <Button
               variant="primary"
               onClick={handleSave}
+              aria-describedby={editActionError ? `${reactId}-edit-error` : undefined}
               aria-disabled={saveGated ? 'true' : undefined}
               className="max-md:min-h-11"
             >
@@ -1113,12 +1142,24 @@ export function EmailAddressSection() {
             <Button
               variant="ghost"
               onClick={handleCancelEdit}
+              aria-describedby={editActionError ? `${reactId}-edit-error` : undefined}
               aria-disabled={mutating ? 'true' : undefined}
               className="max-md:min-h-11"
             >
               {LABEL_CANCEL}
             </Button>
           </div>
+          {/* THE EDITING LANE'S VISIBLE HOME (round 5 #35/#39). Same shape as the
+              awaiting-code block's action line and the revert error: beside the buttons,
+              `role="alert"`, and pointed at by BOTH controls' `aria-describedby` so a
+              user who returns to a gated Save or Cancel hears WHY rather than meeting a
+              dimmed control with no reason (WCAG 4.1.2, and the consistency the three
+              siblings already have). */}
+          {editActionError && (
+            <p id={`${reactId}-edit-error`} role="alert" className="text-content-status-error text-xs mt-2">
+              {editActionError}
+            </p>
+          )}
         </div>
       )}
 
@@ -1226,7 +1267,7 @@ export function EmailAddressSection() {
               variant={resendPromoted ? 'secondary' : 'ghost'}
               onClick={handleResend}
               aria-describedby={actionError ? `${reactId}-action-error` : undefined}
-              aria-disabled={cooldown || mutating ? 'true' : undefined}
+              aria-disabled={cooldown || mutating || selfRowMissing ? 'true' : undefined}
               className="max-md:min-h-11"
             >
               {LABEL_RESEND}
@@ -1235,7 +1276,7 @@ export function EmailAddressSection() {
               variant="ghost"
               onClick={handleDiscard}
               aria-describedby={actionError ? `${reactId}-action-error` : undefined}
-              aria-disabled={mutating ? 'true' : undefined}
+              aria-disabled={mutating || selfRowMissing ? 'true' : undefined}
               className="max-md:min-h-11"
             >
               {LABEL_DISCARD}
