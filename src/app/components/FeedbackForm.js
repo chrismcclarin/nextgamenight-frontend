@@ -1,14 +1,22 @@
 'use client';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useId } from 'react';
 import { feedbackAPI } from '../../lib/api';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { isSyntheticAddress } from '../../lib/syntheticAddress';
 import { DialogTitle } from '../../components/ui/dialog';
 import { Modal } from './Modal';
 import { Input, Textarea, SelectControl } from '@/components/ui/Input';
+import { StatusRegion } from '@/components/ui/StatusRegion';
 
 const MAX_FILE_SIZE_MB = 2;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
+// Round 5 #41: the two status sentences are module-level constants like every other
+// fixed string in this phase, because they are now set from an effect rather than
+// computed inline in the JSX and two spellings would be one edit away.
+const LOADING_DETAILS_COPY = 'Loading your details — one moment';
+const REPLY_TO_UNAVAILABLE_COPY =
+  "We couldn't load your email address, so we won't be able to reply to this.";
 
 export default function FeedbackForm({ onClose, initialType = 'bug', initialSubject = '', initialDescription = '' }) {
   // Phase 88.8 plan 13 Task 3(b): the contact handle is the APP address off the
@@ -64,6 +72,30 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
   const subjectInputRef = useRef(null);
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
+  /* Round 5 #8/#40: DOCUMENT-UNIQUE ids, not module-level literals. This component has
+     two independent mount sites — `Footer.js` (root layout, every page) and
+     `FetchErrorBanner.tsx`, which can itself appear more than once — so the hard-coded
+     `feedback-submit-status` produced duplicate ids and an `aria-describedby` that
+     resolved to whichever node the browser found first, reading another form's status.
+     `useId()` is the idiom the sibling EmailAddressSection uses throughout. */
+  const reactId = useId();
+  const statusId = `${reactId}-submit-status`;
+  const errorId = `${reactId}-submit-error`;
+  /* Round 5 #41: EMPTY-FIRST, THEN POPULATED — the StatusRegion contract, applied for
+     real. The round-4 comment claimed the reply-to line's "asynchronous appearance is a
+     change in an existing region and is announced", which holds only when `selfNotReady`
+     was true FIRST. It is `selfQuery.isFetching`, which is false on a warm cache and
+     false for a settled errored query, so for a signed-in user opening the modal with a
+     cached synthetic address (or a cached error) the region rendered WITH the sentence
+     already in it on the very first commit — and a live region that mounts with its
+     content announces nothing. Setting the text from an effect makes the first
+     appearance a CHANGE, exactly as EmailAddressSection does for its unavailable copy. */
+  const [statusLine, setStatusLine] = useState('');
+  useEffect(() => {
+    setStatusLine(
+      selfNotReady ? LOADING_DETAILS_COPY : replyToUnavailable ? REPLY_TO_UNAVAILABLE_COPY : ''
+    );
+  }, [selfNotReady, replyToUnavailable]);
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -321,24 +353,36 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
             )}
           </div>
 
-          {/* Error */}
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-sm">
-              {error}
-            </div>
-          )}
+          {/* Error — ANNOUNCED, AND ATTACHED TO THE CONTROL THAT PRODUCED IT (round 5
+              #37). This was a bare styled <div>, conditionally mounted with its content:
+              no role, no aria-live, no id, nothing pointing at it. A keyboard or
+              screen-reader user pressed Submit, the POST to the public feedback writer
+              failed, the red box painted, and assistive tech was told nothing — the
+              report was silently lost. It is now the house StatusRegion, ASSERTIVE
+              (a failed submit is not a background update) and always mounted so the
+              message is a change rather than a mount, carrying its visual tone only when
+              it has something to say. `text-base` is passed deliberately: StatusRegion
+              defaults to `text-sm` and this box keeps the size it shipped with. */}
+          <StatusRegion
+            id={errorId}
+            politeness="assertive"
+            className={
+              error
+                ? 'text-base bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-sm'
+                : undefined
+            }
+          >
+            {error}
+          </StatusRegion>
 
           {/* Round 3 DR3: one always-mounted polite region for the loading state, so a
               gated Submit is explained and announced instead of silently unavailable. */}
-          {/* Round 4 #31: the reply-to disclosure rides the SAME live region, so its
-              asynchronous appearance is a change in an existing region and is announced. */}
-          <p id="feedback-submit-status" role="status" className="text-xs text-content-muted min-h-4">
-            {selfNotReady
-              ? 'Loading your details — one moment'
-              : replyToUnavailable
-                ? "We couldn't load your email address, so we won't be able to reply to this."
-                : ''}
-          </p>
+          {/* Round 4 #31 / round 5 #41: the reply-to disclosure rides the SAME live
+              region, and the text is now set from an effect so its FIRST appearance is a
+              change to a mounted-empty region rather than a mount that carries it. */}
+          <StatusRegion id={statusId} className="text-xs text-content-muted min-h-4">
+            {statusLine}
+          </StatusRegion>
 
           {/* Buttons */}
           <div className="flex gap-3 justify-end">
@@ -354,7 +398,9 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
               type="submit"
               disabled={submitting || !subject.trim() || !description.trim()}
               aria-disabled={selfNotReady ? 'true' : undefined}
-              aria-describedby="feedback-submit-status"
+              /* Round 5 #37: the failure joins the gate line, so a user returning to
+                 Submit hears WHY it failed and not only whether it is available. */
+              aria-describedby={[error ? errorId : null, statusId].filter(Boolean).join(' ')}
               className="btn btn-primary"
             >
               {submitting ? 'Submitting...' : 'Submit'}
