@@ -971,9 +971,16 @@ export function EmailAddressSection() {
       {/* ── IDLE / VERIFIED ───────────────────────────────────────────────── */}
       {(state === 'idle' || state === 'verified') && (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+          {/* DECISION Phase 88.8 D-30 AMENDED (owner ruling 2026-09-07, plan 14 production
+              walk): Change and the revert below are `secondary`, chosen OVER the ghost D-30
+              originally assigned them. On the idle row there is no primary beside them to
+              anchor the row, and a borderless ghost read as a label — the owner could not
+              tell it was a button. Cancel / Discard / un-promoted Resend STAY ghost: each
+              sits beside a primary (Save / Verify) that anchors its row. Changing these two
+              back to ghost is a decision, not a cleanup. */}
           <Button
             ref={changeRef}
-            variant="ghost"
+            variant="secondary"
             onClick={handleChange}
             aria-disabled={mutating ? 'true' : undefined}
             className="max-md:min-h-11"
@@ -1005,7 +1012,7 @@ export function EmailAddressSection() {
           {revertAvailable && (
             <Button
               ref={revertRef}
-              variant="ghost"
+              variant="secondary"
               onClick={handleRevert}
               aria-describedby={revertError ? `${reactId}-revert-error` : undefined}
               aria-disabled={mutating ? 'true' : undefined}
