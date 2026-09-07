@@ -1022,7 +1022,6 @@ export function EmailAddressSection() {
   if (showUnavailable) {
     return (
       <section className="card p-3 md:p-6 mb-6" aria-labelledby={`${reactId}-title`}>
-        <StatusRegion className="sr-only">{announcement}</StatusRegion>
         <h2 id={`${reactId}-title`} className="text-xl font-bold text-content-primary mb-1">
           {SECTION_TITLE}
         </h2>
@@ -1032,7 +1031,18 @@ export function EmailAddressSection() {
             stale value this whole correction removes, and offering Change
             against an address we cannot read invites a change to the value the
             user may already have. NO actions in this arm. */}
-        <p className="text-sm text-content-secondary">{UNAVAILABLE_COPY}</p>
+        {/* ONE RENDERING OF THE SENTENCE, AND IT COMES AFTER THE HEADING (round 5 #36).
+            Round 4 put the copy into an sr-only region AND left it in a visible <p>, so a
+            screen-reader user heard it from the live region and then met it a second time
+            in browse mode — against this file's own rule that "each message is announced
+            exactly once, by whichever surface owns it". Worse, the region was child index
+            0, so the failure sentence arrived BEFORE the <h2> that says which section
+            failed. This is one node that is both the visible text and the live region.
+            RESIDUAL, stated rather than hidden: it paints empty for the one frame before
+            the effect above runs, which is the price of the empty-first contract — a
+            region that mounts WITH its content announces nothing, and this arm can be the
+            section's FIRST render when the self query is already settled-errored. */}
+        <StatusRegion className="text-sm text-content-secondary">{announcement}</StatusRegion>
       </section>
     );
   }
@@ -1040,10 +1050,13 @@ export function EmailAddressSection() {
   if (showUnresolved) {
     return (
       <section className="card p-3 md:p-6 mb-6" aria-labelledby={`${reactId}-title`} aria-busy="true">
-        <StatusRegion className="sr-only">{announcement}</StatusRegion>
         <h2 id={`${reactId}-title`} className="text-xl font-bold text-content-primary mb-1">
           {SECTION_TITLE}
         </h2>
+        {/* Same read order as the arm above: the region follows the heading. It is empty
+            in this state — nothing announces while loading — so this is consistency, not
+            a fix; the arm it hands over to is where the sentence lands. */}
+        <StatusRegion className="sr-only">{announcement}</StatusRegion>
         {/* Visually quiet on purpose — a sub-second state on a warm cache. No
             address text, no Change, no revert affordance: rendering idle here
             would paint an empty address beside a live Change action and then

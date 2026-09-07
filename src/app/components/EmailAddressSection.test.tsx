@@ -171,10 +171,20 @@ describe('EmailAddressSection — unresolved and unavailable', () => {
     mockSelf.mockReturnValue(selfState(undefined, true));
     renderSection();
 
-    // Round 4 #29: the copy is now ALSO announced through the sr-only live region, so it
-    // appears twice — once visible, once for assistive tech. Assert both halves.
-    expect(screen.getAllByText(/couldn't load the address/i)).toHaveLength(2);
+    /* Round 5 #36: ONE rendering of the sentence, and it is the live region itself —
+       round 4 announced it AND left a visible twin, so assistive tech met it twice.
+       The length assertion is kept (inverted) because it is the thing that pinned the
+       duplication in place; the role assertion proves the surviving node is the one
+       that announces. */
+    expect(screen.getAllByText(/couldn't load the address/i)).toHaveLength(1);
     expect(screen.getByRole('status')).toHaveTextContent(/couldn't load the address/i);
+    // AND IT FOLLOWS THE HEADING. Reading order is the other half of #36: a failure
+    // sentence delivered before the <h2> arrives with nothing to attach it to.
+    const section = screen.getByRole('heading', { name: 'Email' }).closest('section')!;
+    const order = Array.from(section.children);
+    expect(order.indexOf(screen.getByRole('heading', { name: 'Email' }))).toBeLessThan(
+      order.indexOf(screen.getByRole('status'))
+    );
     expect(screen.queryAllByRole('button')).toHaveLength(0);
     // The stale-value defect this whole correction removes.
     expect(screen.queryByText(/@/)).not.toBeInTheDocument();
