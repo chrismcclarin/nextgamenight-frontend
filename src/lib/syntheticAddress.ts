@@ -49,11 +49,22 @@
  * feedback sink from either direction. Neither repo's CI can see the other, so
  * the pairing is named here rather than assumed.
  *
- * THREE CALL SITES, AND NO FOURTH:
+ * FOUR CALL SITES (AMENDED 2026-09-07, code review round 5 #16/#19/#29 — it read
+ * "THREE CALL SITES, AND NO FOURTH" until the fourth was added; per CLAUDE.md a census
+ * in a docblock is a BOOKKEEPING constraint, so it is amended here rather than used as
+ * an argument against the fix):
  *   1. the profile header address line (`src/app/userProfile/page.js`, the
  *      `<p>` under the username heading),
  *   2. `EmailAddressSection.tsx`'s idle state,
- *   3. `FeedbackForm.js`'s `user_email`.
+ *   3. `FeedbackForm.js`'s `user_email`,
+ *   4. `EmailAddressSection.tsx`'s Save PRE-FLIGHT — the one call site that asks the
+ *      question about an address the USER TYPED rather than one we stored. The backend
+ *      refuses such an address with a bare `validation` 400
+ *      (`routes/users.js:1393`), which that section maps to "reload the page" — false
+ *      and unactionable for a typed address, and reloading changes nothing. Mirroring
+ *      the predicate here gives the refusal an immediate, field-attached sentence. The
+ *      DIVERGENCE NOTED ABOVE (this copy answers FALSE for null/empty) is irrelevant at
+ *      that site: the value is non-empty before the call. Do not harmonise the two.
  *
  * DELIBERATELY EXCLUDED — the DISPLAY-NAME fallbacks in
  * `src/app/userProfile/page.js` that derive a name from the SESSION email's

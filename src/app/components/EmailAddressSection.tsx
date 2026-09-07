@@ -70,6 +70,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Input } from '@/components/ui/Input';
 import { StatusRegion } from '@/components/ui/StatusRegion';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import type { FetchErrorMessageOptions } from '@/components/ui/useFetchErrorState';
 import { ApiError, usersAPI } from '@/lib/api';
 import { patchSelfCache } from '@/lib/hooks/selfIdentityCache';
 import { useSelfIdentity } from '@/lib/hooks/useSelfIdentity';
@@ -136,6 +137,15 @@ const RESEND_COOLDOWN_ERROR = 'You can ask for another code in a moment';
    pressed it got nothing back for a whole network round trip. */
 const ACTION_BUSY_ERROR = 'Wait for the current step to finish, then try again';
 const TOO_LONG_EMAIL_ERROR = 'That email address is too long';
+/* Round 5 #16/#19/#29: the address the BACKEND refuses because its own sentinel
+   predicate matches it (`isSyntheticAddress` — any host containing "auth0", the broad
+   NIX-AUTH0 test). Storing such a value would make seventeen backend sites and four
+   frontend ones read a real address as a provisioning sentinel, so the refusal is
+   correct — but it arrived as a bare `validation` envelope, which this section maps to
+   "reload the page", and reloading changes nothing: the same input fails identically
+   forever with no statement of what is wrong. This is the sentence that was missing. */
+const RESERVED_ADDRESS_ERROR =
+  "We can't use an address at that domain — it's reserved by our sign-in system. Try another address.";
 /* Round 4 #19: the five handlers used to `return` silently when the self row carried no
    id — a dead button with no message. It is a contract failure, said as one. */
 const SELF_UNAVAILABLE_ERROR = "We couldn't load your account details — reload the page and try again";
@@ -237,10 +247,22 @@ type FocusTarget = 'change' | 'email' | 'code' | 'resend' | 'revert' | null;
    map, never in the shared Record other surfaces consume. */
 const STALE_ACTION_ERROR = 'That action is no longer available — reload the page to see the current state';
 
-/** The shared error copy for a thrown failure, with the NAMED envelopes overridden. */
-function messageFor(error: unknown): string {
+/**
+ * The shared error copy for a thrown failure, with the NAMED envelopes overridden.
+ *
+ * `overrides` is PER CALL SITE and exists for exactly one reason (round 5 #29): the
+ * `validation` envelope means different things on different routes of this one feature,
+ * and a single section-wide mapping cannot be right for all of them. The bodyless routes
+ * (resend / revert with nothing pending) genuinely mean "stale state", which is what the
+ * section-wide default says. The Save route does NOT: every other `validation` it can
+ * return is pre-gated client-side by the four checks in `handleSave` — and the shape and
+ * length gates are the SAME regex and the SAME cap the backend applies
+ * (`routes/users.js:960`, EMAIL_MAX_LENGTH 255), verified rather than assumed — so the
+ * only refusal that can survive them is the synthetic-address gate.
+ */
+function messageFor(error: unknown, overrides: FetchErrorMessageOptions['byCode'] = {}): string {
   return getFetchErrorMessage(error, {
-    byCode: { rate_limited: RATE_LIMITED_ERROR, validation: STALE_ACTION_ERROR },
+    byCode: { rate_limited: RATE_LIMITED_ERROR, validation: STALE_ACTION_ERROR, ...overrides },
   });
 }
 
@@ -631,6 +653,20 @@ export function EmailAddressSection() {
       setEmailError(MALFORMED_EMAIL_ERROR);
       return;
     }
+    /* Round 5 #16/#19/#29: THE SAME PREDICATE THE BACKEND USES, not a re-spelling of it.
+       `isSyntheticAddress` is the shared `src/lib/syntheticAddress.ts` helper this file
+       already consumes for the idle display, and it pairs with
+       `services/provisioningService.js:142-147`. Do NOT narrow either side to
+       `@auth0.local` — `DECISION Phase 88.2 NIX-AUTH0` records the broad substring as
+       deliberate. The one documented divergence (this copy answers FALSE for
+       null/empty, the backend answers TRUE) cannot bite here: `value` is non-empty by
+       the check three lines up, and harmonising the two is a decision, not a cleanup.
+       Checked BEFORE the request so the answer is immediate and attached to the field,
+       the same shape as the three pre-flights above it. */
+    if (isSyntheticAddress(value)) {
+      setEmailError(RESERVED_ADDRESS_ERROR);
+      return;
+    }
     if (!selfId) {
       // Round 5 #35: "we couldn't load your account details" is a fact about the SECTION,
       // not about the address in the field.
@@ -726,7 +762,15 @@ export function EmailAddressSection() {
       // attached to a control that is no longer on screen.
       if (saveRunRef.current !== run) return;
       setState('editing');
-      setEmailError(messageFor(error));
+      /* Round 5 #29: the SERVER-side half of the same refusal. The pre-check above should
+         mean this never fires — both sides run the same predicate over the same
+         normalised value — but the two live in repos whose CI cannot see each other, so
+         the mapping is the belt to the pre-check's braces, and the section stops telling
+         a user who typed an address to "reload the page". If the backend later gives this
+         refusal its own registered code (round 5 #29 proposes `unsupported_address`),
+         THIS is where it plugs in: add the code beside `validation` here and the
+         pre-check above stays exactly as it is. */
+      setEmailError(messageFor(error, { validation: RESERVED_ADDRESS_ERROR }));
       setFocusTarget('email');
     }
   };
