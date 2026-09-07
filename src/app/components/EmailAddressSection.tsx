@@ -115,6 +115,15 @@ const INCOMPLETE_CODE_ERROR = 'Enter all 8 characters from the email';
 const OUT_OF_ALPHABET_ERROR =
   "That code has a character we don't use — our codes never contain a U, and the only punctuation is the optional dash";
 const INVALID_CODE_ERROR = "That code isn't right — check the email and try again";
+/* Round 5 #22: the arm where the section CANNOT KNOW whether the server acted.
+   `isUsableMutationBody` is false for a transport failure BEFORE the server ran (the
+   code is untouched and still live for its 30 minutes) AND for a 200 whose body failed
+   the schema — where `consumeByNonce`'s single atomic UPDATE has already burnt the
+   nonce. The honest copy names the retry AND the escape hatch, and never claims the
+   code is still good: press Verify again, and if that fails the code is spent, so
+   Resend is the way out. */
+const UNREADABLE_ANSWER_ERROR =
+  "We couldn't read the answer. Press Verify once more — if it fails again, use Resend code to get a fresh one.";
 const EXPIRED_CODE_ERROR = 'That code has expired';
 const ADDRESS_TAKEN_ERROR =
   'Another account already uses that address. Ask us for help if it should be yours.';
@@ -686,8 +695,14 @@ export function EmailAddressSection() {
         // Round 4 #1: a contract/transport failure is NOT a verdict on the code — it is
         // still live for its 30 minutes — so the typed 8 characters are KEPT and Verify can
         // simply be pressed again. Clearing belongs to the outcome-bearing branch below.
+        // ROUND 5 #22, THE RESIDUAL STATED RATHER THAN HIDDEN: that premise holds for a
+        // failure BEFORE the server acted, which is the likelier of the two, but this
+        // branch also catches a 200 whose body failed the schema — a request the server
+        // DID process, whose atomic consume already burnt the nonce. Keeping the code is
+        // still right (a re-press costs nothing and wins the common case), but the copy
+        // must not imply the code is known-good, so it names Resend as the way out.
         setState('awaiting-code');
-        setCodeError(messageFor(null));
+        setCodeError(UNREADABLE_ANSWER_ERROR);
         setFocusTarget('code');
         return;
       }
@@ -717,8 +732,15 @@ export function EmailAddressSection() {
       }
       setFocusTarget('code');
     } catch (error) {
+      /* Round 5 #1: THE SAME RULE AS THE BRANCH ABOVE, which round 4 applied to the
+         unparseable-body arm and left contradicted here. This is the branch that
+         actually handles a dropped connection, a 5xx and a 429 — the cases where the
+         server most likely never reached the code at all — and it was wiping the typed
+         8 characters, forcing a re-transcription from the mail client on a phone. The
+         code is KEPT and Verify can be pressed again; `messageFor(error)` names what
+         actually failed and never claims the code is still valid. Resend stays mounted
+         beside it for the residual case where the request did land. */
       setState('awaiting-code');
-      clearCodeField();
       setCodeError(messageFor(error));
       if (isRateLimited(error)) startCooldown();
       setFocusTarget('code');
