@@ -142,6 +142,13 @@ const SELF_UNAVAILABLE_ERROR = "We couldn't load your account details — reload
 const MAIL_REFUSED_COPY =
   "We couldn't send the code just now. Your change is still waiting — use Resend code to try again.";
 const UNCHANGED_COPY = "That's already the address we use for you";
+/* Round 5 #2: a Save that was already in flight when the user pressed Cancel. The
+   request cannot be unsent — the server has minted the pending change and mailed the
+   code — so the section says so instead of pretending nothing happened, and instead of
+   dragging the user into a panel they just left. Reloading re-runs the one-shot
+   hydration off the self row, which lands them in awaiting-code with Resend available. */
+const CANCELLED_MID_SAVE_COPY =
+  'You cancelled, but the request had already reached us. Nothing has changed yet — reload the page to finish it, or leave it and it will expire.';
 const PENDING_ADDRESS_LABEL = 'The address waiting to be verified';
 const CODE_FORMAT_HINT = '8 characters, letters and numbers. Dashes are optional.';
 const REVERT_HELPER = 'This puts your address back to the one you sign in with.';
@@ -348,6 +355,12 @@ export function EmailAddressSection() {
      (selfIdentityCache.ts:29-31) — and the user is told their brand-new code has
      expired. Found by this plan's own colocated suite. */
   const sawPendingRef = React.useRef(false);
+  /* THE SAVE LANE'S RUN TOKEN (round 5 #2). Bumped when a Save starts AND when Cancel is
+     pressed, so a landing response can tell whether the user is still standing in the
+     panel that asked for it. This is what makes Cancel-during-Save safe to ALLOW rather
+     than to gate: the harm round 4 described was never the press, it was the response
+     re-entering awaiting-code and stealing focus afterwards. */
+  const saveRunRef = React.useRef(0);
   const cooldownTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const changeRef = React.useRef<HTMLButtonElement>(null);
@@ -564,13 +577,29 @@ export function EmailAddressSection() {
   };
 
   const handleCancelEdit = () => {
-    // Round 4 #2/#28: Cancel consults the lane like its five siblings — cancelling during
-    // an in-flight Save dropped the section to idle and the landing response then yanked
-    // the user into awaiting-code, stealing focus into a panel they had just left.
-    if (mutating) {
+    /* DECISION Phase 88.8 post-merge #2: Cancel WORKS during an in-flight Save, and the
+       landing response is what gets blocked — chosen OVER round 4's gate, which refused
+       the press. The gate closed nothing: the outcome it cited ("the landing response
+       yanks the user into awaiting-code, stealing focus into a panel they had just
+       left") happened anyway, because `handleSave` still ran its success path when the
+       request resolved. All the gate removed was the user's ability to SAY they wanted
+       out — and with `apiFetch` carrying no AbortSignal and no timeout
+       (`lib/api.ts`), a stalled Save left both Save and Cancel refused with no exit
+       from the editing panel short of a page reload. Bumping the run token records the
+       intent; the landing response honours it below. Restoring the gate is a decision,
+       not a cleanup.
+
+       THE OTHER LANES STILL GATE. `busy` (Resend / Discard / Revert) and a `verifying`
+       round trip are OTHER actions, not this one — Cancel cannot speak for them, so
+       they answer with the busy line exactly as the five siblings do. In the editing
+       block neither is reachable today (Change refuses to open an edit while any lane
+       is live), so this is a guard against a future path rather than today's behaviour,
+       and it keeps the handler and the control's aria-disabled saying ONE thing. */
+    if (busy !== null || state === 'verifying') {
       setEditActionError(ACTION_BUSY_ERROR);
       return;
     }
+    saveRunRef.current += 1;
     setEmailError(null);
     setEditActionError(null);
     setState('idle');
@@ -613,15 +642,35 @@ export function EmailAddressSection() {
     setEditActionError(null);
     setNotice(null);
     setState('saving');
+    const run = ++saveRunRef.current;
     try {
       const body = await usersAPI.requestEmailChange(selfId, value);
+      /* Round 5 #2: the user pressed Cancel while this was in flight. Everything below
+         moves the section and the focus, and doing any of it now would put them back in
+         a panel they explicitly left. */
+      const abandoned = saveRunRef.current !== run;
       if (!isUsableMutationBody(body)) {
+        if (abandoned) return;
         setState('editing');
         setEmailError(messageFor(null));
         setFocusTarget('email');
         return;
       }
       applyToCache(body);
+      if (abandoned) {
+        /* THE CACHE PATCH STILL RUNS, ABOVE. The server DID act, and the immortal self
+           row is the app's one source of truth — leaving it stale would make the header
+           and the next mount disagree with the database. What is dropped is the STATE
+           MOVE and the FOCUS MOVE, not the fact. And the user is told, because a pending
+           change they did not know about would meet them as a surprise on the next
+           reload; the info Banner has no visible home that announces, so this goes
+           through the section's one live region like the `unchanged` copy beside it. */
+        if (body.outcome === 'code_sent') {
+          setNotice({ tone: 'info', text: CANCELLED_MID_SAVE_COPY });
+          announce(CANCELLED_MID_SAVE_COPY);
+        }
+        return;
+      }
 
       if (body.outcome === 'unchanged') {
         /* STAY IN awaiting-code IF A CHANGE IS STILL PENDING (code review #5,
@@ -671,9 +720,13 @@ export function EmailAddressSection() {
       setEmailError(messageFor(null));
       setFocusTarget('email');
     } catch (error) {
+      // The cooldown is the SERVER's rate limiter and is armed either way.
+      if (isRateLimited(error)) startCooldown();
+      // Round 5 #2: a failure reported into a panel the user cancelled out of is noise
+      // attached to a control that is no longer on screen.
+      if (saveRunRef.current !== run) return;
       setState('editing');
       setEmailError(messageFor(error));
-      if (isRateLimited(error)) startCooldown();
       setFocusTarget('email');
     }
   };
@@ -968,6 +1021,11 @@ export function EmailAddressSection() {
      cooldown — this is the same shape applied to the one condition that was missing it,
      not a new rule. Still `aria-disabled`, never native `disabled`. */
   const selfRowMissing = !selfId;
+  /* Round 5 #2: Cancel's ARIA state mirrors ITS gate, which is no longer `mutating` —
+     an in-flight Save is the one lane Cancel is allowed to interrupt, and announcing it
+     as unavailable while the handler accepts the press would be the 4.1.2 mismatch DR-C
+     exists to prevent. */
+  const cancelGated = busy !== null || state === 'verifying';
   const saveGated = mutating || emailInput.trim().length === 0 || selfRowMissing;
   const verifyGated = mutating || checkCode(codeInput) !== 'ok' || selfRowMissing;
 
@@ -1143,7 +1201,7 @@ export function EmailAddressSection() {
               variant="ghost"
               onClick={handleCancelEdit}
               aria-describedby={editActionError ? `${reactId}-edit-error` : undefined}
-              aria-disabled={mutating ? 'true' : undefined}
+              aria-disabled={cancelGated ? 'true' : undefined}
               className="max-md:min-h-11"
             >
               {LABEL_CANCEL}
