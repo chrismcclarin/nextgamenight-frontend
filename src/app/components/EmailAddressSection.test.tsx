@@ -38,6 +38,10 @@ import {
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+// Round 6 #4: the schema-drift report. Mocked so the call is observable and so no test
+// run can reach a real DSN.
+vi.mock('@sentry/nextjs', () => ({ captureException: vi.fn() }));
+
 // Keep ApiError REAL so the rate-limited / transport arms exercise the actual
 // `err.code` seam every call site reads; mock only the network calls.
 vi.mock('@/lib/api', async () => {
@@ -59,7 +63,27 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   SELF_IDENTITY_KEY: ['users', 'self'],
 }));
 
+/* Round 6 HIGH: the cache helpers are SPIED, never replaced — both delegate to the real
+   implementation, so nothing about the section's behaviour changes. `self` comes from the
+   mocked hook above, so a cache write is invisible through the rendered output; the call
+   itself is the only observable, and WHICH helper the abandoned path chooses is exactly
+   what the fix is about. */
+vi.mock('@/lib/hooks/selfIdentityCache', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/lib/hooks/selfIdentityCache')>(
+      '@/lib/hooks/selfIdentityCache'
+    );
+  return {
+    ...actual,
+    patchSelfCache: vi.fn(actual.patchSelfCache),
+    invalidateSelfCache: vi.fn(actual.invalidateSelfCache),
+  };
+});
+
+import * as Sentry from '@sentry/nextjs';
+
 import { usersAPI } from '@/lib/api';
+import { invalidateSelfCache, patchSelfCache } from '@/lib/hooks/selfIdentityCache';
 import { useSelfIdentity } from '@/lib/hooks/useSelfIdentity';
 
 const api = usersAPI as unknown as {
@@ -70,6 +94,10 @@ const api = usersAPI as unknown as {
   revertEmailToSignIn: ReturnType<typeof vi.fn>;
 };
 const mockSelf = useSelfIdentity as unknown as ReturnType<typeof vi.fn>;
+const cache = {
+  patch: patchSelfCache as unknown as ReturnType<typeof vi.fn>,
+  invalidate: invalidateSelfCache as unknown as ReturnType<typeof vi.fn>,
+};
 
 const SYNTHETIC = 'google-oauth2-1|xyz@auth0.local';
 const REAL = 'alice@example.com';
@@ -171,10 +199,20 @@ describe('EmailAddressSection — unresolved and unavailable', () => {
     mockSelf.mockReturnValue(selfState(undefined, true));
     renderSection();
 
-    // Round 4 #29: the copy is now ALSO announced through the sr-only live region, so it
-    // appears twice — once visible, once for assistive tech. Assert both halves.
-    expect(screen.getAllByText(/couldn't load the address/i)).toHaveLength(2);
+    /* Round 5 #36: ONE rendering of the sentence, and it is the live region itself —
+       round 4 announced it AND left a visible twin, so assistive tech met it twice.
+       The length assertion is kept (inverted) because it is the thing that pinned the
+       duplication in place; the role assertion proves the surviving node is the one
+       that announces. */
+    expect(screen.getAllByText(/couldn't load the address/i)).toHaveLength(1);
     expect(screen.getByRole('status')).toHaveTextContent(/couldn't load the address/i);
+    // AND IT FOLLOWS THE HEADING. Reading order is the other half of #36: a failure
+    // sentence delivered before the <h2> arrives with nothing to attach it to.
+    const section = screen.getByRole('heading', { name: 'Email' }).closest('section')!;
+    const order = Array.from(section.children);
+    expect(order.indexOf(screen.getByRole('heading', { name: 'Email' }))).toBeLessThan(
+      order.indexOf(screen.getByRole('status'))
+    );
     expect(screen.queryAllByRole('button')).toHaveLength(0);
     // The stale-value defect this whole correction removes.
     expect(screen.queryByText(/@/)).not.toBeInTheDocument();
@@ -617,7 +655,7 @@ describe('EmailAddressSection — the code field', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText('Another account already uses that address. Ask us for help if it should be yours.')
+        screen.getByText('Another account already uses that address. Try a different one, or ask us for help if it should be yours.')
       ).toBeInTheDocument()
     );
     expect(screen.queryByText(/that code isn't right/i)).not.toBeInTheDocument();
@@ -854,7 +892,7 @@ describe('EmailAddressSection — revert (D-38)', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText('Another account already uses that address. Ask us for help if it should be yours.')
+        screen.getByText('Another account already uses that address. Try a different one, or ask us for help if it should be yours.')
       ).toBeInTheDocument()
     );
     const revert = screen.getByRole('button', { name: 'Use my sign-in address' });
@@ -1265,6 +1303,428 @@ describe('EmailAddressSection — code-review fixes 2026-09-05', () => {
 // ---------------------------------------------------------------------------
 // Composition + a11y
 // ---------------------------------------------------------------------------
+
+/* ---------------------------------------------------------------------------
+   POST-MERGE FIX SET (code review round 5 MED/LOW, 2026-09-07)
+
+   Round 5 #32 recorded the gap these close: the round-4 frontend fix set shipped five
+   behaviour changes and ONE changed assertion, so the suite was green whichever way the
+   keep-the-code rule went and a later "restore the symmetry" tidy would have passed. Each
+   test below pins a branch that had no assertion in either direction.
+   --------------------------------------------------------------------------- */
+
+describe('EmailAddressSection — post-merge fix set (round 5)', () => {
+  const unusable = { outcome: 'verified', email: '', verification_sent: false };
+
+  it('#1 — a TRANSPORT failure keeps the typed code, so Verify can be pressed again without re-transcribing it', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    api.verifyEmailChange.mockRejectedValue(new ApiError('offline', 'network', 0, {}));
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(screen.getByText(/couldn't reach the server/i)).toBeInTheDocument());
+
+    // THE POINT OF THE FIX: the 8 characters survive a network blip. Before this they
+    // were wiped and had to be re-read off a phone's mail client.
+    expect(screen.getByLabelText(/code from the email/i)).toHaveValue('AB12CD34');
+    // And a second press actually re-sends THE SAME code — the anti-vacuity half.
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(api.verifyEmailChange).toHaveBeenCalledTimes(2));
+    expect(api.verifyEmailChange).toHaveBeenLastCalledWith('u-uuid-1', 'AB12CD34');
+  });
+
+  it('#22 — an UNREADABLE answer keeps the code but points at Resend, never claiming the code is still good', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    api.verifyEmailChange.mockResolvedValue(unusable);
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    // The server may already have burnt the nonce on this branch, so the copy names the
+    // escape hatch instead of asserting the code is live.
+    await waitFor(() => expect(screen.getByText(/use resend code/i)).toBeInTheDocument());
+    expect(screen.getByLabelText(/code from the email/i)).toHaveValue('AB12CD34');
+    expect(screen.queryByText(/that code isn't right/i)).not.toBeInTheDocument();
+  });
+
+  it('#2 — Cancel WORKS during an in-flight Save, and the landing response does not drag the user into awaiting-code', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    let release: (v: unknown) => void = () => {};
+    api.requestEmailChange.mockReturnValue(new Promise((res) => { release = res; }));
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(api.requestEmailChange).toHaveBeenCalledTimes(1); // anti-vacuity: it is in flight
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    // The press is HONOURED, not swallowed: round 4 gated it and the focus steal happened
+    // anyway when the response landed.
+    expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/new email address/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change' })).toHaveFocus();
+
+    release(body({ outcome: 'code_sent' }));
+    // The section stays where the user left it — no code panel, no focus theft — and says
+    // what happened, because a pending change they do not know about is a surprise on the
+    // next reload.
+    /* Two nodes carry it, exactly as the `unchanged` copy does: the visible info Banner
+       (a POLITE region that is conditionally mounted, so it announces nothing on its own)
+       and the section's always-mounted region, which is what actually speaks. That
+       pairing is the documented rule in this file's announce() docblock, not a slip. */
+    await waitFor(() => expect(screen.getAllByText(/request had already reached us/i)).toHaveLength(2));
+    expect(screen.queryByLabelText(/code from the email/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change' })).toHaveFocus();
+    // The sr-only one is the section's always-mounted region — the surface that announces.
+    const regions = screen.getAllByRole('status');
+    expect(regions.some((r) => r.className.includes('sr-only'))).toBe(true);
+    expect(regions.find((r) => r.className.includes('sr-only'))).toHaveTextContent(
+      /request had already reached us/i
+    );
+  });
+
+  it('#35/#39 — a busy Save answers in the ACTION lane: the email input is never marked invalid, and both controls point at the message', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    let release: (v: unknown) => void = () => {};
+    api.requestEmailChange.mockReturnValue(new Promise((res) => { release = res; }));
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(api.requestEmailChange).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(api.requestEmailChange).toHaveBeenCalledTimes(1); // the second press is blocked
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(/wait for the current step to finish/i);
+    // THE DEFECT THIS CLOSES: the busy line used to live in the FormField lane, which
+    // stamps aria-invalid on an address the user has not mistyped (WCAG 4.1.2).
+    expect(screen.getByLabelText(/new email address/i)).not.toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveAttribute('aria-describedby', alert.id);
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveAttribute('aria-describedby', alert.id);
+
+    release(body({ outcome: 'code_sent' }));
+    await waitFor(() => expect(screen.getByLabelText(/code from the email/i)).toBeInTheDocument());
+  });
+
+  it('#33/#35 — a self row with NO id gates the controls in ARIA as well as in the handler, and answers in the action lane', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState({ ...ROW(), id: undefined } as unknown as Parameters<typeof selfState>[0]));
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    const save = screen.getByRole('button', { name: 'Save' });
+    // DR-C's FIRST half, which round 4 shipped without: announced as unavailable...
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(save).not.toHaveAttribute('disabled'); // ...and never natively disabled
+
+    await user.click(save);
+    expect(api.requestEmailChange).not.toHaveBeenCalled();
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(/couldn't load your account details/i);
+    expect(screen.getByLabelText(/new email address/i)).not.toHaveAttribute('aria-invalid', 'true');
+    expect(save).toHaveAttribute('aria-describedby', alert.id);
+  });
+
+  it('#33 — Verify, Resend and Discard carry the same aria-disabled when the self row has no id', async () => {
+    mockSelf.mockReturnValue(
+      selfState({
+        ...ROW({ pending_email_change: { address: NEW, expires_at: 'z' } }),
+        id: undefined,
+      } as unknown as Parameters<typeof selfState>[0])
+    );
+    renderSection();
+
+    for (const name of ['Verify', 'Resend code', 'Discard change']) {
+      const control = screen.getByRole('button', { name });
+      expect(control).toHaveAttribute('aria-disabled', 'true');
+      expect(control).not.toHaveAttribute('disabled');
+    }
+    noApiCalls();
+  });
+
+  it('#33 — the revert control carries it too', () => {
+    mockSelf.mockReturnValue(
+      selfState({
+        ...ROW({ email_changed_at: '2026-09-04T00:00:00.000Z' }),
+        id: undefined,
+      } as unknown as Parameters<typeof selfState>[0])
+    );
+    renderSection();
+    const revert = screen.getByRole('button', { name: 'Use my sign-in address' });
+    expect(revert).toHaveAttribute('aria-disabled', 'true');
+    expect(revert).not.toHaveAttribute('disabled');
+  });
+
+  it('#16/#19/#29 — a SYNTHETIC address is refused before the request, with copy naming the real reason', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    // A real, deliverable domain that the BROAD NIX-AUTH0 predicate matches — the exact
+    // input that used to be told to "reload the page", forever.
+    await user.type(screen.getByLabelText(/new email address/i), 'chris@auth0.com');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(screen.getByText(/reserved by our sign-in system/i)).toBeInTheDocument();
+    expect(screen.queryByText(/reload the page/i)).not.toBeInTheDocument();
+    // The address never leaves the browser.
+    expect(api.requestEmailChange).not.toHaveBeenCalled();
+  });
+
+  it('#4 — a DRIFTED response body is reported to Sentry, class-only, with no address in the payload', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    // Schema-invalid: missing three required keys. The user still sees the same sentence —
+    // what changes is that the event now reaches somebody who can act on it.
+    api.verifyEmailChange.mockResolvedValue({ outcome: 'verified', email: REAL, verification_sent: false });
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    await waitFor(() => expect(Sentry.captureException).toHaveBeenCalledTimes(1));
+    const [err, ctx] = vi.mocked(Sentry.captureException).mock.calls[0] as [
+      Error,
+      { tags?: Record<string, unknown>; extra?: Record<string, unknown> },
+    ];
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toMatch(/schema drift/i);
+    expect(ctx.tags).toEqual({ feature: 'email-change', op: 'schema-drift' });
+    /* THE PII GUARD, which is the whole reason the raw ZodError is not forwarded: a zod
+       issue's `received` carries the INPUT, and on this route the input is an address. */
+    expect(JSON.stringify(vi.mocked(Sentry.captureException).mock.calls[0])).not.toContain(REAL);
+    // And the user copy is unchanged — the report is additional, not a substitution.
+    expect(screen.getByText(/use resend code/i)).toBeInTheDocument();
+  });
+
+  it('#4 — a schema-VALID body carrying no address is reported as its own distinct event', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    api.verifyEmailChange.mockResolvedValue(body({ outcome: 'verified', email: '' }));
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    await waitFor(() => expect(Sentry.captureException).toHaveBeenCalledTimes(1));
+    const [err] = vi.mocked(Sentry.captureException).mock.calls[0] as [Error, unknown];
+    // Not collapsed into "schema drift": the schema PERMITS a null address, and this
+    // section treats it as a contract error on a mutation. Two causes, two alarms.
+    expect(err.message).toMatch(/carried no address/i);
+  });
+
+  it("#15 — the SERVER's `unsupported_address` refusal lands on the reserved-domain copy, not on \"reload the page\"", async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    api.requestEmailChange.mockRejectedValue(
+      new ApiError('That address cannot be used with this app', 'unsupported_address', 400, {})
+    );
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(screen.getByText(/reserved by our sign-in system/i)).toBeInTheDocument());
+    expect(screen.queryByText(/no longer available/i)).not.toBeInTheDocument();
+  });
+
+  it('#11/#16 — a DIFFERENT 400 on the same route no longer inherits that copy', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    api.requestEmailChange.mockRejectedValue(new ApiError('Validation failed', 'validation', 400, {}));
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    /* The round-5 fix blanket-mapped `validation` on this route, reasoning that the client
+       pre-flights left the synthetic gate as the only reachable cause. True, and still a
+       confident WRONG answer for any other 400 — a body-key drift or a future validator
+       would have told the user their DOMAIN was reserved. The specific code now carries
+       the specific copy; everything else falls back to the section-wide default. */
+    await waitFor(() => expect(screen.getByText(/no longer available/i)).toBeInTheDocument());
+    expect(screen.queryByText(/reserved by our sign-in system/i)).not.toBeInTheDocument();
+  });
+
+  it('#21 — the synthetic pre-check runs on BLUR too, like the two field checks beside it', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), 'chris@auth0.com');
+    await user.tab(); // leave the field — the moment the other two verdicts fire
+
+    expect(screen.getByText(/reserved by our sign-in system/i)).toBeInTheDocument();
+    noApiCalls();
+  });
+
+  it('#32 — Verify and Change point at the lane their own gate writes to', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    let releaseResend: (v: unknown) => void = () => {};
+    api.resendEmailChangeCode.mockReturnValue(new Promise((res) => { releaseResend = res; }));
+
+    await user.click(screen.getByRole('button', { name: 'Resend code' }));
+    expect(api.resendEmailChangeCode).toHaveBeenCalledTimes(1); // anti-vacuity
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(/wait for the current step to finish/i);
+    // The half round 5 left: Resend and Discard were wired, the primary control was not.
+    expect(screen.getByRole('button', { name: 'Verify' })).toHaveAttribute('aria-describedby', alert.id);
+    expect(screen.getByRole('button', { name: 'Resend code' })).toHaveAttribute('aria-describedby', alert.id);
+
+    releaseResend(body({ outcome: 'code_sent', verification_sent: false }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Verify' })).not.toHaveAttribute('aria-disabled', 'true')
+    );
+  });
+
+  it('#32 — and Change points at the idle lane, where its own gate writes', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW({ email_changed_at: '2026-09-04T00:00:00.000Z' })));
+    renderSection();
+    let releaseRevert: (v: unknown) => void = () => {};
+    api.revertEmailToSignIn.mockReturnValue(new Promise((res) => { releaseRevert = res; }));
+
+    await user.click(screen.getByRole('button', { name: 'Use my sign-in address' }));
+    expect(api.revertEmailToSignIn).toHaveBeenCalledTimes(1); // anti-vacuity
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(/wait for the current step to finish/i);
+    expect(screen.getByRole('button', { name: 'Change' })).toHaveAttribute('aria-describedby', alert.id);
+    expect(screen.getByRole('button', { name: 'Use my sign-in address' })).toHaveAttribute(
+      'aria-describedby',
+      alert.id
+    );
+
+    releaseRevert(body({ outcome: 'reverted', pending_email_change: null, verification_sent: false }));
+    await waitFor(() => expect(api.revertEmailToSignIn).toHaveBeenCalledTimes(1));
+  });
+
+  /* ── ROUND 6 HIGH: Cancel-during-Save, the three parts ──────────────────────
+     The first version of the #2 fix shipped part 1 only. Its test released ONE promise
+     with no second mutation, so it was green over the whole failure: the lane fell open
+     the instant Cancel set the state to idle, and a late response patched its own row
+     into an immortal cache underneath whatever the user was doing by then. */
+
+  it('#2 (round 6 HIGH) — the lane stays CLOSED while a cancelled Save is still on the wire', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    let release: (v: unknown) => void = () => {};
+    api.requestEmailChange.mockReturnValue(new Promise((res) => { release = res; }));
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(api.requestEmailChange).toHaveBeenCalledTimes(1); // anti-vacuity: on the wire
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    /* `state` is now 'idle' — which is what made `mutating` (busy || saving || verifying)
+       read FALSE while the POST was still open. `saveInFlight` is what holds the lane. */
+    const change = screen.getByRole('button', { name: 'Change' });
+    expect(change).toHaveAttribute('aria-disabled', 'true');
+    expect(change).not.toHaveAttribute('disabled'); // DR-C: never natively disabled
+    await user.click(change);
+    expect(screen.queryByLabelText(/new email address/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(/wait for the current step to finish/i);
+    // No second mutation could start, which is what makes the interleave unreachable.
+    expect(api.requestEmailChange).toHaveBeenCalledTimes(1);
+
+    release(body({ outcome: 'code_sent' }));
+    // The REQUEST is what reopens the lane, not the state the user left.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Change' })).not.toHaveAttribute('aria-disabled', 'true')
+    );
+  });
+
+  it('#2 (round 6 HIGH) — an ABANDONED response REFETCHES the self row and never patches it', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    let release: (v: unknown) => void = () => {};
+    api.requestEmailChange.mockReturnValue(new Promise((res) => { release = res; }));
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    release(body({ outcome: 'code_sent' }));
+
+    await waitFor(() => expect(cache.invalidate).toHaveBeenCalledTimes(1));
+    /* THE WHOLE POINT: a body the section already knows is stale never goes into an
+       immortal cache. The server DID act, so the row is refetched instead — a refetch
+       asks what is true now and cannot resurrect an older pending address over a newer
+       one. The non-abandoned path still patches (asserted by the test below). */
+    expect(cache.patch).not.toHaveBeenCalled();
+  });
+
+  it('#2 — the NON-abandoned path still patches from the body, unchanged', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    api.requestEmailChange.mockResolvedValue(body({ outcome: 'code_sent' }));
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(screen.getByLabelText(/code from the email/i)).toBeInTheDocument());
+    expect(cache.patch).toHaveBeenCalledTimes(1);
+    expect(cache.invalidate).not.toHaveBeenCalled();
+  });
+
+  it('#12 — a cancelled Save whose mail the PROVIDER refused says so, instead of pointing at a code that was never sent', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    let release: (v: unknown) => void = () => {};
+    api.requestEmailChange.mockReturnValue(new Promise((res) => { release = res; }));
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    release(body({ outcome: 'code_sent', verification_sent: false }));
+
+    await waitFor(() => expect(screen.getByText(/couldn't send the code/i)).toBeInTheDocument());
+    /* And the copy is true FROM IDLE, which is where this arm lands (round 6 #12 as
+       re-worded): hydration is one-shot, so the refetched pending row does not put the
+       section back into awaiting-code and the Resend button named by the generic
+       refused-mail copy is not on screen. A reload is. */
+    expect(screen.getByText(/reload the page to pick it up/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resend code' })).not.toBeInTheDocument();
+    // "reload the page to finish it" would name a code that does not exist.
+    expect(screen.queryByText(/request had already reached us\./i)).not.toBeInTheDocument();
+  });
+
+  it('#29 — the section-wide `validation` default is untouched on the bodyless routes', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    api.resendEmailChangeCode.mockRejectedValue(new ApiError('Validation failed', 'validation', 400, {}));
+
+    await user.click(screen.getByRole('button', { name: 'Resend code' }));
+
+    // A resend with nothing pending genuinely IS stale state — the reason the section-wide
+    // override exists at all — so it must survive the Save-route override being dropped.
+    await waitFor(() => expect(screen.getByText(/no longer available/i)).toBeInTheDocument());
+    expect(screen.queryByText(/reserved by our sign-in system/i)).not.toBeInTheDocument();
+  });
+});
 
 describe('EmailAddressSection — composition and accessibility', () => {
   it('every control has an accessible name and the section passes an automated a11y audit (idle)', async () => {

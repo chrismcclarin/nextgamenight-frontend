@@ -97,6 +97,18 @@ const NON_RETRYABLE_API_CODES: ReadonlyArray<string> = [
   // STATE-CHANGING DELETE /users/me. Same silent-regression shape as the two
   // invite 409s above.
   'not_provisioned',
+  // Phase 88.8 post-merge (round 6 #15): the synthetic-target 400 registered BE-side in
+  // the same fix set. Terminal by construction — the predicate is a pure function of the
+  // address, so a second identical request returns the same 400.
+  // STATED HONESTLY RATHER THAN OVERSOLD: this row changes nothing today. `retry:
+  // shouldRetry` is set ONLY under `defaultOptions.queries` (:159-164 below — there is no
+  // `mutations` default at all), and the one route that emits this code is reached by a
+  // plain `apiFetch` awaited in a handler, not by a useMutation, so no retry path exists
+  // to suppress. It is here because the set moves together: the day this code is ever
+  // read by a query, or a `mutations` default is added, its absence would be a silent
+  // transient-only regression that no gate catches — the exact shape recorded for the two
+  // invite 409s above.
+  'unsupported_address',
 ];
 
 /**

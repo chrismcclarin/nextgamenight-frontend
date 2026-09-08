@@ -132,6 +132,18 @@ export type ApiErrorCode =
   // MESSAGE_BY_CODE in useFetchErrorState.ts, NON_RETRYABLE_API_CODES in
   // queryClient.ts, and its own arm in classifyDeleteError.
   | 'not_provisioned'
+  // Phase 88.8 post-merge (round 6 #11/#14/#15/#16/#17): registered BE-side in
+  // ERROR_REGISTRY as `unsupported_address` @400 (utils/errors.js:104), returned by
+  // POST /users/:user_id/email when the requested address matches the app's OWN
+  // synthetic-account sentinel (the broad NIX-AUTH0 predicate). DELIBERATELY DISTINCT
+  // from `validation`: that code is the shape/length/body-key verdict, and the Email
+  // section overrides its copy with "reload the page to see the current state" — false
+  // twice over for a typed address that will fail identically forever. Same VERBATIM
+  // pass-through hazard as the members above: without this row the code lands outside
+  // `ApiErrorCode` and every Record keyed on it misses silently. The set moves together
+  // — union here, MESSAGE_BY_CODE in useFetchErrorState.ts, NON_RETRYABLE_API_CODES in
+  // queryClient.ts, and the section's own byCode override.
+  | 'unsupported_address'
   | 'internal'
   | 'network'
   | 'config';

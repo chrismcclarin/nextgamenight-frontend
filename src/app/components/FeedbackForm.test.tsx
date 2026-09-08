@@ -28,6 +28,9 @@ import userEvent from '@testing-library/user-event';
 // reads now, and the two must agree in the logged-out case.
 vi.mock('@auth0/nextjs-auth0/client', () => ({ useUser: () => ({ user: null }) }));
 
+// Round 6 #3/#28: the submit-failure report.
+vi.mock('@sentry/nextjs', () => ({ captureException: vi.fn() }));
+
 // Phase 88.8 plan 13 Task 3(b): the contact handle is `Users.email` off the
 // shared self row, never the Auth0 session claim.
 const h = vi.hoisted(() => ({
@@ -44,6 +47,8 @@ vi.mock('../../lib/hooks/useSelfIdentity', () => ({
     isPending: !h.self,
   }),
 }));
+
+import * as Sentry from '@sentry/nextjs';
 
 import FeedbackForm from './FeedbackForm';
 import { PUBLIC_API_BASE_URL } from '../../lib/api';
@@ -240,5 +245,208 @@ describe('FeedbackForm — round 3 DR3: the loading gate answers, the error case
     render(<FeedbackForm onClose={() => {}} />);
     expect(screen.getByRole('status')).toHaveTextContent('');
     expect(screen.queryByText(/couldn't load your email address/i)).not.toBeInTheDocument();
+  });
+});
+
+/* ---------------------------------------------------------------------------
+   POST-MERGE FIX SET (code review round 5 MED/LOW, 2026-09-07) — #37/#41/#8/#40.
+   --------------------------------------------------------------------------- */
+
+describe('FeedbackForm — post-merge fix set (round 5)', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  const fillAndSubmit = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.type(screen.getByPlaceholderText(/Brief description/i), 'A subject');
+    await user.type(screen.getByPlaceholderText(/provide as much detail/i), 'A description here.');
+    await user.click(screen.getByRole('button', { name: /^Submit$/i }));
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.self = { id: 'u1', email: APP_EMAIL };
+    h.query = {};
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    h.self = undefined;
+    h.query = {};
+  });
+
+  it('#37 — a FAILED submit is announced through a live region and named by Submit`s aria-describedby', async () => {
+    // The harm: the red box painted and assistive tech was told nothing, so a keyboard or
+    // screen-reader reporter believed the report had gone.
+    fetchMock = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+
+    /* Selected by id suffix rather than by role: since round 6 #31 the screenshot error
+       is a second always-mounted assertive region in this form, so `getByRole('alert')`
+       is ambiguous — which is the cheap signal that BOTH errors now announce. */
+    const submitError = () => document.querySelector('[id$="-submit-error"]');
+    expect(submitError()).toHaveAttribute('role', 'alert');
+    // ALWAYS MOUNTED AND EMPTY FIRST — a region that mounts WITH its content announces
+    // nothing, which is the shape this fix replaces.
+    expect(submitError()).toHaveTextContent('');
+
+    await fillAndSubmit(user);
+
+    await waitFor(() => expect((submitError()?.textContent ?? '').length).toBeGreaterThan(0));
+    const submit = screen.getByRole('button', { name: /^Submit$/i });
+    expect(submit.getAttribute('aria-describedby')).toContain(submitError()!.id);
+    // The gate line is still referenced too — the failure JOINS it, never replaces it.
+    expect(submit.getAttribute('aria-describedby')).toContain(screen.getByRole('status').id);
+  });
+
+  it('#3/#28 — a failed submit is REPORTED to Sentry, class-only, with none of the report body in the payload', async () => {
+    fetchMock = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+
+    const SECRET_PROSE = 'my password is hunter2 and my address is nobody@example.com';
+    await user.type(screen.getByPlaceholderText(/Brief description/i), 'A subject');
+    await user.type(screen.getByPlaceholderText(/provide as much detail/i), SECRET_PROSE);
+    await user.click(screen.getByRole('button', { name: /^Submit$/i }));
+
+    await waitFor(() => expect(Sentry.captureException).toHaveBeenCalledTimes(1));
+    const [err, ctx] = vi.mocked(Sentry.captureException).mock.calls[0] as [
+      Error,
+      { tags?: Record<string, unknown> },
+    ];
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toMatch(/^feedback submit failed: /);
+    expect(ctx.tags).toEqual({ feature: 'feedback', op: 'submit' });
+    /* THE POINT OF "class-only": this is the app's own bug channel, so the body in flight
+       is the reporter's prose, their address and possibly a screenshot. None of it may
+       ride along to Sentry. */
+    const payload = JSON.stringify(vi.mocked(Sentry.captureException).mock.calls[0]);
+    expect(payload).not.toContain('hunter2');
+    expect(payload).not.toContain('nobody@example.com');
+  });
+
+  it('#41 — the reply-to warning arrives as a CHANGE to the already-mounted region, not as a new node', async () => {
+    /* What the round-4 comment over-claimed: `selfNotReady` is `isFetching`, false on a
+       warm cache and false for a settled errored query, so the sentence could be present
+       on the region`s very first commit — which announces nothing. The text is now set
+       from an effect, and the region is the SAME DOM node before and after, which is what
+       makes the first appearance an announceable change.
+       WHAT THIS CANNOT PROVE, stated rather than implied: RTL`s render flushes effects
+       inside act(), so no assertion here can observe the one commit between mount and
+       effect. Node identity across the transition is the observable half. */
+    fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ success: true }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { rerender } = render(<FeedbackForm onClose={() => {}} />);
+    const before = screen.getByRole('status');
+    expect(before).toHaveTextContent('');
+
+    h.self = { id: 'u1', email: SYNTHETIC };
+    rerender(<FeedbackForm onClose={() => {}} />);
+
+    const after = screen.getByRole('status');
+    expect(after).toBe(before);
+    expect(after).toHaveTextContent(/couldn't load your email address/i);
+  });
+
+  it('#30 — the screenshot attach control is KEYBOARD-REACHABLE, and the label paints its focus ring', async () => {
+    fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ success: true }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<FeedbackForm onClose={() => {}} />);
+
+    /* WCAG 2.1.1. It carried `className="hidden"` (display:none) inside a non-focusable
+       <label>, so there was no keyboard path to attaching a screenshot at all. */
+    const input = document.querySelector('input[type="file"]')!;
+    expect(input).not.toHaveClass('hidden');
+    expect(input).toHaveClass('sr-only');
+    (input as HTMLElement).focus();
+    expect(input).toHaveFocus();
+
+    // And the focus is VISIBLE, on the box the user can actually see (WCAG 2.4.7) —
+    // trading 2.1.1 for 2.4.7 would not be a fix.
+    const label = document.querySelector(`label[for="${input.id}"]`)!;
+    expect(label.className).toMatch(/peer-focus-visible:ring-2/);
+    expect(input).toHaveClass('peer');
+  });
+
+  it('#31 — a rejected screenshot is ANNOUNCED and associated with the file input', async () => {
+    fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ success: true }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const region = document.querySelector('[id$="-screenshot-error"]')!;
+    expect(region).toHaveAttribute('role', 'alert');
+    expect(region).toHaveTextContent(''); // mounted empty, so the message is a CHANGE
+    expect(input).not.toHaveAttribute('aria-describedby');
+
+    /* THE OVER-SIZE branch rather than the wrong-type one, deliberately: user-event
+       filters an upload against the input's own `accept` attribute, so a text/plain file
+       never reaches the change handler here and the assertion would pass vacuously on a
+       component that did nothing. Size is the rejection a real user hits anyway — a phone
+       screenshot clears 2 MB easily — and it lands in the same error lane. */
+    const overSize = new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'huge.png', {
+      type: 'image/png',
+    });
+    await user.upload(input, overSize);
+
+    expect(region).toHaveTextContent(/file is too large/i);
+    // The one that mattered: a screen-reader user used to press Submit believing the
+    // screenshot was attached.
+    expect(input).toHaveAttribute('aria-describedby', region.id);
+  });
+
+  it('#6 — the success timer is cleared on unmount, so it cannot fire into a closed modal', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ success: true }) }));
+      vi.stubGlobal('fetch', fetchMock);
+      const onClose = vi.fn();
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const { unmount } = render(<FeedbackForm onClose={onClose} />);
+
+      await fillAndSubmit(user);
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      expect(onClose).not.toHaveBeenCalled(); // the 2s timer is armed, not yet fired
+
+      // The modal closes under it — the close button, Escape, an outside click, a route
+      // change. The timer must not survive that.
+      unmount();
+      await vi.advanceTimersByTimeAsync(3000);
+
+      expect(onClose).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('#8/#40 — two concurrently mounted forms carry DISTINCT ids, and each Submit points at its OWN status line', () => {
+    fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ success: true }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    /* Two mount sites exist today (Footer, and FetchErrorBanner, which can appear more
+       than once), so the hard-coded `feedback-submit-status` could resolve a Submit`s
+       description to the OTHER form`s status line. Queried through the DOM rather than
+       the accessibility tree on purpose: a modal marks its siblings aria-hidden, which
+       would hide one of the two from a role query and make this pass vacuously. */
+    render(
+      <>
+        <FeedbackForm onClose={() => {}} />
+        <FeedbackForm onClose={() => {}} />
+      </>
+    );
+
+    const statuses = Array.from(document.querySelectorAll('[role="status"]'));
+    expect(statuses).toHaveLength(2);
+    const ids = statuses.map((n) => n.id);
+    expect(ids[0]).toBeTruthy();
+    expect(ids[0]).not.toBe(ids[1]);
+    expect(ids).not.toContain('feedback-submit-status');
+
+    const submits = Array.from(document.querySelectorAll('button[type="submit"]'));
+    expect(submits).toHaveLength(2);
+    submits.forEach((btn, i) => {
+      expect(btn.getAttribute('aria-describedby')).toContain(ids[i]);
+      expect(btn.getAttribute('aria-describedby')).not.toContain(ids[i === 0 ? 1 : 0]);
+    });
   });
 });

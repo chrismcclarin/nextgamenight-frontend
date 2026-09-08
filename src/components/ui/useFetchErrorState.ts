@@ -99,6 +99,13 @@ const MESSAGE_BY_CODE: Record<FetchErrorCode, string> = {
   // M-2: status-mapped fallback for a code-less 410 — terminal, so no
   // "try again" phrasing.
   gone: 'This is no longer available.',
+  // Phase 88.8 post-merge (round 6 #15): the synthetic-target 400. GENERIC copy for any
+  // surface that renders this Record directly; the ONE surface that can provoke the code
+  // today — EmailAddressSection's Save — overrides it with field-attached copy through
+  // `byCode`. Terminal by construction: the same address fails identically forever, so
+  // no "try again" phrasing.
+  unsupported_address:
+    "That address can't be used with this app — the domain is reserved by our sign-in system.",
   internal: "Something went wrong on our end. Please try again shortly.",
   config: "Something's misconfigured on our end. Please try again shortly.",
   unknown: 'Something went wrong. Refresh the page to try again.',
