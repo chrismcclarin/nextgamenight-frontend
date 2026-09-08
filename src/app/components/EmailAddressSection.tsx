@@ -72,7 +72,7 @@ import { StatusRegion } from '@/components/ui/StatusRegion';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 import type { FetchErrorMessageOptions } from '@/components/ui/useFetchErrorState';
 import { ApiError, usersAPI } from '@/lib/api';
-import { patchSelfCache } from '@/lib/hooks/selfIdentityCache';
+import { invalidateSelfCache, patchSelfCache } from '@/lib/hooks/selfIdentityCache';
 import { useSelfIdentity } from '@/lib/hooks/useSelfIdentity';
 import { EmailChangeResponseSchema } from '@/lib/schemas/users';
 import type { EmailChangeResponse } from '@/lib/schemas/users';
@@ -360,7 +360,17 @@ export function EmailAddressSection() {
      ACTION lands here, beside the buttons, exactly as `actionError` does for the
      awaiting-code block and `revertError` for the idle one. */
   const [editActionError, setEditActionError] = React.useState<string | null>(null);
-  const mutating = busy !== null || state === 'saving' || state === 'verifying';
+  /* THE SAVE REQUEST, NOT THE SAVE STATE (round 6 HIGH). `state === 'saving'` stops being
+     true the instant Cancel is pressed — that is the whole point of Cancel — so the lane
+     `mutating` describes fell OPEN while the POST was still on the wire, and Change,
+     Save, Revert, Resend and Discard all became pressable against a live request. The
+     request needs a flag of its own that outlives the state the user left. Set before the
+     await and cleared in `finally`, so it tracks the REQUEST rather than the panel.
+     DELIBERATELY ABSENT FROM `cancelGated` AND FROM CANCEL'S HANDLER GATE: Cancel is the
+     one control that is allowed to interrupt its own Save, which is the fix this flag
+     protects, not one it should undo. */
+  const [saveInFlight, setSaveInFlight] = React.useState(false);
+  const mutating = busy !== null || saveInFlight || state === 'saving' || state === 'verifying';
   const [focusTarget, setFocusTarget] = React.useState<FocusTarget>(null);
 
   const hydratedRef = React.useRef(false);
@@ -383,6 +393,20 @@ export function EmailAddressSection() {
      than to gate: the harm round 4 described was never the press, it was the response
      re-entering awaiting-code and stealing focus afterwards. */
   const saveRunRef = React.useRef(0);
+  /* LAST WRITE WINS (round 6 HIGH). The run whose response has already been written into
+     the immortal self cache. An older run that lands later must never patch its row back
+     over a newer one — `staleTime: Infinity` means the wrong row would then survive the
+     whole session. Defensive today (a newer Save bumps `saveRunRef`, which makes every
+     older run `abandoned` before it reaches the patch) and kept because the invariant is
+     the thing that must hold, not the current spelling of the branch above it. */
+  const appliedSeqRef = React.useRef(0);
+  /* The state as of LANDING TIME, not as of the closure. A response resolves long after
+     the render that started it, and the user may be in a different panel by then — see
+     the abandoned arm, which must not fire a notice into a session it is not about. */
+  const stateRef = React.useRef<SectionState>(state);
+  React.useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
   const cooldownTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const changeRef = React.useRef<HTMLButtonElement>(null);
@@ -611,12 +635,21 @@ export function EmailAddressSection() {
        intent; the landing response honours it below. Restoring the gate is a decision,
        not a cleanup.
 
-       THE OTHER LANES STILL GATE. `busy` (Resend / Discard / Revert) and a `verifying`
-       round trip are OTHER actions, not this one — Cancel cannot speak for them, so
-       they answer with the busy line exactly as the five siblings do. In the editing
-       block neither is reachable today (Change refuses to open an edit while any lane
-       is live), so this is a guard against a future path rather than today's behaviour,
-       and it keeps the handler and the control's aria-disabled saying ONE thing. */
+       AMENDED (round 6 HIGH, 2026-09-07) — THE SHAPE IS NOW THREE PARTS, and the first
+       version shipped only one of them:
+         1. Cancel works and moves the section to idle, as below.
+         2. THE LANE STAYS CLOSED ANYWAY, on `saveInFlight` rather than on
+            `state === 'saving'`. Leaving the section's state as the only lane signal
+            meant `mutating` went false the moment Cancel landed, opening Change, Save,
+            Revert, Resend and Discard against a POST that was still on the wire.
+         3. AN ABANDONED RESPONSE REFETCHES, IT DOES NOT PATCH. It is by definition a
+            response the section already knows is stale, and the self row is immortal.
+
+       THE OTHER LANES STILL GATE THE PRESS. `busy` (Resend / Discard / Revert) and a
+       `verifying` round trip are OTHER actions, not this one — Cancel cannot speak for
+       them, so they answer with the busy line exactly as the five siblings do. Note what
+       is deliberately NOT in this gate: `saveInFlight`. Cancel interrupting its own Save
+       is the point; gating on it would restore round 4's defect through the back door. */
     if (busy !== null || state === 'verifying') {
       setEditActionError(ACTION_BUSY_ERROR);
       return;
@@ -680,6 +713,7 @@ export function EmailAddressSection() {
     setState('saving');
     const run = ++saveRunRef.current;
     try {
+      setSaveInFlight(true);
       const body = await usersAPI.requestEmailChange(selfId, value);
       /* Round 5 #2: the user pressed Cancel while this was in flight. Everything below
          moves the section and the focus, and doing any of it now would put them back in
@@ -692,20 +726,53 @@ export function EmailAddressSection() {
         setFocusTarget('email');
         return;
       }
-      applyToCache(body);
       if (abandoned) {
-        /* THE CACHE PATCH STILL RUNS, ABOVE. The server DID act, and the immortal self
-           row is the app's one source of truth — leaving it stale would make the header
-           and the next mount disagree with the database. What is dropped is the STATE
-           MOVE and the FOCUS MOVE, not the fact. And the user is told, because a pending
-           change they did not know about would meet them as a surprise on the next
-           reload; the info Banner has no visible home that announces, so this goes
-           through the section's one live region like the `unchanged` copy beside it. */
-        if (body.outcome === 'code_sent') {
-          setNotice({ tone: 'info', text: CANCELLED_MID_SAVE_COPY });
-          announce(CANCELLED_MID_SAVE_COPY);
+        /* REFETCH, NEVER PATCH (round 6 HIGH). The server DID act and the immortal self
+           row must not stay stale — but this body is one the section already knows is
+           out of date, and writing it wholesale was a real corruption: Save A stalls,
+           Cancel, Change, Save B, B lands and the user is verifying B, then A lands late
+           and patched `pending_email_change` (plus `email`, `email_changed_at` and
+           `revert_available`) back to A underneath them. `staleTime: Infinity` means that
+           wrong row then survives the entire session. A refetch cannot resurrect A over
+           B: it asks the server what is true NOW, which is B. `patchSelfCache` stays on
+           the non-abandoned path, where the body IS the freshest thing the client has.
+           `invalidateSelfCache` is the module's existing helper for exactly this case
+           ("the authoritative post-mutation state must come from the server"). */
+        void invalidateSelfCache(queryClient);
+        /* AND THE NOTICE ONLY SPEAKS INTO THE SESSION IT IS ABOUT. `stateRef` is read
+           rather than the closure's `state`, which is frozen at the render that started
+           this request: by landing time the user may have opened a new edit or be sitting
+           in awaiting-code for a LATER save, and "you cancelled, but…" fired into that
+           panel is a message about something else entirely. Idle is the one state this
+           sentence belongs in. */
+        if (body.outcome === 'code_sent' && stateRef.current === 'idle') {
+          if (body.verification_sent) {
+            setNotice({ tone: 'info', text: CANCELLED_MID_SAVE_COPY });
+            announce(CANCELLED_MID_SAVE_COPY);
+          } else {
+            /* THE PROVIDER REFUSED THE MAIL (round 6 #12). Saying "reload the page to
+               finish it" would point the user at a code that was never sent. This is the
+               same fixed copy the two non-abandoned refused-mail arms use; not announce()d
+               here because an error-tone Banner is an assertive live region of its own
+               (round 3 #38), so the region would say it twice.
+               RESIDUAL, STATED NOT HIDDEN: that copy's "use Resend code" names a control
+               that lives in the awaiting-code panel, and this arm lands in idle — the
+               user has to reload to reach it. Naming the refused send is the more
+               important half (it is the difference between a code that exists and one
+               that does not), so the existing constant is used rather than a fifth
+               spelling of it; a copy that works from idle is worth a follow-up. */
+            setNotice({ tone: 'error', text: MAIL_REFUSED_COPY });
+          }
         }
         return;
+      }
+      /* LAST WRITE WINS. Defensive: any newer Save bumps `saveRunRef`, so an older run is
+         already `abandoned` above and cannot reach this line. The guard states the
+         invariant anyway, because what must hold is "no older response ever overwrites a
+         newer one", not "the branch above currently happens to catch them all". */
+      if (run >= appliedSeqRef.current) {
+        appliedSeqRef.current = run;
+        applyToCache(body);
       }
 
       if (body.outcome === 'unchanged') {
@@ -772,6 +839,10 @@ export function EmailAddressSection() {
          pre-check above stays exactly as it is. */
       setEmailError(messageFor(error, { validation: RESERVED_ADDRESS_ERROR }));
       setFocusTarget('email');
+    } finally {
+      // The REQUEST is over either way, so the lane reopens either way — including on
+      // the abandoned paths above, which return early out of the `try`.
+      setSaveInFlight(false);
     }
   };
 

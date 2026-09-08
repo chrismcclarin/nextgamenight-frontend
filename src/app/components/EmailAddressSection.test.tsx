@@ -59,7 +59,25 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   SELF_IDENTITY_KEY: ['users', 'self'],
 }));
 
+/* Round 6 HIGH: the cache helpers are SPIED, never replaced — both delegate to the real
+   implementation, so nothing about the section's behaviour changes. `self` comes from the
+   mocked hook above, so a cache write is invisible through the rendered output; the call
+   itself is the only observable, and WHICH helper the abandoned path chooses is exactly
+   what the fix is about. */
+vi.mock('@/lib/hooks/selfIdentityCache', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/lib/hooks/selfIdentityCache')>(
+      '@/lib/hooks/selfIdentityCache'
+    );
+  return {
+    ...actual,
+    patchSelfCache: vi.fn(actual.patchSelfCache),
+    invalidateSelfCache: vi.fn(actual.invalidateSelfCache),
+  };
+});
+
 import { usersAPI } from '@/lib/api';
+import { invalidateSelfCache, patchSelfCache } from '@/lib/hooks/selfIdentityCache';
 import { useSelfIdentity } from '@/lib/hooks/useSelfIdentity';
 
 const api = usersAPI as unknown as {
@@ -70,6 +88,10 @@ const api = usersAPI as unknown as {
   revertEmailToSignIn: ReturnType<typeof vi.fn>;
 };
 const mockSelf = useSelfIdentity as unknown as ReturnType<typeof vi.fn>;
+const cache = {
+  patch: patchSelfCache as unknown as ReturnType<typeof vi.fn>,
+  invalidate: invalidateSelfCache as unknown as ReturnType<typeof vi.fn>,
+};
 
 const SYNTHETIC = 'google-oauth2-1|xyz@auth0.local';
 const REAL = 'alice@example.com';
@@ -1465,6 +1487,97 @@ describe('EmailAddressSection — post-merge fix set (round 5)', () => {
 
     await waitFor(() => expect(screen.getByText(/reserved by our sign-in system/i)).toBeInTheDocument());
     expect(screen.queryByText(/no longer available/i)).not.toBeInTheDocument();
+  });
+
+  /* ── ROUND 6 HIGH: Cancel-during-Save, the three parts ──────────────────────
+     The first version of the #2 fix shipped part 1 only. Its test released ONE promise
+     with no second mutation, so it was green over the whole failure: the lane fell open
+     the instant Cancel set the state to idle, and a late response patched its own row
+     into an immortal cache underneath whatever the user was doing by then. */
+
+  it('#2 (round 6 HIGH) — the lane stays CLOSED while a cancelled Save is still on the wire', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    let release: (v: unknown) => void = () => {};
+    api.requestEmailChange.mockReturnValue(new Promise((res) => { release = res; }));
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(api.requestEmailChange).toHaveBeenCalledTimes(1); // anti-vacuity: on the wire
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    /* `state` is now 'idle' — which is what made `mutating` (busy || saving || verifying)
+       read FALSE while the POST was still open. `saveInFlight` is what holds the lane. */
+    const change = screen.getByRole('button', { name: 'Change' });
+    expect(change).toHaveAttribute('aria-disabled', 'true');
+    expect(change).not.toHaveAttribute('disabled'); // DR-C: never natively disabled
+    await user.click(change);
+    expect(screen.queryByLabelText(/new email address/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(/wait for the current step to finish/i);
+    // No second mutation could start, which is what makes the interleave unreachable.
+    expect(api.requestEmailChange).toHaveBeenCalledTimes(1);
+
+    release(body({ outcome: 'code_sent' }));
+    // The REQUEST is what reopens the lane, not the state the user left.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Change' })).not.toHaveAttribute('aria-disabled', 'true')
+    );
+  });
+
+  it('#2 (round 6 HIGH) — an ABANDONED response REFETCHES the self row and never patches it', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    let release: (v: unknown) => void = () => {};
+    api.requestEmailChange.mockReturnValue(new Promise((res) => { release = res; }));
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    release(body({ outcome: 'code_sent' }));
+
+    await waitFor(() => expect(cache.invalidate).toHaveBeenCalledTimes(1));
+    /* THE WHOLE POINT: a body the section already knows is stale never goes into an
+       immortal cache. The server DID act, so the row is refetched instead — a refetch
+       asks what is true now and cannot resurrect an older pending address over a newer
+       one. The non-abandoned path still patches (asserted by the test below). */
+    expect(cache.patch).not.toHaveBeenCalled();
+  });
+
+  it('#2 — the NON-abandoned path still patches from the body, unchanged', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    api.requestEmailChange.mockResolvedValue(body({ outcome: 'code_sent' }));
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(screen.getByLabelText(/code from the email/i)).toBeInTheDocument());
+    expect(cache.patch).toHaveBeenCalledTimes(1);
+    expect(cache.invalidate).not.toHaveBeenCalled();
+  });
+
+  it('#12 — a cancelled Save whose mail the PROVIDER refused says so, instead of pointing at a code that was never sent', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    let release: (v: unknown) => void = () => {};
+    api.requestEmailChange.mockReturnValue(new Promise((res) => { release = res; }));
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    release(body({ outcome: 'code_sent', verification_sent: false }));
+
+    await waitFor(() => expect(screen.getByText(/couldn't send the code just now/i)).toBeInTheDocument());
+    // "reload the page to finish it" would name a code that does not exist.
+    expect(screen.queryByText(/request had already reached us/i)).not.toBeInTheDocument();
   });
 
   it('#29 — and the override is SCOPED: the bodyless routes keep the stale-action copy', async () => {
