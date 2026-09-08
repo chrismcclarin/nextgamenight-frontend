@@ -1475,7 +1475,23 @@ describe('EmailAddressSection — post-merge fix set (round 5)', () => {
     expect(api.requestEmailChange).not.toHaveBeenCalled();
   });
 
-  it('#29 — the SERVER\'s `validation` refusal on Save lands on the same copy, not on "reload the page"', async () => {
+  it("#15 — the SERVER's `unsupported_address` refusal lands on the reserved-domain copy, not on \"reload the page\"", async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    api.requestEmailChange.mockRejectedValue(
+      new ApiError('That address cannot be used with this app', 'unsupported_address', 400, {})
+    );
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(screen.getByText(/reserved by our sign-in system/i)).toBeInTheDocument());
+    expect(screen.queryByText(/no longer available/i)).not.toBeInTheDocument();
+  });
+
+  it('#11/#16 — a DIFFERENT 400 on the same route no longer inherits that copy', async () => {
     const user = userEvent.setup();
     mockSelf.mockReturnValue(selfState(ROW()));
     api.requestEmailChange.mockRejectedValue(new ApiError('Validation failed', 'validation', 400, {}));
@@ -1485,8 +1501,13 @@ describe('EmailAddressSection — post-merge fix set (round 5)', () => {
     await user.type(screen.getByLabelText(/new email address/i), NEW);
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    await waitFor(() => expect(screen.getByText(/reserved by our sign-in system/i)).toBeInTheDocument());
-    expect(screen.queryByText(/no longer available/i)).not.toBeInTheDocument();
+    /* The round-5 fix blanket-mapped `validation` on this route, reasoning that the client
+       pre-flights left the synthetic gate as the only reachable cause. True, and still a
+       confident WRONG answer for any other 400 — a body-key drift or a future validator
+       would have told the user their DOMAIN was reserved. The specific code now carries
+       the specific copy; everything else falls back to the section-wide default. */
+    await waitFor(() => expect(screen.getByText(/no longer available/i)).toBeInTheDocument());
+    expect(screen.queryByText(/reserved by our sign-in system/i)).not.toBeInTheDocument();
   });
 
   /* ── ROUND 6 HIGH: Cancel-during-Save, the three parts ──────────────────────
@@ -1580,15 +1601,15 @@ describe('EmailAddressSection — post-merge fix set (round 5)', () => {
     expect(screen.queryByText(/request had already reached us/i)).not.toBeInTheDocument();
   });
 
-  it('#29 — and the override is SCOPED: the bodyless routes keep the stale-action copy', async () => {
+  it('#29 — the section-wide `validation` default is untouched on the bodyless routes', async () => {
     const user = userEvent.setup();
     renderAwaiting();
     api.resendEmailChangeCode.mockRejectedValue(new ApiError('Validation failed', 'validation', 400, {}));
 
     await user.click(screen.getByRole('button', { name: 'Resend code' }));
 
-    // A resend with nothing pending genuinely IS stale state — the reason the override
-    // exists at all — so this copy must not have been collateral damage.
+    // A resend with nothing pending genuinely IS stale state — the reason the section-wide
+    // override exists at all — so it must survive the Save-route override being dropped.
     await waitFor(() => expect(screen.getByText(/no longer available/i)).toBeInTheDocument());
     expect(screen.queryByText(/reserved by our sign-in system/i)).not.toBeInTheDocument();
   });

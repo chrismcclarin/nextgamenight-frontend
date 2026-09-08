@@ -829,15 +829,18 @@ export function EmailAddressSection() {
       // attached to a control that is no longer on screen.
       if (saveRunRef.current !== run) return;
       setState('editing');
-      /* Round 5 #29: the SERVER-side half of the same refusal. The pre-check above should
-         mean this never fires — both sides run the same predicate over the same
-         normalised value — but the two live in repos whose CI cannot see each other, so
-         the mapping is the belt to the pre-check's braces, and the section stops telling
-         a user who typed an address to "reload the page". If the backend later gives this
-         refusal its own registered code (round 5 #29 proposes `unsupported_address`),
-         THIS is where it plugs in: add the code beside `validation` here and the
-         pre-check above stays exactly as it is. */
-      setEmailError(messageFor(error, { validation: RESERVED_ADDRESS_ERROR }));
+      /* Round 5 #29 AS AMENDED BY ROUND 6 #11/#15/#16: the SERVER-side half of the same
+         refusal, now keyed on the refusal's OWN code. The first version mapped the whole
+         `validation` envelope on this route, reasoning that the client pre-flights left
+         the synthetic gate as the only reachable cause — true, but it made every OTHER
+         400 on the route (a body-key drift, a future validator) render as "the domain is
+         reserved", which is a confident wrong answer rather than a generic one. The
+         backend registered `unsupported_address` @400 in this same fix set
+         (`utils/errors.js:104`), so the specific code now carries the specific copy and
+         `validation` falls back to the section-wide stale-action default, exactly as it
+         does on the four sibling routes. The pre-check above is unchanged and still means
+         this should never fire from our own UI. */
+      setEmailError(messageFor(error, { unsupported_address: RESERVED_ADDRESS_ERROR }));
       setFocusTarget('email');
     } finally {
       // The REQUEST is over either way, so the lane reopens either way — including on
