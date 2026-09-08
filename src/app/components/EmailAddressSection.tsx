@@ -160,6 +160,17 @@ const UNCHANGED_COPY = "That's already the address we use for you";
    hydration off the self row, which lands them in awaiting-code with Resend available. */
 const CANCELLED_MID_SAVE_COPY =
   'You cancelled, but the request had already reached us. Nothing has changed yet — reload the page to finish it, or leave it and it will expire.';
+/* THE SAME CASE, WITH THE MAIL REFUSED (round 6 #12 as re-worded 2026-09-07). The first
+   version of this arm reused MAIL_REFUSED_COPY, which ends "use Resend code to try
+   again" — and Resend lives in the awaiting-code panel, which this arm does not land in.
+   VERIFIED rather than assumed: hydration is one-shot and ref-guarded (`:513`), so the
+   `invalidateSelfCache` refetch above brings back a row carrying `pending_email_change`
+   and the section STAYS IDLE; only a reload re-runs the hydration that reads it. So the
+   copy names a reload, which is the one action that actually reaches the code from here.
+   Two constants rather than one interpolation because "we sent it" and "we could not
+   send it" are different facts and the user acts differently on each. */
+const CANCELLED_MID_SAVE_UNSENT_COPY =
+  "You cancelled, but the request had already reached us — and we couldn't send the code. Nothing has changed yet. Reload the page to pick it up and ask for a new code.";
 const PENDING_ADDRESS_LABEL = 'The address waiting to be verified';
 const CODE_FORMAT_HINT = '8 characters, letters and numbers. Dashes are optional.';
 const REVERT_HELPER = 'This puts your address back to the one you sign in with.';
@@ -784,17 +795,14 @@ export function EmailAddressSection() {
             announce(CANCELLED_MID_SAVE_COPY);
           } else {
             /* THE PROVIDER REFUSED THE MAIL (round 6 #12). Saying "reload the page to
-               finish it" would point the user at a code that was never sent. This is the
-               same fixed copy the two non-abandoned refused-mail arms use; not announce()d
-               here because an error-tone Banner is an assertive live region of its own
-               (round 3 #38), so the region would say it twice.
-               RESIDUAL, STATED NOT HIDDEN: that copy's "use Resend code" names a control
-               that lives in the awaiting-code panel, and this arm lands in idle — the
-               user has to reload to reach it. Naming the refused send is the more
-               important half (it is the difference between a code that exists and one
-               that does not), so the existing constant is used rather than a fifth
-               spelling of it; a copy that works from idle is worth a follow-up. */
-            setNotice({ tone: 'error', text: MAIL_REFUSED_COPY });
+               finish it" would point at a code that was never sent. The round-5 version
+               of this line reused MAIL_REFUSED_COPY and carried a stated residual: its
+               "use Resend code" names a control in the awaiting-code panel, and this arm
+               lands in IDLE. That residual is now closed rather than documented — see the
+               constant, which names the one action that works from here. Not announce()d:
+               an error-tone Banner is an assertive live region of its own (round 3 #38),
+               so the region would say it twice. */
+            setNotice({ tone: 'error', text: CANCELLED_MID_SAVE_UNSENT_COPY });
           }
         }
         return;
@@ -945,8 +953,20 @@ export function EmailAddressSection() {
         setCodeError(EXPIRED_CODE_ERROR);
         setResendPromoted(true);
       } else if (body.outcome === 'address_taken') {
-        // NAMED, never collapsed into `invalid`. Plan 09 leaves the code row
-        // active, so the same code still works if the conflict is resolved.
+        /* NAMED, never collapsed into `invalid` — telling this user their code "isn't
+           right" would be false and would hide a real account conflict behind a retry
+           prompt.
+
+           AND THE CODE IS DELIBERATELY CLEARED HERE (owner ruling, 2026-09-07, round 6).
+           This comment used to say plan 09 leaves the code row active "so the same code
+           still works if the conflict is resolved", which read as an argument for keeping
+           the typed characters — it is not. Resolving this conflict means leaving the
+           page: the other account has to be dealt with, or we have to be asked for help.
+           Nobody comes back to a still-mounted section with the same eight characters in
+           the field, so preserving them helps nobody. The server's 30-minute grace is a
+           COURTESY that keeps a re-verify possible, not a UI contract this section is
+           obliged to hold state for. Contrast the transport arms above, where the retry
+           is immediate and the code genuinely is the next keystroke. */
         setCodeError(ADDRESS_TAKEN_ERROR);
       } else {
         setCodeError(INVALID_CODE_ERROR);
@@ -1251,6 +1271,9 @@ export function EmailAddressSection() {
             ref={changeRef}
             variant="secondary"
             onClick={handleChange}
+            /* Round 6 #32: Change's gate writes ACTION_BUSY_ERROR into `revertError` —
+               the idle block's lane, which is where its only sibling already points. */
+            aria-describedby={revertError ? `${reactId}-revert-error` : undefined}
             aria-disabled={mutating ? 'true' : undefined}
             className="max-md:min-h-11"
           >
@@ -1348,6 +1371,13 @@ export function EmailAddressSection() {
                 const v = emailInput.trim();
                 if (v && v.length > EMAIL_MAX_LENGTH) setEmailError(TOO_LONG_EMAIL_ERROR);
                 else if (v && !EMAIL_SHAPE.test(v)) setEmailError(MALFORMED_EMAIL_ERROR);
+                /* Round 6 #21: the THIRD field verdict runs on blur like the two beside
+                   it. The synthetic pre-check shipped on the Save path only, so a user
+                   who typed a reserved address and tabbed on was told nothing until they
+                   pressed Save — the one gate of the three that stayed silent, for no
+                   reason other than that it was added later. Same predicate, same lane,
+                   same order as the handler. */
+                else if (v && isSyntheticAddress(v)) setEmailError(RESERVED_ADDRESS_ERROR);
               }}
             />
           </FormField>
@@ -1473,6 +1503,12 @@ export function EmailAddressSection() {
             <Button
               variant="primary"
               onClick={handleVerify}
+              /* Round 6 #32: Verify points at the ACTION lane, like Resend and Discard
+                 beside it. Its gate writes ACTION_BUSY_ERROR / SELF_UNAVAILABLE_ERROR
+                 there, not into the code field — the code checks are the FormField's own
+                 lane, which FormField already associates. Without this, a gated Verify
+                 read as merely dimmed on re-focus with no reason given (WCAG 4.1.2). */
+              aria-describedby={actionError ? `${reactId}-action-error` : undefined}
               aria-disabled={verifyGated ? 'true' : undefined}
               className="max-md:min-h-11"
             >

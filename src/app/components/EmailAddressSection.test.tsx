@@ -1556,6 +1556,65 @@ describe('EmailAddressSection — post-merge fix set (round 5)', () => {
     expect(screen.queryByText(/reserved by our sign-in system/i)).not.toBeInTheDocument();
   });
 
+  it('#21 — the synthetic pre-check runs on BLUR too, like the two field checks beside it', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), 'chris@auth0.com');
+    await user.tab(); // leave the field — the moment the other two verdicts fire
+
+    expect(screen.getByText(/reserved by our sign-in system/i)).toBeInTheDocument();
+    noApiCalls();
+  });
+
+  it('#32 — Verify and Change point at the lane their own gate writes to', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    let releaseResend: (v: unknown) => void = () => {};
+    api.resendEmailChangeCode.mockReturnValue(new Promise((res) => { releaseResend = res; }));
+
+    await user.click(screen.getByRole('button', { name: 'Resend code' }));
+    expect(api.resendEmailChangeCode).toHaveBeenCalledTimes(1); // anti-vacuity
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(/wait for the current step to finish/i);
+    // The half round 5 left: Resend and Discard were wired, the primary control was not.
+    expect(screen.getByRole('button', { name: 'Verify' })).toHaveAttribute('aria-describedby', alert.id);
+    expect(screen.getByRole('button', { name: 'Resend code' })).toHaveAttribute('aria-describedby', alert.id);
+
+    releaseResend(body({ outcome: 'code_sent', verification_sent: false }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Verify' })).not.toHaveAttribute('aria-disabled', 'true')
+    );
+  });
+
+  it('#32 — and Change points at the idle lane, where its own gate writes', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW({ email_changed_at: '2026-09-04T00:00:00.000Z' })));
+    renderSection();
+    let releaseRevert: (v: unknown) => void = () => {};
+    api.revertEmailToSignIn.mockReturnValue(new Promise((res) => { releaseRevert = res; }));
+
+    await user.click(screen.getByRole('button', { name: 'Use my sign-in address' }));
+    expect(api.revertEmailToSignIn).toHaveBeenCalledTimes(1); // anti-vacuity
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(/wait for the current step to finish/i);
+    expect(screen.getByRole('button', { name: 'Change' })).toHaveAttribute('aria-describedby', alert.id);
+    expect(screen.getByRole('button', { name: 'Use my sign-in address' })).toHaveAttribute(
+      'aria-describedby',
+      alert.id
+    );
+
+    releaseRevert(body({ outcome: 'reverted', pending_email_change: null, verification_sent: false }));
+    await waitFor(() => expect(api.revertEmailToSignIn).toHaveBeenCalledTimes(1));
+  });
+
   /* ── ROUND 6 HIGH: Cancel-during-Save, the three parts ──────────────────────
      The first version of the #2 fix shipped part 1 only. Its test released ONE promise
      with no second mutation, so it was green over the whole failure: the lane fell open
@@ -1642,9 +1701,15 @@ describe('EmailAddressSection — post-merge fix set (round 5)', () => {
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     release(body({ outcome: 'code_sent', verification_sent: false }));
 
-    await waitFor(() => expect(screen.getByText(/couldn't send the code just now/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/couldn't send the code/i)).toBeInTheDocument());
+    /* And the copy is true FROM IDLE, which is where this arm lands (round 6 #12 as
+       re-worded): hydration is one-shot, so the refetched pending row does not put the
+       section back into awaiting-code and the Resend button named by the generic
+       refused-mail copy is not on screen. A reload is. */
+    expect(screen.getByText(/reload the page to pick it up/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resend code' })).not.toBeInTheDocument();
     // "reload the page to finish it" would name a code that does not exist.
-    expect(screen.queryByText(/request had already reached us/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/request had already reached us\./i)).not.toBeInTheDocument();
   });
 
   it('#29 — the section-wide `validation` default is untouched on the bodyless routes', async () => {
