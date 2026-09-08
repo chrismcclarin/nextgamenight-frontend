@@ -73,6 +73,18 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
   const subjectInputRef = useRef(null);
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
+  /* Round 6 #6: the success panel's 2-second timer, held so unmounting can clear it. It
+     calls FIVE state setters and `onClose`, and the modal can close under it — the close
+     button, Escape, an outside click, or a route change — so an uncleared timer fires
+     into an unmounted component and calls the parent's `onClose` a second time, after the
+     parent believes the dialog is already shut. */
+  const successTimerRef = useRef(null);
+  useEffect(
+    () => () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    },
+    []
+  );
   /* Round 5 #8/#40: DOCUMENT-UNIQUE ids, not module-level literals. This component has
      two independent mount sites — `Footer.js` (root layout, every page) and
      `FetchErrorBanner.tsx`, which can itself appear more than once — so the hard-coded
@@ -82,6 +94,8 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
   const reactId = useId();
   const statusId = `${reactId}-submit-status`;
   const errorId = `${reactId}-submit-error`;
+  const fileInputId = `${reactId}-screenshot`;
+  const screenshotErrorId = `${reactId}-screenshot-error`;
   /* Round 5 #41: EMPTY-FIRST, THEN POPULATED — the StatusRegion contract, applied for
      real. The round-4 comment claimed the reply-to line's "asynchronous appearance is a
      change in an existing region and is announced", which holds only when `selfNotReady`
@@ -200,7 +214,7 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
       await feedbackAPI.submitFeedback(feedbackBody);
 
       setSubmitted(true);
-      setTimeout(() => {
+      successTimerRef.current = setTimeout(() => {
         setSubject('');
         setDescription('');
         setType('bug');
@@ -348,24 +362,58 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
                 </button>
               </div>
             ) : (
-              <label className="flex flex-col items-center justify-center w-full p-4 border-2 border-dashed border-line rounded-md cursor-pointer hover:border-accent hover:bg-surface-hover transition-colors">
-                <svg className="w-6 h-6 text-content-muted mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <span className="text-sm text-content-muted">Click to attach a screenshot</span>
-                <span className="text-xs text-content-muted mt-1">PNG, JPG, GIF up to {MAX_FILE_SIZE_MB} MB</span>
+              /* KEYBOARD-REACHABLE SINCE 2026-09-07 (round 6 #30, WCAG 2.1.1). The input
+                 carried `className="hidden"` — `display: none`, which removes it from the
+                 focus order entirely — inside a <label> that is not focusable either, so
+                 attaching a screenshot was a mouse-only affordance from the day it
+                 shipped (2026-02). `sr-only` clips the control instead of removing it, so
+                 it keeps its native keyboard behaviour: Tab lands on it, Space or Enter
+                 opens the picker.
+                 THE INPUT IS NOW A SIBLING of the label rather than its child, associated
+                 by htmlFor/id, for one reason: Tailwind's `peer-*` variants only reach
+                 SIBLINGS, and the focus ring has to be painted on the visible box because
+                 the focused element itself is invisible. A focusable control with no
+                 visible focus indicator is WCAG 2.4.7 — trading one failure for another.
+                 Chosen OVER a Button that forwards a click to the input: that adds a
+                 second control to the tab order for one action, and loses the native
+                 file-input semantics assistive tech announces. */
+              <>
                 <input
                   ref={fileInputRef}
+                  id={fileInputId}
+                  name="screenshot"
                   type="file"
                   accept="image/*"
                   onChange={handleFileChange}
-                  className="hidden"
+                  aria-describedby={screenshotError ? screenshotErrorId : undefined}
+                  className="sr-only peer"
                 />
-              </label>
+                <label
+                  htmlFor={fileInputId}
+                  className="flex flex-col items-center justify-center w-full p-4 border-2 border-dashed border-line rounded-md cursor-pointer hover:border-accent hover:bg-surface-hover transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-focus-ring peer-focus-visible:ring-offset-2 peer-focus-visible:border-accent"
+                >
+                  <svg aria-hidden="true" className="w-6 h-6 text-content-muted mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span className="text-sm text-content-muted">Click to attach a screenshot</span>
+                  <span className="text-xs text-content-muted mt-1">PNG, JPG, GIF up to {MAX_FILE_SIZE_MB} MB</span>
+                </label>
+              </>
             )}
-            {screenshotError && (
-              <p className="text-xs text-red-600 mt-1">{screenshotError}</p>
-            )}
+            {/* Round 6 #31: ANNOUNCED AND ASSOCIATED. A rejected file (wrong type, over
+                2 MB) was a red <p> with no role and nothing referencing it, so a
+                screen-reader user pressed Submit believing their screenshot was attached.
+                Same shape as the submit error above: the house StatusRegion, always
+                mounted so the message is a change rather than a mount, `text-xs` kept so
+                the visual is unchanged, and pointed at by the input's aria-describedby
+                only while it has something to say. */}
+            <StatusRegion
+              id={screenshotErrorId}
+              politeness="assertive"
+              className={screenshotError ? 'text-xs text-red-600 mt-1' : undefined}
+            >
+              {screenshotError}
+            </StatusRegion>
           </div>
 
           {/* Error — ANNOUNCED, AND ATTACHED TO THE CONTROL THAT PRODUCED IT (round 5

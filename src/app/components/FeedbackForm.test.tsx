@@ -280,16 +280,20 @@ describe('FeedbackForm — post-merge fix set (round 5)', () => {
     const user = userEvent.setup();
     render(<FeedbackForm onClose={() => {}} />);
 
-    const alertRegion = screen.getByRole('alert');
+    /* Selected by id suffix rather than by role: since round 6 #31 the screenshot error
+       is a second always-mounted assertive region in this form, so `getByRole('alert')`
+       is ambiguous — which is the cheap signal that BOTH errors now announce. */
+    const submitError = () => document.querySelector('[id$="-submit-error"]');
+    expect(submitError()).toHaveAttribute('role', 'alert');
     // ALWAYS MOUNTED AND EMPTY FIRST — a region that mounts WITH its content announces
     // nothing, which is the shape this fix replaces.
-    expect(alertRegion).toHaveTextContent('');
+    expect(submitError()).toHaveTextContent('');
 
     await fillAndSubmit(user);
 
-    await waitFor(() => expect((screen.getByRole('alert').textContent ?? '').length).toBeGreaterThan(0));
+    await waitFor(() => expect((submitError()?.textContent ?? '').length).toBeGreaterThan(0));
     const submit = screen.getByRole('button', { name: /^Submit$/i });
-    expect(submit.getAttribute('aria-describedby')).toContain(screen.getByRole('alert').id);
+    expect(submit.getAttribute('aria-describedby')).toContain(submitError()!.id);
     // The gate line is still referenced too — the failure JOINS it, never replaces it.
     expect(submit.getAttribute('aria-describedby')).toContain(screen.getByRole('status').id);
   });
@@ -342,6 +346,78 @@ describe('FeedbackForm — post-merge fix set (round 5)', () => {
     const after = screen.getByRole('status');
     expect(after).toBe(before);
     expect(after).toHaveTextContent(/couldn't load your email address/i);
+  });
+
+  it('#30 — the screenshot attach control is KEYBOARD-REACHABLE, and the label paints its focus ring', async () => {
+    fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ success: true }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<FeedbackForm onClose={() => {}} />);
+
+    /* WCAG 2.1.1. It carried `className="hidden"` (display:none) inside a non-focusable
+       <label>, so there was no keyboard path to attaching a screenshot at all. */
+    const input = document.querySelector('input[type="file"]')!;
+    expect(input).not.toHaveClass('hidden');
+    expect(input).toHaveClass('sr-only');
+    (input as HTMLElement).focus();
+    expect(input).toHaveFocus();
+
+    // And the focus is VISIBLE, on the box the user can actually see (WCAG 2.4.7) —
+    // trading 2.1.1 for 2.4.7 would not be a fix.
+    const label = document.querySelector(`label[for="${input.id}"]`)!;
+    expect(label.className).toMatch(/peer-focus-visible:ring-2/);
+    expect(input).toHaveClass('peer');
+  });
+
+  it('#31 — a rejected screenshot is ANNOUNCED and associated with the file input', async () => {
+    fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ success: true }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const region = document.querySelector('[id$="-screenshot-error"]')!;
+    expect(region).toHaveAttribute('role', 'alert');
+    expect(region).toHaveTextContent(''); // mounted empty, so the message is a CHANGE
+    expect(input).not.toHaveAttribute('aria-describedby');
+
+    /* THE OVER-SIZE branch rather than the wrong-type one, deliberately: user-event
+       filters an upload against the input's own `accept` attribute, so a text/plain file
+       never reaches the change handler here and the assertion would pass vacuously on a
+       component that did nothing. Size is the rejection a real user hits anyway — a phone
+       screenshot clears 2 MB easily — and it lands in the same error lane. */
+    const overSize = new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'huge.png', {
+      type: 'image/png',
+    });
+    await user.upload(input, overSize);
+
+    expect(region).toHaveTextContent(/file is too large/i);
+    // The one that mattered: a screen-reader user used to press Submit believing the
+    // screenshot was attached.
+    expect(input).toHaveAttribute('aria-describedby', region.id);
+  });
+
+  it('#6 — the success timer is cleared on unmount, so it cannot fire into a closed modal', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ success: true }) }));
+      vi.stubGlobal('fetch', fetchMock);
+      const onClose = vi.fn();
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const { unmount } = render(<FeedbackForm onClose={onClose} />);
+
+      await fillAndSubmit(user);
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      expect(onClose).not.toHaveBeenCalled(); // the 2s timer is armed, not yet fired
+
+      // The modal closes under it — the close button, Escape, an outside click, a route
+      // change. The timer must not survive that.
+      unmount();
+      await vi.advanceTimersByTimeAsync(3000);
+
+      expect(onClose).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('#8/#40 — two concurrently mounted forms carry DISTINCT ids, and each Submit points at its OWN status line', () => {
