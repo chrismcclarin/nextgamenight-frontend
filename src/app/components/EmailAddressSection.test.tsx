@@ -627,7 +627,7 @@ describe('EmailAddressSection — the code field', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText('Another account already uses that address. Ask us for help if it should be yours.')
+        screen.getByText('Another account already uses that address. Try a different one, or ask us for help if it should be yours.')
       ).toBeInTheDocument()
     );
     expect(screen.queryByText(/that code isn't right/i)).not.toBeInTheDocument();
@@ -864,7 +864,7 @@ describe('EmailAddressSection — revert (D-38)', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText('Another account already uses that address. Ask us for help if it should be yours.')
+        screen.getByText('Another account already uses that address. Try a different one, or ask us for help if it should be yours.')
       ).toBeInTheDocument()
     );
     const revert = screen.getByRole('button', { name: 'Use my sign-in address' });

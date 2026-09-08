@@ -127,7 +127,7 @@ const UNREADABLE_ANSWER_ERROR =
   "We couldn't read the answer. Press Verify once more — if it fails again, use Resend code to get a fresh one.";
 const EXPIRED_CODE_ERROR = 'That code has expired';
 const ADDRESS_TAKEN_ERROR =
-  'Another account already uses that address. Ask us for help if it should be yours.';
+  'Another account already uses that address. Try a different one, or ask us for help if it should be yours.';
 const RATE_LIMITED_ERROR = "You've asked for too many codes. Try again in a little while.";
 const RESEND_COOLDOWN_ERROR = 'You can ask for another code in a moment';
 /* Round 3 #34/#35: the in-flight gate ANSWERS. DR-C's contract is "every gate is
