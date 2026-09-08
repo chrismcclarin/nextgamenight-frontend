@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useEffect, useId } from 'react';
+import * as Sentry from '@sentry/nextjs';
 import { feedbackAPI } from '../../lib/api';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { isSyntheticAddress } from '../../lib/syntheticAddress';
@@ -209,6 +210,20 @@ export default function FeedbackForm({ onClose, initialType = 'bug', initialSubj
       }, 2000);
     } catch (err) {
       console.error('Error submitting feedback:', err);
+      /* Round 6 #3/#28: REPORTED, not stdout-only. This is the app's own bug channel, so a
+         failure here is the one failure that cannot be reported through the app — the
+         user's report is simply lost, and nobody learns it happened. The self-read and
+         account-deletion catches got a Sentry capture in the same fix set; this one is
+         strictly more consequential.
+         CLASS-ONLY, per the deliberate PII posture (round 5 #23): a wrapped Error naming
+         the CLASS and, when present, the envelope code — never `err.message` (which is
+         the backend's extracted string), never the body, which on this path carries the
+         reporter's address, their prose and possibly a screenshot. */
+      const cls = (err && err.name) || 'Error';
+      const code = err && typeof err.code === 'string' ? ` ${err.code}` : '';
+      Sentry.captureException(new Error(`feedback submit failed: ${cls}${code}`), {
+        tags: { feature: 'feedback', op: 'submit' },
+      });
       setError(err.message || 'Failed to submit feedback. Please try again.');
     } finally {
       setSubmitting(false);

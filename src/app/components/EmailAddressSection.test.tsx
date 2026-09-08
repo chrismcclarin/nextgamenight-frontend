@@ -38,6 +38,10 @@ import {
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+// Round 6 #4: the schema-drift report. Mocked so the call is observable and so no test
+// run can reach a real DSN.
+vi.mock('@sentry/nextjs', () => ({ captureException: vi.fn() }));
+
 // Keep ApiError REAL so the rate-limited / transport arms exercise the actual
 // `err.code` seam every call site reads; mock only the network calls.
 vi.mock('@/lib/api', async () => {
@@ -75,6 +79,8 @@ vi.mock('@/lib/hooks/selfIdentityCache', async () => {
     invalidateSelfCache: vi.fn(actual.invalidateSelfCache),
   };
 });
+
+import * as Sentry from '@sentry/nextjs';
 
 import { usersAPI } from '@/lib/api';
 import { invalidateSelfCache, patchSelfCache } from '@/lib/hooks/selfIdentityCache';
@@ -1473,6 +1479,46 @@ describe('EmailAddressSection — post-merge fix set (round 5)', () => {
     expect(screen.queryByText(/reload the page/i)).not.toBeInTheDocument();
     // The address never leaves the browser.
     expect(api.requestEmailChange).not.toHaveBeenCalled();
+  });
+
+  it('#4 — a DRIFTED response body is reported to Sentry, class-only, with no address in the payload', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    // Schema-invalid: missing three required keys. The user still sees the same sentence —
+    // what changes is that the event now reaches somebody who can act on it.
+    api.verifyEmailChange.mockResolvedValue({ outcome: 'verified', email: REAL, verification_sent: false });
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    await waitFor(() => expect(Sentry.captureException).toHaveBeenCalledTimes(1));
+    const [err, ctx] = vi.mocked(Sentry.captureException).mock.calls[0] as [
+      Error,
+      { tags?: Record<string, unknown>; extra?: Record<string, unknown> },
+    ];
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toMatch(/schema drift/i);
+    expect(ctx.tags).toEqual({ feature: 'email-change', op: 'schema-drift' });
+    /* THE PII GUARD, which is the whole reason the raw ZodError is not forwarded: a zod
+       issue's `received` carries the INPUT, and on this route the input is an address. */
+    expect(JSON.stringify(vi.mocked(Sentry.captureException).mock.calls[0])).not.toContain(REAL);
+    // And the user copy is unchanged — the report is additional, not a substitution.
+    expect(screen.getByText(/use resend code/i)).toBeInTheDocument();
+  });
+
+  it('#4 — a schema-VALID body carrying no address is reported as its own distinct event', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    api.verifyEmailChange.mockResolvedValue(body({ outcome: 'verified', email: '' }));
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'AB12CD34');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    await waitFor(() => expect(Sentry.captureException).toHaveBeenCalledTimes(1));
+    const [err] = vi.mocked(Sentry.captureException).mock.calls[0] as [Error, unknown];
+    // Not collapsed into "schema drift": the schema PERMITS a null address, and this
+    // section treats it as a contract error on a mutation. Two causes, two alarms.
+    expect(err.message).toMatch(/carried no address/i);
   });
 
   it("#15 — the SERVER's `unsupported_address` refusal lands on the reserved-domain copy, not on \"reload the page\"", async () => {

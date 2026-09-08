@@ -60,6 +60,7 @@
  */
 
 import * as React from 'react';
+import * as Sentry from '@sentry/nextjs';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -285,8 +286,40 @@ function isUsableMutationBody(body: EmailChangeResponse | undefined | null): boo
      ninth outcome literal, or a body missing `verification_sent`, reached the UI
      unchallenged — exactly the silent fall-through the comment claims is
      impossible. Parsing here rather than in `lib/api.ts` keeps the blast radius at
-     this one section instead of every apiFetch consumer. */
-  return EmailChangeResponseSchema.safeParse(body).success && (body?.email?.length ?? 0) > 0;
+     this one section instead of every apiFetch consumer.
+
+     AND IT IS REPORTED (round 6 #4). Until now the only consequence of a drifted body
+     was a sentence to the user that reads like a transient blip — "press Verify once
+     more", "something went wrong" — while the actual event, a backend contract this
+     client can no longer parse, reached nobody. That is the one failure class here that
+     no user action can fix and that gets WORSE the longer it is invisible.
+
+     REPORTED FROM THE PREDICATE, not from the five call sites, because there is one rule
+     and duplicating it five times is how the five drift apart.
+
+     WHAT GOES TO SENTRY, AND WHY IT IS SAFE: a wrapped Error naming the failure, tags,
+     and the zod issues reduced to `{path, code}` — the T-84-05 shape already reviewed and
+     shipped at `queryClient.ts:150-157`, whose comment states the reason: an issue's
+     `received` field can carry the input value, which on THIS route is the user's email
+     address. The raw ZodError is never forwarded. `path` is a schema key name and `code`
+     is a zod enum; neither can carry a value. */
+  const parsed = EmailChangeResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    Sentry.captureException(new Error('email-change response schema drift'), {
+      tags: { feature: 'email-change', op: 'schema-drift' },
+      extra: { zodIssues: parsed.error.issues.map((i) => ({ path: i.path, code: i.code })) },
+    });
+    return false;
+  }
+  if ((body?.email?.length ?? 0) > 0) return true;
+  /* The SECOND drift shape, distinct from a parse failure: the schema permits a null
+     `email` (the backend answers it when it could not re-read the row), but this section
+     treats it as a contract error on a MUTATION — see the schema's own comment. Named
+     separately so the two are not one indistinguishable alarm. */
+  Sentry.captureException(new Error('email-change response carried no address'), {
+    tags: { feature: 'email-change', op: 'schema-drift' },
+  });
+  return false;
 }
 
 export function EmailAddressSection() {

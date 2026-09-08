@@ -28,6 +28,9 @@ import userEvent from '@testing-library/user-event';
 // reads now, and the two must agree in the logged-out case.
 vi.mock('@auth0/nextjs-auth0/client', () => ({ useUser: () => ({ user: null }) }));
 
+// Round 6 #3/#28: the submit-failure report.
+vi.mock('@sentry/nextjs', () => ({ captureException: vi.fn() }));
+
 // Phase 88.8 plan 13 Task 3(b): the contact handle is `Users.email` off the
 // shared self row, never the Auth0 session claim.
 const h = vi.hoisted(() => ({
@@ -44,6 +47,8 @@ vi.mock('../../lib/hooks/useSelfIdentity', () => ({
     isPending: !h.self,
   }),
 }));
+
+import * as Sentry from '@sentry/nextjs';
 
 import FeedbackForm from './FeedbackForm';
 import { PUBLIC_API_BASE_URL } from '../../lib/api';
@@ -287,6 +292,33 @@ describe('FeedbackForm — post-merge fix set (round 5)', () => {
     expect(submit.getAttribute('aria-describedby')).toContain(screen.getByRole('alert').id);
     // The gate line is still referenced too — the failure JOINS it, never replaces it.
     expect(submit.getAttribute('aria-describedby')).toContain(screen.getByRole('status').id);
+  });
+
+  it('#3/#28 — a failed submit is REPORTED to Sentry, class-only, with none of the report body in the payload', async () => {
+    fetchMock = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+
+    const SECRET_PROSE = 'my password is hunter2 and my address is nobody@example.com';
+    await user.type(screen.getByPlaceholderText(/Brief description/i), 'A subject');
+    await user.type(screen.getByPlaceholderText(/provide as much detail/i), SECRET_PROSE);
+    await user.click(screen.getByRole('button', { name: /^Submit$/i }));
+
+    await waitFor(() => expect(Sentry.captureException).toHaveBeenCalledTimes(1));
+    const [err, ctx] = vi.mocked(Sentry.captureException).mock.calls[0] as [
+      Error,
+      { tags?: Record<string, unknown> },
+    ];
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toMatch(/^feedback submit failed: /);
+    expect(ctx.tags).toEqual({ feature: 'feedback', op: 'submit' });
+    /* THE POINT OF "class-only": this is the app's own bug channel, so the body in flight
+       is the reporter's prose, their address and possibly a screenshot. None of it may
+       ride along to Sentry. */
+    const payload = JSON.stringify(vi.mocked(Sentry.captureException).mock.calls[0]);
+    expect(payload).not.toContain('hunter2');
+    expect(payload).not.toContain('nobody@example.com');
   });
 
   it('#41 — the reply-to warning arrives as a CHANGE to the already-mounted region, not as a new node', async () => {
