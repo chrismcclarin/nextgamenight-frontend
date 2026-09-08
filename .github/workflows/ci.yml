@@ -23,6 +23,32 @@ on:
         required: false
         default: "main"
 
+# CodeQL `actions/missing-workflow-permissions` (first scan, 2026-09-08) flagged all three
+# jobs: with no `permissions:` key, every job got the default token, which on a
+# pull_request/push from this repo is far wider than anything here needs. Least privilege.
+#
+# `contents: read` is the whole requirement, verified against the file rather than assumed.
+# Anchored to STEP NAMES, not line numbers, on purpose — a line cite inside the file it
+# describes is wrong the next time anything above it is edited. The complete set of actions
+# is `actions/checkout@v4` x4 (quality's "Checkout (full history ...)", drift-gate-registry's
+# "Checkout", and e2e's "Checkout frontend" + "Checkout backend"), `actions/setup-node@v4` x2
+# ("Setup Node 20" in quality and in e2e) and one `actions/upload-artifact@v4` ("Upload
+# Playwright failure evidence"). There is no `gh`, no `github-script`, no `api.github.com`
+# call, and no step that WRITES to GitHub — no PR comment, no commit status, no release, no
+# package push. "Checkout backend" reads chrismcclarin/nextgamenight-backend, which is PUBLIC,
+# so `contents: read` on the default token covers it (see that step's own GITHUB_TOKEN note).
+# setup-node's cache and upload-artifact@v4 authenticate with ACTIONS_RUNTIME_TOKEN, not
+# GITHUB_TOKEN, so neither is governed by this key; `actions: read` would only be needed to
+# DOWNLOAD artifacts from another workflow run, which nothing here does.
+#
+# Top-level rather than three per-job blocks, deliberately: it makes the floor apply to any
+# job added later instead of silently granting the new job the wide default. If a future step
+# genuinely needs to write, add the ONE extra scope to THAT job (a job-level `permissions:`
+# fully overrides this one — it does not merge), never by widening this block.
+# Do not delete this block to "clean up" — it is the fix for the CodeQL finding.
+permissions:
+  contents: read
+
 jobs:
   quality:
     name: quality
