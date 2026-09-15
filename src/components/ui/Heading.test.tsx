@@ -294,6 +294,13 @@ describe('Heading — the untyped-caller hazards plan 36 makes reachable', () =>
   // a spread makes that absence irrelevant.
   it('injects no element when dangerouslySetInnerHTML is forced through', () => {
     const { container } = render(
+      // DELIBERATE. Passing both children and dangerouslySetInnerHTML is the forbidden
+      // combination, and reproducing it from the untyped-caller position IS the test: the lint
+      // rule firing here is the rule working, and it is exactly the shape an untyped `.js` call
+      // site can reach without it. The assertions below prove Heading drops the sink before
+      // render, so React never sees the conflict at runtime — without the drop this case throws
+      // "Can only set one of `children` or `props.dangerouslySetInnerHTML`" (the measured red).
+      // eslint-disable-next-line react/no-danger-with-children
       <UntypedHeading
         level={2}
         dangerouslySetInnerHTML={{ __html: '<span id="injected">pwned</span>' }}
