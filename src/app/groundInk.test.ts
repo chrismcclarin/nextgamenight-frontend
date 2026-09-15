@@ -6,11 +6,14 @@
 // chosen OVER (a) leaving the suite on the global jsdom environment — rejected, the DOM is
 // never used here and every run pays for a document that is never read — and OVER (b) changing
 // `environment` in `vitest.config.mts:56` — rejected, that would move EVERY suite, including
-// the ones that genuinely render. This is the FIRST `@vitest-environment` pragma in the repo
-// (`grep -rn "vitest-environment" src` returned 0 before this file, 2026-09-15); the three
-// shipped source-scan suites were deliberately NOT converted, because converting a shipped,
-// negative-checked suite is a behaviour change this plan does not declare. Moving this back
-// onto jsdom is a decision, not a cleanup.
+// the ones that genuinely render. This plan's text called it the repo's FIRST such pragma;
+// re-measured at execution that is FALSE and the correction is recorded rather than quietly
+// dropped — `src/app/errorEnvelopeReads.test.ts:2` took the same pragma first, in plan 88.6-14
+// (wave 3), after this plan's 2026-09-14 census was taken. This is the SECOND, and it follows
+// that file's idiom deliberately instead of inventing a second one. The three shipped
+// source-scan suites were NOT converted, because converting a shipped, negative-checked suite
+// is a behaviour change this plan does not declare. Moving this back onto jsdom is a decision,
+// not a cleanup.
 //
 // ===================================================================================
 // D-16 / SPEC-88.6 R4 — no `text-content-muted` and no `text-content-link` may resolve
@@ -56,8 +59,9 @@
 //  * VARIANT-PREFIXED INK IS OUT OF SCOPE, as a declared exclusion and not a silent filter.
 //    D-16 is a rule about the RESTING state, so `hover:` / `focus:` / `active:` / `disabled:` /
 //    `aria-disabled:` / `group-hover:` / `data-[...]:` ink emits no row at all — exactly as a
-//    variant-prefixed GROUND is not a resting ground. Measured 2026-09-15: 31 variant-prefixed
-//    occurrences of the forbidden set across non-test `src/`, of 73 variant-prefixed
+//    variant-prefixed GROUND is not a resting ground. Measured 2026-09-15 (this plan's text
+//    said 31 of 73, taken 2026-09-14; re-run at execution it is 30 of 72): 30 variant-prefixed
+//    occurrences of the forbidden set across non-test `src/`, of 72 variant-prefixed
 //    `text-content-*` overall. Test 8 is the twin that keeps this claim from being untested.
 //  * CONDITIONAL GROUND FANS OUT. A multi-branch `className` yields several ground candidates
 //    and branch liveness is NOT knowable from source, so the class rule hard-fails on
@@ -92,7 +96,7 @@ const SRC = path.resolve(__dirname, '..');
 // The ink pattern is deliberately WIDER than the forbidden set: test 7's negative control needs
 // `text-content-secondary` in the output to prove the rule does not flag its own prescribed
 // answer. RESTING ink only — a variant-prefixed class emits no row (see the limitation above
-// and mechanism step 4 in `inkGroundPairs`); that skip is what keeps 31 measured
+// and mechanism step 4 in `inkGroundPairs`); that skip is what keeps 30 measured
 // `hover:`/`disabled:` occurrences out of a roster no sweep plan could ever close.
 const INK = /text-content-(muted|link|secondary|accent|primary)/;
 const GROUND = /bg-surface-[a-z-]+/;
@@ -108,8 +112,9 @@ const FORBIDDEN = FORBIDDEN_INK_CLASSES;
 // constant. This deliberately diverges from the shipped un-hoisted idiom
 // (`surfaceHoverSweep.test.ts:133`, `controlSizeFloor.test.tsx:145`, which re-read the tree
 // inside a per-assertion helper). REJECTED arm, recorded on the same date: match the shipped
-// idiom for consistency — rejected because one full pass measures ~430 ms over the real tree
-// (193 non-test files) and this file carries eight assertions, paid again on every `npm test`.
+// idiom for consistency — rejected because one full pass measures 354 ms median of three over
+// the real tree (194 non-test files, 2.46 MB; the read+strip component of that is 204 ms) and
+// this file carries eight assertions, paid again on every `npm test`.
 // The divergence is confined to this NEW file; no shipped suite was touched.
 //
 // THE HOIST IS INTRA-FILE ONLY. `vitest.config.mts` sets `environment: 'jsdom'` at `:56` and
@@ -306,8 +311,9 @@ const MEASURED: Record<string, number> = (() => {
 describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
   it('1. the class rule: every forbidden ink site on a muted ground is owned and exactly counted', () => {
     // Hard-fails on BOTH `certain` and `possible` pairings, deliberately. Narrowing this to
-    // unconditional grounds was REJECTED with its cost measured: of the muted ground's 53
-    // non-test non-CSS sites only 21 sit on a static `className="` line, so an
+    // unconditional grounds was REJECTED with its cost measured: of the muted ground's 56
+    // non-test non-CSS lines only 21 sit on a static `className="` line (re-derived
+    // 2026-09-15; this plan's text said 53, taken 2026-09-14), so an
     // unconditional-only rule would leave roughly 60% of the ground surface with no hard arm —
     // on the one rule this suite is the only machine evidence for (SPEC AC-4). The anti-vacuity
     // floor cannot cover that gap either: a conditionally-muted site DOES resolve a ground,
@@ -323,7 +329,7 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
   it('2. anti-vacuity: the walk really resolved grounds — it is not reporting zero by seeing nothing', () => {
     // T-88.6-18. A resolver that silently degrades reports zero offenders by seeing NOTHING,
     // and every assertion above it goes green. This is the row that catches it.
-    // MEASURED 2026-09-15: 193 non-test files, 837 distinct resting-ink sites, of which 381
+    // MEASURED 2026-09-15: 194 non-test files, 837 distinct resting-ink sites, of which 381
     // resolved at least one ground candidate. The floor is set at 40 — far below the measured
     // value on purpose, because the failure mode being caught is a walk that resolves NOTHING
     // (or a handful), not a walk that drifts by a few sites; a floor near 381 would red on
@@ -441,7 +447,7 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
   });
 
   it('8. negative control, INK side: variant-prefixed ink on a muted ground emits no row', () => {
-    // The twin of test 7, and it is load-bearing: without the variant skip, 31 measured
+    // The twin of test 7, and it is load-bearing: without the variant skip, 30 measured
     // `hover:`/`disabled:`/`aria-disabled:` occurrences of the forbidden set would seed a roster
     // no sweep plan could close. Asserted against a FIXTURE pair rather than the tree, so the
     // control cannot go vacuously green the day the tree happens to hold no such site.

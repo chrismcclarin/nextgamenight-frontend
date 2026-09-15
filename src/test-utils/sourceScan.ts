@@ -558,8 +558,8 @@ function classSites(
  *  7. VARIANT-PREFIXED INK IS OUT OF SCOPE, as a declared exclusion and not a silent filter.
  *     `hover:` / `focus:` / `disabled:` / `aria-disabled:` ink emits NO row, exactly as a
  *     variant-prefixed ground is not a resting ground: D-16 is a rule about the RESTING state.
- *     Measured 2026-09-15: 31 variant-prefixed occurrences of D-16's forbidden set across
- *     non-test `src/`, of 73 variant-prefixed `text-content-*` overall. Whether any of them
+ *     Measured 2026-09-15: 30 variant-prefixed occurrences of D-16's forbidden set across
+ *     non-test `src/`, of 72 variant-prefixed `text-content-*` overall. Whether any of them
  *     resolves onto a muted ground is UNKNOWN and out of this walk's scope.
  *
  * Because of 1, 2 and 4, a consumer must pair the class rule with a by-name roster so that the
