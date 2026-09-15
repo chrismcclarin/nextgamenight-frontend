@@ -11,7 +11,7 @@ import { render, renderHook, screen, cleanup } from '@testing-library/react';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { useFetchErrorState, getFetchErrorMessage } from './useFetchErrorState';
 import { FetchErrorBanner } from './FetchErrorBanner';
-import type { FetchErrorState } from './useFetchErrorState';
+import type { FetchErrorState, FetchErrorCode } from './useFetchErrorState';
 import { ApiError } from '@/lib/api';
 
 afterEach(() => cleanup());
@@ -264,5 +264,158 @@ describe('FetchErrorBanner — SPEC Edge Coverage (R1)', () => {
     // Sibling, never nested — a nested live region announces twice.
     const assertive = container.querySelector('[aria-live="assertive"]');
     expect(assertive?.querySelector('[aria-live]')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6-14 task 2 — the INCOMPLETE-ENVELOPE arms (R9 / SPEC Edge Coverage
+// rows `empty / R9` and `encoding / R9`).
+//
+// Phase 93 deletes the `body.error` alias and the top-level `errors[]` mirror.
+// What this file has to pin is the other half of that: what this function does
+// when the envelope that arrives is incomplete — a `code` with no `message`, a
+// code the register has never heard of, or no error object at all.
+//
+// HONEST SCOPE — the malformed-`details` arms below are VACUOUS BY CONSTRUCTION
+// today, and they are kept as regression guards rather than counted as coverage.
+// `getFetchErrorMessage` calls `deriveCode` (useFetchErrorState.ts:115-118) and
+// nothing else, and `deriveCode` reads `error.code` off an `ApiError`. It never
+// dereferences `details` at all, so no amount of mangling that shape can make
+// these arms fail. They WOULD red if someone later taught this function to
+// re-parse the body — which the DECISION marker above `getFetchErrorMessage`
+// forbids — and that is the whole of their value. They do NOT pin AC-9's
+// "never throws" claim, and nothing in plan 88.6-14 does.
+//
+// The real `details` consumer is `extractFieldErrors` in `lib/api.ts` (:315-318,
+// called at :431), where a `[{}]` element renders the literal `undefined: undefined`
+// into user-facing copy through the `.map` at :434. That surface belongs to plan
+// 42's `api.test.ts` consumer matrix and is deliberately NOT reached from here.
+// ---------------------------------------------------------------------------
+
+describe('getFetchErrorMessage — incomplete envelope (R9)', () => {
+  it('a code with NO message resolves through the register, identically to one with a message', () => {
+    // The Phase 93 shape: the backend stops sending `error`/`message` aliases and
+    // the FE has only `code` to go on. P1 forbids authoring copy in a test, so the
+    // expected value is not transcribed — it is the SAME code's answer when a
+    // message IS present. Equal means the message was never consulted.
+    const withMessage = getFetchErrorMessage(new ApiError('Forbidden: groups.owner', 'forbidden', 403));
+    const withoutMessage = getFetchErrorMessage(new ApiError('', 'forbidden', 403));
+
+    expect(withoutMessage).toBe(withMessage);
+    expect(withoutMessage).toMatch(/access/i);
+    expect(withoutMessage).not.toContain('groups.owner');
+    expect(withoutMessage).not.toBe('');
+    expect(withoutMessage).not.toBe('undefined');
+  });
+
+  it('a caller `byCode` arm wins over the register for a code with no message', () => {
+    const custom = 'You are not on this list.'; // caller-supplied test value, not app copy
+    const out = getFetchErrorMessage(new ApiError('', 'forbidden', 403), {
+      byCode: { forbidden: custom },
+    });
+    expect(out).toBe(custom);
+    // …and it did not silently also pick up the register entry.
+    expect(out).not.toBe(getFetchErrorMessage(new ApiError('', 'forbidden', 403)));
+  });
+
+  it('an UNKNOWN code with no message returns the ratified `unknown` copy — never the code', () => {
+    // A code the register has never heard of is exactly what a backend that ships
+    // a new code before the FE does produces. `MESSAGE_BY_CODE[code] ?? unknown`
+    // (:155) is the arm under test. The expected string is read from the module
+    // via the register's own answer for "no code at all", never transcribed.
+    const ratifiedUnknown = getFetchErrorMessage(undefined);
+    const bogus = 'teapot_overheated' as FetchErrorCode;
+
+    const out = getFetchErrorMessage(new ApiError('', bogus, 418));
+    expect(out).toBe(ratifiedUnknown);
+    expect(out).not.toContain('teapot');
+    expect(out).not.toBe('');
+    expect(out).not.toBe('undefined');
+  });
+
+  it('`fallback` applies ONLY when the resolved code is `unknown`', () => {
+    // useFetchErrorState.ts:154 — `if (code === 'unknown' && options.fallback)`.
+    // This is the assertion the two rewritten docblocks in `useFetchErrorState.ts`
+    // point at (plan 88.6-14 task 3), so it is what makes those docblocks checkable
+    // rather than a second sentence that can drift from the first.
+    const fallback = 'A surface-specific line.'; // caller-supplied test value
+
+    // A real code -> the register wins; the caller's fallback is ignored entirely.
+    const forbidden = getFetchErrorMessage(new ApiError('', 'forbidden', 403), { fallback });
+    expect(forbidden).not.toBe(fallback);
+    expect(forbidden).toBe(getFetchErrorMessage(new ApiError('', 'forbidden', 403)));
+
+    // No code at all -> `unknown` -> the caller's fallback wins.
+    expect(getFetchErrorMessage(new Error('raw'), { fallback })).toBe(fallback);
+
+    // FINDING (plan 88.6-14 task 2, 2026-09-15) — an UNRECOGNISED code does NOT
+    // take the fallback, even though the user SEES the `unknown` copy. `deriveCode`
+    // (:116) returns an ApiError's code VERBATIM, so the gate at :154 compares
+    // 'teapot_overheated' against 'unknown' and fails, while the register lookup at
+    // :155 falls through to `MESSAGE_BY_CODE.unknown`. The RESOLVED CODE and the
+    // RENDERED COPY diverge, and this is the one path where a caller who asked for a
+    // surface-specific line gets the generic one instead. Reachable: `mapErrorToCode`
+    // casts `body.code as ApiErrorCode` unchecked (api.ts:296), so any backend code
+    // the FE union has not caught up with lands here.
+    //
+    // PINNED AS SHIPPED, NOT FIXED. This is a gate task; plan 88.6-14 forbids
+    // changing `getFetchErrorMessage` for anything short of a real throw or a real
+    // blank, and this is neither — the user gets ratified copy. Routed durably as an
+    // amendment to the 88-CODE-REVIEW MED#10 entry in `.planning/deferred/phase-93.md`,
+    // which already owns the general "`fallback` only fires for 'unknown'" question.
+    // Changing this is a decision, not a cleanup.
+    const ratifiedUnknown = getFetchErrorMessage(undefined);
+    expect(
+      getFetchErrorMessage(new ApiError('', 'teapot_overheated' as FetchErrorCode, 418), { fallback })
+    ).toBe(ratifiedUnknown);
+  });
+
+  it('every non-ApiError input returns register copy — never blank, never the literal `undefined`', () => {
+    const ratifiedUnknown = getFetchErrorMessage(undefined);
+    const inputs: unknown[] = [
+      new Error('raw'),
+      null,
+      undefined,
+      {},
+      { code: 'forbidden' }, // a bare object is NOT an ApiError — `code` must not be read off it
+      'a string',
+      0,
+    ];
+    for (const input of inputs) {
+      const out = getFetchErrorMessage(input);
+      expect(out, `input ${JSON.stringify(input)}`).toBe(ratifiedUnknown);
+      expect(out).not.toBe('');
+      expect(out).not.toBe('undefined');
+    }
+  });
+
+  it('malformed `details` shapes cannot change the answer (RETAINED regression guard, VACUOUS today)', () => {
+    // READ THE BLOCK COMMENT ABOVE THIS DESCRIBE BEFORE TRUSTING THIS ARM.
+    // `getFetchErrorMessage` reaches only `deriveCode`, which reads `error.code`.
+    // `details` is never dereferenced, so this arm CANNOT fail against the current
+    // implementation however the shape is mangled. It is kept because it WOULD red
+    // if this function were ever taught to re-parse the body, and deleted the day
+    // that becomes impossible by type. It is not evidence of a never-throws
+    // guarantee — plan 42's `api.test.ts` matrix over `extractFieldErrors` is where
+    // the shape is actually walked.
+    const expected = getFetchErrorMessage(new ApiError('', 'validation', 400));
+    const malformed: unknown[] = [
+      undefined,
+      null,
+      {},
+      { errors: null },
+      { errors: 'not an array' },
+      { errors: [{}] },
+      { errors: [{ field: undefined, message: undefined }] },
+      [],
+      'string details',
+      0,
+    ];
+    for (const details of malformed) {
+      const out = getFetchErrorMessage(new ApiError('', 'validation', 400, details));
+      expect(out, `details ${JSON.stringify(details)}`).toBe(expected);
+      expect(out).not.toBe('');
+      expect(out).not.toBe('undefined');
+    }
   });
 });
