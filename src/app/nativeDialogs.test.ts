@@ -36,6 +36,28 @@
  * The property here is repo-wide, so this scan is repo-wide and the residue is carried as
  * an explicit, counted, self-expiring exemption instead. `fetchErrorTreatment.test.ts`
  * keeps its own per-surface assertion; the two are complementary, not duplicates.
+ *
+ * PHASE 88.6-13 REVISITED THIS AND DELIBERATELY DID NOT WIDEN THE OTHER FILE'S `alert(`
+ * SCAN — recorded here so it is not re-attempted as a consistency cleanup.
+ * ---------------------------------------------------------------------------------
+ * That plan DID widen `fetchErrorTreatment.test.ts`'s raw-message and `Failed to X`
+ * assertions from the nine named surfaces to the whole `src/` tree, for exactly the
+ * vacuity reason the paragraph above gives. Its `alert(` assertion stays on the nine, and
+ * that asymmetry is a CONSEQUENCE, not an oversight:
+ *
+ *   - This file owns the repo-wide `alert(` property by the explicit written decision
+ *     above, and holds `app/components/GameComboInput.js` as an exact-count `sites: 1`
+ *     exemption in `ALERT_EXEMPT` below.
+ *   - Widening the other file's `alert(` scan repo-wide would red on that same site — a
+ *     site this suite already governs, counts exactly and expires automatically — and
+ *     would create a SECOND answer to a question this suite already answers. Two answers
+ *     is the drift the whole shared-scanner pass exists to remove.
+ *
+ * So `SURFACES` survives in that file ONLY as the `alert(` assertion's scope, pinned there
+ * by a `SURFACES.length === 9` exact-count assertion so a later plan cannot change the
+ * reach by quietly adding or removing an entry. Its `GameComboInput.js` raw-message and
+ * `Failed to X` roster entries point at the SAME line as this file's `alert(` exemption;
+ * plan 88.6-32 closes all three together.
  */
 import fs from 'node:fs';
 import path from 'node:path';

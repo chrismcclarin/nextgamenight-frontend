@@ -51,6 +51,11 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import {
+  assertExactCounts,
+  assertRosterShape,
+  type ExemptionRoster,
+} from '../test-utils/exemption';
 import { sourceFiles, withoutComments } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
@@ -70,7 +75,19 @@ const SRC = path.resolve(__dirname, '..');
 const ALL_FILES = sourceFiles(SRC);
 const ALL_REL = ALL_FILES.map((f) => path.relative(SRC, f));
 
-/** The surfaces plan 88-25 declared. */
+// The surfaces plan 88-25 declared.
+//
+// PHASE 88.6-13 (D-31, as amended by D54/D45/D29): this list is now the scope of the
+// `alert(` assertion ONLY. The raw-message and `Failed to X` assertions scan the WHOLE
+// `src/` tree (`ALL_REL`), because a named-surface list is green forever the moment
+// surface N+1 lands — the vacuity mode `nativeDialogs.test.ts:31-38` names explicitly and
+// SPEC AC-8 already demands full-tree coverage for. Measured at the widening: not ONE of
+// the 19 files that actually carry a raw `error.message` read is on this list, so the two
+// widened assertions were green because they were not looking.
+//
+// The `alert(` assertion KEEPS these nine deliberately — see its own comment below.
+// `SURFACES.length === 9` is pinned as an assertion there, so a later plan cannot quietly
+// add or remove an entry and change that assertion's reach unnoticed.
 const SURFACES = [
   'app/groupPlanning/page.js',
   'app/groupHomePage/page.js',
@@ -150,20 +167,74 @@ function readStripped(rel: string): { lines: string[]; raw: string } {
 const USER_FACING_SINK =
   /(toast\.(?:error|success|warning|info|message)\s*\(|\balert\s*\(|set[A-Za-z]*Error\s*\(|message:\s)/;
 
-/** A raw upstream message being read for display. */
-const RAW_MESSAGE_READ = /\b(?:err|error|e)\??\.message\b|\berrorMessage\b/;
+// A raw upstream message being read for display.
+//
+// 88.6-13 task 2 TIGHTENED the second arm, from the bare `\berrorMessage\b` to the same
+// member-read shape as the first. This is the one amendment to task 1's "the three
+// classifier regexes are byte-unchanged", and it is taken on a measurement:
+//
+//   - The bare arm matched TEN sites across three files that are all a LOCAL named
+//     `errorMessage` — its `useState` declaration and its JSX render, never an upstream
+//     read: `availability-form/[token]/page.js:33,:186`, `NextGameNightCard.tsx:108,:463`,
+//     `createGroup.js:16,:53,:195,:196,:211,:212`.
+//   - It matched ZERO real offenders. Every genuine site in those files is caught by the
+//     `.message` arm instead, on the ASSIGNMENT line where the upstream value enters —
+//     `createGroup.js:90` (`const errorMsg = error.message || 'Failed to create group…'`)
+//     is the live example, and fixing it fixes the renders downstream of it.
+//
+// The alternative the plan offered was ten allow-list entries carrying the measurement.
+// Ten entries for a regex arm that catches nothing is ten fossil permissions; the arm is
+// the defect, so the arm is what moves. Widening it back is a decision, not a cleanup.
+const RAW_MESSAGE_READ =
+  /\b(?:err|error|e)\??\.message\b|\b(?:err|error|e)\??\.errorMessage\b/;
 
 /** The hand-rolled failure idiom, any verb — not just "load". */
 const AD_HOC_FAILURE_COPY = /['"`][^'"`]*\bFailed to \w+/i;
 
+// A developer log. `console.error('Failed to get game invite token:', err)` is NOT the
+// defect — the defect is that string reaching a person. Excluded only when the line
+// carries no user-facing sink, so a line doing both is still caught. Sending the raw
+// error to the console is the DESIGNED destination for it (88-19's ErrorFallback marker
+// says so explicitly).
+//
+// 88.6-13 (D8/D11/D16) — TWO changes, both in the widening commit:
+//
+//  1. IT RECOGNISES THE HOUSE LOGGER CHANNEL, not just the browser console. AC-2 moves
+//     ~100 call sites off `console.*` onto `logger.*` across waves 6-8; a call that
+//     CHANGES CHANNEL must not change its exemption status, or a correct conversion reds
+//     a gate it never touched. Three sites are known to cross while this gate is live:
+//     `grouplist.js:91` (plan 21, wave 7) and `gameDetail/page.js:720`, `:756` (plan 18,
+//     wave 7). This is test-local and has no runtime reach — measured 2026-09-15,
+//     `grep -rn DEVELOPER_LOG src/` returns 5 hits, ALL in this file, zero production
+//     consumers.
+//  2. `:173`'s FILTER CAME ONTO `:205`'s RULE. The raw-message assertion used to exempt a
+//     developer-log line OUTRIGHT while the `Failed to X` assertion exempted it only when
+//     the line carried no user-facing sink — and the sink-guarded form is what the
+//     docblock above has always promised. `:173` was the outlier. That is a SHIPPED
+//     DEFECT, independent of anything 88.6 does: a line that both logged and displayed
+//     was invisible to the raw-message assertion. Both assertions now apply
+//     `isExemptDeveloperLog` and nothing else.
+//
+// The `[^.\w$]` guard keeps `foo.logger.x(` / `this.console.y(` out, the same discrimination
+// `nativeDialogs.test.ts`'s bare-global detector makes.
+const DEVELOPER_LOG = /(^|[^.\w$])(?:console|logger)\.\w+\s*\(/;
+
 /**
- * A developer log. `console.error('Failed to get game invite token:', err)` is
- * NOT the defect — the defect is that string reaching a person. Excluded only
- * when the line carries no user-facing sink, so a line doing both is still
- * caught. Sending the raw error to the console is the DESIGNED destination for
- * it (88-19's ErrorFallback marker says so explicitly).
+ * The ONE developer-log exemption rule, shared by both widened assertions.
+ *
+ * A line that logs AND displays is NOT exempt — that is the whole content of the
+ * `DEVELOPER_LOG` docblock's "so a line doing both is still caught".
  */
-const DEVELOPER_LOG = /\bconsole\.\w+\s*\(/;
+const isExemptDeveloperLog = (line: string): boolean =>
+  DEVELOPER_LOG.test(line) && !USER_FACING_SINK.test(line);
+
+/** A raw upstream message read on a line that is not an exempt developer log. */
+const isRawMessageOffender = (line: string): boolean =>
+  RAW_MESSAGE_READ.test(line) && !isExemptDeveloperLog(line);
+
+/** Hand-rolled `Failed to X` copy on a line that is not an exempt developer log. */
+const isFailedCopyOffender = (line: string): boolean =>
+  AD_HOC_FAILURE_COPY.test(line) && !isExemptDeveloperLog(line);
 
 interface Hit {
   file: string;
@@ -171,87 +242,648 @@ interface Hit {
   text: string;
 }
 
-function scan(match: (line: string) => boolean): Hit[] {
-  const hits: Hit[] = [];
-  for (const rel of SURFACES) {
-    const { lines } = readStripped(rel);
-    lines.forEach((line, i) => {
-      if (match(line)) hits.push({ file: rel, line: i + 1, text: line.trim() });
-    });
-  }
-  return hits;
+interface Source {
+  rel: string;
+  lines: string[];
 }
+
+/**
+ * The whole comment-stripped tree, read through the ONE hoisted walk and the ONE memoized
+ * reader, keyed on `src/`-relative paths.
+ *
+ * Relative mapping is load-bearing, not cosmetic: `sourceFiles` returns ABSOLUTE paths and
+ * every allow-list and roster key below is `src/`-relative, so an unmapped set would match
+ * no entry and the gate would report every exempt site as an offender — or, with the filter
+ * inverted, none of them.
+ */
+const TREE: Source[] = ALL_REL.map((rel) => ({ rel, lines: readStripped(rel).lines }));
+
+/** The nine `SURFACES`, in the same shape, for the `alert(` assertion. */
+const SURFACE_TREE: Source[] = SURFACES.map((rel) => ({
+  rel,
+  lines: readStripped(rel).lines,
+}));
 
 const fmt = (hits: Hit[]) =>
   hits.map((h) => `${h.file}:${h.line}  ${h.text}`).join('\n');
 
-describe('Req 14 — the shared fetch-error treatment on 88-25 surfaces', () => {
+// ALLOW-LIST, NOT SINK-MATCHING. The obvious formulation — "flag a line that has both a
+// display sink and a `.message` read" — is the DEF-88-21-01 defect in miniature: `grep`
+// and a line-based scan cannot cross a newline, and the idiom is routinely written over
+// four lines:
+//
+//     toast.error(
+//       getFetchErrorMessage(err, {
+//         fallback: err.message,      <- no sink token on this line
+//       })
+//     );
+//
+// That exact reintroduction was PLANTED during 88-25's negative check and the
+// sink-matching version passed it. So the property is inverted: every surviving read is
+// enumerated, and anything not on the list fails by default.
+//
+// 88.6-13 AMENDMENT, one sentence: NARROWING an EXEMPTION with a not-a-sink condition is
+// permitted, and is a different thing from sink-matching as the POSITIVE test, which stays
+// forbidden. `isExemptDeveloperLog` is such a narrowing — it can only make the scan
+// stricter (a line that logs AND displays stops being exempt), so it cannot reintroduce
+// the newline blindness above, which is a false-NEGATIVE mode.
+//
+// TWO CLASSES LIVE IN THIS ONE LIST, and each entry's `why` says which it is:
+//   - CONTROL FLOW: the read is branched on and never rendered.
+//   - MEASURED-EMPTY: the read IS rendered, but the value is provably always `''`.
+// They share a list because §2 below DERIVES the anti-vacuity array from it, and two
+// hand-maintained literals cannot be kept in step by discipline. See the standing rule.
+//
+// STANDING RULE (88.6-13, stated once so it covers the next case as well as these):
+//   (1) No entry may outlive the code it matches. The anti-vacuity assertion below is the
+//       enforcement, and it is derived from THIS array so the two cannot drift.
+//   (2) An entry whose matched code is scheduled for removal inside 88.6 names, in its
+//       `why`, the plan that removes it, and states that the entry dies in that same
+//       commit. A reader four waves later then sees a scheduled retirement, not a
+//       permanent sanction.
+//   (3) PLAN 13 DOES NOT EXECUTE THOSE REMOVALS. It is wave 3; the code still carries
+//       every read below, so deleting a row here would make the scan FLAG it and red a
+//       wave-3 gate. Plan 13 owns the `why` and this rule; the later-wave owner deletes
+//       the row alongside its own edit.
+//
+// DELETED by 88.6-13: the `app/gameDetail/page.js` entry
+// (`const message = String(err?.message || '').toLowerCase();`, 88-33 Task 2 Fork F). Its
+// matched code is GONE — `grep -c 'String(err?.message' src/app/gameDetail/page.js` → 0,
+// measured 2026-09-15. It survived because the anti-vacuity array below was a SECOND hand
+// literal that listed 3 of the 4 entries and omitted exactly the dead one.
+const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string }> = [
+  {
+    file: 'app/groupHomePage/page.js',
+    contains: "const msg = (error?.message || '').toLowerCase();",
+    why: 'isRemovedFromGroupError — routes a removal 403 to a redirect. Never displayed.',
+  },
+  {
+    file: 'app/friends/page.js',
+    contains: "if (err.message && err.message.includes('404'))",
+    why:
+      'CONTROL FLOW. "no user found" is a search OUTCOME with no ApiError code. Never ' +
+      'displayed. SCHEDULED FOR REMOVAL INSIDE 88.6: plan 88.6-42 (wave 8) re-keys both ' +
+      'arms onto a status-based 404 test and DELETES this entry in that same commit. ' +
+      'Confirmed 2026-09-15 from 88.6-42-PLAN.md — it declares src/app/friends/page.js in ' +
+      'files_modified and its R8 §2 note withdraws the earlier "plan 19 owns this file, do ' +
+      'not edit it from here" instruction in terms. Plan 88.6-13 does NOT edit ' +
+      'friends/page.js and does NOT delete this entry: at wave 3 the code still carries the ' +
+      'read, so an early deletion would make the scan flag it.',
+  },
+  {
+    file: 'app/friends/page.js',
+    contains: "} else if (err.message && err.message.includes('No user found'))",
+    why:
+      'CONTROL FLOW. Same search outcome, prose variant. Never displayed. SCHEDULED FOR ' +
+      'REMOVAL INSIDE 88.6 by the same plan 88.6-42 (wave 8) commit as its sibling above — ' +
+      'this arm can never match again once 42 drops the legacy `error` alias, because the ' +
+      'string it matches is a raw backend 404 with no `code` and no `message`. The entry ' +
+      'dies with the re-key. Plan 88.6-13 does not perform it.',
+  },
+  {
+    file: 'app/components/FriendshipStatusProvider.js',
+    contains: "if (err?.message?.includes('409') || err?.status === 409) {",
+    why:
+      'CONTROL FLOW. Status-FIRST duplicate-request branch — the message test is the ' +
+      'legacy half of an `||` whose right arm already reads `err.status`. Never displayed. ' +
+      'No 88.6 plan declares this file (measured 2026-09-15 across all 46 files_modified ' +
+      'blocks), so no removal is scheduled inside this phase.',
+  },
+  {
+    file: 'app/components/FriendshipStatusProvider.js',
+    contains: "const is404 = err?.message?.includes('404') || err?.status === 404;",
+    why:
+      'CONTROL FLOW. Two sites (:180, :198), same line text: a not-found probe that ' +
+      'resolves to a boolean and picks a UI state. Status-first, same shape as the 409 ' +
+      'entry above. Never displayed. No 88.6 plan declares this file.',
+  },
+  {
+    file: 'app/invite/game/[token]/page.js',
+    contains: "const msg = err?.message || '';",
+    why:
+      'CONTROL FLOW. `classifyError`\'s local — a classifier over fetch-`TypeError` text ' +
+      'that picks transient-vs-permanent; the backend-prose arms are removed by 88.6-23 ' +
+      '(wave 7), which declares this file. Never displayed: the copy this classifier ' +
+      'selects is ratified register copy, not the message.',
+  },
+  {
+    file: 'app/invite/game/[token]/page.js',
+    contains: "lowerMsg.includes('failed to fetch') ||",
+    why:
+      'CONTROL FLOW, and it is on the "Failed to X" assertion, not the raw-message one: ' +
+      "the lower-cased literal 'failed to fetch' is the browser's own TypeError text being " +
+      'MATCHED, not copy being authored. Removed with the classifier by 88.6-23 (wave 7).',
+  },
+  {
+    file: 'app/invite/game/[token]/page.js',
+    contains:
+      "if (err.message && (err.message.includes('expired') || err.message.includes('passed'))) {",
+    why:
+      'CONTROL FLOW, and BLOCKED ON THE BACKEND EMITTING A `code`: this is prose-matching ' +
+      'on a 410 body, the same fragility class plan 88.6-14 rosters at ' +
+      'rsvp/[token]/page.js:87,93. Never displayed — it selects the `expired` status and ' +
+      'its own register copy. Removed by 88.6-23 (wave 7) only as far as the FE can go; ' +
+      'the durable fix needs the backend envelope, so it points at the SAME destination as ' +
+      "its siblings — plan 88.6-24's checkpoint / .planning/deferred/phase-93.md — rather " +
+      'than burying a Phase 93 item in a silent allow-list line.',
+  },
+  {
+    file: 'lib/logger.ts',
+    contains: "const message = typeof e?.message === 'string' ? e.message : String(err);",
+    why:
+      'SANCTIONED DIAGNOSTIC READ — a third class, and it is the only one. This is ' +
+      "`errCtx(err)`'s body: the helper that exists so AC-2's ~100 conversions never spell " +
+      'the `message:` key at a call site. Its output goes to a `logger.*` ctx and never to ' +
+      'a user-facing sink — the developer log is the DESIGNED destination for the raw ' +
+      'error text (88-19\'s ErrorFallback marker). It is allow-listed HERE, visibly and ' +
+      'countably, rather than dodged by naming the local something this scanner does not ' +
+      'match. No removal is scheduled: the helper is permanent.',
+  },
+  {
+    file: 'app/Header.js',
+    contains: 'if (error) return <div>{error.message}</div>;',
+    why:
+      'MEASURED-EMPTY, not control flow. This RENDERS the message, but the message is ' +
+      "Auth0's `useUser()` error, whose `RequestError` calls `super()` with no argument, so " +
+      "`.message` is always ''. `layout.js:27` passes no fetcher, so no other value can " +
+      'reach it. Nothing upstream is disclosed. The BLANK-RENDER defect this produces — the ' +
+      'failure renders as nothing at all, the 2026-08-28 AUTH0_BASE_URL incident shape — is ' +
+      'RECORDED AND ROUTED, not fixed here: see .planning/deferred/phase-88.6.md, proposed ' +
+      'home plan 88.6-34. Plan 88.6-13 does not touch this file.',
+  },
+  {
+    file: 'app/page.js',
+    contains: '<div className="text-content-status-error">Error: {error.message}</div>',
+    why:
+      'MEASURED-EMPTY, not control flow. Same Auth0 `useUser()` error as Header.js:55 and ' +
+      'the same always-empty `.message`. Listed EXPLICITLY rather than excluding the file, ' +
+      'because `app/page.js:40` is a developer log in the same file and any file-level rule ' +
+      'would hide this live render behind it. Routed with its sibling to ' +
+      '.planning/deferred/phase-88.6.md (proposed home plan 88.6-34).',
+  },
+];
+
+const isAllowed = (hit: Hit): boolean =>
+  CONTROL_FLOW_ALLOWED.some((a) => a.file === hit.file && hit.text.includes(a.contains));
+
+/**
+ * The ASSERTION PATH, as one function: predicate, then the allow-list filter.
+ *
+ * Fixtures below drive synthetic `Source`s through THIS function rather than re-asserting
+ * a regex conjunction the way the shipped self-test at the bottom of this file does. A
+ * fixture that only re-asserts the conjunction passes whether or not the filter was fixed,
+ * which is exactly how the `:173` outlier survived.
+ */
+function offenders(predicate: (line: string) => boolean, source: Source[]): Hit[] {
+  const hits: Hit[] = [];
+  for (const { rel, lines } of source) {
+    lines.forEach((line, i) => {
+      if (predicate(line)) hits.push({ file: rel, line: i + 1, text: line.trim() });
+    });
+  }
+  return hits.filter((h) => !isAllowed(h));
+}
+
+/** Per-file offender counts, in the shape `assertExactCounts` compares against. */
+const countByFile = (hits: Hit[]): Record<string, number> => {
+  const out: Record<string, number> = {};
+  for (const h of hits) out[h.file] = (out[h.file] ?? 0) + 1;
+  return out;
+};
+
+// The RESEARCH §B.5 hand census — 25 SITES across 16 FILES. It is a LEAD, never the seed:
+// both rosters below are seeded from the scan RE-DERIVED at execution. It is kept here as
+// an anti-vacuity subject (every one of its files must be in the scanned set) and as the
+// record of what a hand census misses — `StartPollModal.js:151` is a live raw render it
+// does not contain at all.
+const CENSUS_SITES = [
+  'app/invite/accept/page.js:59',
+  'app/invite/group/[token]/page.js:109',
+  'app/invite/game/[token]/page.js:90',
+  'app/invite/game/[token]/page.js:143',
+  'app/components/createGroup.js:90',
+  'app/components/ScheduleForm.js:177',
+  'app/components/FriendInvitePanel.js:268',
+  'app/components/AvailabilityForm.js:142',
+  'app/components/BrowseMoreModal.js:120',
+  'app/components/ResponseDashboard.js:49',
+  'app/components/ResponseDashboard.js:99',
+  'app/components/SuggestionCard.js:56',
+  'app/components/GameComboInput.js:131',
+  'app/components/GroupSettings.js:481',
+  'app/components/GroupSettings.js:532',
+  'app/components/ManageMembers.js:138',
+  'app/components/ManageMembers.js:208',
+  'app/components/ManageMembers.js:239',
+  'app/components/ManageMembers.js:251',
+  'app/components/ManageMembers.js:296',
+  'app/components/ManageMembers.js:333',
+  'app/components/ManageMembers.js:761',
+  'app/components/FeedbackButton.js:208',
+  'app/components/FeedbackForm.js:241',
+  'app/components/createEvent.js:838',
+];
+
+// The survivors of the raw-message assertion, seeded from the MEASURED tree scan
+// (2026-09-15): 33 sites / 19 files after the allow-list filter. Every entry names the
+// plan that closes it, and `assertExactCounts` is checked in BOTH directions — so a
+// partial fix must DECREMENT the entry and the last fix must DELETE it.
+const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
+  'app/api/auth/google-connect/route.js': {
+    sites: 1,
+    why:
+      'RAW-MESSAGE assertion. :72 interpolates `error.message` into a route-handler JSON ' +
+      'error body. NO 88.6 sweep plan owns these copy sites — plan 88.6-42 task 2 (#82) ' +
+      'declares and edits this file for the envelope work, but not for this. Routed under ' +
+      'the AC-22 rule to .planning/deferred/phase-88.6.md with Phase 93 named as the ' +
+      'proposed owning phase, so plan 88.6-46 AC-11 forces a dated disposition at phase ' +
+      'close rather than letting the residual evaporate.',
+    owner: {
+      kind: 'owner',
+      date: '2026-09-09',
+      ruling:
+        'AC-22 routing: an unowned raw-backend-envelope read takes a roster entry AND a ' +
+        'durable deferred entry naming Phase 93 as the proposed owner — a bare "recorded" ' +
+        'disposition is what lets a residual evaporate.',
+    },
+  },
+  'app/components/AvailabilityForm.js': {
+    sites: 3,
+    why:
+      'RAW-MESSAGE assertion. :142 is the census site; :174 and :203 are the prefill-status ' +
+      'reads the hand census missed. All three are RED FROM THIS WAVE UNTIL PLAN 88.6-25 ' +
+      '(wave 7) LANDS — that plan declares this file and its edit is the removal condition. ' +
+      'This is deliberately NOT a permanent exemption: it shrinks to 0 and is deleted when ' +
+      '25 routes these through getFetchErrorMessage.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-25' },
+  },
+  'app/components/BrowseMoreModal.js': {
+    sites: 1,
+    why:
+      'RAW-MESSAGE assertion. :120 `setError(err.message || …)`. Closed by plan 88.6-32 ' +
+      '(wave 7), which declares this file; the entry is deleted in that commit.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-32' },
+  },
+  'app/components/FeedbackButton.js': {
+    sites: 1,
+    why:
+      'RAW-MESSAGE assertion. :211 (the census says :208 — the file has moved; the ' +
+      'disagreement is recorded in 88.6-13-SUMMARY.md). D-21: its sibling FeedbackForm.js ' +
+      'has a Sentry capture on this path and this file does not. Closed by plan 88.6-31 ' +
+      '(wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-31' },
+  },
+  'app/components/FeedbackForm.js': {
+    sites: 1,
+    why:
+      'RAW-MESSAGE assertion. :241 `setError(err.message || …)`. D-21 names this file and ' +
+      'FeedbackButton.js as a pair; both are in the scanned set. Closed by plan 88.6-31 ' +
+      '(wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-31' },
+  },
+  'app/components/FriendInvitePanel.js': {
+    sites: 1,
+    why:
+      'RAW-MESSAGE assertion. :268 `toast.error(err.message || …)`. Closed by plan 88.6-22 ' +
+      '(wave 7), which declares this file; the entry is deleted in that commit.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-22' },
+  },
+  'app/components/GameComboInput.js': {
+    sites: 1,
+    why:
+      'RAW-MESSAGE assertion. :131 is a T-88-25-01 site AND a Req 11 native-dialog site — ' +
+      "it is the SAME line nativeDialogs.test.ts holds as an exact-count `alert(` " +
+      'exemption. Both rosters shrink together. Closed by plan 88.6-32 (wave 7).',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-32' },
+  },
+  'app/components/GroupSettings.js': {
+    sites: 2,
+    why:
+      'RAW-MESSAGE assertion. :481 and :532 — a leave-group field error and a delete-group ' +
+      'toast, both `x.message || "Failed to …"`. Closed by plan 88.6-20 (wave 7), which ' +
+      'declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-20' },
+  },
+  'app/components/ManageMembers.js': {
+    sites: 7,
+    why:
+      'RAW-MESSAGE assertion. Seven sites — :138, :208, :239, :251, :296, :333, :761 — the ' +
+      'largest single concentration in the tree and the one the census got exactly right. ' +
+      'Its "Failed to X" count is 8 (one extra at :112, which carries no message read). ' +
+      'Closed by plan 88.6-19 (wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-19' },
+  },
+  'app/components/ResponseDashboard.js': {
+    sites: 2,
+    why:
+      'RAW-MESSAGE assertion. :49 and :99 — a load error and a reminder-send error, both ' +
+      '`setX(err.message || "Failed to …")`. Closed by plan 88.6-32 (wave 7), which ' +
+      'declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-32' },
+  },
+  'app/components/ScheduleForm.js': {
+    sites: 2,
+    why:
+      'RAW-MESSAGE assertion. :177 is the census site; :178 is a SECOND read the census ' +
+      "missed — `setError('root', { message: error.message })` puts the raw message into a " +
+      'react-hook-form root error, which renders. Closed by plan 88.6-32 (wave 7), which ' +
+      'declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-32' },
+  },
+  'app/components/StartPollModal.js': {
+    sites: 1,
+    why:
+      'RAW-MESSAGE assertion. C1a: :151 binds the raw message and the else arm at :157 ' +
+      'renders it through `setError(msg)`. The RESEARCH §B.5 hand census does not contain ' +
+      'this file at all — it is the proof that a hand census cannot be the seed. Closed by ' +
+      'plan 88.6-22 (wave 7), which declares this file and decrements this entry to 0.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-22' },
+  },
+  'app/components/SuggestionCard.js': {
+    sites: 1,
+    why:
+      'RAW-MESSAGE assertion. :56 `setError(err.message || "Failed to create event")`. Its ' +
+      'sibling :53 reads `result.error`, not a message, so it is on the "Failed to X" ' +
+      'roster only. Closed by plan 88.6-33 (wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-33' },
+  },
+  'app/components/createEvent.js': {
+    sites: 1,
+    why:
+      'RAW-MESSAGE assertion. :838 interpolates `error.message` into a toast template. ' +
+      'Closed by plan 88.6-25 (wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-25' },
+  },
+  'app/components/createGroup.js': {
+    sites: 1,
+    why:
+      'RAW-MESSAGE assertion. :90 is the ASSIGNMENT where the upstream value enters ' +
+      '(`const errorMsg = error.message || "Failed to create group…"`); the six downstream ' +
+      '`errorMessage` local reads in this file are not offenders and are no longer matched ' +
+      'after the regex tightening. Fixing :90 fixes the renders. Closed by plan 88.6-33 ' +
+      '(wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-33' },
+  },
+  'app/invite/accept/page.js': {
+    sites: 1,
+    why:
+      'RAW-MESSAGE assertion. :59 `const msg = err.message || "Something went wrong"`, then ' +
+      'displayed. Closed by plan 88.6-23 (wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-23' },
+  },
+  'app/invite/game/[token]/page.js': {
+    sites: 2,
+    why:
+      'RAW-MESSAGE assertion. :90 and :143 are the DISPLAY sites (`setError(err.message || ' +
+      '…)`); the three control-flow reads in the same file (:28, :36, :79) are allow-list ' +
+      'entries, not roster sites, which is the per-LINE rule working. Closed by plan ' +
+      '88.6-23 (wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-23' },
+  },
+  'app/invite/group/[token]/page.js': {
+    sites: 1,
+    why:
+      'RAW-MESSAGE assertion. :109 `setError(err.message || "Failed to join group.")`. ' +
+      'Closed by plan 88.6-23 (wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-23' },
+  },
+  'lib/api.ts': {
+    sites: 3,
+    why:
+      'RAW-MESSAGE assertion. :346 and :452 are `error instanceof Error ? error.message : ' +
+      '"Unknown error"` at the fetch boundary; :434 maps a validation-errors array through ' +
+      '`err.message`. None carries a `console.` token, so none is developer-log exempt ' +
+      "today — this file's five console.error lines are separate and are plan 88.6-42's " +
+      'AC-2 conversions. Closed by plan 88.6-42 (wave 8), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-42' },
+  },
+};
+
+// The survivors of the "Failed to X" assertion, seeded from the MEASURED tree scan
+// (2026-09-15): 35 sites / 19 files after the allow-list filter. The zero-tolerance
+// assertion has ~28 hits inside the census files alone, so it cannot be widened without
+// this roster.
+const FAILED_COPY_EXEMPT: ExemptionRoster = {
+  'app/api/auth/google-connect/route.js': {
+    sites: 2,
+    why:
+      '"FAILED TO X" assertion. :53 and :72 author failure copy in a route handler. Same ' +
+      'AC-22 routing as this file\'s raw-message entry: NO 88.6 sweep plan owns these copy ' +
+      'sites, so they also take a durable entry in .planning/deferred/phase-88.6.md with ' +
+      'Phase 93 named as the proposed owning phase. Plan 88.6-42 task 2 (#82) edits this ' +
+      'file for the envelope work — cited so the two records do not diverge.',
+    owner: {
+      kind: 'owner',
+      date: '2026-09-09',
+      ruling:
+        'AC-22 routing: an unowned site takes a roster entry AND a durable deferred entry ' +
+        'naming Phase 93 as the proposed owner, so plan 88.6-46 AC-11 forces a dated ' +
+        'disposition at phase close.',
+    },
+  },
+  'app/components/AvailabilityForm.js': {
+    sites: 1,
+    why:
+      '"FAILED TO X" assertion. :142 only — :174 and :203 carry a message read but no ' +
+      'authored copy, which is why the two rosters have different counts for this file. ' +
+      'Closed by plan 88.6-25 (wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-25' },
+  },
+  'app/components/BrowseMoreModal.js': {
+    sites: 1,
+    why:
+      '"FAILED TO X" assertion. :120 "Failed to load suggestions" — the fallback half of ' +
+      'the same line its raw-message entry covers. Closed by plan 88.6-32 (wave 7).',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-32' },
+  },
+  'app/components/FeedbackButton.js': {
+    sites: 1,
+    why:
+      '"FAILED TO X" assertion. :211 "Failed to submit feedback. Please try again." Closed ' +
+      'by plan 88.6-31 (wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-31' },
+  },
+  'app/components/FeedbackForm.js': {
+    sites: 1,
+    why:
+      '"FAILED TO X" assertion. :241 "Failed to submit feedback. Please try again." Closed ' +
+      'by plan 88.6-31 (wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-31' },
+  },
+  'app/components/FriendInvitePanel.js': {
+    sites: 3,
+    why:
+      '"FAILED TO X" assertion. THREE sites (:223, :268, :427) against the census\'s one — ' +
+      ':223 "Failed to send invite" and :427 "Failed to send invites. Please try again." ' +
+      'are copy with no message read, so only the tree scan sees them. Closed by plan ' +
+      '88.6-22 (wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-22' },
+  },
+  'app/components/GameComboInput.js': {
+    sites: 1,
+    why:
+      '"FAILED TO X" assertion. :131 — the same line as its raw-message entry and the same ' +
+      "line as nativeDialogs.test.ts's `alert(` exemption. Three rosters, one site, all " +
+      'shrinking together. Closed by plan 88.6-32 (wave 7).',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-32' },
+  },
+  'app/components/GroupSettings.js': {
+    sites: 3,
+    why:
+      '"FAILED TO X" assertion. :406, :481, :532 — one more than the raw-message count, ' +
+      'because :406 authors copy without reading a message. Closed by plan 88.6-20 ' +
+      '(wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-20' },
+  },
+  'app/components/ManageMembers.js': {
+    sites: 8,
+    why:
+      '"FAILED TO X" assertion. EIGHT sites — the seven raw-message lines plus :112 ' +
+      '"Failed to load members", which reads no message. Recorded explicitly because the ' +
+      'two counts for this file differ and a reader comparing them needs to know why. ' +
+      'Closed by plan 88.6-19 (wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-19' },
+  },
+  'app/components/PromptScheduleManager.js': {
+    sites: 2,
+    why:
+      '"FAILED TO X" assertion. :100 and :111 — the SAME two lines nativeDialogs.test.ts ' +
+      'carries as its `alert(` exemption, and for the same recorded reason: routing them ' +
+      'needs a fallback string the ratified register does not yet have. Closed by plan ' +
+      '88.6-15 (wave 6), which declares this file; both rosters shrink together.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-15' },
+  },
+  'app/components/ResponseDashboard.js': {
+    sites: 2,
+    why:
+      '"FAILED TO X" assertion. :49 "Failed to load respondents" and :99 "Failed to send ' +
+      'reminder" — the fallback halves of the same two lines its raw-message entry covers. ' +
+      'Closed by plan 88.6-32 (wave 7).',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-32' },
+  },
+  'app/components/ScheduleForm.js': {
+    sites: 1,
+    why:
+      '"FAILED TO X" assertion. :177 only — :178 puts the raw message in a form root error ' +
+      'but authors no copy. Closed by plan 88.6-32 (wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-32' },
+  },
+  'app/components/SuggestionCard.js': {
+    sites: 2,
+    why:
+      '"FAILED TO X" assertion. :53 and :56 both author "Failed to create event"; only :56 ' +
+      'reads a message, which is why the raw-message count for this file is 1. Closed by ' +
+      'plan 88.6-33 (wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-33' },
+  },
+  'app/components/TimezoneProvider.js': {
+    sites: 1,
+    why:
+      '"FAILED TO X" assertion. :103 "Failed to save your timezone — please try again." ' +
+      'toast. NO 88.6 plan declares this file — measured 2026-09-15 across all 46 ' +
+      'files_modified blocks — so under the AC-22 rule it takes this entry AND a durable ' +
+      'entry in .planning/deferred/phase-88.6.md with Phase 93 named as the proposed owning ' +
+      'phase, and plan 88.6-46 AC-11 forces a dated disposition at phase close. Note the ' +
+      'correction to the plan text: this site is "Failed to X" copy only, NOT a raw-message ' +
+      'read — it appears on this roster and not on the other.',
+    owner: {
+      kind: 'owner',
+      date: '2026-09-09',
+      ruling:
+        'AC-22 routing: an unowned site takes a roster entry AND a durable deferred entry ' +
+        'naming Phase 93 as the proposed owner — a bare "recorded" disposition is what ' +
+        'lets a residual evaporate.',
+    },
+  },
+  'app/components/createEvent.js': {
+    sites: 1,
+    why:
+      '"FAILED TO X" assertion. :709 "Failed to create custom game. Please try again." — a ' +
+      'DIFFERENT line from the :838 its raw-message entry covers, so the two rosters point ' +
+      'at different sites in this file. Closed by plan 88.6-25 (wave 7).',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-25' },
+  },
+  'app/components/createGroup.js': {
+    sites: 1,
+    why:
+      '"FAILED TO X" assertion. :90 — the same assignment line its raw-message entry ' +
+      'covers. Closed by plan 88.6-33 (wave 7), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-33' },
+  },
+  'app/invite/game/[token]/page.js': {
+    sites: 1,
+    why:
+      '"FAILED TO X" assertion. :143 "Failed to join game night." only — :36\'s ' +
+      "`'failed to fetch'` is the browser's TypeError text being MATCHED, so it is an " +
+      'allow-list entry rather than a roster site. Closed by plan 88.6-23 (wave 7).',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-23' },
+  },
+  'app/invite/group/[token]/page.js': {
+    sites: 1,
+    why:
+      '"FAILED TO X" assertion. :109 "Failed to join group." — the same line its ' +
+      'raw-message entry covers. Closed by plan 88.6-23 (wave 7).',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-23' },
+  },
+  'lib/api.ts': {
+    sites: 2,
+    why:
+      '"FAILED TO X" assertion. :1126 and :1159 throw `new Error(err.error || "Failed to ' +
+      '…")` — authored copy on the throw path, distinct from the three raw-message reads ' +
+      'in the same file. Closed by plan 88.6-42 (wave 8), which declares this file.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-42' },
+  },
+};
+
+describe('Req 14 — the shared fetch-error treatment, scanned tree-wide', () => {
+  const rawHits = offenders(isRawMessageOffender, TREE);
+  const failedHits = offenders(isFailedCopyOffender, TREE);
+
   it('a raw upstream error message is only ever logged or branched on, never displayed (T-88-25-01, ASVS V7)', () => {
     // `ApiError.message` is `body.message ?? body.error ?? \`HTTP error! status: N\``
     // (api.ts extractErrorMessage), so displaying it paints whatever the backend
     // sent — or a raw status line — at the user. Derived copy replaces it; see
     // the DECISION marker on getFetchErrorMessage.
     //
-    // ALLOW-LIST, NOT SINK-MATCHING. The obvious formulation — "flag a line that
-    // has both a display sink and a `.message` read" — is the DEF-88-21-01 defect
-    // in miniature: `grep` and a line-based scan cannot cross a newline, and the
-    // idiom is routinely written over four lines:
-    //
-    //     toast.error(
-    //       getFetchErrorMessage(err, {
-    //         fallback: err.message,      <- no sink token on this line
-    //       })
-    //     );
-    //
-    // That exact reintroduction was PLANTED during this plan's negative check and
-    // the sink-matching version passed it. So the property is inverted: every
-    // surviving read is enumerated, and anything not on the list fails by default.
-    const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string }> = [
-      {
-        file: 'app/groupHomePage/page.js',
-        contains: "const msg = (error?.message || '').toLowerCase();",
-        why: 'isRemovedFromGroupError — routes a removal 403 to a redirect. Never displayed.',
-      },
-      {
-        file: 'app/friends/page.js',
-        contains: "if (err.message && err.message.includes('404'))",
-        why: '"no user found" is a search OUTCOME with no ApiError code. Never displayed.',
-      },
-      {
-        file: 'app/friends/page.js',
-        contains: "} else if (err.message && err.message.includes('No user found'))",
-        why: 'same search outcome, prose variant. Never displayed.',
-      },
-      {
-        file: 'app/gameDetail/page.js',
-        contains: "const message = String(err?.message || '').toLowerCase();",
-        why:
-          '88-33 Task 2 (Fork F): invite-409 string FALLBACK until 88-34 ships envelope ' +
-          'codes — branches already_member/invite_pending to a status, never displayed.',
-      },
-    ];
+    // Scope is the whole mapped `src/` tree. The residue is the ROSTER, not a shorter
+    // scope — so a fix shrinks an entry and surface N+1 cannot land green.
+    const unowned = rawHits.filter((h) => !(h.file in RAW_MESSAGE_EXEMPT));
+    expect(fmt(unowned)).toBe('');
+  });
 
-    const violations = scan(
-      (l) => RAW_MESSAGE_READ.test(l) && !DEVELOPER_LOG.test(l)
-    ).filter(
-      (h) =>
-        !CONTROL_FLOW_ALLOWED.some(
-          (a) => a.file === h.file && h.text.includes(a.contains)
-        )
-    );
+  it('no hand-rolled "Failed to X" copy survives, for ANY verb', () => {
+    // Deliberately wider than the plan's `failed to load`: the real population
+    // was mostly other verbs (cancel/update/remove/submit/import/create).
+    const unowned = failedHits.filter((h) => !(h.file in FAILED_COPY_EXEMPT));
+    expect(fmt(unowned)).toBe('');
+  });
 
-    expect(fmt(violations)).toBe('');
+  it('both rosters are EXACT in both directions — a fix must shrink its entry', () => {
+    // The shrink direction is what stops a fossil permission; the grow direction is what
+    // stops an exempt file absorbing a new offender. `assertExactCounts` also reports an
+    // offender in a file with no entry at all, which is the same population the two
+    // assertions above check — asserted here as well, because a roster that silently
+    // tolerated one would make those assertions the only guard.
+    expect(assertExactCounts(RAW_MESSAGE_EXEMPT, countByFile(rawHits))).toEqual([]);
+    expect(assertExactCounts(FAILED_COPY_EXEMPT, countByFile(failedHits))).toEqual([]);
+  });
+
+  it('both rosters satisfy the shared D-19 exemption schema', () => {
+    expect(assertRosterShape(RAW_MESSAGE_EXEMPT)).toEqual([]);
+    expect(assertRosterShape(FAILED_COPY_EXEMPT)).toEqual([]);
   });
 
   it('the allow-list is not stale — every entry still matches real code (anti-vacuity)', () => {
-    // An allow-list entry that no longer matches anything is dead weight that
-    // would silently permit a future read of the same shape.
-    const allowed = [
-      { file: 'app/groupHomePage/page.js', contains: "const msg = (error?.message || '').toLowerCase();" },
-      { file: 'app/friends/page.js', contains: "if (err.message && err.message.includes('404'))" },
-      { file: 'app/friends/page.js', contains: "} else if (err.message && err.message.includes('No user found'))" },
-    ];
-    for (const a of allowed) {
+    // An allow-list entry that no longer matches anything is dead weight that would
+    // silently permit a future read of the same shape.
+    //
+    // 88.6-13 §2: this array is now DERIVED from `CONTROL_FLOW_ALLOWED` instead of being a
+    // second hand-maintained literal. The two had already drifted — the literal listed 3
+    // of the 4 shipped entries and omitted exactly the dead `app/gameDetail/page.js` one,
+    // which is why this very assertion did not catch it. Two literals cannot be kept in
+    // step by discipline; one derivation cannot drift at all, and closing an entry is now
+    // ONE deletion instead of two.
+    for (const a of CONTROL_FLOW_ALLOWED) {
       const { lines } = readStripped(a.file);
       expect(
         lines.some((l) => l.trim().includes(a.contains)),
@@ -260,21 +892,136 @@ describe('Req 14 — the shared fetch-error treatment on 88-25 surfaces', () => 
     }
   });
 
-  it('no hand-rolled "Failed to X" copy survives, for ANY verb', () => {
-    // Deliberately wider than the plan's `failed to load`: the real population
-    // was mostly other verbs (cancel/update/remove/submit/import/create).
-    const hits = scan(
-      (l) => AD_HOC_FAILURE_COPY.test(l) && !(DEVELOPER_LOG.test(l) && !USER_FACING_SINK.test(l))
-    );
-    expect(fmt(hits)).toBe('');
-  });
-
   it('no native alert() survives on these surfaces (DEF-88-16-01)', () => {
     // Req 11's shipped gate matches `confirm(` only, so every `alert(` was
     // invisible to it. Two of the six DEF-88-16-01 censused were on files this
     // plan owns; this pins those two closed. The other four are tracked there.
-    const hits = scan((l) => /(^|[^.\w$])alert\s*\(/.test(l));
+    //
+    // 88.6-13: this assertion KEEPS the nine `SURFACES` while the two above went
+    // tree-wide, and that asymmetry is deliberate (CONSEQUENCE, not an oversight).
+    // `nativeDialogs.test.ts:31-38` owns the repo-wide `alert(` property by an explicit
+    // written decision and holds `GameComboInput.js` as an exact-count `sites: 1`
+    // exemption. Widening this scan repo-wide would red on that site and create a SECOND
+    // answer to a question that suite already answers.
+    //
+    // The exact-count scope pin below is the mechanical half: `SURFACES` survives this
+    // phase ONLY as this assertion's scope, so a later plan adding or removing an entry
+    // must come through this number rather than silently changing the reach.
+    expect(SURFACES.length).toBe(9);
+    const hits = offenders((l) => /(^|[^.\w$])alert\s*\(/.test(l), SURFACE_TREE);
     expect(fmt(hits)).toBe('');
+  });
+
+  it('the scanned set is the TREE, and everything that must be in it is (anti-vacuity)', () => {
+    // Three guards, all ADDITIONS. There was no `SURFACES.length` floor of any width to
+    // drop — measured 2026-09-15, `grep -c 'length' src/app/fetchErrorTreatment.test.ts`
+    // returned 0 before this plan and `SURFACES` holds 9 entries, not 24.
+    //
+    // (a) A file floor, so a bad glob or a moved root cannot make the two widened
+    //     assertions vacuously green.
+    expect(TREE.length).toBeGreaterThanOrEqual(150);
+
+    // (b) Every census file, every shipped SURFACES entry, and every allow-listed file is
+    //     actually in the scanned set. A rename would otherwise silently drop it.
+    const scanned = new Set(ALL_REL);
+    const censusFiles = [...new Set(CENSUS_SITES.map((s) => s.replace(/:\d+$/, '')))];
+    for (const f of censusFiles) {
+      expect(scanned.has(f), `census path ${f} is not in the scanned set`).toBe(true);
+    }
+    for (const f of SURFACES) {
+      expect(scanned.has(f), `SURFACES entry ${f} is not in the scanned set`).toBe(true);
+    }
+
+    // (c) Every CONTROL_FLOW_ALLOWED file is a scanned file. This is the guard that
+    //     survives a rename or a bad glob: an allow-list keyed on a path nothing scans is
+    //     an allow-list that permits nothing and hides that it permits nothing. REMOVING
+    //     THIS IS A DELIBERATE LOOSENING under SPEC P2 and needs an owner ruling.
+    for (const a of CONTROL_FLOW_ALLOWED) {
+      expect(scanned.has(a.file), `allow-listed ${a.file} is not in the scanned set`).toBe(
+        true
+      );
+    }
+  });
+
+  it('the developer-log exemption follows a call onto the house logger, and STILL catches a line that displays', () => {
+    // ANTI-VACUITY FOR THE EXEMPTION CHANGE ITSELF. The shipped self-test at the bottom of
+    // this file asserts on the regex CONJUNCTION and never calls the scanner, so a fixture
+    // placed beside it passes whether or not the `:173` filter was fixed. These fixtures go
+    // through `offenders()` — the same function both real assertions call.
+    const run = (line: string) => ({
+      raw: offenders(isRawMessageOffender, [{ rel: 'fixture.js', lines: [line] }]).length,
+      failed: offenders(isFailedCopyOffender, [{ rel: 'fixture.js', lines: [line] }]).length,
+    });
+
+    // 1. A logger-only line is EXEMPT on both assertions — this is what stops AC-2's ~100
+    //    conversions from falsely redding a gate they never touched. The first reads a raw
+    //    message and is still exempt because it carries no sink; the second authors
+    //    "Failed to X" copy and is exempt for the same reason.
+    expect(run(`logger.error('load failed: ' + err.message, err);`)).toEqual({
+      raw: 0,
+      failed: 0,
+    });
+    expect(run(`logger.error('Failed to widget:', errCtx(err));`)).toEqual({
+      raw: 0,
+      failed: 0,
+    });
+
+    // 1b. THE HAZARD `errCtx` EXISTS FOR (D8/D11/D16), pinned rather than asserted in
+    //     prose. `USER_FACING_SINK` ends in a bare `message:` arm, so the most NATURAL
+    //     spelling of AC-2's "put the error's name and message in the ctx object" matches
+    //     BOTH patterns on one line and DEFEATS the exemption — a correct conversion reds
+    //     the gate. With `errCtx(err)` that key never appears at a call site (fixture
+    //     above). This is not hypothetical: it is why `src/lib/logger.ts` exports the
+    //     helper, and it is why the fix is NOT "drop the message from the ctx".
+    expect(run(`logger.info('load failed', { name: err.name, message: err.message });`)).toEqual(
+      { raw: 1, failed: 0 }
+    );
+
+    // 2. A console-only line is still exempt — the browser channel did not lose anything.
+    expect(run(`console.error('Failed to widget:', err);`)).toEqual({ raw: 0, failed: 0 });
+
+    // 3. A line that BOTH logs and displays is REPORTED on both assertions. Before this
+    //    plan the raw-message filter exempted it outright and only the "Failed to X"
+    //    filter caught it; that was a shipped defect, and this is the fixture that pins it.
+    expect(run(`logger.error('x', err); toast.error(err.message);`)).toEqual({
+      raw: 1,
+      failed: 0,
+    });
+    expect(run(`console.error('x', err); toast.error('Failed to widget.');`)).toEqual({
+      raw: 0,
+      failed: 1,
+    });
+    expect(run(`logger.warn('x', err); setThingError(err.message || 'Failed to widget.');`)).toEqual(
+      { raw: 1, failed: 1 }
+    );
+
+    // 4. The three sites that CHANGE CHANNEL mid-phase, asserted against what they BECOME.
+    //    Each is exempt today as a `console.*` line and must stay exempt after its AC-2
+    //    conversion; their `toast.error(getFetchErrorMessage(...))` sinks sit on the
+    //    FOLLOWING line, which is why the sink guard is line-based and why `errCtx` exists.
+    //    Verbatim from the live tree (grouplist.js:91, gameDetail/page.js:720, :756), then
+    //    the converted form.
+    const channelChangers: Array<[string, string]> = [
+      [
+        `console.error('Error fetching groups:', error.message || 'Unknown error');`,
+        // Deliberately keeps the raw message ON the converted line: without the channel
+        // widening this exact line is an offender, so it is the fixture that proves the
+        // widening rather than one that would pass either way.
+        `logger.info('Error fetching groups: ' + (error.message || 'Unknown error'));`,
+      ],
+      [
+        `console.error('Failed to get game invite token:', err);`,
+        `logger.info('Failed to get game invite token', errCtx(err));`,
+      ],
+      [
+        `console.error('Failed to remove participant:', err);`,
+        `logger.info('Failed to remove participant', errCtx(err));`,
+      ],
+    ];
+    for (const [before, after] of channelChangers) {
+      expect(run(before), `before: ${before}`).toEqual({ raw: 0, failed: 0 });
+      expect(run(after), `after: ${after}`).toEqual({ raw: 0, failed: 0 });
+    }
   });
 
   it('every declared surface is actually scanned (anti-vacuity: the file list resolves)', () => {
@@ -296,11 +1043,22 @@ describe('Req 14 — the shared fetch-error treatment on 88-25 surfaces', () => 
       `      toast.error(err.message || 'Failed to widget.');`,
       `      alert('nope');`,
       `      setThingError(error.message);`,
+      // 88.6-13: a JSX RENDER arm. Every planted negative above goes through a call
+      // expression, so the whole set would still pass with the scan blind to the shape
+      // `Header.js:55` and `app/page.js:103` actually ship — a bare interpolation into
+      // markup, with no sink token anywhere on the line.
+      `      <div>{error.message}</div>`,
     ];
     expect(USER_FACING_SINK.test(planted[0]) && RAW_MESSAGE_READ.test(planted[0])).toBe(true);
     expect(AD_HOC_FAILURE_COPY.test(planted[0])).toBe(true);
     expect(/(^|[^.\w$])alert\s*\(/.test(planted[1])).toBe(true);
     expect(USER_FACING_SINK.test(planted[2]) && RAW_MESSAGE_READ.test(planted[2])).toBe(true);
+
+    // The JSX arm is asserted through the ASSERTION PATH, not the regex conjunction: it
+    // has no sink token, so a conjunction test would be the wrong question entirely.
+    expect(
+      offenders(isRawMessageOffender, [{ rel: 'fixture.js', lines: [planted[3]] }]).length
+    ).toBe(1);
 
     // …and the developer-log carve-out must be narrow: a console line is exempt,
     // but a line that ALSO shows the string to a person is not.
@@ -315,6 +1073,14 @@ describe('Req 14 — the shared fetch-error treatment on 88-25 surfaces', () => 
   it('comment stripping does not blind the scanner to real code', () => {
     // The complement of the false-positive fix: stripping comments must not also
     // strip code. If it did, every assertion above would go vacuously green.
+    //
+    // THREE DECISION-MARKER FALSE POSITIVES a raw grep would report and this suite does
+    // not, named so nobody "fixes" them: `app/friends/page.js:268`,
+    // `app/gameDetail/page.js:649` and `components/ui/useFetchErrorState.ts:128` are PROSE
+    // inside markers that exist to record this very work. (`gameDetail/page.js:1005` is a
+    // fourth.) This is exactly why SPEC P5 forbids gating the R1 property with a grep, and
+    // why the two widened assertions above could go tree-wide at all — they read stripped
+    // source, so a marker can say plainly what it forbids.
     const stripped = withoutComments(
       [
         `// toast.error(err.message || 'Failed to nothing.');`,
