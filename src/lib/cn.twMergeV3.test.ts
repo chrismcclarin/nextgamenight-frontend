@@ -17,7 +17,7 @@
  * transcribed here at seeding time, each with its source cite and a re-derive note.
  *
  * DECISION Phase 88.6-01 (W33): `Button` is frozen against a transcribed literal even though it HAS
- * an importable surface (`buttonVariants`, exported `Button.tsx:129`) — chosen OVER importing the
+ * an importable surface (`buttonVariants`, exported `Button.tsx:287`; `:129` at seeding time) — chosen OVER importing the
  * live symbol. Plan 06 (wave 4) rewrites that same cva base (`min-h-11` onto the base, `sm: 'btn-sm'`,
  * the `enabled-hover:` lift, `p-0` deleted from the `icon` rung). Importing it would red this wave-1
  * gate the moment plan 06 lands, inside a plan that declares only `Button.tsx`/`Button.test.tsx` and
@@ -32,16 +32,33 @@ import { cn } from '@/lib/cn';
 // ---------------------------------------------------------------------------
 
 /**
- * SOURCE: `src/components/ui/Button.tsx:53-63` — the `cva` base array, `.join(' ')`ed.
+ * SOURCE: `src/components/ui/Button.tsx:71-169` — the `cva` base array, `.join(' ')`ed. (The range
+ * is wide because the array now carries three DECISION markers between its four entries; the
+ * entries themselves are `:74`, `:81`, `:113`, `:168`.)
  *
  * RE-DERIVE NOTE: a later plan that renames, adds or removes any token inside this literal OWNS
  * re-deriving it from `Button.tsx` at that time and recording both strings (old and new) in its own
  * summary. The named re-seeder in this phase is **plan 06** (wave 4), which rewrites this exact cva
  * base; plan 05 ARM B would trigger the same re-seed one wave earlier. Citing the line makes the
  * drift findable; it does not make the re-derive this file's job.
+ *
+ * RE-SEEDED Phase 88.6-06 (D-09 / D10), 2026-09-15 — this is the owned re-derive by the named
+ * re-seeder, not a finding. Plan 06 added `min-h-11` to the base and moved the hover half of the
+ * elevation pair onto the `enabled-hover` custom variant. Both strings, measured by running the
+ * live `buttonVariants` and the expectation below:
+ *   PRE  base: btn shadow-theme-sm hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2
+ *   POST base: btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 min-h-11
+ *   PRE  merged: btn hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 shadow-theme-lg enabled-hover:shadow-theme-lg
+ *   POST merged: btn focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 min-h-11 shadow-theme-lg enabled-hover:shadow-theme-lg
+ * THE MERGED DELTA IS THE POINT, and it is a MEASUREMENT, not a prediction: the base's hover token
+ * no longer survives the merge, because it is now in the SAME variant scope as the caller's pin and
+ * `tailwind-merge` de-dupes the pair. That is exactly the property UI-SPEC §3.4 rule 2 requires
+ * (amended 2026-09-09, D10/D42) and the reason a bare `hover:` on the pin side is rejected: before
+ * this plan the two tokens were in different scopes and BOTH survived, so a call site pinning
+ * `shadow-theme-lg` still shrank to `md` on hover.
  */
 const BUTTON_CVA_BASE =
-  'btn shadow-theme-sm hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
+  'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 min-h-11';
 
 /**
  * SOURCE: `src/app/components/Modal.tsx:322` (`const ACTION_CLASS`), emitted by `ModalAction` as
@@ -103,7 +120,7 @@ describe('primitive merges are byte-identical across the tailwind-merge bump', (
     expect(
       cn(BUTTON_CVA_BASE, 'shadow-theme-lg enabled-hover:shadow-theme-lg')
     ).toBe(
-      'btn hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 shadow-theme-lg enabled-hover:shadow-theme-lg'
+      'btn focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 min-h-11 shadow-theme-lg enabled-hover:shadow-theme-lg'
     );
   });
 
@@ -168,9 +185,12 @@ describe('the custom-named token families de-dupe pairwise, last-wins', () => {
   });
 
   it('min-w-11 / min-w-0 — the WIDTH axis of the two-axis icon floor', () => {
-    // `Button.tsx:94` is `icon: 'min-h-11 min-w-11 p-0'`; the `min-w` half is what makes
-    // `size="icon"` a square rather than a lozenge, and plan 06 keeps that rung as
-    // `'min-h-11 min-w-11'`. Seeding only the `min-h-*` axis would leave the width axis
+    // At seeding time `Button.tsx:94` read `icon: 'min-h-11 min-w-11 p-0'`; the `min-w` half is
+    // what floors `size="icon"` in WIDTH. RE-DERIVED 2026-09-15: plan 06 landed and the rung is
+    // now `icon: 'min-h-11 min-w-11'` (`Button.tsx:246`) — the zero-padding utility was dead
+    // (`.btn` is unlayered) and was deleted, so the shipped control is a lozenge, not a square;
+    // that is the PRESERVED look, per the `DECISION Phase 88.6-06 (C.1 / D-09)` marker.
+    // Seeding only the `min-h-*` axis would leave the width axis
     // unmeasured in the one plan whose entire purpose is a measured before/after.
     // No regression is predicted — this is coverage of the measurement.
     expect(cn('min-w-11', 'min-w-0')).toBe('min-w-0');
