@@ -228,6 +228,86 @@ function guardGround(label: string, m: Measurement): void {
   expect(m.probe.opaqueAt, describeGround(label, resolution)).toBeGreaterThanOrEqual(0);
 }
 
+/**
+ * Split a computed `box-shadow` into its LAYERS on TOP-LEVEL commas only.
+ *
+ * Stated at plan altitude in `88.6-05-PLAN.md` because it is load-bearing: a naive
+ * `value.split(',')` shatters `rgba(0, 0, 0, 0)` into four fragments, and the per-layer loop
+ * below then either throws on the fragments or — worse — passes vacuously on them. Split at
+ * depth zero, outside parentheses.
+ */
+function shadowLayers(value: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of value) {
+    if (ch === '(') depth += 1;
+    else if (ch === ')') depth -= 1;
+    if (ch === ',' && depth === 0) {
+      out.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim().length > 0) out.push(current.trim());
+  return out;
+}
+
+/**
+ * N1 (Phase 88.6-05) — the RENDERED `--shadow-sm` revert detector, asserted TWO-SIDEDLY.
+ *
+ * These two pins used to read `.toBe('none')`, and that held ONLY because of a defect: the bare
+ * `none` keyword is invalid-at-computed-value-time inside Tailwind's composite `box-shadow` list,
+ * so it poisoned the whole list — including the layer `focus-visible:ring-2` writes into, which is
+ * why every default `<Button>` shipped with no visible focus ring at rest (Chromium-verified
+ * 2026-09-09). `--shadow-sm` now holds `0 0 #0000`, so the composite is valid and computes an
+ * all-transparent layer list; the one-sided equality would red on a CORRECT implementation.
+ *
+ * RE-EXPRESSED, NOT WIDENED, AND STRICTLY TIGHTER THAN WHAT IT REPLACES. Each pin now reds on BOTH
+ * failure modes:
+ *   - the computed value IS the bare keyword `none` — the exact signature of a `--shadow-sm`
+ *     revert, which silently re-annihilates every default `<Button>`'s focus ring;
+ *   - any parsed layer actually PAINTS — Req 3, archetype A: nothing renders at rest.
+ * The obvious repair, "accept the keyword OR an all-transparent list", is explicitly NOT taken: it
+ * whitelists the exact broken state the pin exists to catch, and plan 12's proof 2 is the RING
+ * proof and carries no bare-keyword comparison — so these two pins are the tree's ONLY rendered
+ * guard against that revert. Loosening either half is a decision, not a cleanup.
+ */
+function expectRestingShadowIsInvisibleButValid(raw: string, label: string): void {
+  const value = raw.trim();
+
+  expect(
+    value,
+    `${label}: the computed \`box-shadow\` is the bare keyword \`none\`. That is the signature of ` +
+      'a `--shadow-sm` revert (globals.css declares it in light and in the `.dark` block), and ' +
+      "the keyword is INVALID inside Tailwind's composite `box-shadow` list — it annihilates every " +
+      "default `<Button>`'s focus-visible ring. Archetype A wants a shadow that PAINTS nothing, " +
+      'not the absence of a shadow property. Re-expressed under N1 (Chromium-verified 2026-09-09); ' +
+      'loosening this half is a decision, not a cleanup.'
+  ).not.toBe('none');
+
+  for (const layer of shadowLayers(value)) {
+    const alpha = /rgba?\(([^)]*)\)/i.exec(layer);
+    const parts = alpha ? alpha[1].replace(/\//g, ' ').split(/[\s,]+/).filter(Boolean) : [];
+    const opacity = parts.length >= 4 ? Number(parts[3]) : 1;
+    expect(
+      opacity,
+      `${label}: the resting shadow layer \`${layer}\` is not transparent (alpha ${opacity}). ` +
+        'Req 3 / archetype A puts the depth in the PAGE tone; a resting card paints no shadow.'
+    ).toBe(0);
+
+    const lengths = layer.replace(/rgba?\([^)]*\)/gi, '').match(/-?\d*\.?\d+px/g) ?? [];
+    for (const length of lengths) {
+      expect(
+        parseFloat(length),
+        `${label}: the resting shadow layer \`${layer}\` has a non-zero length (${length}) — ` +
+          'offset, blur and spread must all be zero so nothing paints at rest (Req 3).'
+      ).toBe(0);
+    }
+  }
+}
+
 /** Assert one ratio against a floor, with the ground chain in the failure message. */
 function expectRatio(label: string, m: Measurement, floor: number): void {
   guardGround(label, m);
@@ -439,10 +519,10 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // `tailwind-v4-styles.spec.ts:37-40` policy. `hover:shadow-theme-md` is inert on this
       // project (see the hover note at the top), so what is measured here IS the rest state.
       const probe = await probeElement(card, ['box-shadow']);
-      expect(
-        probe.computed['box-shadow'].raw.trim(),
-        'home card (Req 3): archetype A puts the depth in the PAGE, so the resting shadow is gone. A shadow here means --shadow-sm stopped being `none`.'
-      ).toBe('none');
+      expectRestingShadowIsInvisibleButValid(
+        probe.computed['box-shadow'].raw,
+        'home card (Req 3, light)'
+      );
     });
 
     await test.step('surface 3 — Req 2: the card border is a hairline, not a wireframe', async () => {
@@ -952,10 +1032,14 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
     const card = fixtureCard(page);
     await expect(card).toBeVisible({ timeout: 15_000 });
     const probe = await probeElement(card, ['box-shadow']);
-    expect(
-      probe.computed['box-shadow'].raw.trim(),
-      'home card (Req 3, dark): `--shadow-sm` is `none` in BOTH themes (globals.css:882 and :1146).'
-    ).toBe('none');
+    // ⚠ STALE CITATION CORRECTED, Phase 88.6-05: this message used to cite `globals.css:882 and
+    // :1146`. Re-derived 2026-09-15, the two `--shadow-sm` declarations are at `globals.css:1361`
+    // (light `:root`) and `:1765` (the `.dark` block). Both now hold `0 0 #0000` rather than the
+    // bare keyword — see the helper's docblock for why the shape of this pin changed.
+    expectRestingShadowIsInvisibleButValid(
+      probe.computed['box-shadow'].raw,
+      'home card (Req 3, dark) — `--shadow-sm` paints nothing in BOTH themes (globals.css:1361 light, :1765 dark)'
+    );
   });
 
   test('create-event scheduler: the today number and the nested block hold in dark', async ({ page }) => {
