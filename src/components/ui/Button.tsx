@@ -59,6 +59,35 @@ const buttonVariants = cva(
     'shadow-theme-sm hover:shadow-theme-md',
     // §7.2 ring. `focus:outline-hidden` keeps a transparent outline for forced-colors
     // mode instead of `outline-none`, which removes it outright.
+    /* DECISION Phase 88.6-05 (A-2): THIS LINE IS THE FOCUS RING'S ONE HOME for the whole
+       `.btn` family. Owner ruling 2026-09-15, ARM A.
+
+       REJECTED — ARM B: one global `.btn:focus-visible { outline: 2px solid var(--ring) }`
+       rule in globals.css, with these three utilities and the nine per-site ring strings
+       deleted. It is what the record named (88.6-CONTEXT D-09 and `88.6-SPEC.md` R2 both say
+       "ONE global `.btn:focus-visible` rule replaces the per-site strings"), and it was
+       rejected on the merits with the record amended through plan 46's amendment table
+       (row 14) — classified BOOKKEEPING: nothing breaks if it is not honoured and its whole
+       cost is one SPEC line.
+
+       WHY ARM A WON. After this phase every `.btn` element is a `Button` except the two
+       `BrowseMoreModal` exemption steppers, so a global CSS rule would be a SECOND expression
+       of one decision — and if it were ever added WITHOUT deleting these utilities, two
+       independent rings would paint, because a CSS `outline` and a Tailwind `ring-*`
+       box-shadow are different properties and neither suppresses the other. Expressing it
+       here also keeps it inside the primitive, where `cn()`'s last-wins lets a call site
+       override it; an unlayered global rule cannot be overridden per call site at all.
+
+       ROUTED, not ignored: the two `BrowseMoreModal` steppers (`BrowseMoreModal.js:232`,
+       `:270`) carry no focus string of their own, so under ARM A they stay on the browser
+       default outline (no AA violation — the UA outline satisfies WCAG 2.4.7; the gap is
+       consistency) until plan 32 gives them the house string in its `ring-inset` form, per
+       the owner's AC-10 ruling of 2026-09-09.
+
+       GATED: `src/app/cascadeOrder.test.ts` asserts exactly ONE of the two mechanisms exists
+       — both-present and both-absent each red — over a CLOSED, ENUMERATED list of ten
+       `.btn`-family ring holders on comment-stripped source. Deleting this line, or adding
+       the global rule beside it, is a decision, not a cleanup. */
     'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2',
   ].join(' '),
   {
