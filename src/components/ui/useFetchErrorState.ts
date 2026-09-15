@@ -118,7 +118,24 @@ function deriveCode(error: unknown): FetchErrorCode {
 }
 
 export interface FetchErrorMessageOptions {
-  /** Copy used when the failure carries no `ApiError.code` (i.e. `unknown`). */
+  /**
+   * Copy used when the failure carries no `ApiError.code` (i.e. `unknown`).
+   *
+   * This applies ONLY when the resolved code is `unknown` — see `:171`, the
+   * `code === 'unknown' && options.fallback` gate. A `forbidden` or a
+   * `conflict` error resolves through `MESSAGE_BY_CODE` and ignores `fallback` entirely —
+   * which is deliberate: the register's strings are ratified copy and a caller-supplied
+   * string must not be able to shadow them.
+   *
+   * DECISION Phase 88.6-14 (D-33): renaming this to `unknownFallbackMessage` was considered
+   * and REJECTED as churn across every call site (`OpenPollsList.js:103-119` and its
+   * siblings across the R1 sweeps) for no behaviour change — and it would put a rename
+   * inside the same waves as a behaviour migration. The narrowing is documented here
+   * instead, and pinned by `useFetchErrorState.test.tsx`'s `fallback`-only-when-`unknown`
+   * assertion. The sibling spelling `UseFetchErrorStateOptions.fallbackMessage` (`:198`)
+   * carries the same record so the two cannot drift. Changing this is a decision, not a
+   * cleanup.
+   */
   fallback?: string;
   /** Per-code copy overrides for a surface-specific outcome (e.g. `validation`). */
   byCode?: Partial<Record<FetchErrorCode, string>>;
@@ -156,7 +173,28 @@ export function getFetchErrorMessage(
 }
 
 export interface UseFetchErrorStateOptions {
-  /** Override the derived copy (e.g. a surface-specific message). */
+  /**
+   * Copy used when the failure carries no `ApiError.code` (i.e. `unknown`).
+   *
+   * NOT a general override, despite the name. This applies ONLY when the resolved code is
+   * `unknown` (see `:171`, reached via `getFetchErrorMessage`'s `fallback`). A `forbidden`
+   * or `conflict` error resolves through `MESSAGE_BY_CODE` and ignores `fallbackMessage`
+   * entirely — which is deliberate: the register's strings are ratified copy and a
+   * caller-supplied string must not be able to shadow them.
+   *
+   * DECISION Phase 88.6-14 (D-33, closing the 2026-07-09 todo from the phase 87.2 code
+   * review IN-10): this docblock previously read "Override the derived copy (e.g. a
+   * surface-specific message)", which describes a general override this option has never
+   * been. Renaming it to `unknownFallbackMessage` was considered and REJECTED as churn
+   * across every call site (`OpenPollsList.js:103-119` and its siblings across the R1
+   * sweeps) for no behaviour change — and it would put a rename inside the same waves as a
+   * behaviour migration. The narrowing is documented here instead, and pinned by
+   * `useFetchErrorState.test.tsx`'s `fallback`-only-when-`unknown` assertion. The sibling
+   * spelling `FetchErrorMessageOptions.fallback` (`:139`) carries the same record so the two
+   * cannot drift. The body comment at `:214-216` says the same thing, but a caller reading
+   * this exported interface never sees it — it is not a substitute for this docblock.
+   * Changing this is a decision, not a cleanup.
+   */
   fallbackMessage?: string;
 }
 
