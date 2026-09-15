@@ -49,27 +49,101 @@
  *
  * "Headings only" still holds. The 57-heading / 35-file residual census (DEF-88-24-03)
  * remains 88-31's; this is one file, added because 88-29 fixed it.
+ *
+ * ============================================================================
+ * AMENDED Phase 88.6-11 — WIDENED FROM FIVE SURFACES TO ALL OF `src/`
+ * ============================================================================
+ * Everything above is KEPT as the 88-24 / 88-29 charter and is still accurate. What
+ * changed: this suite is the gate that measures the largest sweep in Phase 88.6 (135 raw
+ * headings across 43 files), and at five surfaces it could not see the tree it was about
+ * to measure. Four scanner defects were fixed in the same pass, because each of them
+ * moves the count and fixing them one at a time produces an intermediate state where a
+ * number is wrong for two reasons at once:
+ *
+ *  1. COMMENTS WERE COUNTED. `headings()` read raw source. `not-found.tsx:22,25,26` and
+ *     `userProfile/page.js:1434,1439` carry heading tags inside prose. Now read through
+ *     `withoutComments` (`src/test-utils/sourceScan.ts`).
+ *  2. ARBITRARY VALUES WERE INVISIBLE. Neither size regex had a `text-[…]` clause, so
+ *     `grouplist.js:455`'s `text-[1.1rem]` and the sub-12px fold's 30 sites read as
+ *     "no size utility at all" or as nothing.
+ *  3. PROP-RENDERED LEVELS WERE INVISIBLE. A heading level passed as a prop
+ *     (`headingLevel="h5"`) renders a real `<h5>` no source scan for `<hN>` can see —
+ *     and once Phase 88.6 migrates ~135 headings onto the `<Heading>` primitive there
+ *     are no raw tags left, so P4's before==after level pin would be trivially true and
+ *     would pass over a real level change.
+ *  4. CLASS-LESS HEADINGS WERE SKIPPED. `HEADING_RE` required `className=`.
+ *     `global-error.tsx:66` is a class-less `<h1>` — a PERMANENT roster entry, not a
+ *     blind spot.
+ *
+ * Defects 1 and 4 are COUPLED: dropping the `className=` guard is what makes a bare
+ * heading tag in prose match, so comment stripping is what keeps the raw census at 135
+ * rather than 151. Fixing either alone produces a wrong number.
+ *
+ * THE KEY SPACE — ONE, canonical, and load-bearing
+ * ------------------------------------------------
+ * Every scanned file, `PAGE_SURFACES`, `REVIEWS_HEADING` and every exemption roster key
+ * is a `src/`-relative POSIX path (`app/gameDetail/page.js`,
+ * `components/ui/ErrorFallback.tsx`). Before this widening the scanner keyed headings by
+ * an APP-relative surface string and both predicates compared against it. Widening the
+ * enumeration to a different key space without converting them would silently empty
+ * both — the Display filter would match nothing and its assertion would pass over zero
+ * subjects. The `src/`-relative form is also the form `ExemptionRoster` documents
+ * (`src/test-utils/exemption.ts:83-87`), so rosters and scanner results join directly.
+ *
+ * BUILD ONCE (AC-11, owner ruling 2026-09-09)
+ * -------------------------------------------
+ * The tree is enumerated, read and comment-stripped EXACTLY ONCE at module scope, and
+ * every assertion consumes that one constant. The shipped idiom in all three reference
+ * suites is build-once (`controlSizeFloor.test.tsx:172`, `nativeDialogs.test.ts:115-117`,
+ * and this file's own `const ALL = …` before the widening). Moving the walk inside the
+ * assertions would cost ~10 full reads of a 192-file tree per run. Adding a cache to
+ * `src/test-utils/sourceScan.ts` to get the same effect is FORBIDDEN this phase (AC-12,
+ * `88.6-PLAN-REVIEW-work/RULINGS.md`, "no shared-module cache this phase"), so the hoist
+ * is the only sanctioned mechanism.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-const APP = path.resolve(__dirname, '.');
+import {
+  assertExactCounts,
+  assertRosterShape,
+  type ExemptionRoster,
+} from '../test-utils/exemption';
+import { lineAt, sourceFiles, withoutComments } from '../test-utils/sourceScan';
+
+const SRC = path.resolve(__dirname, '..');
+
+/** Absolute path -> the ONE canonical key space: `src/`-relative, POSIX separators. */
+function keyOf(absolute: string): string {
+  return path.relative(SRC, absolute).split(path.sep).join('/');
+}
 
 /**
  * The four PAGE surfaces 88-24 touched. Kept as its own list because one assertion below
  * — the 30/700 Display h1 — is a rule about PAGE TITLES specifically and must not reach a
  * primitive. See the amendment on that test.
+ *
+ * AMENDED Phase 88.6-11: re-expressed in the canonical `src/`-relative key space in the
+ * same edit that widened the enumeration. See "THE KEY SPACE" in the file docblock.
  */
 const PAGE_SURFACES = [
-  'gameDetail/page.js',
-  'groupHomePage/page.js',
-  'userProfile/page.js',
-  'friends/page.js',
+  'app/gameDetail/page.js',
+  'app/groupHomePage/page.js',
+  'app/userProfile/page.js',
+  'app/friends/page.js',
 ] as const;
 
-const SURFACES = [
+/**
+ * The five NAMED surfaces this suite covered before Phase 88.6-11 widened it.
+ *
+ * AMENDED Phase 88.6-11: this list is NOT dead after the widening. One assertion — the
+ * per-surface at-least-one heading floor — deliberately keeps its per-surface half here.
+ * See the comment at that assertion for why pointing it at the whole tree turns it into
+ * "every one of the 192 enumerated files contains a heading", which is red on day one.
+ */
+const NAMED_SURFACES = [
   ...PAGE_SURFACES,
   // AMENDED Phase 88-29 (DEF-88-19-03), original four KEPT AS THE 88-24 CHARTER above:
   // a FIFTH surface, and deliberately not one of 88-24's pages. `ErrorFallback` is a
@@ -82,25 +156,80 @@ const SURFACES = [
   // needing per-site decisions — marketing display type, the four legal-page `text-4xl`
   // titles, the `text-sm font-semibold` eyebrow labels). That stays 88-31's. This one file
   // is here because 88-29 fixed it, and a fix with no pin is a fix that comes undone.
-  '../components/ui/ErrorFallback.tsx',
+  'components/ui/ErrorFallback.tsx',
 ] as const;
 
-/** §4.1's working set, as Tailwind utilities: 14 / 16 / 20 / 30. */
-const IN_SET_SIZE = /\btext-(sm|base|xl|3xl)\b/;
-/** Anything outside it that has actually appeared on these surfaces. */
-const OUT_OF_SET_SIZE = /\b(?:[a-z]+:)?text-(lg|2xl|4xl|5xl|6xl)\b/;
+/**
+ * §4.1's working set, as Tailwind utilities: 14 / 16 / 20 / 30.
+ *
+ * DO NOT ADD `xs` HERE. These assertions are HEADING-scoped, and admitting `text-xs`
+ * would legalize the two live `text-xs` `<h4>`s at `app/components/CalendarListView.js:609`
+ * and `:646` — the exact sites UI-SPEC §1.2 row V-5 (`88.6-UI-SPEC.md:111`, "h4 12px →
+ * 14px") exists to move UP. 12px is the tree-wide FLOOR (task 2's sub-12px arbitrary-value
+ * fold enforces it) and the `caption` rung lives on NON-heading elements only — UI-SPEC
+ * §4.6 (`88.6-UI-SPEC.md:383`) states "No `caption` size — after §4.4 no heading renders at
+ * 12px". Adding a rung here is the "the set is missing a size" edit; it is not.
+ *
+ * It also does not match an ARBITRARY value: an arbitrary size is by definition off the
+ * rung set, so `text-[10px]` is an offender on both arms. `IN_SET_SIZE.test('text-[10px]')`
+ * is asserted false below.
+ */
+const IN_SET_SIZE = /\btext-(?:sm|base|xl|3xl)\b/;
 
 /**
- * `<h1..h6 … className="…">` or `className={`…`}`. The `[\s\S]{0,400}?` span is what
- * makes this multiline-tolerant — the plan's grep is line-based and several headings
- * on these surfaces put attributes on their own lines.
+ * Defect 2 (Phase 88.6-11). Anchored on the LITERAL `text-[`, deliberately: a looser
+ * arbitrary-value clause false-positives `app/groupHomePage/page.js:668`'s
+ * `[text-shadow:var(--t-shadow-l)]` (and its `dark:` twin, and the two
+ * `[-webkit-text-stroke:…]` utilities beside them) into `OUT_OF_SET_SIZE`, reddening a
+ * page title that is already on the 30/700 rung.
  */
-const HEADING_RE = /<h([1-6])\s[\s\S]{0,400}?className=\s*(?:"([^"]*)"|\{\s*`([\s\S]*?)`)/g;
+const ARBITRARY_SIZE = /\btext-\[[^\]\s]*\]/;
+
+/** Anything outside the working set. Includes `xs` (12) per the note on `IN_SET_SIZE`. */
+const OUT_OF_SET_SIZE = new RegExp(
+  `\\b(?:[a-z0-9-]+:)?text-(?:xs|lg|2xl|4xl|5xl|6xl|7xl|8xl|9xl)\\b|${ARBITRARY_SIZE.source}`,
+);
+
+/** A size utility that changes at a breakpoint — `md:text-3xl`, `max-md:text-base`. */
+const BREAKPOINT_SIZE = /\b[a-z0-9-]+:text-[a-z0-9[]/;
+
+/** §4.2's two weights. 600 and 500 are prohibitions outside `components/ui/Button.tsx`. */
+const OFF_SCALE_WEIGHT = /\bfont-(?:medium|semibold)\b/g;
+
+/**
+ * THE THREE KINDS OF SCANNED HEADING — one array, one field, and every assertion states
+ * which kinds it applies to.
+ *
+ *  - `raw`               — an `<hN>` tag written out in the source.
+ *  - `heading-primitive` — a `<Heading level={n}>` call site (the Phase 88.6 primitive,
+ *                          `src/components/ui/Heading.tsx`, plan 03).
+ *  - `prop-seam`         — a component call site passing a LITERAL heading level down
+ *                          (`headingLevel="h5"`, `rowHeadingLevel="h6"`).
+ *
+ * Two values would not be enough: the two non-raw kinds behave OPPOSITELY over the phase.
+ * The `prop-seam` population is FIXED at five and stays fixed; the `heading-primitive`
+ * population starts at zero and grows with every migrating sweep. A single combined
+ * non-raw floor would be green forever, satisfied by the five immovable seams alone —
+ * which is exactly the vacuous-gate shape this suite exists to prevent. They are floored
+ * SEPARATELY below.
+ */
+type HeadingKind = 'raw' | 'heading-primitive' | 'prop-seam';
 
 interface Heading {
+  /** The canonical `src/`-relative key. */
   surface: string;
   level: number;
   line: number;
+  /**
+   * The LITERAL className on the heading's own opening tag, `${…}` interpolations
+   * blanked. An interpolated constant is invisible here ON PURPOSE — see the
+   * `app/groupHomePage/page.js:467-478` DECISION quoted at `readClassName` below.
+   *
+   * For a `prop-seam` this is the className of the COMPONENT CALL SITE, not of the
+   * heading element the component renders internally. It is included rather than
+   * blanked because `text-*` INHERITS: a size utility written on the wrapper really
+   * does reach the heading. It is empty at all five shipped seams.
+   */
   className: string;
   /**
    * The heading's literal inner text, with JSX expressions blanked. Added
@@ -108,41 +237,244 @@ interface Heading {
    * class it is supposed to be asserting — a predicate that matched on `text-2xl`
    * silently stops matching the moment the heading is converged, which is exactly
    * how the old exemption count could have gone vacuous.
+   *
+   * AMENDED Phase 88.6-11: the extractor closes on `</Heading>` as well as `</hN>`, so
+   * the Reviews pin survives that heading migrating onto the primitive. Empty for a
+   * `prop-seam` — the text lives inside the component.
    */
   text: string;
+  kind: HeadingKind;
 }
 
-function headings(surface: string): Heading[] {
-  const text = fs.readFileSync(path.join(APP, surface), 'utf8');
+/** A level expression the scanner refuses to resolve. See `PROP_SEAM_EXPRESSION`. */
+interface SkippedLevel {
+  surface: string;
+  line: number;
+  snippet: string;
+}
+
+const RAW_OPEN = /<h([1-6])(?=[\s/>])/g;
+const PRIMITIVE_OPEN = /<Heading(?=[\s/>])/g;
+
+/**
+ * A LITERAL heading-level prop on a component call site. `=` must follow the prop name
+ * with NO whitespace, which is what tells a JSX attribute (`headingLevel="h5"`) apart
+ * from a destructured DEFAULT (`headingLevel = 'h4'` at
+ * `app/components/CalendarListView.js:849`). A default is not a call site and counting it
+ * would double-count every `DateGroup` the file renders.
+ */
+const PROP_SEAM_LITERAL =
+  /\b(headingLevel|rowHeadingLevel)=(?:"(h[1-6])"|'(h[1-6])'|\{\s*['"](h[1-6])['"]\s*\})/g;
+
+/**
+ * A NON-LITERAL heading-level prop. SKIPPED BY RULE, and that is a mandate rather than
+ * caution — for two verified reasons.
+ *
+ * First, `EXPECTED_LEVELS` is a per-file per-LEVEL record, so an expression has no
+ * representable value: "count it" has nowhere to be written.
+ *
+ * Second, resolving it produces a WRONG number. `app/components/CalendarListView.js:866`
+ * is `headingLevel={rowHeadingLevel}`; resolving it from `EventRow`'s own `'h5'` default
+ * (`:889`) would record an h5 while BOTH real call sites pass `rowHeadingLevel="h6"`
+ * (`:632`, `:657`) — a level the DOM never renders, double-counted onto a chain whose two
+ * ends are already counted.
+ *
+ * Do not "improve" this into a resolver. Skipped sites are enumerated and asserted, so a
+ * new one is visible rather than silent.
+ */
+const PROP_SEAM_EXPRESSION = /\b(?:headingLevel|rowHeadingLevel)=\{(?!\s*['"])/g;
+
+/** `level={2}` or `level="2"`, anywhere in the opening tag (attribute-order agnostic). */
+const LEVEL_LITERAL = /\blevel=\s*(?:\{\s*([1-6])\s*\}|"([1-6])")/;
+const LEVEL_PRESENT = /\blevel=/;
+
+/**
+ * The className literal. DELIBERATELY literal-only.
+ *
+ * `app/groupHomePage/page.js:467-478` carries a shipped DECISION that writes eight
+ * arbitrary-property utilities out LITERALLY on each element *because* this suite reads
+ * the h1's className literal — "an interpolated constant is invisible to both, so hoisting
+ * would silently disarm two gates". A matcher that resolved identifiers would void that
+ * decision as a side effect. CONSEQUENCE, not bookkeeping.
+ */
+const CLASSNAME_LITERAL =
+  /\bclassName=\s*(?:"([^"]*)"|'([^']*)'|\{\s*`([\s\S]*?)`\s*\})/;
+
+/**
+ * Read a JSX opening tag from `<` to its matching `>`, brace-balanced and string-aware.
+ *
+ * Replaces the shipped `[\s\S]{0,400}?` span, which could not tell a `>` inside an
+ * expression attribute from the end of the tag and silently truncated long tags.
+ */
+function readOpenTag(src: string, start: number): { text: string; end: number } | null {
+  let i = start;
+  let depth = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '"' || c === "'" || c === '`') {
+      const q = c;
+      i += 1;
+      while (i < src.length) {
+        if (src[i] === '\\') {
+          i += 2;
+          continue;
+        }
+        if (src[i] === q) break;
+        if (q !== '`' && src[i] === '\n') break;
+        i += 1;
+      }
+      i += 1;
+      continue;
+    }
+    if (c === '{') {
+      depth += 1;
+    } else if (c === '}') {
+      depth -= 1;
+    } else if (c === '>' && depth === 0) {
+      return { text: src.slice(start, i + 1), end: i + 1 };
+    }
+    i += 1;
+  }
+  return null;
+}
+
+function readClassName(tag: string): string {
+  const m = CLASSNAME_LITERAL.exec(tag);
+  // Interpolations are conditional branches (gameDetail's game title uses one for
+  // line-clamping); the statically-applied classes are what the scale governs.
+  return (m?.[1] ?? m?.[2] ?? m?.[3] ?? '').replace(/\$\{[\s\S]*?\}/g, ' ');
+}
+
+function readInnerText(src: string, from: number, closers: string[]): string {
+  const window = src.slice(from, from + 1200);
+  let best = -1;
+  for (const closer of closers) {
+    const at = window.indexOf(closer);
+    if (at >= 0 && (best < 0 || at < best)) best = at;
+  }
+  if (best < 0) return '';
+  return window
+    .slice(0, best)
+    .replace(/\{[\s\S]*?\}/g, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+/** Walk back to the opening `<` of the tag containing `at`, or -1. */
+function enclosingTagStart(src: string, at: number): number {
+  for (let i = at; i >= 0; i -= 1) {
+    if (src[i] === '>') return -1;
+    if (src[i] === '<' && /[A-Za-z]/.test(src[i + 1] ?? '')) return i;
+  }
+  return -1;
+}
+
+/**
+ * Scan ONE comment-stripped source text for all three kinds of heading.
+ *
+ * Exported shape note: this takes the STRIPPED text, never raw source. Every caller in
+ * this file — including the in-file fixtures — goes through `withoutComments` first.
+ */
+function scanHeadings(surface: string, stripped: string, skipped: SkippedLevel[]): Heading[] {
   const out: Heading[] = [];
-  HEADING_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = HEADING_RE.exec(text)) !== null) {
-    const level = Number(match[1]);
-    // Inner text: from the end of the open tag to the matching close tag. `{…}`
-    // expressions are blanked — `Reviews ({reviews.length})` must read as "Reviews"
-    // so a pin can name the heading without depending on runtime data.
-    const inner =
-      text
-        .slice(match.index, match.index + 1200)
-        .match(new RegExp(`>([\\s\\S]*?)</h${level}>`))?.[1] ?? '';
+
+  RAW_OPEN.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = RAW_OPEN.exec(stripped)) !== null) {
+    const level = Number(m[1]);
+    const tag = readOpenTag(stripped, m.index);
     out.push({
       surface,
       level,
-      line: text.slice(0, match.index).split('\n').length,
-      // Interpolations are conditional branches (gameDetail's game title uses one for
-      // line-clamping); the statically-applied classes are what the scale governs.
-      className: (match[2] ?? match[3] ?? '').replace(/\$\{[\s\S]*?\}/g, ' '),
-      text: inner.replace(/\{[\s\S]*?\}/g, ' ').replace(/\s+/g, ' '),
+      line: lineAt(stripped, m.index),
+      className: tag ? readClassName(tag.text) : '',
+      text: readInnerText(stripped, tag?.end ?? m.index, [`</h${level}>`]),
+      kind: 'raw',
     });
   }
-  return out;
+
+  PRIMITIVE_OPEN.lastIndex = 0;
+  while ((m = PRIMITIVE_OPEN.exec(stripped)) !== null) {
+    const tag = readOpenTag(stripped, m.index);
+    if (!tag) continue;
+    const lit = LEVEL_LITERAL.exec(tag.text);
+    if (!lit) {
+      if (LEVEL_PRESENT.test(tag.text)) {
+        skipped.push({
+          surface,
+          line: lineAt(stripped, m.index),
+          snippet: tag.text.replace(/\s+/g, ' ').slice(0, 120),
+        });
+      }
+      continue;
+    }
+    const level = Number(lit[1] ?? lit[2]);
+    out.push({
+      surface,
+      level,
+      line: lineAt(stripped, m.index),
+      className: readClassName(tag.text),
+      text: readInnerText(stripped, tag.end, ['</Heading>']),
+      kind: 'heading-primitive',
+    });
+  }
+
+  PROP_SEAM_LITERAL.lastIndex = 0;
+  while ((m = PROP_SEAM_LITERAL.exec(stripped)) !== null) {
+    const level = Number((m[2] ?? m[3] ?? m[4]).slice(1));
+    const open = enclosingTagStart(stripped, m.index);
+    const tag = open >= 0 ? readOpenTag(stripped, open) : null;
+    out.push({
+      surface,
+      level,
+      line: lineAt(stripped, m.index),
+      className: tag ? readClassName(tag.text) : '',
+      text: '',
+      kind: 'prop-seam',
+    });
+  }
+
+  PROP_SEAM_EXPRESSION.lastIndex = 0;
+  while ((m = PROP_SEAM_EXPRESSION.exec(stripped)) !== null) {
+    skipped.push({
+      surface,
+      line: lineAt(stripped, m.index),
+      snippet: stripped.slice(m.index, m.index + 60).replace(/\s+/g, ' '),
+    });
+  }
+
+  return out.sort((a, b) => a.line - b.line);
 }
 
-const ALL = SURFACES.flatMap(headings);
+// ---------------------------------------------------------------------------
+// BUILD ONCE (AC-11). Enumerate, read and comment-strip the tree exactly here.
+// ---------------------------------------------------------------------------
+const FILES = sourceFiles(SRC).map((absolute) => ({
+  key: keyOf(absolute),
+  stripped: withoutComments(fs.readFileSync(absolute, 'utf8')),
+}));
+
+const SKIPPED_LEVELS: SkippedLevel[] = [];
+const ALL: readonly Heading[] = FILES.flatMap((f) => scanHeadings(f.key, f.stripped, SKIPPED_LEVELS));
+
+const BY_FILE = new Map<string, Heading[]>();
+for (const h of ALL) {
+  const bucket = BY_FILE.get(h.surface);
+  if (bucket) bucket.push(h);
+  else BY_FILE.set(h.surface, [h]);
+}
+const headings = (surface: string): Heading[] => BY_FILE.get(surface) ?? [];
+
+const RAW = ALL.filter((h) => h.kind === 'raw');
 
 function describeHeading(h: Heading): string {
-  return `h${h.level} ${h.surface}:${h.line} -> "${h.className.trim()}"`;
+  return `h${h.level} [${h.kind}] ${h.surface}:${h.line} -> "${h.className.trim()}"`;
+}
+
+function countByFile(hs: readonly Heading[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const h of hs) out[h.surface] = (out[h.surface] ?? 0) + 1;
+  return out;
 }
 
 /**
@@ -164,49 +496,669 @@ function describeHeading(h: Heading): string {
  * removed from the surface entirely (which would make the working-set test pass
  * vacuously). The replacement below asserts the converged heading positively, by
  * name.
+ *
+ * AMENDED Phase 88.6-11: re-expressed in the canonical key space, and the assertion now
+ * scans the WHOLE TREE rather than one file. Tree-wide plus exactly-one is strictly
+ * STRONGER than a one-file scan — it also reds if the heading MOVES surface, which a
+ * one-file scan reports as plain absence.
  */
 const REVIEWS_HEADING = (h: Heading) =>
-  h.surface === 'gameDetail/page.js' && /^Reviews\b/.test(h.text.trim());
+  h.surface === 'app/gameDetail/page.js' && /^Reviews\b/.test(h.text.trim());
 
-describe('Req 2 (CD-006): the heading type scale on 88-24\'s four touched surfaces + the ErrorFallback primitive (88-29)', () => {
-  it('finds headings on every one of the four surfaces (guards a scanner that silently matches nothing)', () => {
-    for (const surface of SURFACES) {
+// ---------------------------------------------------------------------------
+// SUPPLY / OVERRIDE / COUNTING — the raw/primitive split.
+//
+// DECISION Phase 88.6-11: every assertion below declares which `kind`s it applies to,
+// chosen OVER exempting `<Heading>` call sites wholesale from this suite. Two reasons the
+// wholesale exemption loses. (1) It disarms the OVERRIDE rules once ~135 headings migrate,
+// leaving the tree-wide rung gate covering only residual raw tags — a gate 31 plan files
+// name in a verify block, quietly reduced to nothing. (2) `cn` last-wins
+// (`88.6-03-PLAN.md:79`) makes a caller `text-2xl` on a `<Heading>` a REAL 24px override,
+// so a primitive call site is exactly as capable of breaking the scale as a raw tag.
+// Changing this back is a decision, not a cleanup.
+//
+//  - SUPPLY   rules are RAW-ONLY. Plan 03 puts the rung AND the weight inside the
+//             primitive (`88.6-03-PLAN.md:152-153`: the cva base is `font-bold`, the
+//             `size` variant supplies `text-3xl`/`text-xl`/`text-base`/`text-sm`), so a
+//             migrated call site's own className carries neither and would be a NEW
+//             offender on two rules while absent from a roster seeded from current
+//             violators. Each SUPPLY rule keeps a primitive-side arm so the property is
+//             PINNED rather than dropped: plan 03's `Heading.test.tsx` pins it there.
+//  - OVERRIDE rules cover ALL THREE kinds, per (2) above.
+//  - COUNTING floors cover ALL THREE kinds — pointing them at raw headings only would
+//    red them the moment the sweeps land.
+// ---------------------------------------------------------------------------
+
+/**
+ * The five LITERAL prop seams, enumerated so one appearing or disappearing is visible.
+ * Re-measured at this plan's commit.
+ */
+const EXPECTED_PROP_SEAMS = 5;
+
+/**
+ * The `heading-primitive` floor, asserted SEPARATELY from `prop-seam` so neither can be
+ * masked by the other.
+ *
+ * ZERO at this plan's commit: `src/components/ui/Heading.tsx` does not exist yet (plan 03
+ * creates it) and there are zero `<Heading` call sites in `src/`.
+ *
+ * THE RULE FOR SWEEPS: each migrating sweep RAISES this floor in the same commit as the
+ * migration it lands. An unchanged zero after a sweep wave is a RED, not a pass — that is
+ * the whole point of flooring it separately from the five immovable seams, which would
+ * otherwise satisfy a combined non-raw floor forever.
+ */
+const EXPECTED_MIN_PRIMITIVES = 0;
+
+/** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
+const MIN_ENUMERATED_FILES = 150;
+
+// ---------------------------------------------------------------------------
+// FIXTURES — the split is proven HERE, not discovered in wave 8.
+// ---------------------------------------------------------------------------
+const FIXTURE_COMPLIANT_PRIMITIVE = `
+  export const A = () => (
+    <Heading level={2} className="text-content-primary">Section</Heading>
+  );
+`;
+const FIXTURE_PRIMITIVE_CALLER_OVERRIDE = `
+  export const B = () => (
+    <Heading level={2} className="text-2xl text-content-primary">Loud</Heading>
+  );
+`;
+const FIXTURE_PRIMITIVE_PAGE_TITLE_OFF_RUNG = `
+  export const C = () => (
+    <Heading id="t" level={1} className="text-xl font-bold">Page</Heading>
+  );
+`;
+
+/**
+ * Defects 1 and 4's negative control, in one fixture because the two are COUPLED: the
+ * class-less `<h4>` is only reachable once `HEADING_RE`'s `className=` guard is gone, and
+ * once it is gone the three heading tags in prose become matches unless comments are
+ * stripped. Measured consequence of getting this wrong: the raw `<hN>` census reads 152
+ * across 46 files instead of 135 across 43.
+ */
+const FIXTURE_COMMENTS_AND_CLASSLESS = `
+  /* A block comment mentioning <h1> and <h2 className="text-2xl"> should count for nothing. */
+  // A line comment mentioning <h3> likewise.
+  export const D = () => (
+    <div>
+      {/* A JSX comment mentioning <h5> */}
+      <h4>Class-less, and still a heading</h4>
+      <h2 className="text-xl font-bold">Real</h2>
+    </div>
+  );
+`;
+
+function scanFixture(key: string, source: string): Heading[] {
+  return scanHeadings(key, withoutComments(source), []);
+}
+
+// ---------------------------------------------------------------------------
+// ROSTERS — seeded from a live comment-stripped run at this plan's commit.
+// ---------------------------------------------------------------------------
+
+/** Headings off the 4-size working set (both arms — see the assertion). */
+const RUNG_ROSTER: ExemptionRoster = {
+  'app/about/page.js': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h1:8 text-4xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/availability-form/[token]/page.js': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h1:238 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/BringSummary.js': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h3:97 no size utility) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/CalendarListView.js': {
+    sites: 4,
+    why: '4 headings off the 4-size working set (h3:478 text-lg; h3:505 text-lg; h4:607 text-xs; h4:646 text-xs) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/DangerZoneDeleteAccount.tsx': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h2:259 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/EventCalendar.js': {
+    sites: 2,
+    why: '2 headings off the 4-size working set (h2:171 text-2xl; h2:192 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/EventDayModal.js': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h4:360 no size utility) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/GroupGamesList.js': {
+    sites: 3,
+    why: '3 headings off the 4-size working set (h3:39 text-lg; h2:271 text-2xl; h2:335 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/GroupSettings.js': {
+    sites: 4,
+    why: '4 headings off the 4-size working set (h3:610 text-lg; h3:697 text-lg; h3:1019 text-lg; h3:1091 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/LandingPage.js': {
+    sites: 1,
+    why: 'Phase 88.9 W55 owns the landing hero block: 1 heading off the 4-size working set (h1:15 text-5xl md:text-6xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'owner', date: '2026-09-08', ruling: 'Phase 88.9 W55 owns the landing hero block\'s sizes' },
+  },
+  'app/components/ManageMembers.js': {
+    sites: 2,
+    why: '2 headings off the 4-size working set (h3:434 text-lg; h3:663 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/PromptScheduleManager.js': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h3:213 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/PromptScheduleReadOnly.js': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h3:46 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/ResponseDashboard.js': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h3:154 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/ScheduleList.js': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h3:91 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/UpcomingEventsCard.js': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h3:156 no size utility) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/grouplist.js': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h3:455 max-md:text-base) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/tutorial/simulated/ProblemSlide.js': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h2:14 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/global-error.tsx': {
+    sites: 1,
+    why: 'a class-less <h1> in the root error boundary, which must not import from src/components/ui/ — it is the last surface standing when the app has crashed',
+    owner: { kind: 'decision', marker: 'DECISION Phase 88-09 D-20' },
+  },
+  'app/goodbye/page.tsx': {
+    sites: 2,
+    why: '2 headings off the 4-size working set (h1:58 text-4xl; h1:91 text-4xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/groupPlanning/page.js': {
+    sites: 2,
+    why: '2 headings off the 4-size working set (h1:268 text-2xl md:text-3xl; h3:328 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/invite/game/[token]/page.js': {
+    sites: 2,
+    why: '2 headings off the 4-size working set (h1:238 text-2xl; h1:263 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/invite/group/[token]/page.js': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h1:148 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/privacy/page.js': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h1:8 text-4xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/restore/group/[token]/page.tsx': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h1:455 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/rsvp/[token]/page.js': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h1:149 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/terms/page.js': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h1:8 text-4xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/test-sentry/page.js': {
+    sites: 1,
+    why: '1 heading off the 4-size working set (h2:110 no size utility) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+};
+
+/** Headings carrying the prohibited 600 weight. */
+const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
+  'app/availability-form/[token]/page.js': {
+    sites: 2,
+    why: '2 headings carrying the prohibited 600 weight (h1:182, h1:206) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/BallotOptionsEditor.js': {
+    sites: 1,
+    why: '1 heading carrying the prohibited 600 weight (h3:9) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/BallotSection.js': {
+    sites: 6,
+    why: '6 headings carrying the prohibited 600 weight (h3:109, h3:147, h3:175, h3:192, h3:220, h3:238) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/BringSummary.js': {
+    sites: 1,
+    why: '1 heading carrying the prohibited 600 weight (h3:97) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/CalendarListView.js': {
+    sites: 4,
+    why: '4 headings carrying the prohibited 600 weight (h3:478, h3:505, h4:607, h4:646) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/CalendarMonthView.js': {
+    sites: 1,
+    why: '1 heading carrying the prohibited 600 weight (h3:193) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/EventDayModal.js': {
+    sites: 1,
+    why: '1 heading carrying the prohibited 600 weight (h4:360) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/FriendInvitePanel.js': {
+    sites: 3,
+    why: '3 headings carrying the prohibited 600 weight (h3:315, h3:445, h3:521) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/GroupGamesList.js': {
+    sites: 1,
+    why: '1 heading carrying the prohibited 600 weight (h3:39) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/GroupSettings.js': {
+    sites: 4,
+    why: '4 headings carrying the prohibited 600 weight (h3:610, h3:697, h3:1019, h3:1091) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/ManageMembers.js': {
+    sites: 2,
+    why: '2 headings carrying the prohibited 600 weight (h3:434, h3:663) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/PromptScheduleManager.js': {
+    sites: 1,
+    why: '1 heading carrying the prohibited 600 weight (h3:213) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/PromptScheduleReadOnly.js': {
+    sites: 1,
+    why: '1 heading carrying the prohibited 600 weight (h3:46) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/ResponseDashboard.js': {
+    sites: 1,
+    why: '1 heading carrying the prohibited 600 weight (h3:154) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/RsvpSection.js': {
+    sites: 1,
+    why: '1 heading carrying the prohibited 600 weight (h3:162) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/ScheduleList.js': {
+    sites: 1,
+    why: '1 heading carrying the prohibited 600 weight (h3:91) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/grouplist.js': {
+    sites: 1,
+    why: '1 heading carrying the prohibited 600 weight (h3:455) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/tutorial/simulated/ProblemSlide.js': {
+    sites: 1,
+    why: '1 heading carrying the prohibited 600 weight (h2:14) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/groupPlanning/page.js': {
+    sites: 1,
+    why: '1 heading carrying the prohibited 600 weight (h3:328) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/rsvp/[token]/page.js': {
+    sites: 2,
+    why: '2 headings carrying the prohibited 600 weight (h1:190, h1:220) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/test-sentry/page.js': {
+    sites: 1,
+    why: '1 heading carrying the prohibited 600 weight (h2:110) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+};
+
+/** RAW headings that do not state the 700 weight. */
+const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
+  'app/availability-form/[token]/page.js': {
+    sites: 2,
+    why: '2 raw headings not stating the 700 weight (h1:182 font-semibold; h1:206 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/BallotOptionsEditor.js': {
+    sites: 1,
+    why: '1 raw heading not stating the 700 weight (h3:9 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/BallotSection.js': {
+    sites: 6,
+    why: '6 raw headings not stating the 700 weight (h3:109 font-semibold; h3:147 font-semibold; h3:175 font-semibold; h3:192 font-semibold; h3:220 font-semibold; h3:238 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/BringSummary.js': {
+    sites: 1,
+    why: '1 raw heading not stating the 700 weight (h3:97 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/CalendarListView.js': {
+    sites: 4,
+    why: '4 raw headings not stating the 700 weight (h3:478 font-semibold; h3:505 font-semibold; h4:607 font-semibold; h4:646 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/CalendarMonthView.js': {
+    sites: 1,
+    why: '1 raw heading not stating the 700 weight (h3:193 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/EventDayModal.js': {
+    sites: 1,
+    why: '1 raw heading not stating the 700 weight (h4:360 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/FriendInvitePanel.js': {
+    sites: 3,
+    why: '3 raw headings not stating the 700 weight (h3:315 font-semibold; h3:445 font-semibold; h3:521 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/GroupGamesList.js': {
+    sites: 1,
+    why: '1 raw heading not stating the 700 weight (h3:39 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/GroupSettings.js': {
+    sites: 4,
+    why: '4 raw headings not stating the 700 weight (h3:610 font-semibold; h3:697 font-semibold; h3:1019 font-semibold; h3:1091 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/ManageMembers.js': {
+    sites: 2,
+    why: '2 raw headings not stating the 700 weight (h3:434 font-semibold; h3:663 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/PromptScheduleManager.js': {
+    sites: 1,
+    why: '1 raw heading not stating the 700 weight (h3:213 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/PromptScheduleReadOnly.js': {
+    sites: 1,
+    why: '1 raw heading not stating the 700 weight (h3:46 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/ResponseDashboard.js': {
+    sites: 1,
+    why: '1 raw heading not stating the 700 weight (h3:154 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/RsvpSection.js': {
+    sites: 1,
+    why: '1 raw heading not stating the 700 weight (h3:162 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/ScheduleList.js': {
+    sites: 1,
+    why: '1 raw heading not stating the 700 weight (h3:91 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/UpcomingEventsCard.js': {
+    sites: 1,
+    why: '1 raw heading not stating the 700 weight (h3:156 font-medium) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/grouplist.js': {
+    sites: 1,
+    why: '1 raw heading not stating the 700 weight (h3:455 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/components/tutorial/simulated/ProblemSlide.js': {
+    sites: 1,
+    why: '1 raw heading not stating the 700 weight (h2:14 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/global-error.tsx': {
+    sites: 1,
+    why: 'a class-less <h1> in the root error boundary, which must not import from src/components/ui/ — it is the last surface standing when the app has crashed',
+    owner: { kind: 'decision', marker: 'DECISION Phase 88-09 D-20' },
+  },
+  'app/groupPlanning/page.js': {
+    sites: 1,
+    why: '1 raw heading not stating the 700 weight (h3:328 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/rsvp/[token]/page.js': {
+    sites: 2,
+    why: '2 raw headings not stating the 700 weight (h1:190 font-semibold; h1:220 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/test-sentry/page.js': {
+    sites: 1,
+    why: '1 raw heading not stating the 700 weight (h2:110 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+};
+
+/** Headings whose size changes at a breakpoint. */
+const BREAKPOINT_ROSTER: ExemptionRoster = {
+  'app/components/LandingPage.js': {
+    sites: 1,
+    why: 'Phase 88.9 W55 owns the landing hero block: 1 heading whose size changes at a breakpoint (h1:15 text-5xl md:text-6xl) — a heading that changes size at a breakpoint is a SECOND scale; pick ONE rung from the working set',
+    owner: { kind: 'owner', date: '2026-09-08', ruling: 'Phase 88.9 W55 owns the landing hero block\'s sizes' },
+  },
+  'app/components/grouplist.js': {
+    sites: 1,
+    why: '1 heading whose size changes at a breakpoint (h3:455 max-md:text-base) — a heading that changes size at a breakpoint is a SECOND scale; pick ONE rung from the working set',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+  'app/groupPlanning/page.js': {
+    sites: 1,
+    why: '1 heading whose size changes at a breakpoint (h1:268 text-2xl md:text-3xl) — a heading that changes size at a breakpoint is a SECOND scale; pick ONE rung from the working set',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
+  },
+};
+
+/**
+ * A heading is on the DISPLAY rung (30/700) if it says so in its own className (raw) or
+ * gets it from the primitive's `size` variant without a caller override
+ * (`heading-primitive`). The primitive arm is what stops the Display rule being deleted
+ * by the migration — the four `PAGE_SURFACES` hold their page titles as raw h1s today and
+ * hold ZERO once plans 17, 18, 19 and 21 migrate them, so a raw-only rule reds either way.
+ */
+const isDisplayRung = (h: Heading) =>
+  h.kind === 'heading-primitive'
+    ? !OUT_OF_SET_SIZE.test(h.className) && !/\btext-(?:sm|base|xl)\b/.test(h.className)
+    : /\btext-3xl\b/.test(h.className);
+
+/** The 20px section-heading rung, in raw form or through the primitive. */
+const isSectionRung = (h: Heading) =>
+  h.kind === 'heading-primitive'
+    ? !OUT_OF_SET_SIZE.test(h.className) && !/\btext-(?:sm|base|3xl)\b/.test(h.className)
+    : /\btext-xl\b/.test(h.className);
+
+/** 700, in raw form or from the primitive's cva base (plan 03, `88.6-03-PLAN.md:152`). */
+const isBoldWeight = (h: Heading) =>
+  h.kind === 'heading-primitive' ? !/\bfont-(?:medium|semibold|normal)\b/.test(h.className) : /\bfont-bold\b/.test(h.className);
+
+describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `src/`', () => {
+  it('enumerates the tree, and every roster in this file has valid provenance', () => {
+    // Anti-vacuity. 194 files at this plan's commit; the floor is deliberately slack so
+    // adding a component is not a red build, and tight enough that an enumeration that
+    // silently walks the wrong root reds.
+    expect(
+      FILES.length,
+      'sourceFiles(SRC) enumerated almost nothing — the scan root is wrong',
+    ).toBeGreaterThanOrEqual(MIN_ENUMERATED_FILES);
+
+    expect(assertRosterShape(RUNG_ROSTER)).toEqual([]);
+    expect(assertRosterShape(HEADING_SEMIBOLD_ROSTER)).toEqual([]);
+    expect(assertRosterShape(HEADING_WEIGHT_ROSTER)).toEqual([]);
+    expect(assertRosterShape(BREAKPOINT_ROSTER)).toEqual([]);
+  });
+
+  it('finds headings on every one of the five named surfaces, and a tree-wide total floor', () => {
+    // SPLIT, Phase 88.6-11, and the per-surface half is held on the NAMED list ON PURPOSE.
+    //
+    // Pointing this loop at `sourceFiles(SRC)` would assert that every one of the 194
+    // enumerated files contains at least one heading — a red on day one, on a gate 31 plan
+    // files name in a verify block. The per-surface half is a guard against a scanner that
+    // silently matches nothing on a surface it is supposed to cover; the tree-wide half
+    // below is the one that grows with the widening. Do not "finish" this widening.
+    for (const surface of NAMED_SURFACES) {
       expect(headings(surface).length, `${surface}: no headings matched`).toBeGreaterThanOrEqual(1);
     }
-    // 26 at the time of writing; a floor, so adding a heading is not a red build.
+    // COUNTING floor — ALL three kinds. 140 at this plan's commit; a floor, so adding a
+    // heading is not a red build.
     expect(ALL.length).toBeGreaterThanOrEqual(20);
   });
 
-  it('pairs no heading with font-semibold at any size', () => {
-    const offenders = ALL.filter((h) => /\bfont-semibold\b/.test(h.className)).map(describeHeading);
+  it('floors the prop-seam and heading-primitive buckets SEPARATELY', () => {
+    // COUNTING. A single `>= 1` floor over a combined non-raw bucket is green forever —
+    // the five immovable seams satisfy it on their own, before and after the migration.
+    const seams = ALL.filter((h) => h.kind === 'prop-seam');
+    const primitives = ALL.filter((h) => h.kind === 'heading-primitive');
+
     expect(
-      offenders,
+      seams.map(describeHeading).sort(),
+      'the literal headingLevel/rowHeadingLevel seams are a FIXED population; one appearing ' +
+        'or disappearing is a real change, not a rebase',
+    ).toHaveLength(EXPECTED_PROP_SEAMS);
+
+    expect(
+      primitives.length,
+      'each migrating sweep raises EXPECTED_MIN_PRIMITIVES in the same commit as the ' +
+        'migration it lands — an unchanged zero after a sweep wave is a RED, not a pass',
+    ).toBeGreaterThanOrEqual(EXPECTED_MIN_PRIMITIVES);
+  });
+
+  it('skips non-literal level expressions BY RULE, and enumerates the ones it skipped', () => {
+    expect(
+      SKIPPED_LEVELS.map((s) => `${s.surface}:${s.line}`),
+      'a NEW unresolvable level expression must be seen, not absorbed. See PROP_SEAM_EXPRESSION ' +
+        'for why resolving them is the wrong answer rather than the harder one.',
+    ).toEqual(['app/components/CalendarListView.js:866']);
+  });
+
+  it('counts class-less headings and ignores heading tags in comments (defects 1 + 4, coupled)', () => {
+    const scanned = scanFixture('fixture/comments.tsx', FIXTURE_COMMENTS_AND_CLASSLESS);
+    expect(
+      scanned.map((h) => `h${h.level} "${h.className}"`),
+      'the four heading tags inside comments must count for nothing, and the class-less <h4> ' +
+        'must count for one — `app/global-error.tsx:66` is exactly that shape',
+    ).toEqual(['h4 ""', 'h2 "text-xl font-bold"']);
+  });
+
+  it('sees arbitrary size values without false-positiving arbitrary PROPERTIES', () => {
+    // Defect 2's negative control, both polarities.
+    expect(OUT_OF_SET_SIZE.test('text-[10px]')).toBe(true);
+    expect(OUT_OF_SET_SIZE.test('text-[1.1rem]')).toBe(true);
+    expect(OUT_OF_SET_SIZE.test('text-[9px]')).toBe(true);
+    // An arbitrary value is by definition OFF the rung set.
+    expect(IN_SET_SIZE.test('text-[10px]')).toBe(false);
+    // `app/groupHomePage/page.js:668` — a page title already on the 30/700 rung.
+    expect(OUT_OF_SET_SIZE.test('[text-shadow:var(--t-shadow-l)]')).toBe(false);
+    expect(OUT_OF_SET_SIZE.test('dark:[text-shadow:var(--t-shadow)]')).toBe(false);
+    expect(OUT_OF_SET_SIZE.test('[-webkit-text-stroke:var(--t-stroke-l)]')).toBe(false);
+    // The four rungs, and nothing else.
+    expect(IN_SET_SIZE.test('text-xs')).toBe(false);
+    expect(OUT_OF_SET_SIZE.test('text-xs')).toBe(true);
+  });
+
+  it('pairs no heading with font-semibold at any size', () => {
+    // OVERRIDE — ALL THREE kinds. `cn` last-wins (`88.6-03-PLAN.md:79`) makes a caller
+    // `font-semibold` on a `<Heading>` a real 600 override of the cva base.
+    const offenders = ALL.filter((h) => /\bfont-semibold\b/.test(h.className));
+    expect(
+      assertExactCounts(HEADING_SEMIBOLD_ROSTER, countByFile(offenders)),
       'UI-SPEC §4.2 states 600 as a PROHIBITION, and D-01 gives it exactly one home — the ' +
-        'Button primitive. Headings are 700.',
+        `Button primitive. Headings are 700. Offenders: ${JSON.stringify(offenders.map(describeHeading), null, 1)}`,
     ).toEqual([]);
   });
 
-  it('gives every heading the 700 weight explicitly', () => {
-    const offenders = ALL.filter((h) => !/\bfont-bold\b/.test(h.className)).map(describeHeading);
+  it('gives every RAW heading the 700 weight explicitly', () => {
+    // SUPPLY — RAW ONLY. Plan 03's cva base is `font-bold` (`88.6-03-PLAN.md:152`), so a
+    // migrated call site's own className carries no weight and would be a NEW offender on
+    // a rule it satisfies through the primitive. PRIMITIVE-SIDE ARM: the property is not
+    // dropped, it moves — plan 03's `Heading.test.tsx` pins the base weight, and the
+    // fixture below proves a compliant primitive is not flagged here.
+    const offenders = RAW.filter((h) => !/\bfont-bold\b/.test(h.className));
     expect(
-      offenders,
-      'a heading with no weight utility inherits body weight — §4.2 requires 700 to be stated.',
+      assertExactCounts(HEADING_WEIGHT_ROSTER, countByFile(offenders)),
+      'a heading with no weight utility inherits body weight — §4.2 requires 700 to be stated. ' +
+        `Offenders: ${JSON.stringify(offenders.map(describeHeading), null, 1)}`,
     ).toEqual([]);
+
+    const compliantPrimitive = scanFixture('fixture/compliant.tsx', FIXTURE_COMPLIANT_PRIMITIVE);
+    expect(compliantPrimitive.filter((h) => h.kind === 'raw')).toEqual([]);
+    expect(compliantPrimitive.map((h) => h.level)).toEqual([2]);
   });
 
   it('keeps EVERY heading inside the 4-size working set — there are now no exemptions', () => {
-    // The `D39_REVIEWS_EXEMPTION` filter that used to sit here is gone, not disabled:
-    // the owner converged the one heading it covered on 2026-08-05 (DEF-88-24-02), so
-    // these four surfaces are exemption-free and this test is the whole property.
+    // ONE assertion, TWO arms, TWO buckets. Record that split HERE, or a reader applies
+    // one bucket to both arms:
+    //   - the OUT-OF-SET arm is an OVERRIDE rule and covers ALL THREE kinds, because a
+    //     caller `text-2xl` on a `<Heading>` is a real 24px override;
+    //   - the NO-SIZE-UTILITY arm is a SUPPLY rule and is RAW-ONLY, because the primitive's
+    //     `size` variant supplies the rung and a migrated call site legitimately carries no
+    //     size utility of its own.
+    //
+    // The `D39_REVIEWS_EXEMPTION` filter that used to sit here is gone, not disabled: the
+    // owner converged the one heading it covered on 2026-08-05 (DEF-88-24-02).
     const offenders = ALL.filter(
-      (h) => OUT_OF_SET_SIZE.test(h.className) || !IN_SET_SIZE.test(h.className),
-    ).map(describeHeading);
+      (h) =>
+        OUT_OF_SET_SIZE.test(h.className) || (h.kind === 'raw' && !IN_SET_SIZE.test(h.className)),
+    );
     expect(
-      offenders,
+      assertExactCounts(RUNG_ROSTER, countByFile(offenders)),
       'the point of a 4-size working set (14/16/20/30) is that a fifth size cannot creep back ' +
-        'in. `text-lg` (18) and `text-2xl` (24) were both on these surfaces before 88-24. A ' +
-        'heading with NO size utility is equally an offender — it renders at body size.',
+        'in. A heading with NO size utility is equally an offender — it renders at body size. ' +
+        `Offenders: ${JSON.stringify(offenders.map(describeHeading), null, 1)}`,
     ).toEqual([]);
+
+    // Both polarities of the split, proven here rather than discovered in wave 8.
+    const compliant = scanFixture('fixture/compliant.tsx', FIXTURE_COMPLIANT_PRIMITIVE);
+    expect(
+      compliant.filter((h) => OUT_OF_SET_SIZE.test(h.className) || (h.kind === 'raw' && !IN_SET_SIZE.test(h.className))),
+      'a primitive heading that supplies its rung through the `size` variant and carries only a ' +
+        'colour utility must NOT be flagged',
+    ).toEqual([]);
+
+    const overridden = scanFixture('fixture/override.tsx', FIXTURE_PRIMITIVE_CALLER_OVERRIDE);
+    expect(
+      overridden.filter((h) => OUT_OF_SET_SIZE.test(h.className)).map((h) => h.level),
+      'a caller className carrying an out-of-set size on a `<Heading>` IS a real override',
+    ).toEqual([2]);
   });
 
   it("holds gameDetail's Reviews h2 at the converged 20/700 rung (DEF-88-24-02, owner ruling)", () => {
@@ -219,39 +1171,48 @@ describe('Req 2 (CD-006): the heading type scale on 88-24\'s four touched surfac
     // find it by TEXT first and assert it exists. If the Reviews heading is renamed,
     // removed, or moved off this surface, this test fails loudly instead of quietly
     // asserting nothing about a heading that is no longer there.
-    const reviews = ALL.filter(REVIEWS_HEADING).map(describeHeading);
+    //
+    // AMENDED Phase 88.6-11 — SUPPLY bucket, and scanned TREE-WIDE. Tree-wide plus
+    // exactly-one is strictly STRONGER than the one-file scan it replaces: it also reds if
+    // the heading MOVES surface, which a one-file scan reports as plain absence. The rung
+    // and weight are accepted in the raw form OR through the primitive, because the inner
+    // text extractor now closes on `</Heading>` too — without that, a migrated Reviews
+    // heading reads as empty inner text, this predicate finds nothing, and the exactly-one
+    // floor reds BEFORE the size and weight assertions are reached, quietly deleting the
+    // owner's 2026-08-05 convergence instead of carrying it through the migration.
     const found = ALL.filter(REVIEWS_HEADING);
     expect(
       found.length,
-      `expected exactly one "Reviews (…)" heading on gameDetail, found: ${JSON.stringify(reviews)}`,
+      `expected exactly one "Reviews (…)" heading on gameDetail, found: ${JSON.stringify(found.map(describeHeading))}`,
     ).toBe(1);
 
     const heading = found[0];
     expect(heading.level, 'Reviews is a section heading, a sibling of Game Sessions').toBe(2);
     expect(
-      heading.className,
+      isSectionRung(heading),
       'Owner ruling 2026-08-05 (DEF-88-24-02): "make it match the same size as all other ' +
         'headings." This h2 was `text-2xl` under DECISION Phase 88-11 (D-39); the owner ' +
         'REOPENED that ruling and converged it to the 20/700 section-heading rung every other ' +
-        'h2 on this surface uses. Reverting to `text-2xl` reopens HIS convergence — read the ' +
-        'amended marker at the site first.',
-    ).toMatch(/\btext-xl\b/);
-    expect(heading.className).toMatch(/\bfont-bold\b/);
+        `h2 on this surface uses. Found: ${describeHeading(heading)}`,
+    ).toBe(true);
+    expect(isBoldWeight(heading), describeHeading(heading)).toBe(true);
   });
 
   it('gives no heading a breakpoint-prefixed size', () => {
-    // Found by negative-checking the test above: `text-2xl md:text-3xl` is caught
-    // (text-2xl is out of set), but `text-xl md:text-3xl` would slip through BOTH the
-    // working-set test and the h1 test, because every size in it is in-set. A heading
-    // that changes size at a breakpoint is a second scale whichever sizes it uses —
-    // that is the property, so assert it directly rather than by side effect.
-    const offenders = ALL.filter((h) => /\b[a-z0-9]+:text-[a-z0-9]+\b/.test(h.className)).map(
-      describeHeading,
-    );
+    // OVERRIDE — ALL THREE kinds. Found by negative-checking the working-set test:
+    // `text-2xl md:text-3xl` is caught (text-2xl is out of set), but `text-xl md:text-3xl`
+    // would slip through BOTH that test and the h1 test, because every size in it is
+    // in-set. A heading that changes size at a breakpoint is a second scale whichever
+    // sizes it uses — that is the property, so assert it directly rather than by side
+    // effect.
+    //
+    // The roster is SEEDED, not discovered.
+    const offenders = ALL.filter((h) => BREAKPOINT_SIZE.test(h.className));
     expect(
-      offenders,
+      assertExactCounts(BREAKPOINT_ROSTER, countByFile(offenders)),
       '88-19 removed the md:-prefixed heading sizes from userProfile and 88-24 removed the last ' +
-        'one (groupHomePage\'s h1) for this reason. Pick ONE rung from the working set.',
+        'one (groupHomePage\'s h1) for this reason. Pick ONE rung from the working set. ' +
+        `Offenders: ${JSON.stringify(offenders.map(describeHeading), null, 1)}`,
     ).toEqual([]);
   });
 
@@ -269,14 +1230,37 @@ describe('Req 2 (CD-006): the heading type scale on 88-24\'s four touched surfac
     // silently demote the 404's type by asking for the right outline"). Growing it to
     // `text-3xl` to satisfy this assertion would be that exact demotion in reverse, on
     // nine error boundaries at once. The Display rule is about page titles; keep it there.
-    const offenders = ALL.filter((h) => h.level === 1)
-      .filter((h) => (PAGE_SURFACES as readonly string[]).includes(h.surface))
-      .filter((h) => !/\btext-3xl\b/.test(h.className))
-      .map(describeHeading);
+    //
+    // AMENDED Phase 88.6-11: Phase 88.6 widened this file to all of `src/` and DELIBERATELY
+    // did NOT widen this assertion, for the reason above — it is a rule about PAGE TITLES,
+    // per-h1 rather than a count, and growing `ErrorFallback.tsx`'s `<h1>` to 30 to satisfy
+    // a tree-wide version would be that same demotion in reverse on nine error boundaries
+    // at once. This is the single most likely "cleanup" a later widening pass makes; it is
+    // a decision, not an oversight. The ONLY changes here are the canonical key space, the
+    // examined-count floor, and the primitive arm of `isDisplayRung`.
+    const pageTitles = ALL.filter(
+      (h) => h.level === 1 && (PAGE_SURFACES as readonly string[]).includes(h.surface),
+    );
+    // FOUND-COUNT FLOOR: an assertion that filters down to a named set must also assert how
+    // many it examined, so a key-space mismatch reds rather than passing over zero subjects.
+    expect(
+      pageTitles.length,
+      'expected at least one page title per PAGE_SURFACE — a key-space mismatch would empty ' +
+        'this filter and pass vacuously',
+    ).toBeGreaterThanOrEqual(PAGE_SURFACES.length);
+
+    const offenders = pageTitles.filter((h) => !isDisplayRung(h)).map(describeHeading);
     expect(
       offenders,
       'page titles are 30/700. A breakpoint-grown title (`text-2xl md:text-3xl`) is a SECOND ' +
         'type scale, which is why 88-24 removed the one on groupHomePage.',
     ).toEqual([]);
+
+    // Primitive polarity: a page-title h1 rendered through the primitive but pinned off the
+    // display rung by its caller IS flagged.
+    const offRung = scanFixture('fixture/title.tsx', FIXTURE_PRIMITIVE_PAGE_TITLE_OFF_RUNG);
+    expect(offRung.map((h) => h.level), 'an id-bearing `<Heading id=… level={1}>` must be seen — ' +
+      'the matcher is attribute-order agnostic').toEqual([1]);
+    expect(offRung.filter((h) => !isDisplayRung(h)).length).toBe(1);
   });
 });
