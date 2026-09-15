@@ -1094,6 +1094,39 @@ describe('Req 14 — the shared fetch-error treatment, scanned tree-wide', () =>
     expect(AD_HOC_FAILURE_COPY.test(stripped[2])).toBe(true);
   });
 
+  it('the `/test-sentry` route stays deleted (D3, owner ruling 2026-09-09)', () => {
+    // WHY HERE: this file's `SURFACES` roster is a census of `src/` route and component
+    // files, so an absence pin about a route removed in this phase sits with the census.
+    // `nativeDialogs.test.ts` was the alternative and is a worse fit — it scans for native
+    // dialog CALLS, and a route's existence is not one.
+    //
+    // THE RULING: `https://www.nextgamenight.app/test-sentry` returned 200 with four
+    // unauthenticated error-injection buttons, under `replaysOnErrorSampleRate: 1.0`, with
+    // no auth guard and no nav reference, orphaned since the initial commit. The owner
+    // ruled DELETE on 2026-09-09. The rejected alternative — a
+    // `NODE_ENV === 'production' -> notFound()` gate — would have kept the surface in the
+    // tree and 404'd on Preview as well.
+    //
+    // THIS PIN IS PATH-SPECIFIC. It asserts the absence of exactly `src/app/test-sentry/`
+    // and does NOT generalise to a differently-named error-injection route. It is the
+    // receipt for D3's delete, nothing more — do not read it as coverage that
+    // error-injection routes are gated as a CLASS.
+    //
+    // THE CLASS-SHAPED ALTERNATIVE IS REJECTED, WITH ITS MEASURED COST, so it is not
+    // re-proposed as a hardening cleanup. Measured 2026-09-15:
+    // `grep -rln '@sentry/nextjs' src/app` -> 19 files, of which 16 are non-test, and 12
+    // of those are LEGITIMATE `error.tsx` / `global-error.tsx` boundaries (the root pair
+    // plus availability-form/[token], invite/group/[token], invite/accept,
+    // invite/game/[token], rsvp/[token], friends, gameDetail, groupHomePage,
+    // groupPlanning, userProfile). A rule shaped "imports Sentry AND contains
+    // `throw new Error(`" would therefore need its own roster of legitimate boundaries —
+    // a new default-deny surface this plan does not own and did not price.
+    expect(fs.existsSync(path.join(SRC, 'app/test-sentry'))).toBe(false);
+    // Non-vacuous by construction: the same call on a directory that DOES exist is true,
+    // so this assertion cannot pass because `existsSync` went blind.
+    expect(fs.existsSync(path.join(SRC, 'app/components'))).toBe(true);
+  });
+
   it('no HTML-INJECTION SINK appears anywhere in the comment-stripped src/ tree (T-88.6-145)', () => {
     // The companion to the markup-payload render arm in
     // `src/components/ui/useFetchErrorState.test.tsx`. That arm proves React escapes a

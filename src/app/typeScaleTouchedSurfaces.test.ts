@@ -735,11 +735,6 @@ const RUNG_ROSTER: ExemptionRoster = {
     why: '1 heading off the 4-size working set (h1:8 text-4xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/test-sentry/page.js': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h2:110 no size utility) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
 };
 
 /** Headings carrying the prohibited 600 weight. */
@@ -842,11 +837,6 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
   'app/rsvp/[token]/page.js': {
     sites: 2,
     why: '2 headings carrying the prohibited 600 weight (h1:190, h1:220) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
-  'app/test-sentry/page.js': {
-    sites: 1,
-    why: '1 heading carrying the prohibited 600 weight (h2:110) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
 };
@@ -961,11 +951,6 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
   'app/rsvp/[token]/page.js': {
     sites: 2,
     why: '2 raw headings not stating the 700 weight (h1:190 font-semibold; h1:220 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
-  'app/test-sentry/page.js': {
-    sites: 1,
-    why: '1 raw heading not stating the 700 weight (h2:110 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
 };
@@ -1383,7 +1368,6 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   'app/restore/group/[token]/page.tsx': { 1: 4 },
   'app/rsvp/[token]/page.js': { 1: 3 },
   'app/terms/page.js': { 1: 1, 2: 8 },
-  'app/test-sentry/page.js': { 1: 1, 2: 1 },
   'app/userProfile/page.js': { 1: 1, 2: 7, 3: 4, 4: 2 },
   'components/ui/ErrorFallback.tsx': { 1: 1 },
 };
@@ -2149,12 +2133,6 @@ const WEIGHT_ROSTER: ExemptionRoster = {
     sites: 2,
     why:
       '2 off-scale weight sites (0 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome lead: hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-14, 88.6-24, 88.6-42.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
-  'app/test-sentry/page.js': {
-    sites: 6,
-    why:
-      '6 off-scale weight sites (1 font-medium, 5 font-semibold). UI-SPEC §4.5 outcome leads: dead on a .btn (delete); outcome set by the owning sweep; hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-13.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
   'app/userProfile/page.js': {
