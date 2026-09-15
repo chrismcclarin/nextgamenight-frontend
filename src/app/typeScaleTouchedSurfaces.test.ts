@@ -1264,3 +1264,391 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
     expect(offRung.filter((h) => !isDisplayRung(h)).length).toBe(1);
   });
 });
+
+
+// ===========================================================================
+// P4 — the per-file per-level heading count, before == after.
+// ===========================================================================
+
+/**
+ * THE CONTRACT for every Phase 88.6 sweep: no heading's semantic LEVEL changes.
+ *
+ * Seeded by RUNNING the scanner above at this plan's commit — not transcribed from
+ * `88.6-CONTEXT.md` D-04, not from `88.6-RESEARCH.md` §B.3. Those are leads. The seed is
+ * the measurement: 140 headings across 44 files (h1 44, h2 48, h3 39, h4 5, h5 2, h6 2),
+ * over all three `kind`s. The RAW `<hN>` half of that is 135 across 43 files
+ * (h1 43, h2 48, h3 39, h4 5, zero literal h5/h6) — two populations, two numbers; one
+ * number cannot describe both.
+ *
+ * EDITING THIS MAP IS A DECISION, NOT A ROUTINE REBASE. A sweep that legitimately changes
+ * a heading's level — only an R7 `heading-order` audit fix may — updates the map in the
+ * SAME commit, with a comment naming the audit finding. A map edited to absorb an
+ * unintended level change is exactly the repudiation T-88.6-25 names.
+ *
+ * WHICH PLANS MAY INVOKE THAT ESCAPE HATCH is a set DERIVED AT EXECUTION, not a fixed
+ * pair. The derivation command is the `//` line immediately below this docblock (it cannot
+ * live inside a block comment — the glob contains the comment terminator). Run it, then
+ * keep the ones that actually RUN an audit. Members re-measured 2026-09-14: plans
+ * 15 (`:556`), 16 (`:525`), 22 (`:569`, `:582`), 44 (`:65`) and 45 (`:83`, `:108`) — FIVE.
+ * Plan 46 is NOT one of them (it mentions `heading-order` nowhere and runs no audit), and
+ * plan 03 (`:138`) is not either — it only records that such a smoke is NOT wanted in the
+ * primitive's own suite. An earlier "plans 45-46" wording granted the hatch to a plan that
+ * can never use it while reading, to a plan-44 or plan-22 executor holding a real outline
+ * finding, as a prohibition on fixing it. Do not re-break that correction.
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT THIS MAP DOES NOT COVER — THREE paths. "before == after" is a LEVEL-POPULATION
+ * pin, NOT an outline guarantee.
+ * ---------------------------------------------------------------------------
+ *
+ * 1. COMPONENT-DEFAULT heading levels. The scanner sees only call sites that pass a
+ *    LITERAL level prop, so a change to a component's DEFAULT level is a real level change
+ *    this map cannot see. Verified cases: `EmptyState`'s `'h3'` default
+ *    (`components/ui/EmptyState.tsx:96`, `DECISION Phase 88-18 (DEF-88-09-01)`), relied on
+ *    by NINE of its ten call sites — only `app/not-found.tsx:36` passes the prop, so nine
+ *    real `<h3>`s in the DOM are counted as zero; `CalendarListView`'s `DateGroup` `'h4'`
+ *    default (`:849`) and `EventRow` `'h5'` default (`:889`).
+ *
+ *    REJECTED: teaching the scanner an in-file `{ component -> default level }` map, with
+ *    a fixture asserting a bare `<EmptyState>` counts as one h3. It would close the gap,
+ *    but it is the same cross-file resolution plan 09 already declares a blind spot.
+ *    Declaring the gap is the cheaper option and this plan takes it.
+ *
+ * 2. NON-LITERAL level expressions, which the scanner SKIPS by rule.
+ *    `app/components/CalendarListView.js:866` (`headingLevel={rowHeadingLevel}`) is the one
+ *    live instance. It is uncounted ON PURPOSE: resolving it from `EventRow`'s `'h5'`
+ *    default would record an h5 the DOM never renders, while both real call sites pass
+ *    `rowHeadingLevel="h6"`. The number would be wrong in this map's own units. Nothing is
+ *    lost by skipping it — BOTH of its ends (`:632`, `:657`) are counted as seams — so the
+ *    gap is scoped, not open-ended.
+ *
+ * 3. A MULTISET-PRESERVING LEVEL SWAP. This is a per-file per-level COUNT, so any edit that
+ *    preserves the multiset is invisible to it. Swapping an `<h2>` and an `<h3>` inside one
+ *    file, or promoting one heading while demoting another in the same file, leaves
+ *    `{h2: n, h3: m}` identical while the document OUTLINE changes — which is the property
+ *    P4 is read as protecting. The mandated violation fixture does NOT surface this either:
+ *    it is "one `<h2>` changed to `<h3>`", which DOES move the counts. The only cover is
+ *    R7's `heading-order` audit, and that runs on the enumerated modal surfaces, not on the
+ *    43 files this map spans.
+ *
+ *    REJECTED, on a CONSEQUENCE rather than on bookkeeping: an ORDERED per-file sequence
+ *    (`['h1','h2','h3','h3','h2']` rather than a count map) is on the merits the BETTER pin
+ *    — each heading already carries its source line, so ordering costs nothing and detects
+ *    a swap outright. It is rejected because an ordered pin REDS on a pure JSX REORDER that
+ *    changes no level, and 20 sweep plans reorder JSX: it would put a false red in front of
+ *    20 executors on a gate 31 plan files name in a verify block. Declaring the gap is the
+ *    cheaper correct option.
+ */
+// Derivation of the audit-running plan set (see the docblock above):
+//   grep -ln 'heading-order' .planning/phases/88.6-*/88.6-*-PLAN.md
+const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, number>>> = {
+  'app/about/page.js': { 1: 1, 2: 5 },
+  'app/availability-form/[token]/page.js': { 1: 3 },
+  'app/components/BallotOptionsEditor.js': { 3: 1 },
+  'app/components/BallotSection.js': { 3: 6 },
+  'app/components/BringSummary.js': { 3: 1 },
+  'app/components/CalendarListView.js': { 3: 2, 4: 2, 5: 2, 6: 2 },
+  'app/components/CalendarMonthView.js': { 3: 1 },
+  'app/components/DangerZoneDeleteAccount.tsx': { 2: 1 },
+  'app/components/EmailAddressSection.tsx': { 2: 3 },
+  'app/components/EventCalendar.js': { 2: 2 },
+  'app/components/EventDayModal.js': { 4: 1 },
+  'app/components/FriendInvitePanel.js': { 3: 3 },
+  'app/components/GroupGamesList.js': { 2: 2, 3: 1 },
+  'app/components/GroupSettings.js': { 3: 4 },
+  'app/components/LandingPage.js': { 1: 1, 2: 1, 3: 3 },
+  'app/components/ManageMembers.js': { 3: 2 },
+  'app/components/NotificationBell.js': { 3: 1 },
+  'app/components/PromptScheduleManager.js': { 3: 1 },
+  'app/components/PromptScheduleReadOnly.js': { 3: 1 },
+  'app/components/ResponseDashboard.js': { 3: 1 },
+  'app/components/RsvpSection.js': { 3: 1 },
+  'app/components/ScheduleList.js': { 3: 1 },
+  'app/components/UpcomingEventsCard.js': { 3: 1 },
+  'app/components/grouplist.js': { 2: 2, 3: 1 },
+  'app/components/tutorial/WelcomeSlide.js': { 1: 1 },
+  'app/components/tutorial/simulated/AvailabilityPromptDemo.js': { 3: 1 },
+  'app/components/tutorial/simulated/ProblemSlide.js': { 2: 1 },
+  'app/friends/page.js': { 1: 4, 2: 1 },
+  'app/gameDetail/page.js': { 1: 3, 2: 5, 3: 1 },
+  'app/global-error.tsx': { 1: 1 },
+  'app/goodbye/page.tsx': { 1: 2 },
+  'app/groupHomePage/page.js': { 1: 1 },
+  'app/groupPlanning/page.js': { 1: 1, 2: 1, 3: 1 },
+  'app/invite/accept/page.js': { 1: 3 },
+  'app/invite/game/[token]/page.js': { 1: 6 },
+  'app/invite/group/[token]/page.js': { 1: 4 },
+  'app/not-found.tsx': { 1: 1 },
+  'app/privacy/page.js': { 1: 1, 2: 8 },
+  'app/restore/group/[token]/page.tsx': { 1: 4 },
+  'app/rsvp/[token]/page.js': { 1: 3 },
+  'app/terms/page.js': { 1: 1, 2: 8 },
+  'app/test-sentry/page.js': { 1: 1, 2: 1 },
+  'app/userProfile/page.js': { 1: 1, 2: 7, 3: 4, 4: 2 },
+  'components/ui/ErrorFallback.tsx': { 1: 1 },
+};
+
+const LEVELS = [1, 2, 3, 4, 5, 6] as const;
+
+function levelCounts(hs: readonly Heading[]): Partial<Record<1 | 2 | 3 | 4 | 5 | 6, number>> {
+  const out: Partial<Record<1 | 2 | 3 | 4 | 5 | 6, number>> = {};
+  for (const h of hs) {
+    const lvl = h.level as 1 | 2 | 3 | 4 | 5 | 6;
+    out[lvl] = (out[lvl] ?? 0) + 1;
+  }
+  return out;
+}
+
+/**
+ * The before==after comparison, used by BOTH the tree-wide assertion and the two P4
+ * fixtures — one implementation, so the fixtures exercise the real comparison rather than
+ * a copy of it.
+ */
+function compareLevels(
+  file: string,
+  expected: Partial<Record<1 | 2 | 3 | 4 | 5 | 6, number>>,
+  actual: Partial<Record<1 | 2 | 3 | 4 | 5 | 6, number>>,
+): string[] {
+  const out: string[] = [];
+  for (const lvl of LEVELS) {
+    const e = expected[lvl] ?? 0;
+    const a = actual[lvl] ?? 0;
+    if (e !== a) out.push(`${file} h${lvl}: EXPECTED_LEVELS says ${e}, scanner found ${a}`);
+  }
+  return out;
+}
+
+/** P4's mandated clean fixture. */
+const FIXTURE_P4_CLEAN = `
+  export const Page = () => (
+    <article>
+      <h1 className="text-3xl font-bold">Title</h1>
+      <h2 className="text-xl font-bold">One</h2>
+      <h3 className="text-base font-bold">Detail</h3>
+      <h2 className="text-xl font-bold">Two</h2>
+    </article>
+  );
+`;
+
+/** P4's mandated violation fixture: ONE `<h2>` changed to `<h3>`. */
+const FIXTURE_P4_VIOLATION = FIXTURE_P4_CLEAN.replace(
+  '<h2 className="text-xl font-bold">Two</h2>',
+  '<h3 className="text-xl font-bold">Two</h3>',
+);
+
+// ===========================================================================
+// D-01 — the arbitrary-value size fold.
+// ===========================================================================
+
+/**
+ * An arbitrary px/rem size value. This is a FILE-LEVEL site scan, not a consumer of the
+ * scanned heading set, so task 1's `headings()` comment-stripping fix does NOT reach it —
+ * it reads `FILES[].stripped` directly and has its own negative control below. Without
+ * that, a commented-out or documented `text-[10px]` becomes a roster entry no sweep can
+ * ever decrement.
+ */
+const ARBITRARY_SIZE_SITE = /\btext-\[(\d+(?:\.\d+)?)(px|rem)\]/g;
+
+/** 12px is the tree-wide FLOOR (UI-SPEC §4.6). 0.75rem at a 16px root is the same 12px. */
+const PX_FLOOR = 12;
+
+interface SizeSite {
+  surface: string;
+  line: number;
+  raw: string;
+  px: number;
+}
+
+function scanArbitrarySizes(surface: string, stripped: string): SizeSite[] {
+  const out: SizeSite[] = [];
+  ARBITRARY_SIZE_SITE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = ARBITRARY_SIZE_SITE.exec(stripped)) !== null) {
+    out.push({
+      surface,
+      line: lineAt(stripped, m.index),
+      raw: m[0],
+      px: m[2] === 'rem' ? Number(m[1]) * 16 : Number(m[1]),
+    });
+  }
+  return out;
+}
+
+const ARBITRARY_SIZES: readonly SizeSite[] = FILES.flatMap((f) =>
+  scanArbitrarySizes(f.key, f.stripped),
+);
+
+/**
+ * Seeded from the live COMMENT-STRIPPED run at this plan's commit: 31 arbitrary px/rem
+ * size values across 11 files, of which 30 are below the 12px floor (the population D-01
+ * folds up) and one is `app/components/grouplist.js:456`'s `text-[1.1rem]` (17.6px, on the
+ * h3 whose tag opens at `:455`). The rule scans EVERY arbitrary px/rem value rather than
+ * only the sub-12px ones, because an arbitrary value is off the rung set by definition —
+ * that is also what makes the 31-site seed exact rather than a 30-site seed with an
+ * unowned straggler. Plans 26 and 27 shrink this as the fold lands.
+ */
+const ARBITRARY_SIZE_ROSTER: ExemptionRoster = {
+  'app/components/CalendarMonthView.js': {
+    sites: 1,
+    why:
+      '1 arbitrary size value (text-[10px]@651), 1 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
+  },
+  'app/components/ClickableMemberName.js': {
+    sites: 2,
+    why:
+      '2 arbitrary size values (text-[10px]@169, text-[10px]@178), 2 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
+  },
+  'app/components/EventHeatmapBackground.js': {
+    sites: 7,
+    why:
+      '7 arbitrary size values (text-[10px]@224, text-[10px]@240, text-[11px]@280, text-[9px]@291, text-[9px]@298, text-[10px]@306, text-[11px]@316), 7 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
+  },
+  'app/components/SchedulerWeekStrip.tsx': {
+    sites: 2,
+    why:
+      '2 arbitrary size values (text-[10px]@196, text-[10px]@208), 2 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
+  },
+  'app/components/UpcomingEventsCard.js': {
+    sites: 1,
+    why:
+      '1 arbitrary size value (text-[10px]@256), 1 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
+  },
+  'app/components/grouplist.js': {
+    sites: 1,
+    why:
+      '1 arbitrary size value (text-[1.1rem]@456), 0 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
+  },
+  'app/components/tutorial/simulated/AvailabilityPromptDemo.js': {
+    sites: 1,
+    why:
+      '1 arbitrary size value (text-[10px]@72), 1 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
+  },
+  'app/components/tutorial/simulated/CheckInDemo.js': {
+    sites: 3,
+    why:
+      '3 arbitrary size values (text-[10px]@41, text-[10px]@77, text-[10px]@81), 3 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
+  },
+  'app/components/tutorial/simulated/HeatmapDemo.js': {
+    sites: 1,
+    why:
+      '1 arbitrary size value (text-[10px]@75), 1 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
+  },
+  'app/components/tutorial/simulated/TutorialGrid.js': {
+    sites: 2,
+    why:
+      '2 arbitrary size values (text-[10px]@40, text-[10px]@63), 2 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
+  },
+  'app/gameDetail/page.js': {
+    sites: 10,
+    why:
+      '10 arbitrary size values (text-[10px]@51, text-[10px]@58, text-[10px]@109, text-[10px]@112, text-[10px]@116, text-[10px]@1914, text-[10px]@1926, text-[10px]@1931, text-[10px]@1934, text-[10px]@1944), 10 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
+  },
+};
+
+/** The sub-12px SUBSET — D-01's actual fold target, asserted so it shrinks visibly. */
+const EXPECTED_SUB_FLOOR_SITES = 30;
+
+/** Negative control for the strip on THIS file-level scan. */
+const FIXTURE_ARBITRARY_COMMENTS = `
+  /* A documented text-[10px] inside a block comment counts for nothing. */
+  // And a text-[9px] after a line comment likewise.
+  export const E = () => <span className="text-[11px]">real</span>;
+`;
+
+describe('SPEC-88.6 P4 + D-01: heading levels are pinned and arbitrary sizes are rostered', () => {
+  it('pins the per-file per-level heading count — before == after (P4)', () => {
+    const violations: string[] = [];
+
+    for (const [file, expected] of Object.entries(EXPECTED_LEVELS)) {
+      const hs = BY_FILE.get(file);
+      if (!hs) {
+        violations.push(
+          `${file} — in EXPECTED_LEVELS but the scanner found NO headings there; a file that ` +
+            `disappears from the map is a failure, not a pass`,
+        );
+        continue;
+      }
+      violations.push(...compareLevels(file, expected, levelCounts(hs)));
+    }
+    for (const file of BY_FILE.keys()) {
+      if (!(file in EXPECTED_LEVELS)) {
+        violations.push(
+          `${file} — headings found in a file ABSENT from EXPECTED_LEVELS; a file absent from ` +
+            `the map must have zero headings`,
+        );
+      }
+    }
+
+    expect(
+      violations,
+      'EXPECTED_LEVELS is the CONTRACT: no Phase 88.6 sweep changes a heading LEVEL. If a ' +
+        'level genuinely must move, it moves because an R7 heading-order audit found an ' +
+        'outline violation — update the map in the SAME commit with a comment naming the ' +
+        'finding. Read the constant docblock before editing it.',
+    ).toEqual([]);
+  });
+
+  it('proves the level comparison can FAIL — both P4 fixtures, both polarities', () => {
+    const clean = levelCounts(scanFixture('fixture/p4-clean.tsx', FIXTURE_P4_CLEAN));
+    expect(clean, 'the clean fixture is the baseline the violation is measured against').toEqual({
+      1: 1,
+      2: 2,
+      3: 1,
+    });
+
+    // check_clean_fixture — the comparison must report NOTHING.
+    expect(compareLevels('fixture/p4-clean.tsx', clean, clean)).toEqual([]);
+
+    // check_violation_fixture — one <h2> changed to <h3>; the comparison MUST report it.
+    const violated = levelCounts(scanFixture('fixture/p4-violation.tsx', FIXTURE_P4_VIOLATION));
+    expect(compareLevels('fixture/p4-violation.tsx', clean, violated)).toEqual([
+      'fixture/p4-violation.tsx h2: EXPECTED_LEVELS says 2, scanner found 1',
+      'fixture/p4-violation.tsx h3: EXPECTED_LEVELS says 1, scanner found 2',
+    ]);
+  });
+
+  it('rosters every arbitrary px/rem size value, reading COMMENT-STRIPPED source (D-01)', () => {
+    const byFile: Record<string, number> = {};
+    for (const s of ARBITRARY_SIZES) byFile[s.surface] = (byFile[s.surface] ?? 0) + 1;
+
+    expect(
+      assertExactCounts(ARBITRARY_SIZE_ROSTER, byFile),
+      'an arbitrary size value is off the 4-size working set by definition. Sites: ' +
+        JSON.stringify(
+          ARBITRARY_SIZES.map((s) => `${s.surface}:${s.line} ${s.raw}`),
+          null,
+          1,
+        ),
+    ).toEqual([]);
+
+    const belowFloor = ARBITRARY_SIZES.filter((s) => s.px < PX_FLOOR);
+    expect(
+      belowFloor.length,
+      'D-01 folds the sub-12px arbitrary values up onto the caption rung. This number must ' +
+        'SHRINK as plans 26 and 27 land; raising it is a new violation, not a rebase.',
+    ).toBe(EXPECTED_SUB_FLOOR_SITES);
+  });
+
+  it('does not count an arbitrary size value written in a comment (negative control)', () => {
+    const scanned = scanArbitrarySizes(
+      'fixture/arbitrary-comments.tsx',
+      withoutComments(FIXTURE_ARBITRARY_COMMENTS),
+    );
+    expect(
+      scanned.map((s) => s.raw),
+      'a documented or commented-out arbitrary value must never become a roster entry no ' +
+        'sweep can decrement',
+    ).toEqual(['text-[11px]']);
+  });
+});
