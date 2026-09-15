@@ -1452,7 +1452,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // `src/app/groundInk.test.ts`: a ground-aware ancestor-stack scan that resolves every
     // resting ink class against the ground its nearest ancestor sets, so the ink-on-a-child /
     // ground-on-an-ancestor pairings no line-based read can see are machine-checked on every
-    // run. It MEASURED 17 forbidden-ink sites on the muted ground (13 real across 8 files, 4
+    // run. It MEASURED 18 forbidden-ink sites on the muted ground (14 real across 8 files, 4
     // structurally impossible and excluded by name) — not the 6 the D-16 census listed, and
     // `friends/page.js:748` above is one of them. That suite carries the zero-consumer half of
     // this row as an exact-count roster that must shrink to empty; this row keeps the RATIO

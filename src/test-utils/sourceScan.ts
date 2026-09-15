@@ -231,10 +231,19 @@ export function sourceFiles(dir: string): string[] {
  * (`src/app/gameDetail/page.js`). Bounded, a false start costs `maxLength` bytes and returns
  * null, which the ancestor walk below degrades into "no ancestor ground resolved" and the
  * consuming suite's anti-vacuity floor is what catches a walk that degrades everywhere.
- * The default is far above the longest real opening tag in this tree, so every previously
- * resolvable tag still resolves byte-identically.
+ *
+ * THE DEFAULT IS MEASURED, NOT GUESSED, and the first value chosen was WRONG. Measured
+ * 2026-09-15 over all 194 non-test files: the longest REAL opening tag in this tree is 6845
+ * bytes — `CalendarMonthView.js:555`, a `<div>` whose `onKeyDown`, long `className` template and
+ * `style` object with an embedded DECISION block run to 90 source lines. An initial 6000 left
+ * exactly that one tag unreadable, and the cost was NOT confined to it: a skipped open means the
+ * element is never pushed, so its later `</div>` pops the nearest same-named frame instead — the
+ * day-cell ground silently stopped resolving for a descendant 250 lines further down. The
+ * default is 16000, which measures 0 unreadable opens tree-wide (0 from 8000 upward) while still
+ * bounding a false start to a cheap scan. If a suite ever sees an ink site inexplicably resolve
+ * no ground, re-run that census before anything else.
  */
-export function readOpeningTag(text: string, start: number, maxLength = 6000): string | null {
+export function readOpeningTag(text: string, start: number, maxLength = 16000): string | null {
   let i = start;
   const limit = Math.min(text.length, start + maxLength);
   let depth = 0;
@@ -281,7 +290,7 @@ export interface InkGroundOptions {
   ink: RegExp;
   /** Matches a GROUND class after variant prefixes are stripped. Whole-token, as above. */
   ground: RegExp;
-  /** Byte bound handed to {@link readOpeningTag}. Default 6000. */
+  /** Byte bound handed to {@link readOpeningTag}. Default 16000 — see that function. */
   maxTagLength?: number;
 }
 
@@ -567,7 +576,7 @@ function classSites(
  */
 export function inkGroundPairs(src: string, opts: InkGroundOptions): InkGroundRow[] {
   const stripped = withoutComments(src);
-  const bound = opts.maxTagLength ?? 6000;
+  const bound = opts.maxTagLength ?? 16000;
   const isInk = wholeToken(opts.ink);
   const isGround = wholeToken(opts.ground);
 

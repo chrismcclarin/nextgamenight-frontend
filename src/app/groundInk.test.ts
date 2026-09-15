@@ -112,9 +112,9 @@ const FORBIDDEN = FORBIDDEN_INK_CLASSES;
 // constant. This deliberately diverges from the shipped un-hoisted idiom
 // (`surfaceHoverSweep.test.ts:133`, `controlSizeFloor.test.tsx:145`, which re-read the tree
 // inside a per-assertion helper). REJECTED arm, recorded on the same date: match the shipped
-// idiom for consistency — rejected because one full pass measures 354 ms median of three over
-// the real tree (194 non-test files, 2.46 MB; the read+strip component of that is 204 ms) and
-// this file carries eight assertions, paid again on every `npm test`.
+// idiom for consistency — rejected because one full pass measures ~353 ms over the real tree
+// (194 non-test files, 2.46 MB; the read+strip component of that is 204 ms) and this file
+// carries eight assertions, paid again on every `npm test`.
 // The divergence is confined to this NEW file; no shipped suite was touched.
 //
 // THE HOIST IS INTRA-FILE ONLY. `vitest.config.mts` sets `environment: 'jsdom'` at `:56` and
@@ -171,8 +171,8 @@ const OFFENDERS: ExemptionRoster = {
     owner: D16,
   },
   'app/components/CalendarMonthView.js': {
-    sites: 1,
-    why: 'text-content-link (3.9909) at :788, the "+N more" row, under the day-cell ground candidate at :249 inside the five-arm className ternary at :245-253. D-16 census site. Closed by plan 27, which must decrement this entry in the same commit.',
+    sites: 2,
+    why: ':788 is text-content-link (3.9909), the "+N more" row, under the day-cell ground candidate at :249 inside the five-arm className ternary at :245-253 — the D-16 census site, closed by plan 27. :808 is text-content-muted (4.3725), the empty-day "+" hint, under the SAME :249 ground and NOT in any census. :808 is rostered rather than excluded because the pairing is structurally POSSIBLE (an empty day can be today), but it is not renderable TODAY for two separate reasons: the `group` marker that arms its `group-hover:opacity-40` sits on the cellClickable arm at :251, which is mutually exclusive with the :249 ground, so the hint stays opacity-0 on a current day. Plan 40 hoists that `group`, at which point this becomes a live AA failure — which is exactly why it is recorded here instead of dropped. No sweep plan owns it; routed to the owner in 88.6-09-SUMMARY.md.',
     owner: D16,
   },
   'app/components/GroupSettings.js': {
@@ -329,7 +329,7 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
   it('2. anti-vacuity: the walk really resolved grounds — it is not reporting zero by seeing nothing', () => {
     // T-88.6-18. A resolver that silently degrades reports zero offenders by seeing NOTHING,
     // and every assertion above it goes green. This is the row that catches it.
-    // MEASURED 2026-09-15: 194 non-test files, 837 distinct resting-ink sites, of which 381
+    // MEASURED 2026-09-15: 194 non-test files, 838 distinct resting-ink sites, of which 383
     // resolved at least one ground candidate. The floor is set at 40 — far below the measured
     // value on purpose, because the failure mode being caught is a walk that resolves NOTHING
     // (or a handful), not a walk that drifts by a few sites; a floor near 381 would red on
