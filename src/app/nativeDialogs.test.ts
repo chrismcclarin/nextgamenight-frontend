@@ -42,6 +42,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { assertRosterShape, type ExemptionRoster } from '../test-utils/exemption';
 import { lineAt, sourceFiles, withoutComments } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
@@ -58,8 +59,20 @@ const rel = (file: string): string => path.relative(SRC, file);
  * population it cared about. Test 4 asserts each count is exact in BOTH directions: adding
  * a fifth alert here reds, and fixing one of these reds too — so closing a site forces the
  * exemption to be deleted rather than left behind as a fossil permission.
+ *
+ * D-19 (plan 88.6-04): this roster is now typed on the SHARED schema in
+ * `src/test-utils/exemption.ts`, and it is that module's first real subject. The only
+ * change is `owner`: it was a prose STRING, in which "DEF-88-25-01 — same routing as
+ * above." and "someone said it was fine" are the same type and pass the same check. It is
+ * now the discriminated union, so the provenance is machine-checkable. Every `why` and both
+ * `sites` counts are byte-unchanged — they are the record of why each site survived Phase
+ * 88 and are not rewritten while being re-typed.
+ *
+ * Neither site is closed here. Plan 88.6-15 closes PromptScheduleManager's two and plan
+ * 88.6-32 closes GameComboInput's one; each SHRINKS its entry and deletes it at zero,
+ * which is what the exact count in both directions forces.
  */
-const ALERT_EXEMPT: Record<string, { sites: number; why: string; owner: string }> = {
+const ALERT_EXEMPT: ExemptionRoster = {
   'app/components/PromptScheduleManager.js': {
     sites: 2,
     why:
@@ -68,10 +81,10 @@ const ALERT_EXEMPT: Record<string, { sites: number; why: string; owner: string }
       'this phase forbids authoring copy outside the ratified register — which has none ' +
       'for a schedule toggle or delete. Rewording them independently of the Req 14 ' +
       'register would create a second register, which is the defect, not the fix.',
-    owner:
-      'DEF-88-25-01 — one of the 19 residual primitive-adoption sites with no owning ' +
-      'phase; the owner routes them in 88-32 UAT (onto an existing phase, into 88-31 ' +
-      "88-RESIDUAL-CENSUS.md, or as an explicit accepted-forever record).",
+    // The routing question the old prose left open ("no owning phase") is now ANSWERED:
+    // Phase 88.6 owns it and plan 15 closes it. That is the whole point of the union — an
+    // unrouted deferral and a routed one are no longer the same value.
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01' },
   },
   'app/components/GameComboInput.js': {
     sites: 1,
@@ -80,7 +93,7 @@ const ALERT_EXEMPT: Record<string, { sites: number; why: string; owner: string }
       'using a native dialog, so it is a T-88-25-01 site AND a Req 11 site. The fix is ' +
       '`getFetchErrorMessage(err, { fallback })` — the mechanism exists — but it still ' +
       'needs a fallback string from the Req 14 register.',
-    owner: 'DEF-88-25-01 — same routing as above.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01' },
   },
 };
 
@@ -156,8 +169,28 @@ describe('Req 11 native browser dialogs', () => {
     // "nothing exits scope into thin air" only holds if the owner is written down.
     for (const [file, entry] of Object.entries(ALERT_EXEMPT)) {
       expect(entry.why.length, `${file}: no reason`).toBeGreaterThan(80);
-      expect(entry.owner, `${file}: no owner`).toMatch(/DEF-|Phase |plan /);
+      // D-19: `owner` is the union now, so the old `toMatch` on the raw value cannot run.
+      // The floor is UNCHANGED in strength — the same regex, applied to the cite text read
+      // out of whichever arm carries it. That read is exactly what the union bought: under
+      // the old string there was no arm to read, so any sentence containing "Phase " passed.
+      // This file keeps its own `> 80` reason floor, which is stricter than the shared
+      // schema's 40; `assertRosterShape` is an addition to it, never a replacement.
+      const cite =
+        entry.owner.kind === 'spec'
+          ? entry.owner.id
+          : entry.owner.kind === 'decision'
+            ? entry.owner.marker
+            : entry.owner.ruling;
+      expect(cite, `${file}: no owner`).toMatch(/DEF-|Phase |plan /);
     }
+  });
+
+  it('3b. the roster satisfies the shared D-19 schema (test-utils/exemption)', () => {
+    // The shipped roster is the shared schema's first real subject: a schema validated only
+    // against fixtures is a schema nobody has to satisfy. `assertRosterShape` returns NAMED
+    // violations, so a future hand edit that drops a reason or writes a prose owner fails
+    // here with the file and the field, not as a boolean.
+    expect(assertRosterShape(ALERT_EXEMPT)).toEqual([]);
   });
 
   it('4. each exemption\'s call-site count is EXACT — it can neither grow nor go stale', () => {
