@@ -1652,3 +1652,689 @@ describe('SPEC-88.6 P4 + D-01: heading levels are pinned and arbitrary sizes are
     ).toEqual(['text-[11px]']);
   });
 });
+
+
+// ===========================================================================
+// UI-SPEC §4.2 / §4.5 — the 400/700 weight rule, tree-wide.
+// ===========================================================================
+
+/**
+ * `.btn` sets `font-weight: 600` UNLAYERED (`src/app/globals.css:2200`, inside the `.btn`
+ * block opening at `:2194`), and 600 is the Button label's single legitimate home
+ * (UI-SPEC §4.1, D-01). So `components/ui/Button.tsx` is EXCLUDED from the weight scan,
+ * not exempted.
+ *
+ * EXCLUSION IS NOT EXEMPTION (`src/test-utils/exemption.ts:36-43`): an exclusion says
+ * "this is the DEFINITION of the thing being scanned for" and never expires; an exemption
+ * says "this is DEBT that survived", is counted exactly, and is deleted when its last site
+ * closes. Filing the cva base as an exemption would give the definition a fossil
+ * permission to grow. `Button.tsx` must therefore never appear in `WEIGHT_ROSTER`, and an
+ * assertion below holds that.
+ *
+ * NOTE ON THE CITE: `88.6-11-PLAN.md` cites `globals.css:1961` for this rule. That line
+ * moved when plan 05 landed its cascade work; re-derived 2026-09-15, the unlayered
+ * `font-weight: 600` is at `:2200`.
+ */
+const WEIGHT_SCAN_EXCLUSION = 'components/ui/Button.tsx';
+
+/**
+ * A file-level site scan over COMMENT-STRIPPED source. NOT OPTIONAL, and not a copy of
+ * task 1's fix: `headings()`'s `withoutComments` is scoped to the scanned heading set, and
+ * this rule does not route through it. Without stripping, `src/lib/colorUtils.js:634`
+ * ("Callers apply `font-semibold` at the text element.") and `:678` ("driving
+ * `font-semibold` at `:481`") — both `font-semibold` inside JSDoc block comments in non-test
+ * `src/` — become roster entries NO SWEEP CAN EVER DECREMENT, and any later edit to
+ * unrelated comment prose moves the count on a gate 31 plan files name in a verify block.
+ *
+ * MEASURED, both polarities: 340 sites stripped, 346 unstripped. `colorUtils.js` holds
+ * ZERO stripped sites and is absent from the roster below, which is the strip working.
+ */
+const OFF_SCALE_WEIGHT_SITE = /\bfont-(medium|semibold)\b/g;
+
+interface WeightSite {
+  surface: string;
+  line: number;
+  raw: string;
+  context: string;
+}
+
+function scanWeights(surface: string, stripped: string): WeightSite[] {
+  const out: WeightSite[] = [];
+  OFF_SCALE_WEIGHT_SITE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = OFF_SCALE_WEIGHT_SITE.exec(stripped)) !== null) {
+    out.push({
+      surface,
+      line: lineAt(stripped, m.index),
+      raw: m[0],
+      context: stripped.slice(Math.max(0, m.index - 160), m.index + 80).replace(/\s+/g, ' '),
+    });
+  }
+  return out;
+}
+
+const WEIGHT_SITES: readonly WeightSite[] = FILES.filter(
+  (f) => f.key !== WEIGHT_SCAN_EXCLUSION,
+).flatMap((f) => scanWeights(f.key, f.stripped));
+
+/**
+ * Every file carrying an off-scale weight, seeded programmatically from a live
+ * COMMENT-STRIPPED run at this plan's commit: 340 sites across 76 files (198 `font-medium`,
+ * 142 `font-semibold`), which reproduces `88.6-RESEARCH.md` §B.4 exactly. The largest
+ * roster in the phase, so it is written from the scanner's own output rather than by hand.
+ *
+ * Each `why` carries the §4.5 outcome LEAD (hierarchy -> 700, emphasis -> 400 + a colour
+ * token, dead-on-a-`.btn` -> delete) and the plans that name the file. The lead is a lead:
+ * the owning sweep confirms it per site against UI-SPEC §4.5.
+ *
+ * Five of these sites are PERMANENT — see `ARMED_STATE_600_ROSTER`. The two files holding
+ * them floor at their armed count rather than at zero, and their `why` says so.
+ */
+const WEIGHT_ROSTER: ExemptionRoster = {
+  'app/Header.js': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-05, 88.6-12, 88.6-13, 88.6-16, 88.6-31, 88.6-34, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/availability-form/[token]/page.js': {
+    sites: 3,
+    why:
+      '3 off-scale weight sites (1 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-14, 88.6-23, 88.6-24, 88.6-25, 88.6-42.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/AutoPromptBehaviorBanner.js': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plan: 88.6-34.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/AvailabilityForm.js': {
+    sites: 6,
+    why:
+      '6 off-scale weight sites (5 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-07, 88.6-09, 88.6-10, 88.6-13, 88.6-14, 88.6-23, 88.6-24, 88.6-25, 88.6-42, 88.6-43.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/AvailabilityGrid.js': {
+    sites: 6,
+    why:
+      '6 off-scale weight sites (6 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-22, 88.6-25.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/BallotOptionsEditor.js': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-22, 88.6-37.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/BallotSection.js': {
+    sites: 13,
+    why:
+      '13 off-scale weight sites (5 font-medium, 8 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-22, 88.6-43.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/BringGamePicker.js': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-10, 88.6-15, 88.6-33, 88.6-39, 88.6-43, 88.6-44.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/BringSummary.js': {
+    sites: 2,
+    why:
+      '2 off-scale weight sites (1 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-33, 88.6-43.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/BrowseMoreModal.js': {
+    sites: 4,
+    why:
+      '4 off-scale weight sites (4 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome leads: dead on a .btn (delete); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-04, 88.6-05, 88.6-06, 88.6-10, 88.6-13, 88.6-32, 88.6-33, 88.6-39, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/CalendarListView.js': {
+    sites: 8,
+    why:
+      '8 off-scale weight sites (0 font-medium, 8 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-03, 88.6-05, 88.6-11, 88.6-12, 88.6-17, 88.6-18, 88.6-22, 88.6-27, 88.6-28, 88.6-29, 88.6-36, 88.6-39, 88.6-41, 88.6-43.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/CalendarMonthView.js': {
+    sites: 7,
+    why:
+      '7 off-scale weight sites (4 font-medium, 3 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep; emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-05, 88.6-09, 88.6-10, 88.6-12, 88.6-27, 88.6-39, 88.6-40, 88.6-41, 88.6-45, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/ClickableMemberName.js': {
+    sites: 3,
+    why:
+      '3 off-scale weight sites (1 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-10, 88.6-33, 88.6-34, 88.6-43.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/DangerZoneDeleteAccount.tsx': {
+    sites: 5,
+    why:
+      '5 off-scale weight sites (4 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-05, 88.6-08, 88.6-10, 88.6-29, 88.6-30, 88.6-42, 88.6-45.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/EventDayModal.js': {
+    sites: 2,
+    why:
+      '2 off-scale weight sites (0 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-01, 88.6-05, 88.6-10, 88.6-12, 88.6-18, 88.6-21, 88.6-27, 88.6-34, 88.6-39, 88.6-41, 88.6-42, 88.6-43, 88.6-44, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/EventHeatmapBackground.js': {
+    sites: 3,
+    why:
+      '3 off-scale weight sites (2 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-26.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/EventResultFields.js': {
+    sites: 3,
+    why:
+      '3 off-scale weight sites (3 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-33.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/EventScheduler.tsx': {
+    sites: 3,
+    why:
+      '3 off-scale weight sites (2 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-09, 88.6-26, 88.6-39, 88.6-40, 88.6-43, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/FeedbackButton.js': {
+    sites: 3,
+    why:
+      '3 off-scale weight sites (3 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-05, 88.6-10, 88.6-12, 88.6-13, 88.6-15, 88.6-16, 88.6-31, 88.6-43.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/FeedbackForm.js': {
+    sites: 4,
+    why:
+      '4 off-scale weight sites (4 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-05, 88.6-10, 88.6-13, 88.6-18, 88.6-22, 88.6-31, 88.6-32, 88.6-33, 88.6-39, 88.6-43, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/FriendInvitePanel.js': {
+    sites: 5,
+    why:
+      '5 off-scale weight sites (2 font-medium, 3 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-08, 88.6-09, 88.6-10, 88.6-13, 88.6-22, 88.6-23, 88.6-24, 88.6-33, 88.6-37, 88.6-43, 88.6-44.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/GameSuggestionCard.js': {
+    sites: 2,
+    why:
+      '2 off-scale weight sites (1 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-33, 88.6-39.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/GroupGamesList.js': {
+    sites: 8,
+    why:
+      '8 off-scale weight sites (4 font-medium, 4 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep; emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-03, 88.6-15, 88.6-17, 88.6-32, 88.6-33.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/GroupLibrary.js': {
+    sites: 6,
+    why:
+      '6 off-scale weight sites (6 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-32, 88.6-39, 88.6-43.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/GroupSettings.js': {
+    sites: 4,
+    why:
+      '4 off-scale weight sites (0 font-medium, 4 font-semibold). UI-SPEC §4.5 outcome lead: hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-08, 88.6-10, 88.6-13, 88.6-15, 88.6-19, 88.6-20, 88.6-21, 88.6-25, 88.6-30, 88.6-43, 88.6-45, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/HeatmapTooltip.js': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-26, 88.6-34.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/KebabMenu.js': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. 1 of these is a PERMANENT armed-state 600 (see ARMED_STATE_600_ROSTER), so this entry floors at 1 rather than at zero. Owning plans: 88.6-11, 88.6-12, 88.6-16, 88.6-17, 88.6-18, 88.6-31.',
+    owner: { kind: 'decision', marker: 'DECISION Phase 65-02 EVT-08' },
+  },
+  'app/components/LandingPage.js': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-01, 88.6-04, 88.6-10, 88.6-11, 88.6-12, 88.6-21, 88.6-34, 88.6-35, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/ManageMembers.js': {
+    sites: 11,
+    why:
+      '11 off-scale weight sites (2 font-medium, 9 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-08, 88.6-09, 88.6-10, 88.6-13, 88.6-16, 88.6-18, 88.6-19, 88.6-20, 88.6-21, 88.6-30, 88.6-32, 88.6-36, 88.6-43, 88.6-45.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/MemberChipStack.tsx': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-09, 88.6-28.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/MemberSelector.js': {
+    sites: 2,
+    why:
+      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-33.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/NextGameNightCard.tsx': {
+    sites: 3,
+    why:
+      '3 off-scale weight sites (2 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-11, 88.6-13, 88.6-16, 88.6-17, 88.6-18, 88.6-22, 88.6-27, 88.6-28, 88.6-29, 88.6-30, 88.6-32, 88.6-43, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/NotificationBell.js': {
+    sites: 5,
+    why:
+      '5 off-scale weight sites (1 font-medium, 4 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-10, 88.6-31, 88.6-34, 88.6-43, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/OpenPollsList.js': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-07, 88.6-10, 88.6-13, 88.6-14, 88.6-15, 88.6-16, 88.6-19, 88.6-20, 88.6-22, 88.6-25, 88.6-31, 88.6-32, 88.6-33.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/ParticipantRow.js': {
+    sites: 2,
+    why:
+      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-29.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/PromptScheduleManager.js': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-04, 88.6-07, 88.6-10, 88.6-15, 88.6-32, 88.6-33, 88.6-43, 88.6-44.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/PromptScheduleReadOnly.js': {
+    sites: 2,
+    why:
+      '2 off-scale weight sites (1 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-15, 88.6-43, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/PromptScheduleSection.js': {
+    sites: 3,
+    why:
+      '3 off-scale weight sites (3 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-15, 88.6-43, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/QRCodeModal.js': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-33, 88.6-34, 88.6-43.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/ResponseDashboard.js': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-13, 88.6-32, 88.6-33, 88.6-43, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/RsvpCount.js': {
+    sites: 3,
+    why:
+      '3 off-scale weight sites (3 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-29.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/RsvpSection.js': {
+    sites: 7,
+    why:
+      '7 off-scale weight sites (5 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-11, 88.6-22, 88.6-28, 88.6-29, 88.6-30, 88.6-43, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/ScheduleForm.js': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-13, 88.6-15, 88.6-32, 88.6-33, 88.6-37, 88.6-39, 88.6-43, 88.6-44, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/ScheduleList.js': {
+    sites: 8,
+    why:
+      '8 off-scale weight sites (7 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-16, 88.6-32.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/SchedulerWeekStrip.tsx': {
+    sites: 2,
+    why:
+      '2 off-scale weight sites (1 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-26, 88.6-40.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/StartPollModal.js': {
+    sites: 4,
+    why:
+      '4 off-scale weight sites (4 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-08, 88.6-13, 88.6-22, 88.6-42.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/SuggestionCard.js': {
+    sites: 3,
+    why:
+      '3 off-scale weight sites (2 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-05, 88.6-09, 88.6-13, 88.6-14, 88.6-33, 88.6-39, 88.6-42, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/ThresholdSlider.js': {
+    sites: 2,
+    why:
+      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-22, 88.6-23, 88.6-25, 88.6-44.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/TimezoneNudgeBanner.js': {
+    sites: 2,
+    why:
+      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-26, 88.6-39.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/UpcomingCountPill.tsx': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-28.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/UpcomingEventsCard.js': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-11, 88.6-28, 88.6-43.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/createEvent.js': {
+    sites: 10,
+    why:
+      '10 off-scale weight sites (10 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-07, 88.6-10, 88.6-13, 88.6-22, 88.6-25, 88.6-37, 88.6-39, 88.6-43, 88.6-44.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/grouplist.js': {
+    sites: 3,
+    why:
+      '3 off-scale weight sites (0 font-medium, 3 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); dead on a .btn (delete); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-05, 88.6-07, 88.6-10, 88.6-11, 88.6-12, 88.6-13, 88.6-20, 88.6-21, 88.6-32, 88.6-34, 88.6-36, 88.6-40, 88.6-41, 88.6-43, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/heatmap/WeekGrid.tsx': {
+    sites: 2,
+    why:
+      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-25, 88.6-26, 88.6-40, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/tutorial/TutorialOverlay.js': {
+    sites: 9,
+    why:
+      '9 off-scale weight sites (4 font-medium, 5 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-35.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/tutorial/WelcomeSlide.js': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-35.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/tutorial/simulated/AvailabilityPromptDemo.js': {
+    sites: 2,
+    why:
+      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-12, 88.6-35.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/tutorial/simulated/CheckInDemo.js': {
+    sites: 5,
+    why:
+      '5 off-scale weight sites (2 font-medium, 3 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plan: 88.6-35.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/tutorial/simulated/ProblemSlide.js': {
+    sites: 2,
+    why:
+      '2 off-scale weight sites (0 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-35.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/tutorial/simulated/ScheduleDemo.js': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-35.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/components/tutorial/simulated/TutorialGrid.js': {
+    sites: 2,
+    why:
+      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-35.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/friends/page.js': {
+    sites: 12,
+    why:
+      '12 off-scale weight sites (6 font-medium, 6 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-09, 88.6-13, 88.6-19, 88.6-42, 88.6-43.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/gameDetail/page.js': {
+    sites: 48,
+    why:
+      '48 off-scale weight sites (27 font-medium, 21 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; emphasis (400 + a colour token); dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-05, 88.6-09, 88.6-12, 88.6-13, 88.6-16, 88.6-18, 88.6-29, 88.6-30, 88.6-33, 88.6-43, 88.6-45, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/groupHomePage/page.js': {
+    sites: 7,
+    why:
+      '7 off-scale weight sites (3 font-medium, 4 font-semibold). UI-SPEC §4.5 outcome leads: emphasis (400 + a colour token); outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-07, 88.6-10, 88.6-12, 88.6-13, 88.6-19, 88.6-20, 88.6-21, 88.6-41, 88.6-43, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/groupPlanning/page.js': {
+    sites: 4,
+    why:
+      '4 off-scale weight sites (2 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome leads: emphasis (400 + a colour token); outcome set by the owning sweep; hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-15, 88.6-21, 88.6-32, 88.6-39, 88.6-41, 88.6-43, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/invite/accept/page.js': {
+    sites: 3,
+    why:
+      '3 off-scale weight sites (3 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-13, 88.6-23, 88.6-43.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/invite/game/[token]/page.js': {
+    sites: 3,
+    why:
+      '3 off-scale weight sites (1 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-18, 88.6-23, 88.6-24.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/invite/group/[token]/page.js': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-18, 88.6-23.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/restore/group/[token]/page.tsx': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-18, 88.6-23.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/rsvp/[token]/page.js': {
+    sites: 2,
+    why:
+      '2 off-scale weight sites (0 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome lead: hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-14, 88.6-24, 88.6-42.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/test-sentry/page.js': {
+    sites: 6,
+    why:
+      '6 off-scale weight sites (1 font-medium, 5 font-semibold). UI-SPEC §4.5 outcome leads: dead on a .btn (delete); outcome set by the owning sweep; hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-13.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'app/userProfile/page.js': {
+    sites: 35,
+    why:
+      '35 off-scale weight sites (22 font-medium, 13 font-semibold). UI-SPEC §4.5 outcome leads: emphasis (400 + a colour token); outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. 4 of these are PERMANENT armed-state 600s (see ARMED_STATE_600_ROSTER), so this entry floors at 4 rather than at zero. Owning plans: 88.6-02, 88.6-08, 88.6-09, 88.6-10, 88.6-11, 88.6-14, 88.6-17, 88.6-28, 88.6-37, 88.6-42, 88.6-43, 88.6-44.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'components/ui/Banner.tsx': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-11, 88.6-13, 88.6-15, 88.6-19, 88.6-20, 88.6-32, 88.6-34, 88.6-36.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'components/ui/ErrorFallback.tsx': {
+    sites: 2,
+    why:
+      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-03, 88.6-11, 88.6-12, 88.6-23, 88.6-36, 88.6-43, 88.6-46.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'components/ui/FetchErrorBanner.tsx': {
+    sites: 3,
+    why:
+      '3 off-scale weight sites (3 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-11, 88.6-13, 88.6-15, 88.6-19, 88.6-20, 88.6-34, 88.6-36.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+  'components/ui/UserChip.tsx': {
+    sites: 1,
+    why:
+      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-37.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+  },
+};
+
+/**
+ * The armed-state 600s, carved out AS A RULE WITH ITS REASON rather than as a blanket
+ * exclusion. They are Button-owned emphasis inside a shipped interaction
+ * (`useConfirmAction`'s armed state, the Phase 65-02 two-tap destructive-confirm pattern),
+ * so they are legitimate 600 and are not debt.
+ *
+ * A roster entry rather than a scanner EXCLUSION on purpose: an exclusion on
+ * `userProfile/page.js` and `KebabMenu.js` would also permit any FUTURE 600 in those two
+ * files, which is precisely the fossil permission the exact-count schema exists to stop.
+ * Enumerated by file:line, so a sixth armed site is a decision rather than a silent
+ * widening.
+ */
+const ARMED_STATE_600_ROSTER: ExemptionRoster = {
+  'app/userProfile/page.js': {
+    sites: 4,
+    why:
+      'four armed-state 600s inside useConfirmAction gates (:1719 removeArmed, :2312 and :2449 deletePatternGate.isArmed, :2639 removeGameGate.isArmed) — Button-owned emphasis in the shipped Phase 65-02 two-tap destructive-confirm pattern, not §4.5 debt',
+    owner: { kind: 'decision', marker: 'DECISION Phase 65-02 EVT-08' },
+  },
+  'app/components/KebabMenu.js': {
+    sites: 1,
+    why:
+      'the armed-state 600 on the destructive kebab item (:158, `isArmed ? bg-status-error-subtle font-semibold`) — the Phase 65-02 two-tap pattern, and since D-40 the SOLE phone path to destructive row actions',
+    owner: { kind: 'decision', marker: 'DECISION Phase 65-02 EVT-08' },
+  },
+};
+
+/**
+ * The armed-state predicate. A `font-semibold` whose surrounding source names the
+ * `useConfirmAction` armed state. Deliberately NOT a file-level allowance.
+ */
+const isArmedStateSite = (s: WeightSite) => /isArmed|Armed\b/.test(s.context);
+
+/** Negative controls for the weight rule — both polarities, plus the strip. */
+const FIXTURE_WEIGHT_COMPLIANT = `
+  export const F = () => (
+    <div>
+      <span className="font-bold">seven hundred</span>
+      <span className="font-normal">four hundred</span>
+    </div>
+  );
+`;
+const FIXTURE_WEIGHT_VIOLATION = `
+  export const G = () => <span className="font-medium">five hundred</span>;
+`;
+const FIXTURE_WEIGHT_COMMENTS = `
+  /* A documented font-semibold inside a block comment counts for nothing. */
+  // And a font-medium after a line comment likewise.
+  export const H = () => <span className="font-semibold">real</span>;
+`;
+
+describe('UI-SPEC §4.2 / §4.5: only 400 and 700, tree-wide, outside Button.tsx', () => {
+  it('permits only font-normal and font-bold outside Button.tsx', () => {
+    const byFile: Record<string, number> = {};
+    for (const s of WEIGHT_SITES) byFile[s.surface] = (byFile[s.surface] ?? 0) + 1;
+
+    expect(assertRosterShape(WEIGHT_ROSTER)).toEqual([]);
+    expect(assertRosterShape(ARMED_STATE_600_ROSTER)).toEqual([]);
+
+    // EXCLUSION IS NOT EXEMPTION — the definition must never be filed as debt.
+    expect(
+      Object.keys(WEIGHT_ROSTER).includes(WEIGHT_SCAN_EXCLUSION),
+      'Button.tsx is the DEFINITION of where 600 lives; filing it as an exemption would give ' +
+        'the definition a fossil permission to grow',
+    ).toBe(false);
+
+    expect(
+      assertExactCounts(WEIGHT_ROSTER, byFile),
+      'UI-SPEC §4.2 states TWO weights, 400 body and 700 headings; 500 and 600 are ' +
+        'prohibitions outside the Button label. §4.5 gives the three outcomes: hierarchy -> ' +
+        '700, emphasis -> 400 + a colour token, dead-on-a-.btn -> delete.',
+    ).toEqual([]);
+
+    // Anti-vacuity: a rule that starts with an empty roster on a tree measured to have 340
+    // violations has not actually widened.
+    const seeded = Object.values(WEIGHT_ROSTER).reduce((n, e) => n + e.sites, 0);
+    expect(seeded, 'the weight roster must not be empty').toBeGreaterThan(0);
+    expect(seeded).toBe(WEIGHT_SITES.length);
+  });
+
+  it('holds the armed-state 600s as an owned, counted carve-out — not an exclusion', () => {
+    const armed: Record<string, number> = {};
+    for (const s of WEIGHT_SITES.filter(isArmedStateSite)) {
+      armed[s.surface] = (armed[s.surface] ?? 0) + 1;
+    }
+    expect(
+      assertExactCounts(ARMED_STATE_600_ROSTER, armed),
+      'a sixth armed-state 600 is a decision, not a rebase. These sites also stay counted in ' +
+        'WEIGHT_ROSTER, which is why those two files floor at their armed count rather than ' +
+        'at zero — an exclusion would instead permit ANY future 600 in them. ' +
+        `Armed sites: ${JSON.stringify(WEIGHT_SITES.filter(isArmedStateSite).map((s) => `${s.surface}:${s.line}`))}`,
+    ).toEqual([]);
+  });
+
+  it('does not count a weight class written in a comment (negative control)', () => {
+    expect(
+      scanWeights('fixture/weight-comments.tsx', withoutComments(FIXTURE_WEIGHT_COMMENTS)).map(
+        (s) => s.raw,
+      ),
+      'src/lib/colorUtils.js:634 and :678 are font-semibold inside block comments; seeded raw ' +
+        'they become roster entries no sweep can ever decrement',
+    ).toEqual(['font-semibold']);
+  });
+
+  it('flags font-medium and does not flag font-bold or font-normal (negative controls)', () => {
+    expect(
+      scanWeights('fixture/compliant.tsx', withoutComments(FIXTURE_WEIGHT_COMPLIANT)),
+    ).toEqual([]);
+    expect(
+      scanWeights('fixture/violation.tsx', withoutComments(FIXTURE_WEIGHT_VIOLATION)).map(
+        (s) => s.raw,
+      ),
+    ).toEqual(['font-medium']);
+  });
+
+  it('cross-checks the weight rule against the heading rule — every RAW heading is 700 or rostered', () => {
+    // SUPPLY bucket, and RAW-ONLY, which is the load-bearing part of this assertion.
+    //
+    // A heading migrated onto the `<Heading>` primitive takes its 700 from the cva base
+    // (`88.6-03-PLAN.md:152`) rather than from its own className, so a cross-check that also
+    // read primitive headings would flag EVERY migrated site. PRIMITIVE-SIDE ARM: the
+    // property is pinned rather than dropped — plan 03's `Heading.test.tsx` pins the base
+    // weight on the primitive, and the fixture in the "gives every RAW heading the 700
+    // weight" block above proves a compliant primitive is not flagged here.
+    //
+    // It reuses HEADING_WEIGHT_ROSTER rather than seeding a second copy: that roster IS this
+    // population (raw headings not stating 700), and two rosters over one population is two
+    // places a decrement has to land and one place it can be forgotten.
+    const offenders = RAW.filter((h) => !/\bfont-bold\b/.test(h.className));
+    expect(
+      assertExactCounts(HEADING_WEIGHT_ROSTER, countByFile(offenders)),
+      'measured at this commit: 39 raw headings need a weight edit — 37 font-semibold, 1 ' +
+        'font-medium (app/components/UpcomingEventsCard.js:156) and 1 carrying no weight ' +
+        'utility at all (app/global-error.tsx:66, permanently exempt under DECISION Phase ' +
+        '88-09 D-20). The heading sweeps shrink this visibly.',
+    ).toEqual([]);
+
+    // The two rules must agree: a raw heading carrying font-medium or font-semibold is a
+    // site in BOTH populations. Anything the weight rule sees on a heading, this sees too.
+    const headingWeightSites = WEIGHT_SITES.filter((s) =>
+      RAW.some((h) => h.surface === s.surface && Math.abs(h.line - s.line) <= 4),
+    );
+    expect(
+      headingWeightSites.every((s) => s.surface in WEIGHT_ROSTER),
+      'an off-scale weight sitting on a heading must be rostered by the weight rule as well ' +
+        'as by the heading rule',
+    ).toBe(true);
+  });
+});
