@@ -59,7 +59,7 @@ export default function PromptScheduleReadOnly({ groupId, groupPageUrl }) {
         <ul className="space-y-2 mb-4">
           {schedules.map(s => (
             <li key={s.id} className="flex items-center gap-2 text-sm text-content-secondary">
-              <span className={`w-2 h-2 rounded-full ${s.is_active ? 'bg-status-success' : 'bg-surface-card-hover'}`} />
+              <span className={`w-2 h-2 rounded-full ${s.is_active ? 'bg-status-success' : 'bg-surface-muted'}`} />
               <span>{s.name || 'Unnamed schedule'}</span>
               {!s.is_active && <span className="text-content-muted text-xs">(paused)</span>}
             </li>

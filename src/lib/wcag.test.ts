@@ -41,7 +41,8 @@ const WHITE = '#ffffff'; // --color-bg-card, both the light card and the ledger'
 // would ever red on a stale role label in a green test.
 const WARM_100 = '#f5f0ea'; // --color-btn-secondary-bg (was --color-bg-page until 88.3-18)
 const WARM_50 = '#faf8f5'; // --color-bg-hover / --color-bg-sunken (and Req 1's OLD page value)
-const WARM_200 = '#e8e0d8'; // --color-bg-page (was --color-bg-card-hover until 88.3-18)
+const WARM_200 = '#e8e0d8'; // --color-bg-page (was --color-bg-card-hover until 88.3-18; that
+// property was renamed --color-bg-muted in 88.6-02 (D-15) and now carries warm-250, not this hex)
 const AMBER_800 = '#92400e'; // --color-accent-text (light)
 const AMBER_500 = '#f59e0b'; // --color-accent (fill)
 const PURPLE_700 = '#42536e'; // the focus ring that WON (CONTEXT D-05)
@@ -126,6 +127,8 @@ describe('lStar / deltaLStar — Req 1 surface separation (UI-SPEC section 5.1, 
     // page/card ladder that Gate A test 1 asserts (raw 10.4083, published 10.40). The assertions
     // below are byte-identical to what they were when warm-200 was card-hover — only the role
     // inverted. `--color-bg-card-hover` is the minted `--warm-250` and is not fixtured here.
+    // AMENDED Phase 88.6-02 (D-15): that property is now `--color-bg-muted`; still warm-250,
+    // still not fixtured here. The old spelling is kept as the 88.3-18 record.
     expect(round1(lStar(WARM_200))).toBe(89.6);
     expect(round1(lStar(WHITE))! - round1(lStar(WARM_200))!).toBeCloseTo(10.40, 10);
   });

@@ -205,7 +205,9 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
               Week
             </label>
             {/* DECISION Phase 88-21 (Req 1): adopts `Input` but KEEPS the read-only skin as an
-                override — `bg-surface-card-hover` + `text-content-secondary` + `cursor-not-allowed`
+                override — `bg-surface-muted` (named `bg-surface-card-hover` when 88-21 took this
+                decision; renamed in 88.6-02 (D-15), value byte-equal) + `text-content-secondary`
+                + `cursor-not-allowed`
                 are the only thing telling a sighted user this field is auto-computed and not
                 editable (it carries no visible disabled affordance otherwise). Chosen OVER
                 dropping the overrides for a "clean" bare primitive, which would render it
@@ -217,7 +219,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
               type="text"
               value={weekDisplay ? `Week of ${weekDisplay} (${weekIdentifier})` : ''}
               readOnly
-              className="bg-surface-card-hover text-content-secondary cursor-not-allowed"
+              className="bg-surface-muted text-content-secondary cursor-not-allowed"
             />
             <p className="text-xs text-content-muted mt-1">
               Auto-computed from the deadline using ISO weeks.

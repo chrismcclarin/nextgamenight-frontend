@@ -347,7 +347,7 @@ function FriendInvitePanel({ group, open, onClose, onMemberAdded, isAdmin = fals
                                                 isInGroup
                                                     ? 'border-line bg-surface-page cursor-default'
                                                     : selectedFriends.has(friend.id)
-                                                        ? 'border-accent bg-surface-card-hover cursor-pointer'
+                                                        ? 'border-accent bg-surface-muted cursor-pointer'
                                                         : 'border-line hover:bg-surface-hover cursor-pointer'
                                             }`}
                                         >

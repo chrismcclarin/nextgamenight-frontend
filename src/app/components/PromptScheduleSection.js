@@ -128,7 +128,7 @@ export default function PromptScheduleSection({
     }
     if (openPollCount === 0) {
       return (
-        <span className="bg-surface-card-hover text-content-secondary rounded-full px-2 py-0.5 text-xs font-medium">
+        <span className="bg-surface-muted text-content-secondary rounded-full px-2 py-0.5 text-xs font-medium">
           No open polls
         </span>
       );

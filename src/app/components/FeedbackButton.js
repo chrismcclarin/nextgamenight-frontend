@@ -108,6 +108,9 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
         // active:opacity-75 (the Plan 87.8-01 press idiom) instead of the
         // old bg-surface-card-hover token-swap press state — plan 08 converged
         // the two remaining token-swap sites; do not reintroduce the old idiom.
+        // AMENDED Phase 88.6-02 (D-15): that retired token is now spelled
+        // `bg-surface-muted`. The spelling above is left as the history of the
+        // idiom that was REMOVED — the prohibition is unchanged either way.
         // DECISION Phase 88.3 (§10.1): the hover moved to `bg-surface-header-hover`,
         // NOT the `bg-surface-hover` the other 38 swept sites took — this row renders on
         // the dark header panel under `text-white` (1.06:1 on warm-50 vs 10.48:1 on

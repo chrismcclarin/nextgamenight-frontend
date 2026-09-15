@@ -64,7 +64,7 @@ export default function SuggestionCard({
 
   // Color based on score/participant count
   const getScoreColor = () => {
-    if (!suggestion.meets_minimum) return 'bg-surface-card-hover border-line';
+    if (!suggestion.meets_minimum) return 'bg-surface-muted border-line';
     if (suggestion.preferred_count === suggestion.participant_count) {
       return 'bg-status-success-subtle border-status-success'; // All preferred
     }
@@ -138,7 +138,7 @@ export default function SuggestionCard({
           disabled={isConverting}
           className={`w-full py-2 px-4 rounded-btn font-medium transition-colors
             ${isConverting
-              ? 'bg-surface-card-hover text-content-muted cursor-not-allowed'
+              ? 'bg-surface-muted text-content-muted cursor-not-allowed'
               : 'bg-btn-primary text-btn-primary-text hover:bg-btn-primary-hover'
             }`}
         >
@@ -150,7 +150,7 @@ export default function SuggestionCard({
       {isAlreadyConverted && (
         <button
           onClick={() => router.push(`/groups/${groupId}/events/${suggestion.converted_to_event_id}`)}
-          className="w-full py-2 px-4 rounded-btn font-medium bg-surface-card-hover text-content-secondary hover:bg-surface-elevated transition-colors"
+          className="w-full py-2 px-4 rounded-btn font-medium bg-surface-muted text-content-secondary hover:bg-surface-elevated transition-colors"
         >
           View Event
         </button>

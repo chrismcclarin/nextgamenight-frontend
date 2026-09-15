@@ -89,7 +89,7 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
                   className="w-6 h-6 rounded-sm object-cover shrink-0"
                 />
               ) : (
-                <div className="w-6 h-6 rounded-sm bg-surface-card-hover shrink-0" />
+                <div className="w-6 h-6 rounded-sm bg-surface-muted shrink-0" />
               )}
               <span className="text-sm text-content-primary truncate max-w-[120px]">
                 {game.name}

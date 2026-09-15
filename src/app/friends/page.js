@@ -745,8 +745,8 @@ function FriendsPage() {
                                 {count > 0 && (
                                     <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
                                         activeTab === key
-                                            ? 'bg-surface-card-hover text-content-link'
-                                            : 'bg-surface-card-hover text-content-secondary'
+                                            ? 'bg-surface-muted text-content-link'
+                                            : 'bg-surface-muted text-content-secondary'
                                     }`}>
                                         {count}
                                     </span>

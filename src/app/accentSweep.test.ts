@@ -13,6 +13,9 @@
  * because both grounds moved. Re-measured with `src/lib/wcag.ts`: the page is warm-200 now and
  * `text-accent` reads **1.6450:1** on it (was 1.90 on warm-100), and the "warm-200 pill" is
  * `--color-bg-card-hover`, now the minted warm-250, where it reads **1.4274:1** (was 1.65).
+ * (AMENDED Phase 88.6-02 (D-15): that property is now `--color-bg-muted` and its class is
+ * `bg-surface-muted`, at byte-equal values — the 1.4274:1 figure is unaffected. The old spelling
+ * stays quoted above because it is what the 88.3-18 re-measurement was recorded against.)
  * The card, today-tint and glyph-circle figures are unchanged — those grounds did not move.
  * THE CONCLUSION IS UNCHANGED AND GETS STRONGER: every one of these still fails the 4.5:1 text
  * floor and the 3:1 graphical floor, and both moved grounds got FURTHER from passing, not closer.

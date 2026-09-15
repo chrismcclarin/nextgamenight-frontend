@@ -728,6 +728,10 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
 
     await test.step('surface 15 — 88.3-18 ruling 1c: a card-hover surface rendered ON the page ground', async () => {
       // ADDED Phase 88.3-18 (owner ruling 1c, 2026-08-28). THE ONE MOVED TOKEN WITH NO LIVE PIN.
+      // AMENDED Phase 88.6-02 (D-15): the surface this step and its assertion label call
+      // "card-hover" is now the `bg-surface-muted` / `--color-bg-muted` token, at byte-equal
+      // values. The step title and label keep the old shorthand because they are the 88.3-18
+      // record; NOTHING in this file selects on that class token, so there is no live use here.
       // Everything ledger E uses to justify MINTING `--warm-250` is a RENDER claim — that at
       // warm-200 today's month cell would be byte-identical to an empty one, and `GroupLibrary`'s
       // skeleton bars would vanish into their `bg-surface-page` parent. Until this step that claim
@@ -771,7 +775,8 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
           'list view). This is a LOCATOR failure, not a contrast failure.'
       ).not.toBeNull();
 
-      // Today's cell is `bg-surface-card-hover border-line-accent` (`CalendarMonthView.js:225`) and
+      // Today's cell is `bg-surface-muted border-line-accent` (`CalendarMonthView.js:225`; that
+      // class was `bg-surface-card-hover` until 88.6-02 (D-15), value byte-equal) and
       // carries NO `aria-current` and NO `data-testid` (verified 2026-08-28) — hence the class
       // handle. It is scoped INSIDE the cells grid on purpose: the bare `border-line-accent` token
       // appears at 9 sites FE-wide (`PendingMemberBanner.js:22`, `ManageMembers.js:499`,

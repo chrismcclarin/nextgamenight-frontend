@@ -43,7 +43,7 @@ export default function RsvpCount({
 
        WHY IT EXISTS: plan 16 gives the compact month tile the group tint, and these three
        colours are hard-coded and pass 4.5:1 only against the tile's SHIPPED
-       `bg-surface-card-hover` ground (success 5.46, warning 5.25, error 6.37). Measured
+       `bg-surface-muted` ground (success 5.46, warning 5.25, error 6.37). Measured
        2026-08-27 with `src/lib/wcag.ts` against the eight pinned t = 0.70 tints
        (`colorUtils.test.ts`), EVERY success pairing (3.70-3.92) and EVERY warning pairing
        (3.55-3.76) FAIL, and 5 of 8 error pairings (4.31-4.56) fail too. Tinting the tile

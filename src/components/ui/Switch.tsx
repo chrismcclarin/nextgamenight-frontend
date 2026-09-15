@@ -58,7 +58,7 @@ const Switch = React.forwardRef<
       'relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full',
       // §7 motion table: toggles are the 100ms row. Colour only — no scale.
       'transition-colors duration-100 ease-out',
-      'bg-surface-card-hover data-[state=checked]:bg-btn-primary',
+      'bg-surface-muted data-[state=checked]:bg-btn-primary',
       // §7.2: `focus-visible` only; `outline-hidden` keeps the transparent outline
       // forced-colors mode needs (v4's `outline-none` removes it outright).
       'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2',
@@ -85,9 +85,23 @@ const Switch = React.forwardRef<
         // Dark is `border-transparent` on purpose: dark has shipped with no thumb shadow since 87.7
         // (`globals.css` `.dark --shadow-sm: none`) and white-on-purple-800 is 11.28:1, so adding
         // an edge there would be a change, not a fix.
-        // The `-sm` shadow utility STAYS on the class below: it now resolves to `none` in light and
-        // has always been `none` in dark, so keeping it leaves the class identical in both themes
-        // and keeps `-md`/`-lg` composable — the same reasoning `Card.tsx:22` relies on (§8.1).
+        // The `-sm` shadow STAYS on the class below, and the reason turns on a distinction the
+        // original wording collapsed — CORRECTED Phase 88.6-02 (D49-b, owner ruling 2026-09-09):
+        //   * the CUSTOM PROPERTY `--shadow-sm` IS `none` — in light since 88.3 Req 3, in dark
+        //     since 87.7. The class below reads THAT, because it carries the project's TIER
+        //     spelling `shadow-theme-sm`, whose `@theme` key resolves through `var(--shadow-sm)`.
+        //   * the UTILITY `.shadow-sm` is NOT `none`. It is Tailwind v4's built-in default, whose
+        //     literal values (`0 1px 3px 0 …, 0 1px 2px -1px …`) v4 INLINES into its built-in
+        //     utilities instead of reading the theme property — see `DECISION Phase 87.7 (Plan 06,
+        //     RESEARCH Pitfall 2)` at `globals.css:1176-1190` (cited as `:1140-1154` before this
+        //     same commit's `@theme inline` marker shifted the file by 36 lines; re-derived and
+        //     re-read 2026-09-15), which records exactly that, and why those three properties
+        //     deliberately stay in plain `:root`.
+        // So the class below is identical in both themes because it resolves to a `none` PROPERTY,
+        // not because "the `-sm` utility is `none`" — which is false. Snapping this class to the
+        // alias spelling `shadow-sm` would silently reintroduce a black drop shadow in both
+        // themes. Keeping the tier spelling also keeps `-md`/`-lg` composable — the same reasoning
+        // `Card.tsx:22` relies on (§8.1).
         // Rejected: pointing the thumb at `shadow-theme-md`. That token is reserved for RAISED and
         // OVERLAY surfaces under archetype A, and a switch thumb is neither.
         // Removing this border once the shadow is gone is a decision, not a cleanup.

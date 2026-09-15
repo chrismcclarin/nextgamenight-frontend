@@ -1556,12 +1556,12 @@ function Profile(){
                         </div>
                     ) : (
                         // Skeleton placeholder — shimmer bars sized to typical username + email.
-                        // Uses bg-surface-card-hover token so it auto-themes.
+                        // Uses bg-surface-muted token so it auto-themes.
                         <div className="flex items-center gap-3 md:gap-4 w-full">
-                            <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-card-hover animate-pulse shrink-0" />
+                            <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-surface-muted animate-pulse shrink-0" />
                             <div className="flex-1 space-y-2">
-                                <div className="h-7 w-40 bg-surface-card-hover rounded-sm animate-pulse" />
-                                <div className="h-4 w-56 bg-surface-card-hover rounded-sm animate-pulse" />
+                                <div className="h-7 w-40 bg-surface-muted rounded-sm animate-pulse" />
+                                <div className="h-4 w-56 bg-surface-muted rounded-sm animate-pulse" />
                             </div>
                         </div>
                     )}
@@ -1645,7 +1645,7 @@ function Profile(){
                                                 aria-label="Phone number"
                                                 value={phoneInput}
                                                 disabled
-                                                className="flex-1 bg-surface-card-hover"
+                                                className="flex-1 bg-surface-muted"
                                             />
                                             <button
                                                 disabled
@@ -1884,7 +1884,7 @@ function Profile(){
                             </button>
                         </div>
                     ) : (
-                        <div className="h-10 w-48 bg-surface-card-hover rounded-lg animate-pulse" />
+                        <div className="h-10 w-48 bg-surface-muted rounded-lg animate-pulse" />
                     )}
                 </div>
 
@@ -2536,7 +2536,7 @@ function Profile(){
                             <div className={`mt-3 p-3 rounded-btn ${
                                 importProgress.status === 'error' ? 'bg-status-error-subtle text-content-status-error' :
                                 importProgress.status === 'complete' ? 'bg-status-success-subtle text-content-status-success' :
-                                'bg-surface-card-hover text-content-link'
+                                'bg-surface-muted text-content-link'
                             }`}>
                                 <p className="font-medium">{importProgress.message}</p>
                                 {importProgress.details && (

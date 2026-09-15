@@ -44,11 +44,11 @@ function RsvpStatusPill({ status }) {
     const map = {
         yes: { label: 'Going', cls: 'bg-status-success-subtle text-content-status-success' },
         maybe: { label: 'Maybe', cls: 'bg-status-warning-subtle text-content-status-warning' },
-        no: { label: 'No', cls: 'bg-surface-card-hover text-content-muted' },
+        no: { label: 'No', cls: 'bg-surface-muted text-content-muted' },
     };
     if (!status) {
         return (
-            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-sm bg-surface-card-hover text-content-muted">
+            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-sm bg-surface-muted text-content-muted">
                 No reply
             </span>
         );
@@ -1305,7 +1305,7 @@ export default function GameDetailPage() {
                                         <div className="space-y-2">
                                             {event.EventParticipations.map((participation, idx) => (
                                                 <div key={idx} className="flex items-center gap-2 flex-wrap">
-                                                    <span className="bg-surface-card-hover text-content-primary px-3 py-1 rounded-sm border border-line inline-flex items-center gap-2">
+                                                    <span className="bg-surface-muted text-content-primary px-3 py-1 rounded-sm border border-line inline-flex items-center gap-2">
                                                         <span className="font-medium">
                                                             {participation.is_custom ? (
                                                                 <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
@@ -1327,7 +1327,7 @@ export default function GameDetailPage() {
                                                             </span>
                                                         )}
                                                         {participation.is_new_player && (
-                                                            <span className="text-xs bg-surface-card-hover text-content-link px-1.5 py-0.5 rounded-sm font-semibold">
+                                                            <span className="text-xs bg-surface-muted text-content-link px-1.5 py-0.5 rounded-sm font-semibold">
                                                                 New Player
                                                             </span>
                                                         )}
@@ -2750,7 +2750,7 @@ export default function GameDetailPage() {
                                                         )}
                                                     </p>
                                                     {isUserReview && (
-                                                        <span className="text-xs bg-surface-card-hover text-content-link px-2 py-1 rounded-sm">
+                                                        <span className="text-xs bg-surface-muted text-content-link px-2 py-1 rounded-sm">
                                                             You
                                                         </span>
                                                     )}

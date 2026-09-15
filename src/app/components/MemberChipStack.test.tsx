@@ -119,7 +119,7 @@ describe('MemberChip — fills and ring cues (D-10, D-11, D-12, D-12b)', () => {
   it('8. the NEUTRAL arm is the card-hover fill with secondary ink', () => {
     render(<MemberChip label="ada" />);
     const chip = screen.getByText('AD');
-    expect(chip.className).toContain('bg-surface-card-hover');
+    expect(chip.className).toContain('bg-surface-muted');
     expect(chip.className).toContain('text-content-secondary');
     expect(chip.className).not.toContain('bg-white/85');
   });
@@ -134,7 +134,7 @@ describe('MemberChip — fills and ring cues (D-10, D-11, D-12, D-12b)', () => {
     expect(chip.className).toContain('--group-ink,');
     // The neutral fill measures 1.11:1 on the blue preset tint — invisible. It must be GONE,
     // not merely overridden by a later utility (source order is not a contract).
-    expect(chip.className).not.toContain('bg-surface-card-hover');
+    expect(chip.className).not.toContain('bg-surface-muted');
     expect(chip.className).not.toContain('text-content-secondary');
   });
 
@@ -152,7 +152,7 @@ describe('MemberChip — fills and ring cues (D-10, D-11, D-12, D-12b)', () => {
     render(<MemberChip overflow={3} />);
     const chip = screen.getByText('+3');
     expect(chip.className).toContain('text-content-muted');
-    expect(chip.className).toContain('bg-surface-card-hover');
+    expect(chip.className).toContain('bg-surface-muted');
     expect(chip.className).not.toContain('outline-');
   });
 

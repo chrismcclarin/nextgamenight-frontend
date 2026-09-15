@@ -339,8 +339,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
     const getRoleBadge = (role) => {
         const roleStyles = {
             owner: 'bg-purple-100 text-purple-800 border-purple-300',
-            admin: 'bg-surface-card-hover text-content-accent border-accent',
-            member: 'bg-surface-card-hover text-content-secondary border-line',
+            admin: 'bg-surface-muted text-content-accent border-accent',
+            member: 'bg-surface-muted text-content-secondary border-line',
             pending: 'bg-amber-100 text-amber-800 border-amber-300'
         };
         

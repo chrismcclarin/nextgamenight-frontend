@@ -177,11 +177,11 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
                     type="button"
                     onClick={() => toggleGame(gameId)}
                     className={`w-full flex items-center gap-3 p-2 rounded-lg text-left transition-colors ${
-                      isSelected ? 'bg-surface-card-hover border border-accent' : 'hover:bg-surface-hover border border-transparent'
+                      isSelected ? 'bg-surface-muted border border-accent' : 'hover:bg-surface-hover border border-transparent'
                     }`}
                   >
                     {/* Thumbnail */}
-                    <div className="w-8 h-8 rounded-sm shrink-0 overflow-hidden bg-surface-card-hover">
+                    <div className="w-8 h-8 rounded-sm shrink-0 overflow-hidden bg-surface-muted">
                       {thumbnail ? (
                         <SafeImage
                           src={thumbnail}
@@ -191,7 +191,7 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
                           className="w-8 h-8 object-cover rounded-sm"
                         />
                       ) : (
-                        <div className="w-8 h-8 bg-surface-card-hover rounded-sm flex items-center justify-center">
+                        <div className="w-8 h-8 bg-surface-muted rounded-sm flex items-center justify-center">
                           <span className="text-content-muted text-xs">?</span>
                         </div>
                       )}

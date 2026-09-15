@@ -147,10 +147,10 @@ export default function GroupLibrary({ groupId }) {
       <div className="mt-4 space-y-3">
         {[...Array(5)].map((_, i) => (
           <div key={i} className="flex items-center gap-3 p-3 bg-surface-page rounded-card animate-pulse">
-            <div className="w-10 h-10 bg-surface-card-hover rounded-sm" />
+            <div className="w-10 h-10 bg-surface-muted rounded-sm" />
             <div className="flex-1 space-y-2">
-              <div className="h-4 bg-surface-card-hover rounded-sm w-1/3" />
-              <div className="h-3 bg-surface-card-hover rounded-sm w-1/2" />
+              <div className="h-4 bg-surface-muted rounded-sm w-1/3" />
+              <div className="h-3 bg-surface-muted rounded-sm w-1/2" />
             </div>
           </div>
         ))}
@@ -236,7 +236,7 @@ export default function GroupLibrary({ groupId }) {
           className={`shrink-0 px-3 py-1 rounded-full text-sm font-medium active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
             selectedOwner === null
               ? 'bg-btn-primary text-btn-primary-text'
-              : 'bg-surface-card-hover text-content-secondary hover:text-content-primary'
+              : 'bg-surface-muted text-content-secondary hover:text-content-primary'
           }`}
         >
           All
@@ -248,7 +248,7 @@ export default function GroupLibrary({ groupId }) {
             className={`shrink-0 px-3 py-1 rounded-full text-sm font-medium active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
               selectedOwner === member.user_id
                 ? 'bg-btn-primary text-btn-primary-text'
-                : 'bg-surface-card-hover text-content-secondary hover:text-content-primary'
+                : 'bg-surface-muted text-content-secondary hover:text-content-primary'
             }`}
           >
             {member.username}

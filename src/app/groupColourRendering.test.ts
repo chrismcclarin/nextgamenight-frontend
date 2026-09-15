@@ -94,7 +94,7 @@ const RENDER_SITES: { file: string; nullBranch: string[] }[] = [
   // AMENDED plan 88.3-16: a per-file SET, not a single string, because this file
   // has TWO tint-forked tiles whose null branches legitimately DIFFER. The full
   // tile's is empty (its shipped D-28 null semantics, above); the COMPACT tile's
-  // is its shipped `bg-surface-card-hover` — changing that would be a visual
+  // is its shipped `bg-surface-muted` — changing that would be a visual
   // change on a surface the owner has not been asked about. The second entry
   // carries its `hover:` class VERBATIM because plan 16 forks hover INSIDE the
   // ternary (`.hover\:bg-surface-elevated:hover` at (0,2,0) would otherwise beat
@@ -105,7 +105,7 @@ const RENDER_SITES: { file: string; nullBranch: string[] }[] = [
   // needed loosening. A gate weakened to admit a shape is worse than the shape.
   {
     file: 'app/components/CalendarMonthView.js',
-    nullBranch: ['', 'bg-surface-card-hover hover:bg-surface-elevated'],
+    nullBranch: ['', 'bg-surface-muted hover:bg-surface-elevated'],
   },
   { file: 'app/components/CalendarListView.js', nullBranch: ['bg-surface-card'] },
   { file: 'app/components/EventDayModal.js', nullBranch: ['bg-surface-card'] },
@@ -1361,7 +1361,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // tile can, because its null branch is empty (D-28) — would silently
     // recolour the UNCOLOURED tile's title. That is a visual change on a surface
     // the owner has not been asked about.
-    const compact = forked.find((e) => e.text.includes('bg-surface-card-hover'));
+    const compact = forked.find((e) => e.text.includes('bg-surface-muted'));
     expect(compact, `${file}: the compact tile's ground fork was not found`).toBeDefined();
     const nullArm = compact!.text.match(/\?\s*'\[color:var\(--t-color-l\)\][^']*'\s*:\s*'([^']*)'/);
     expect(
@@ -1417,7 +1417,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
      * the attribute must now be on THIS tag rather than merely nearby.
      */
     const compactOpen = openTags(src).find(
-      (t) => t.attrs.includes('bg-surface-card-hover') && t.attrs.includes(LIGHT_GROUND),
+      (t) => t.attrs.includes('bg-surface-muted') && t.attrs.includes(LIGHT_GROUND),
     );
     expect(compactOpen, `${file}: the compact tile's opening tag was not found`).toBeDefined();
     expect(
@@ -1493,7 +1493,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
 
   it('21. the compact tile\'s RSVP text clears 4.5:1 on every pinned tint once tinted', () => {
     // T-88.3-79. These three colours are hard-coded in `RsvpCount.js` and pass
-    // 4.5:1 only against the compact tile's SHIPPED `bg-surface-card-hover`
+    // 4.5:1 only against the compact tile's SHIPPED `bg-surface-muted`
     // ground. Once the tile takes `--group-ground-light` they fail on the
     // majority of preset/status pairings, so plan 16 forks them onto the tile's
     // own tint pole via a defaulted `inheritColor` prop. This pins BOTH halves:
@@ -2197,7 +2197,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         /TINTED_INK\s*=\s*\n?\s*'\[color:var\(--group-ink-l,var\(--t-color-l\)\)\] dark:\[color:var\(--group-ink,var\(--t-color\)\)\]'/,
       );
     expect(src, 'the untinted chip lost the card-hover fill').toMatch(
-      /NEUTRAL_FILL\s*=\s*'bg-surface-card-hover'/,
+      /NEUTRAL_FILL\s*=\s*'bg-surface-muted'/,
     );
     expect(src, 'the untinted chip lost its secondary ink').toMatch(
       /neutralInk\s*=\s*isOverflow\s*\?\s*'text-content-muted'\s*:\s*'text-content-secondary'/,

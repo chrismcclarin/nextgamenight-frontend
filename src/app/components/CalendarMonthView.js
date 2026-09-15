@@ -246,7 +246,7 @@ export default function CalendarMonthView({
                 isAdjacent ? 'opacity-60 ' : ''
               }${
                 !date ? 'bg-surface-page' :
-                isCurrentDay ? 'bg-surface-card-hover border-line-accent' :
+                isCurrentDay ? 'bg-surface-muted border-line-accent' :
                 variant === 'full' && isPastDate ? 'bg-surface-page' :
                 cellClickable ? 'bg-surface-card hover:bg-surface-hover hover:border-line-accent cursor-pointer transition-colors group' :
                 'bg-surface-card'
@@ -506,7 +506,7 @@ export default function CalendarMonthView({
                                `UNSET_BG_TILE_TEXT` (warm-900), so spreading it here would silently
                                recolour the UNCOLOURED tile's title from amber-800 to warm-900 — a
                                visual change on a surface the owner has not been asked about. Same
-                               reason the null ground branch stays `bg-surface-card-hover` rather
+                               reason the null ground branch stays `bg-surface-muted` rather
                                than going empty like the full tile's.
 
                                HOVER IS FORKED INSIDE THE TERNARY, and that is load-bearing.
@@ -564,7 +564,7 @@ export default function CalendarMonthView({
                                   onEventClick(event);
                                 }
                               }}
-                              className={`text-xs p-0.5 rounded-sm font-medium cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] hover:opacity-90' : 'bg-surface-card-hover hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}`}
+                              className={`text-xs p-0.5 rounded-sm font-medium cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] hover:opacity-90' : 'bg-surface-muted hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}`}
                               style={{
                                 ...(tinted && {
                                   '--group-ground': ground,

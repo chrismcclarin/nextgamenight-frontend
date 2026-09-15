@@ -278,7 +278,7 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
           // thumb aims at on a phone, so the floor is unconditional, not `max-md:`.
           'flex min-h-11 w-full cursor-pointer items-center px-3 py-2',
           'text-base text-content-primary',
-          activeIndex === index && 'bg-surface-card-hover',
+          activeIndex === index && 'bg-surface-muted',
           item.disabled && 'cursor-not-allowed opacity-50'
         )}
         {...getItemProps({

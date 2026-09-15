@@ -321,7 +321,31 @@
   /* surfaces  (tailwind.config.js:30-40) */
   --color-surface-page: var(--color-bg-page);
   --color-surface-card: var(--color-bg-card);
-  --color-surface-card-hover: var(--color-bg-card-hover);
+  /* DECISION Phase 88.6-02 (D-15): this key is RENAMED IN PLACE from
+     `--color-surface-card-hover` (runtime property `--color-bg-card-hover`), chosen OVER three
+     rejected names. The old name was a lie: the token serves ~44 STATIC surfaces — pills, badges,
+     chips, skeletons, selected/disabled states — and no hover at all (the hover wash is
+     `--color-bg-hover`, a different token), and the shadcn bridge `--muted` at the bottom of this
+     file — which pointed at the old `--color-bg-card-hover` property — read as a contradiction.
+     CHOSEN `muted`. REJECTED:
+       - `chip` — wrong at ~20 of the 46 sites. The skeletons at `GroupLibrary.js`, `Switch.tsx`,
+         `Combobox.tsx`, `StartPollModal.js` and `CalendarMonthView.js` are not chips.
+       - `static-raised` — inverts the shipped L* ordering recorded at `:736-739` below; this
+         surface sits UNDER the card, not above it.
+       - `subtle` — already means HUE TINT in this file (`--color-surface-accent-subtle`, the
+         `-subtle` status family, and `tintTreatment.test.ts:156`'s `RESTING_SUBTLE` regex); reusing
+         it for a neutral step would collapse two distinct ideas onto one word.
+     BOTH token VALUES ARE BYTE-EQUAL ACROSS THE RENAME — light `var(--warm-250)` (#dbd1c7), dark
+     `var(--purple-800)` — so this is a naming change, not a look change: no rendered pixel moves.
+     Renaming the key IN PLACE (rather than moving it) preserves `@theme inline` declaration order,
+     which is what Tailwind v4 emits from. Reverting to the old name is a decision, not a cleanup.
+     HISTORY DISPOSITION (88.6-02, D-15): prose elsewhere in this file that names the old spelling
+     (`card-hover`, `--color-bg-card-hover`, `bg-surface-card-hover`) records MEASUREMENTS and
+     RULINGS taken under that name — contrast tables, L* ladders, rejected alternatives, prior
+     sweeps. Those lines are deliberately LEFT AS HISTORY and are NOT offenders: rewriting a
+     measurement's label would turn a true statement about what was measured then into a false one.
+     Only pointers that direct a reader AT a live declaration or a live call site were amended. */
+  --color-surface-muted: var(--color-bg-muted);
   --color-surface-elevated: var(--color-bg-elevated);
   --color-surface-input: var(--color-bg-input);
   /* Phase 88.3 (D-02 / D-03, UI-SPEC §9.4): the two new surfaces, bridged in the house shape —
@@ -612,7 +636,8 @@
      `--warm-550` is RETIRED in the same commit — the ramp keeps its step count.
      CHOSEN: `#dbd1c7`, the 70% point on warm-200 -> warm-300 (verified: interpolating each
      channel at t = 0.70 reproduces `dbd1c7` exactly), L* 84.3726. Its SOLE consumer is
-     `--color-bg-card-hover`; the full rationale lives at that marker below.
+     `--color-bg-muted` (named `--color-bg-card-hover` until 88.6-02 (D-15); value byte-unchanged);
+     the full rationale lives at that marker below.
      WHY NEITHER EXISTING NEIGHBOUR WORKS, and this is the whole reason a step was minted rather
      than reused:
        - warm-200 `#e8e0d8` is now THE PAGE (ruling 1c). Leaving card-hover on it makes a resting
@@ -627,7 +652,12 @@
          `CalendarMonthView.js:228`). warm-250 measures 4.7121.
      The feasible window on the warm-200 -> warm-300 line is t ∈ [0.60, 0.92]; 0.70 is mid-window
      so no floor is near. Deleting this step and collapsing card-hover back onto a neighbour is a
-     decision, not a cleanup. */
+     decision, not a cleanup.
+     AMENDED Phase 88.6-02 (D-15): the class spelling quoted throughout this marker
+     (`bg-surface-card-hover`) is now `bg-surface-muted` and the property is `--color-bg-muted`.
+     The cited file:line sites and every measured number above are unchanged — the rename is
+     name-only, at byte-equal values. The old spelling is left quoted here as the history of the
+     ruling that minted this step. */
   --warm-250: #dbd1c7;
   --warm-300: #d6cbc0;
   --warm-400: #b8a898;
@@ -771,15 +801,21 @@
          cheaper than three collapsed accent tokens.
        - warm-100 or warm-50. Both sit ABOVE the page in L*, which reverses the D-01 split stated
          above and reds test 2c.
-     Collapsing this back onto a neighbouring ramp step is a decision, not a cleanup. */
-  --color-bg-card-hover: var(--warm-250);
+     Collapsing this back onto a neighbouring ramp step is a decision, not a cleanup.
+     AMENDED Phase 88.6-02 (D-15): this property is RENAMED to `--color-bg-muted` (Tailwind class
+     `bg-surface-card-hover` -> `bg-surface-muted`). The VALUE is byte-unchanged (`--warm-250`
+     #dbd1c7), so every measurement recorded above still holds exactly; only the name moved. The
+     rejected names and the full rationale are at the `@theme inline` marker near the top of this
+     file. */
+  --color-bg-muted: var(--warm-250);
   /* Phase 88.3 (D-02 / D-03, UI-SPEC §5.2): the two NEW surfaces archetype A needs. `hover` is
      the owner's "S3 press" look — warm-50 is LIGHTER than the page but fainter than the card
      (ΔL* 2.30), so a hovered card reads pressed rather than lifted. `sunken` is the same value in
      LIGHT because a block recessed inside a white card wants the same single step; the two names
      diverge in DARK, where `sunken` is a minted literal (see the `.dark` block below). Bridged as
      `bg-surface-hover` / `bg-surface-sunken` in `@theme inline` above. Full rationale for the
-     split is at the `--color-bg-card-hover` marker directly above. */
+     split is at the `--color-bg-muted` marker directly above (that property was named
+     `--color-bg-card-hover` until 88.6-02 (D-15); value byte-unchanged). */
   --color-bg-hover: var(--warm-50);
   --color-bg-sunken: var(--warm-50);
   --color-bg-elevated: #ffffff;
@@ -1528,10 +1564,11 @@
 .dark {
   --color-bg-page: var(--purple-950);
   --color-bg-card: var(--purple-900);
-  --color-bg-card-hover: var(--purple-800);
-  /* Phase 88.3 (D-02): deliberately IDENTICAL to `--color-bg-card-hover` directly above, so every
-     one of the 42 sites swept from `hover:bg-surface-card-hover` to `hover:bg-surface-hover` in
-     plan 06 is BYTE-IDENTICAL in dark. The two values diverge in LIGHT only, which is the whole
+  --color-bg-muted: var(--purple-800);
+  /* Phase 88.3 (D-02): deliberately IDENTICAL to `--color-bg-muted` directly above — renamed from
+     `--color-bg-card-hover` in 88.6-02 (D-15), value byte-unchanged — so every one of the 42 sites
+     swept from `hover:bg-surface-card-hover` to `hover:bg-surface-hover` in plan 06 is
+     BYTE-IDENTICAL in dark. The two values diverge in LIGHT only, which is the whole
      point of the split (marker at the light declaration). */
   --color-bg-hover: var(--purple-800);
   /* DECISION Phase 88.3 (D-03 / UI-SPEC §5.2.1): `#1c2432` is a MINTED literal — the 45% point on
@@ -1737,7 +1774,7 @@
   --primary-foreground: var(--color-btn-primary-text);
   --secondary: var(--color-btn-secondary-bg);
   --secondary-foreground: var(--color-btn-secondary-text);
-  --muted: var(--color-bg-card-hover);
+  --muted: var(--color-bg-muted);
   --muted-foreground: var(--color-text-muted);
   --accent: var(--color-accent);
   --accent-foreground: var(--color-on-accent);

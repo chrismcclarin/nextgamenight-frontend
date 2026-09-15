@@ -140,19 +140,37 @@ export function parseAlphaToken(
 /**
  * The resting `-subtle` tints, and why a second resting `bg-*` beside one is a defect.
  *
- * MEASURED in `.next/static/css/*.css` after a real `next build` of this app:
- *   .bg-status-error-subtle    53174
- *   .bg-status-success-subtle  53299
- *   .bg-status-warning-subtle  53428
- *   .bg-surface-accent-subtle  53500
- *   .bg-surface-card           53573
- *   .bg-surface-card-hover     53628
+ * MEASURED in `.next/static/css/*.css` after a real `next build` of this app.
+ *
+ * RE-RECORDED Phase 88.6-02 (D-15), 2026-09-15 — from a real `npm run build` (exit 0) of the
+ * POST-rename tree, not hand-edited. The last row's class was `.bg-surface-card-hover` and is now
+ * `.bg-surface-muted`; EVERY offset below moved as well, because the whole table was re-measured
+ * rather than relabelled. Hand-editing the name over the old offsets would have been a fabricated
+ * measurement, which is why the re-record is the rule here instead of a string rename.
+ *   .bg-status-error-subtle    29765
+ *   .bg-status-success-subtle  29904
+ *   .bg-status-warning-subtle  30047
+ *   .bg-surface-accent-subtle  30119
+ *   .bg-surface-card           30279
+ *   .bg-surface-muted          30641
  * Every tint is emitted BEFORE the plain surfaces. Two same-specificity background rules on
  * one element are resolved by stylesheet order, so where both reach an element through a
  * template literal with no `tailwind-merge`, the PLAIN SURFACE WINS and the tint renders
  * nothing — exactly the failure the now-deleted `MergedHeatmapGrid` shipped into before Phase 88-27
  * fixed it. (The file itself went in plan 88.1-16; the failure mode it demonstrated has not.)
  * Variant-prefixed tints (`hover:`) are exempt: the pseudo-class raises specificity.
+ *
+ * ONE ORDERING FACT THE 88.6-02 RE-MEASUREMENT SURFACED, recorded because it refutes a plausible
+ * assumption rather than confirming one: Tailwind v4 emits these utilities in ALPHABETICAL class
+ * order, NOT in `@theme inline` declaration order. So renaming the key in place did NOT preserve
+ * this token's position — `.bg-surface-card-hover` sat between `.bg-surface-card` and
+ * `.bg-surface-elevated`; `.bg-surface-muted` now sits between `.bg-surface-input` and
+ * `.bg-surface-nav`. The invariant this block exists to state SURVIVES (every tint is still
+ * emitted before every plain surface), and the reorder is inert in this app for a measured
+ * reason: a scan of every string literal under `src/` and `e2e/` finds exactly TWO carrying more
+ * than one BARE `bg-*` utility (`tokenContrast.test.ts` and `cn.twMergeV3.test.ts`, both test
+ * fixtures), and neither involves this token. A future site that puts two bare `bg-*` on one
+ * element would be governed by the new order, not the old.
  */
 const RESTING_SUBTLE = /^bg-(status-(success|error|warning)-subtle|surface-accent-subtle)$/;
 
@@ -293,7 +311,7 @@ describe('D-32/D-33 tint treatment (Req 17)', () => {
     expect(grouplist).toMatch(/const hasBgImage = !!bgImageStyle/);
 
     const member = fs.readFileSync(path.join(SRC, 'app/components/ClickableMemberName.js'), 'utf8');
-    expect(member).toMatch(/rounded-full bg-surface-card-hover text-btn-primary/);
+    expect(member).toMatch(/rounded-full bg-surface-muted text-btn-primary/);
   });
 
   it('4b. the Req 10 delete-over-revive decision lives at a PRODUCTION site, not only in this file', () => {

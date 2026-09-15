@@ -3,7 +3,10 @@
  *
  * WHAT THIS PINS
  * --------------
- * Plan 88.3-03 re-keyed `--color-bg-card-hover` to warm-200 [AMENDED 88.3-18: the token is the
+ * Plan 88.3-03 re-keyed `--color-bg-card-hover` to warm-200 [AMENDED 88.6-02 (D-15): that property
+ * is now named `--color-bg-muted` and its class is `bg-surface-muted`, at byte-equal values — the
+ * old spelling is kept quoted here because it is what the 88.3 records were written against]
+ * [AMENDED 88.3-18: the token is the
  * minted **warm-250** since owner ruling 1c, 2026-08-28 — warm-200 became the page, so the re-key's
  * own REASON, that the old value had become the page colour, is now true TWICE OVER and the
  * conclusion is unchanged] because it serves ~49 STATIC
@@ -33,6 +36,8 @@
  * while every className in this repo sits on a different line from its opening tag.
  * FALSE POSITIVES: it also lives in comments that must NOT be swept — measured at
  * execution time, `grep -rEn 'hover:bg-surface-card-hover' src` returned 42 lines of which
+ * [the class in that recorded command is spelled `bg-surface-muted` since 88.6-02 (D-15); the
+ * command and its count are left verbatim because they are the measurement taken THEN]
  * `NotificationBell.js:168` is a DECISION-marker COMMENT line, so the grep census was
  * inflated by exactly one; the lexer's count is 41. A naive `sed` would have corrupted a
  * prior phase's evidence. `sourceScan.ts:41-58` records four shipped grep gates killed by
@@ -65,8 +70,17 @@ const rel = (file: string): string => path.relative(SRC, file);
  * and braces, and it is the idiom `legacyOverlayClass.test.ts:54` established.)
  */
 const SURFACE = ['bg', 'surface'].join('-');
-/** The token being retired from PREFIXED positions only. Bare uses stay (D-01). */
-const LEGACY = `${SURFACE}-card-hover`;
+/**
+ * The token being retired from PREFIXED positions only. Bare uses stay (D-01).
+ *
+ * AMENDED Phase 88.6-02 (D-15): the spelling moved from `-card-hover` to `-muted` at byte-equal
+ * token values. The constant keeps the name `LEGACY` because what it means here is unchanged —
+ * "the surface whose PREFIXED uses 88.3 retired" — and every assertion below turns on that
+ * meaning, not on the spelling. Exactly ONE of the five constants in this block takes the new
+ * spelling; `SURFACE`, `NEW_HOVER`, `HEADER_HOVER` and `SUNKEN` name other live surfaces and are
+ * byte-unchanged on purpose.
+ */
+const LEGACY = `${SURFACE}-muted`;
 /** The faint press wash the owner picked (warm-50 in light, ΔL* 2.3 from the card). */
 const NEW_HOVER = `${SURFACE}-hover`;
 /** The dark-chrome family: warm-700, 10.48:1 under `text-white` (UI-SPEC §10.1). */
@@ -89,7 +103,8 @@ const STRIP_VARIANTS = /^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/;
 /**
  * Every PREFIXED reach for the legacy hover token — `hover:` or `data-[state=open]:`.
  *
- * A BARE `bg-surface-card-hover` is deliberately NOT a hit: it is the static-surface token
+ * A BARE `bg-surface-muted` (spelled `bg-surface-card-hover` until 88.6-02 (D-15); value
+ * byte-equal) is deliberately NOT a hit: it is the static-surface token
  * this phase re-keyed on purpose (D-01), and ~44 shipped surfaces depend on it.
  */
 export function legacyHoverUses(src: string): { line: number; text: string }[] {
@@ -254,5 +269,102 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
     // sweep (49 before, minus the five nested blocks that became sunken).
     const sites = sitesOf(files, LEGACY);
     expect(sites.length, `static surfaces remaining: ${sites.length}`).toBeGreaterThanOrEqual(40);
+  });
+});
+
+// =====================================================================================
+// Phase 88.6-02 (D-15) — legs (a) and (c) of the old-name completeness census.
+// Leg (b) (the declaration layer) lives in `tokenContrast.test.ts`, which is the only
+// suite that parses `globals.css`.
+// =====================================================================================
+
+/**
+ * The RETIRED class spelling, built from parts for the same reason the constants above are:
+ * so this file's own prose can never be scanned into a hit by leg (a) or by any future census.
+ */
+const RETIRED_CLASS = `${SURFACE}-card${'-'}hover`;
+/** The retired custom-property spellings, likewise built rather than written. */
+const RETIRED_PROPS = [`--color-bg-card${'-'}hover`, `--color-surface-card${'-'}hover`];
+
+describe('Phase 88.6-02 (D-15) — the retired card-hover CLASS token has zero live sites', () => {
+  const files = sourceFiles(SRC);
+
+  it('(a) the comment-blind source scan over `src/` finds zero live uses of the old class token', () => {
+    // WHY A LEXER AND NOT A GREP. Task 2 of this plan deliberately PRESERVES ~26 comment lines
+    // that name the old spelling, because each records a measurement or ruling taken under that
+    // name — rewriting them would turn true historical statements into false ones. A byte-presence
+    // grep over the tree is therefore UNSATISFIABLE BY CONSTRUCTION: it can only be made green by
+    // falsifying history. `stringChunks` sees only string-literal content, so comment prose is
+    // excluded by the lexer rather than by a fragile pattern — the same idiom `darkChromeLegibility
+    // .test.ts:43` uses, and the one `sourceScan.ts:41-58` records four shipped grep gates dying
+    // without.
+    //
+    // WHAT IT DOES NOT SEE, stated rather than implied: `sourceFiles()` excludes `.test.`/`.spec.`
+    // files (`sourceScan.ts:209`) and never reaches `.css` or `e2e/`. Leg (b) covers the
+    // declaration layer, leg (c) covers `e2e/`, and the test-file layer is covered by the suites
+    // themselves running green.
+    const offenders: string[] = [];
+    for (const file of files) {
+      const src = fs.readFileSync(file, 'utf8');
+      for (const { offset, text } of stringChunks(src)) {
+        for (const token of text.split(/\s+/).filter(Boolean)) {
+          if (token.replace(STRIP_VARIANTS, '') === RETIRED_CLASS) {
+            offenders.push(`${rel(file)}:${lineAt(src, offset)}`);
+          }
+        }
+      }
+    }
+    expect(
+      offenders,
+      `88.6-02 (D-15) — the retired class token survives at a LIVE site: ${offenders.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('(a-control) the scan is looking at a real app and the NEW spelling is actually adopted', () => {
+    // The zero above must not be zero-by-emptiness. Same control shape as test 0 and test 4a.
+    expect(files.length).toBeGreaterThan(50);
+    expect(sitesOf(files, LEGACY).length, 'the renamed static surfaces').toBeGreaterThanOrEqual(40);
+  });
+
+  it('(c) `e2e/` has no live use — no old token in a locator/selector, no old custom-property reference', () => {
+    // `e2e/` is outside `sourceFiles()`' reach, so this leg reads it directly.
+    //
+    // IT IS DELIBERATELY NOT A STRING-CHUNK SCAN. Three `card-hover` strings survive in
+    // `e2e/contrast.spec.ts` — a `test.step` TITLE, a comment, and an assertion LABEL — and two of
+    // the three are string literals, so a non-comment string census would red on descriptive prose.
+    // What matters for e2e is whether the token is used to FIND an element or to READ a custom
+    // property; both of those are syntactically distinctive, so they are what is asserted.
+    const e2eDir = path.resolve(SRC, '..', 'e2e');
+    const e2eFiles = fs
+      .readdirSync(e2eDir, { withFileTypes: true })
+      .filter((d) => d.isFile() && /\.(ts|js)$/.test(d.name))
+      .map((d) => path.join(e2eDir, d.name));
+    expect(e2eFiles.length, 'LOCATOR failure: no e2e spec files found').toBeGreaterThan(0);
+
+    const offenders: string[] = [];
+    for (const file of e2eFiles) {
+      const src = fs.readFileSync(file, 'utf8');
+      src.split('\n').forEach((line, i) => {
+        const where = `${path.basename(file)}:${i + 1}`;
+        // A selector reach: the token inside locator()/querySelector()/getBy*()/$()/$$().
+        if (
+          new RegExp(
+            `(locator|querySelectorAll|querySelector|getByTestId|getByRole|\\$\\$|\\$)\\s*\\([^)]*${RETIRED_CLASS}`,
+          ).test(line)
+        ) {
+          offenders.push(`${where} (selector)`);
+        }
+        // A custom-property read, in any of the forms e2e uses.
+        for (const prop of RETIRED_PROPS) {
+          if (line.includes(`var(${prop})`) || line.includes(`getPropertyValue('${prop}')`)) {
+            offenders.push(`${where} (custom property ${prop})`);
+          }
+        }
+      });
+    }
+    expect(
+      offenders,
+      `88.6-02 (D-15) — an e2e spec still reaches for the retired token: ${offenders.join(', ')}`,
+    ).toEqual([]);
   });
 });

@@ -363,7 +363,9 @@ export default function ClickableMemberName({ userId, username, children, showIn
     //
     // DECISION Phase 88-27 (D-32/D-33): the visible TINT — Phase 88's half of
     // the M-15 split, which the line above used to say was deliberately absent
-    // — is now `bg-surface-card-hover`, one of the three UI-SPEC §10.3
+    // — is now `bg-surface-muted` (named `bg-surface-card-hover` when this
+    // decision was taken; renamed in 88.6-02 (D-15), value byte-equal), one of
+    // the three UI-SPEC §10.3
     // exemplars. Chosen OVER `bg-surface-accent-subtle` (an amber circle under
     // a `text-btn-primary` purple "+" — the two clash) and OVER minting a
     // `btn-primary-subtle` token, which D-33 forbids. `bg-surface-elevated` was
@@ -381,7 +383,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
       <button
         type="button"
         onClick={handleSendRequest}
-        className="md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-card-hover text-btn-primary text-sm font-bold cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+        className="md:hidden ml-2.5 relative inline-flex items-center justify-center w-6 h-6 rounded-full bg-surface-muted text-btn-primary text-sm font-bold cursor-pointer after:absolute after:-inset-x-2.5 after:-inset-y-1 after:content-[''] active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
         aria-label={`Add ${username} as a friend`}
       >
         +

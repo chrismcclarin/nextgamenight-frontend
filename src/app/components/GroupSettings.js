@@ -623,8 +623,11 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                   ΔL* 2.3 from the surrounding card and near-invisible, where warm-200
                   gives ΔL* 10.4 and is MORE visible. Phase 88.6's broader sunken adoption
                   across the 176 `bg-surface-card` sites must not re-add it. That is a
-                  decision, not a cleanup. */}
-              <div className="inline-flex w-20 h-20 rounded-full bg-surface-card-hover items-center justify-center text-4xl mb-2 overflow-hidden">
+                  decision, not a cleanup.
+                  AMENDED Phase 88.6-02 (D-15): renamed to `bg-surface-muted`, value byte-equal.
+                  The OI-5 exclusion above stands verbatim — only the token's NAME moved, and the
+                  ΔL* figures it turns on are unchanged. */}
+              <div className="inline-flex w-20 h-20 rounded-full bg-surface-muted items-center justify-center text-4xl mb-2 overflow-hidden">
                 {profilePictureUrl ? (
                   profilePictureUrl.startsWith('http') || profilePictureUrl.startsWith('/') ? (
                     <SafeImage
@@ -655,7 +658,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                   key={index}
                   onClick={() => handleSelectDefaultPicture(pic.url)}
                   className={`p-4 border-2 rounded-lg text-3xl hover:bg-surface-hover transition-colors ${
-                    profilePictureUrl === pic.url ? 'border-accent bg-surface-card-hover' : 'border-line'
+                    profilePictureUrl === pic.url ? 'border-accent bg-surface-muted' : 'border-line'
                   }`}
                   title={pic.name}
                 >

@@ -102,7 +102,7 @@ const TINTED_FILL = 'bg-white/85 ring-1 ring-black/25';
 const TINTED_INK =
   '[color:var(--group-ink-l,var(--t-color-l))] dark:[color:var(--group-ink,var(--t-color))]';
 
-const NEUTRAL_FILL = 'bg-surface-card-hover';
+const NEUTRAL_FILL = 'bg-surface-muted';
 
 /*
  * DECISION Phase 88.5 (D-12, D-12b, UI-SPEC 6.5.5): the status cue is an `outline`, chosen

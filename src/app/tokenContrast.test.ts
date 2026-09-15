@@ -5,6 +5,15 @@
  * chain down to a literal inside the correct block, and asserts the floors this phase
  * claims. One bare `it(` per floor group, so a red run names the requirement.
  *
+ * AMENDED Phase 88.6-02 (D-15): the property this file resolved as `--color-bg-card-hover` is
+ * now `--color-bg-muted` (class `bg-surface-muted`), at BYTE-EQUAL values in both themes — so
+ * every ratio, L* and ΔL* recorded below is unaffected and no assertion was loosened. Every LIVE
+ * reference (each `resolve(...)` argument, each `expectRatio*` argument, and the `@utility card`
+ * regex in test 11) moved to the new name. Comment prose that still says `card-hover` /
+ * `--color-bg-card-hover` records MEASUREMENTS AND RULINGS TAKEN UNDER THAT NAME and is left as
+ * history on purpose — rewriting a measurement's label would make a true statement about what was
+ * measured then into a false one.
+ *
  * ---------------------------------------------------------------------------------------
  * DECISION Phase 88.3-05 (D-06): this gate reads the DECLARED token layer, not rendered
  * pixels — chosen OVER relying only on the Playwright contrast probe (Gate C).
@@ -441,9 +450,9 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
   it('2. Req 1 — light card-hover is a third value, below the page (§5.2 ladder self-check)', () => {
     const card = resolve('light', '--color-bg-card');
     const page = resolve('light', '--color-bg-page');
-    const cardHover = resolve('light', '--color-bg-card-hover');
-    expect(cardHover, `Req 1 — light --color-bg-card-hover (${cardHover}) must differ from the card`).not.toBe(card);
-    expect(cardHover, `Req 1 — light --color-bg-card-hover (${cardHover}) must differ from the page`).not.toBe(page);
+    const cardHover = resolve('light', '--color-bg-muted');
+    expect(cardHover, `Req 1 — light --color-bg-muted (${cardHover}) must differ from the card`).not.toBe(card);
+    expect(cardHover, `Req 1 — light --color-bg-muted (${cardHover}) must differ from the page`).not.toBe(page);
     // Deliberately DARKER than the page: a pill is darker than its surroundings while a
     // hovered card is lighter. Those are opposite directions and D-01 split the token for
     // exactly that reason. Flipping this ordering is a decision, not a cleanup.
@@ -486,8 +495,8 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
   it('5. Req 1 — dark bg-hover is byte-identical to the dark card-hover value', () => {
     // The claim that makes "dark does not move" true for all 42 swept hover sites.
     const hover = resolve('dark', '--color-bg-hover');
-    const cardHover = resolve('dark', '--color-bg-card-hover');
-    expect(hover, `Req 1 — dark --color-bg-hover (${hover}) must equal dark --color-bg-card-hover (${cardHover}) so every swept site is byte-identical in dark`).toBe(cardHover);
+    const cardHover = resolve('dark', '--color-bg-muted');
+    expect(hover, `Req 1 — dark --color-bg-hover (${hover}) must equal dark --color-bg-muted (${cardHover}) so every swept site is byte-identical in dark`).toBe(cardHover);
   });
 
   it('6. Req 1 — the modal scrim really dims, in both themes (the one composited row Gate A can compute)', () => {
@@ -579,7 +588,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // `--color-bg-card-hover` is now the minted `--warm-250`, so pointing the legacy `.card` hover
     // back at it would be a ΔL* 15.6274 wash from the white card (was 10.4) — a HEAVIER pill-weight
     // jump, same rejection. `--color-bg-hover` (warm-50) gives ΔL* 2.35, the "S3 press" look chosen.
-    expect(card, 'Req 1 / D-02 — `@utility card`\'s &:hover must NOT use var(--color-bg-card-hover); after D-01 that is warm-200 and after 88.3-18 the minted warm-250 — a pill-weight ΔL* 15.63 wash from the card').not.toMatch(/background-color:\s*var\(--color-bg-card-hover\)/);
+    expect(card, 'Req 1 / D-02 — `@utility card`\'s &:hover must NOT use var(--color-bg-muted); after D-01 that is warm-200 and after 88.3-18 the minted warm-250 — a pill-weight ΔL* 15.63 wash from the card').not.toMatch(/background-color:\s*var\(--color-bg-muted\)/);
   });
 
   // ===================================================================================
@@ -613,7 +622,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // it: GroupGamesList.js:372, ManageMembers.js:342, CalendarMonthView.js:228.
     expectRatio('light', '--color-accent-text', '--color-bg-card', 4.5, 'Req 4 / §5.11 row 11');
     expectRatio('light', '--color-accent-text', '--color-bg-page', 4.5, 'Req 4 / §5.11 row 12');
-    expectRatio('light', '--color-accent-text', '--color-bg-card-hover', 4.5, 'Req 4 / §5.11 row 13');
+    expectRatio('light', '--color-accent-text', '--color-bg-muted', 4.5, 'Req 4 / §5.11 row 13');
     expectRatio('light', '--color-accent-text', '--color-bg-sunken', 4.5, 'Req 4 / §5.11 row 14');
     // The token is unreachable from a class string without its `@theme inline` key, so the
     // key is part of the requirement, not a detail. `--color-content-accent` is the name
@@ -831,13 +840,13 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // warm-600: muted 4.1460 -> 4.3725 (still under the 4.5 ceiling this row asserts) and the
     // prescribed replacement secondary 5.0392 -> 6.9620 (better). Both figures below are amended.
     //
-    // THE PHASE RULE, and it is the thing to read here: on a `bg-surface-card-hover`
+    // THE PHASE RULE, and it is the thing to read here: on a `bg-surface-muted`
     // (warm-250) pill / badge / chip, use `text-content-secondary` (6.9620 ✓), NEVER
     // `text-content-muted` (4.3725 ✗). Carried to `.planning/deferred/phase-88.6.md` with
     // its site count. If a future phase closes it, this test reds — close the deferral in
     // the same commit rather than deleting the assertion.
-    expectRatioBelow('light', '--color-text-muted', '--color-bg-card-hover', 4.5, 'Req 8 / §5.9.1 (disclosed residual)');
-    expectRatio('light', '--color-text-secondary', '--color-bg-card-hover', 4.5, 'Req 8 / §5.9.1 (the prescribed replacement)');
+    expectRatioBelow('light', '--color-text-muted', '--color-bg-muted', 4.5, 'Req 8 / §5.9.1 (disclosed residual)');
+    expectRatio('light', '--color-text-secondary', '--color-bg-muted', 4.5, 'Req 8 / §5.9.1 (the prescribed replacement)');
   });
 
   // ===================================================================================
@@ -904,10 +913,10 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // in `globals.css`, and the closure is recorded in both and ONLY in both. Do not add a line to
     // `phase-88.6.md` and do not write a pointer to one here.
     const fill = resolve('light', '--color-btn-secondary-bg');
-    const cardHover = resolve('light', '--color-bg-card-hover');
-    expect(fill, `88.3-18 ruling 1c — the CLOSED third ground: light --color-btn-secondary-bg (${fill}) must NO LONGER be byte-equal to --color-bg-card-hover (${cardHover}); the 88.3-14 disclosure is dissolved, not deleted`).not.toBe(cardHover);
+    const cardHover = resolve('light', '--color-bg-muted');
+    expect(fill, `88.3-18 ruling 1c — the CLOSED third ground: light --color-btn-secondary-bg (${fill}) must NO LONGER be byte-equal to --color-bg-muted (${cardHover}); the 88.3-14 disclosure is dissolved, not deleted`).not.toBe(cardHover);
     // The fill must actually carry that ground now, not merely differ from it.
-    expectRatio('light', '--color-btn-secondary-bg', '--color-bg-card-hover', 1.05, '88.3-18 ruling 1c / the fill now reads on the third ground (1.3280)');
+    expectRatio('light', '--color-btn-secondary-bg', '--color-bg-muted', 1.05, '88.3-18 ruling 1c / the fill now reads on the third ground (1.3280)');
   });
 
   it('34. 88.3-14 / ruling 2 — the fill sits inside the shipped fill-vs-ground band', () => {
@@ -1060,7 +1069,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
 
   it('43. 88.3-18 / ruling 1c — `--warm-250` is MINTED, carries card-hover, and sits strictly between warm-200 and warm-300', () => {
     // The mint half. `--warm-250` `#dbd1c7` is the 70% point on warm-200 -> warm-300 and its SOLE
-    // consumer is `--color-bg-card-hover`. The L* ordering is asserted rather than the hex, so a
+    // consumer is `--color-bg-muted`. The L* ordering is asserted rather than the hex, so a
     // future re-tint inside the feasible window (t ∈ [0.60, 0.92]) does not churn this row — but a
     // collapse back onto either neighbour does red it. warm-200 IS the page (byte-equality, a real
     // render defect at GroupLibrary.js:149-153 and CalendarMonthView.js:224-226); warm-300 drops
@@ -1068,8 +1077,8 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     const mint = resolve('light', '--warm-250');
     expect(mint, '88.3-18 ruling 1c — `--warm-250` must be declared in the palette').toMatch(/^#[0-9a-f]{6}$/i);
     expect(
-      resolve('light', '--color-bg-card-hover'),
-      '88.3-18 ruling 1c — light --color-bg-card-hover must resolve THROUGH the minted --warm-250',
+      resolve('light', '--color-bg-muted'),
+      '88.3-18 ruling 1c — light --color-bg-muted must resolve THROUGH the minted --warm-250',
     ).toBe(mint);
     const l250 = lStarOf(mint, '--warm-250');
     const l200 = lStarOf(resolve('light', '--warm-200'), '--warm-200');
@@ -1256,7 +1265,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // WHEN THE OWNER RULES AND THE LINK MOVES, THIS ROW REDS. That is the intended behaviour: close
     // the deferral and promote these two pairings into test 48 in the SAME commit, rather than
     // deleting the assertion.
-    expectRatioBelow('light', '--color-text-link', '--color-bg-card-hover', 4.5, '88.3-18 / DISCLOSED FAILURE — link on card-hover (3.9909 after ruling c; 3.7628 before) — Phase 88.6 owns it');
+    expectRatioBelow('light', '--color-text-link', '--color-bg-muted', 4.5, '88.3-18 / DISCLOSED FAILURE — link on card-hover (3.9909 after ruling c; 3.7628 before) — Phase 88.6 owns it');
   });
 
   it('50. 88.3-cr3 M3 — EVERY light text / status-text token clears 4.5:1 on the PAGE ground (iterated, not enumerated)', () => {
@@ -1448,5 +1457,75 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expect(ghostLine, '88.8 HIGH-A — LOCATOR failure: no `ghost: \'…\'` variant string found in Button.tsx').not.toBeNull();
     expect(ghostLine![1], '88.8 HIGH-A — the ghost variant must carry `aria-disabled:text-content-muted`').toContain('aria-disabled:text-content-muted');
     expect(ghostLine![1], '88.8 HIGH-A — the ghost variant must NOT carry an `aria-disabled:opacity-*` utility').not.toMatch(/aria-disabled:opacity/);
+  });
+});
+
+// =====================================================================================
+// Phase 88.6-02 (D-15) — leg (b) of the old-name completeness census.
+// =====================================================================================
+
+describe('Phase 88.6-02 (D-15) — the retired card-hover property names are ABSENT at the declaration layer', () => {
+  // WHY THIS LEG EXISTS, and why it is HERE rather than in a class-token scan: a comment-blind
+  // scan for the CLASS token (`bg-surface-card-hover`, leg (a) in `surfaceHoverSweep.test.ts`)
+  // cannot see a surviving CSS custom-property DECLARATION. `globals.css` is not a JS/TS source
+  // file, so `sourceFiles()` never reaches it at all. This file already parses `globals.css` by
+  // brace depth and resolves `var()` chains, so it is the one place the declaration layer is
+  // observable.
+  //
+  // AND WHY IT ASSERTS A THROW rather than an empty string: `resolve()` THROWS
+  // (`TokenContrastParseError`) on a property declared in none of the four blocks, and never
+  // returns `''` — see its docblock above (threat T-88.3-15). An `expect(resolve(...)).toBe('')`
+  // would be satisfiable by a resolver bug; `toThrow` proves ABSENCE.
+  //
+  // The most dangerous survivor this catches is the shadcn bridge `--muted`: left pointing at the
+  // retired `--color-bg-card-hover` it becomes invalid-at-computed-value-time, `--color-muted`
+  // resolves to nothing, and there is NO build error and NO other failing test (T-88.6-05).
+  // THE TWO RETIRED NAMES LIVE IN DIFFERENT LAYERS, and asserting both through `resolve()` would
+  // make half this leg VACUOUS — it was written that way first and the positive control caught it:
+  //   * `--color-bg-card-hover` was a RUNTIME property, declared in light `:root` and `.dark`.
+  //     `resolve()` reaches those, so `toThrow` here is a real assertion — before the rename it
+  //     returned `#dbd1c7` / the dark purple and this test would have FAILED.
+  //   * `--color-surface-card-hover` was an `@theme inline` KEY. `lookup()` reads four blocks and
+  //     `@theme inline` is NOT one of them, so `resolve()` threw on that name BEFORE the rename
+  //     too. Asserting a throw for it would have been green against the un-renamed tree — a gate
+  //     that cannot go red. It is therefore checked in the theme block directly, where its
+  //     presence/absence is the real fact.
+  const themeInlineBlock = (): string =>
+    braceBlock(uniqueMatch(/^@theme inline[ \t]*\{/gm, '@theme inline {'), 'theme inline');
+
+  for (const theme of ['light', 'dark'] as const) {
+    it(`${theme}: the runtime property \`--color-bg-card-hover\` resolves as ABSENT`, () => {
+      expect(
+        () => resolve(theme, '--color-bg-card-hover'),
+        `88.6-02 (D-15) — \`--color-bg-card-hover\` still resolves in ${theme}; the rename left a declaration behind`,
+      ).toThrow(TokenContrastParseError);
+    });
+  }
+
+  it('the `@theme inline` key `--color-surface-card-hover` is ABSENT from the theme block', () => {
+    expect(
+      declIn(themeInlineBlock(), '--color-surface-card-hover'),
+      '88.6-02 (D-15) — the retired `@theme inline` key survives; Tailwind would still emit `bg-surface-card-hover`',
+    ).toBeNull();
+  });
+
+  it('the REPLACEMENT names are present in their OWN layers — leg (b) is not passing by a broken resolver', () => {
+    // A negative-only leg stays green if the resolver breaks outright (a parse regression, a moved
+    // block, a renamed file). These are the control: each replacement is asserted in the layer it
+    // actually lives in, so the four negatives above mean "absent" and not "resolver broken".
+    expect(resolve('light', '--color-bg-muted')).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(resolve('dark', '--color-bg-muted')).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(declIn(themeInlineBlock(), '--color-surface-muted')).toBe('var(--color-bg-muted)');
+  });
+
+  it('the shadcn bridge `--muted` still resolves — the silent-failure case T-88.6-05 names', () => {
+    // `--muted` is the one line whose omission fails SILENTLY: left pointing at the retired name it
+    // becomes invalid-at-computed-value-time, with NO build error and NO other failing test.
+    // `resolve()` reaches it because it is declared in the bridge `:root`; its Tailwind side
+    // `--color-muted` is an `@theme inline` key, so that half is checked in the theme block and
+    // its `var()` target is followed by hand.
+    expect(resolve('light', '--muted')).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(resolve('dark', '--muted')).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(declIn(themeInlineBlock(), '--color-muted')).toBe('var(--muted)');
   });
 });

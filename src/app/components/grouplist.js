@@ -432,7 +432,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                   <div className="flex justify-between items-center mb-3">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       {profilePic && (
-                        <div className="w-10 h-10 rounded-full bg-surface-card-hover flex items-center justify-center text-2xl shrink-0 overflow-hidden">
+                        <div className="w-10 h-10 rounded-full bg-surface-muted flex items-center justify-center text-2xl shrink-0 overflow-hidden">
                           {profilePic.startsWith('http') || profilePic.startsWith('/') ? (
                             <SafeImage
                               src={profilePic}

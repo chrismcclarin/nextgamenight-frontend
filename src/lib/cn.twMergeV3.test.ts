@@ -66,17 +66,28 @@ const MODAL_ACTION_CLASS = {
  *
  * Transcription is the only route: `Combobox.tsx:362` exports only `{ Combobox }`.
  *
- * RE-DERIVE NOTE — LIVE INSTANCE: this literal contains `bg-surface-card-hover`
- * (`Combobox.tsx:281`), and **plan 02 (wave 2) renames `bg-surface-card-hover` ->
- * `bg-surface-muted` across 116 occurrences / 35 files** — a set that does NOT include this test
- * file. Plan 02 therefore OWNS re-deriving this literal from `Combobox.tsx` and recording both
- * strings in its own summary. Do NOT close that coupling by deleting the `Combobox` literal or
- * narrowing the range: transcription is the only route available for this primitive.
+ * RE-DERIVE NOTE — LIVE INSTANCE: this literal contained `bg-surface-card-hover`
+ * (`Combobox.tsx:281`), and **plan 02 (wave 2) renamed `bg-surface-card-hover` ->
+ * `bg-surface-muted`** — a set that did NOT include this test file, so plan 02 OWNED re-deriving
+ * this literal from `Combobox.tsx`. Do NOT close that coupling by deleting the `Combobox` literal
+ * or narrowing the range: transcription is the only route available for this primitive.
+ *
+ * RE-SEEDED Phase 88.6-02 (D-15), 2026-09-15 — this is the owned re-derive, not a finding. The
+ * literal above was re-read from the POST-rename `Combobox.tsx:281` and the expectation at the
+ * `Combobox` assertion below moved with it. Both strings, measured by running this suite:
+ *   PRE : flex min-h-11 w-full cursor-pointer items-center py-2 text-base bg-surface-card-hover px-4 text-content-secondary
+ *   POST: flex min-h-11 w-full cursor-pointer items-center py-2 text-base bg-surface-muted px-4 text-content-secondary
+ * The ONLY delta is the token's spelling: every other class, and the merged ORDER, is
+ * byte-identical — so `tailwind-merge` resolves the renamed token exactly as it resolved the old
+ * one. This was NOT a `tailwind-merge` stop-rule fork (plan 01 pre-classified it: a diff that
+ * follows a same-phase edit to a transcribed source is a RE-SEED owned by the plan that made the
+ * edit). Red-then-green: with the literal moved and the expectation stale the suite ran
+ * 1 failed / 13 passed, exit 1; with the expectation re-derived, 14/14 passed, exit 0.
  */
 const COMBOBOX_OPTION_ROW_ACTIVE = cn(
   'flex min-h-11 w-full cursor-pointer items-center px-3 py-2',
   'text-base text-content-primary',
-  'bg-surface-card-hover'
+  'bg-surface-muted'
 );
 
 // ---------------------------------------------------------------------------
@@ -116,7 +127,7 @@ describe('primitive merges are byte-identical across the tailwind-merge bump', (
 
   it('Combobox: the active option row + a caller override', () => {
     expect(cn(COMBOBOX_OPTION_ROW_ACTIVE, 'px-4 text-content-secondary')).toBe(
-      'flex min-h-11 w-full cursor-pointer items-center py-2 text-base bg-surface-card-hover px-4 text-content-secondary'
+      'flex min-h-11 w-full cursor-pointer items-center py-2 text-base bg-surface-muted px-4 text-content-secondary'
     );
   });
 
@@ -140,6 +151,9 @@ describe('the custom-named token families de-dupe pairwise, last-wins', () => {
   it('bg-surface-card / bg-surface-page', () => {
     // Deliberately NOT `bg-surface-card-hover`: both spellings in this pair survive the
     // whole phase, so this line carries no cross-wave coupling to plan 02's rename.
+    // (That token is spelled `bg-surface-muted` since 88.6-02 (D-15); the old spelling is kept
+    // quoted here because it is what the choice recorded above was made against. Still true:
+    // neither class in THIS pair is touched by any rename in this phase.)
     expect(cn('bg-surface-card', 'bg-surface-page')).toBe('bg-surface-page');
   });
 

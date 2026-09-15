@@ -174,6 +174,11 @@ function NotificationBell({ user, variant = 'icon', label }) {
         // --color-bg-card-hover: the sentence "hover:bg-surface-card-hover stays" was
         // true when the card-hover token was a near-white wash and became false the
         // moment it became warm-200. See the marker below.
+        // ——— AMENDED Phase 88.6-02 (D-15): the token named `--color-bg-card-hover` /
+        // `bg-surface-card-hover` throughout the two paragraphs above is now
+        // `--color-bg-muted` / `bg-surface-muted`, at byte-equal values. The old spelling is
+        // KEPT quoted above because those sentences record what was true THEN; nothing about
+        // the 87.8 press-idiom reasoning or the 88.3 colour-family move changes.
         //
         // DECISION Phase 88.3 (§10.1): this row hovers to `bg-surface-header-hover`
         // (warm-700), chosen OVER `bg-surface-hover` (warm-50) which the other 38 swept
@@ -270,7 +275,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
               for the L-8 "no longer available" notice */}
           {confirmation && (
             <div className={`px-4 py-2 border-b border-line ${
-              confirmation.tone === 'success' ? 'bg-status-success-subtle' : 'bg-surface-card-hover'
+              confirmation.tone === 'success' ? 'bg-status-success-subtle' : 'bg-surface-muted'
             }`}>
               <p className={`text-sm font-medium ${
                 confirmation.tone === 'success' ? 'text-content-status-success' : 'text-content-muted'

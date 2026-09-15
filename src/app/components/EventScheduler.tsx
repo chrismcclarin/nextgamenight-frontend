@@ -1088,7 +1088,7 @@ export default function EventScheduler({
       onClick={() => setCurrentView(value)}
       aria-pressed={currentView === value}
       className={`${NAV_BUTTON_CLASS} ${
-        currentView === value ? 'bg-surface-card-hover text-content-primary' : ''
+        currentView === value ? 'bg-surface-muted text-content-primary' : ''
       }`}
     >
       {label}
