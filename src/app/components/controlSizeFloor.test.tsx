@@ -41,7 +41,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { sourceFiles } from '../../test-utils/sourceScan';
+import { readOpeningTag, sourceFiles } from '../../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '../..');
 
@@ -86,28 +86,10 @@ function stripComments(text: string): string {
   return out.join('');
 }
 
-/** Read a full JSX opening tag from `start`, balancing {} () [] and strings. */
-function readOpeningTag(text: string, start: number): string | null {
-  let i = start;
-  let depth = 0;
-  while (i < text.length) {
-    const c = text[i];
-    if (c === '"' || c === "'" || c === '`') {
-      i += 1;
-      while (i < text.length && text[i] !== c) {
-        if (text[i] === '\\') i += 1;
-        i += 1;
-      }
-      i += 1;
-      continue;
-    }
-    if (c === '{' || c === '(' || c === '[') depth += 1;
-    else if (c === '}' || c === ')' || c === ']') depth -= 1;
-    else if (c === '>' && depth === 0) return text.slice(start, i + 1);
-    i += 1;
-  }
-  return null;
-}
+// `readOpeningTag` was RELOCATED to `src/test-utils/sourceScan.ts` by Phase 88.6-09 and is
+// imported above. It is the same brace-balanced reader this file has always used, plus a
+// length bound; the walk that suite adds is its second caller, and a second COPY of a
+// scanner is the drift the Phase 88 gate ledger records fifteen times.
 
 // DECISION Phase 88-31 (DEF-88-29-01): `sourceFiles` is IMPORTED from
 // `src/test-utils/sourceScan.ts`, chosen OVER keeping this suite's private copy.
