@@ -51,7 +51,24 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { sourceFiles, withoutComments } from '../test-utils/sourceScan';
+
 const SRC = path.resolve(__dirname, '..');
+
+/**
+ * The tree walk, done ONCE at module level and reused by every assertion below.
+ *
+ * Plan 88.6-13 task 2 replaces the nine-entry `SURFACES` scope with the whole `src/` tree
+ * for the raw-message and `Failed to X` assertions — measured 194 files — across roughly
+ * five independent walks. Walking per assertion buys nothing: the suite reads a static
+ * tree in a single process.
+ *
+ * `sourceFiles` returns ABSOLUTE paths. `ALL_REL` is the `src/`-relative mapping every
+ * assertion and every allow-list keys on; an unmapped set silently matches no allow-list
+ * entry, which is a gate that cannot fail.
+ */
+const ALL_FILES = sourceFiles(SRC);
+const ALL_REL = ALL_FILES.map((f) => path.relative(SRC, f));
 
 /** The surfaces plan 88-25 declared. */
 const SURFACES = [
@@ -67,21 +84,66 @@ const SURFACES = [
   'app/components/GroupGamesList.js',
 ];
 
+// ONE comment stripper: `withoutComments` from `src/test-utils/sourceScan.ts`.
+//
+// This block is written with `//` and NOT as a `/* */` docblock ON PURPOSE: it has to quote
+// both comment delimiters literally, and plan 88.6-11 measured that a `*/` inside a block
+// comment silently truncates the file under vite:oxc — the suite then collects ZERO tests
+// and reports green. Making it a docblock is a decision, not a cleanup.
+//
+// WHY THE LOCAL COPY IS GONE (plan 88.6-13 task 1, MEASURED — not assumed)
+// -----------------------------------------------------------------------
+// The local `stripComments` that lived here carried this reasoning, which is preserved
+// because it is the record of what this file cares about:
+//
+//   "Strip `//` and block comments, preserving line count so reported line numbers stay
+//    usable. String literals are NOT parsed out — a `//` inside a string is rare in this
+//    codebase and erring toward stripping would create false negatives, which is the
+//    failure mode this file exists to avoid."
+//
+// That last clause is the whole point, and the shipped implementation did not honour it.
+// Both strippers were run over the set task 2 scans — all 194 files of `src/` — and their
+// outputs diffed line by line (2026-09-15). Ignoring trailing whitespace (the local one
+// DELETED a `//` comment to end-of-line, this one BLANKS it to spaces; neither affects a
+// line-based regex) they differ on exactly TWO files and 31 lines, and in BOTH cases the
+// LOCAL one blanks REAL CODE:
+//
+//   - `app/components/FeedbackForm.js:386-403` — the string `accept="image/*"` opens a block
+//     comment the local stripper never knew was inside a string, which then runs to the `*/`
+//     of the next real comment. 18 lines of live JSX vanish, `className` strings included.
+//   - `app/components/Modal.tsx:265-281` — the same, from `src/**` written inside a `//` line
+//     comment: the local block-comment pass runs FIRST, so that `/*` is seen before the `//`
+//     that contains it, and everything to the next `*/` (line 281) is blanked.
+//
+// Blanked code is a FALSE NEGATIVE — precisely the failure mode the docblock named. So the
+// correct stripper for THIS suite's question ("does a raw `error.message` read reach a
+// user-facing sink") is the one that parses string literals. `withoutComments` blanks rather
+// than deletes, so line numbers still survive.
+//
+// The suite's own offender set is UNCHANGED by the swap: over the nine `SURFACES` both
+// strippers report the identical 3 raw-message hits, 0 `Failed to X` hits and 0 `alert(`
+// hits (measured before and after). Neither divergent file is a `SURFACES` entry — which is
+// exactly why nobody noticed, and exactly why task 2's widening had to fix this first.
+//
+// `src/test-utils/sourceScan.ts` is NOT edited by this plan, so none of its eleven consumer
+// suites can shift.
+
 /**
- * Strip `//` and block comments, preserving line count so reported line numbers
- * stay usable. String literals are NOT parsed out — a `//` inside a string is
- * rare in this codebase and erring toward stripping would create false negatives,
- * which is the failure mode this file exists to avoid.
+ * Read + strip a file at most ONCE per run, keyed on its `src/`-relative path.
+ *
+ * Task 2 widens two assertions from 9 files to 194 across ~5 walks; the un-memoized form
+ * re-read and re-stripped on every call. File-local and behaviour-preserving — the offender
+ * set is identical before and after, which is what this task's gate asserts.
  */
-function stripComments(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/(^|[^:'"`])\/\/[^\n]*/g, (_m, lead: string) => lead);
-}
+const strippedCache = new Map<string, { lines: string[]; raw: string }>();
 
 function readStripped(rel: string): { lines: string[]; raw: string } {
+  const cached = strippedCache.get(rel);
+  if (cached) return cached;
   const raw = fs.readFileSync(path.join(SRC, rel), 'utf8');
-  return { lines: stripComments(raw).split('\n'), raw };
+  const entry = { lines: withoutComments(raw).split('\n'), raw };
+  strippedCache.set(rel, entry);
+  return entry;
 }
 
 /** Sinks that put text in front of a person. */
@@ -220,6 +282,9 @@ describe('Req 14 — the shared fetch-error treatment on 88-25 surfaces', () => 
     // pass forever. This is the guard 88-21 and 88-24 both found necessary.
     for (const rel of SURFACES) {
       expect(fs.existsSync(path.join(SRC, rel)), `${rel} is missing`).toBe(true);
+      // …and it is in the ONE hoisted tree walk, so the memoized reads and the
+      // widened assertions below are looking at the same population this list names.
+      expect(ALL_REL.includes(rel), `${rel} is not in sourceFiles(SRC)`).toBe(true);
     }
   });
 
@@ -250,7 +315,7 @@ describe('Req 14 — the shared fetch-error treatment on 88-25 surfaces', () => 
   it('comment stripping does not blind the scanner to real code', () => {
     // The complement of the false-positive fix: stripping comments must not also
     // strip code. If it did, every assertion above would go vacuously green.
-    const stripped = stripComments(
+    const stripped = withoutComments(
       [
         `// toast.error(err.message || 'Failed to nothing.');`,
         `/* alert('also a comment') */`,
