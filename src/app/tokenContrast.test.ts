@@ -47,6 +47,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { FORBIDDEN_INK_ON_MUTED, MUTED_GROUND_TOKEN } from '../test-utils/inkRules';
 import { blend, contrastRatio, deltaLStar, lStar, parseHex } from '../lib/wcag';
 
 const GLOBALS = path.join(__dirname, 'globals.css');
@@ -1424,7 +1425,7 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     expect(link, `88.3-18 — light --color-text-link (${link}) must NOT be byte-equal to --color-text-link-hover (${hover}); collapsing them leaves links with no visible hover state. If a link re-colour reds this row, mint a step instead of taking purple-700`).not.toBe(hover);
   });
 
-  it('49. 88.3-18 — ⚠ DISCLOSED FAILURE: light --color-text-link is BELOW 4.5:1 on card-hover (page pairing PROMOTED to test 48 by owner ruling c)', () => {
+  it('49. 88.6-09 (D-16) — ZERO-CONSUMER ROW: the forbidden ink set is MEASURED below 4.5:1 on the muted ground, and `src/app/groundInk.test.ts` proves it has no consumers (page pairing PROMOTED to test 48 by owner ruling c)', () => {
     // OWNER RULED 2026-08-28, option (c) — mint #506484 (`--purple-650`). The PAGE row below is
     // now GREEN (4.5995) and lives in test 48. What remains here is the PRE-EXISTING card-hover
     // residual (3.7628 -> 3.9909), knowingly left open by ruling (c) over option (d) `#495b79`
@@ -1445,6 +1446,25 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // `GroupLibrary.js:265` and `:338` (inside the `bg-surface-page` containers at `:261`/`:326`)
     // and `GroupGamesList.js:432` (inside `:428`); live on card-hover at `friends/page.js:748`.
     //
+    // AMENDED Phase 88.6-09 (D-16), 2026-09-15 — the sentence above stays as HISTORY; this is
+    // what replaced it. That REACH count was HAND-VERIFIED once and never re-checked, which is
+    // exactly the "prose instead of a gate" shape D-16 exists to end. The evidence is now
+    // `src/app/groundInk.test.ts`: a ground-aware ancestor-stack scan that resolves every
+    // resting ink class against the ground its nearest ancestor sets, so the ink-on-a-child /
+    // ground-on-an-ancestor pairings no line-based read can see are machine-checked on every
+    // run. It MEASURED 17 forbidden-ink sites on the muted ground (13 real across 8 files, 4
+    // structurally impossible and excluded by name) — not the 6 the D-16 census listed, and
+    // `friends/page.js:748` above is one of them. That suite carries the zero-consumer half of
+    // this row as an exact-count roster that must shrink to empty; this row keeps the RATIO
+    // half. Do not delete either: a measurement with no gate goes stale, and a gate with no
+    // measurement cannot say why it exists.
+    //
+    // THE TOKEN IS NOT THE FIX, and this is recorded so it is not re-proposed a third time.
+    // `--color-text-link` keeps its dL* 7.03 step to `--color-text-link-hover`, and MEASURED:
+    // no point on the purple-650 -> purple-700 ramp clears 4.5 on the muted fill while holding
+    // dL* >= 4. Re-pointing the token is not an available fix. The fix is at the SITES, which
+    // is why the roster in `groundInk.test.ts` is per-file and per-count.
+    //
     // NOT CLOSED IN PLAN 18, deliberately: every fix re-colours a brand token across 61 sites, and
     // the obvious one (purple-700) is byte-equal to `--color-text-link-hover` — the exact collapse
     // this phase already rejected for amber-900. It is an OWNER FORK with four measured options in
@@ -1455,6 +1475,28 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // the deferral and promote these two pairings into test 48 in the SAME commit, rather than
     // deleting the assertion.
     expectRatioBelow('light', '--color-text-link', '--color-bg-muted', 4.5, '88.3-18 / DISCLOSED FAILURE — link on card-hover (3.9909 after ruling c; 3.7628 before) — Phase 88.6 owns it');
+
+    // The zero-consumer half is enforced in `src/app/groundInk.test.ts` — named by path, never
+    // imported: a test file importing another test file re-registers its suites here.
+    //
+    // What IS shared is the SET, from `src/test-utils/inkRules.ts`, and this loop is what keeps
+    // the two ends honest: every member of the set `groundInk.test.ts` enforces is re-measured
+    // here against the same ground and must still be below AA. If a token is re-pointed and
+    // clears 4.5, this row reds and the pair must be retired together — the set cannot silently
+    // come to mean something different from what this row describes.
+    expect(FORBIDDEN_INK_ON_MUTED.map((entry) => entry.utility)).toEqual([
+      'text-content-muted',
+      'text-content-link',
+    ]);
+    for (const entry of FORBIDDEN_INK_ON_MUTED) {
+      expectRatioBelow(
+        'light',
+        entry.cssVar,
+        MUTED_GROUND_TOKEN,
+        4.5,
+        `88.6-09 / D-16 — \`${entry.utility}\` is in the forbidden set groundInk.test.ts enforces, so it must still measure below AA on the muted ground`,
+      );
+    }
   });
 
   it('50. 88.3-cr3 M3 — EVERY light text / status-text token clears 4.5:1 on the PAGE ground (iterated, not enumerated)', () => {

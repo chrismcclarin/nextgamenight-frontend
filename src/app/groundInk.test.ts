@@ -80,6 +80,11 @@ import {
   type Exemption,
   type ExemptionRoster,
 } from '../test-utils/exemption';
+import {
+  FORBIDDEN_INK_CLASSES,
+  MUTED_GROUND_CLASS,
+  PRESCRIBED_INK_ON_MUTED,
+} from '../test-utils/inkRules';
 import { inkGroundPairs, sourceFiles } from '../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '..');
@@ -91,11 +96,12 @@ const SRC = path.resolve(__dirname, '..');
 // `hover:`/`disabled:` occurrences out of a roster no sweep plan could ever close.
 const INK = /text-content-(muted|link|secondary|accent|primary)/;
 const GROUND = /bg-surface-[a-z-]+/;
-const MUTED = 'bg-surface-muted';
+const MUTED = MUTED_GROUND_CLASS;
 
-// The forbidden set. Moved to `src/test-utils/inkRules.ts` by task 3 of this plan so that
-// `tokenContrast.test.ts` test 49 describes the SAME set this file enforces.
-const FORBIDDEN = new Set(['text-content-muted', 'text-content-link']);
+// The forbidden set lives in `src/test-utils/inkRules.ts` — ONE list, imported by this suite
+// and by `tokenContrast.test.ts` test 49, so the gate and the measurement cannot describe
+// different sets. A literal copy here was rejected; see that module's docblock.
+const FORBIDDEN = FORBIDDEN_INK_CLASSES;
 
 // DECISION Phase 88.6-09 (AC-11, owner ruling 2026-09-09): the tree is enumerated, read and
 // comment-stripped exactly ONCE, here at module scope, and EVERY assertion below consumes this
@@ -425,7 +431,7 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
   it('7. negative control, GROUND side: the prescribed ink on the muted ground is NOT an offender', () => {
     // A rule that flags its own prescribed answer is a broken rule. `text-content-secondary`
     // measures 6.9620 on the muted fill and is what every fix in plans 17/18/19/27/42 moves to.
-    const permitted = ROWS.filter((r) => r.inkToken === 'text-content-secondary' && onMuted(r));
+    const permitted = ROWS.filter((r) => r.inkToken === PRESCRIBED_INK_ON_MUTED.utility && onMuted(r));
     expect(
       permitted.length,
       'the prescribed pairing must actually be present in the scan output, or this control proves nothing',
