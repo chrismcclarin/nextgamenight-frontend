@@ -7,9 +7,11 @@
  * so no global config is in play).
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { renderHook, cleanup } from '@testing-library/react';
+import { render, renderHook, screen, cleanup } from '@testing-library/react';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { useFetchErrorState, getFetchErrorMessage } from './useFetchErrorState';
+import { FetchErrorBanner } from './FetchErrorBanner';
+import type { FetchErrorState } from './useFetchErrorState';
 import { ApiError } from '@/lib/api';
 
 afterEach(() => cleanup());
@@ -173,5 +175,94 @@ describe('getFetchErrorMessage — designed copy for action-path failures', () =
     const out = getFetchErrorMessage(undefined);
     expect(out.length).toBeGreaterThan(0);
     expect(out).toMatch(/something went wrong/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6-13 task 3 — the three R1 edge rows the SPEC marks explicit.
+//
+// WHY THEY LIVE HERE AND NOT IN `src/app/fetchErrorTreatment.test.ts`, which is the
+// file plan 13 otherwise owns: that file is STRICTLY a source scanner. Its own docblock
+// carries the heading "WHY A SOURCE SCAN AND NOT A RENDER TEST", it imports only
+// `node:fs` / `node:path` / vitest / the test-utils, and it renders nothing. Putting the
+// first RTL render in the repo's most-cited scan suite would contradict the decision that
+// file was written to record. This suite already renders (`renderHook`), already owns
+// `getFetchErrorMessage`'s derivation, and is the second file in plan 13 task 3's own
+// verify command — so the convention says here. The SINK-SET tripwire that accompanies
+// arm 1 is a source scan and correctly stays in the scanner file.
+// ---------------------------------------------------------------------------
+
+/** A `FetchErrorState` with a caller-supplied message — the render arms' subject. */
+const errorState = (message: string): FetchErrorState => ({
+  showError: true,
+  message,
+  code: 'unknown',
+  retry: vi.fn().mockResolvedValue(undefined),
+});
+
+describe('FetchErrorBanner — SPEC Edge Coverage (R1)', () => {
+  // SPEC Edge Coverage row: ENCODING / R1.
+  it('renders a markup payload as TEXT — no element is created from it', () => {
+    // The threat is an upstream `message` containing markup reaching the DOM. The
+    // derivation layer is supposed to stop it ever arriving (see "NEVER returns the
+    // upstream message" above); THIS arm pins the second line of defence — that even if
+    // one did arrive, React escapes it. Non-ASCII rides along: the same escaping path is
+    // what mangles it if anyone reaches for an HTML sink.
+    const payload = '<b>bold</b> & "quoted" — naïve ✓ <img src=x onerror=boom>';
+    const { container } = render(<FetchErrorBanner state={errorState(payload)} />);
+
+    // The literal characters, angle brackets included, are present AS TEXT.
+    expect(screen.getByText(payload)).toBeTruthy();
+    // …and no element was created from any of it.
+    expect(container.querySelector('b')).toBeNull();
+    expect(container.querySelector('img')).toBeNull();
+  });
+
+  // SPEC Edge Coverage row: EMPTY / R1.
+  it('an error with neither code nor message renders the ratified `unknown` copy', () => {
+    // A network failure, or an HTML 5xx body: nothing to derive from. P1 forbids
+    // authoring copy in a test, so the expected string is READ FROM THE MODULE rather
+    // than transcribed — `getFetchErrorMessage(undefined)` is the register's own answer
+    // for "no code at all".
+    const ratifiedUnknown = getFetchErrorMessage(undefined);
+
+    const { result } = renderHook(() =>
+      useFetchErrorState(queryStub({ isError: true, error: new Error('') }))
+    );
+    expect(result.current.code).toBe('unknown');
+    expect(result.current.message).toBe(ratifiedUnknown);
+
+    render(<FetchErrorBanner state={result.current} />);
+    const shown = screen.getByText(ratifiedUnknown);
+    expect(shown.textContent).toBe(ratifiedUnknown);
+    // The two failure shapes this row exists to catch, named rather than implied.
+    expect(shown.textContent).not.toBe('');
+    expect(shown.textContent).not.toBe('undefined');
+  });
+
+  // UI-SPEC §6.2 row: exactly one live region per failure.
+  it('mounts exactly ONE assertive and ONE polite live region', () => {
+    // WHAT THIS PROVES, and it is narrower than it looks: no SECOND region is added by a
+    // sweep. Banner's internal StatusRegion announces assertively on the warning tone;
+    // FetchErrorBanner adds a POLITE sr-only sibling for transient "Retrying…" text, and
+    // the two must never nest or duplicate.
+    //
+    // WHAT IT DOES NOT PROVE: that the failure is ANNOUNCED. The UI-SPEC §6.2
+    // ANNOUNCEMENT row is NOT marked verified by this arm, and plan 88.6-13 does not
+    // satisfy it. The reason is EMPTY-FIRST: `StatusRegion.tsx:9-12` records that screen
+    // readers announce CHANGES to a MOUNTED live region, not the conditional mount of a
+    // new one — while `FetchErrorBanner.tsx:58` is `if (!state.showError) return null;`,
+    // so the whole banner, its assertive region included, enters the DOM together with
+    // its text. Routed durably, NOT left as an observation:
+    // `.planning/deferred/phase-88.9.md`, with plan 88.6-36 (the plan that declares
+    // FetchErrorBanner.tsx) named as the in-phase home if the owner wants it sooner.
+    // No shared primitive is edited here — FetchErrorBanner has 29 call sites.
+    const { container } = render(<FetchErrorBanner state={errorState('boom')} />);
+
+    expect(container.querySelectorAll('[aria-live="assertive"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[aria-live="polite"]')).toHaveLength(1);
+    // Sibling, never nested — a nested live region announces twice.
+    const assertive = container.querySelector('[aria-live="assertive"]');
+    expect(assertive?.querySelector('[aria-live]')).toBeNull();
   });
 });

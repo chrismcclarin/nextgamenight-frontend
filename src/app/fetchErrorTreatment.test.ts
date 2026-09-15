@@ -1094,6 +1094,125 @@ describe('Req 14 — the shared fetch-error treatment, scanned tree-wide', () =>
     expect(AD_HOC_FAILURE_COPY.test(stripped[2])).toBe(true);
   });
 
+  it('no HTML-INJECTION SINK appears anywhere in the comment-stripped src/ tree (T-88.6-145)', () => {
+    // The companion to the markup-payload render arm in
+    // `src/components/ui/useFetchErrorState.test.tsx`. That arm proves React escapes a
+    // `<b>` payload; this one proves nobody opts OUT of that escaping, anywhere, by any
+    // spelling.
+    //
+    // THE SCAN IS OVER THE SINK **SET**, NOT ONE MEMBER OF IT. `dangerouslySetInnerHTML`
+    // is React's spelling of ONE sink. The threat in T-88.6-145 is an error `message`
+    // containing markup reaching a person, and that same message arrives through
+    // `el.innerHTML =`, `el.outerHTML =`, `el.insertAdjacentHTML(...)` or
+    // `document.write(...)` with a `dangerouslySetInnerHTML`-only tripwire byte-for-byte
+    // GREEN — a clean bill while the defect it exists to catch ships.
+    //
+    // ASSIGNMENT-SHAPED for the two `*HTML` properties, so a READ (`expect(el.innerHTML)`)
+    // is not flagged. That shape is what makes the widening free.
+    //
+    // SCOPE IS THE TREE, not the three error-path modules. Scoping it to
+    // `FetchErrorBanner.tsx` / `Banner.tsx` / `useFetchErrorState.ts` would guard the
+    // three files LEAST likely to grow one — two of them already carry a written
+    // no-`dangerouslySetInnerHTML` contract in their own docblocks — while the ~25 files
+    // whose error paths plans 15 and 17-39 rewrite went unwatched.
+    //
+    // `dangerouslySetInnerHTML` IS MATCHED AS A USE, NOT AS A MENTION — and that is a
+    // MEASURED correction to the pattern 88.6-13-PLAN.md states, not a loosening.
+    //
+    // The plan specifies the BARE token for this one member while requiring the other two
+    // properties be assignment-shaped "so a READ is not flagged". Run against the live
+    // tree on 2026-09-15 the bare token is RED on THREE lines of `components/ui/Heading.tsx`
+    // (`:129`, `:156`, `:158`) — and every one of them is plan 88.6-03's T-88.6-05
+    // MITIGATION: a type-level `Omit<HTMLAttributes, 'dangerouslySetInnerHTML'>` and the
+    // destructure that DROPS the prop before `{...rest}` reaches the element. That file
+    // landed on this branch AFTER the plan's 2026-09-09/14 measurement, which is why the
+    // plan records a day-one zero that is no longer true of the bare token.
+    //
+    // Exempting those three lines was the alternative and it was REJECTED: the roster's own
+    // docblock makes an entry a security decision needing an owner ruling, and the entry
+    // would be FALSE — Heading.tsx does not carry a surviving sink, it removes one. A
+    // register that records a mitigation as a tolerated sink is worse than no register.
+    //
+    // So the plan's own stated principle is applied to all five members consistently: match
+    // the USE. A JSX prop is always `dangerouslySetInnerHTML=`; an object-literal sink is
+    // `dangerouslySetInnerHTML: {`. A string inside an `Omit`, a `?: unknown` declaration
+    // and a `: _ident` destructuring rename are mentions and are not flagged — pinned by
+    // the negative controls at the bottom of this test.
+    //
+    // MEASURED DAY-ONE ZERO, 2026-09-15, over `periodictabletop/src`, recorded HERE with
+    // its date so a future reader can tell a green tripwire from a dead one:
+    //   dangerouslySetInnerHTML  11 occurrences in non-test source. ZERO as a USE:
+    //                            4 in prose comments (FriendInvitePanel.js:299,
+    //                            Modal.tsx:20, Banner.tsx:15, FetchErrorBanner.tsx:18),
+    //                            4 more in Heading.tsx's own mitigation + its comment.
+    //   .innerHTML =             0      .outerHTML =        0
+    //   insertAdjacentHTML(      0      document.write(     0
+    // The only `innerHTML` occurrences in the tree at all are 7 READS, in
+    // `app/components/EventScheduler.test.tsx` (6) and `components/ui/RouteFallback.test.tsx`
+    // (1) — both already excluded by `sourceFiles`. So the widened set is green on day one
+    // and changes no count.
+    const HTML_INJECTION_SINK =
+      /dangerouslySetInnerHTML\s*=|dangerouslySetInnerHTML\s*:\s*\{|\.innerHTML\s*=|\.outerHTML\s*=|insertAdjacentHTML\s*\(|document\.write\s*\(/;
+
+    // SEEDED EMPTY, and it stays empty. ADDING AN ENTRY HERE IS A SECURITY DECISION AND
+    // REQUIRES AN OWNER RULING — it is not an executor's call, and it is not the fix for a
+    // red. A red here means a sink landed; remove the sink.
+    const HTML_SINK_EXEMPT: ExemptionRoster = {};
+
+    const hits = offenders((l) => HTML_INJECTION_SINK.test(l), TREE);
+    const unowned = hits.filter((h) => !(h.file in HTML_SINK_EXEMPT));
+    expect(
+      fmt(unowned),
+      'An HTML-injection sink reached src/. React escapes by default and this gate exists ' +
+        'so nobody opts out. Most likely at fault: components/ui/FetchErrorBanner.tsx, ' +
+        'components/ui/Banner.tsx, components/ui/useFetchErrorState.ts.'
+    ).toBe('');
+
+    // The seed is still empty AFTER the widening, measured — not asserted in prose.
+    expect(Object.keys(HTML_SINK_EXEMPT)).toEqual([]);
+    expect(assertRosterShape(HTML_SINK_EXEMPT)).toEqual([]);
+    expect(assertExactCounts(HTML_SINK_EXEMPT, countByFile(hits))).toEqual([]);
+
+    // The detector is not dead: every member of the set matches its own shape, and a READ
+    // of the two `*HTML` properties does NOT.
+    for (const planted of [
+      `        <div dangerouslySetInnerHTML={{ __html: err.message }} />`,
+      `        el.innerHTML = err.message;`,
+      `        el.outerHTML = err.message;`,
+      `        el.insertAdjacentHTML('beforeend', err.message);`,
+      `        document.write(err.message);`,
+    ]) {
+      expect(HTML_INJECTION_SINK.test(planted), `blind to: ${planted.trim()}`).toBe(true);
+    }
+    // Two more sink SHAPES the bare-token form would have caught and the assignment form
+    // must also catch — a prop whose value is a variable rather than an inline object, and
+    // the `createElement` props-object spelling.
+    expect(
+      HTML_INJECTION_SINK.test(`        <div dangerouslySetInnerHTML={htmlFromServer} />`)
+    ).toBe(true);
+    expect(
+      HTML_INJECTION_SINK.test(
+        `  React.createElement('div', { dangerouslySetInnerHTML: { __html: x } })`
+      )
+    ).toBe(true);
+
+    // NEGATIVE CONTROLS — a READ of the two `*HTML` properties, and the three MENTION
+    // shapes that make up plan 88.6-03's T-88.6-05 mitigation in `components/ui/Heading.tsx`
+    // (`:129`, `:156`, `:158`, transcribed). Flagging these would force a FALSE roster entry
+    // recording a mitigation as a tolerated sink, which is the outcome this shape prevents.
+    expect(HTML_INJECTION_SINK.test(`    expect(el.innerHTML).toContain('x');`)).toBe(false);
+    expect(HTML_INJECTION_SINK.test(`    const html = node.outerHTML;`)).toBe(false);
+    for (const mention of [
+      `  extends Omit<React.HTMLAttributes<HTMLHeadingElement>, 'dangerouslySetInnerHTML'>,`,
+      `    dangerouslySetInnerHTML: _droppedHtmlSink,`,
+      `  } = allProps as HeadingProps & { dangerouslySetInnerHTML?: unknown };`,
+    ]) {
+      expect(HTML_INJECTION_SINK.test(mention), `mention flagged as a sink: ${mention.trim()}`).toBe(
+        false
+      );
+    }
+  });
+
   it('the surfaces are on the shared primitives, not a second error look', () => {
     // The positive half. Without it, all of the above could be satisfied by
     // deleting the error handling entirely.
