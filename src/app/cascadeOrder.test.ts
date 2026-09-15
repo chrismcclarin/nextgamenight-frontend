@@ -18,8 +18,8 @@
  * EVERY SCAN IN HERE IS COMMENT-STRIPPED, AND THAT IS NOT A DETAIL
  * ---------------------------------------------------------------
  * `globals.css`'s own marker prose contains the very selectors this file orders, and it contains
- * the literal `.btn:focus-visible` (at `globals.css:2169` as read 2026-09-15) plus the house ring
- * string (`:2174-2175`). A raw `indexOf` therefore reads a COMMENT and passes vacuously — and, for
+ * the literal `.btn:focus-visible` (at `globals.css:2257` as read 2026-09-15) plus the house ring
+ * string (`:2262-2263`). A raw `indexOf` therefore reads a COMMENT and passes vacuously — and, for
  * the ring gate, reports the globals side TRUE under ARM A, redding a correct implementation.
  * `withoutComments` (`src/test-utils/sourceScan.ts:146`) blanks comments while preserving every
  * offset, so line numbers in any failure message stay real. Assertion 1 is a negative control on
@@ -188,6 +188,70 @@ const CLOSED_FILES = new Set(BTN_FAMILY_RING_SITES.map((s) => s.file));
 const RING_FLOOR_OCCURRENCES = 150;
 const RING_FLOOR_FILES = 30;
 
+/* ==========================================================================================
+   CASCADE HELPERS — everything below operates on COMMENT-STRIPPED `globals.css`.
+   ========================================================================================== */
+
+/** The `[start, end)` half-open range of the `{ … }` block opening at `open`. */
+function blockRange(src: string, open: number): { start: number; end: number } {
+  const start = src.indexOf('{', open);
+  let depth = 0;
+  for (let i = start; i < src.length; i += 1) {
+    if (src[i] === '{') depth += 1;
+    else if (src[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return { start, end: i + 1 };
+    }
+  }
+  return { start, end: src.length };
+}
+
+/**
+ * Every author `@layer <name> { … }` block, by NAME and byte range.
+ *
+ * Deliberately matches only the BLOCK form: `@layer theme, base, components, utilities;` (the
+ * ORDER declaration Tailwind's own `index.css` ships) has no `{` and is not a containing block.
+ */
+function layerBlocks(css: string): { name: string; start: number; end: number }[] {
+  const out: { name: string; start: number; end: number }[] = [];
+  const re = /@layer\s+([A-Za-z0-9_-]+)\s*\{/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(css)) !== null) {
+    const { start, end } = blockRange(css, m.index);
+    out.push({ name: m[1], start, end });
+  }
+  return out;
+}
+
+/** The name of the innermost `@layer` containing `offset`, or `null` when it is unlayered. */
+function layerAt(css: string, offset: number): string | null {
+  const hit = layerBlocks(css)
+    .filter((l) => offset > l.start && offset < l.end)
+    .sort((a, b) => b.start - a.start)[0];
+  return hit ? hit.name : null;
+}
+
+/**
+ * Brace nesting depth at `offset`. A TOP-LEVEL rule is depth 0; a rule inside `@media`, `@layer`
+ * or `@supports` is deeper. `layerAt` alone cannot tell those apart — `@media (width < 48rem) {
+ * .btn { min-height: 2.75rem } }` is unlayered too, and it is a `.btn {` block.
+ */
+function depthAt(css: string, offset: number): number {
+  let depth = 0;
+  for (let i = 0; i < offset; i += 1) {
+    if (css[i] === '{') depth += 1;
+    else if (css[i] === '}') depth -= 1;
+  }
+  return depth;
+}
+
+/** Every offset at which `needle` occurs. */
+function offsetsOf(src: string, needle: string): number[] {
+  const out: number[] = [];
+  for (let i = src.indexOf(needle); i >= 0; i = src.indexOf(needle, i + 1)) out.push(i);
+  return out;
+}
+
 /** Every app source file whose COMMENT-STRIPPED text still carries a ring. */
 function strippedRingScan(): { file: string; count: number }[] {
   return sourceFiles(SRC)
@@ -277,10 +341,10 @@ describe('Phase 88.6 — the focus ring has exactly one home (UI-SPEC §12 A-2)'
         globals.includes('var(--ring)'),
         'ARM B: the rule must read `var(--ring)`, never `--color-focus-ring`. That shape is ' +
           'recorded REJECTED at `Header.js:99-110` — `--ring: var(--color-focus-ring)` is declared ' +
-          'on `:root` (globals.css:1785) so its `var()` is substituted THERE, which makes a ' +
+          'on `:root` (globals.css:1824) so its `var()` is substituted THERE, which makes a ' +
           '`--color-focus-ring` override INERT inside the two `[--ring:var(--amber-400)]` header ' +
           'subtrees, where the inherited root purple-700 measures 1.93:1 / 1.78:1 ' +
-          '(globals.css:1547-1548) — below WCAG 1.4.11\'s 3:1 floor.',
+          '(globals.css:1586-1587) — below WCAG 1.4.11\'s 3:1 floor.',
       ).toBe(true);
       expect(
         countOf(button, ANY_RING),
@@ -373,5 +437,185 @@ describe('Phase 88.6 — the focus ring has exactly one home (UI-SPEC §12 A-2)'
       `Only ${outside.length} files outside the closed list still carry a ring (measured 38 on ` +
         '2026-09-15). See the occurrence floor above for why this is a floor and not an equality.',
     ).toBeGreaterThanOrEqual(RING_FLOOR_FILES);
+  });
+});
+
+describe('Phase 88.6 — `globals.css` cascade order and layering (W19 / D-09 A-6 / D10)', () => {
+  /**
+   * The `@media (width < 48rem)` block that carries the D-36 phone floor, located by its CONTENT
+   * rather than by "the first `@media (width < 48rem)`" — three such blocks exist in this file and
+   * the other two are the `.surface-flat-phone` flatten inside `@layer utilities`. Pinning the
+   * content also means this anchor reds if the floor rule itself is ever moved or renamed, instead
+   * of silently re-anchoring onto an unrelated media query and passing.
+   */
+  const PHONE_FLOOR = /@media \(width < 48rem\)\s*\{\s*\.btn\s*\{\s*min-height:\s*2\.75rem;/;
+
+  it('7. the ruled source order holds in BOTH directions, on comment-stripped source', () => {
+    const css = strip(readGlobals());
+
+    const floor = css.match(PHONE_FLOOR);
+    expect(
+      floor,
+      'The D-36 phone floor `@media (width < 48rem) { .btn { min-height: 2.75rem } }` was not ' +
+        'found in comment-stripped globals.css. Every ordering assertion below is anchored on it, ' +
+        'so this reds FIRST rather than letting them re-anchor somewhere meaningless.',
+    ).not.toBeNull();
+    const floorAt = floor!.index as number;
+
+    const smAt = css.indexOf('.btn-sm {');
+    const compactAt = css.indexOf('.btn-compact {');
+    expect(smAt, '`.btn-sm {` must exist in comment-stripped globals.css.').toBeGreaterThan(-1);
+    expect(compactAt, '`.btn-compact {` must exist in comment-stripped globals.css.').toBeGreaterThan(-1);
+
+    expect(
+      smAt,
+      '`.btn-sm` must be authored AFTER the `@media (width < 48rem)` phone-floor block.',
+    ).toBeGreaterThan(floorAt);
+    expect(
+      compactAt,
+      '`.btn-compact` must be authored AFTER the `@media (width < 48rem)` phone-floor block — ' +
+        'that is how it wins the tie and keeps its `min-height: 0` opt-out (D-36).',
+    ).toBeGreaterThan(floorAt);
+
+    // The ruled direction. There is ONE order; it is not conditional.
+    expect(
+      compactAt,
+      'OWNER RULING 2026-09-09 (AC-9): `.btn-sm` sits BEFORE `.btn-compact`. Both are (0,1,0), so ' +
+        'on an element carrying both, LATER source order wins — an after-positioned `.btn-sm` puts ' +
+        'back the 8px horizontal padding that `DECISION Phase 88.3-17` removed after CI found the ' +
+        'BrowseMoreModal stepper deformation (`e2e/touch-targets.spec.ts:871`, the squareness ' +
+        'assertion, re-derived 2026-09-15 — the shipped 88.3-17 marker still cites the stale ' +
+        '`:428`; dispatch run ' +
+        '33137056149). Flipping this pin is a decision, not a cleanup.',
+    ).toBeGreaterThan(smAt);
+  });
+
+  it('8. neither `.btn-sm` nor `.btn-compact` is inside an `@layer` — they must beat utilities', () => {
+    const css = strip(readGlobals());
+    for (const sel of ['.btn-sm {', '.btn-compact {']) {
+      const at = css.indexOf(sel);
+      const layer = layerAt(css, at);
+      expect(
+        layer,
+        `\`${sel}\` is inside \`@layer ${layer}\`. Both rules must stay UNLAYERED: an unlayered ` +
+          'author rule beats every `@layer utilities` rule regardless of specificity, which is what ' +
+          'makes the opt-out work at all. Layering either re-breaks it with no build error — the ' +
+          'exact cascade defect 87.8 DEC-2/DEC-3 hit twice on this same pair.',
+      ).toBeNull();
+    }
+  });
+
+  it('9. ANTI-VACUITY FLOOR: the unlayered `.btn` block still carries its own geometry', () => {
+    // If a future edit ever layers `.btn` itself, assertions 7 and 8 become meaningless — the
+    // whole ordering question only matters between unlayered rules. This reds first, and names why.
+    const css = strip(readGlobals());
+    const unlayered = offsetsOf(css, '.btn {').filter(
+      (at) => layerAt(css, at) === null && depthAt(css, at) === 0
+    );
+    expect(
+      unlayered.length,
+      'Exactly ONE unlayered `.btn {` block must exist. Zero means the class was layered (D-30 ' +
+        'forbids it: every size/padding/font utility on every `.btn` element would come alive at ' +
+        'once). More than one means the block was split and the ordering pins above are ambiguous.',
+    ).toBe(1);
+
+    const { start, end } = blockRange(css, unlayered[0]);
+    const body = css.slice(start, end);
+    for (const decl of [
+      'display:',
+      'gap:',
+      'border-radius:',
+      'font-weight:',
+      'font-size:',
+      'padding:',
+      'transition:',
+      'cursor:',
+    ]) {
+      expect(
+        body.includes(decl),
+        `The unlayered \`.btn\` block no longer declares \`${decl}\`. W19 moves exactly ONE ` +
+          'declaration (`border: none`) into `@layer components`; everything else stays here, ' +
+          'byte-identical to its shipped value.',
+      ).toBe(true);
+    }
+  });
+
+  it('10. W19: the `border: none` reset is in `@layer components`, by NAME', () => {
+    const css = strip(readGlobals());
+
+    // It must NOT be back in the unlayered block.
+    const unlayered = offsetsOf(css, '.btn {').filter(
+      (at) => layerAt(css, at) === null && depthAt(css, at) === 0
+    );
+    const { start, end } = blockRange(css, unlayered[0]);
+    expect(
+      css.slice(start, end).includes('border:'),
+      'The unlayered `.btn` block declares a `border` again. W19 moved that reset into ' +
+        '`@layer components` precisely so an `@layer utilities` `border-*` utility can beat it; ' +
+        'an unlayered reset beats every utility regardless of specificity and the two gameDetail ' +
+        'row actions plan 18 migrates (`gameDetail/page.js:198-206`, `:1979-1983`) lose their ' +
+        'visible 1px border with nothing red.',
+    ).toBe(false);
+
+    // It must be in a layer, and the NAME is the load-bearing half.
+    const layered = offsetsOf(css, '.btn {').filter((at) => layerAt(css, at) !== null);
+    const resets = layered.filter((at) => {
+      const r = blockRange(css, at);
+      return css.slice(r.start, r.end).includes('border:');
+    });
+    expect(
+      resets.length,
+      'Exactly one LAYERED `.btn { border: … }` reset must exist (W19).',
+    ).toBe(1);
+
+    const name = layerAt(css, resets[0]);
+    expect(
+      name,
+      `The \`.btn\` border reset is in \`@layer ${name}\`. It must be \`components\`. The layer ` +
+        "ORDER is declared by `@import 'tailwindcss' source(none)` at `globals.css:10`, which " +
+        'pulls in upstream\'s `@layer theme, base, components, utilities;` (line 1 of ' +
+        '`node_modules/tailwindcss/index.css`) — only a layer that PRECEDES `utilities` loses to a ' +
+        '`border-*` utility. Dropping this reset into the pre-existing `@layer utilities` block in ' +
+        'this file would put it in the SAME layer as those utilities and LATER in source order, ' +
+        'defeating W19 with nothing red anywhere. That is why this pins the NAME and not merely ' +
+        '"inside an `@layer`".',
+    ).toBe('components');
+  });
+
+  it('11. D10: the `enabled-hover` variant excludes ARIA-disabled, native-disabled AND no-hover pointers', () => {
+    const css = strip(readGlobals());
+    const at = css.indexOf('@custom-variant enabled-hover');
+    expect(
+      at,
+      '`@custom-variant enabled-hover` must be declared in globals.css beside the shipped `dark` ' +
+        'variant. Plan 06 (wave 4) bakes it into the `Button` cva base, so every gated control in ' +
+        'the phase inherits whatever this one declaration says.',
+    ).toBeGreaterThan(-1);
+    const { start, end } = blockRange(css, at);
+    const body = css.slice(start, end);
+
+    // THREE SEPARATE assertions on purpose. A variant that drops exactly one of these compiles
+    // clean and is indistinguishable from a correct one until a gated control visibly lifts under
+    // the pointer — so `npm run build` proves only that the variant is well-FORMED, never that it
+    // is right. The four shipped rules this reproduces were re-read 2026-09-15.
+    const REPRODUCES =
+      'It reproduces the gating the four shipped rules already perform: ' +
+      "`.btn-primary:hover:not(:disabled):not([aria-disabled='true'])` and its `.btn-accent`, " +
+      '`.btn-secondary` and `.btn-danger` twins (globals.css:2227, :2298, :2448, :2458 as read ' +
+      '2026-09-15). Dropping a clause here silently re-introduces a hover lift on gated controls — ' +
+      'the exact state the DR-C marker block removed.';
+
+    expect(
+      /:not\(\[aria-disabled/.test(body),
+      `\`enabled-hover\` must negate the ARIA disabled state. ${REPRODUCES}`,
+    ).toBe(true);
+    expect(
+      /:not\(:disabled\)/.test(body),
+      `\`enabled-hover\` must negate the NATIVE disabled state. ${REPRODUCES}`,
+    ).toBe(true);
+    expect(
+      /@media\s*\(\s*hover:\s*hover\s*\)/.test(body),
+      `\`enabled-hover\` must be scoped to hover-capable pointers. ${REPRODUCES}`,
+    ).toBe(true);
   });
 });

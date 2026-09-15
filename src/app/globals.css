@@ -143,6 +143,45 @@
    Tailwind still orders variants last within the utilities layer. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ===== TAILWIND v4: GATED-HOVER VARIANT =====
+   DECISION Phase 88.6-05 (D10): the `Button` primitive's rest -> hover elevation is expressed
+   through ONE custom variant that reproduces, for utilities, exactly the gating the legacy CSS
+   already performs — `@media (hover: hover)` plus a negation of BOTH the native `:disabled` state
+   and `[aria-disabled="true"]`. The four shipped rules it is reproducing are
+   `.btn-primary:hover:not(:disabled):not([aria-disabled='true'])` (`globals.css:2227`),
+   `.btn-accent...` (`:2298`), `.btn-secondary...` (`:2448`) and `.btn-danger...` (`:2458`) — all four
+   re-derived against THIS file as this plan leaves it, 2026-09-15; the reasoning for using
+   `aria-disabled` rather than the native attribute alone is the DR-C marker block at `:2099-2167`.
+
+   Plan 06 (wave 4) writes the `Button.tsx` half — the cva base and every UI-SPEC §3.4 rule-2
+   per-variant hover pin express the lift through THIS ONE variant, so `tailwind-merge` dedupes the
+   pair cleanly instead of shipping two competing hover shadows. This plan owns only the CSS half.
+
+   REJECTED — a bare `hover:` prefix in the cva base. It gives natively-disabled and
+   `aria-disabled` controls a hover lift that the four rules above deliberately suppress, so the
+   primitive would REINTRODUCE the exact state the DR-C marker block removed.
+
+   REJECTED — pairing `hover:` with a `disabled:`/`aria-disabled:` hover override that reaches for
+   `--shadow-sm`. That token is the one task 3(c) of this plan is fixing precisely because the bare
+   `none` keyword annihilates Tailwind's composite `box-shadow` list — so this "fix" would delete
+   the focus ring on every gated control.
+
+   REJECTED — compound `not-disabled:not-aria-disabled:hover:` prefixes at the call sites. At
+   (0,4,0) they outrank every §3.4 rule-2 pin, and `not-disabled:` alone does not see
+   `[aria-disabled]` at all.
+
+   All three of this variant's properties are GATED by `src/app/cascadeOrder.test.ts`, separately,
+   on comment-stripped source — because a variant that drops exactly ONE of them compiles clean and
+   is indistinguishable from a correct one until a gated control visibly lifts under the pointer.
+   Dropping a clause here is a decision, not a cleanup. */
+@custom-variant enabled-hover {
+  @media (hover: hover) {
+    &:not(:disabled):not([aria-disabled='true']):hover {
+      @slot;
+    }
+  }
+}
+
 /* ===== TAILWIND v4: RAW DEFAULT-PALETTE PIN (v3 sRGB VALUES) ===== */
 @theme {
   /* DECISION Phase 87.7 (Plan 04, D-17 / RESEARCH Pitfall 3): pin EVERY raw default-palette key
@@ -1945,7 +1984,14 @@ body {
    deleted here (see the amended DEC-3 marker below, where `.modal-overlay` used to sit).
    The sentence is amended rather than rewritten so a reader who remembers the original
    four-item list can see which item went and why. The unlayered requirement stands
-   unchanged for every remaining item. */
+   unchanged for every remaining item.
+   AMENDED BY PHASE 88.6-05 (W19): `.btn` and `.btn-*` are still in that list and still MUST STAY
+   unlayered — the CLASSES do not move. What DID move is exactly one DECLARATION: `.btn`'s
+   `border: none` reset now sits in `@layer components` beside the unlayered block (see the W19
+   marker there for why the layer NAME is load-bearing). D-30 draws that line deliberately: layering
+   the class would make every size/padding/font utility on every `.btn` element live at once;
+   layering the one reset makes only `border-*` live, which is the whole point. Read this sentence
+   as "the classes stay unlayered", not "no declaration of theirs may ever be layered". */
 @utility card {
   background-color: var(--color-bg-card);
   border-radius: var(--radius-card);
@@ -2000,7 +2046,49 @@ body {
   padding: 0.5rem 1rem;
   transition: var(--theme-transition);
   cursor: pointer;
-  border: none;
+}
+
+/* DECISION Phase 88.6-05 (W19): `.btn`'s `border: none` RESET — and ONLY that one declaration —
+   moves out of the unlayered block above into `@layer components`. The `.btn` CLASS itself stays
+   UNLAYERED with every other declaration it has today (D-30).
+
+   WHAT THIS BUYS: `@import 'tailwindcss' source(none)` (`globals.css:10`) pulls in upstream's
+   `@layer theme, base, components, utilities;` — the first line of `node_modules/tailwindcss/
+   index.css` — so `components` PRECEDES `utilities` in the declared layer order. A `border-*`
+   utility on a `.btn` element therefore now WINS over this reset and actually paints. Until this
+   move it could not: an unlayered author rule beats every `@layer utilities` rule regardless of
+   specificity, which is why the marker below at the `.btn-secondary` edge ruling records a
+   call-site `border-*` utility as "dead on arrival". That sentence is amended there, in place.
+
+   THE LAYER NAME IS THE LOAD-BEARING HALF, not merely "inside some `@layer`". This file already
+   declares two other author layers — `@layer base` (the `cursor: pointer` reset) and, further
+   down, `@layer utilities` (the `.surface-flat-phone` flatten). Dropping this reset into that
+   EXISTING `@layer utilities` block would put it in the SAME layer as the border utilities and
+   LATER in source order, defeating W19 entirely with nothing red anywhere.
+   `src/app/cascadeOrder.test.ts` therefore pins the NAME, not the presence of a layer.
+
+   POSITION: authored here, adjacent to the block it modifies, rather than beside the other author
+   `@layer` blocks. Layer precedence in CSS is set by the order the layer NAMES are declared, not
+   by where a block appears, so this is free — and a reset 1,400 lines away from the rule it resets
+   is exactly the kind of thing that gets "tidied" back.
+
+   REJECTED — per-call-site unlayered overrides (`[border:1px_solid_var(--color-line)]` and
+   friends). Recorded REJECTED by 88.3-09; it pushes cascade knowledge into ~100 call sites.
+   REJECTED — layering the whole `.btn` CLASS. That would make every size/padding/font utility on
+   every `.btn` element suddenly live at once — a tree-wide look change and a P6 breach. The
+   `@utility card` guardrail above says `.btn` MUST STAY unlayered and it still does.
+
+   BLAST RADIUS, measured: ZERO of the 120 live `btn btn-*` call sites carries a `border-*` utility
+   today, so nothing changes on screen right now. The live consumers are the two gameDetail row
+   actions plan 18 migrates — `gameDetail/page.js:198-206` (`border border-line`) and `:1979-1983`
+   (`border border-status-error`) — whose visible 1px border would otherwise be DELETED by the
+   migration with nothing red. That is why this cannot be traded away as "nothing depends on it".
+
+   Moving this declaration back inline, or into a different layer, is a decision, not a cleanup. */
+@layer components {
+  .btn {
+    border: none;
+  }
 }
 
 .btn:disabled {
@@ -2289,6 +2377,14 @@ body {
 
    REJECTED — a `border-*` UTILITY at the call sites. Dead on arrival: `.btn { border: none }` above
    is unlayered and beats every `@layer utilities` rule regardless of specificity.
+   ——— AMENDED Phase 88.6-05 (W19), the reasoning above KEPT AS HISTORY because it was true of the
+   tree it was written against: that premise NO LONGER HOLDS. The `border: none` reset now lives in
+   `@layer components` (see the W19 marker at the `.btn` block above), and `components` precedes
+   `utilities` in the order `@import 'tailwindcss' source(none)` declares at `globals.css:10` — so a
+   call-site `border-*` utility on a `.btn` element is ALIVE and paints. The rejection of the
+   utility approach FOR THIS RULING still stands on its own merits (the edge belongs on
+   `.btn-secondary` itself, not spread across 29 call sites); only the "dead on arrival" mechanism
+   is retired. Do not read the amendment as reopening the `.btn-secondary` edge decision. ———
 
    REJECTED — restoring the resting shadow. Req 3 / OI-2 is an owner ruling and the owner
    RE-CONFIRMED the no-shadow half on 2026-08-27. The fix is a fill and an edge, not a shadow.
@@ -2397,6 +2493,50 @@ body {
   .btn {
     min-height: 2.75rem;
   }
+}
+
+/* DECISION Phase 88.6-05 (A-6 amended): `.btn-sm` sits BEFORE `.btn-compact` — chosen OVER the
+   A-6 after-`.btn-compact` position the record named. Owner ruling 2026-09-09 (AC-9).
+
+   WHY. `.btn-compact` below ends `padding-left: 0; padding-right: 0;` under the
+   `DECISION Phase 88.3-17` marker, whose closing sentence reads "Re-adding horizontal padding here
+   re-deforms both steppers and reds `touch-targets.spec.ts:428`" — a regression CI found (dispatch
+   run 33137056149), not review. (That quoted `:428` cite has DRIFTED since 88.3-17 wrote it;
+   re-derived 2026-09-15 the squareness assertion is `e2e/touch-targets.spec.ts:871`, inside the
+   test at `:823`. The sentence is quoted verbatim, so the correction is recorded here rather than
+   made silently in someone else's marker.) `.btn-sm` and `.btn-compact` are both (0,1,0), so on any element
+   carrying BOTH the later rule wins on source order: an after-positioned `.btn-sm` would put the
+   8px horizontal padding straight back. The before-position removes the collision BY CONSTRUCTION
+   rather than by anyone remembering not to combine the two classes.
+
+   REJECTED — keep A-6's after-position plus a source-scan assertion that no className carries both
+   `btn-sm` and `btn-compact`. That is a behavioural guard where a structural one is available.
+
+   THE RECORD said AFTER: UI-SPEC §12 A-6 and CONTEXT D-09 both did, and A-6 justified it as
+   "strictly safer and changes nothing about `.btn-compact`'s own opt-out" — which is factually
+   false for any element carrying both classes. Classified BOOKKEEPING: nothing breaks if A-6 is
+   amended and its whole cost is one line, carried by plan 46's amendment table. This plan edits no
+   UI-SPEC.
+
+   LATENT TODAY, NOT HARMLESS: `.btn-sm` has zero call sites right now and the two BrowseMoreModal
+   steppers are raw `.btn`, not `<Button>`. But plan 06 (wave 4) makes `Button`'s `sm` rung emit
+   `btn-sm`, so `<Button size="sm" className="btn-compact">` or any later compact migration
+   reintroduces the exact CI-found deformation.
+
+   NO `min-width`, NO `font-size`, NO `min-height`, and that is reasoned rather than sanctioned.
+   The `sm` label is 14px, forced by `.btn`'s own unlayered `font-size: .875rem` above. The desktop
+   44px floor is `min-h-11` on the cva base. `sm` is a WIDE-TEXT rung — all eight `D-36` markers
+   record "No `min-w-11`: wide text button" — and UI-SPEC §3.3 caps it at exactly two adopters
+   (`gameDetail/page.js:198` and `:1979`, plan 18), both of which ship `min-h-11 text-xs px-2` today
+   and get WIDER under the migration, not narrower.
+
+   The POSITION is load-bearing and silent when broken — this repo has hit that twice already
+   (87.8 DEC-2/DEC-3). `src/app/cascadeOrder.test.ts` pins both directions of the order on
+   comment-stripped source, and pins that neither rule sits inside an `@layer`. Reordering this, or
+   layering it, is a decision, not a cleanup. */
+.btn-sm {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
 }
 
 .btn-compact {
