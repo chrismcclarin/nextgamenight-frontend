@@ -513,3 +513,222 @@ describe('RsvpSection W44/P3 — the outcome regions', () => {
     expect(failure.textContent?.trim()).toBe('');
   });
 });
+
+// ---------------------------------------------------------------------------------------
+// Phase 88.6-29 — W60 / W61.
+//
+// 11. KEYSTROKES LOST TO THEIR OWN SAVE (W60). `handleSaveNote` cleared `noteDirty`
+//     unconditionally after the submit await but BEFORE the follow-up `fetchRsvps`, so a
+//     keystroke typed during that round trip lost its dirty flag and the (correct) gated
+//     re-syncs repainted the server's value over it. Written RED against the unfixed code.
+//
+// 12. A SUPERSEDED RESPONSE APPLIED (W61). Four polarities, because three of them can be
+//     satisfied by a guard that is wrong in the opposite direction: a superseded response is
+//     discarded, a CURRENT one is still applied (the negative control — a guard that discards
+//     everything is not a guard), a superseded REJECTION renders no banner, and a response
+//     landing after unmount writes nothing.
+//
+// 13. AN UNDER-GUARDED HANDLER FETCH. `fetchRsvps` is called from THREE places; a literal copy
+//     of the port's effect-local `let cancelled` guards ONE of them and leaves the two handler
+//     fetches unguarded with nothing to show for it. The staleness arms below drive through a
+//     HANDLER-initiated fetch on purpose — the mount-effect route cannot see that mistake.
+const STALE_SUMMARY = { yes: 9, maybe: 0, no: 0 };
+
+const withSummary = (summary: { yes: number; maybe: number; no: number }, note: string) => ({
+  rsvps: [
+    {
+      id: 'rsvp-own',
+      event_id: EVENT_ID,
+      user_id: SELF_UUID,
+      status: 'yes',
+      note,
+      User: { id: SELF_UUID, username: 'me' },
+    },
+  ],
+  summary,
+});
+
+describe('RsvpSection W60 — keystrokes typed DURING a save survive it', () => {
+  it('a draft typed while the save is in flight is NOT repainted by the follow-up re-sync', async () => {
+    const user = userEvent.setup();
+    renderSection();
+
+    const textarea = await screen.findByPlaceholderText('Add a note (optional)');
+    await waitFor(() => expect(textarea).toHaveValue('running late, start without me'));
+
+    await user.clear(textarea);
+    await user.type(textarea, 'bringing dice');
+
+    // The save leaves, and the user keeps typing before it lands.
+    const write = deferred<unknown>();
+    submitRsvp.mockReturnValue(write.promise);
+    await user.click(screen.getByRole('button', { name: 'Save note' }));
+    await user.type(textarea, ' and snacks');
+    expect(textarea).toHaveValue('bringing dice and snacks');
+
+    await act(async () => {
+      write.resolve({ id: 'rsvp-own', status: 'yes', note: 'bringing dice' });
+      await write.promise;
+    });
+
+    // POSITIVE settle signal before the persistence claim: the follow-up re-sync has actually
+    // run, so this is not satisfied on the first tick.
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(2));
+    expect(textarea).toHaveValue('bringing dice and snacks');
+  });
+});
+
+describe('RsvpSection W61 — superseded and post-unmount responses write nothing', () => {
+  it('a SUPERSEDED response from a HANDLER-initiated fetch is discarded', async () => {
+    const user = userEvent.setup();
+    const stale = deferred<unknown>();
+    // Call 1 = the mount effect (resolves at once). Call 2 = the fetch `handleStatusClick`
+    // awaits — held open. Call 3 = the new event's mount fetch after the switch.
+    getEventRsvps
+      .mockResolvedValueOnce(withSummary({ yes: 1, maybe: 0, no: 0 }, 'note A'))
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValue(withSummary({ yes: 2, maybe: 0, no: 0 }, 'note B'));
+
+    const { rerender } = render(
+      <RsvpSection eventId={EVENT_ID} self={{ id: SELF_UUID }} eventDate={EVENT_DATE} />
+    );
+    await screen.findByText('1 Yes');
+
+    await user.click(statusButton('no'));
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(2));
+
+    // The switch supersedes the in-flight handler fetch.
+    rerender(
+      <RsvpSection eventId="evt-B" self={{ id: SELF_UUID }} eventDate={EVENT_DATE} />
+    );
+    await screen.findByText('2 Yes');
+
+    await act(async () => {
+      stale.resolve(withSummary(STALE_SUMMARY, 'STALE NOTE'));
+      await stale.promise;
+    });
+
+    // The stale value never renders, and the fresh one is still standing.
+    expect(screen.queryByText('9 Yes')).toBeNull();
+    expect(screen.getByText('2 Yes')).toBeInTheDocument();
+  });
+
+  it('the CURRENT response IS applied — the negative control', async () => {
+    const user = userEvent.setup();
+    getEventRsvps
+      .mockResolvedValueOnce(withSummary({ yes: 1, maybe: 0, no: 0 }, 'note A'))
+      .mockResolvedValue(withSummary({ yes: 4, maybe: 0, no: 0 }, 'note A'));
+
+    renderSection();
+    await screen.findByText('1 Yes');
+
+    await user.click(statusButton('no'));
+    // A guard that discards everything would leave "1 Yes" standing here for ever.
+    await screen.findByText('4 Yes');
+  });
+
+  it('a superseded fetch that REJECTS renders NO error banner', async () => {
+    const user = userEvent.setup();
+    const stale = deferred<unknown>();
+    getEventRsvps
+      .mockResolvedValueOnce(withSummary({ yes: 1, maybe: 0, no: 0 }, 'note A'))
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValue(withSummary({ yes: 2, maybe: 0, no: 0 }, 'note B'));
+
+    const { rerender } = render(
+      <RsvpSection eventId={EVENT_ID} self={{ id: SELF_UUID }} eventDate={EVENT_DATE} />
+    );
+    await screen.findByText('1 Yes');
+
+    await user.click(statusButton('no'));
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(2));
+
+    rerender(
+      <RsvpSection eventId="evt-B" self={{ id: SELF_UUID }} eventDate={EVENT_DATE} />
+    );
+    // POSITIVE settle signal first — the fresh read has landed, so the absence below is
+    // observed against the state under test rather than on the first tick.
+    await screen.findByText('2 Yes');
+
+    await act(async () => {
+      stale.reject(new Error('superseded and failing'));
+      await stale.promise.catch(() => {});
+    });
+
+    expect(screen.getByRole('alert').textContent?.trim()).toBe('');
+    expect(screen.queryByText('Could not load RSVPs')).toBeNull();
+  });
+
+  /* THE CLEANUP CLAUSE, PROVEN. The effect cleanup is what bumps the generation, and it fires on
+     BOTH an identity change and unmount — one clause, two triggers. Unmount itself has no
+     observable signal in React 18 (see the arm below), so the clause is proven here, through the
+     trigger that does: a superseded MOUNT fetch must not clear `loading` either, because the
+     `finally` is one of the guard's four checkpoints. Unguarded, resolving the superseded read
+     renders the loaded card while the fresh read is still in flight. */
+  it('a superseded MOUNT fetch does not clear the loading state (the finally checkpoint)', async () => {
+    const first = deferred<unknown>();
+    const second = deferred<unknown>();
+    getEventRsvps.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+
+    const { rerender } = render(
+      <RsvpSection eventId={EVENT_ID} self={{ id: SELF_UUID }} eventDate={EVENT_DATE} />
+    );
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <RsvpSection eventId="evt-B" self={{ id: SELF_UUID }} eventDate={EVENT_DATE} />
+    );
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      first.resolve(withSummary(STALE_SUMMARY, 'STALE NOTE'));
+      await first.promise;
+    });
+
+    // Still the skeleton: the superseded read cleared neither the data nor the flag.
+    expect(screen.getByText('Loading RSVPs...')).toBeInTheDocument();
+    expect(screen.queryByText('9 Yes')).toBeNull();
+
+    await act(async () => {
+      second.resolve(withSummary({ yes: 2, maybe: 0, no: 0 }, 'note B'));
+      await second.promise;
+    });
+    await screen.findByText('2 Yes');
+  });
+
+  /* LABELLED HONESTLY: this arm is NOT discriminating and was measured as such — it is GREEN
+     against the pre-fix component. React 18 removed the unmounted-setState warning and an update
+     scheduled on an unmounted fiber is bailed out before `scheduleUpdateOnFiber` can warn, so
+     "no state write after unmount" has no observable signal from outside the component. It is
+     kept as a REGRESSION guard (it would catch a future runtime that reinstates the warning, and
+     it catches a resolution path that throws), and the cleanup clause it belongs to is actually
+     PROVEN by the arm directly above, which drives the same cleanup through its other trigger. */
+  it('a response landing AFTER unmount produces no state write (hygiene arm — see the note above)', async () => {
+    const late = deferred<unknown>();
+    getEventRsvps.mockReturnValue(late.promise);
+
+    // React 18 removed the "state update on an unmounted component" warning, so the observable
+    // signal is the act(...) warning React still emits when an UNGUARDED update is scheduled
+    // from outside act. The guard makes the resolution a pure no-op: no update is scheduled at
+    // all, so nothing is logged and nothing throws.
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { unmount } = render(
+      <RsvpSection eventId={EVENT_ID} self={{ id: SELF_UUID }} eventDate={EVENT_DATE} />
+    );
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(1));
+
+    unmount();
+    late.resolve(withSummary(STALE_SUMMARY, 'note after unmount'));
+    // Deliberately NOT wrapped in act(): wrapping it would suppress the very warning this arm
+    // reads. Two macrotask turns let the component's own `.then`/`finally` continuations run.
+    await late.promise;
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    const actWarnings = consoleError.mock.calls.filter((call) =>
+      String(call[0]).includes('not wrapped in act')
+    );
+    expect(actWarnings).toEqual([]);
+    consoleError.mockRestore();
+  });
+});

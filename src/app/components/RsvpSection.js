@@ -10,6 +10,7 @@ import { Textarea } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { formatDateTime } from '../../lib/datetime';
+import { logger, errCtx } from '@/lib/logger';
 
 /* The ratified note-save success string (UI-SPEC §6.3, owner ruling 2026-09-16, the same
    sitting that ratified the hero's "Response saved"). Declared ONCE here for the same
@@ -80,7 +81,51 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
   // REPLACES the draft with the server's old note). A ref, not state: fetchRsvps is a
   // useCallback([eventId, self?.id]) and a state read inside it would be a stale
   // closure (the remedy-skeptic's exact objection to the comparison variant).
+  //
+  // ADDENDUM Phase 88.6-29 (W60) — the sentences above are UNCHANGED and still correct; this is
+  // appended, not a rewrite. The flag was cleared UNCONDITIONALLY in `handleSaveNote`, after the
+  // submit await but BEFORE the follow-up `fetchRsvps`, so a keystroke typed during that round
+  // trip lost its dirty flag and the two gated re-syncs below — which are correct, and are what
+  // protects the status-tap path — repainted the server's value over it. It is now cleared only
+  // when the draft is UNCHANGED since submit, compared against `noteDraft` below.
+  // REJECTED, and for the reason this very marker already gives: capturing the value at request
+  // time and comparing it to `note` on response. `fetchRsvps` is a `useCallback([eventId,
+  // self?.id])`, so a state read inside a post-await comparison is a stale closure.
+  // REJECTED (register option (a)): disabling the Textarea while `savingNote`. A natively
+  // disabled control drops focus to `<body>` — the exact defect W44 fixes eight lines away in
+  // this same plan, so shipping both would be the plan arguing with itself.
+  // REJECTED: a debounce. It narrows the window without closing it, and the window is what the
+  // test asserts.
   const noteDirty = useRef(false);
+  // The live draft, as a REF. It is what the post-await comparison reads, precisely so that
+  // comparison is never a closure read.
+  const noteDraft = useRef('');
+
+  /* THE PHASE'S ONE STALENESS IDIOM (W61), the same cancelled-generation guard shipped at
+     `NextGameNightCard.tsx:231`/`:236`/`:241`/`:248-250` and adopted by plan 88.6-32's
+     `ResponseDashboard.js:56`. It covers FOUR checkpoints: the success application, the catch,
+     the finally, AND unmount.
+
+     THE COUNTER IS COMPONENT-SCOPE, AND THE PORT IS DELIBERATELY NOT LITERAL — this is the part
+     that is easy to get silently wrong. `NextGameNightCard`'s `let cancelled` lives INSIDE the
+     effect that owns its promise, because that is the only place it calls from. Here
+     `fetchRsvps` is a `useCallback` invoked from THREE places that know nothing about each
+     other: the mount effect, `handleStatusClick`'s await and `handleSaveNote`'s. A literal
+     effect-local copy would guard ONE of the three and leave the two handler fetches unguarded,
+     silently, with nothing to show for it.
+
+     RECORDED REJECTED ALTERNATIVE: a component-scope BOOLEAN that the effect cleanup sets true
+     and nothing ever resets. It freezes the skeleton — `self?.id` resolving post-mount changes
+     the callback identity and fires that cleanup, so the very next fetch would be discarded and
+     `loading` would never clear. A monotonic counter has no such state.
+
+     RECORDED REJECTED ALTERNATIVE: `AbortController`. It cancels the TRANSPORT, and what is
+     wrong here is a LATE response writing over a newer one — the guard has to hold for a request
+     that has already resolved. It is also inert under test (`rsvpAPI` is `vi.fn()`-mocked in
+     every suite covering this component), would force signature widenings on `getEventRsvps`
+     (`api.ts:721`) and, via plan 30, `getDeletionBlockers`, and `apiFetch` rethrows aborts raw
+     and logs twice per abort. No shipped component uses it. */
+  const generationRef = useRef(0);
 
   // The same skeptic's second objection, closed: gameDetail's single-event mount keys
   // this component by refresh counter, NOT event id, so ?event_id=A -> B re-renders
@@ -99,9 +144,13 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
 
   const fetchRsvps = useCallback(async () => {
     if (!eventId) return;
+    // Captured PER ISSUE. Every checkpoint below compares this against the live counter, so a
+    // superseded call is silent whether it resolves, rejects or merely finishes.
+    const generation = generationRef.current;
     try {
       setError(null);
       const data = await rsvpAPI.getEventRsvps(eventId);
+      if (generation !== generationRef.current) return;
       setRsvps(data.rsvps || []);
       setSummary(data.summary || { yes: 0, maybe: 0, no: 0 });
 
@@ -116,23 +165,50 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
           setSelectedStatus(mine.status);
           // Both note re-syncs are gated on the draft flag (`noteDirty` above): the
           // saved note may hydrate an untouched box, never overwrite typed text.
-          if (!noteDirty.current) setNote(mine.note || '');
+          if (!noteDirty.current) {
+            noteDraft.current = mine.note || '';
+            setNote(noteDraft.current);
+          }
         } else {
           setUserRsvp(null);
           setSelectedStatus(null);
-          if (!noteDirty.current) setNote('');
+          if (!noteDirty.current) {
+            noteDraft.current = '';
+            setNote('');
+          }
         }
       }
     } catch (err) {
-      console.error('Error fetching RSVPs:', err);
+      /* THE GENERATION GUARD IS CHECKED FIRST, ahead of the log and `setError` — this plan's
+         ruled ordering, and a deliberate divergence from plan 32's `ResponseDashboard.js:100-104`,
+         which logs BEFORE its guard because AC-16 requires a Sentry EVENT on that path. This call
+         is `logger.info`, a breadcrumb: a superseded read is not a diagnostic, and an unguarded
+         one would spend a breadcrumb slot per supersession out of a buffer of 100. */
+      if (generation !== generationRef.current) return;
+      // AC-2 WIDENED (owner 2026-09-09), LEVEL AMENDED (owner 2026-09-13, D2): `logger.info` is
+      // `Sentry.addBreadcrumb` (`logger.ts:34-36`) — a BREADCRUMB, not an event, so this creates
+      // no new Sentry event and no new Session Replay egress. `logger.error`/`logger.warn` are
+      // both captures and are the RECORDED REJECTED alternatives. `errCtx` (never a hand-written
+      // `{ name, message }` literal) carries T-84-01's name-and-message-only payload: no RSVP
+      // roster, no note body, no attendee identity.
+      logger.info('Error fetching RSVPs:', errCtx(err));
       setError('Could not load RSVPs');
     } finally {
-      setLoading(false);
+      if (generation === generationRef.current) setLoading(false);
     }
   }, [eventId, self?.id]);
 
   useEffect(() => {
     fetchRsvps();
+    /* W61's FOURTH checkpoint — the cleanup this effect did not have. It bumps the generation on
+       UNMOUNT and on any `fetchRsvps` identity change, so no in-flight response can write state
+       after teardown or after the component has moved on. This component unmounts as a matter of
+       routine: both gameDetail mounts are keyed by `rsvpRefreshKey`, which every event edit
+       increments. React 18 dropped the unmounted-setState warning, so without this the writes are
+       silent rather than visible. */
+    return () => {
+      generationRef.current += 1;
+    };
   }, [fetchRsvps]);
 
   const handleStatusClick = async (status) => {
@@ -169,7 +245,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
       await fetchRsvps();
       if (onRsvpChange) onRsvpChange(status);
     } catch (err) {
-      console.error('Error submitting RSVP:', err);
+      logger.info('Error submitting RSVP:', errCtx(err));
       setError('Could not save your response. Please try again.');
     } finally {
       statusLatch.current = false;
@@ -186,14 +262,21 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
     setSavingNote(true);
     setError(null);
     setNoteSaved('');
+    // W60: the value that actually LEFT, captured before the await.
+    const submitted = note;
     try {
-      await rsvpAPI.submitRsvp(eventId, selectedStatus, note || null);
-      // The draft is now the saved note — re-syncs may flow again.
-      noteDirty.current = false;
+      await rsvpAPI.submitRsvp(eventId, selectedStatus, submitted || null);
+      /* W60, the whole fix: clear the draft flag ONLY when the box still holds what was sent.
+         `noteDraft` is a REF, so this reads the LIVE value rather than a closure — a keystroke
+         typed during the round trip leaves the flag standing and the re-sync below cannot
+         repaint over it. */
+      if (noteDraft.current === submitted) {
+        noteDirty.current = false;
+      }
       await fetchRsvps();
       setNoteSaved(NOTE_SAVED_MESSAGE);
     } catch (err) {
-      console.error('Error saving note:', err);
+      logger.info('Error saving note:', errCtx(err));
       setError('Could not save your note. Please try again.');
     } finally {
       saveNoteLatch.current = false;
@@ -379,6 +462,9 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                   // User-typed text = an unsaved draft; block fetch re-syncs from
                   // repainting the box until Save note lands (see `noteDirty`).
                   noteDirty.current = true;
+                  // W60: the ref tracks the draft in lockstep with the state, and it is what
+                  // `handleSaveNote`'s post-await comparison reads.
+                  noteDraft.current = e.target.value;
                   setNote(e.target.value);
                 }
               }}
