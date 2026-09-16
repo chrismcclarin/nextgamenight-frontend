@@ -6,6 +6,7 @@ import { formatDate } from '../../lib/dateUtils';
 import { useTimezone } from '../components/TimezoneProvider';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
 import { SelectControl } from '../../components/ui/Input';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 
@@ -36,19 +37,27 @@ function GameCard({ game, groupId, sortBy, formatRating, formatPlayerCount, time
                     className="w-16 h-16 object-cover rounded-sm"
                 />
                 <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-semibold text-content-primary mb-1 truncate">
+                    {/* A1 (the tracer's ruling, plan 88.6-15, applied here): an
+                        `<hN … truncate>` converting to `Heading` DROPS `truncate` and WRAPS.
+                        The exception is a site that can show clipping is load-bearing, and
+                        this one cannot: the card has no fixed height, it sits in a
+                        `grid-cols-1` column at phone width, and the game NAME is the one
+                        string that identifies the card — clipping it hides the content the
+                        card exists to show. The grid row grows instead, which is the cost the
+                        default accepts. Re-adding `truncate` is a decision, not a cleanup. */}
+                    <Heading level={3} size="heading" className="text-content-primary mb-1">
                         {game.name}
-                    </h3>
+                    </Heading>
                     <div className="text-sm text-content-secondary space-y-1">
                         <p>
-                            Played <span className="font-semibold">{game.play_count}</span> {game.play_count === 1 ? 'time' : 'times'}
+                            Played <span className="text-content-primary">{game.play_count}</span> {game.play_count === 1 ? 'time' : 'times'}
                         </p>
                         <p>
                             Last played: {formatDate(game.last_played, timezone)}
                         </p>
                         {game.avg_rating && (
                             <p>
-                                Rating: <span className="font-semibold text-yellow-600">{formatRating(game.avg_rating)}</span>
+                                Rating: <span className="text-yellow-600">{formatRating(game.avg_rating)}</span>
                                 {game.review_count > 0 && (
                                     <span className="text-content-muted"> ({game.review_count} {game.review_count === 1 ? 'review' : 'reviews'})</span>
                                 )}
@@ -268,7 +277,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
     if (errorState?.showError) {
         return (
             <div className="mt-8">
-                <h2 className="text-2xl font-bold text-content-primary mb-4">Group Games</h2>
+                <Heading level={2} size="heading" className="text-content-primary mb-4">Group Games</Heading>
                 <FetchErrorBanner
                     state={errorState}
                     title="We couldn't load this group's games"
@@ -314,12 +323,14 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                 body="Log a night you played and the group's history builds up here."
                 action={
                     userRole && userRole !== 'pending' ? (
-                        /* 44px floor carried per-CTA, matching the other 88-18 adopters
-                           (87.8 D-13/D-14): no global `.btn` min-height, which would distort
-                           the shipped compact/icon buttons. */
+                        /* The per-CTA `min-h-11` is DROPPED here (D-30, same file pass). It
+                           became redundant when plan 88.6-06 put `min-h-11` on the `Button`
+                           cva base at EVERY viewport (D-09); the 87.8 D-13/D-14 rejection it
+                           used to cite is about a floor on the `.btn` CLASS, which stays
+                           rejected — square-by-design controls wear that class. This element
+                           is a `Button`, so it opted in. The floor is not lost, only relocated. */
                         <Button
                             variant="primary"
-                            className="min-h-11"
                             onClick={onAddEvent}
                         >
                             Log a game night
@@ -332,13 +343,13 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
 
     return (
         <div>
-            <h2 className="text-2xl font-bold text-content-primary mt-8 mb-4">Group Games</h2>
+            <Heading level={2} size="heading" className="text-content-primary mt-8 mb-4">Group Games</Heading>
 
             {/* Sorting Controls */}
             <div className="mb-6 flex items-center justify-between bg-surface-page p-3 md:p-4 rounded-card">
                 <div className="flex items-center gap-2">
                     <label className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-content-secondary whitespace-nowrap">Sort by:</span>
+                        <span className="text-sm text-content-secondary whitespace-nowrap">Sort by:</span>
                         {/* DECISION Phase 88-21 (Req 1): `w-auto` overrides the primitive's
                             `block w-full`. This select sits INLINE beside its "Sort by:" span on
                             one toolbar row, unlike the two filter selects below it which are
@@ -381,7 +392,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                 <div className="mb-6 bg-surface-page p-3 md:p-4 rounded-card border border-line -mt-3 rounded-t-none">
                     <div className="flex flex-col sm:flex-row gap-3">
                         <label className="flex-1">
-                            <span className="text-sm font-medium text-content-secondary block mb-1">Winner</span>
+                            <span className="text-sm text-content-secondary block mb-1">Winner</span>
                             <SelectControl
                                 id="group-games-filter-winner"
                                 name="group-games-filter-winner"
@@ -397,7 +408,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                             </SelectControl>
                         </label>
                         <label className="flex-1">
-                            <span className="text-sm font-medium text-content-secondary block mb-1">Picker</span>
+                            <span className="text-sm text-content-secondary block mb-1">Picker</span>
                             <SelectControl
                                 id="group-games-filter-picker"
                                 name="group-games-filter-picker"
@@ -429,7 +440,7 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                     <p className="text-content-secondary mb-3">No games match these filters</p>
                     <button
                         onClick={() => { setFilterWinner(''); setFilterPicker(''); }}
-                        className="text-content-link hover:text-content-link-hover active:opacity-75 text-sm font-medium focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                        className="text-content-link hover:text-content-link-hover active:opacity-75 text-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                     >
                         Clear filters
                     </button>
@@ -443,7 +454,13 @@ export default function GroupGamesList({ games, groupId, onAddEvent, userRole, m
                     <div>
                         {groupedByTheme.map((group, groupIndex) => (
                             <div key={group.theme}>
-                                <div className={`text-sm font-semibold text-content-secondary uppercase tracking-wide border-b border-line pb-1 mb-3${groupIndex > 0 ? ' mt-6' : ''}`}>
+                                {/* UI-SPEC §4.5, the ratified EYEBROW role (Caption 12 / 700 / uppercase / tracking),
+                                    matching `CalendarListView.js:1009`: BOTH the size and the weight move
+                                    here — `text-sm` (14) -> `text-xs` (12) is this role's rung, and 600 ->
+                                    700 because 600 is a prohibition outside the `Button` label (§4.2). It
+                                    stays a `<div>`: an eyebrow is not a heading, and making it one would
+                                    put a level into an outline that deliberately has none here. */}
+                                <div className={`text-xs font-bold text-content-secondary uppercase tracking-wide border-b border-line pb-1 mb-3${groupIndex > 0 ? ' mt-6' : ''}`}>
                                     {group.theme}
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

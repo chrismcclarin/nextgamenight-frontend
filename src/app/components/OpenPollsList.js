@@ -133,13 +133,13 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
           than directly above the list body. Restoring the unconditional render is a decision. */}
       {canCreate && !showEmptyState && (
         /* DECISION Phase 87.8 (D-13/D-14/AF-2): per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor — the global floor was considered and REJECTED because it would silently distort ~15 shipped compact/icon `.btn` sites (AF-2, e.g. BrowseMoreModal's 32x32 squares); 44px chosen OVER Material's 48dp, surfaced and consciously declined (D-14). The global `.btn` sizing question (all 210 sites) stays with Phase 88 (DEF-1) — this is a decision, not an oversight. No `min-w-11`: this wide text button already exceeds 44px rendered width (151px measured).  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          className="mb-4"
           onClick={() => setShowStartPoll(true)}
-          className="btn btn-primary mb-4 min-h-11"
         >
           + Start a check-in
-        </button>
+        </Button>
       )}
 
       {loading ? (
@@ -159,11 +159,14 @@ export default function OpenPollsList({ groupId, group, userRole, currentUserDbI
           body="Start one and everyone picks the nights that work — you'll see the overlap."
           action={
             canCreate ? (
-              /* 44px floor carried per-CTA, matching the 87.8 D-13/D-14 marker on the
-                 header button above — same action, same touch target. */
+              /* The per-CTA `min-h-11` this used to carry is DROPPED, in the same commit as
+                 the header button's `<Button>` migration above — the D-36 marker's own last
+                 clause says that is when it becomes correct, because the cva base now supplies
+                 the 44px floor at EVERY viewport (88.6-06 D-09). Both CTAs are the same action
+                 and still the same touch target; what changed is where the floor comes from.
+                 The floor itself is NOT optional here — see that marker. */
               <Button
                 variant="primary"
-                className="min-h-11"
                 onClick={() => setShowStartPoll(true)}
               >
                 + Start a check-in
@@ -258,7 +261,10 @@ function OpenPollCard({ prompt, group, onClose }) {
   return (
     <li className="bg-surface-card border border-line rounded-card p-3 flex items-start justify-between gap-3">
       <div className="min-w-0 flex-1">
-        <p className="font-semibold text-content-primary truncate">{title}</p>
+        {/* §4.5 HIERARCHY outcome: 600 -> 700. This is the row's one primary string, and 600
+            is a prohibition outside the `Button` label (§4.2). It is a `<p>` and not an `<hN>`,
+            so the A1 heading-`truncate` ruling does not reach it and `truncate` stays. */}
+        <p className="font-bold text-content-primary truncate">{title}</p>
         <p className="text-xs text-content-muted mt-0.5">{sourceLabel}</p>
         {deadlineDisplay && (
           <p className="text-xs text-content-secondary mt-1">

@@ -625,8 +625,15 @@ const EXPECTED_PROP_SEAMS = 5;
  * `EXPECTED_LEVELS` entries (`{ 3: 1 }` each) are byte-unchanged (P4). This constant is `>=`,
  * so leaving it unraised would have been SILENTLY green; it is raised in the same commit as
  * the migration, per this docblock's own rule.
+ *
+ * RAISED 81 -> 84 by plan 88.6-32 task 3 (2026-09-16): THREE more, all in
+ * `GroupGamesList.js` — the game-card title (h3:39, `text-lg` -> `size="heading"`, a disclosed
+ * 18 -> 20) and the two "Group Games" section titles (h2:271 and h2:335, `text-2xl` ->
+ * `size="heading"`, a disclosed 24 -> 20). The three CONVERGE on one rung from opposite
+ * directions, which is what a 4-size working set is for. `EXPECTED_LEVELS`' `{ 2: 2, 3: 1 }`
+ * entry for that file is byte-unchanged (P4) — the levels did not move, only the sizes.
  */
-const EXPECTED_MIN_PRIMITIVES = 81;
+const EXPECTED_MIN_PRIMITIVES = 84;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -723,11 +730,12 @@ const RUNG_ROSTER: ExemptionRoster = {
   // themed-ink classes (a light/dark pair each for colour, text-shadow and -webkit-text-stroke)
   // and `style={rowTitleVars}` pass through byte-identical — they are what keeps the title
   // readable over a group background photo. Entry DELETED, not zeroed.
-  'app/components/GroupGamesList.js': {
-    sites: 3,
-    why: '3 headings off the 4-size working set (h3:39 text-lg; h2:271 text-2xl; h2:335 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-32 task 3 (wave 7, 2026-09-16): `app/components/GroupGamesList.js`
+  // carried `sites: 3` (h3:39 `text-lg`; h2:271 and h2:335 both `text-2xl`). All three MIGRATED
+  // onto `<Heading size="heading">` (20), so the rung is the primitive's and the file leaves
+  // this raw-only population. The two h2s are a disclosed 24 -> 20 and the h3 a disclosed
+  // 18 -> 20 — they CONVERGE on one rung, which is the point of a 4-size working set. `level`
+  // is preserved at all three (P4). Deleted, not zeroed.
   'app/components/GroupSettings.js': {
     sites: 4,
     why: '4 headings off the 4-size working set (h3:610 text-lg; h3:697 text-lg; h3:1019 text-lg; h3:1091 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
@@ -847,11 +855,9 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
   // carried `sites: 3` (h3:315, h3:445, h3:521). All three are `<Heading level={3} size="label">`
   // now, so they leave this RAW-only population entirely rather than moving to 700 in place.
   // h3@14 STAYS at 14 per D-04 — `size="label"` is `text-sm`. Entry DELETED, not zeroed.
-  'app/components/GroupGamesList.js': {
-    sites: 1,
-    why: '1 heading carrying the prohibited 600 weight (h3:39) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-32 task 3 (wave 7, 2026-09-16): `app/components/GroupGamesList.js`
+  // carried `sites: 1` (h3:39 `font-semibold`). Migrated onto `<Heading>`, whose cva base is
+  // `font-bold`, so the call site states no weight. Deleted, not zeroed.
   'app/components/GroupSettings.js': {
     sites: 4,
     why: '4 headings carrying the prohibited 600 weight (h3:610, h3:697, h3:1019, h3:1091) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
@@ -921,11 +927,9 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
   // heading-semibold roster above. The 700 now comes from the primitive's `font-bold` base
   // (Heading.tsx:60) rather than from a stated utility, and a migrated heading leaves this
   // RAW-only population. Entry DELETED, not zeroed.
-  'app/components/GroupGamesList.js': {
-    sites: 1,
-    why: '1 raw heading not stating the 700 weight (h3:39 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-32 task 3 (wave 7, 2026-09-16): `app/components/GroupGamesList.js`
+  // carried `sites: 1` (h3:39). RAW-ONLY supply rule; no longer a raw `<hN>` tag, so the file
+  // leaves the population rather than decrementing. Deleted, not zeroed.
   'app/components/GroupSettings.js': {
     sites: 4,
     why: '4 raw headings not stating the 700 weight (h3:610 font-semibold; h3:697 font-semibold; h3:1019 font-semibold; h3:1091 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
@@ -1937,18 +1941,28 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '2 off-scale weight sites (1 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-33, 88.6-39.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/GroupGamesList.js': {
-    sites: 8,
-    why:
-      '8 off-scale weight sites (4 font-medium, 4 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep; emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-03, 88.6-15, 88.6-17, 88.6-32, 88.6-33.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
-  'app/components/GroupLibrary.js': {
-    sites: 6,
-    why:
-      '6 off-scale weight sites (6 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-32, 88.6-39, 88.6-43.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-32 task 3 (wave 7, 2026-09-16): `app/components/GroupGamesList.js`
+  // carried `sites: 8`, and all THREE of §4.5's outcomes applied:
+  //   - HIERARCHY -> 700: the `font-semibold` h3 at `:39` (left the population by migrating onto
+  //     `<Heading>`), and the date-group EYEBROW at `:446` — `text-sm font-semibold uppercase
+  //     tracking-wide` -> `text-xs font-bold`, the ratified Eyebrow role of the Caption rung
+  //     (§4.5 row 1, matching `CalendarListView.js:1009`). BOTH its size and its weight moved;
+  //     it stays a `<div>`, because an eyebrow is not a heading.
+  //   - EMPHASIS -> 400 + a colour token: the play-count span at `:44` (no colour of its own,
+  //     so it takes `text-content-primary`), the rating span at `:51` (already coloured), the
+  //     "Sort by:" label at `:341`, the "Winner" and "Picker" labels at `:384`/`:400`, and the
+  //     link at `:432` (already `text-content-link` — the same case §4.5 names for
+  //     `FetchErrorBanner.tsx`'s three link-buttons, deleted with no look delta).
+  // Zero off-scale weight sites remain. Deleted, not zeroed.
+  // DELETED by plan 88.6-32 task 3 (wave 7, 2026-09-16): `app/components/GroupLibrary.js`
+  // carried `sites: 6`, resolved across TWO of §4.5's outcomes:
+  //   - PILL/CHIP INK -> 700: the two owner-filter chip shapes (`:236`, `:248`). 400 is REJECTED
+  //     for a filled pill because the ink must hold against its own fill — §4.5 row 2's reason,
+  //     the same one it gives for `UpcomingCountPill.tsx`. Marker at the chip bar.
+  //   - HIERARCHY -> 700: the library row's game NAME at `:310`, its one primary string.
+  //   - EMPHASIS -> 400 + a colour token: the "Sort:" label at `:211` and the two link-shaped
+  //     controls at `:265` and `:338`, all three of which already carried their colour token.
+  // Zero off-scale weight sites remain. Deleted, not zeroed.
   'app/components/GroupSettings.js': {
     sites: 4,
     why:
@@ -2021,12 +2035,12 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '5 off-scale weight sites (1 font-medium, 4 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-10, 88.6-31, 88.6-34, 88.6-43, 88.6-46.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/OpenPollsList.js': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-07, 88.6-10, 88.6-13, 88.6-14, 88.6-15, 88.6-16, 88.6-19, 88.6-20, 88.6-22, 88.6-25, 88.6-31, 88.6-32, 88.6-33.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-32 task 3 (wave 7, 2026-09-16): `app/components/OpenPollsList.js`
+  // carried `sites: 1` — the poll-row title at `:261` pre-edit, `font-semibold` on a `<p>`.
+  // §4.5's HIERARCHY outcome: it is the row's one primary string, so 600 -> 700. It is a `<p>`
+  // and not an `<hN>`, so it never entered the heading rosters and the A1 heading-`truncate`
+  // ruling does not reach it — `truncate` is byte-unchanged. This file's ERROR HANDLING is the
+  // phase's R1 reference implementation and is byte-unchanged by that plan. Deleted, not zeroed.
   'app/components/ParticipantRow.js': {
     sites: 2,
     why:

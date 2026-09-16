@@ -10,6 +10,7 @@ import { Button } from '../../components/ui/Button';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { Input, SelectControl } from '../../components/ui/Input';
+import { logger, errCtx } from '@/lib/logger';
 
 export default function GroupLibrary({ groupId }) {
   const router = useRouter();
@@ -48,7 +49,16 @@ export default function GroupLibrary({ groupId }) {
       setMembers(data.members || []);
       loaded.current = true;
     } catch (error) {
-      console.error('Error fetching group library:', error);
+      // AC-2 WIDENED (owner 2026-09-09) x D2 (owner 2026-09-13): a library-fetch failure is NOT
+      // an AC-16 (a) site, so this takes `logger.info` — a Sentry BREADCRUMB. `logger.error`
+      // is REJECTED here: it is `Sentry.captureException`, an EVENT, which would buy Session
+      // Replay volume the ROADMAP `:28` convert-on-touch gate never asked for. `logger.warn` is
+      // not a cheaper middle arm — it is `Sentry.captureMessage`, also an event. The message
+      // string is byte-identical to the `console.error` it replaces, and `errCtx` bounds the
+      // payload to the error's name and message (T-84-01); the raw `Error` is never passed as
+      // `logger.info`'s second argument, whose type is `Record<string, unknown>`
+      // (`logger.ts:24`) — a mistake `npm run typecheck` cannot see in a `.js` file.
+      logger.info('Error fetching group library:', errCtx(error));
       if (!mounted.current) return;
       // Keep the ERROR object, not a flattened string: useFetchErrorState reads
       // `ApiError.code` off it to pick the right user-facing copy.
@@ -208,7 +218,7 @@ export default function GroupLibrary({ groupId }) {
       {/* Sort dropdown + game count */}
       <div className="mb-3 flex items-center justify-between">
         <label className="flex items-center gap-2">
-          <span className="text-sm font-medium text-content-secondary">Sort:</span>
+          <span className="text-sm text-content-secondary">Sort:</span>
           {/* `w-auto`: inline beside its "Sort:" span on a toolbar row — same shape as
               GroupGamesList's sort select. See the marker there. */}
           <SelectControl
@@ -229,11 +239,18 @@ export default function GroupLibrary({ groupId }) {
         </span>
       </div>
 
-      {/* Owner chip bar */}
+      {/* Owner chip bar.
+
+          DECISION Phase 88.6-32 (§4.5, the pill/chip-ink row): both chip shapes below take
+          **700**, not 400. 400 was REJECTED — these are filled pills (`bg-btn-primary` when
+          selected, `bg-surface-muted` otherwise) and the ink has to hold against its own fill,
+          which is the same reason §4.5 gives for `UpcomingCountPill.tsx` and
+          `MemberChipStack.tsx`. The 500 they carried is a prohibition outside the `Button`
+          label (§4.2), so leaving it was never an option; the choice was 400 or 700. */}
       <div className="mb-4 overflow-x-auto flex gap-2 pb-1 -mx-1 px-1">
         <button
           onClick={() => setSelectedOwner(null)}
-          className={`shrink-0 px-3 py-1 rounded-full text-sm font-medium active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+          className={`shrink-0 px-3 py-1 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
             selectedOwner === null
               ? 'bg-btn-primary text-btn-primary-text'
               : 'bg-surface-muted text-content-secondary hover:text-content-primary'
@@ -245,7 +262,7 @@ export default function GroupLibrary({ groupId }) {
           <button
             key={member.user_id}
             onClick={() => setSelectedOwner(member.user_id === selectedOwner ? null : member.user_id)}
-            className={`shrink-0 px-3 py-1 rounded-full text-sm font-medium active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+            className={`shrink-0 px-3 py-1 rounded-full text-sm font-bold active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
               selectedOwner === member.user_id
                 ? 'bg-btn-primary text-btn-primary-text'
                 : 'bg-surface-muted text-content-secondary hover:text-content-primary'
@@ -262,7 +279,7 @@ export default function GroupLibrary({ groupId }) {
           <p className="text-content-secondary mb-3">No games found</p>
           <button
             onClick={clearFilters}
-            className="text-content-link hover:text-content-link-hover active:opacity-75 text-sm font-medium focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            className="text-content-link hover:text-content-link-hover active:opacity-75 text-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
           >
             Clear filters
           </button>
@@ -307,7 +324,10 @@ export default function GroupLibrary({ groupId }) {
                   className="w-10 h-10 rounded-sm object-cover shrink-0"
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-content-primary truncate text-sm">{game.name}</p>
+                  {/* §4.5 HIERARCHY outcome: 500 -> 700. This is the row's one primary string. It is a
+                      `<p>`, not an `<hN>`, so the A1 heading-`truncate` ruling does not reach it
+                      and `truncate` stays — these are 40px-tall list rows, not cards. */}
+                  <p className="font-bold text-content-primary truncate text-sm">{game.name}</p>
                   {metaParts.length > 0 && (
                     <p className="text-xs text-content-muted truncate">{metaParts.join(' \u00B7 ')}</p>
                   )}
@@ -335,7 +355,7 @@ export default function GroupLibrary({ groupId }) {
                       e.stopPropagation();
                       router.push(`/gameDetail?game_id=${encodeURIComponent(game.id)}&group_id=${encodeURIComponent(groupId)}`);
                     }}
-                    className="mt-2 text-sm text-content-link hover:text-content-link-hover active:opacity-75 font-medium focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                    className="mt-2 text-sm text-content-link hover:text-content-link-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                   >
                     View game
                   </button>

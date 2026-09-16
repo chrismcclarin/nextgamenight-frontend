@@ -418,11 +418,22 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'plan 88.6-35 sweeps the marketing, legal and tutorial surfaces, LandingPage.js included',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
-  'app/components/OpenPollsList.js': {
-    sites: 1,
-    why: 'plan 88.6-32 sweeps the group-library and scheduling cluster, OpenPollsList.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-32 task 3 (wave 7, 2026-09-16): `app/components/OpenPollsList.js`
+  // carried `sites: 1` — the header "+ Start a check-in" CTA, `btn btn-primary mb-4 min-h-11`.
+  // It is now `<Button variant="primary" className="mb-4">`: `min-h-11` GOES (the cva base
+  // supplies the 44px floor at every viewport, 88.6-06 D-09) and `mb-4` STAYS (`.btn` declares
+  // no margin, so it was never dead). The 87.8 D-36 floor marker immediately above that CTA is
+  // BYTE-UNCHANGED and keeps all four of its `decisionMarkers` test-21 tokens; its own last
+  // clause names this commit as the one in which dropping the per-CTA `min-h-11` becomes
+  // correct. The file's EmptyState CTA — already a `<Button>` — dropped its now-redundant
+  // `min-h-11` in the same pass (D-30), so the pair does not diverge.
+  //
+  // CORRECTION recorded rather than inherited: plan 32's own `read_first` says this file has
+  // "2 `.btn` element sites". Measured at execution it has ONE, which is what this roster said.
+  //
+  // The file's ERROR HANDLING is the phase's R1 reference implementation and is byte-unchanged
+  // by that plan — `git diff` over it shows only the two CTA hunks and one weight site.
+  // Entry DELETED rather than zeroed.
   // DELETED by plan 88.6-15 (2026-09-16), the phase TRACER: `app/components/PromptScheduleManager.js`
   // carried `sites: 1` (`:151`, `mb-4 btn btn-primary min-h-11`). It is now
   // `<Button variant="primary" className="mb-4">` — `min-h-11` dropped because the cva base
