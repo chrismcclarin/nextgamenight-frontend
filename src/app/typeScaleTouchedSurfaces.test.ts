@@ -610,8 +610,14 @@ const EXPECTED_PROP_SEAMS = 5;
  * 30 — a disclosed +6px); the EVENT_PASSED and ERROR branch headings were already `text-xl` and land
  * on `size="heading"` with no size change. `EXPECTED_LEVELS`' `{ 1: 3 }` entry for that file is
  * byte-unchanged (P4).
+ *
+ * RAISED 78 -> 79 by plan 88.6-28 task 3 (2026-09-16): ONE more — `UpcomingEventsCard.js:156`'s
+ * card title, the tree's ONLY heading at weight 500. It was SIZE-LESS (no size utility at all),
+ * so §4.4's size-less-headings row lands it on `size="body"` (16) — which is what it already
+ * rendered at, so this migration moves the WEIGHT (500 -> 700, from the cva base) and NOT the
+ * size. `EXPECTED_LEVELS`' `{ 3: 1 }` entry for that file is byte-unchanged (P4).
  */
-const EXPECTED_MIN_PRIMITIVES = 78;
+const EXPECTED_MIN_PRIMITIVES = 79;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -745,11 +751,12 @@ const RUNG_ROSTER: ExemptionRoster = {
     why: '1 heading off the 4-size working set (h3:91 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/UpcomingEventsCard.js': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h3:156 no size utility) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-28 task 3 (wave 7, 2026-09-16): `app/components/UpcomingEventsCard.js`
+  // carried `sites: 1` (h3:156, no size utility at all). It migrated onto
+  // `<Heading level={3} size="body">` — §4.4's size-less-headings row, 16 — so it LEAVES this
+  // raw-only population entirely rather than being re-keyed in place. `size` is passed
+  // explicitly because the primitive would otherwise derive `heading` (20) from level 3, a
+  // silent +4px. Entry DELETED, not zeroed; the roster is exact in both directions.
   'app/components/tutorial/simulated/ProblemSlide.js': {
     sites: 1,
     why: '1 heading off the 4-size working set (h2:14 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
@@ -947,11 +954,13 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
     why: '1 raw heading not stating the 700 weight (h3:91 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/UpcomingEventsCard.js': {
-    sites: 1,
-    why: '1 raw heading not stating the 700 weight (h3:156 font-medium) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-28 task 3 (wave 7, 2026-09-16): `app/components/UpcomingEventsCard.js`
+  // carried `sites: 1` (h3:156 `font-medium`) — the ONLY heading in the whole tree at weight
+  // 500, and the single site that made this population's count read "N-1 font-semibold and 1
+  // font-medium" instead of being uniformly 600. It migrated onto `<Heading>`, whose cva base is
+  // `font-bold`, so it leaves this raw-only population with its migration and the `font-medium`
+  // utility was DELETED rather than carried. The assertion message below is corrected in the
+  // same commit. Entry DELETED, not zeroed; the roster is exact in both directions.
   'app/components/tutorial/simulated/ProblemSlide.js': {
     sites: 1,
     why: '1 raw heading not stating the 700 weight (h2:14 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
@@ -1513,12 +1522,13 @@ const ARBITRARY_SIZE_ROSTER: ExemptionRoster = {
   // carried sites: 2 (text-[10px]@196, text-[10px]@208). All NINE folded UP to text-xs, the D-01
   // 12px floor, and the named V-7 reflow risk was MEASURED in Chromium at 375px per site rather
   // than assumed. Entries DELETED, not zeroed; the roster is exact in both directions.
-  'app/components/UpcomingEventsCard.js': {
-    sites: 1,
-    why:
-      '1 arbitrary size value (text-[10px]@256), 1 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
-  },
+  // DELETED by plan 88.6-28 task 3 (wave 7, 2026-09-16): `app/components/UpcomingEventsCard.js`
+  // carried `sites: 1` (`text-[10px]`@256 pre-edit) — the Guest pill on a guest-joined event
+  // row. It folded UP to `text-xs`, the Caption rung, which is on §4.2's closed role list for a
+  // badge label. V-7's dense-grid screenshot gate does NOT reach it: that gate is scoped to the
+  // month tile and the week strip, both fixed-height boxes, while this pill is an `inline-flex`
+  // inside a wrapping row whose `min-h-11 md:min-h-0` is a floor, not a cap.
+  // `EXPECTED_SUB_FLOOR_SITES` drops 10 -> 9 in the same commit. Entry DELETED, not zeroed.
   'app/components/tutorial/simulated/AvailabilityPromptDemo.js': {
     sites: 1,
     why:
@@ -1569,7 +1579,9 @@ const ARBITRARY_SIZE_ROSTER: ExemptionRoster = {
 // 11 -> 10, plan 88.6-27 task 3 (wave 7, 2026-09-16): `CalendarMonthView.js`'s compact-tile
 // RSVP counter folded `text-[10px]` -> `text-xs`. An EXACT equality, in the same commit as the
 // fold, so a missed site cannot hide behind a `>=`.
-const EXPECTED_SUB_FLOOR_SITES = 10;
+// 10 -> 9, plan 88.6-28 task 3 (wave 7, 2026-09-16): `UpcomingEventsCard.js`'s Guest pill
+// folded `text-[10px]` -> `text-xs`. Same EXACT-equality contract as the fold above.
+const EXPECTED_SUB_FLOOR_SITES = 9;
 
 /** Negative control for the strip on THIS file-level scan. */
 const FIXTURE_ARBITRARY_COMMENTS = `
@@ -2115,12 +2127,11 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // this pill's Gate A pins, both use sites, both themes — were green before and after, with
   // every pinned ratio byte-unchanged (a weight change moves no ratio) and none near its floor.
   // Entry DELETED, not zeroed; the roster is exact in both directions.
-  'app/components/UpcomingEventsCard.js': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-11, 88.6-28, 88.6-43.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-28 task 3 (wave 7, 2026-09-16): `app/components/UpcomingEventsCard.js`
+  // carried `sites: 1` (1 font-medium, 0 font-semibold) — the SAME site as the two heading
+  // rosters above, which is why all three close in one commit. It is §4.5's HIERARCHY outcome
+  // and the 700 now comes from the `Heading` primitive's cva base rather than from a utility at
+  // the call site. Measured at this commit: 0 sites remain. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-25 task 1 (wave 7, 2026-09-16): `app/components/createEvent.js` carried
   // `sites: 10` (10 font-medium, 0 font-semibold), resolved to TWO of §4.5's three outcomes:
   //   - SEVEN field-label / section-title sites (the Game, Start Date, Duration, RSVP Deadline and
@@ -2467,10 +2478,13 @@ describe('UI-SPEC §4.2 / §4.5: only 400 and 700, tree-wide, outside Button.tsx
     const offenders = RAW.filter((h) => !/\bfont-bold\b/.test(h.className));
     expect(
       assertExactCounts(HEADING_WEIGHT_ROSTER, countByFile(offenders)),
-      'measured at this commit: 39 raw headings need a weight edit — 37 font-semibold, 1 ' +
-        'font-medium (app/components/UpcomingEventsCard.js:156) and 1 carrying no weight ' +
-        'utility at all (app/global-error.tsx:66, permanently exempt under DECISION Phase ' +
-        '88-09 D-20). The heading sweeps shrink this visibly.',
+      'measured at plan 88.6-28 (2026-09-16): 38 raw headings need a weight edit — 37 ' +
+        'font-semibold and 1 carrying no weight utility at all (app/global-error.tsx:66, ' +
+        'permanently exempt under DECISION Phase 88-09 D-20). WAS 39, and the sentence WAS ' +
+        '"1 font-medium (app/components/UpcomingEventsCard.js:156)": that heading migrated ' +
+        'onto the Heading primitive in plan 88.6-28 task 3, and it was the tree\'s ONLY ' +
+        'weight-500 heading, so this population is now uniformly 600 plus the one permanent ' +
+        'exemption. The heading sweeps shrink this visibly.',
     ).toEqual([]);
 
     // The two rules must agree: a raw heading carrying font-medium or font-semibold is a
