@@ -796,8 +796,22 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     // even after 88-28 floored the trigger. min-h-11 on the item row; all six
     // render sites inherit from the one shared component, so one opened menu
     // is the fleet assertion.
+    //
+    // Plan 88.6-16 (D-12) dropped the ARIA menu pattern from KebabMenu: the items
+    // are plain `<button>`s in a `<ul role="list">`, and the trigger names that list
+    // through `aria-controls` ONLY while it is open. Scoping through the attribute
+    // keeps the measurement inside the OPEN list exactly as the old role query did,
+    // and it additionally proves the relationship is live in a real browser — the
+    // half jsdom's `keyboardOperability` arm cannot see. The id comes from React's
+    // `useId`, whose value contains colons, so it is matched with an attribute
+    // selector rather than `#id`.
     await kebab.click();
-    const firstItem = page.getByRole('menuitem').first();
+    const listId = await kebab.getAttribute('aria-controls');
+    expect(
+      listId,
+      'the KebabMenu trigger exposes aria-controls while its menu is open (88.6-16 D-12)',
+    ).toBeTruthy();
+    const firstItem = page.locator(`[id="${listId}"]`).getByRole('button').first();
     await guardResolved(firstItem, 'the first KebabMenu item (opened menu)');
     await assertMin44(firstItem, 'KebabMenu item row');
   });

@@ -551,8 +551,14 @@ describe('gameDetail session-delete gate (D-40, dialog tier)', () => {
     // sessionsSection() now resolves only on the settled heading (rows present);
     // findByRole keeps the kebab query itself retrying too.
     const sessions = await sessionsSection();
-    await user.click(await within(sessions).findByRole('button', { name: 'Session actions' }));
-    await user.click(within(sessions).getByRole('menuitem', { name: 'Delete' }));
+    const trigger = await within(sessions).findByRole('button', { name: 'Session actions' });
+    await user.click(trigger);
+    // Plan 88.6-16 (D-12) dropped the ARIA menu pattern from KebabMenu: the items
+    // are plain buttons inside the list the trigger names through `aria-controls`
+    // while open. Same scoping as the old role query, no assertion changed.
+    const list = document.getElementById(trigger.getAttribute('aria-controls') as string);
+    expect(list, 'the Session actions kebab names its open list through aria-controls').not.toBeNull();
+    await user.click(within(list as HTMLElement).getByRole('button', { name: 'Delete' }));
     return screen.findByRole('dialog');
   }
 

@@ -223,9 +223,11 @@ const D49B: { kind: 'owner'; date: string; ruling: string } = {
 };
 
 /**
- * Family (b) — the alias roster. 17 occurrences across 14 files, LIVE-MEASURED 2026-09-15 with
- * the scanner in this file. `Switch.tsx` is deliberately absent: its two hits are comment prose
- * and its own class is already `shadow-theme-sm` (corrected in plan 02).
+ * Family (b) — the alias roster. Seeded at 17 occurrences across 14 files, LIVE-MEASURED
+ * 2026-09-15 with the scanner in this file; **16 across 13 as of plan 88.6-16** (wave 6), which
+ * snapped `KebabMenu.js` and deleted its entry in the same commit. `Switch.tsx` is deliberately
+ * absent: its two hits are comment prose and its own class is already `shadow-theme-sm`
+ * (corrected in plan 02).
  *
  * Every `why` names the plan that SNAPS the file. Deleting an entry without snapping its sites
  * reds (unowned offender); snapping without deleting reds too (fossil permission).
@@ -281,11 +283,9 @@ const ALIAS_ROSTER: ExemptionRoster = {
     why: '`shadow-md` on the simulated prompt card (:84). Plan 35 snaps it to `shadow-theme-md`; hue change in both themes, and this is a TUTORIAL surface so the change is user-visible in the walkthrough.',
     owner: D49B,
   },
-  'app/components/KebabMenu.js': {
-    sites: 1,
-    why: '`shadow-lg` on the kebab dropdown panel (:136). Plan 16 snaps it to `shadow-theme-lg` while it owns that primitive; non-button surface.',
-    owner: D49B,
-  },
+  // `app/components/KebabMenu.js` CLOSED by plan 88.6-16 (wave 6, 2026-09-15): the dropdown
+  // panel's `shadow-lg` is now `shadow-theme-lg`. Entry DELETED rather than zeroed — the roster
+  // is exact in both directions, so a zeroed entry would red as a fossil permission.
   'app/userProfile/page.js': {
     sites: 1,
     why: '`hover:shadow-md` on a profile card surface (:2610) — non-button, so plain `hover:shadow-theme-md`. Plan 17 snaps it.',

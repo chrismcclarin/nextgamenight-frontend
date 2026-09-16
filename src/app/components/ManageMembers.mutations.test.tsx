@@ -125,6 +125,29 @@ function confirmButton(name: string) {
   return screen.getByRole('button', { name });
 }
 
+/**
+ * Open a KebabMenu by its trigger's accessible label and return its OPEN item list.
+ *
+ * Plan 88.6-16 (D-12) dropped the ARIA menu pattern from `KebabMenu`: the items are
+ * now plain `<button>`s in a `<ul role="list">`, and the trigger names that list
+ * through `aria-controls` ONLY while it is open. Scoping the item queries through
+ * that attribute keeps them inside the open list exactly as the old role scoping did,
+ * and it additionally proves the relationship is live. No assertion below was dropped
+ * or weakened in the re-target — only the selector moved.
+ */
+async function openKebabList(triggerLabel: string): Promise<HTMLElement> {
+  const trigger = await screen.findByLabelText(triggerLabel);
+  fireEvent.click(trigger);
+  let list: HTMLElement | null = null;
+  await waitFor(() => {
+    const id = trigger.getAttribute('aria-controls');
+    expect(id, `${triggerLabel}: no aria-controls while the menu is open`).toBeTruthy();
+    list = document.getElementById(id as string);
+    expect(list, `${triggerLabel}: aria-controls names no element in the document`).not.toBeNull();
+  });
+  return list as unknown as HTMLElement;
+}
+
 describe('ManageMembers group-admin mutations target member.id (UUID), not user_id (sub)', () => {
   it('approveMember is invoked with the member UUID', async () => {
     renderManageMembers();
@@ -320,9 +343,8 @@ describe('ManageMembers Req 12 — success receipts for the two named silent mut
 
     // The mobile kebab shares the same commit path, so it gets the same receipt.
     (toast.success as Mock).mockClear();
-    fireEvent.click(await screen.findByLabelText('Member actions'));
-    const menu = await screen.findByRole('menu');
-    const removeItem = within(menu).getByRole('menuitem', { name: 'Remove' });
+    const menu = await openKebabList('Member actions');
+    const removeItem = within(menu).getByRole('button', { name: 'Remove' });
     fireEvent.click(removeItem);
     fireEvent.click(removeItem);
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Member removed'));
@@ -369,15 +391,18 @@ describe('ManageMembers AR-DEC-3 — the mobile kebab two-tap COMMIT path', () =
   // see the AR-DEC-3 marker in ManageMembers.js for why.
   it('a second tap on Remove within 3s calls removeUserFromGroup with the member UUID', async () => {
     await openMembersModal();
-    fireEvent.click(await screen.findByLabelText('Member actions'));
 
-    const menu = await screen.findByRole('menu');
-    const removeItem = within(menu).getByRole('menuitem', { name: 'Remove' });
+    const menu = await openKebabList('Member actions');
+    const removeItem = within(menu).getByRole('button', { name: 'Remove' });
     fireEvent.click(removeItem);
 
-    // Armed: the SAME node swaps its label rather than the menu closing.
+    // Armed: the SAME node swaps its label rather than the menu closing. Re-query
+    // through the same open list node — it is the element `aria-controls` names, and
+    // it survives the re-render, which is what makes the node-identity claim below
+    // mean "the item did not remount" (plan 88.6-16 keys the item map on POSITION
+    // precisely so a label swap cannot remount it).
     expect(
-      within(await screen.findByRole('menu')).getByRole('menuitem', {
+      within(menu).getByRole('button', {
         name: 'Tap again to remove',
       })
     ).toBe(removeItem);
@@ -393,17 +418,15 @@ describe('ManageMembers AR-DEC-3 — the mobile kebab two-tap COMMIT path', () =
 
   it('a single tap alone never commits', async () => {
     await openMembersModal();
-    fireEvent.click(await screen.findByLabelText('Member actions'));
-    const menu = await screen.findByRole('menu');
-    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Remove' }));
+    const menu = await openKebabList('Member actions');
+    fireEvent.click(within(menu).getByRole('button', { name: 'Remove' }));
     expect(groupsAPI.removeUserFromGroup as Mock).not.toHaveBeenCalled();
   });
 
   it('"Make admin" from the kebab routes to the SAME escalation gate as the desktop select', async () => {
     await openMembersModal();
-    fireEvent.click(await screen.findByLabelText('Member actions'));
-    const menu = await screen.findByRole('menu');
-    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Make admin' }));
+    const menu = await openKebabList('Member actions');
+    fireEvent.click(within(menu).getByRole('button', { name: 'Make admin' }));
 
     expect(
       await screen.findByRole('dialog', { name: 'Make Target an admin?' })
