@@ -11,7 +11,7 @@
  *
  * The chrome reproduces today's `globals.css` `.modal-*` rules 1:1 so the
  * Phase-88 migration is a near-mechanical class -> component swap:
- *   - Content: radius 12px, max-h 90vh, scroll contained to the Body
+ *   - Content: radius 12px, max-h 90dvh, scroll contained to the Body
  *   - Header:  1.25rem 1.5rem (20/24) padding, 1px bottom border, title 20px/700
  *   - Body:    1.5rem (24) padding, flex:1, scroll-y
  *   - Footer:  1rem 1.5rem (16/24) padding, justify-end, gap 0.75rem (12)
@@ -162,7 +162,7 @@ function ModalRoot({
         onInteractOutside={preventOutsideDismiss}
         className={cn(
           // Reset shadcn Dialog defaults (grid/gap-4/p-6/bg-background/max-w-lg)
-          // to the `.modal-content` chrome: card surface, 12px radius, 90vh cap,
+          // to the `.modal-content` chrome: card surface, 12px radius, 90dvh cap,
           // flex column with the Body owning the scroll.
           //
           /* DECISION Phase 88-16 (DEF-88-17-01): `w-[calc(100%-1.5rem)] md:w-full`
@@ -184,7 +184,48 @@ function ModalRoot({
              dialog" globals.css` -> no matches) — unlike the `.btn` case DEC-2
              fixed. Reverting to `w-full` re-opens DEF-88-17-01; that is a
              decision, not a cleanup. Pinned by Modal.test.tsx. */
-          'flex max-h-[90vh] w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden rounded-[12px] bg-card p-0 md:w-full',
+          /* DECISION Phase 88.6-08 (D-30 / W34): the height cap is `90dvh` — the DYNAMIC
+             viewport unit — converging the dialog family onto the one unit `BottomSheet`
+             already ships (`BottomSheet.tsx:80`, `:82`). W34 was the recorded divergence:
+             two viewport-unit idioms inside one primitive family.
+
+             (a) CHOSEN OVER `svh`, and `svh` is a real alternative rather than a strawman.
+             `svh` pins the SMALL viewport — the one left when mobile browser chrome is
+             fully EXTENDED — so the cap never changes while that chrome animates in and
+             out, and a dialog sized against it can never be clipped mid-scroll. Its cost
+             is the mirror: once the chrome retracts, an `svh` cap leaves real height
+             unused on a surface whose whole job is to fit a form. `dvh` tracks the live
+             viewport, which is what D-30 locks and what the sheet already uses.
+
+             (b) WHY THE ANSWER DIFFERS FROM A BOTTOM SHEET'S, and why that is not an
+             inconsistency. `BottomSheet` is anchored to the BOTTOM edge — precisely the
+             edge iOS Safari's dynamic toolbar occupies — so for it the unit choice decides
+             whether the rows a person is reaching for sit UNDER the toolbar; that argument
+             is written out at `BottomSheet.tsx:62-77`. `Modal` is CENTRE-anchored and its
+             cap is a max rather than a floor, with `Modal.Body` (`:336`) owning the scroll,
+             so an over-tall viewport estimate costs scroll distance here rather than
+             reachability. Same unit, different reason — recorded so the next reader does
+             not conclude the two were converged by coincidence.
+
+             (c) THIS IS A DISCLOSURE, NOT AN OBJECTION. D-30 stands, and `BottomSheet`'s
+             `dvh` is never reverted — "simplifying" either side back to `vh` re-opens D-06
+             and W34 together. Nothing here re-opens the convergence.
+
+             (d) THE SCROLL CONTAINER DOES NOT MOVE. `Modal.Body` (`:336`) is still the
+             only scrolling region, so `FetchErrorBanner`'s §6.2 placement rule — top of
+             the surface's scroll container, above the first content element — is
+             unaffected by the unit change. RESEARCH § Assumptions Log A7 flags a
+             scroll-container change as the thing that would silently move it.
+
+             (e) STALE ON THE OTHER SIDE, routed not edited: `BottomSheet.tsx:62-63` still
+             says in the present tense that "`Modal.tsx:186` caps at `max-h-[90vh]` and is
+             the known-divergent sibling". That sentence is now false. This plan declares
+             neither that file nor its suite, and an edit lands only in a file its plan
+             declares — plan 37 declares `BottomSheet.tsx` and owns the amendment.
+
+             Gated by `Modal.test.tsx`: the rendered shell carries `max-h-[90dvh]`, and a
+             comment-stripped scan of this file finds no viewport-height unit but `dvh`. */
+          'flex max-h-[90dvh] w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden rounded-[12px] bg-card p-0 md:w-full',
           SIZE_CLASS[size],
           className
         )}

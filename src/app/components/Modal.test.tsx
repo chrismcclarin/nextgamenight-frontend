@@ -86,6 +86,69 @@ describe('Modal', () => {
     expect(dialog.className.split(/\s+/)).not.toContain('w-full');
   });
 
+  // 88.6-08 (D-30 / W34). The dialog family converges on ONE viewport unit: `dvh`, which
+  // `BottomSheet` has shipped since 88.1 and which D-30 forbids reverting. The shell's
+  // `max-h` was UNPINNED at HEAD (`grep -n 'max-h\|90vh\|90dvh'` over this file returned
+  // nothing across its 185 lines before this plan) — so this is a NEW pin, not a migrated
+  // one, and its red was demonstrated by temporarily reverting the unit after it was
+  // written rather than transcribed from a pre-existing failure.
+  it('caps the shell at 90dvh — the converged dialog viewport unit (D-30 / W34)', () => {
+    renderModal();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveClass('max-h-[90dvh]');
+    // Whole-token, not substring: `max-h-[90dvh]` CONTAINS neither spelling of the other,
+    // but the old unit must be gone from the rendered element, not merely outnumbered.
+    expect(dialog.className.split(/\s+/)).not.toContain('max-h-[90vh]');
+  });
+
+  // Every viewport-height unit in Modal.tsx's CODE is `dvh`. The scan is comment-stripped
+  // because this file's markers necessarily discuss the old unit and the rejected `svh` in
+  // prose — an unfiltered scan reads a marker and can never reach zero.
+  it('SOURCE SCAN: Modal.tsx uses no viewport-height unit but dvh', () => {
+    const unit = /(?<![a-zA-Z])(\d+(?:\.\d+)?)(d|s|l)?vh(?![a-zA-Z])/g;
+    const prefixes = (text: string) =>
+      [...text.matchAll(unit)].map((m) => m[2] ?? '');
+
+    // Detector self-test FIRST. A regex that has never been shown to see a bare `vh`
+    // proves nothing by not finding one — this is the anti-vacuity half, and it is a
+    // SYNTHETIC control rather than a read of the marker prose, so it cannot go silently
+    // vacuous the day a later plan rewords that prose.
+    expect(prefixes('max-h-[90vh] max-h-[90dvh] max-h-[70svh] h-[85lvh]')).toEqual([
+      '',
+      'd',
+      's',
+      'l',
+    ]);
+
+    const found = prefixes(MODAL_SRC);
+    expect(found.length).toBeGreaterThan(0);
+    expect(found.every((p) => p === 'd')).toBe(true);
+  });
+
+  // 88.6-08 (D-08). What the footer action is COMPOSED of, now that it renders `Button`.
+  // The two discriminators below are exactly the classes the retired variant map could not
+  // emit — it carried a `.btn-*` variant class and nothing else: no height floor and no
+  // elevation at all.
+  //
+  // DELIBERATELY NOT ASSERTED: "no second `.btn`-family class". Measured 2026-09-16, the
+  // retired map and `Button`'s variant map were byte-identical (`primary: 'btn-primary'`
+  // and so on), so after a CORRECT swap a `variant="primary"` action still renders `btn`
+  // AND `btn-primary`. That clause would red on correct code, or be vacuous. The "would
+  // red if the old map came back" property is delivered by the comment-stripped retirement
+  // scan above, not restated here.
+  it('the footer action is composed by Button: the base floor and the enabled-only lift', () => {
+    renderModal();
+    const tokens = screen
+      .getByRole('button', { name: 'Start poll' })
+      .className.split(/\s+/);
+    expect(tokens).toContain('min-h-11');
+    // WHOLE TOKEN, never a substring: `enabled-hover:shadow-theme-md` CONTAINS
+    // `hover:shadow-theme-md`, so a substring check passes identically against the
+    // un-narrowed spelling and would have been green before plan 06's D10 fix.
+    expect(tokens).toContain('enabled-hover:shadow-theme-md');
+    expect(tokens).not.toContain('hover:shadow-theme-md');
+  });
+
   it('renders a single Close affordance with an accessible name that fires onClose', async () => {
     const user = userEvent.setup();
     const { onClose } = renderModal();
