@@ -1967,12 +1967,16 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // self-marker — dropped to 400, which is §4.5's emphasis outcome verbatim ("400 + a colour
   // token"), its `text-content-accent` being that token. None of these generalises: D-03 is a
   // recorded CONSEQUENCE constraint and every row above is a named per-site call.
-  'app/components/MemberChipStack.tsx': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-09, 88.6-28.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-28 task 1 (wave 7, 2026-09-16): `app/components/MemberChipStack.tsx`
+  // carried `sites: 1` (0 font-medium, 1 font-semibold) — the `font-semibold` inside CHIP_BASE,
+  // which is the 32px initials circle's ink. It took HIERARCHY (700), NOT §4.5's emphasis
+  // outcome, and it is one of the TWO weight exceptions Phase 88.5 declared and handed forward
+  // to this phase as a NAMED, SCHEDULED deviation (owner, 2026-08-31). The reason 400 + a colour
+  // token could not apply is written at the site: this is 12px ink inside a COLOURED FILL at
+  // fixed `h-8 w-8` geometry, its ink is already spoken for by the neutral/tinted fork, and
+  // D-01 had already rejected folding its 12px up to 14 on the same geometric grounds — so the
+  // rung and the colour were both spent and the weight was the only lever left. Measured at this
+  // commit: 0 sites remain. Entry DELETED, not zeroed; the roster is exact in both directions.
   'app/components/MemberSelector.js': {
     sites: 2,
     why:
@@ -1980,9 +1984,17 @@ const WEIGHT_ROSTER: ExemptionRoster = {
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
   'app/components/NextGameNightCard.tsx': {
-    sites: 3,
+    // 3 -> 2, plan 88.6-28 task 1 (wave 7, 2026-09-16). The ONE `font-semibold` — the hero
+    // eyebrow — took 700 on §4.5's Eyebrow row, converging on the ratified role by moving the
+    // WEIGHT ONLY (the named shipped eyebrow whose ruling it matches is `CalendarListView.js`
+    // `:1005-1009`: "`text-xs` STAYS ... and only the WEIGHT moves, 600 -> 700"). The entry
+    // SURVIVES at 2 for the two `font-medium` sites this plan does NOT own and did not touch —
+    // the status sentence and the RSVP toggle labels — both of which sit on the co-owner list
+    // below. Line cites are deliberately absent from this `why`: this plan moved the file and
+    // the file is co-owned by twelve plans, so a number written here goes stale between them.
+    sites: 2,
     why:
-      '3 off-scale weight sites (2 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-11, 88.6-13, 88.6-16, 88.6-17, 88.6-18, 88.6-22, 88.6-27, 88.6-28, 88.6-29, 88.6-30, 88.6-32, 88.6-43, 88.6-46.',
+      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-11, 88.6-13, 88.6-16, 88.6-17, 88.6-18, 88.6-22, 88.6-27, 88.6-28, 88.6-29, 88.6-30, 88.6-32, 88.6-43, 88.6-46.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
   'app/components/NotificationBell.js': {
@@ -2093,12 +2105,16 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // and would have left it typographically identical to the prose around it. Plan 88.6-39 was a
   // co-owner of this entry and owns this banner's gesture-time HEIGHT, not its weights; a comment
   // in the file now says so. Entry DELETED, not zeroed.
-  'app/components/UpcomingCountPill.tsx': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-28.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-28 task 1 (wave 7, 2026-09-16): `app/components/UpcomingCountPill.tsx`
+  // carried `sites: 1` (0 font-medium, 1 font-semibold) — the amber count pill's digit ink. It
+  // took HIERARCHY (700), the TWIN of the MemberChipStack deletion above and the second of the
+  // two weight exceptions Phase 88.5 declared and handed to this phase as a NAMED, SCHEDULED
+  // deviation (owner, 2026-08-31). Same reasoning, same shape: 12px ink on a saturated amber
+  // fill at fixed `h-5 min-w-5` geometry, already distinguished by its own colour, with D-01
+  // having rejected the 12 -> 14 fold on the geometry. `tokenContrast.test.ts` tests 51-52 —
+  // this pill's Gate A pins, both use sites, both themes — were green before and after, with
+  // every pinned ratio byte-unchanged (a weight change moves no ratio) and none near its floor.
+  // Entry DELETED, not zeroed; the roster is exact in both directions.
   'app/components/UpcomingEventsCard.js': {
     sites: 1,
     why:

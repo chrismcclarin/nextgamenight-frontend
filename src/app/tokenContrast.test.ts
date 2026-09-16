@@ -1558,7 +1558,11 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
   // ===================================================================================
 
   it('51. 88.5 — the count pill clears its floors in BOTH themes, at BOTH use sites', () => {
-    // Ink on fill (4.5, AA text). The digits are text, small and semibold.
+    // Ink on fill (4.5, AA text). The digits are text, small and BOLD — 700 since plan
+    // 88.6-28 settled 88.5's declared weight exception (was 600). Re-measured at that commit:
+    // every ratio below is byte-unchanged, because a font-weight change moves no contrast
+    // ratio. Recorded because the sentence used to say "semibold" and a stale one here would
+    // read as a pin on something this file cannot see.
     expectRatio('light', '--color-btn-accent-text', '--color-btn-accent-bg', 4.5, '88.5 Req 2 / LIGHT arm — white on amber-700 (5.0216)');
     expectRatio('dark', '--warm-900', '--amber-500', 4.5, '88.5 Req 2 / DARK arm — warm-900 on amber-500 (8.3660). White here is 2.1477, an AA failure: the ink MUST fork with the fill');
 

@@ -120,9 +120,36 @@ const UpcomingCountPill = React.forwardRef<HTMLSpanElement, UpcomingCountPillPro
         // is decorative to assistive tech. Announcing it twice is noise — the
         // shipped precedent is the phone bottom bar's own pill (88.1 plan 08, deleted 88.5-07).
         aria-hidden="true"
+        /* DECISION Phase 88.6-28 (D-03/W36, UI-SPEC §4.5 pill-ink row): the digits take
+           `font-bold` (700), chosen OVER §4.5's other outcome for a 600 site, `font-normal`
+           (400) plus a colour token. This is one of the TWO weight exceptions Phase 88.5
+           declared and deliberately handed to 88.6 as a NAMED, SCHEDULED deviation (owner,
+           2026-08-31) — not an accepted-forever; the twin is `MemberChipStack.tsx`'s CHIP_BASE.
+
+           WHY 400 WAS REJECTED, and it is geometric, not taste: this is 12px ink on a
+           SATURATED amber fill at FIXED geometry — `h-5 min-w-5` (20x20) with `px-1.5`. The
+           fill is the signal; the weight is what keeps a one- or two-digit glyph readable
+           inside it at that size. §4.5's 400 outcome is written for EMPHASIS SPANS, which sit
+           on the page ground and get their distinction from a colour token. This pill already
+           IS its own colour — dropping to 400 would leave it distinguished by colour alone, at
+           12px, on a fill, which is the same failure mode `getRoleBadge`'s 88.6-19 marker
+           records for the five badge/pill inks that took 700 for exactly this reason.
+
+           AND THE OTHER LEVER IS ALREADY SPENT: D-01 rejected folding this site's 12px UP to
+           14, because `h-5 min-w-5` is a fixed 20px box and a 14px glyph with `leading-none`
+           plus `px-1.5` overflows it. So the rung cannot move and the colour cannot move —
+           the weight is the only lever left. Dropping this to 400 or 600 is a decision, not a
+           cleanup, and `typeScaleTouchedSurfaces.test.ts`'s tree-wide weight rule fails it.
+
+           MEASURED, at this commit: a weight change moves no contrast ratio, and
+           `tokenContrast.test.ts` tests 51-52 (this pill's Gate A pins, both use sites, both
+           themes) are green before and after. The pins' own numbers are unchanged — ink on
+           fill 5.0216 light / 8.3660 dark; fill on the Calendar button 4.4321 / 5.2506; fill
+           on the sheet card 5.0216 / 6.4483 — and none was near its floor, so this is NOT a
+           case where 600->700 makes a marginal pairing merely LOOK safer than it measures. */
         className={[
           'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5',
-          'text-xs font-semibold leading-none tabular-nums',
+          'text-xs font-bold leading-none tabular-nums',
           '[background-color:var(--color-btn-accent-bg)] [color:var(--color-btn-accent-text)]',
           'dark:[background-color:var(--amber-500)]',
           'dark:[color:var(--warm-900)]',

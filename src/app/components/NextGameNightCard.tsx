@@ -306,7 +306,26 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
             'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2'
           )}
         >
-          <span className="block text-xs font-semibold uppercase tracking-[0.08em] text-content-accent">
+          {/*
+            DECISION Phase 88.6-28 (D-03/W36, UI-SPEC §4.5 Eyebrow row): this converges on the
+            ratified EYEBROW role — Caption 12 / 700 / uppercase / tracking — by moving the
+            WEIGHT ONLY, 600 -> 700. The named shipped eyebrow whose treatment decision this
+            matches is `CalendarListView.js:1009`, and specifically the ruling in its own marker
+            at `:1005-1008`: "`text-xs` STAYS — 12px is this role's rung, not a miss — and only
+            the WEIGHT moves, 600 -> 700. It remains a `<span>`: an eyebrow is not a heading."
+            All four of those hold here: 12px stays, the element stays a span, uppercase stays,
+            700 lands.
+
+            REJECTED — converging the TRACKING VALUE too (`tracking-[0.08em]` -> that site's
+            `tracking-wide`). On the merits a single tracking value across the role would be
+            tidier. The record outranks it here for a CONSEQUENCE reason, not a bookkeeping one:
+            `tracking-wide` is 0.025em against this site's 0.08em, so the swap is a VISIBLE
+            letter-spacing change at 375px, and UI-SPEC §1.2's sanctioned-delta list is CLOSED
+            at V-19 with no tracking row in it — V-6 sanctions "weights 500/600 -> 400 or 700"
+            and nothing wider. Plan 22 made the identical call at the site cited above. Re-spacing
+            the eyebrow family is a look decision and belongs to a plan that opens a V-row for it.
+          */}
+          <span className="block text-xs font-bold uppercase tracking-[0.08em] text-content-accent">
             Next game night
           </span>
           {/*
@@ -320,8 +339,16 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
             (Rationale refreshed 2026-09-01, ML11 — the old text cited the
             pre-88.5-08 level-5 `rowOrder()` mechanism.) Promoting this to a heading
             is a decision, not a cleanup.
+
+            AMENDED Phase 88.6-28 (R2 / UI-SPEC §4.3), everything above KEPT AS HISTORY: the
+            size moves `text-lg` (18) -> `text-xl` (20). §4.3's "non-heading `text-lg`/`text-2xl`
+            residue" list names THIS LINE (`NextGameNightCard.tsx:324`) and resolves it to
+            `text-xl` / 700 as a PSEUDO-HEADING under R2's primary-string clause. The weight was
+            already 700 and is byte-unchanged. It does NOT become a `<Heading>`: it has no
+            semantic level to preserve and P4 forbids inventing one — which is the conclusion the
+            marker above reaches by a different route, and both still stand.
           */}
-          <span className="mt-1 block text-lg font-bold leading-tight text-content-primary">
+          <span className="mt-1 block text-xl font-bold leading-tight text-content-primary">
             {whenLine}
           </span>
           {/*

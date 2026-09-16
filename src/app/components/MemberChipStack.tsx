@@ -59,8 +59,30 @@ export interface MemberChipProps {
  * Chip class strings (UI-SPEC 6.5.1 / 6.5.4 / 6.5.5)
  * ---------------------------------------------------------------------------------------- */
 
+/*
+ * DECISION Phase 88.6-28 (D-03/W36, UI-SPEC §4.5 pill-ink row): the initials take `font-bold`
+ * (700), chosen OVER §4.5's other outcome for a 600 site, `font-normal` (400) plus a colour
+ * token. This is one of the TWO weight exceptions Phase 88.5 declared and deliberately handed
+ * to 88.6 as a NAMED, SCHEDULED deviation (owner, 2026-08-31) — not an accepted-forever; the
+ * twin is `UpcomingCountPill.tsx`'s digit ink.
+ *
+ * WHY 400 WAS REJECTED, and it is geometric, not taste: this is 12px ink on a COLOURED FILL at
+ * FIXED geometry — `h-8 w-8`, a 32px circle carrying one or two initials, and on the tinted arm
+ * the fill is `bg-white/85` over a group colour or a photograph. The fill/ink pairing is what
+ * makes the chip read as a person at 32px; the weight is what the two-letter glyph has instead
+ * of size. §4.5's 400 outcome is written for EMPHASIS SPANS on the page ground, which take
+ * their distinction from a colour token — this chip's ink is already spoken for (the neutral
+ * arm re-inks to `text-content-secondary` for AA below, the tinted arm rides the card's own ink
+ * chain), so there is no token left to give it and 400 would leave it flat inside its own fill.
+ *
+ * AND THE OTHER LEVER IS ALREADY SPENT: D-01 rejected folding this site's 12px UP to 14 for the
+ * same geometric reason — `h-8 w-8` is a fixed box and two 14px initials with the `-ml-2`
+ * overlap stop fitting it. The rung cannot move, the colour cannot move; the weight is the only
+ * lever left. Dropping this to 400 or 600 is a decision, not a cleanup, and
+ * `typeScaleTouchedSurfaces.test.ts`'s tree-wide weight rule fails it.
+ */
 const CHIP_BASE =
-  'inline-flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full text-xs font-semibold';
+  'inline-flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full text-xs font-bold';
 
 /*
  * DECISION Phase 88.5 (D-11, UI-SPEC 6.5.4): on a TINTED or photo card the chip swaps to a
