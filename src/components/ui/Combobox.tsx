@@ -38,6 +38,7 @@ import {
 import { cn } from '@/lib/cn';
 
 import { Input } from './Input';
+import { StatusRegion } from './StatusRegion';
 
 /* DECISION Phase 88-08 (OI-6): this primitive is built on `@floating-ui/react`, which is
    ALREADY a direct dependency (`ClickableMemberName`, `HeatmapTooltip`). It was chosen OVER
@@ -102,6 +103,14 @@ export interface ComboboxProps
   loadingLabel?: string;
   emptyLabel?: string;
   /**
+   * W38: formats the sr-only result-count announcement. A FUNCTION rather than the plain
+   * string `loadingLabel`/`emptyLabel` take, because this string embeds a runtime count and
+   * has to pluralise — a bare string would need a template mini-language to do either. It is
+   * still a prop with a default, which is this primitive's contract: every string it speaks
+   * is overridable by the caller. Nothing visible ever renders it.
+   */
+  countLabel?: (count: number) => string;
+  /**
    * When no option is highlighted, does Enter commit the FIRST enabled item?
    * Defaults true — the 88-08 GameComboInput parity (relevant-search-hit lists).
    * Pass false for pickers that open on FOCUS over a full unfiltered list
@@ -129,6 +138,16 @@ interface RenderGroup {
   entries: Array<{ item: ComboboxItem; index: number }>;
 }
 
+/**
+ * W38 default announcement copy. NEW sr-only copy — the app has never spoken a combobox
+ * result count before (`status` below yields `null` at one-or-more results, so the popover
+ * says nothing when there ARE results). Named in `88.6-37-SUMMARY.md` so a copy review can
+ * rule on it. Module scope, not inline in the destructure, so the default is one stable
+ * function identity rather than a fresh closure on every render.
+ */
+const defaultCountLabel = (count: number): string =>
+  `${count} result${count === 1 ? '' : 's'} available`;
+
 const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
   (
     {
@@ -140,6 +159,7 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
       loading = false,
       loadingLabel = 'Searching…',
       emptyLabel = 'No results found',
+      countLabel = defaultCountLabel,
       selectFirstOnEnter = true,
       listLabel = 'Suggestions',
       trailing,
@@ -295,8 +315,72 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
 
     const status = loading ? loadingLabel : items.length === 0 ? emptyLabel : null;
 
+    /* W38 — the announcement is a SECOND derived value sitting BESIDE `status`, not a rewrite
+       of it. `status` keeps its three-arm shape and its `null` at one-or-more results, so the
+       VISIBLE row stays silent when there are results; the region must not be. Collapsing the
+       two into one four-arm derivation feeding both nodes would make the popover print the
+       count. Derived INLINE in the render body on purpose — no `useState`, no `useEffect`;
+       a state-write here would keep the node and double the render on every text change,
+       which the node-identity pin in `Combobox.test.tsx` cannot catch by construction. */
+    const announcement = !open
+      ? ''
+      : loading
+        ? loadingLabel
+        : items.length === 0
+          ? emptyLabel
+          : countLabel(items.length);
+
     return (
       <div className={cn('relative', className)}>
+        {/* DECISION Phase 88.6-37 (W38): ONE always-mounted sr-only `StatusRegion`, a direct
+            child of this wrapper and OUTSIDE `{open && (` below — the two-node shape, chosen
+            over two alternatives that both look simpler and are both wrong.
+
+            WHAT WAS WRONG. The visible loading/"No results" row further down carried
+            `role="status"` inside BOTH `{open && (` and `{status && (`. A live region created
+            in the same commit as its content is not announced by most screen readers, because
+            the AT has nothing to observe a change ON (`StatusRegion.tsx:9-12`; the same
+            defect class as W45's hero announcement, the kebab's armed state, and plan 36's
+            compact `FetchErrorBanner` hoist). So those strings may never have spoken.
+
+            REJECTED ALTERNATIVE 1 — hoisting the VISIBLE row out of `{open && (` and making
+            it always-mounted. That row is padded, visible copy: an always-mounted version
+            renders "No results found" under every CLOSED combobox on all five render paths
+            (`GameComboInput` at `createEvent.js:1025`, `ScheduleForm.js:357`,
+            `BallotOptionsEditor.js:23`; `userProfile/page.js:2175`). It also cannot move
+            INSIDE the listbox node — a `listbox` may own only `option`/`group`, which the
+            comment at that node records.
+
+            REJECTED ALTERNATIVE 2 — keeping `role="status"` on the visible row beside this
+            one. That gives the primitive TWO live regions, duplicates every announcement,
+            and breaks `Combobox.test.tsx`'s single-region `getByRole('status')` pin (which
+            throws on more than one). The visible row therefore LOSES its role and becomes
+            plain text. It is deliberately NOT `aria-hidden`: hiding it would remove it from
+            browse mode, a regression for the sighted screen-reader user who can see it. The
+            house precedent for this exact split is `EmailAddressSection.tsx:1437-1446` — one
+            region fed a derived string, with the visible text not itself a region.
+
+            HOW OFTEN THIS SPEAKS, stated rather than assumed. The `loading` arm PRECEDES the
+            count arm, and `GameComboInput.js:227` wires `loading={isSearching && !hasResults}`,
+            so a FIRST search speaks the loading label, not a churning count. Two residuals
+            remain and both are real: (i) a re-search with results already present, where
+            `loading` stays false and the count updates once per RESOLVED fetch (the debounce
+            means not per keystroke); and (ii) a consumer that filters CLIENT-SIDE, where
+            `items` changes per keystroke. NO single frequency is asserted — the other three
+            consumers were not opened, so which shape each has is unknown. Compute cost is nil
+            and `aria-live="polite"` queues rather than interrupts; what is worth recording is
+            unbounded, unstated announcement behaviour on a primitive with five render paths.
+            Two arms were considered and REJECTED for it: an explicit `!loading` gate on the
+            count arm — rejected as LARGELY REDUNDANT with the ordering above, not as wrong;
+            and debouncing the region — rejected as new machinery on a primitive for an
+            unmeasured problem.
+
+            THE RULE FOR THIS FILE AFTER THIS CHANGE: exactly one live region, and the visible
+            row is not a region. Re-roling that row, or hoisting it, is a decision — not a
+            cleanup. `88.6-37-SUMMARY.md` restates the frequency clause and names THIS marker
+            as the durable record; the code site is authoritative. */}
+        <StatusRegion className="sr-only" message={announcement} />
+
         <div className="relative flex items-center">
           <Input
             ref={setInputRef}
@@ -346,9 +430,11 @@ const Combobox = React.forwardRef<HTMLInputElement, ComboboxProps>(
               )}
             </div>
             {status && (
-              <div role="status" className="px-3 py-2 text-base text-content-muted">
-                {status}
-              </div>
+              /* W38: PLAIN TEXT since Phase 88.6-37 — `role="status"` REMOVED. This node is
+                 mounted with its own content, so it never announced; the always-mounted
+                 sr-only region at the top of the wrapper is the primitive's ONE live region
+                 now. Deliberately NOT `aria-hidden`: it stays readable in browse mode. */
+              <div className="px-3 py-2 text-base text-content-muted">{status}</div>
             )}
           </div>
         )}
