@@ -2043,12 +2043,20 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-11, 88.6-28, 88.6-43.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/createEvent.js': {
-    sites: 10,
-    why:
-      '10 off-scale weight sites (10 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-07, 88.6-10, 88.6-13, 88.6-22, 88.6-25, 88.6-37, 88.6-39, 88.6-43, 88.6-44.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-25 task 1 (wave 7, 2026-09-16): `app/components/createEvent.js` carried
+  // `sites: 10` (10 font-medium, 0 font-semibold), resolved to TWO of §4.5's three outcomes:
+  //   - SEVEN field-label / section-title sites (the Game, Start Date, Duration, RSVP Deadline and
+  //     Comments `<label>`s plus the "Date & Time" and "Participants" section-title `<span>`s)
+  //     took `font-normal`, converging byte-for-byte on the shipped field primitive
+  //     (`app/components/form/FormField.tsx:97` — `block text-sm font-normal text-content-primary
+  //     mb-1`), the same call plan 88.6-22 made for StartPollModal's four labels. The two SPANS
+  //     are deliberately styled as labels — `DECISION Phase 88-21` and the 88-33 Task 8 note at
+  //     each site say so — so giving them 700 "because a section title is hierarchy" would have
+  //     broken a recorded parity.
+  //   - THREE EMPHASIS sites — the two "Week of …" week-nav labels and the Undo link-button —
+  //     took the utility DELETED, each already carrying its own colour token
+  //     (`text-content-muted` twice, `text-content-link underline` once).
+  // Entry DELETED, not zeroed.
   // `app/components/grouplist.js` CLOSED by plan 88.6-21 (wave 7, 2026-09-16), all three sites,
   // each resolving to a DIFFERENT §4.5 outcome — which is why the entry could not be closed by
   // one rule:

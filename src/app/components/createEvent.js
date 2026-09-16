@@ -20,6 +20,9 @@ import { Modal } from './Modal';
 import { toast } from 'sonner';
 import { Input, Textarea } from '@/components/ui/Input';
 import { StatusRegion } from '@/components/ui/StatusRegion';
+import { Button } from '../../components/ui/Button';
+import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
+import { logger, errCtx } from '@/lib/logger';
 
 function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEvent = null, user, prefillDate = null, prefillTime = null, prefillDuration = null, prefillGameId = null, prefillGameName = null, hideVisualCalendar = false, userRole, initialVisualView = 'week', promptId = null }) {
   // Identity: send the caller's resolved Users.id UUID to searchAll (via the two
@@ -379,7 +382,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           fromNavigation: Boolean(currentWeekStart),
         });
       } catch (err) {
-        console.error('Failed to load heatmap:', err);
+        logger.info('Failed to load heatmap:', errCtx(err));
         // Silently fail -- heatmap is a nice-to-have visual, not critical
       } finally {
         setHeatmapLoading(false);
@@ -494,7 +497,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
         setNewEvent(form);
       }
     } catch (error) {
-      console.error('Error fetching group members:', error);
+      logger.info('Error fetching group members:', errCtx(error));
     } finally {
       setLoading(false);
     }
@@ -705,8 +708,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           const resolvedGame = await gamesAPI.resolveGame(newEvent.game_name.trim());
           gameId = resolvedGame.id;
         } catch (resolveError) {
-          console.error('Error resolving game:', resolveError);
-          toast.error('Failed to create custom game. Please try again.');
+          logger.info('Error resolving game:', errCtx(resolveError));
+          toast.error(getFetchErrorMessage(resolveError));
           return;
         }
       }
@@ -783,7 +786,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
               game_name: o.game_name.trim()
             })));
           } catch (ballotErr) {
-            console.error('Error updating ballot options:', ballotErr);
+            logger.info('Error updating ballot options:', errCtx(ballotErr));
             setBallotError('Event updated but ballot options could not be saved.');
           }
         }
@@ -834,8 +837,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
       setBallotError(null);
       setUseVisualCalendar(true);
     } catch (error) {
-      console.error(`Error ${editingEvent ? 'updating' : 'creating'} event:`, error);
-      toast.error(`Failed to ${editingEvent ? 'update' : 'create'} event. ${error.message || 'Please try again.'}`);
+      logger.info(`Error ${editingEvent ? 'updating' : 'creating'} event:`, errCtx(error));
+      toast.error(getFetchErrorMessage(error));
     }
   };
 
@@ -1016,7 +1019,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           <div>
             {/* 88-33 Task 8 (fork 5 / census class C): htmlFor associates this visible
                 label with the combobox's text input (id forwarded via GameComboInput). */}
-            <label htmlFor="event-game-name" className="block text-sm font-medium text-content-primary mb-1">
+            <label htmlFor="event-game-name" className="block text-sm font-normal text-content-primary mb-1">
               Game
             </label>
             <GameComboInput
@@ -1049,14 +1052,39 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   there is no single control to point htmlFor at; the manual inputs below
                   carry their own real labels. Same treatment as the Participants section
                   title (88-21). */}
-              <span className="block text-sm font-medium text-content-primary">
-                Date & Time <span className="text-red-500">*</span>
+              {/* DECISION Phase 88.6-25 (R2): this required-field asterisk stays EXPOSED to a
+                  screen reader — chosen OVER the `aria-hidden="true"` the shipped house idiom
+                  puts on it (`app/components/form/FormField.tsx:99`,
+                  `{required && <span aria-hidden="true"> *</span>}`) and OVER the treatment this
+                  same commit gave the Start-Date and Duration asterisks below.
+
+                  WHY THE TWO ARE TREATED DIFFERENTLY, so this does not read as a missed site.
+                  FormField's idiom is safe because the CONTROL carries the requiredness: those
+                  two asterisks sit inside real `<label htmlFor>` elements whose `<Input>` has
+                  `required={!editingEvent}`, so hiding the glyph loses nothing. THIS span is a
+                  SECTION TITLE — the 88-33 note below says so — and the section it titles has no
+                  single required control to carry the meaning: in visual-calendar mode there is
+                  no form control here at all, only `EventScheduler`. Hiding the glyph would
+                  therefore delete the ONLY requiredness signal a screen-reader user gets on this
+                  section, and replace it with nothing.
+
+                  ALSO REJECTED: an `sr-only` "(required)" beside the glyph, which reads better
+                  but AUTHORS NEW COPY — forbidden by the phase's P1 contract (UI-SPEC §6.1). If a
+                  later phase lifts P1, that is the better answer and should be taken then.
+                  The COLOUR is not part of this decision: the raw `red-500` palette step measured
+                  3.7631:1 light / 3.6801:1 dark on the card and was moved to the shipped error-ink
+                  token in this same commit at all four sites.
+
+                  The twin of this decision is the "Participants" section title further down.
+                  Adding `aria-hidden` here is a decision, not a cleanup. */}
+              <span className="block text-sm font-normal text-content-primary">
+                Date & Time <span className="text-content-status-error">*</span>
               </span>
               {!hideVisualCalendar && (
                 <button
                   type="button"
                   onClick={() => setUseVisualCalendar(!useVisualCalendar)}
-                  className="text-xs text-content-link hover:text-content-link-hover active:opacity-75 underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                  className="text-sm text-content-link hover:text-content-link-hover active:opacity-75 underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                 >
                   {useVisualCalendar ? 'Switch to Manual Entry' : 'Switch to Visual Calendar'}
                 </button>
@@ -1127,7 +1155,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                           &lt;
                         </button>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-medium text-content-muted">
+                          <span className="text-xs text-content-muted">
                             Week of {format(effectiveMondayForUI, 'EEE MMM d')}
                           </span>
                           <button
@@ -1152,7 +1180,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                       </div>
                     )}
                     {promptId && (
-                      <p className="text-xs font-medium text-content-muted mb-2">
+                      <p className="text-xs text-content-muted mb-2">
                         {heatmapWeekStart && !heatmapLoading
                           ? `Week of ${format(heatmapWeekStart, 'EEE MMM d')}`
                           : 'Poll Availability'}
@@ -1171,8 +1199,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 )}
                 {/* Start Date */}
                 <div>
-                  <label htmlFor="start_date" className="block text-sm font-medium mb-1 text-content-primary">
-                    Start Date & Time {!editingEvent && <span className="text-red-500">*</span>}
+                  <label htmlFor="start_date" className="block text-sm font-normal mb-1 text-content-primary">
+                    Start Date & Time {!editingEvent && <span aria-hidden="true" className="text-content-status-error">*</span>}
                   </label>
                   <Input
                     type="datetime-local"
@@ -1186,8 +1214,8 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
                 {/* Duration */}
                 <div>
-                  <label htmlFor="duration_minutes" className="block text-sm font-medium mb-1 text-content-primary">
-                    Duration (minutes) {!editingEvent && <span className="text-red-500">*</span>}
+                  <label htmlFor="duration_minutes" className="block text-sm font-normal mb-1 text-content-primary">
+                    Duration (minutes) {!editingEvent && <span aria-hidden="true" className="text-content-status-error">*</span>}
                   </label>
                   {(() => {
                     // Phase 66-03 CREVT-02 polish: inline error + red border when
@@ -1222,7 +1250,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
           {/* RSVP Deadline */}
           {newEvent.start_date && new Date(newEvent.start_date) > new Date() && (
             <div>
-              <label htmlFor="rsvp_deadline" className="block text-sm font-medium mb-1 text-content-primary">
+              <label htmlFor="rsvp_deadline" className="block text-sm font-normal mb-1 text-content-primary">
                 RSVP Deadline
               </label>
               <p className="text-xs text-content-muted mb-1">Required for game voting ballot</p>
@@ -1259,9 +1287,14 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 to "match the other two" is a decision, not a cleanup. */}
             <span
               id="participants-section-label"
-              className="block text-sm font-medium mb-2 text-content-primary"
+              className="block text-sm font-normal mb-2 text-content-primary"
             >
-              Participants <span className="text-red-500">*</span>
+              {/* DECISION Phase 88.6-25 (R2), the twin of the "Date & Time" marker above: this
+                  asterisk stays EXPOSED, chosen OVER `aria-hidden="true"`. This `<span>` names a
+                  role="group" of participant ROWS, each carrying three controls of its own and
+                  none of them `required` — so there is nothing under it to carry the
+                  requiredness once the glyph is hidden. Same rejected alternatives as above. */}
+              Participants <span className="text-content-status-error">*</span>
             </span>
             <div
               role="group"
@@ -1298,7 +1331,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                   type="button"
                   ref={undoButtonRef}
                   onClick={undoRemoveParticipant}
-                  className="min-h-11 px-2 font-medium text-content-link underline hover:no-underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  className="min-h-11 px-2 text-content-link underline hover:no-underline focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring"
                 >
                   Undo
                 </button>
@@ -1317,15 +1350,14 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
                 </button>
               </div>
             )}
-            <button
-              type="button"
+            <Button
               ref={addParticipantButtonRef}
               onClick={addParticipant}
               disabled={guestCapReached}
-              className="mt-2 btn btn-primary text-sm"
+              className="mt-2"
             >
               + Add Participant
-            </button>
+            </Button>
             {guestCapReached && (
               <p className="mt-1 text-sm text-content-secondary">
                 Guest limit reached ({MAX_GUEST_PARTICIPANTS} per event).
@@ -1340,7 +1372,7 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
           {/* Comments */}
           <div>
-            <label htmlFor="comments" className="block text-sm font-medium mb-1 text-content-primary">
+            <label htmlFor="comments" className="block text-sm font-normal mb-1 text-content-primary">
               Comments
             </label>
             <Textarea
@@ -1354,21 +1386,13 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
 
           {/* Submit Buttons */}
           <div className="flex gap-2 justify-end">
-            <button
-              type="button"
-              onClick={modaltoggle}
-              className="btn btn-secondary"
-            >
+            <Button variant="secondary" onClick={modaltoggle}>
               Cancel
-            </button>
+            </Button>
             {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the Create Event surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */}
-            <button
-              type="submit"
-              data-testid="create-event-submit"
-              className="btn btn-primary min-h-11"
-            >
+            <Button type="submit" data-testid="create-event-submit">
               {editingEvent ? 'Update Event' : 'Create Event'}
-            </button>
+            </Button>
           </div>
         </form>
           </>

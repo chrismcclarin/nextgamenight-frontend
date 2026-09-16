@@ -609,13 +609,14 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
       'roster only. Closed by plan 88.6-33 (wave 7), which declares this file.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-33' },
   },
-  'app/components/createEvent.js': {
-    sites: 1,
-    why:
-      'RAW-MESSAGE assertion. :838 interpolates `error.message` into a toast template. ' +
-      'Closed by plan 88.6-25 (wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-25' },
-  },
+  // DELETED by plan 88.6-25 task 1 (wave 7, 2026-09-16): `app/components/createEvent.js` carried
+  // `sites: 1` — :838 pre-edit,
+  // `toast.error(\`Failed to ${…} event. ${error.message || 'Please try again.'}\`)`. It now reads
+  // `toast.error(getFetchErrorMessage(error))` with NO fallback: this is a mutation inside an open
+  // modal whose context must not move (UI-SPEC §6.2 row 3), and the register's own generic line
+  // answers a code-less failure, so no copy was authored (P1, the §6.2 W16 precedent). The FILE's
+  // OTHER `.message` read is gone too — `grep -nE '\\.message' createEvent.js` returns nothing.
+  // Entry DELETED rather than zeroed.
   'app/components/createGroup.js': {
     sites: 1,
     why:
@@ -792,14 +793,12 @@ const FAILED_COPY_EXEMPT: ExemptionRoster = {
         'lets a residual evaporate.',
     },
   },
-  'app/components/createEvent.js': {
-    sites: 1,
-    why:
-      '"FAILED TO X" assertion. :709 "Failed to create custom game. Please try again." — a ' +
-      'DIFFERENT line from the :838 its raw-message entry covers, so the two rosters point ' +
-      'at different sites in this file. Closed by plan 88.6-25 (wave 7).',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-25' },
-  },
+  // DELETED by plan 88.6-25 task 1 (wave 7, 2026-09-16): `app/components/createEvent.js` carried
+  // `sites: 1` — :709 "Failed to create custom game. Please try again.", a DIFFERENT line from the
+  // :838 its raw-message entry covered. The plan's task text names only :838; :709 is this
+  // roster's site and closing it was required to delete the entry, so it was swept in the same
+  // pass and recorded as a deviation. Both now read `getFetchErrorMessage(err)` with no fallback.
+  // Entry DELETED rather than zeroed.
   'app/components/createGroup.js': {
     sites: 1,
     why:

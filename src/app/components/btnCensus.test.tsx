@@ -272,11 +272,17 @@ const BTN_EXEMPT: ExemptionRoster = {
   // Go Home) and the `/api/auth/login?returnTo=…` sign-in `<a>`, which stays an `<a>`. The
   // secondary Go Home keeps `variant="secondary"`. `block` was dead; `w-full` and `text-center`
   // moved onto the `Button` className. Entry DELETED rather than zeroed.
-  'app/components/createEvent.js': {
-    sites: 3,
-    why: 'plan 88.6-25 sweeps the event-creation and availability cluster (markup and classes only)',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // CLOSED by plan 88.6-25 task 1 (wave 7, 2026-09-16): `app/components/createEvent.js` carried
+  // `sites: 3` — NOT the 6 the plan's task text states; the roster's own count was the accurate
+  // one and was re-measured before the sweep. All three are `<button>` elements inside the
+  // modal: "+ Add Participant" (`btn btn-primary text-sm`), "Cancel" (`btn btn-secondary`) and
+  // the submit CTA (`btn btn-primary min-h-11`). `text-sm` was DEAD under unlayered `.btn`
+  // (globals.css:2201) and is deleted rather than moved onto the className; `mt-2` survives
+  // (`.btn` declares no margin). The submit CTA's per-CTA `min-h-11` dropped in the SAME commit
+  // as its migration, per the amended `DECISION Phase 87.8` / `AMENDED Phase 88.6 (D-09)` marker
+  // that sits directly above it — the marker itself is byte-unchanged and still reports in
+  // `decisionMarkers.test.ts`. Entry DELETED rather than zeroed; the roster is exact in both
+  // directions.
   // `app/components/grouplist.js` CLOSED by plan 88.6-21 (wave 7, 2026-09-16), in two commits
   // rather than one and the split is recorded because it is unusual: task 1 migrated the per-card
   // "Invite Member" CTA (3 -> 2) because the W42 keyboard remedy's own acceptance requires a
