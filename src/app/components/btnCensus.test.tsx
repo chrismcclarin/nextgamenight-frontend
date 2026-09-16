@@ -216,11 +216,13 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'plan 88.6-23 sweeps the five token-and-invite entry pages, this file among them',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
-  'app/components/ManageMembers.js': {
-    sites: 6,
-    why: 'plan 88.6-19 sweeps ManageMembers.js together with friends/page.js',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // `app/components/ManageMembers.js` CLOSED by plan 88.6-19 task 2 (wave 7, 2026-09-16): all
+  // SIX `.btn` elements are `<Button>` at `size="default"`, with their dead `text-sm px-4 py-2`
+  // utilities deleted (unlayered `.btn` already declares font-size and padding, so they were
+  // dead the day they were written) and the one live utility — the Reset-QR control's
+  // `text-content-status-error` ink — moved onto the `Button`'s own `className`, where
+  // tailwind-merge keeps it. Entry DELETED rather than zeroed; the roster is exact in both
+  // directions, so a zeroed entry would red as a fossil permission.
   'app/friends/page.js': {
     sites: 6,
     why: 'plan 88.6-19 sweeps friends/page.js together with ManageMembers.js',

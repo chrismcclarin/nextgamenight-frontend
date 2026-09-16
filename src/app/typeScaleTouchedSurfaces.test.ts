@@ -563,8 +563,12 @@ const EXPECTED_PROP_SEAMS = 5;
  * every level preserved (3 h1, 5 h2, 1 h3 — `EXPECTED_LEVELS` is byte-unchanged, which is the
  * P4 half). Two of the nine are the game-title h1s RESEARCH §C.5 corrected: they were NOT
  * size-less, they were already `text-3xl`, so they land at `size="display"` with no size change.
+ *
+ * RAISED 25 -> 27 by plan 88.6-19 task 2 (2026-09-16): `app/components/ManageMembers.js`'s TWO
+ * h3s, both `text-lg` (18) -> `size="heading"` (20) on D-04's closed tie. `EXPECTED_LEVELS`'
+ * `{ 3: 2 }` entry for that file is byte-unchanged (P4).
  */
-const EXPECTED_MIN_PRIMITIVES = 25;
+const EXPECTED_MIN_PRIMITIVES = 27;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -667,11 +671,10 @@ const RUNG_ROSTER: ExemptionRoster = {
     why: 'Phase 88.9 W55 owns the landing hero block: 1 heading off the 4-size working set (h1:15 text-5xl md:text-6xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'owner', date: '2026-09-08', ruling: 'Phase 88.9 W55 owns the landing hero block\'s sizes' },
   },
-  'app/components/ManageMembers.js': {
-    sites: 2,
-    why: '2 headings off the 4-size working set (h3:434 text-lg; h3:663 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-19 task 2 (wave 7, 2026-09-16): `app/components/ManageMembers.js`
+  // carried `sites: 2` (h3:434, h3:663 pre-edit, both `text-lg`). Both MIGRATED onto
+  // `<Heading level={3} size="heading">`, so the rung is supplied by the primitive and the file
+  // leaves this raw-only population entirely rather than decrementing. Deleted, not zeroed.
   // DELETED by plan 88.6-15 (2026-09-16): `app/components/PromptScheduleManager.js` carried
   // `sites: 1` (h3:213 `text-lg`). That heading MIGRATED onto `<Heading level={3}
   // size="heading">`, so the rung is supplied by the primitive and the file leaves this
@@ -804,11 +807,10 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
     why: '4 headings carrying the prohibited 600 weight (h3:610, h3:697, h3:1019, h3:1091) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/ManageMembers.js': {
-    sites: 2,
-    why: '2 headings carrying the prohibited 600 weight (h3:434, h3:663) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-19 task 2 (wave 7, 2026-09-16): `app/components/ManageMembers.js`
+  // carried `sites: 2` (h3:434, h3:663 pre-edit, both `font-semibold`). Both migrated onto
+  // `<Heading>`, whose cva base is `font-bold`, so the call sites state no weight at all and
+  // the file leaves this raw-only population. Deleted, not zeroed.
   // DELETED by plan 88.6-15 (2026-09-16): `app/components/PromptScheduleManager.js` carried
   // `sites: 1` (h3:213 `font-semibold`). The heading migrated onto `<Heading>`, whose cva base
   // is `font-bold`, so the call site states no weight at all and the file leaves this
@@ -905,11 +907,10 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
     why: '4 raw headings not stating the 700 weight (h3:610 font-semibold; h3:697 font-semibold; h3:1019 font-semibold; h3:1091 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/ManageMembers.js': {
-    sites: 2,
-    why: '2 raw headings not stating the 700 weight (h3:434 font-semibold; h3:663 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-19 task 2 (wave 7, 2026-09-16): `app/components/ManageMembers.js`
+  // carried `sites: 2` (h3:434, h3:663 pre-edit). RAW-ONLY supply rule; neither is a raw `<hN>`
+  // tag any more, so the file leaves the population rather than decrementing. The 700 is now
+  // supplied by `Heading`'s cva base and pinned in `Heading.test.tsx`. Deleted, not zeroed.
   // DELETED by plan 88.6-15 (2026-09-16): `app/components/PromptScheduleManager.js` carried
   // `sites: 1` (h3:213). This roster is a RAW-ONLY supply rule; the heading is no longer a raw
   // `<hN>` tag, so the file leaves the population rather than decrementing. The 700 is now
@@ -1898,12 +1899,18 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-01, 88.6-04, 88.6-10, 88.6-11, 88.6-12, 88.6-21, 88.6-34, 88.6-35, 88.6-46.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/ManageMembers.js': {
-    sites: 11,
-    why:
-      '11 off-scale weight sites (2 font-medium, 9 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-08, 88.6-09, 88.6-10, 88.6-13, 88.6-16, 88.6-18, 88.6-19, 88.6-20, 88.6-21, 88.6-30, 88.6-32, 88.6-36, 88.6-43, 88.6-45.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-19 task 2 (wave 7, 2026-09-16): `app/components/ManageMembers.js`
+  // carried `sites: 11` (2 font-medium, 9 font-semibold). ZERO remain, so the entry is deleted
+  // rather than decremented. Every call is enumerated in `88.6-19-SUMMARY.md`; the shape of the
+  // resolution: the two migrating h3s dropped their weight to `Heading`'s `font-bold` base; the
+  // five badge/pill inks (role pill, the two amber count pills, the "Pending" pill, the "Owner"
+  // pill) took 700 on UI-SPEC §4.5's pill-ink row, with a DECISION marker at `getRoleBadge`
+  // recording that 400-plus-colour was rejected because a 12px label in its own fill would then
+  // be distinguished by colour alone; the three row primary strings (both member names and the
+  // invite email) took 700 as the SUBJECT of their block; and the one emphasis span — the "(You)"
+  // self-marker — dropped to 400, which is §4.5's emphasis outcome verbatim ("400 + a colour
+  // token"), its `text-content-accent` being that token. None of these generalises: D-03 is a
+  // recorded CONSEQUENCE constraint and every row above is a named per-site call.
   'app/components/MemberChipStack.tsx': {
     sites: 1,
     why:

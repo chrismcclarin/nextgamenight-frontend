@@ -10,6 +10,8 @@ import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { StatusRegion } from '../../components/ui/StatusRegion';
+import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
 import { logger, errCtx } from '../../lib/logger';
 import { Modal } from './Modal';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -407,8 +409,14 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             pending: 'bg-amber-100 text-amber-800 border-amber-300'
         };
         
+        /* DECISION Phase 88.6-19 (§4.5, D-03): the role pill keeps a WEIGHT and takes 700, not
+           400 + a colour token. 600 is what UI-SPEC §4.5 removes everywhere outside `Button`, and
+           of its three outcomes this family is named on the pill-ink row: a 12px label sitting in
+           its own fill needs the weight to hold against the fill, and 400 would leave the pill
+           distinguished by colour alone — the thing R2 #171 exists to prevent. Dropping this to
+           400 is a decision. */
         return (
-            <span className={`px-2 py-1 rounded-sm text-xs font-semibold border ${roleStyles[role] || roleStyles.member}`}>
+            <span className={`px-2 py-1 rounded-sm text-xs font-bold border ${roleStyles[role] || roleStyles.member}`}>
                 {role?.charAt(0).toUpperCase() + role?.slice(1) || 'Member'}
             </span>
         );
@@ -445,26 +453,27 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
             <Modal.Body>
                 {userRole && userRole !== 'pending' && (
                     <div className="mb-4 pb-4 border-b border-line flex flex-wrap gap-2">
-                        <button
-                            type="button"
+                        <Button
+                            variant="primary"
+                            size="default"
                             onClick={() => setInviteModalOpen(true)}
-                            className="btn btn-primary text-sm"
                         >
                             Invite members
-                        </button>
+                        </Button>
                         {canManageMembers && (
-                            <button
-                                type="button"
+                            <Button
+                                variant="secondary"
+                                size="default"
                                 onClick={() => {
                                     if (resettingInvite) return;
                                     resetInviteGate.trigger();
                                 }}
                                 disabled={resettingInvite}
-                                className="btn btn-secondary text-sm text-content-status-error"
+                                className="text-content-status-error"
                                 title="Invalidate the current invite link and generate a new one"
                             >
                                 {resettingInvite ? 'Resetting…' : 'Reset QR link'}
-                            </button>
+                            </Button>
                         )}
                     </div>
                 )}
@@ -498,8 +507,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                         {canManageMembers && members.filter(m => m.UserGroup?.role === 'pending').length > 0 && (
                             <div className="mb-6">
                                 <div className="flex items-center gap-2 mb-2">
-                                    <h3 className="text-lg font-semibold text-content-primary">Pending Members</h3>
-                                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                                    <Heading level={3} size="heading" className="text-content-primary">Pending Members</Heading>
+                                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
                                         {members.filter(m => m.UserGroup?.role === 'pending').length}
                                     </span>
                                 </div>
@@ -510,24 +519,26 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                             <div className="flex items-center gap-3 flex-1">
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-2">
-                                                        <p className="font-semibold text-content-primary"><ClickableMemberName userId={member.id} username={member.username || member.email} /></p>
+                                                        <p className="font-bold text-content-primary"><ClickableMemberName userId={member.id} username={member.username || member.email} /></p>
                                                         {getRoleBadge('pending')}
                                                     </div>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <button
+                                                <Button
+                                                    variant="primary"
+                                                    size="default"
                                                     onClick={() => handleApproveMember(member.id)}
-                                                    className="btn btn-primary text-sm px-4 py-2"
                                                 >
                                                     Approve
-                                                </button>
-                                                <button
+                                                </Button>
+                                                <Button
+                                                    variant="danger"
+                                                    size="default"
                                                     onClick={() => handleRejectMember(member.id, member.username || member.email)}
-                                                    className="btn btn-danger text-sm px-4 py-2"
                                                 >
                                                     Reject
-                                                </button>
+                                                </Button>
                                             </div>
                                         </div>
                                     ))}
@@ -550,11 +561,11 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                         <div className="flex items-center gap-3 flex-1">
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-2">
-                                                    <p className="font-semibold text-content-primary">
+                                                    <p className="font-bold text-content-primary">
                                                         <ClickableMemberName userId={member.id} username={member.username || member.email} />
                                                     </p>
                                                     {isCurrentUser && (
-                                                        <span className="text-xs text-content-accent font-medium">(You)</span>
+                                                        <span className="text-xs text-content-accent">(You)</span>
                                                     )}
                                                     {/* Phase 69-02 GROUP-03: explicit Owner badge inline next to the
                                                         owner's name. Visible to ALL viewers (member/admin/owner) so
@@ -563,7 +574,7 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                         renders the role pill on the right; this inline badge is
                                                         the canonical "this is the owner" indicator per CONTEXT. */}
                                                     {isOwner ? (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-surface-accent-subtle text-content-accent border border-line-accent">
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-surface-accent-subtle text-content-accent border border-line-accent">
                                                             Owner
                                                         </span>
                                                     ) : (
@@ -621,13 +632,14 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
 
                                                             {/* Remove Button — desktop entry point opens the dialog-tier
                                                                 gate inside handleRemoveMember (Req 11, UI-SPEC §11.2). */}
-                                                            <button
+                                                            <Button
+                                                                variant="danger"
+                                                                size="default"
                                                                 onClick={() => handleRemoveMember(member.id, member.username || member.email)}
-                                                                className="btn btn-danger text-sm px-4 py-2"
                                                                 title="Remove from group"
                                                             >
                                                                 Remove
-                                                            </button>
+                                                            </Button>
 
                                                             {/* Phase 69-02 GROUP-06: owner-only Transfer Ownership kebab on
                                                                 desktop. Shown alongside admin controls so the owner has
@@ -658,9 +670,33 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                                             escalation gate the desktop select uses. Transfer Ownership
                                                             opens its own modal (no twoTap — the modal IS the
                                                             confirmation). */}
+                                                        {/* DECISION Phase 88.6-19 (D-12 / D-40): the mobile kebab
+                                                            names ITS OWN MEMBER, and takes a label LEXICALLY
+                                                            DISTINCT from the desktop twin's — not a copy of it.
+
+                                                            THE DEFECT IT CLOSES: this was the row-invariant
+                                                            "Member actions", so a roster of N members rendered N
+                                                            buttons a screen reader announces identically, with no
+                                                            way to tell which row is about to be acted on. On the
+                                                            phone this menu is the ONLY path to remove a member.
+
+                                                            WHY NOT JUST COPY THE DESKTOP WORDING ("More actions
+                                                            for X"): for an OWNER both kebabs render in the SAME
+                                                            row — the desktop one is gated on `userRole === 'owner'`
+                                                            and this one sits inside `md:hidden`, and jsdom loads no
+                                                            CSS so both breakpoint trees are in the DOM. Copying it
+                                                            verbatim would yield two byte-identical accessible names
+                                                            per row: one defect traded for another. Their item sets
+                                                            differ too (desktop offers transfer only; this one
+                                                            carries role swap + Remove + transfer), so distinct
+                                                            names are honest rather than merely convenient.
+
+                                                            The desktop `ariaLabel` is byte-unchanged — two live
+                                                            test queries key on that exact string. Collapsing these
+                                                            two labels into one is a decision, not a cleanup. */}
                                                         <div className="md:hidden">
                                                             <KebabMenu
-                                                                ariaLabel="Member actions"
+                                                                ariaLabel={`Member actions for ${member.username || member.email}`}
                                                                 items={[
                                                                     {
                                                                         label: memberRole === 'admin' ? 'Make member' : 'Make admin',
@@ -706,12 +742,13 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                         )}
 
                                         {isCurrentUser && !isOwner && (
-                                            <button
+                                            <Button
+                                                variant="danger"
+                                                size="default"
                                                 onClick={handleLeaveGroup}
-                                                className="btn btn-danger text-sm px-4 py-2"
                                             >
                                                 Leave Group
-                                            </button>
+                                            </Button>
                                         )}
                                         {isCurrentUser && isOwner && (
                                             <p className="text-sm text-content-muted italic">Your role</p>
@@ -727,8 +764,8 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                 {pendingInvites.length > 0 && (
                     <div className="mt-6">
                         <div className="flex items-center gap-2 mb-3">
-                            <h3 className="text-lg font-semibold text-content-primary">Pending Invites</h3>
-                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                            <Heading level={3} size="heading" className="text-content-primary">Pending Invites</Heading>
+                            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
                                 {pendingInvites.length}
                             </span>
                         </div>
@@ -741,10 +778,10 @@ function ManageMembers({ group_id, user, modal, modaltoggle, onMembersUpdated, g
                                     <div className="flex items-center gap-3 flex-1">
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2">
-                                                <p className="font-semibold text-content-primary">
+                                                <p className="font-bold text-content-primary">
                                                     {invite.invited_email}
                                                 </p>
-                                                <span className="px-2 py-1 rounded-sm text-xs font-semibold border bg-amber-100 text-amber-800 border-amber-300">
+                                                <span className="px-2 py-1 rounded-sm text-xs font-bold border bg-amber-100 text-amber-800 border-amber-300">
                                                     Pending
                                                 </span>
                                             </div>

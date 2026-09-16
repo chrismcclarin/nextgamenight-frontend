@@ -377,7 +377,7 @@ describe('ManageMembers Req 12 — success receipts for the two named silent mut
 
     // The mobile kebab shares the same commit path, so it gets the same receipt.
     (toast.success as Mock).mockClear();
-    const menu = await openKebabList('Member actions');
+    const menu = await openKebabList('Member actions for Target');
     const removeItem = within(menu).getByRole('button', { name: 'Remove' });
     fireEvent.click(removeItem);
     fireEvent.click(removeItem);
@@ -634,6 +634,48 @@ describe('ManageMembers W11 receipt + AC-2 channel', () => {
   });
 });
 
+describe('ManageMembers D-12/D-40 — the mobile kebab names its own row', () => {
+  const SECOND_UUID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  /** Two non-owner, non-self ACTIVE members — one row is not enough to show ambiguity. */
+  const TWO_MEMBERS = [
+    { id: OWNER_UUID, user_id: 'auth0|owner', username: 'Owner', UserGroup: { role: 'owner' } },
+    { id: TARGET_UUID, user_id: 'auth0|target', username: 'Target', UserGroup: { role: 'member' } },
+    { id: SECOND_UUID, user_id: 'auth0|second', username: 'Robin', UserGroup: { role: 'member' } },
+  ];
+
+  it('two rows produce two DISTINCT mobile kebab names, each carrying its member', async () => {
+    (groupsAPI.getGroupMembers as Mock).mockResolvedValue(TWO_MEMBERS);
+    await openMembersModal();
+    await screen.findByText('Robin');
+
+    // Scoped to the `md:hidden` containers: jsdom loads NO CSS, so both breakpoint
+    // trees are in the DOM and an unscoped query would also see the desktop twins.
+    const mobileKebabs = Array.from(
+      document.querySelectorAll('div.md\\:hidden button[aria-label]')
+    ).map((el) => el.getAttribute('aria-label'));
+
+    expect(mobileKebabs).toEqual([
+      'Member actions for Target',
+      'Member actions for Robin',
+    ]);
+    // The defect this closes: N identically-named buttons in one list.
+    expect(new Set(mobileKebabs).size).toBe(mobileKebabs.length);
+  });
+
+  it('the mobile name is LEXICALLY DISTINCT from the desktop twin in the SAME row', async () => {
+    // For an OWNER both kebabs render in one row, so "name the member" is not enough
+    // on its own — copying the desktop wording verbatim would trade one defect for
+    // another. Exact-match queries are what prove the two strings cannot collide.
+    await openMembersModal();
+    const desktop = await screen.findByLabelText('More actions for Target');
+    const mobile = await screen.findByLabelText('Member actions for Target');
+    expect(desktop).not.toBe(mobile);
+    expect(desktop.getAttribute('aria-label')).not.toBe(mobile.getAttribute('aria-label'));
+    // The desktop string is byte-unchanged — two live queries elsewhere key on it.
+    expect(desktop).toHaveAttribute('aria-label', 'More actions for Target');
+  });
+});
+
 describe('ManageMembers AR-DEC-3 — the mobile kebab two-tap COMMIT path', () => {
   // No pin covered this before 88-12, so a wiring regression on the phone
   // surface (the primary surface) would have shipped green. The kebab keeps
@@ -642,7 +684,7 @@ describe('ManageMembers AR-DEC-3 — the mobile kebab two-tap COMMIT path', () =
   it('a second tap on Remove within 3s calls removeUserFromGroup with the member UUID', async () => {
     await openMembersModal();
 
-    const menu = await openKebabList('Member actions');
+    const menu = await openKebabList('Member actions for Target');
     const removeItem = within(menu).getByRole('button', { name: 'Remove' });
     fireEvent.click(removeItem);
 
@@ -668,14 +710,14 @@ describe('ManageMembers AR-DEC-3 — the mobile kebab two-tap COMMIT path', () =
 
   it('a single tap alone never commits', async () => {
     await openMembersModal();
-    const menu = await openKebabList('Member actions');
+    const menu = await openKebabList('Member actions for Target');
     fireEvent.click(within(menu).getByRole('button', { name: 'Remove' }));
     expect(groupsAPI.removeUserFromGroup as Mock).not.toHaveBeenCalled();
   });
 
   it('"Make admin" from the kebab routes to the SAME escalation gate as the desktop select', async () => {
     await openMembersModal();
-    const menu = await openKebabList('Member actions');
+    const menu = await openKebabList('Member actions for Target');
     fireEvent.click(within(menu).getByRole('button', { name: 'Make admin' }));
 
     expect(
