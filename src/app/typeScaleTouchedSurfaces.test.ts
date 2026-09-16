@@ -2055,12 +2055,15 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // (700) with a `DECISION Phase 88.6-25` marker at the site: it carries the SAME colour token as
   // that label, so the emphasis outcome would have left the live value typographically identical
   // to the static label naming it. Entry DELETED, not zeroed.
-  'app/components/TimezoneNudgeBanner.js': {
-    sites: 2,
-    why:
-      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-26, 88.6-39.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-26 task 3 (wave 7, 2026-09-16): 'app/components/TimezoneNudgeBanner.js'
+  // carried sites: 2, and the entry's own two leads were right — they resolved opposite ways. The
+  // "Set your timezone" LINK took EMPHASIS (utility deleted): it already carries `underline`,
+  // which is verbatim §4.5's named FetchErrorBanner case, so the deletion has no look delta. The
+  // `{displayTz}` SPAN took HIERARCHY 700: it is the one datum the sentence exists to show and it
+  // carries no colour or decoration of its own, so "400 + a colour token" had no token to give it
+  // and would have left it typographically identical to the prose around it. Plan 88.6-39 was a
+  // co-owner of this entry and owns this banner's gesture-time HEIGHT, not its weights; a comment
+  // in the file now says so. Entry DELETED, not zeroed.
   'app/components/UpcomingCountPill.tsx': {
     sites: 1,
     why:
@@ -2100,12 +2103,14 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     stays readable, so dropping it to 400 would have deleted an affordance rather than
   //     normalising a scale.
   // Entry DELETED rather than zeroed; the roster is exact in both directions.
-  'app/components/heatmap/WeekGrid.tsx': {
-    sites: 2,
-    why:
-      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-25, 88.6-26, 88.6-40, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-26 task 3 (wave 7, 2026-09-16): 'app/components/heatmap/WeekGrid.tsx'
+  // carried sites: 2, both EMPHASIS (utility deleted) — the day columnheader row and the sticky
+  // time-label axis column, each already carrying text-content-secondary. That is the same reading
+  // plans 88.6-17 and 88.6-25 recorded for matrix header cells and axis labels, so the three
+  // grids answer one question one way. Neither SIZE moved: the columnheader is a <th>-equivalent
+  // and Label 14 is its rung, and the axis column's `text-xs sm:text-sm` pair is load-bearing
+  // geometry inside a 24px gutter rather than a §4.3 breakpoint violation (BREAKPOINT_ROSTER is
+  // heading-scoped). Entry DELETED, not zeroed.
   'app/components/tutorial/TutorialOverlay.js': {
     sites: 9,
     why:

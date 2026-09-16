@@ -19,7 +19,15 @@
  *   - EventDayModal.js (event detail) — visibility on the read surface so
  *     users notice before they edit.
  *
- * Styling matches PendingMemberBanner.js for visual cohesion.
+ * Styling matches PendingMemberBanner.js for visual cohesion. It does NOT render through the
+ * shared `Banner` primitive — checked at plan 88.6-26 before adding a size utility here, because
+ * a call-site size that duplicates a primitive's own is the dead-class case in a different
+ * costume. This is a hand-rolled div, so the utility below is the only thing sizing it.
+ *
+ * PLAN 39 (W52 / D-18) OWNS THIS BANNER'S HEIGHT BEHAVIOUR DURING A PAINT GESTURE. It unmounts
+ * late, when `isProfileTimezoneSet` resolves, which is why plan 39 folds it into the same
+ * finger-up hold as QuickSuggestions. Plan 88.6-26 changed classes only and deliberately touched
+ * no mount or unmount condition here.
  */
 
 import Link from 'next/link';
@@ -54,15 +62,27 @@ export default function TimezoneNudgeBanner() {
           d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
         />
       </svg>
+      {/* DECISION Phase 88.6-26 (UI-SPEC 4.3 vs the shipped Banner family): the body STAYS at 14,
+          chosen OVER the 16 a mechanical read of 4.3's "<p> running prose -> Body 16" row gives.
+          On the merits 16 is the wrong answer HERE: the shipped Banner primitive's own cva base is
+          text-sm (Banner.tsx:41) and three banners render through it, PendingMemberBanner.js:23 —
+          the sibling this file's docblock says it matches "for visual cohesion" — is text-sm, and
+          two plans in this same phase already answered this exact question the same way (88.6-17
+          kept the SMS-disabled banner at 14 "because Banner.tsx's own copy is 14"; 88.6-19 kept a
+          two-sentence member notice at 14 on the same ground, recording that R2 reads it as prose).
+          Raising this one banner would make it the only 16px banner in the app and, MEASURED in
+          Chromium at 375px, would grow it 110px -> 150px inside the create-event modal — a visible
+          delta with no V-row, on the phone-primary surface, in exchange for LESS consistency.
+          Moving the whole family to 16 is a decision for a plan that owns the primitive. */}
       <div className="flex-1 text-sm text-amber-900">
         <p className="mb-1">
           Your timezone isn&apos;t set. We&apos;re showing times in{' '}
-          <span className="font-medium">{displayTz}</span>.
+          <span className="font-bold">{displayTz}</span>.
         </p>
         <p className="text-amber-800">
           <Link
             href="/userProfile#timezone"
-            className="underline hover:text-amber-950 font-medium"
+            className="underline hover:text-amber-950"
           >
             Set your timezone
           </Link>

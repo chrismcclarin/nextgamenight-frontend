@@ -4,6 +4,12 @@ import { useState, useEffect, useRef } from 'react';
 import { suggestionsAPI } from '../../lib/api';
 import BrowseMoreModal from './BrowseMoreModal';
 
+// PLAN 39 (W52 / D-18) OWNS THIS COMPONENT'S HEIGHT BEHAVIOUR DURING A PAINT GESTURE.
+// The `return null` until `loaded`, the 500ms debounce, the effect deps and the absent
+// AbortController below are all deliberately untouched by plan 88.6-26, which changed classes
+// only — so a reader of that commit does not conclude the CLS work was skipped. The scheduler
+// grid must not move under the user's finger while these suggestions resolve; that is plan 39's
+// placeholder-bar and finger-up hold, not this file's business today.
 export default function QuickSuggestions({ groupId, playerCount, duration, onSelectGame, eventId, userRole }) {
   const [suggestions, setSuggestions] = useState([]);
   const [loaded, setLoaded] = useState(false);
@@ -71,7 +77,7 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
 
   return (
     <div className="mt-1 mb-1">
-      <div className="text-xs text-content-muted uppercase tracking-wide mb-1">Suggestions</div>
+      <div className="text-xs font-bold text-content-muted uppercase tracking-wide mb-1">Suggestions</div>
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-2 overflow-x-auto flex-nowrap pb-1 flex-1 min-w-0">
           {suggestions.map((game) => (
@@ -107,7 +113,7 @@ export default function QuickSuggestions({ groupId, playerCount, duration, onSel
         <button
           type="button"
           onClick={() => setBrowseModalOpen(true)}
-          className="text-xs text-content-link hover:underline whitespace-nowrap shrink-0 px-1"
+          className="text-sm text-content-link hover:underline whitespace-nowrap shrink-0 px-1"
         >
           Browse more
         </button>

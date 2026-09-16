@@ -468,7 +468,7 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
             <div
               key={`h-${col}`}
               role="columnheader"
-              className="sticky top-0 z-20 bg-surface-card text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
+              className="sticky top-0 z-20 bg-surface-card text-center py-2 text-sm text-content-secondary border-b border-line"
             >
               {renderDayHeader ? renderDayHeader(col) : (dayLabels?.[col] ?? '')}
             </div>
@@ -481,7 +481,7 @@ export const WeekGrid = memo(function WeekGrid(props: WeekGridProps) {
             {/* pr-1 (not the old pr-2) because the gutter is now 24px, not 64-80px — 8px of
                 right padding would leave 16px for the label. Matches the owner-passed
                 EventHeatmapBackground.js:238 gutter at the same width. */}
-            <div className="sticky left-0 z-10 bg-surface-card flex items-center justify-end pr-1 text-xs sm:text-sm text-content-secondary font-medium">
+            <div className="sticky left-0 z-10 bg-surface-card flex items-center justify-end pr-1 text-xs sm:text-sm text-content-secondary">
               {slotLabels?.[row] ?? ''}
             </div>
             {Array.from({ length: days }, (_, col) => (
