@@ -153,10 +153,12 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
   {
     file: 'app/components/AvailabilityForm.js',
     receiver: 'prefillStatus',
-    // RE-DERIVED by plan 88.6-25 task 2 (2026-09-16): 60 -> 76. The declaration did not move on
-    // its own — plan 25 added three imports at the top of the file, which is exactly the kind of
-    // drift this citation exists to catch, and it DID catch it (assertion 4 red before this bump).
-    declaredAt: 76,
+    // RE-DERIVED by plan 88.6-25 (2026-09-16): 60 -> 87, and TWICE within that one plan — the
+    // declaration never moved on its own, it was pushed down first by three added imports and then
+    // again by the DECISION marker plan 25 wrote at the submit latch. Assertion 4 red on BOTH
+    // occasions and is the only reason either was noticed, which is exactly what it is for. Do not
+    // 'stabilise' this by anchoring on text alone: the line number is what makes a MOVE visible.
+    declaredAt: 87,
     declaration: 'const [prefillStatus, setPrefillStatus] = useState(',
     why:
       'Local pre-fill banner state shaped { source, count, failed? } — set only by this ' +
@@ -338,10 +340,11 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
       // convention. Line cites in this `why` are ADVISORY (the roster is count-keyed and the
       // count is unchanged at 2), but plan 25 moved them and leaving them wrong is the drift
       // this project's Evidence Rule exists to stop.
-      'LINE CITES RE-DERIVED 2026-09-16 after plan 88.6-25 swept this file: the guard and the ' +
-      'throw are now AvailabilityForm.js:148 and :149 (was :130/:131) and the `onSuccess?.()` ' +
-      'call is :152 (was :134). Both reads are BYTE-UNCHANGED — plan 25 pinned them so, and the ' +
-      'movement is purely the three imports it added at the top of the file.',
+      'LINE CITES RE-DERIVED 2026-09-16 at the END of plan 88.6-25, after its last commit to this ' +
+      'file: the guard and the throw are now AvailabilityForm.js:159 and :160 (was :130/:131) and ' +
+      'the `onSuccess?.()` call is :163 (was :134). Both reads are BYTE-UNCHANGED — plan 25 ' +
+      'pinned them so — and the movement is entirely imports and comment blocks that plan added ' +
+      'above them.',
     owner: {
       kind: 'owner',
       date: '2026-09-09',
