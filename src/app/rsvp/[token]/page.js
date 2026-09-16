@@ -81,6 +81,32 @@ export default function RsvpPage() {
       try {
         const result = await rsvpPublicAPI.respondViaToken(token, eventId, userId, status);
 
+        /* DECISION Phase 88.6-24 (D62, owner ruling 2026-09-09): the two `result.error === …`
+           branches below are DOMAIN DISCRIMINANTS off a body that carries no `code`, and they
+           STAY that way in this phase — chosen OVER the cross-repo conversion (branch A: add a
+           registry `code` to the backend branches and read `body.code ?? body.error` here), which
+           the owner rejected on blast radius: a backend commit inside a frontend phase is a
+           Railway PRODUCTION deploy.
+
+           THE CONSTRAINT, so a later sweep cannot mistake this for an oversight.
+           `periodictabletopbackend_v2/Sonnet/routes/rsvp.js` emits HTTP 410 with
+           `{ error: 'event_cancelled', group_id }` (:293-296) or
+           `{ error: 'event_passed', event_name, group_id }` (:302-306) — verified 2026-09-16 —
+           with NO `code` and NO `message`. A mechanical "read `body.code` instead" edit makes
+           BOTH branches below unreachable and drops this page to its generic
+           `PAGE_STATES.ERROR`: a silent, user-visible regression on the magic-link RSVP flow,
+           one of this app's two primary entry points.
+
+           WHO UNBLOCKS IT: Phase 93 adds the backend `code` FIRST (its own `[cleanup] Retighten`
+           entry in `.planning/deferred/phase-93.md` carries this as a blocking precondition), and
+           only then may this read move. Deploy order under that change is BACKEND FIRST — the
+           `formatEnvelope` `error` alias keeps an un-deployed frontend working against a
+           converted backend, and the reverse is not true.
+
+           GATED, not just written down: `src/app/errorEnvelopeReads.test.ts` rosters this file
+           with an exact site count in BOTH directions, so deleting these reads reds as loudly as
+           adding an unrostered one, and `page.test.tsx` pins all four page states — including the
+           code-only body, which asserts `ERROR` deliberately. */
         if (result.success) {
           setResponseData(result);
           setPageState(PAGE_STATES.SUCCESS);

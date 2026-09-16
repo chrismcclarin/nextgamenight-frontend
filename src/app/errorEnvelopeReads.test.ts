@@ -250,18 +250,31 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
   'app/rsvp/[token]/page.js': {
     sites: 2,
     why:
-      'A DOMAIN DISCRIMINANT, not a legacy alias. The backend returns HTTP 410 with ' +
-      '`{ error: "event_passed" | "event_cancelled", group_id, event_name }` and NO `code` ' +
-      'and NO `message` (periodictabletopbackend_v2/Sonnet/routes/rsvp.js:292-306, ' +
-      're-derived 2026-09-15: cancelled at :293-296, passed at :302-306). A mechanical ' +
-      'read-`body.code` edit makes BOTH branches unreachable and drops the page to its ' +
-      'generic PAGE_STATES.ERROR — a silent, user-visible regression on the magic-link RSVP ' +
-      'flow, one of the two primary entry points into this app. Phase 93 owns adding the ' +
-      'backend `code`; nothing in 88.6 converts this.',
+      'A DOMAIN DISCRIMINANT, not a legacy alias. The backend branches VERBATIM, re-read at ' +
+      'source 2026-09-16 — Sonnet/routes/rsvp.js:293-296 is ' +
+      'res.status(410).json({ error: [event_cancelled], group_id: event.Group?.id || ' +
+      'event.group_id }) and :302-306 is res.status(410).json({ error: [event_passed], ' +
+      'event_name: event.Game?.name || [Game Session], group_id: event.Group?.id || ' +
+      'event.group_id }), with the string literals bracketed here only to keep this roster ' +
+      'quote-safe. ' +
+      'Neither carries a `code` and neither carries a `message`. THE REGRESSION a mechanical ' +
+      'read-`body.code` edit would cause: both `else if` branches become unreachable, so an ' +
+      'already-passed and a cancelled event both fall through to the generic ' +
+      'PAGE_STATES.ERROR ("Something went wrong … This link may be invalid or expired") ' +
+      'instead of the named "This event has already happened" screen WITH its Go-to-Group ' +
+      'link — silent, user-visible, on the magic-link RSVP flow, one of the two primary entry ' +
+      'points into this app. REMOVAL CONDITION for this entry: Phase 93 lands the BE `code` ' +
+      'on those two branches (BACKEND FIRST — `formatEnvelope` keeps the `error` alias until ' +
+      'then, so a converted backend still serves an un-deployed frontend and the reverse is ' +
+      'not true). Until that lands this entry STAYS; nothing in 88.6 converts it, and plan ' +
+      '88.6-24 added a `DECISION Phase 88.6-24` marker at the branch saying so.',
     owner: {
       kind: 'owner',
       date: '2026-09-09',
-      ruling: 'D62 branch B — FE-only in Phase 88.6; Phase 93 owns adding the BE `code`',
+      ruling:
+        'D62 branch B — FE-only; Phase 93 owns adding code to Sonnet/routes/rsvp.js:292-306 ' +
+        'and Sonnet/routes/availabilityResponse.js:77-80,:119-122 as the precondition for ' +
+        'removing the error alias',
     },
   },
   'app/api/auth/google-connect/route.js': {
@@ -287,11 +300,41 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
       'is told their availability saved when it did not, on the phone-primary flow. RULED ' +
       'RESIDUAL: under D62 branch B this read STAYS and the expired-link case renders the ' +
       "register's generic copy until Phase 93 lands the `code`. Plan 42 is the FE owner of " +
-      'the conversion when that happens.',
+      'the conversion when that happens. ' +
+      // AMENDED IN PLACE by plan 88.6-24 task 1 (2026-09-16). NOT a second row: this file's
+      // PATH and COUNT are the load-bearing keys (see the roster docblock above), so a
+      // duplicate would either collide on the key or double the declared count. `sites` stays
+      // at plan 14's measured 2; what follows is provenance and consequence only.
+      'SPLIT BY MECHANISM — the POST handler fails in TWO ways and they break at DIFFERENT ' +
+      'times, so recording only the two `action: request_new` bodies understates it. ' +
+      '(a) ALIAS-DEPENDENT: three `sendError` envelopes — ' +
+      'Sonnet/routes/availabilityResponse.js:99 and :103 (`prompt_closed`) and :109 ' +
+      '(`prompt_deadline_expired`) — carry `error` ONLY via the legacy alias `formatEnvelope` ' +
+      'writes (Sonnet/utils/errors.js:161, `body.error = message`), so they break the INSTANT ' +
+      'Phase 93 removes it. (b) NOT alias-dependent: seven raw `res.status(400).json({ error ' +
+      '… })` sites (:38, :44, :51, :60, :65, :77, :119) plus a raw 500 (:197) never pass ' +
+      'through `formatEnvelope` and SURVIVE alias removal — until something converts one onto ' +
+      '`sendError`, which MOVES it into set (a). All counts re-measured at source 2026-09-16. ' +
+      'THE FE HALF OF THE PRECONDITION, AND ITS ORDER (a CONSEQUENCE constraint, not a ' +
+      'suggestion): `submitResponse` performs no `res.ok` check and AvailabilityForm.js:130 ' +
+      'branches on the mere PRESENCE of `body.error`, so removing the alias — or converting ' +
+      'any raw 400 onto `sendError` — flips that guard false and renders "Availability ' +
+      'Submitted!" (availability-form/[token]/page.js:207) for a submit that recorded ' +
+      'nothing. The submit path must first adopt the `res.ok` + envelope contract ' +
+      '`publicFetch` already implements (api.ts:355-367) and branch on `!res.ok` / `code`. ' +
+      'That FE change lands BEFORE or WITH the alias removal, NEVER after. The code to adopt ' +
+      'for the two token-rejection 400s is the shipped `token_invalid` registry entry, already ' +
+      'emitted for exactly this failure class at Sonnet/routes/magicAuth.js:115. NO TEST is ' +
+      'added in 88.6 for this path: plan 25 pins AvailabilityForm.js:130-132 byte-unchanged, ' +
+      'and a test pinning the presence-of-`error` behaviour would have to be deleted by Phase ' +
+      '93 anyway.',
     owner: {
       kind: 'owner',
       date: '2026-09-09',
-      ruling: 'D62 branch B — FE-only in Phase 88.6; Phase 93 owns adding the BE `code`',
+      ruling:
+        'D62 branch B — FE-only; Phase 93 owns adding code to Sonnet/routes/rsvp.js:292-306 ' +
+        'and Sonnet/routes/availabilityResponse.js:77-80,:119-122 as the precondition for ' +
+        'removing the error alias',
     },
   },
   'app/availability-form/[token]/page.js': {
