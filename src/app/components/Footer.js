@@ -95,7 +95,19 @@ function PublicFooter() {
   return (
     <footer className="bg-surface-page border-t border-line">
       <div className="max-w-7xl mx-auto px-4 py-4">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-content-muted">
+        {/* DECISION Phase 88.6-34 (D-01 / UI-SPEC §4.2-§4.3): `text-xs` -> `text-sm`, chosen OVER
+            leaving the strip at Caption 12 on the "fine print is conventionally small" convention
+            — which is exactly the convention §4.2's CLOSED role list exists to close. Caption may
+            be used for, and only for: chip/pill/badge labels, counters, timestamps, eyebrows,
+            dense-grid cells, and helper/error text. Footer NAVIGATION LINKS and a copyright notice
+            are none of those; §4.3 puts them at Label 14 (metadata), and §4.2 names 14 as the
+            landing rung for 12px misuse. It is a floor case, not a sub-floor one — 12 is the app's
+            floor, so nothing was illegible — but these are LINKS people tap on a 375px phone, and
+            `/Privacy` is load-bearing for Google auth, so the phone-forward tenet pushes the same
+            way. `<BGGLogo />` does NOT grow with it: its image is a fixed `h-6`. Same call and same
+            reasoning in AuthFooter below; the two must move together or the footer prints one strip
+            at two sizes depending on auth state. Going back to 12 is a decision, not a cleanup. */}
+        <div className="flex flex-col md:flex-row items-center justify-between gap-3 text-sm text-content-muted">
           <div className="flex items-center gap-4">
             <a
               href="/about"
@@ -134,7 +146,9 @@ function AuthFooter() {
     <>
       <footer className="bg-surface-page border-t border-line">
         <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-content-muted">
+          {/* Label 14, matching PublicFooter above — full reasoning at that site's marker. The two
+              strips are the same surface in two auth states and must carry the same rung. */}
+          <div className="flex flex-col md:flex-row items-center justify-between gap-3 text-sm text-content-muted">
             <div className="flex items-center gap-4">
               <a
                 href="/about"

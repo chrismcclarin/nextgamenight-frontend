@@ -1769,12 +1769,16 @@ const WEIGHT_SITES: readonly WeightSite[] = FILES.filter(
  * them floor at their armed count rather than at zero, and their `why` says so.
  */
 const WEIGHT_ROSTER: ExemptionRoster = {
-  'app/Header.js': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-05, 88.6-12, 88.6-13, 88.6-16, 88.6-31, 88.6-34, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-34 task 2 (wave 7, 2026-09-16): `app/Header.js` carried `sites: 1`
+  // (1 font-medium, 0 font-semibold) — the desktop nav `<ul>`'s label weight, pre-edit at `:128`.
+  // Resolved as §4.5's EMPHASIS case (the utility DELETED, a colour token doing the work) rather
+  // than HIERARCHY (700): 700 would render the whole desktop nav bold, and the nav's separation
+  // from the page already comes from `text-white` on the dark header ground, so 400 loses nothing.
+  // The entry's own outcome LEAD said only "outcome set by the owning sweep", which is why the
+  // rule requires the sweep to confirm per site. Visible delta 500 -> 400 on the desktop nav,
+  // covered by V-6. The file's `text-sm` is Label 14 and was already on the scale; the brand
+  // wordmark at the top of the file is the 88.9 look-call exemption and is NOT a weight site
+  // (`font-bold` = 700, on-scale). Entry DELETED, not zeroed.
   // DELETED by plan 88.6-23 task 3 (wave 7, 2026-09-16): `app/availability-form/[token]/page.js`
   // carried `sites: 3`. Resolved per site against UI-SPEC §4.5 — and note that the entry's own
   // outcome LEAD was wrong on one of them, which is why the rule says the owning sweep confirms

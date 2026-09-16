@@ -233,11 +233,18 @@ const D49B: { kind: 'owner'; date: string; ruling: string } = {
  * reds (unowned offender); snapping without deleting reds too (fossil permission).
  */
 const ALIAS_ROSTER: ExemptionRoster = {
-  'app/Header.js': {
-    sites: 1,
-    why: '`shadow-lg` on the header chrome (:248). Plan 34 snaps it to `shadow-theme-lg`; the -lg snap changes hue in both themes.',
-    owner: D49B,
-  },
+  // CLOSED by plan 88.6-34 task 2 (wave 7, 2026-09-16): `app/Header.js` carried `sites: 1` —
+  // `shadow-lg` on the mobile nav panel, at this scanner's OPENING-TAG line `:248` with the
+  // className at `:249` pre-edit. It is `shadow-theme-lg` now. The hue changes in BOTH themes and
+  // that is the point of the snap, not a side effect: `--shadow-lg` is
+  // `0 10px 15px rgba(120, 80, 40, 0.10)` in light (`globals.css:1203`, a WARM tint) and
+  // `0 0 0 1px var(--purple-600), 0 0 20px rgba(168, 85, 247, 0.05)` in dark (`:1601`, a purple
+  // hairline PLUS glow) — NOT `none`; `none` is `--shadow-sm`'s value (`:1201`, `:1599`) and not
+  // this token's. NO hover pin was added: UI-SPEC §3.4 rule 2 governs `.btn` elements, and this is
+  // a panel `div` that carries no hover shadow today. Disclosed for `/gsd-ui-review` in
+  // `88.6-34-SUMMARY.md`; the phase-level V-row is UI-SPEC §1.2's V-16, which already names this
+  // site, so no new V-number was minted. Entry DELETED, not zeroed; the roster is exact in both
+  // directions, so the snap and this deletion had to land in ONE commit.
   'app/not-found.tsx': {
     sites: 1,
     why: '`shadow-lg` on the not-found card (:32). Plan 36 snaps it to `shadow-theme-lg` alongside the other two ui/ surfaces it owns.',
