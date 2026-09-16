@@ -564,15 +564,14 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
       'declares this file.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-20' },
   },
-  'app/components/ManageMembers.js': {
-    sites: 7,
-    why:
-      'RAW-MESSAGE assertion. Seven sites — :138, :208, :239, :251, :296, :333, :761 — the ' +
-      'largest single concentration in the tree and the one the census got exactly right. ' +
-      'Its "Failed to X" count is 8 (one extra at :112, which carries no message read). ' +
-      'Closed by plan 88.6-19 (wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-19' },
-  },
+  // DELETED by plan 88.6-19 task 1 (wave 7, 2026-09-16): `app/components/ManageMembers.js`
+  // carried `sites: 7` here (:138, :208, :239, :251, :296, :333, :761 pre-edit) — the largest
+  // single concentration in the tree. All seven now route through
+  // `getFetchErrorMessage(err)` on the ratified register: six as `toast.error` (the mutation
+  // arm) and `:333` as the in-modal leave failure, which keeps its message in place and gained
+  // an announcing `StatusRegion`. Entry DELETED rather than zeroed — the roster is exact in
+  // both directions, so a zeroed entry would red as a fossil permission. This file's
+  // FAILED_COPY_EXEMPT entry (8, one more than this one) closed in the same commit.
   'app/components/ResponseDashboard.js': {
     sites: 2,
     why:
@@ -735,15 +734,14 @@ const FAILED_COPY_EXEMPT: ExemptionRoster = {
       '(wave 7), which declares this file.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-20' },
   },
-  'app/components/ManageMembers.js': {
-    sites: 8,
-    why:
-      '"FAILED TO X" assertion. EIGHT sites — the seven raw-message lines plus :112 ' +
-      '"Failed to load members", which reads no message. Recorded explicitly because the ' +
-      'two counts for this file differ and a reader comparing them needs to know why. ' +
-      'Closed by plan 88.6-19 (wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-19' },
-  },
+  // DELETED by plan 88.6-19 task 1 (wave 7, 2026-09-16): `app/components/ManageMembers.js`
+  // carried `sites: 8` here — the seven raw-message lines plus :112 "Failed to load members",
+  // which read no message. The seven took `getFetchErrorMessage(err)` with NO fallback (the
+  // register has no entry for any of them, so the ratified `unknown` string answers and no
+  // copy is authored), and :112's load failure moved onto the §6.2 arm-1 treatment: it now
+  // holds the ERROR OBJECT and renders through `useFetchErrorState` + `<FetchErrorBanner>`.
+  // Zero "Failed to X" sites remain, so the entry is deleted rather than zeroed. Its
+  // RAW_MESSAGE_EXEMPT sibling closed in the same commit, as that entry's `why` said it would.
   // DELETED by plan 88.6-15 (2026-09-16): `app/components/PromptScheduleManager.js` carried
   // `sites: 2` here (`:100`, `:111`) — the same two lines `nativeDialogs.test.ts` carried as
   // its `alert(` exemption. Both are now `toast.error(getFetchErrorMessage(err, { fallback }))`
