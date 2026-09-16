@@ -1,0 +1,425 @@
+// @vitest-environment node
+// This suite is a pure source-TEXT scan: it renders nothing, never touches the DOM, and the
+// node environment is materially faster than the global jsdom one.
+//
+// DECISION Phase 88.6-10 (#121+#123): the node environment is taken PER FILE via this pragma,
+// chosen OVER (a) leaving the suite on the global jsdom environment — rejected, the DOM is
+// never used here and every run would pay for a document nothing reads — and OVER (b) changing
+// `environment` in `vitest.config.mts:56` (`environment: 'jsdom'`, re-verified 2026-09-15) —
+// rejected, that moves EVERY suite, including the many that genuinely render. This plan's text
+// called it the repo's FIRST such pragma; re-measured at execution that is FALSE and the
+// correction is recorded rather than quietly dropped: `src/app/errorEnvelopeReads.test.ts:2`
+// (plan 88.6-14) took it first and `src/app/groundInk.test.ts:1` (plan 88.6-09) second, both
+// after this plan's 2026-09-14 census. This is the THIRD, and it follows their idiom instead of
+// inventing a fourth. The three shipped source-scan suites (`nativeDialogs.test.ts`,
+// `fetchErrorTreatment.test.ts`, `typeScaleTouchedSurfaces.test.ts`) were deliberately NOT
+// converted — converting a shipped, negative-checked gate is a sweep this plan does not declare,
+// and `fetchErrorTreatment.test.ts` is explicitly out of scope and stays on jsdom.
+// Moving this file back onto jsdom is a decision, not a cleanup.
+//
+// =====================================================================================
+// D-07 / SPEC-88.6 R2 / AC-2 — what "zero remaining" MEANS for the Button migration.
+// =====================================================================================
+//
+// Two things, and they are asserted here together because either one alone is a half-truth:
+//
+//   1. ZERO raw `.btn*` class usage on any JSX element, outside `Button.tsx`'s cva base.
+//   2. ZERO button CONTROL — `<button>` the element OR `<Button>` the primitive — carrying a
+//      raw palette fill (task 2, below).
+//
+// WHY THIS IS A WHOLE-OPENING-TAG SCAN AND NOT A GREP
+// ---------------------------------------------------
+// The SPEC's own "337 raw `.btn*` occurrences" is a LINE-grep number and it gates nothing (P5).
+// Two shapes defeat any line- or literal-based read, and both are live in this tree:
+//
+//   - `className` sits on a DIFFERENT LINE from its opening tag in essentially every control
+//     here. Measured in 88-21: a `[^>]*` regex matched 0 of 14 real controls.
+//   - `cn('btn', ACTION_CLASS[variant], className)` is an EXPRESSION, not a literal (W19). Until
+//     plan 88.6-08 landed, `Modal.tsx` emitted exactly that shape; a literal-only scan is blind
+//     to it.
+//
+// So the scanner reads the FULL opening tag with the brace-balanced `readOpeningTag` and takes
+// its `stringChunks`. No `grep`, no `execSync`, no regex applied to un-tag-scoped raw source —
+// the Phase 88 ledger records twelve gates that died of exactly those (see
+// `src/lib/ci-grep-gate.fixture.test.ts` for the shipped demonstration).
+//
+// EXCLUSION IS NOT EXEMPTION
+// --------------------------
+// `Button.tsx`'s cva base is a scanner EXCLUSION, never a roster entry (D-19). An exclusion says
+// "this is the DEFINITION of the thing being scanned for"; an exemption says "this is a DEBT".
+// And here the exclusion is FREE rather than a special case: the base's `'btn'` lives inside a
+// `cva([...])` array at `src/components/ui/Button.tsx:74`, which is not inside a JSX opening tag,
+// so this scanner never sees it. There is no `if (file === 'Button.tsx') continue` anywhere
+// below, and the assertion at the bottom of the census describe pins that.
+
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { describe, expect, it } from 'vitest';
+
+import {
+  assertExactCounts,
+  assertRosterShape,
+  type ExemptionRoster,
+} from '../../test-utils/exemption';
+import {
+  lineAt,
+  readOpeningTag,
+  sourceFiles,
+  stringChunks,
+  withoutComments,
+} from '../../test-utils/sourceScan';
+
+// `readOpeningTag` is IMPORTED, not copied. This plan's text said to copy it verbatim from
+// `controlSizeFloor.test.tsx:88-108`; Phase 88.6-09 RELOCATED it into the shared lexer before
+// this plan ran (`sourceScan.ts:246`, and `controlSizeFloor.test.tsx:89-92` records the move),
+// so copying it now would create the second copy that module exists to prevent — the exact drift
+// `DECISION Phase 88-29` names. The imported function is the same brace-balanced reader plus a
+// measured 16000-byte bound.
+
+const SRC = path.resolve(__dirname, '../..');
+
+// Named-tag anchor with a lookahead, never a bare `<`: a TypeScript generic or an `a < b`
+// comparison must not start a tag scan. This is `sourceScan.ts:344`'s own `OPEN_TAG` shape,
+// which is slightly stricter than the RESEARCH census script's `/<([A-Za-z][A-Za-z0-9.]*)/g`.
+// Measured 2026-09-15: both forms report the identical 115 sites / 36 files, so the stricter
+// one costs nothing and matches the shipped lexer.
+const OPEN_TAG = /<([A-Za-z][\w.-]*)(?=[\s>/])/g;
+
+// The `.btn` family. The leading `(?<![\w:-])` is load-bearing and NOT decoration: plan 88.6-09
+// measured that a plain `\bbtn\b` sweeps in `rounded-btn` and drags `Input.tsx` / `SelectField.tsx`
+// into the census. `bg-btn-*` and `text-btn-*` semantic tokens are excluded by the same lookbehind.
+const BTN = /(?<![\w:-])btn(-[a-z]+)?(?![\w-])/;
+
+// `surfaceHoverSweep.test.ts:82`'s richer form — it strips a bracketed variant
+// (`data-[state=open]:`) which the simpler `/^[a-z-]+:/` cannot.
+const VARIANT_PREFIX = /^(?:[a-z][a-z0-9-]*(?:\[[^\]]*\])?:)*!?/;
+
+/** One JSX opening tag, with everything every rule in this file needs already extracted. */
+interface TagSite {
+  /** Repo-relative to `src/`, the `app/components/Foo.js` form the rosters are keyed by. */
+  file: string;
+  /** 1-based line of the opening `<`. */
+  line: number;
+  /** The tag name as written: `button`, `Button`, `div`, `Modal.Action`. */
+  name: string;
+  /** Every string-literal / template-static chunk inside the opening tag. */
+  chunks: string[];
+  /** Every whitespace-separated token from those chunks, variant prefixes stripped. */
+  classes: string[];
+}
+
+/**
+ * The ONE scanner. Every rule and every fixture in this file goes through it, so a fixture
+ * assertion is an assertion about the real census and not about a parallel toy.
+ */
+export function scanSource(file: string, raw: string): TagSite[] {
+  const stripped = withoutComments(raw);
+  const out: TagSite[] = [];
+  for (const m of stripped.matchAll(OPEN_TAG)) {
+    const at = m.index ?? 0;
+    const tag = readOpeningTag(stripped, at);
+    if (!tag) continue;
+    const chunks = stringChunks(tag).map((c) => c.text);
+    const classes: string[] = [];
+    for (const text of chunks) {
+      for (const rawToken of text.split(/\s+/)) {
+        if (!rawToken) continue;
+        const base = rawToken.replace(VARIANT_PREFIX, '');
+        if (base) classes.push(base);
+      }
+    }
+    out.push({ file, line: lineAt(stripped, at), name: m[1], chunks, classes });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------
+// THE TREE IS ENUMERATED, READ AND COMMENT-STRIPPED EXACTLY ONCE, AT MODULE SCOPE.
+//
+// DECISION Phase 88.6-10 (AC-11, owner ruling 2026-09-09): hoisted, chosen OVER the shipped
+// un-hoisted idiom (`surfaceHoverSweep.test.ts:133`, `controlSizeFloor.test.tsx:145`, both of
+// which call `sourceFiles(SRC)` + `readFileSync` inside a per-assertion helper). One full pass
+// over the real tree measures ~250 ms, and this phase stacks roughly a dozen new assertions on
+// top of every plan's `npm test`. The divergence is CONFINED to this new file: the shipped
+// suites stay byte-unchanged and `sourceScan.ts` gains no cache (ruled out separately as AC-12).
+// Re-scanning per assertion here is a decision, not a cleanup.
+// ---------------------------------------------------------------------------------------
+const FILES = sourceFiles(SRC);
+const TAGS: TagSite[] = FILES.flatMap((f) =>
+  scanSource(path.relative(SRC, f), fs.readFileSync(f, 'utf8')),
+);
+
+/** Every element site whose opening tag carries a `.btn*` class, anywhere in its expression. */
+const BTN_SITES = TAGS.filter((t) => t.chunks.some((c) => BTN.test(c)));
+
+function countByFile(sites: TagSite[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const s of sites) out[s.file] = (out[s.file] ?? 0) + 1;
+  return out;
+}
+
+const BTN_COUNTS = countByFile(BTN_SITES);
+
+// ---------------------------------------------------------------------------------------
+// THE ROSTER. Seeded from the LIVE measurement taken at execution on 2026-09-15:
+// 194 source files enumerated, 115 `.btn` element sites across 36 files.
+//
+// RESEARCH B.1 measured 120 sites / 38 files at FE `701fc74`. The two deltas are both accounted
+// for and neither is a scanner change:
+//   - `app/test-sentry/page.js` (4 sites) was DELETED outright by plan 88.6-13 (wave 3) under the
+//     owner's D3 ruling of 2026-09-09. `git ls-files src/app/test-sentry | wc -l` is 0, checked
+//     before this roster was written. A row for it here would be a defect; so would "restoring"
+//     it because the census came up a file short.
+//   - `app/components/Modal.tsx` (1 site) was retired by plan 88.6-08, which replaced
+//     `Modal.Action`'s `cn('btn', ACTION_CLASS[variant], className)` emitter with a `<Button>`.
+//     08 and 10 are SAME-WAVE siblings with no `depends_on` edge between them (see this plan's
+//     "no `depends_on` edge to plan 08" decision), so the roster was seeded state-tolerantly and
+//     the live scan settled it: 08 landed FIRST, `Modal.tsx` measures 0, and it is therefore NOT
+//     rostered. Had it still measured 1, the entry would have been seeded naming 08 as its closer.
+// Every other per-file count matches RESEARCH B.1 exactly.
+//
+// `owner` is `spec` for all of these: SPEC-88.6 R2 / AC-2 is the requirement that makes them
+// debts with a deadline. `why` names the plan that closes each one, so a reader can navigate
+// from the roster to the work.
+// ---------------------------------------------------------------------------------------
+const BTN_EXEMPT: ExemptionRoster = {
+  'app/userProfile/page.js': {
+    sites: 13,
+    why: 'the userProfile sweep migrates all 13 to `Button`; plan 88.6-17 owns the file end-to-end',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/GroupSettings.js': {
+    sites: 8,
+    why: 'plan 88.6-20 sweeps GroupSettings.js and lands the swatch a11y items alongside the Button migration',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  // PERMANENT AT 2 — the one entry in this roster that never reaches zero.
+  // Seven sites measure here today. Plan 88.6-32 migrates FIVE of them and leaves the two
+  // 32x32 stepper controls (`BrowseMoreModal.js:226` and `:266` — the ELEMENT lines; CONTEXT's
+  // `:232`/`:270` are the className lines, both reading
+  // `btn btn-compact btn-secondary w-8 h-8 ...`) raw. So this entry shrinks 7 -> 2 and then
+  // STAYS at 2 forever, and its `owner` flips from AC-2 to D-10 when that happens.
+  'app/components/BrowseMoreModal.js': {
+    sites: 7,
+    why: 'five sites migrate under plan 88.6-32; the remaining TWO are PERMANENT — the 32x32 player-count steppers are not primary actions, 32px clears WCAG 2.2 2.5.8 24px floor, and a `compact` rung on Button was REJECTED because it would convert a closed two-site exemption into an open sub-44 API affordance and silently add `shadow-theme-sm hover:shadow-theme-md` to two 32px squares (D-10)',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-10' },
+  },
+  'app/gameDetail/page.js': {
+    sites: 7,
+    why: 'plan 88.6-18 sweeps gameDetail/page.js (151 sites across 2939 lines) including these seven',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/restore/group/[token]/page.tsx': {
+    sites: 7,
+    why: 'plan 88.6-23 sweeps the five token-and-invite entry pages, this file among them',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/ManageMembers.js': {
+    sites: 6,
+    why: 'plan 88.6-19 sweeps ManageMembers.js together with friends/page.js',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/friends/page.js': {
+    sites: 6,
+    why: 'plan 88.6-19 sweeps friends/page.js together with ManageMembers.js',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/invite/game/[token]/page.js': {
+    sites: 6,
+    why: 'plan 88.6-23 sweeps the invite and restore token entry pages, this file among them',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/FriendInvitePanel.js': {
+    sites: 5,
+    why: 'plan 88.6-22 sweeps the invite-and-ballot cluster, FriendInvitePanel.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/NotificationBell.js': {
+    sites: 4,
+    why: 'plan 88.6-31 sweeps the feedback and notification cluster, NotificationBell.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/ScheduleList.js': {
+    sites: 4,
+    why: 'plan 88.6-32 sweeps the group-library and scheduling cluster, ScheduleList.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/invite/accept/page.js': {
+    sites: 4,
+    why: 'plan 88.6-23 sweeps the invite and restore token entry pages, this file among them',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/createEvent.js': {
+    sites: 3,
+    why: 'plan 88.6-25 sweeps the event-creation and availability cluster (markup and classes only)',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/grouplist.js': {
+    sites: 3,
+    why: 'plan 88.6-21 sweeps grouplist.js alongside groupHomePage/page.js',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  // One of these three is `groupHomePage/page.js:872`, the Manage Members header CTA, which
+  // ALSO carries a raw palette fill and is therefore in task 2's roster as well. The two rules
+  // see the same element for different reasons and neither subsumes the other: the `.btn` here
+  // CLOSES under plan 88.6-21, while the `bg-white/80` wash SURVIVES it (88.3-16, owner ruling 2).
+  'app/groupHomePage/page.js': {
+    sites: 3,
+    why: 'plan 88.6-21 sweeps groupHomePage/page.js and converges the Create-Event amber CTA onto `variant="accent"`',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/CalendarMonthView.js': {
+    sites: 2,
+    why: 'plan 88.6-27 sweeps the calendar cluster, CalendarMonthView.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/EventDayModal.js': {
+    sites: 2,
+    why: 'plan 88.6-27 sweeps the calendar cluster, EventDayModal.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/FeedbackButton.js': {
+    sites: 2,
+    why: 'plan 88.6-31 sweeps the feedback and notification cluster, FeedbackButton.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/FeedbackForm.js': {
+    sites: 2,
+    why: 'plan 88.6-31 sweeps the feedback and notification cluster, FeedbackForm.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/QRCodeModal.js': {
+    sites: 2,
+    why: 'plan 88.6-33 sweeps eight small modal-and-card components, QRCodeModal.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/ScheduleForm.js': {
+    sites: 2,
+    why: 'plan 88.6-32 sweeps the group-library and scheduling cluster, ScheduleForm.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/invite/group/[token]/page.js': {
+    sites: 2,
+    why: 'plan 88.6-23 sweeps the invite and restore token entry pages, this file among them',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/rsvp/[token]/page.js': {
+    sites: 2,
+    why: 'plan 88.6-24 sweeps rsvp/[token]/page.js and resolves R9 cross-repo read points there',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/AvailabilityForm.js': {
+    sites: 1,
+    why: 'plan 88.6-25 sweeps the event-creation and availability cluster, AvailabilityForm.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/BallotOptionsEditor.js': {
+    sites: 1,
+    why: 'plan 88.6-22 sweeps the invite-and-ballot cluster, BallotOptionsEditor.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/BringGamePicker.js': {
+    sites: 1,
+    why: 'plan 88.6-33 sweeps eight small modal-and-card components, BringGamePicker.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/ClickableMemberName.js': {
+    sites: 1,
+    why: 'plan 88.6-34 sweeps nine small shared components, ClickableMemberName.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/createGroup.js': {
+    sites: 1,
+    why: 'plan 88.6-33 sweeps eight small modal-and-card components and routes createGroup.js raw error read',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/DangerZoneDeleteAccount.tsx': {
+    sites: 1,
+    why: 'plan 88.6-30 hardens the deletion modal and sweeps DangerZoneDeleteAccount.tsx alongside it',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/EventCalendar.js': {
+    sites: 1,
+    why: 'plan 88.6-27 sweeps the calendar cluster, EventCalendar.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/LandingPage.js': {
+    sites: 1,
+    why: 'plan 88.6-35 sweeps the marketing, legal and tutorial surfaces, LandingPage.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/OpenPollsList.js': {
+    sites: 1,
+    why: 'plan 88.6-32 sweeps the group-library and scheduling cluster, OpenPollsList.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/PromptScheduleManager.js': {
+    sites: 1,
+    why: 'plan 88.6-15 is the phase tracer and takes the prompt-schedule trio through every layer first',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/RsvpSection.js': {
+    sites: 1,
+    why: 'plan 88.6-29 sweeps the RSVP cluster and closes its four recorded residuals',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/tutorial/TutorialOverlay.js': {
+    sites: 1,
+    why: 'plan 88.6-35 sweeps the marketing, legal and tutorial surfaces, TutorialOverlay.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+  'app/components/tutorial/WelcomeSlide.js': {
+    sites: 1,
+    why: 'plan 88.6-35 sweeps the marketing, legal and tutorial surfaces, WelcomeSlide.js included',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
+  },
+};
+
+describe('D-07 / AC-2: the `.btn` element census', () => {
+  // ANTI-VACUITY FLOOR, half 1 of 2. A scanner that walks nothing passes every assertion below
+  // it. 150 is the floor; 194 is the live measurement (this plan's text said 192, re-measured
+  // 2026-09-15 as 194 — the sweeps rewrite files rather than remove them, so this quantity is
+  // stable across the phase and does NOT fall as the migration succeeds).
+  it('enumerated the source tree (a scanner that walked nothing must red)', () => {
+    expect(FILES.length).toBeGreaterThanOrEqual(150);
+  });
+
+  // ANTI-VACUITY FLOOR, half 2 of 2 — AND ITS PLANNED FLIP.
+  //
+  // Today this asserts the scanner FOUND something, which is what catches a lexer regression
+  // while the roster is still full. It is deliberately written as `>= 1` and not as a count:
+  // the whole point of this phase is to drain the population, so once BTN_EXEMPT holds only the
+  // two permanent BrowseMoreModal steppers this assertion becomes a floor of 2, and when even
+  // those are the last thing standing the RIGHT assertion is the file-count floor above.
+  //
+  // THE FLIP: when `BTN_EXEMPT` reaches its permanent floor, replace the body of this test with
+  // the file-enumeration assertion (or delete it and keep the one above). Do NOT delete it and
+  // leave nothing — a scanner that finds nothing because it walked nothing must still red, and
+  // that is exactly what the test above is for.
+  it('found `.btn` sites to census (guards a lexer regression while the roster is non-empty)', () => {
+    expect(BTN_SITES.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('has a well-formed roster (every entry counted, reasoned and owned)', () => {
+    expect(assertRosterShape(BTN_EXEMPT)).toEqual([]);
+  });
+
+  // Exact in BOTH directions: a new `.btn` in an exempt file reds, and FIXING one without
+  // shrinking the entry reds too. That is what stops an exemption becoming a fossil permission.
+  it('has zero `.btn` element sites outside the roster, at exactly the rostered counts', () => {
+    expect(assertExactCounts(BTN_EXEMPT, BTN_COUNTS)).toEqual([]);
+  });
+
+  // THE EXCLUSION, pinned. `Button.tsx` composes `'btn'` in its cva base — that is the
+  // DEFINITION of the family, not a debt — and it contributes zero rows here WITHOUT any
+  // special case in the scanner, because the base is a string inside a `cva([...])` call and
+  // not inside a JSX opening tag. If this ever reds, someone moved the base onto an element and
+  // the right answer is to move it back, not to add an exemption entry (D-19: an exclusion may
+  // never be filed as an exemption).
+  it('treats `Button.tsx` cva base as an exclusion — it contributes zero rows for free', () => {
+    const fromButton = BTN_SITES.filter((s) => s.file === 'components/ui/Button.tsx');
+    expect(fromButton.map((s) => `${s.file}:${s.line} <${s.name}>`)).toEqual([]);
+    expect('components/ui/Button.tsx' in BTN_EXEMPT).toBe(false);
+  });
+});
