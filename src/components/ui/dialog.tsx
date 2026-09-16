@@ -61,7 +61,18 @@ const DialogContent = React.forwardRef<
       ref={ref}
       className={cn(
         // D-35: `border` is explicit (`border-line`), not left to the base-layer shim.
-        'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-line bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg',
+        // DECISION Phase 88.6-36 (D49-b, owner ruling 2026-09-09 option i): the elevation is
+        // the project tier, chosen OVER the alias-spelled built-in utility this shipped with.
+        // A VALUE change, not a rename — Tailwind v4 inlines its built-in scale's cold black
+        // literal into the built-in utility in BOTH themes, while the theme tier resolves a
+        // warm light value and a purple-hairline-plus-glow dark one (`DECISION Phase 87.7` in
+        // `globals.css`; measured before/after at the twin site in `ErrorFallback.tsx`). This
+        // file is the ground of every Radix dialog in the app, so this is the WIDEST single
+        // visual delta in the D49-b set — disclosed in `88.6-36-SUMMARY.md` for `/gsd-ui-review`.
+        // This one class is the ONLY change plan 88.6-36 makes in this file: the title element
+        // below is Radix-owned and carries every dialog's accessible name, and this plan
+        // authorises no heading, type-scale, structural or copy edit here.
+        'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-line bg-background p-6 shadow-theme-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg',
         className
       )}
       {...props}

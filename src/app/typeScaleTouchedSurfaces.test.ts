@@ -700,8 +700,24 @@ const EXPECTED_PROP_SEAMS = 5;
  * `ProblemSlide.js:14`'s tutorial opening title, `h2 text-2xl font-semibold` ->
  * `<Heading level={2} size="heading">`. This one DOES move a rung: a DISCLOSED 24 -> 20,
  * D-04's "h2 @ 24" row. Level preserved; `EXPECTED_LEVELS`' `{ 2: 1 }` is byte-unchanged.
+ *
+ * RAISED 117 -> 118 by plan 88.6-36 task 2 (wave 7, 2026-09-16): ONE more —
+ * `components/ui/ErrorFallback.tsx`'s `<h1>` -> `<Heading level={1} size="heading">`. NO size
+ * movement, and that is the whole point of the site: `text-xl` (20) is what it has rendered since
+ * 88-04, `<h1>` is what the document outline needs, and D-04's "h1 @ 20 stays 20" row names this
+ * very precedent. `size` is passed explicitly BECAUSE the derived value would have been WRONG —
+ * level 1 derives `display` (30), which on this primitive is a silent +10px across nine error
+ * boundaries. The file's `EXPECTED_LEVELS` entry (`{ 1: 1 }`) is byte-unchanged (P4); only the
+ * heading's `kind` moved, `raw` -> `heading-primitive`.
+ *
+ * THE RAISE IS +1 AND NOT +2, and the missing one is named rather than left as an off-by-one:
+ * plan 36's OTHER migration — `components/ui/EmptyState.tsx` — renders
+ * `<Heading level={LEVEL_FOR_TAG[headingLevel]}>`, a non-literal level that this scanner SKIPS by
+ * rule, so it never enters the `heading-primitive` bucket this floor counts. It is enumerated in
+ * the skipped-levels assertion instead, with its own comment. Raising this to 119 would have RED
+ * the floor; "fixing" that by resolving the expression is what `PROP_SEAM_EXPRESSION` forbids.
  */
-const EXPECTED_MIN_PRIMITIVES = 117;
+const EXPECTED_MIN_PRIMITIVES = 118;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -2541,12 +2557,22 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-11, 88.6-13, 88.6-15, 88.6-19, 88.6-20, 88.6-32, 88.6-34, 88.6-36.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'components/ui/ErrorFallback.tsx': {
-    sites: 2,
-    why:
-      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-03, 88.6-11, 88.6-12, 88.6-23, 88.6-36, 88.6-43, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-36 task 2 (wave 7, 2026-09-16): `components/ui/ErrorFallback.tsx`
+  // carried `sites: 2` — the `font-medium` on the Try-again and Reload-page affordances. Both
+  // are now 400 and both KEEP `text-sm`, the §4.1 control-label rung.
+  //
+  // THE ENTRY'S STATED REASON WAS WRONG AND IS CORRECTED HERE RATHER THAN SILENTLY ABSORBED.
+  // Its outcome lead read "dead on a .btn (delete)". These two are NOT `.btn` elements and
+  // never were: `ErrorFallback.tsx`'s `DECISION Phase 88-04 (D-20)` marker deliberately keeps
+  // them raw `<button>`s carrying shipped utility classes, and says so in those words. The
+  // weight was LIVE, so the deletion is §4.5's EMPHASIS outcome (400 plus the colour token each
+  // already carried — `text-primary-foreground` on the filled control, `text-content-primary`
+  // on the outlined one), not the dead-class outcome. Same edit, different fact; a later reader
+  // re-deriving "it was dead anyway" from the old text would be re-deriving something untrue.
+  // The visible delta (500 -> 400, on nine error boundaries) is UI-SPEC §1.2 row V-6, which
+  // already covers it — no new V-number minted. Converging these onto `Button` remains D-20's
+  // recorded rejected cleanup and this sweep did not reopen it.
+  // Entry DELETED rather than zeroed; the roster is exact in both directions.
   'components/ui/FetchErrorBanner.tsx': {
     sites: 3,
     why:

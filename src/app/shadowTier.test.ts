@@ -269,21 +269,28 @@ const ALIAS_ROSTER: ExemptionRoster = {
   // `88.6-34-SUMMARY.md`; the phase-level V-row is UI-SPEC §1.2's V-16, which already names this
   // site, so no new V-number was minted. Entry DELETED, not zeroed; the roster is exact in both
   // directions, so the snap and this deletion had to land in ONE commit.
-  'app/not-found.tsx': {
-    sites: 1,
-    why: '`shadow-lg` on the not-found card (:32). Plan 36 snaps it to `shadow-theme-lg` alongside the other two ui/ surfaces it owns.',
-    owner: D49B,
-  },
-  'components/ui/dialog.tsx': {
-    sites: 1,
-    why: '`shadow-lg` on the dialog content surface (:60). Plan 36 snaps it to `shadow-theme-lg`; it is a non-button surface, so a hover pin here stays plain `hover:`.',
-    owner: D49B,
-  },
-  'components/ui/ErrorFallback.tsx': {
-    sites: 1,
-    why: '`shadow-lg` on the error-fallback card (:76). Plan 36 snaps it to `shadow-theme-lg` in the same pass as dialog.tsx and not-found.tsx.',
-    owner: D49B,
-  },
+  // CLOSED by plan 88.6-36 task 2 (wave 7, 2026-09-16), all THREE entries in ONE commit with the
+  // snap, because this roster is exact in both directions: `app/not-found.tsx` (`shadow-lg` on the
+  // 404 card, scanner opening-tag line `:31`, className at `:32` pre-edit),
+  // `components/ui/dialog.tsx` (the Radix content surface, scanner line `:60`, class inside the
+  // long className at `:64` pre-edit) and `components/ui/ErrorFallback.tsx` (the error card,
+  // scanner line `:76`). All three now carry `shadow-theme-lg`.
+  //
+  // MEASURED before/after, re-derived from `globals.css` at execution rather than inherited —
+  // the plan's own cites (`:1203` light, `:1601` dark) had DRIFTED and the live keys are
+  // `globals.css:1363` and `:1767`:
+  //   BEFORE, both themes (Tailwind v4 INLINES its built-in scale — `DECISION Phase 87.7`):
+  //     `0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)`
+  //     (`node_modules/tailwindcss/theme.css:410`)
+  //   AFTER, light: `0 10px 15px rgba(120, 80, 40, 0.10)` — warm, single layer, no negative spread
+  //   AFTER, dark:  `0 0 0 1px var(--purple-600), 0 0 20px rgba(168, 85, 247, 0.05)` — a purple
+  //     hairline PLUS a faint glow. It is **not** `none`; `none`-equivalent (`0 0 #0000`) is
+  //     `--shadow-sm`'s value (`:1361` light, `:1765` dark) and not this token's.
+  // `dialog.tsx` is the ground of every Radix dialog in the app, so its hue change is the widest
+  // single visual delta in the D49-b set; disclosed for `/gsd-ui-review` in `88.6-36-SUMMARY.md`.
+  // The phase-level V-row is UI-SPEC §1.2's V-16, whose D49-b amendment already names all three
+  // sites by file, so NO new V-number was minted. All three are SURFACES, not `.btn`s — no hover
+  // pin was added and no `enabled-hover:` spelling is involved. Entries DELETED, not zeroed.
   'app/components/createGroup.js': {
     sites: 3,
     why: 'Three occurrences: `shadow-sm` (:184), and `shadow-sm` + `hover:shadow-lg` on one element (:228). Plan 33 snaps all three. The `shadow-sm` pair is the visible-consequence case — `--shadow-sm` paints nothing, so the snap REMOVES a black xs shadow.',
