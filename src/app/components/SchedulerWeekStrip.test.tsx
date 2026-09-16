@@ -262,3 +262,79 @@ describe('SchedulerWeekStrip — the tint carries a numeric cue and the shared r
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Plan 88.6-26 — the sub-12px fold (D-01), the W35 weight settlements, and the strip half of the
+// UI-SPEC §9.3 E9 backstops.
+//
+// Same division of labour as the heatmap suite: jsdom holds the SOURCE invariant, Chromium at
+// 375px held the geometry (two identical settled reads — cell 45.84 x 56 before and after, date
+// number 12.58 -> 14.81 inside it, tablist scrollWidth == clientWidth == 327; 88.6-26-SUMMARY.md),
+// and e2e/padding-budget.spec.ts re-runs the geometry in CI. Each arm below was demonstrated RED
+// against the pre-fold form.
+// ---------------------------------------------------------------------------
+
+function stripClassNames(root: HTMLElement): string[] {
+  return [root, ...Array.from(root.querySelectorAll<HTMLElement>('*'))]
+    .map((el) => el.getAttribute('class') ?? '')
+    .filter(Boolean);
+}
+
+describe('UI-SPEC §9.3 E9 · overflow — the scheduler week strip after the 10px -> 12px fold', () => {
+  it('leaves NO arbitrary text size in the rendered strip (D-01: 12px is the floor)', () => {
+    const { container } = renderStrip();
+    expect(
+      stripClassNames(container as HTMLElement).filter((c) => /\btext-\[\d/.test(c)),
+      'each strip cell is 45.84px wide at 375px with 2.7px of total margin against the 44px touch ' +
+        'floor (the geometry comment on the tablist). An arbitrary size reappearing here is a new ' +
+        'sub-floor site on the tightest surface in the app.'
+    ).toEqual([]);
+  });
+
+  it('keeps every off-scale weight off the strip: only 400 and 700 survive (UI-SPEC §4.5)', () => {
+    const { container } = renderStrip();
+    expect(
+      stripClassNames(container as HTMLElement).filter((c) =>
+        /\bfont-(medium|semibold|light|thin|extrabold)\b/.test(c)
+      )
+    ).toEqual([]);
+  });
+});
+
+describe('UI-SPEC §9.3 E9 · long-text — the strip cell clips exactly as it did before the fold', () => {
+  it('keeps the tab cell\'s overflow-hidden — the fold must not change the clip treatment', () => {
+    renderStrip();
+    // The before-fold treatment was `overflow-hidden` on the button, and E9 · long-text requires
+    // the fold to leave it exactly as it was. REMOVING it would let a wide date number push the
+    // 46.7px cell; ADDING a truncate would be a new treatment the fold introduced. Both red here.
+    for (const tab of screen.getAllByRole('tab')) {
+      expect(tab.className).toMatch(/\boverflow-hidden\b/);
+      expect(tab.className).not.toMatch(/\b(truncate|text-ellipsis|line-clamp-)/);
+    }
+  });
+});
+
+describe('D-03 / W35 — the two weight settlements this plan records at the source', () => {
+  it('keeps the aggregate cue at 700, NOT folded to 400 (the colour-vision-deficiency exception)', () => {
+    renderStrip();
+    // The aggregate is the mandatory non-colour cue over the calendarWashColor fill. A mechanical
+    // §4.5 read sends unfamilied 600 to 400; this arm is what makes that a red rather than a
+    // silent regression. Measured over the darkest wash step: 6.55:1 light, 3.06:1 dark.
+    const cue = screen.getAllByRole('tab')[2].querySelector(':scope > span:nth-of-type(2)');
+    expect(cue?.className).toMatch(/\bfont-bold\b/);
+    expect(cue?.className).toMatch(/\btext-xs\b/);
+  });
+
+  it('keeps a weight differentiator on the weekday letter now that it shares size AND ink with the date', () => {
+    renderStrip();
+    // On a NON-today cell both spans resolve to text-content-muted, and the fold put both at 12px.
+    // Weight is the only hierarchy the header zone has left, so 400 here is a real defect.
+    const cell = screen.getAllByRole('tab')[0];
+    const letter = cell.querySelector('span > span:nth-of-type(1)');
+    const num = cell.querySelector('[data-testid="strip-day-number"]');
+    expect(letter?.className).toMatch(/\bfont-bold\b/);
+    expect(letter?.className).toMatch(/\btext-content-muted\b/);
+    expect(num?.className).toMatch(/\btext-content-muted\b/);
+    expect(num?.className).not.toMatch(/\bfont-(bold|medium|semibold)\b/);
+  });
+});

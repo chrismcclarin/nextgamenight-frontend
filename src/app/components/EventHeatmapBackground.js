@@ -49,7 +49,7 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
   if (loading) {
     return (
       <div className="select-none">
-        <div className="grid gap-px" style={{ gridTemplateColumns: '24px repeat(7, 1fr)' }}>
+        <div className="grid gap-px" style={{ gridTemplateColumns: '28px repeat(7, 1fr)' }}>
           {/* Header row skeleton */}
           <div />
           {Array.from({ length: 7 }).map((_, i) => (
@@ -206,11 +206,21 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
 
   return (
     <div className="select-none">
-      {/* Grid. 87.8-13 walkthrough F-2: 24px label gutter fits the widest compact
-          label ("12p" at 10px mono) — the old 40px read as dead left padding at 375px. */}
+      {/* Grid. 87.8-13 walkthrough F-2: the label gutter is sized to fit the widest compact
+          label ("12p") at the label's own size — the old 40px read as dead left padding at 375px.
+          DECISION Phase 88.6-26 (D-01 / delta V-7): 24px -> 28px, chosen OVER dropping the label's
+          `font-mono` and OVER shrinking `pr-1`. F-2's 24px was measured against "12p" at 10px mono
+          (18.06px against the 20px content box a 24px gutter with pr-1 leaves). D-01 folds that
+          label up to the 12px floor, where the SAME string measures 21.69px in Chromium at 375px —
+          1.69px WIDER than the box, so it bled left out of the gutter column. This is the reflow
+          V-7 names, found by measuring rather than by assuming. 28px restores F-2's own rule (the
+          gutter fits the widest compact label) at the new size with 2.31px to spare; it costs each
+          day column 0.56px (38.56 -> 38.00 at 375px) and no row height. Dropping `font-mono` would
+          have been a look change with no ruling, and pr-0.5 would have left 0.31px of margin.
+          Widening this back to 40px re-opens F-2; narrowing it below 26px re-opens the bleed. */}
       <div
         className="grid gap-px"
-        style={{ gridTemplateColumns: '24px repeat(7, 1fr)' }}
+        style={{ gridTemplateColumns: '28px repeat(7, 1fr)' }}
       >
         {/* Header row: day labels with date numbers */}
         <div />
@@ -218,10 +228,20 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
           const dayNum = parseInt(date.split('-')[2], 10);
           return (
             <div key={date} className="text-center">
-              <span className="text-xs font-medium text-content-muted block leading-tight">
+              {/* DECISION Phase 88.6-26 (D-03 / W35): weight 700 here, chosen OVER 400 and over
+                  keeping today's 500. D-03 would fold this to 400 on the stated ground that the
+                  emphasis is "already carried by COLOUR" — that is FALSE at this cell: this weekday
+                  letter and the date number directly below it carry the IDENTICAL ink token
+                  (text-content-muted), and this plan folds that number up from 10px to the 12px
+                  floor, so SIZE stops separating them as well. Weight is the only hierarchy the
+                  header cell has left once its two spans converge on one size and one ink. 500 has
+                  no rung on the phase's two-weight scale, so the retained differentiator is 700.
+                  Dropping this to 400 flattens a weekday header into its own datum: a decision, not
+                  a cleanup. */}
+              <span className="text-xs font-bold text-content-muted block leading-tight">
                 {dayLabels[i]}
               </span>
-              <span className="text-[10px] text-content-muted">{dayNum}</span>
+              <span className="text-xs text-content-muted">{dayNum}</span>
             </div>
           );
         })}
@@ -237,7 +257,7 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
             {/* Hour label (only on the :00 row) */}
             {s.showLabel ? (
               <div className="flex items-center justify-end pr-1">
-                <span className="text-[10px] text-content-muted font-mono">{formatHour(s.hour)}</span>
+                <span className="text-xs text-content-muted font-mono">{formatHour(s.hour)}</span>
               </div>
             ) : (
               <div />
@@ -270,14 +290,32 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
                   cols={1}
                   availableCount={count}
                   totalMembers={totalMembers}
-                  ariaLabel={`Availability for ${date} hour ${s.hour}`}
+                  // The count is folded in HERE, at the call site, and the shared ReadCell is
+                  // deliberately NOT edited. ReadCell puts this prop on an explicit `aria-label`
+                  // (ReadCell.tsx:218), and an explicit aria-label OVERRIDES child text — so the
+                  // count span below is invisible to a screen reader and the cell's RESTING name
+                  // used to carry no availability level at all. The tooltip's `aria-describedby`
+                  // (HeatmapTooltip.js:282) only exists while the tooltip is open, so it closes the
+                  // hover/focus case and never the resting one. Colour-only encoding for a screen
+                  // reader is the same defect the count badge's weight exception exists to prevent.
+                  ariaLabel={`Availability for ${date} hour ${s.hour}: ${count} of ${totalMembers} available`}
                   tooltipContent={tooltipContent}
                   fill={false}
                   style={{ minHeight: '28px' }}
                   className="rounded-xs flex items-center justify-center cursor-default"
                 >
                   {count > 0 && (
-                    <span className="text-[11px] text-green-900 font-semibold">{count}</span>
+                    /* DECISION Phase 88.6-26 (D-03 / W35): weight 700, chosen OVER 400, because the
+                       fill/ink pairing needs the weight. This count is the mandatory NON-COLOUR cue
+                       for the cell's green wash: small ink on a coloured fill at fixed geometry
+                       (28px minimum cell height), where 400 at 12px on a tinted fill loses the
+                       legibility the weight is carrying — and the cue is a colour-vision-deficiency
+                       requirement (~8% of men), not decoration. UI-SPEC 4.5's table has no family
+                       for it, so a mechanical read would send it to 400. Settled at 700 alongside
+                       its two siblings, the strip aggregate (SchedulerWeekStrip.tsx) and the
+                       scheduler badge (EventScheduler.tsx), so one cue does not end this phase at
+                       three different weights. */
+                    <span className="text-xs text-green-900 font-bold">{count}</span>
                   )}
                 </ReadCell>
               );
@@ -288,14 +326,14 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
 
       {/* Legend strip */}
       <div className="flex items-center justify-center gap-1 mt-2">
-        <span className="text-[9px] text-content-muted">Less</span>
+        <span className="text-xs text-content-muted">Less</span>
         <div className="w-3 h-3 bg-surface-elevated rounded-xs" />
         <div className="w-3 h-3 bg-green-100 rounded-xs" />
         <div className="w-3 h-3 bg-green-200 rounded-xs" />
         <div className="w-3 h-3 bg-green-300 rounded-xs" />
         <div className="w-3 h-3 bg-green-400 rounded-xs" />
         <div className="w-3 h-3 bg-green-500 rounded-xs" />
-        <span className="text-[9px] text-content-muted">More available</span>
+        <span className="text-xs text-content-muted">More available</span>
         {/* Plan 72-02: dropped the "(hover for names)" hint — interaction is no
             longer hover-only (touch + keyboard now reach the tooltip via the
             shared HeatmapTooltip primitive). Keeping the legend clean instead
@@ -303,17 +341,23 @@ export default function EventHeatmapBackground({ heatmapData, loading, anchorDat
       </div>
 
       {membersWithoutDataCount > 0 && (
-        <p className="text-[10px] text-content-muted text-center mt-1">
+        <p className="text-xs text-content-muted text-center mt-1">
           {membersWithoutDataCount} of {totalGroupMembers} members haven't shared availability yet
         </p>
       )}
 
       {totalMembers === 0 && totalGroupMembers > 0 && (
         <div className="text-center mt-3 px-2">
-          <p className="text-xs font-medium text-content-secondary mb-1">
+          {/* 12 -> 14 and the weight deleted. This is the primary line of an empty state, which is
+              NOT one of UI-SPEC 4.2's enumerated Caption roles, so 12px here is the "12px misuse
+              moves UP to 14" case rather than the dense-grid-cell case the rest of this file is.
+              The weight takes 4.5's EMPHASIS outcome: this line already carries
+              text-content-secondary against the helper's text-content-muted below it, so the
+              hierarchy is colour-carried and does not need a second signal. */}
+          <p className="text-sm text-content-secondary mb-1">
             No availability shared yet
           </p>
-          <p className="text-[11px] text-content-muted">
+          <p className="text-xs text-content-muted">
             Invite members or set a schedule to see availability here.
           </p>
         </div>

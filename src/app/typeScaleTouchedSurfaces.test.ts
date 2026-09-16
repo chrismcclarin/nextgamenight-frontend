@@ -1495,18 +1495,12 @@ const ARBITRARY_SIZE_ROSTER: ExemptionRoster = {
       '2 arbitrary size values (text-[10px]@169, text-[10px]@178), 2 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
   },
-  'app/components/EventHeatmapBackground.js': {
-    sites: 7,
-    why:
-      '7 arbitrary size values (text-[10px]@224, text-[10px]@240, text-[11px]@280, text-[9px]@291, text-[9px]@298, text-[10px]@306, text-[11px]@316), 7 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
-  },
-  'app/components/SchedulerWeekStrip.tsx': {
-    sites: 2,
-    why:
-      '2 arbitrary size values (text-[10px]@196, text-[10px]@208), 2 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
-  },
+  // DELETED by plan 88.6-26 task 1 (wave 7, 2026-09-16): 'app/components/EventHeatmapBackground.js'
+  // carried sites: 7 (text-[10px]@224, text-[10px]@240, text-[11px]@280, text-[9px]@291,
+  // text-[9px]@298, text-[10px]@306, text-[11px]@316) and 'app/components/SchedulerWeekStrip.tsx'
+  // carried sites: 2 (text-[10px]@196, text-[10px]@208). All NINE folded UP to text-xs, the D-01
+  // 12px floor, and the named V-7 reflow risk was MEASURED in Chromium at 375px per site rather
+  // than assumed. Entries DELETED, not zeroed; the roster is exact in both directions.
   'app/components/UpcomingEventsCard.js': {
     sites: 1,
     why:
@@ -1551,8 +1545,16 @@ const ARBITRARY_SIZE_ROSTER: ExemptionRoster = {
  * `text-[10px]` badge and pill labels folded up onto the caption rung in one commit, and its
  * roster entry was deleted with them. This is an EXACT equality, not a floor, so the shrink is
  * a deliberate edit in the same commit as the fold — which is the point.
+ *
+ * 20 -> 11, plan 88.6-26 task 1 (wave 7, 2026-09-16): the DENSE-GRID cluster. Seven sites in
+ * `app/components/EventHeatmapBackground.js` (the date number, the hour gutter label, the
+ * per-cell count, both legend labels, the members-without-data note and the empty-state helper)
+ * and two in `app/components/SchedulerWeekStrip.tsx` (the date number and the aggregate cue)
+ * folded up to `text-xs` in one commit, with both roster entries deleted alongside. These are
+ * the sites D-01 names as the NAMED REFLOW RISK (delta V-7), so the fold was measured in
+ * Chromium at 375px per site before it landed — see 88.6-26-SUMMARY.md.
  */
-const EXPECTED_SUB_FLOOR_SITES = 20;
+const EXPECTED_SUB_FLOOR_SITES = 11;
 
 /** Negative control for the strip on THIS file-level scan. */
 const FIXTURE_ARBITRARY_COMMENTS = `
@@ -1835,12 +1837,15 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '2 off-scale weight sites (0 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-01, 88.6-05, 88.6-10, 88.6-12, 88.6-18, 88.6-21, 88.6-27, 88.6-34, 88.6-39, 88.6-41, 88.6-42, 88.6-43, 88.6-44, 88.6-46.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/EventHeatmapBackground.js': {
-    sites: 3,
-    why:
-      '3 off-scale weight sites (2 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-26.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-26 task 1 (wave 7, 2026-09-16): 'app/components/EventHeatmapBackground.js'
+  // carried sites: 3, and the three resolved THREE different ways — which is why the entry could
+  // not close on one rule. :221's weekday letter took HIERARCHY 700 (a DECISION marker at the site
+  // records that D-03's "the emphasis is already carried by COLOUR" premise is false there: it and
+  // the date number below it share text-content-muted, and this plan folded that number up to the
+  // same 12px, so weight is the only hierarchy left). :280's per-cell count is a
+  // colour-vision-deficiency cue over a green wash and took 600 -> 700 with its own marker. :313's
+  // empty-state line took EMPHASIS (utility deleted; text-content-secondary against the helper's
+  // text-content-muted does the work) and moved 12 -> 14 as a 4.2 misuse. Entry DELETED, not zeroed.
   'app/components/EventResultFields.js': {
     sites: 3,
     why:
@@ -2015,12 +2020,15 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '8 off-scale weight sites (7 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-16, 88.6-32.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/SchedulerWeekStrip.tsx': {
-    sites: 2,
-    why:
-      '2 off-scale weight sites (1 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-26, 88.6-40.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-26 task 1 (wave 7, 2026-09-16): 'app/components/SchedulerWeekStrip.tsx'
+  // carried sites: 2, both settled at 700 with a DECISION marker apiece. :189's weekday letter is
+  // the byte-identical twin of EventHeatmapBackground.js's (copied verbatim from it) and took the
+  // same HIERARCHY 700 for the same reason — on a non-today cell it and the date number below it
+  // both resolve to text-content-muted, and the number folded up to the same 12px here. :208's
+  // aggregate is the mandatory non-colour cue over the inline calendarWashColor fill and took
+  // 600 -> 700, the same settlement as its two siblings in EventHeatmapBackground.js and
+  // EventScheduler.tsx, so one cue does not end the phase at three different weights. Plan 88.6-40
+  // was a co-owner of this entry and has no weight site left here. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16): `app/components/StartPollModal.js`
   // carried `sites: 4` — its four form `<label>`s (:186, :204, :231, :251), all
   // `block text-sm font-medium text-content-primary mb-1`. All four now read `font-normal`,
