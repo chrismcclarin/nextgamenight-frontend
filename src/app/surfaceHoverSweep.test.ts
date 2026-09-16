@@ -212,20 +212,29 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
     // the exact roster, so adding a hoverable surface is never a test edit. Removing
     // several IS.
     //
-    // 36 -> 35, plan 88.6-18 (wave 7, 2026-09-16), WITH THE DEPARTING SITE NAMED, which is
-    // the only form in which this number may be lowered. `gameDetail/page.js`'s
-    // GuestInviteButton idle branch carried a BARE `hover:bg-surface-hover`; migrating that
-    // control to `<Button variant="ghost">` deleted it because the ghost variant already
-    // supplies the byte-equal wash as `enabled-hover:bg-surface-hover`
-    // (`Button.tsx:209`). THE WASH IS NOT LOST — it changed SPELLING, and this scanner
-    // deliberately counts only the bare `hover:` token, so the primitive's gated form is
-    // invisible to it by construction. The bare form could not be kept: under the D8
-    // amendment that control is `aria-disabled` while sending, and a bare `hover:` re-lights
-    // a gated control (`Button.tsx`'s `DECISION Phase 88.6-06 (D10)`).
-    // Every remaining `.btn` migration in this phase will cross this floor the same way. A
-    // future lowering must likewise name the site that left; lowering it bare is forbidden.
+    // 36 -> 32, plan 88.6-18 (wave 7, 2026-09-16), WITH ALL FOUR DEPARTING SITES NAMED, which
+    // is the only form in which this number may be lowered. Every one of them was in
+    // `app/gameDetail/page.js` and NONE of them lost the wash:
+    //
+    //  1. the GuestInviteButton idle branch — migrated to `<Button variant="ghost">`, whose
+    //     cva variant already supplies the byte-equal `enabled-hover:bg-surface-hover`
+    //     (`Button.tsx:209`). The bare form could NOT be kept: under the D8 amendment that
+    //     control is `aria-disabled` while sending, and a bare `hover:` re-lights a gated
+    //     control — the exact defect `enabled-hover` exists to prevent
+    //     (`Button.tsx`'s `DECISION Phase 88.6-06 (D10)`).
+    //  2-4. the hand-rolled event-actions kebab's trigger and its two destructive items —
+    //     RETIRED onto the shared `KebabMenu`, whose own trigger and items carry the wash and
+    //     are already counted in this set (`KebabMenu.js:429`, `:549`, `:550`).
+    //
+    // So the property this floor protects — the wash is really adopted — is intact; what
+    // changed is the SPELLING (bare `hover:` -> the gated `enabled-hover:` on the primitive)
+    // and the OWNER (a per-site string -> a shared component). This scanner deliberately
+    // counts only the bare `hover:` token, so the primitive's gated form is invisible to it by
+    // construction, and every remaining `.btn` migration in this phase will cross this floor
+    // the same way. A future lowering must likewise name every site that left; lowering it
+    // bare is forbidden.
     const sites = sitesOf(files, `${HOVER_PREFIX}${NEW_HOVER}`);
-    expect(sites.length, `adopted at: ${sites.join(', ')}`).toBeGreaterThanOrEqual(35);
+    expect(sites.length, `adopted at: ${sites.join(', ')}`).toBeGreaterThanOrEqual(32);
   });
 
   it('4b. the three dark-chrome menu rows are on the HEADER family, not the card one', () => {

@@ -295,11 +295,12 @@ const ALIAS_ROSTER: ExemptionRoster = {
     why: '`shadow-lg` on the bottom-sheet panel (:199). Plan 37 snaps it to `shadow-theme-lg`; non-button surface.',
     owner: D49B,
   },
-  'app/gameDetail/page.js': {
-    sites: 1,
-    why: 'REMOVED, not re-spelled: `:1534` (className at `:1536`) is the hand-rolled kebab dropdown `<div role="menu">` that plan 18 retires onto the shared `KebabMenu`, which carries its own panel shadow. This entry closes by DELETION of the element, not by a snap.',
-    owner: D49B,
-  },
+  // `app/gameDetail/page.js` CLOSED by plan 88.6-18 task 2 (wave 7, 2026-09-16), with
+  // `why` = REMOVED WITH THE HAND-ROLLED MENU. Its one alias site was the dropdown panel of
+  // the second, hand-rolled kebab; that element no longer exists, and the converged
+  // `KebabMenu` carries its own `shadow-theme-lg` (snapped by plan 88.6-16). So the
+  // phase-close count plan 46 verifies reads 16 SNAPPED + 1 REMOVED, never 17 snapped.
+  // Entry DELETED rather than zeroed; the roster is exact in both directions.
 };
 
 /**

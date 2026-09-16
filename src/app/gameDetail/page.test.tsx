@@ -58,6 +58,10 @@ const EVENT_ID = 'EVT1';
 const h = vi.hoisted(() => ({
   selfUuid: undefined as string | undefined,
   search: '',
+  // 88.6-18: hoisted so a test can model the AUTH half of a handler pre-check the
+  // same way `selfUuid` models the identity half. Defaults to the shipped literal,
+  // so every pre-existing test is byte-equivalent.
+  userSub: 'auth0|self-sub' as string | undefined,
 }));
 
 vi.mock('@/lib/hooks/useSelfIdentity', () => ({
@@ -76,7 +80,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@auth0/nextjs-auth0/client', () => ({
-  useUser: () => ({ user: { sub: 'auth0|self-sub' }, isLoading: false }),
+  useUser: () => ({ user: h.userSub ? { sub: h.userSub } : undefined, isLoading: false }),
 }));
 
 vi.mock('@/app/components/TimezoneProvider', () => ({
@@ -330,6 +334,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.selfUuid = undefined;
   h.search = '';
+  h.userSub = 'auth0|self-sub';
 });
 
 afterEach(cleanup);
@@ -1375,5 +1380,211 @@ describe('gameDetail guest-removal disclosure (row 530 FE half)', () => {
     expect(
       within(dialog).queryByText('Guests and your own row are removed via Edit Event.')
     ).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Plan 88.6-18 — the event-actions kebab after the hand-rolled menu was retired
+// onto the shared `KebabMenu` component.
+//
+// THREE AUTHORIZATION GATES ride on this swap (review D56). `KebabMenu` maps its
+// `items` UNCONDITIONALLY, so a gate not written into the items array is a LEAKED
+// action — and the backend accepts self-leave for any matching `User.id`, so a
+// leaked Leave item does not fail, it SUCCEEDS. Each is proven by role, not read.
+//
+// Everything here is a DOM fact (attributes, `document.activeElement`, call
+// counts), so no Playwright arm is needed for any of it (review D28).
+// ---------------------------------------------------------------------------
+
+/** Open the Event-actions kebab and return the list the trigger names while open. */
+async function openEventActions(user: ReturnType<typeof userEvent.setup>) {
+  const trigger = await screen.findByRole('button', { name: 'Event actions' });
+  await user.click(trigger);
+  const list = document.getElementById(trigger.getAttribute('aria-controls') as string);
+  expect(list, 'the open kebab must name its list through aria-controls').not.toBeNull();
+  return { trigger, list: list as HTMLElement };
+}
+
+/** A promise-returning mock that stays IN FLIGHT until `settle`/`fail` is called. */
+function deferred(mock: Mock) {
+  let settle: (value?: unknown) => void = () => {};
+  let fail: (reason?: unknown) => void = () => {};
+  mock.mockImplementation(
+    () =>
+      new Promise((resolve, reject) => {
+        settle = resolve;
+        fail = reject;
+      })
+  );
+  return { settle: (v?: unknown) => settle(v), fail: (r?: unknown) => fail(r) };
+}
+
+describe('gameDetail event-actions kebab: the three authorization gates (D56)', () => {
+  it.each(['owner', 'admin'] as const)(
+    'gives a group %s the Cancel item and NOT the Leave item',
+    async (role) => {
+      const user = userEvent.setup();
+      renderEventDetail({ role });
+      const { list } = await openEventActions(user);
+      expect(within(list).getByRole('button', { name: 'Cancel event' })).toBeInTheDocument();
+      expect(within(list).queryByRole('button', { name: 'Leave event' })).toBeNull();
+    }
+  );
+
+  it('gives a game-only caller the Leave item and NOT the Cancel item', async () => {
+    const user = userEvent.setup();
+    renderEventDetail({ role: 'game-only' });
+    const { list } = await openEventActions(user);
+    expect(within(list).getByRole('button', { name: 'Leave event' })).toBeInTheDocument();
+    expect(within(list).queryByRole('button', { name: 'Cancel event' })).toBeNull();
+  });
+
+  it.each(['member', 'pending'] as const)(
+    'gives a %s no Event-actions trigger at all — the OUTER gate',
+    async (role) => {
+      renderEventDetail({ role });
+      // Settle on something only the loaded single-event view renders, so the
+      // absence below is a real absence and not a race on the loading screen.
+      await screen.findByRole('heading', { name: 'Game Night' });
+      expect(screen.queryByRole('button', { name: 'Event actions' })).toBeNull();
+    }
+  );
+});
+
+describe('gameDetail destructive kebab items: keepOpen, ariaDisabled and the re-entry latch', () => {
+  it('keeps the menu OPEN and readable while Cancel is in flight, and sends exactly one DELETE', async () => {
+    const user = userEvent.setup();
+    deferred(eventsAPI.deleteEvent as Mock);
+    renderEventDetail({ role: 'owner' });
+    const { list } = await openEventActions(user);
+
+    const cancel = within(list).getByRole('button', { name: 'Cancel event' });
+    // THE NO-FLUSH SHAPE IS LOAD-BEARING (review D63): both activations are
+    // dispatched inside ONE `act()`, so the second runs the previous render's
+    // closure where `cancellingEvent` is still false. After a flush the item gate
+    // alone satisfies this and the test passes with no latch in the code.
+    await act(async () => {
+      cancel.click();
+      cancel.click();
+    });
+
+    expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1);
+    // The ruled arm (c): still OPEN, with the in-flight label readable IN PLACE —
+    // not "after reopening".
+    const inFlight = within(list).getByRole('button', { name: 'Cancelling…' });
+    expect(inFlight).toHaveAttribute('aria-disabled', 'true');
+    expect(inFlight.hasAttribute('disabled')).toBe(false);
+  });
+
+  it('keeps the menu OPEN and readable while Leave is in flight, and sends exactly one DELETE', async () => {
+    const user = userEvent.setup();
+    deferred(eventsAPI.leaveEvent as Mock);
+    renderEventDetail({ role: 'game-only' });
+    const { list } = await openEventActions(user);
+
+    const leave = within(list).getByRole('button', { name: 'Leave event' });
+    await act(async () => {
+      leave.click();
+      leave.click();
+    });
+
+    expect(eventsAPI.leaveEvent).toHaveBeenCalledTimes(1);
+    const inFlight = within(list).getByRole('button', { name: 'Leaving…' });
+    expect(inFlight).toHaveAttribute('aria-disabled', 'true');
+    expect(inFlight.hasAttribute('disabled')).toBe(false);
+  });
+
+  it('leaves focus ON the activated item, and Escape from there closes and restores to the trigger', async () => {
+    const user = userEvent.setup();
+    deferred(eventsAPI.deleteEvent as Mock);
+    renderEventDetail({ role: 'owner' });
+    const { trigger, list } = await openEventActions(user);
+
+    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    // The whole reason the gate is `ariaDisabled` and not the native attribute:
+    // a natively-disabled focused element blurs to <body>, which is exactly the
+    // state this menu's container-bound Escape cannot see.
+    const inFlight = within(list).getByRole('button', { name: 'Cancelling…' });
+    expect(document.activeElement).toBe(inFlight);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).not.toBe(trigger);
+
+    await user.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Cancelling…' })).toBeNull()
+    );
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('STRANDED-LATCH REGRESSION (Leave): a pre-check rejection leaves the retry live', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.leaveEvent as Mock).mockResolvedValue({});
+    const { rerender } = renderEventDetail({ role: 'game-only' });
+    await screen.findByRole('button', { name: 'Event actions' });
+
+    // Identity goes UNRESOLVED. `userScope` deliberately keeps its prior value
+    // (unresolved = indeterminate, never a downgrade), so the control stays.
+    h.selfUuid = undefined;
+    rerender(<GameDetailPage />);
+
+    const { list } = await openEventActions(user);
+    await user.click(within(list).getByRole('button', { name: 'Leave event' }));
+    expect(eventsAPI.leaveEvent).not.toHaveBeenCalled();
+    // `keepOpen` means the rejected activation left the menu open, so the SAME
+    // list is still mounted for the retry — no second trigger click (which would
+    // toggle it shut).
+
+    // Identity resolves; the SAME control must still work. A latch taken above
+    // `handleLeaveEvent`'s three bare pre-check returns — all of them OUTSIDE any
+    // `try` — would never release, and Leave would be dead for the life of the
+    // mount. Nothing else in this suite catches that.
+    h.selfUuid = SELF_UUID;
+    rerender(<GameDetailPage />);
+    await user.click(within(list).getByRole('button', { name: 'Leave event' }));
+
+    await waitFor(() => expect(eventsAPI.leaveEvent).toHaveBeenCalledTimes(1));
+  });
+
+  it('STRANDED-LATCH REGRESSION (Cancel): a pre-check rejection leaves the retry live', async () => {
+    const user = userEvent.setup();
+    (eventsAPI.deleteEvent as Mock).mockResolvedValue({});
+    const { rerender } = renderEventDetail({ role: 'owner' });
+    await screen.findByRole('button', { name: 'Event actions' });
+
+    // `handleCancelEvent`'s ONLY pre-check is `!user?.sub || !singleEvent?.id`.
+    // `singleEvent` is truthy by construction wherever this control renders (the
+    // whole branch is gated on it), so the AUTH half is the reachable one.
+    h.userSub = undefined;
+    rerender(<GameDetailPage />);
+
+    const { list } = await openEventActions(user);
+    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+    expect(eventsAPI.deleteEvent).not.toHaveBeenCalled();
+
+    h.userSub = 'auth0|self-sub';
+    rerender(<GameDetailPage />);
+    await user.click(within(list).getByRole('button', { name: 'Cancel event' }));
+
+    await waitFor(() => expect(eventsAPI.deleteEvent).toHaveBeenCalledTimes(1));
+  });
+});
+
+// Owner ruling #175 (2026-09-14, option 2): all five breadcrumb navs in the tree
+// take an accessible name. This file owns TWO of the five, so each assertion has
+// to DISAMBIGUATE its surface rather than assume a single match — and the property
+// under test is the landmark's NAME, which only a role-plus-name query proves.
+describe('gameDetail breadcrumb landmarks are named (#175)', () => {
+  it('names the SINGLE-EVENT surface breadcrumb', async () => {
+    renderEventDetail({ role: 'owner' });
+    await screen.findByRole('heading', { name: 'Game Night' });
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(nav).getByText('Game Night')).toBeInTheDocument();
+  });
+
+  it('names the GAME-DETAIL surface breadcrumb', async () => {
+    renderGameDetail({ role: 'member' });
+    await screen.findByRole('heading', { name: 'Wingspan' });
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(nav).getByText('Wingspan')).toBeInTheDocument();
   });
 });

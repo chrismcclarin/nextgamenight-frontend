@@ -205,11 +205,12 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'five sites migrate under plan 88.6-32; the remaining TWO are PERMANENT — the 32x32 player-count steppers are not primary actions, 32px clears WCAG 2.2 2.5.8 24px floor, and a `compact` rung on Button was REJECTED because it would convert a closed two-site exemption into an open sub-44 API affordance and silently add `shadow-theme-sm hover:shadow-theme-md` to two 32px squares (D-10)',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-10' },
   },
-  'app/gameDetail/page.js': {
-    sites: 7,
-    why: 'plan 88.6-18 sweeps gameDetail/page.js (151 sites across 2939 lines) including these seven',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // `app/gameDetail/page.js` CLOSED by plan 88.6-18 task 2 (wave 7, 2026-09-16): all SEVEN
+  // `.btn` elements are `<Button>` with their dead classes deleted — including the
+  // Share-Game-QR accent control (D23), whose per-site focus string went with them under
+  // A-2 arm A. Entry DELETED rather than zeroed; the roster is exact in both directions, so
+  // a zeroed entry would red as a fossil permission. The TYPED_BUTTON_EXEMPT entry for this
+  // same file is closed by the same commit — the two rules see different populations.
   'app/restore/group/[token]/page.tsx': {
     sites: 7,
     why: 'plan 88.6-23 sweeps the five token-and-invite entry pages, this file among them',
@@ -728,15 +729,16 @@ const BUTTON_COMPONENTS = TAGS.filter((t) => t.name === 'Button');
 const TYPED_BUTTONS = BUTTON_COMPONENTS.filter((t) => t.classes.some((c) => TEXT_SIZE.test(c)));
 const TYPED_BUTTON_COUNTS = countByFile(TYPED_BUTTONS);
 
-// Seeded from the live scan, 2026-09-15: TWO sites, both in `gameDetail/page.js`
-// (`:1282` and `:1290`, the desktop Edit/Delete ghost pair, each `className="px-3 py-1 text-sm"`).
-const TYPED_BUTTON_EXEMPT: ExemptionRoster = {
-  'app/gameDetail/page.js': {
-    sites: 2,
-    why: 'the two desktop ghost session actions carry `px-3 py-1 text-sm`; plan 88.6-18 sweeps gameDetail/page.js and re-tiers them onto a Button rung rather than a call-site text size',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-3' },
-  },
-};
+// Seeded from the live scan, 2026-09-15: TWO sites, both in `gameDetail/page.js` (the desktop
+// Edit/Delete ghost pair, each `className="px-3 py-1 text-sm"`).
+//
+// EMPTY since plan 88.6-18 task 2 (wave 7, 2026-09-16), and deliberately not deleted: both
+// entries were closed by DROPPING those three utilities, which were dead against the unlayered
+// `.btn` rule to begin with. The ghost demotion they carry (F-6c) is the VARIANT and is
+// unchanged. An empty roster is the correct resting state for this rule — the population only
+// GROWS as the phase lands `<Button>` call sites, so a permanent entry here would be a
+// standing permission to write a dead size utility on the primitive.
+const TYPED_BUTTON_EXEMPT: ExemptionRoster = {};
 
 describe('AC-3 sibling: no text-size utility on a `<Button>`', () => {
   // ANTI-VACUITY. Unlike the `<button>` population, the `<Button>` one only GROWS as the phase

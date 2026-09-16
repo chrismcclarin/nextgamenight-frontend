@@ -558,8 +558,13 @@ const EXPECTED_PROP_SEAMS = 5;
  * headings all migrated in one commit — the largest single heading cluster in the phase. The
  * raise is +14, the measured number landed, not a round figure: this floor is `>=`, so a raise
  * that undershoots is silently green and buys nothing.
+ *
+ * RAISED 16 -> 25 by plan 88.6-18 task 2 (2026-09-16): `app/gameDetail/page.js`'s NINE headings,
+ * every level preserved (3 h1, 5 h2, 1 h3 — `EXPECTED_LEVELS` is byte-unchanged, which is the
+ * P4 half). Two of the nine are the game-title h1s RESEARCH §C.5 corrected: they were NOT
+ * size-less, they were already `text-3xl`, so they land at `size="display"` with no size change.
  */
-const EXPECTED_MIN_PRIMITIVES = 16;
+const EXPECTED_MIN_PRIMITIVES = 25;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -2091,9 +2096,14 @@ const WEIGHT_ROSTER: ExemptionRoster = {
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
   'app/gameDetail/page.js': {
-    sites: 48,
+    // 48 -> 45, plan 88.6-18 task 2 (2026-09-16): the three weights that left are the
+    // `font-semibold` on the migrated headings (700 now comes from the `Heading` base) and the
+    // `font-semibold`/`font-medium` that were DEAD on the migrated `.btn` controls. Task 3 of
+    // the same plan drives the remainder down; this is the measured value at the end of task 2,
+    // not a projection.
+    sites: 45,
     why:
-      '48 off-scale weight sites (27 font-medium, 21 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; emphasis (400 + a colour token); dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-05, 88.6-09, 88.6-12, 88.6-13, 88.6-16, 88.6-18, 88.6-29, 88.6-30, 88.6-33, 88.6-43, 88.6-45, 88.6-46.',
+      '45 off-scale weight sites. UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; emphasis (400 + a colour token); dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-05, 88.6-09, 88.6-12, 88.6-13, 88.6-16, 88.6-18, 88.6-29, 88.6-30, 88.6-33, 88.6-43, 88.6-45, 88.6-46.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
   'app/groupHomePage/page.js': {
