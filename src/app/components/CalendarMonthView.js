@@ -676,7 +676,37 @@ export default function CalendarMonthView({
                                   /* D-01: `text-[10px]` folds UP to the 12px floor. An arbitrary
                                      value is off the rung set by definition, and 10px is below
                                      the app's floor. `text-xs` is the Caption rung and a
-                                     per-cell RSVP counter is on §4.2's closed role list. */
+                                     per-cell RSVP counter is on §4.2's closed role list.
+
+                                     V-7 MEASURED, and it found something — reported here rather
+                                     than fixed, because the finding is PRE-EXISTING and its
+                                     element is plan 40's. Chromium, 375x812, two identical
+                                     settled reads over a stylesheet compiled from the live
+                                     `globals.css`, markup dumped from a real jsdom render of
+                                     this component in its COMPACT variant:
+
+                                       realistic `3Y 1M 2N`: content 50px BEFORE the fold and
+                                       58px after, in a 28px box.
+                                       worst case `12Y 12M 12N`: 67px -> 78px, same 28px box.
+
+                                     So this row has NEVER fitted its cell at phone width — the
+                                     three spans are a `flex gap-1` with no wrap, no truncation
+                                     and no `overflow-hidden` on either the tile or the day cell,
+                                     so they bleed to the right over the neighbouring cell. The
+                                     fold WIDENS an existing bleed by ~8px; it does not create
+                                     one, and reverting to 10px would not close it.
+
+                                     NO VERTICAL REFLOW: the tile grows 34.5px -> 37px inside an
+                                     80px `min-h` cell, and the grid measures 500px tall before
+                                     AND after. That is the reflow half of V-7, and it passes.
+
+                                     NOT FIXED HERE, and not left as a comment beside itself:
+                                     every candidate remedy (truncating the counts, clipping the
+                                     tile, dropping to two counts) is a LOOK change on the day
+                                     cell with no ruling behind it, and the day cell is plan 40's
+                                     element (W39/W41). Routed with the full table to
+                                     `.planning/deferred/phase-88.6.md` and recorded in
+                                     `.planning/WINDOWS.md`. */
                                   className="text-xs leading-tight mt-0.5"
                                 />
                               )}
