@@ -424,7 +424,7 @@ describe('Phase 88.6 AC-2 / R5: the geometry floors, at source level', () => {
    *
    * THE COG SUBJECT WAS RE-DERIVED, NOT TAKEN FROM THE PLAN. `88.6-12-PLAN.md` named
    * `src/app/userHome/UserHomePage.js`; a `Cog|Gear|Settings` grep over that file returns no
-   * such control, because the home card is rendered by `<GroupList>` (`UserHomePage.js:373`)
+   * such control, because the home card is rendered by `<GroupList>` (`UserHomePage.js:372`)
    * and the cog lives in `app/components/grouplist.js`. Recorded in `88.6-12-SUMMARY.md`.
    */
   const NAMED_SUBJECTS = {
