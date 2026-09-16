@@ -181,7 +181,29 @@ export function MemberChip({
    */
   const separation = separated && !tinted ? 'ring-2 ring-surface-card' : '';
 
-  const neutralInk = isOverflow ? 'text-content-muted' : 'text-content-secondary';
+  /*
+   * DECISION Phase 88.6-28 (D-15/D-16, UI-SPEC §5.6 "ink on the muted ground"): the `+N`
+   * overflow chip takes `text-content-secondary`, chosen OVER the `text-content-muted` it
+   * shipped with. MEASURED: `text-content-muted` on `bg-surface-muted` (NEUTRAL_FILL above) is
+   * 4.3725:1 — BELOW AA for this 12px ink. `text-content-secondary` on the same ground is
+   * 6.9620:1. The token was wrong, not the ground: `NEUTRAL_FILL` is the chip's identity on the
+   * untinted arm and is shared with the initials chips beside it.
+   *
+   * THE FORK COLLAPSES, and that is the point rather than an accident: the overflow chip and the
+   * initials chips now carry the SAME ink, because §5.6's prescribed ink on this ground is one
+   * token. REJECTED: keeping the ternary and giving the overflow arm some other lighter token to
+   * preserve a visual distinction — the two chips are ALREADY distinguished by their content
+   * (`+2` versus two initials), and re-deriving the distinction from ink is what put this site
+   * under AA in the first place. Re-forking this constant is a decision, not a cleanup.
+   *
+   * WHY THIS SITE IS NOT ON `groundInk.test.ts`'s OFFENDERS ROSTER, stated because its absence
+   * is otherwise evidence of nothing: the ground (`NEUTRAL_FILL`) and the ink (this constant)
+   * are both module-level constants referenced through `cn(...)`, never spelled inside one JSX
+   * opening tag — which is limitation 2 of that gate's `inkGroundPairs` walk. The gate could not
+   * SEE this pairing, so it never rostered it. Fixing it therefore moves no roster count. That
+   * blind spot is real and is recorded in `88.6-28-SUMMARY.md` rather than papered over.
+   */
+  const neutralInk = 'text-content-secondary';
 
   return (
     <span
@@ -349,8 +371,40 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
    * `length - 5`. Deriving from `nonSelf` removes the premise instead of documenting it, which
    * matters because SPEC Req 6 hands this component forward to two more surfaces where the
    * viewer is not necessarily in the array. Re-introducing the raw-length form is a decision.
+   *
+   * ——— AMENDED Phase 88.6-28 (W63), everything above KEPT AS HISTORY ———
+   *
+   * ONE SENTENCE ABOVE WAS FALSE OF THE SHIPPED CODE and is corrected here rather than
+   * rewritten: "while `selfUuid` is unresolved the filter excludes nobody". It did NOT. The
+   * shipped predicate was `(m) => m && m.id !== selfUuid`, and with `selfUuid` unresolved
+   * (`undefined`) a member row whose own `id` is also absent compared `undefined !== undefined`
+   * — false — so that member was filtered out AS IF THEY WERE THE VIEWER, for the whole identity
+   * window. The count arithmetic the marker describes is unaffected and still derives from
+   * `nonSelf`; what is fixed below is WHICH members reach it.
    */
-  const nonSelf = (members ?? []).filter((m) => m && m.id !== selfUuid);
+
+  /*
+   * DECISION Phase 88.6-28 (W63): the self-filter is the FULL two-term predicate below, chosen
+   * OVER the two shorter spellings a reader will be tempted by. BOTH TERMS ARE LOAD-BEARING AND
+   * NEITHER MAY BE DROPPED OR REORDERED.
+   *
+   *   - `m &&` is a RETAINED SHIPPED GUARD, not redundancy. `memberLabel` reads `m.username` and
+   *     is called from `nonSelf.map` immediately below (and from the collapsed slice above), so
+   *     a falsy entry that reaches it throws and takes down the whole group-card subtree.
+   *     REJECTED: dropping it as dead weight now that the null-tolerant term exists. Putting the
+   *     null-tolerant term FIRST and alone is the WORST case of all: during exactly the transient
+   *     window W63 exists for, `selfUuid == null` short-circuits true and EVERY falsy entry would
+   *     pass straight into `memberLabel`. Order matters; this is not stylistic.
+   *   - `selfUuid == null` uses LOOSE equality DELIBERATELY, so it covers `undefined` as well as
+   *     `null`. The prop is typed `string | null | undefined` and the unresolved value at the
+   *     real call site is `undefined`. REJECTED: "fixing" this to `===`, which would re-open W63
+   *     verbatim for the only value the bug actually occurs at.
+   *
+   * THE FAILURE DIRECTION IS CHOSEN: when identity is unknown, filter NOTHING. Showing the
+   * viewer one extra chip for a few hundred milliseconds is recoverable; hiding a real member
+   * from a group card is not, and the user has no way to know it happened.
+   */
+  const nonSelf = (members ?? []).filter((m) => m && (selfUuid == null || m.id !== selfUuid));
 
   // UI-SPEC section 8: a viewer-only group renders NO stack — not an empty container.
   if (nonSelf.length === 0) return null;
@@ -364,6 +418,24 @@ export function MemberChipStack({ members, selfUuid, tinted = false }: MemberChi
    * `grouplist.js:359-370` is itself a `role="button"` with its own Enter/Space handler, so
    * without this a tap on the `+N` chip navigates to the group page instead of expanding, and
    * Enter does the same — the keyboard twin of the tap-stealing bug 87.8 D-13 fixed.
+   *
+   * ——— AMENDED Phase 88.6-28, everything above KEPT AS HISTORY ———
+   *
+   * THE HOST SENTENCE IS NO LONGER TRUE AND THE CONCLUSION IS UNCHANGED. As of plan 88.6-21
+   * (W42/W62b) the enclosing group card is NOT a `role="button"` with an Enter/Space handler:
+   * the keyboard target moved onto the TITLE BLOCK (the `role="button"` div wrapping the group
+   * name), and the card keeps a POINTER-ONLY `onClick`. The amended marker on the host side is
+   * in `grouplist.js`, at its own `MemberChipStack` render block.
+   *
+   * WHAT THAT CHANGES FOR THIS FILE: nothing may be removed. The card has no key handler left to
+   * steal from, so the `onKeyDown` guards LOOK redundant — they are not, and the CLICK guards
+   * never were. `stopPropagation` on click is what keeps the card's surviving pointer `onClick`
+   * from firing when a member chip or `Show less` is tapped; the key guards keep this component
+   * correct at the OTHER call sites SPEC Req 6 hands it to, where the host's shape is not this
+   * one. `preventDefault` on Space still exists for its own reason — a span's Space default is
+   * PAGE SCROLL, independent of any host. `MemberChipStack.test.tsx` tests 22-25 / 35-36 and
+   * `keyboardOperability.test.tsx` tests 8-11 all still fail without them. Removing any of it is
+   * a decision, not a cleanup.
    *
    * Space is `preventDefault`ed because its default on a non-button is PAGE SCROLL. Enter is
    * too, for symmetry with the shipped handler at `ClickableMemberName.js:457-465`.

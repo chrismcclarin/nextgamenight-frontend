@@ -187,6 +187,25 @@ const NextGameNightCard = React.forwardRef<HTMLDivElement, NextGameNightCardProp
       eventIdRef.current = eventId;
       submittedRef.current = false;
       setViewerStatus(UNKNOWN);
+      /*
+        DECISION Phase 88.6-28 (W45/#33): the hero flip CLEARS the outcome message. This effect
+        already resets the card's IDENTITY (`eventIdRef`), its stale-guard and its status — and
+        it cleared NEITHER message, while `handleRsvp`'s `eventIdRef.current !== submittedFor`
+        early return below is exactly what leaves the previous event's outcome standing. So a
+        user who answered event A, and whose hero then flipped to event B (A's start time passed
+        and a re-render reselected), was left with event A's failure banner sitting under event
+        B's buttons — a claim about a request that has nothing to do with the control beside it.
+        The clear belongs HERE and not in `handleRsvp`, because a flip can happen with no further
+        interaction at all.
+
+        NOTE FOR THE PLAN-28 CONTINUATION: W45(a)'s polite SUCCESS region is NOT shipped in this
+        commit — its ratified string is a blocking dependency with no §6.3 row (see
+        `88.6-28-SUMMARY.md`). When that region lands, its state MUST be cleared on this same
+        line, for this same reason and more urgently: a stale CONFIRMATION claims a response the
+        user never gave for the event now on screen, where a stale error only mis-attributes a
+        failure. Do not ship the region without extending this clear.
+      */
+      setErrorMessage('');
       if (!eventId || !selfUuid) return;
 
       let cancelled = false;

@@ -425,6 +425,47 @@ describe('NextGameNightCard — inline RSVP (SPEC Req 4 / D-07, D-08)', () => {
     expect(yesButton()).not.toHaveAttribute('aria-disabled', 'true');
   });
 
+  it('CLEARS the failure banner when the hero FLIPS to a different event (W45/#33)', async () => {
+    /*
+     * THE BUG THIS PINS: the eventId effect resets the card's identity (`eventIdRef`), its
+     * stale-guard and its status — and used to clear NEITHER message, while `handleRsvp`'s
+     * `eventIdRef.current !== submittedFor` early return is exactly what leaves the previous
+     * event's outcome standing. So a user who answered event A and whose hero then flipped to
+     * event B (A's start time passed and a re-render reselected) was left with A's failure
+     * banner sitting under B's buttons — a claim about a request that has nothing to do with
+     * the control beside it. A flip needs no further interaction, which is why the clear has to
+     * live in the effect and not at the top of `handleRsvp`.
+     *
+     * The assertion runs on the SAME node across the flip (identity, not a re-query): a live
+     * region that is unmounted and remounted empty would satisfy a re-query while announcing
+     * nothing, and the region's own contract is that it is always mounted.
+     */
+    submitRsvp.mockRejectedValue(new Error('network down'));
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <NextGameNightCard event={EVENT} selfUuid={SELF_UUID} onEventClick={vi.fn()} />
+    );
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(1));
+
+    const region = screen.getByRole('alert');
+    expect(region.textContent?.trim()).toBe('');
+
+    // POSITIVE settle signal first: drive the failure and wait for the banner to actually carry
+    // text. Asserting emptiness later without this passes on the first tick and observes nothing.
+    await user.click(yesButton());
+    await waitFor(() => expect(region.textContent?.trim()).not.toBe(''));
+
+    // The flip. A NEW event id, nothing else touched.
+    const NEXT_EVENT = { ...EVENT, id: 'evt-2' };
+    rerender(
+      <NextGameNightCard event={NEXT_EVENT} selfUuid={SELF_UUID} onEventClick={vi.fn()} />
+    );
+
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledWith('evt-2'));
+    expect(screen.getByRole('alert')).toBe(region); // same node — never remounted
+    await waitFor(() => expect(region.textContent?.trim()).toBe(''));
+  });
+
   it('stays visually silent on a failed READ but still reports it to telemetry', async () => {
     getEventRsvps.mockRejectedValue(new Error('read failed'));
     renderCard();

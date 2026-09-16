@@ -148,10 +148,19 @@ describe('MemberChip — fills and ring cues (D-10, D-11, D-12, D-12b)', () => {
     expect(screen.getByText('AD').className).not.toContain('ring-surface-card');
   });
 
-  it('11. the `+N` variant renders the literal plus-number with muted ink on the same fill', () => {
+  it('11. the `+N` variant renders the literal plus-number on the same fill and the SAME AA ink as the initials chips', () => {
+    // AMENDED Phase 88.6-28 (D-15/D-16): this pinned `text-content-muted` until the ink/ground
+    // pairing was measured — 4.3725:1 on `bg-surface-muted`, BELOW AA for 12px. It now pins
+    // `text-content-secondary` (6.9620), the ink §5.6 prescribes on this ground, which is also
+    // what the initials chips carry. The two chip kinds are distinguished by their CONTENT
+    // (`+3` versus initials), never by ink — re-forking the ink is what put this site under AA.
+    // `groundInk.test.ts` never rostered this pairing: both halves are module-level constants
+    // referenced through `cn(...)` rather than spelled in one JSX tag, which is limitation 2 of
+    // that walk. This assertion is therefore the ONLY gate on the site.
     render(<MemberChip overflow={3} />);
     const chip = screen.getByText('+3');
-    expect(chip.className).toContain('text-content-muted');
+    expect(chip.className).toContain('text-content-secondary');
+    expect(chip.className).not.toContain('text-content-muted');
     expect(chip.className).toContain('bg-surface-muted');
     expect(chip.className).not.toContain('outline-');
   });
@@ -325,6 +334,119 @@ describe('MemberChipStack — collapsed stack', () => {
     expect(screen.queryByRole('button', { name: /Show all members/ })).not.toBeInTheDocument();
     // Not an empty container either (UI-SPEC section 8) — the card row must collapse.
     expect(container.querySelector('[aria-controls]')).toBeNull();
+  });
+
+  /* ------------------------------------------------------------------------------------------
+   * W63 — the self-filter's THREE identity/entry states (Phase 88.6-28)
+   *
+   * The shipped predicate was `(m) => m && m.id !== selfUuid`. All three arms below were run
+   * against it before the fix: 21a FAILED (the id-less member was filtered out), 21b and 21c
+   * PASSED — they are the PRESERVATION halves and are labelled as such, because the fix's whole
+   * risk is that it breaks one of them. 21c specifically pins the term a reader is most likely
+   * to delete as redundancy, and a planted `(m) => selfUuid == null || m.id !== selfUuid`
+   * (the null-tolerant term alone, leading) THROWS on it.
+   * ---------------------------------------------------------------------------------------- */
+
+  it('21a. W63: with `selfUuid` UNRESOLVED (`undefined`), an id-less member still renders', () => {
+    /*
+     * `undefined !== undefined` is FALSE, so the shipped predicate filtered this member out as
+     * if they were the viewer, for the whole identity-resolution window. The failure direction
+     * is chosen deliberately: when identity is unknown, filter NOTHING.
+     *
+     * RENDERED DIRECTLY, NOT THROUGH `renderStack` — and that is load-bearing, not style. The
+     * helper spells `selfUuid={opts.selfUuid === undefined ? SELF : opts.selfUuid}`, so asking
+     * it for `undefined` hands the component `SELF` and this arm passes against the UNFIXED
+     * predicate, proving nothing. (Observed: it did exactly that on the first writing.) `null`
+     * would not reach the bug either — `undefined !== null` is true, so the id-less member
+     * survives the shipped predicate. `undefined` is the ONLY value that reproduces W63, and it
+     * is the value the real call site passes while identity resolves.
+     */
+    const members = [
+      { username: 'nadia' }, // no `id` at all — the degenerate row this arm is about
+      { id: 'u1', username: 'mary kay' },
+    ];
+    render(
+      <FriendshipContext.Provider value={friendshipValue() as never}>
+        <MemberChipStack members={members} selfUuid={undefined} />
+      </FriendshipContext.Provider>,
+    );
+    expect(
+      screen.getByRole('button', { name: 'Members: nadia, mary kay. Show all members.' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('NA')).toBeInTheDocument();
+  });
+
+  it('21b. PRESERVATION: with `selfUuid` RESOLVED, the viewer is still filtered out', () => {
+    // The whole point of the filter must survive the fix. `selfUuid == null` is false here, so
+    // the second term does the work exactly as before.
+    renderStack({ selfUuid: SELF });
+    expect(screen.queryByText('ME')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: COLLAPSED_NAME })).toBeInTheDocument();
+  });
+
+  it('21c. PRESERVATION: a null/undefined ENTRY in `members` contributes no chip and does NOT throw', () => {
+    // `memberLabel` reads `m.username`, so a falsy entry reaching it throws and takes down the
+    // group-card subtree. The leading `m &&` guard is what stops that — and it is EXACTLY the
+    // term the W63 fix makes look redundant. Dropping it, or putting `selfUuid == null` first
+    // and alone, lets every falsy entry through during precisely the window W63 is about.
+    const members = [null, { id: 'u1', username: 'mary kay' }, undefined];
+    expect(() =>
+      renderStack({ members: members as unknown as typeof MEMBERS, selfUuid: null }),
+    ).not.toThrow();
+    expect(
+      screen.getByRole('button', { name: 'Members: mary kay. Show all members.' }),
+    ).toBeInTheDocument();
+  });
+
+  it('21d. W45(b): when the expanded row UNMOUNTS on a data refresh, focus lands on `<body>`', async () => {
+    /*
+     * THE REAL PATH, not a proxy for it. The effect in the component ALREADY restores focus to
+     * the trigger whenever `expanded` flips false, so a test that merely toggles `expanded`
+     * passes against the shipped code and proves nothing — it is explicitly forbidden here.
+     *
+     * The only path that drops focus is the expanded row DISAPPEARING without `expanded`
+     * changing: the `if (nonSelf.length === 0) return null` early return, reached when a host
+     * refresh delivers a shorter `members` array (or the host remounts). On that path the
+     * trigger unmounts WITH the row, so there is no in-component element left to restore to.
+     *
+     * This arm therefore asserts the DEFECT, not a fix. No fix is shipped: the only viable
+     * restore target is a HOST element, and this plan owns no host file — `grouplist.js` is the
+     * caller. The residual is recorded in `.planning/deferred/phase-88.6.md` alongside the
+     * identical open question for `KebabMenu`'s two-tap destructive items, which plan 88.6-16
+     * routed to Phase 89. They are ONE question and want ONE owner. When a host-supplied
+     * fallback lands, this arm INVERTS — it is the instrument for that fix, not a pin on the bug.
+     */
+    const rerenderWith = (members: typeof MEMBERS) => (
+      <FriendshipContext.Provider value={friendshipValue() as never}>
+        <div role="button" tabIndex={0} className="relative">
+          <MemberChipStack members={members} selfUuid={SELF} />
+        </div>
+      </FriendshipContext.Provider>
+    );
+    const { rerender } = render(rerenderWith(MEMBERS));
+
+    // POSITIVE settle signal FIRST: expand, and wait for something only the expanded branch
+    // renders. An absence assertion taken before the state under test has landed is satisfied
+    // on the first tick and observes nothing.
+    fireEvent.click(screen.getByRole('button', { name: COLLAPSED_NAME }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument(),
+    );
+    expect(document.activeElement).not.toBe(document.body);
+
+    // The host refresh: `members` shrinks to the viewer alone, so `nonSelf` empties and the
+    // component returns null. `expanded` is untouched — that is the whole point.
+    rerender(rerenderWith([MEMBERS[0]]));
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Show less' })).not.toBeInTheDocument(),
+    );
+
+    expect(
+      document.activeElement,
+      'W45(b): focus is on <body> after the expanded row unmounts. This asserts the RESIDUAL — ' +
+        'no in-component restore target survives this path, and the host-supplied target is an ' +
+        'open question recorded in .planning/deferred/phase-88.6.md. Invert this arm when it lands.',
+    ).toBe(document.body);
   });
 });
 

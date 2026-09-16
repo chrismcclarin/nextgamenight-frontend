@@ -2292,9 +2292,34 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     expect(src, 'the untinted chip lost the card-hover fill').toMatch(
       /NEUTRAL_FILL\s*=\s*'bg-surface-muted'/,
     );
+    /*
+     * AMENDED Phase 88.6-28 (D-15/D-16): this pinned the ISOVERFLOW TERNARY —
+     * `isOverflow ? 'text-content-muted' : 'text-content-secondary'` — and the ternary is gone.
+     * `text-content-muted` on `bg-surface-muted` measures 4.3725:1, BELOW AA for this 12px ink,
+     * so the `+N` overflow chip took `text-content-secondary` (6.9620) and the two arms
+     * collapsed onto one token. The two chip kinds are distinguished by their CONTENT (`+2`
+     * versus initials), never by ink — re-deriving the distinction from ink is what put the
+     * site under AA.
+     *
+     * The pin is RE-POINTED rather than deleted, and the shape is deliberately kept STRICT: the
+     * property this test owns is that the untinted arm carries a real project ink token which
+     * the tint fork can swap away from, and a loosened `toContain('text-content')` would go
+     * green on a `tinted ?` fork that had eaten the neutral arm. The ANTI-REGRESSION half is
+     * added beside it — `text-content-muted` must not come back onto this constant — because a
+     * future reader restoring the ternary "for visual distinction" is exactly the edit that
+     * re-opens the AA failure, and `groundInk.test.ts` cannot catch it (both halves are
+     * module-level constants referenced through `cn(...)`, which is limitation 2 of its walk).
+     */
     expect(src, 'the untinted chip lost its secondary ink').toMatch(
-      /neutralInk\s*=\s*isOverflow\s*\?\s*'text-content-muted'\s*:\s*'text-content-secondary'/,
+      /neutralInk\s*=\s*'text-content-secondary'/,
     );
+    expect(
+      src,
+      'the untinted chip ink reverted to text-content-muted, which is 4.3725:1 on ' +
+        'bg-surface-muted — below AA at 12px. This is the D-16 re-inking plan 88.6-28 landed; ' +
+        'restoring the isOverflow ternary re-opens it, and no ground/ink walk can see this ' +
+        'pairing because both halves are module-level constants',
+    ).not.toMatch(/neutralInk[\s\S]{0,80}text-content-muted/);
 
     // (b) ONE fork, and it keys on the TINT ALONE. A `tinted && separated ?` — the shape that
     //     applies the arm to the collapsed stack only — fails here, which is the anti-vacuity
