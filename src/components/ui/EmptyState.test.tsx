@@ -67,6 +67,40 @@ describe('EmptyState', () => {
     ).toBeInTheDocument();
   });
 
+  // Plan 88.6-36 task 1 (D-05). The three pins above assert the RENDERED RESULT and would stay
+  // green against the raw `<HeadingTag>` this file shipped before — they are the PRESERVATION
+  // halves, and they are what proves the migration moved nothing visible. This arm is the one
+  // that proves the COMPOSITION: `wrap-anywhere` comes from `Heading`'s cva BASE and
+  // `leading-tight` from its `heading` size variant, and neither was on the raw tag, so this
+  // assertion is RED against the pre-migration component. Written that way on purpose — a
+  // migration pinned only by "it still looks the same" cannot tell a migration from a no-op.
+  it('renders the headline THROUGH the Heading primitive at every supported level', () => {
+    for (const [tag, level] of [
+      ['h1', 1],
+      ['h2', 2],
+      ['h3', 3],
+    ] as const) {
+      cleanup();
+      render(<EmptyState {...base} headingLevel={tag} />);
+      const heading = screen.getByRole('heading', { level, name: base.heading });
+      expect(heading.tagName).toBe(tag.toUpperCase());
+      // Heading.tsx's cva base (`font-bold wrap-anywhere`) and its `heading` size variant
+      // (`text-xl leading-tight`) — the primitive's fingerprint.
+      expect(heading, `${tag}: wrap utility comes from the primitive base`).toHaveClass(
+        'wrap-anywhere'
+      );
+      expect(heading, `${tag}: 20px rung`).toHaveClass('text-xl');
+      expect(heading, `${tag}: 1.25 line height`).toHaveClass('leading-tight');
+      expect(heading, `${tag}: 700 from the base, never from the call site`).toHaveClass(
+        'font-bold'
+      );
+      // SIZE DOES NOT FOLLOW LEVEL — the 88-18 marker's whole point, now enforced by the
+      // primitive. `Heading`'s derived default for level 1 is `display` (30); `EmptyState`
+      // passes `size="heading"` explicitly, so the 404's title stays at 20.
+      expect(heading, `${tag}: never grown to Display`).not.toHaveClass('text-3xl');
+    }
+  });
+
   it('renders the body at 16px/400 secondary, measure-capped', () => {
     render(<EmptyState {...base} />);
     const body = screen.getByText(base.body);

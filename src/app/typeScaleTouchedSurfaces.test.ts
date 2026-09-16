@@ -1174,7 +1174,32 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
       // itself is BYTE-UNCHANGED — `headingLevel={rowHeadingLevel}` is the same expression on
       // the same `EventRow` call site. What moved it is this plan's marker appends higher up
       // the file, not an edit to the seam.
-    ).toEqual(['app/components/CalendarListView.js:1064']);
+      //
+      // SECOND ENTRY ADDED by plan 88.6-36 task 1 (wave 7, 2026-09-16), and it is a SEEN
+      // consequence rather than an absorbed one — the docblock's own instruction. `EmptyState`'s
+      // headline is now `<Heading level={LEVEL_FOR_TAG[headingLevel]} size="heading">`: the level
+      // is a runtime lookup off a PROP, so `LEVEL_LITERAL` cannot resolve it and `PROP_SEAM_EXPRESSION`
+      // is not what matched — `PRIMITIVE_OPEN` matched and the level literal did not, which is the
+      // OTHER skip path into this list. That is the unavoidable shape of a polymorphism seam: a
+      // component whose caller chooses the level cannot state a literal one.
+      //
+      // WHAT IS AND IS NOT LOST. `EXPECTED_LEVELS` never counted this element — before this plan it
+      // rendered `<HeadingTag>`, which matches neither `RAW_OPEN` nor `PRIMITIVE_OPEN` — so the P4
+      // map is byte-unchanged in both directions and the migration adds no phantom level. The
+      // EXPECTED_LEVELS docblock's gap 1 (COMPONENT-DEFAULT heading levels) already names this exact
+      // component, by name and by line, as uncounted; this entry does not widen that gap, it moves
+      // the same uncounted element from one uncounted shape to another. The nine `<h3>`s and one
+      // `<h1>` `EmptyState` really renders were uncounted before and are uncounted now.
+      //
+      // IT IS ALSO WHY `EXPECTED_MIN_PRIMITIVES` RISES BY ONE AND NOT TWO in plan 36: a skipped
+      // `<Heading>` is not in `ALL`, so it is not in the `heading-primitive` bucket the floor counts.
+      // `ErrorFallback.tsx`'s `<Heading level={1}>` is literal and IS counted; this one is not.
+      // Raising the floor by two would have RED the floor assertion, which is the honest outcome — do
+      // not "fix" that by resolving the expression (see `PROP_SEAM_EXPRESSION`).
+    ).toEqual([
+      'app/components/CalendarListView.js:1064',
+      'components/ui/EmptyState.tsx:179',
+    ]);
   });
 
   it('counts class-less headings and ignores heading tags in comments (defects 1 + 4, coupled)', () => {
