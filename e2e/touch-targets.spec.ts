@@ -1263,6 +1263,209 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     ).toBeLessThanOrEqual(viewportWidth);
   });
 
+  /* UI-SPEC §9.3 **E6 · overflow** and **E6 · long-text** — `KebabMenu`'s two 375px RENDERED
+     backstops (Phase 88.6-16, D-12).
+
+     WHY THEY ARE HERE AND NOT IN `KebabMenu.test.tsx`. jsdom performs no layout: every box it
+     reports is zero, so a `scrollWidth <= clientWidth` assertion there is `0 <= 0` — green forever,
+     for a menu that clips every item. That is asserted rather than assumed, by the
+     `jsdom measures NOTHING` guard in `src/app/components/KebabMenu.test.tsx`, which reds if jsdom
+     ever grows layout. The SOURCE halves stay in that file and are the companions a red here
+     should be read against:
+       - E6 overflow: the popover is `absolute right-0 min-w-[160px]` and carries no fixed width;
+       - E6 long-text: the item carries no clipping utility in EITHER state and `min-h-11` is a
+         floor, not a fixed height.
+
+     PLANTED, for the same two reasons the E1/E5 arm above is planted. (1) The largest authored
+     item set is `ManageMembers.js:595`'s mobile member kebab, which needs the Manage Members modal
+     open on a seeded multi-member group — a fixture path this spec does not walk, and a hard guard
+     on it would red the phone lane on a fixture fact rather than a layout fact (the same reasoning
+     the shipped D-36 and E10 markers in this file already record). (2) `e2e/` is outside the three
+     `@source` globs (`globals.css:10`, `:86-88`), so a class only this file wears is never emitted;
+     every class below is copied VERBATIM from `KebabMenu.js`'s own shipped strings (re-derived
+     2026-09-15 from the landed component: the `<ul>` className and the item `<button>` className),
+     which is also what makes a future divergence between the replica and the component show up as
+     a red rather than as a silent no-op.
+
+     CI ONLY (`playwright.config.ts:22-24`, `ci.yml:652`). A local skip is not a pass. */
+  test('UI-SPEC §9.3 E6: the kebab popover stays inside 375px with its largest item set, and a long item label wraps at >= 44px armed and disarmed', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await assertDarkTheme(page);
+
+    const LONG_LABEL =
+      'Transfer ownership of this group to this member right now, permanently and irreversibly';
+
+    const probes = await page.evaluate((longLabel: string) => {
+      // The 375px host width is an INLINE style, never a Tailwind class — see the marker above.
+      // `relative` mirrors `KebabMenu.js`'s wrapper, which is what `absolute right-0` anchors to.
+      const host = document.createElement('div');
+      host.setAttribute('style', 'width: 375px; padding: 0; margin: 0;');
+      const anchor = document.createElement('div');
+      anchor.className = 'relative shrink-0';
+      // the anchor sits at the row's right edge, as it does in every shipped row
+      anchor.setAttribute('style', 'position: relative; margin-left: auto; width: 44px;');
+      host.appendChild(anchor);
+
+      const LIST_CLASS =
+        'absolute right-0 top-full mt-1 z-20 min-w-[160px] bg-surface-card border border-line rounded-md shadow-theme-lg py-1';
+      const ITEM_CLASS =
+        'w-full min-h-11 text-left px-3 py-2 text-sm active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset';
+      const ARMED_EXTRA = 'text-content-status-error bg-status-error-subtle font-semibold';
+      const RESTING_EXTRA = 'text-content-primary hover:bg-surface-hover';
+
+      const buildList = (labels: Array<{ text: string; armed?: boolean }>) => {
+        const ul = document.createElement('ul');
+        ul.className = LIST_CLASS;
+        ul.setAttribute('role', 'list');
+        const buttons: HTMLElement[] = [];
+        for (const { text, armed } of labels) {
+          const li = document.createElement('li');
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = `${ITEM_CLASS} ${armed ? ARMED_EXTRA : RESTING_EXTRA}`;
+          b.textContent = text;
+          li.appendChild(b);
+          ul.appendChild(li);
+          buttons.push(b);
+        }
+        anchor.appendChild(ul);
+        return { ul, buttons };
+      };
+
+      // The LARGEST authored item set: ManageMembers.js:595's mobile member kebab with the
+      // owner-only transfer item spread in (`:625-632`).
+      const largest = buildList([
+        { text: 'Make admin' },
+        { text: 'Remove' },
+        { text: 'Transfer ownership to this member' },
+      ]);
+
+      document.body.appendChild(host);
+
+      const box = (el: HTMLElement) => {
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        return {
+          width: r.width,
+          height: r.height,
+          left: r.left,
+          right: r.right,
+          scrollWidth: el.scrollWidth,
+          clientWidth: el.clientWidth,
+          textOverflow: cs.textOverflow,
+          overflow: cs.overflow,
+        };
+      };
+
+      const hostRect = host.getBoundingClientRect();
+      const result: Record<string, unknown> = {
+        hostWidth: hostRect.width,
+        hostLeft: hostRect.left,
+        hostRight: hostRect.right,
+        list: box(largest.ul),
+        items: largest.buttons.map(box),
+      };
+
+      // Now the long-text probe, in BOTH states, in the same 375px host.
+      largest.ul.remove();
+      const disarmed = buildList([{ text: longLabel }]);
+      (result as { longDisarmed?: unknown }).longDisarmed = box(disarmed.buttons[0]);
+      (result as { longListDisarmed?: unknown }).longListDisarmed = box(disarmed.ul);
+      disarmed.ul.remove();
+
+      const armed = buildList([{ text: `${longLabel} — tap again`, armed: true }]);
+      (result as { longArmed?: unknown }).longArmed = box(armed.buttons[0]);
+      (result as { longListArmed?: unknown }).longListArmed = box(armed.ul);
+
+      // the single-line control: the SAME item class with a one-word label, so "the long one
+      // wrapped" is a comparison and not an assumption
+      armed.ul.remove();
+      const shortProbe = buildList([{ text: 'Remove' }]);
+      (result as { shortItem?: unknown }).shortItem = box(shortProbe.buttons[0]);
+
+      host.remove();
+      return result as {
+        hostWidth: number;
+        hostLeft: number;
+        hostRight: number;
+        list: ReturnType<typeof box>;
+        items: ReturnType<typeof box>[];
+        longDisarmed: ReturnType<typeof box>;
+        longListDisarmed: ReturnType<typeof box>;
+        longArmed: ReturnType<typeof box>;
+        longListArmed: ReturnType<typeof box>;
+        shortItem: ReturnType<typeof box>;
+      };
+    }, LONG_LABEL);
+
+    // --- anti-vacuity ----------------------------------------------------------------------
+    expect(
+      probes.hostWidth,
+      'UI-SPEC §9.3 E6: the planted container did not measure 375px, so nothing below is measured at phone width. The width is an inline style on purpose (globals.css:10, :86-88 — e2e/ is outside @source)',
+    ).toBeCloseTo(375, 0);
+    expect(
+      probes.list.width,
+      'UI-SPEC §9.3 E6: the planted popover has zero width — it did not render, and every containment assertion below is vacuous. Every class in the replica must be one `src/` already emits',
+    ).toBeGreaterThan(0);
+    expect(
+      probes.shortItem.height,
+      'UI-SPEC §9.3 E6: the single-line control item has zero height, so the wrap comparison below cannot mean anything',
+    ).toBeGreaterThan(0);
+
+    // --- E6 · overflow ---------------------------------------------------------------------
+    expect(
+      probes.list.right,
+      `UI-SPEC §9.3 E6: the open popover's right edge (${probes.list.right}px) is past its 375px container's (${probes.hostRight}px) with the largest authored item set. Source companion: KebabMenu.test.tsx's "right-anchored and min-width bounded" pin — if that is green and this is red, the clipping comes from a call-site wrapper, not the component`,
+    ).toBeLessThanOrEqual(probes.hostRight + 1);
+    expect(
+      probes.list.left,
+      `UI-SPEC §9.3 E6: the open popover's left edge (${probes.list.left}px) is outside its 375px container's (${probes.hostLeft}px) — it grew past the LEFT edge instead of staying inside`,
+    ).toBeGreaterThanOrEqual(probes.hostLeft - 1);
+    for (const [index, item] of probes.items.entries()) {
+      expect(
+        item.scrollWidth,
+        `UI-SPEC §9.3 E6: item ${index} scrolls to ${item.scrollWidth}px inside its ${item.clientWidth}px box — its label is clipped inside the popover at 375px`,
+      ).toBeLessThanOrEqual(item.clientWidth + 1);
+    }
+
+    // --- E6 · long-text --------------------------------------------------------------------
+    // WRAPPED, not merely ">= 44": `min-h-11` guarantees 44px for a clipped single line too, so a
+    // height-only floor would pass on a label truncated to one row. Taller-than-the-single-line
+    // control is the only assertion that can tell the two apart.
+    expect(
+      probes.longDisarmed.height,
+      `UI-SPEC §9.3 E6: the long item label measured ${probes.longDisarmed.height}px tall, the same as or less than the one-word control (${probes.shortItem.height}px) — it did NOT wrap onto a second line at 375px`,
+    ).toBeGreaterThan(probes.shortItem.height);
+    expect(
+      probes.longDisarmed.textOverflow,
+      `UI-SPEC §9.3 E6: the long item computes \`text-overflow: ${probes.longDisarmed.textOverflow}\` — the label is clipped with an ellipsis rather than wrapped`,
+    ).not.toBe('ellipsis');
+    expect(
+      probes.longDisarmed.scrollWidth,
+      `UI-SPEC §9.3 E6: the long item scrolls to ${probes.longDisarmed.scrollWidth}px inside its ${probes.longDisarmed.clientWidth}px box — the label widened the item instead of wrapping inside it`,
+    ).toBeLessThanOrEqual(probes.longDisarmed.clientWidth + 1);
+    expect(
+      probes.longListDisarmed.right,
+      `UI-SPEC §9.3 E6: with a long label the popover's right edge (${probes.longListDisarmed.right}px) is past the 375px container's (${probes.hostRight}px)`,
+    ).toBeLessThanOrEqual(probes.hostRight + 1);
+
+    // the ARMED swap is a different class string, so it is measured separately
+    expect(
+      probes.longArmed.height,
+      `UI-SPEC §9.3 E6: the ARMED long item measured ${probes.longArmed.height}px tall — below the 44px floor. The armed label swap must not shrink the target`,
+    ).toBeGreaterThanOrEqual(44);
+    expect(
+      probes.longArmed.height,
+      `UI-SPEC §9.3 E6: the ARMED long item measured ${probes.longArmed.height}px, the same as or less than the one-word control (${probes.shortItem.height}px) — the armed label did not wrap either`,
+    ).toBeGreaterThan(probes.shortItem.height);
+    expect(
+      probes.longListArmed.right,
+      `UI-SPEC §9.3 E6: with an ARMED long label the popover's right edge (${probes.longListArmed.right}px) is past the 375px container's (${probes.hostRight}px)`,
+    ).toBeLessThanOrEqual(probes.hostRight + 1);
+  });
+
   test('R4: add-friend "+" carries a 44x32 ::after hit extension (owner-accepted asymmetric floor)', async ({ page }) => {
     await page.goto(E2E_EVENT_DETAIL_PATH);
     await assertDarkTheme(page);
