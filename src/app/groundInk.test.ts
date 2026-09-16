@@ -281,23 +281,36 @@ const FALSE_POSITIVES: Record<string, FalsePositive> = {
       ],
     },
   },
-  'app/components/FriendInvitePanel.js:364': {
+  // RE-POINTED by plan 88.6-22 task 1 (wave 7, 2026-09-16): 364 -> 484, 370 -> 490, ground
+  // 350 -> 467. The MECHANISM is unchanged and still holds — only the line numbers moved, because
+  // the sweep added a comment above the friend-name `<p>`. Two corrections to the old `why` while
+  // it is open, both measured at this commit:
+  //   (a) "FriendInvitePanel.js is in NO sweep plan" was TRUE when this entry was written and is
+  //       FALSE now — plan 88.6-22 is its sweep owner and declares it in `files_modified`. That
+  //       clause was load-bearing (it argued against a spec entry), so it is corrected rather
+  //       than deleted.
+  //   (b) These keys are LINE PINS inside a phase whose sweeps rewrite every line number they
+  //       touch (the same shape `shadowTier.test.ts` test 8 hit at plan 88.6-21). ANY future edit
+  //       to this component must re-point all three. A content-anchored keying would be the
+  //       durable fix; no 88.6 plan declares this file, so plan 22 re-points rather than
+  //       re-engineers a gate it does not own, and routes the structural change instead.
+  'app/components/FriendInvitePanel.js:484': {
     sites: 1,
-    why: 'The muted ground arm at :350 requires !isInGroup && selectedFriends.has(friend.id); the ink at :364 is the isInGroup arm of its own ternary. The two conditions are negations of each other, so the pairing cannot render. FriendInvitePanel.js is in NO sweep plan and is not a D-16 census site, so a spec entry here would also name a closing plan that does not exist.',
+    why: 'The muted ground arm at :467 requires !isInGroup && selectedFriends.has(friend.id); the ink at :484 is the isInGroup arm of its own ternary. The two conditions are negations of each other, so the pairing cannot render. Plan 88.6-22 is this file\'s sweep owner and confirmed the mechanism at execution; it is a false positive, not debt that plan should have closed.',
     owner: {
       kind: 'false-positive',
-      inkLine: 'app/components/FriendInvitePanel.js:364',
-      groundLine: 'app/components/FriendInvitePanel.js:350',
+      inkLine: 'app/components/FriendInvitePanel.js:484',
+      groundLine: 'app/components/FriendInvitePanel.js:467',
       conditions: ['ink requires isInGroup', 'ground requires !isInGroup && selectedFriends.has(friend.id)'],
     },
   },
-  'app/components/FriendInvitePanel.js:370': {
+  'app/components/FriendInvitePanel.js:490': {
     sites: 1,
-    why: 'Same ground arm at :350 (!isInGroup && selected); the "In group" label at :370 renders only inside an isInGroup guard. Mutually exclusive, so not debt. Same no-sweep-plan reasoning as :364.',
+    why: 'Same ground arm at :467 (!isInGroup && selected); the "In group" label at :490 renders only inside an isInGroup guard. Mutually exclusive, so not debt. Same sweep-owner confirmation as :484.',
     owner: {
       kind: 'false-positive',
-      inkLine: 'app/components/FriendInvitePanel.js:370',
-      groundLine: 'app/components/FriendInvitePanel.js:350',
+      inkLine: 'app/components/FriendInvitePanel.js:490',
+      groundLine: 'app/components/FriendInvitePanel.js:467',
       conditions: ['ink requires isInGroup', 'ground requires !isInGroup && selectedFriends.has(friend.id)'],
     },
   },
@@ -429,8 +442,11 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     expect(Object.keys(FALSE_POSITIVES).sort()).toEqual([
       'app/components/CalendarMonthView.js:259',
       'app/components/CalendarMonthView.js:260',
-      'app/components/FriendInvitePanel.js:364',
-      'app/components/FriendInvitePanel.js:370',
+      // RE-POINTED by plan 88.6-22 task 1 (2026-09-16), 364/370 -> 484/490. This literal is the
+      // SECOND place the line pin is written; both must move together. See the re-point note on
+      // the entries themselves.
+      'app/components/FriendInvitePanel.js:484',
+      'app/components/FriendInvitePanel.js:490',
     ]);
     // (b) NOT A FOSSIL — every entry must still be a pairing the walk actually reports. An
     //     entry whose site was deleted or re-inked would otherwise sit here forever.

@@ -236,11 +236,15 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'plan 88.6-23 sweeps the invite and restore token entry pages, this file among them',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
-  'app/components/FriendInvitePanel.js': {
-    sites: 5,
-    why: 'plan 88.6-22 sweeps the invite-and-ballot cluster, FriendInvitePanel.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-22 task 1 (wave 7, 2026-09-16): `app/components/FriendInvitePanel.js`
+  // carried `sites: 5` here (the bulk-invite CTA, the email Send, Add Friend, Copy Invite Link
+  // and the admin-only Reset invite link). All five are `<Button size="default">` now. Every
+  // deleted utility was DEAD under unlayered `.btn`: `text-sm`/`text-xs` vs `globals.css:2201`,
+  // `py-2.5`/`py-2`/`px-3`/`py-1.5` vs `:2202`, `flex items-center justify-center gap-2` vs
+  // `:2195-2198`. `w-full`, `mt-2`, `mt-3`, `shrink-0` and the reset button's
+  // `text-content-status-error` are NOT dead (`.btn` declares no width, margin, flex-shrink or
+  // colour) and moved onto the `Button` className. Entry DELETED rather than zeroed — the roster
+  // is exact in both directions, so a zeroed entry would red as a fossil permission.
   'app/components/NotificationBell.js': {
     sites: 4,
     why: 'plan 88.6-31 sweeps the feedback and notification cluster, NotificationBell.js included',

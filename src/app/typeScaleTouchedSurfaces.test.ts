@@ -573,8 +573,14 @@ const EXPECTED_PROP_SEAMS = 5;
  * `text-3xl`, so they land at `size="display"` with NO size change; the h2 was already
  * `text-xl` -> `size="heading"`, likewise unchanged. `EXPECTED_LEVELS`' `{ 1: 4, 2: 1 }` entry
  * for that file is byte-unchanged (P4).
+ *
+ * RAISED 36 -> 39 by plan 88.6-22 task 1 (2026-09-16): `app/components/FriendInvitePanel.js`'s
+ * THREE h3s, all `text-sm` (14) -> `size="label"` (14), the h3@14 "stays" row of D-04's table —
+ * no size change at any of them. `EXPECTED_LEVELS`' `{ 3: 3 }` entry for that file is
+ * byte-unchanged (P4). The `id="invite-by-email-heading"` on the middle one is carried through:
+ * it is the email field's only accessible name via `aria-labelledby`.
  */
-const EXPECTED_MIN_PRIMITIVES = 36;
+const EXPECTED_MIN_PRIMITIVES = 39;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -793,11 +799,10 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
     why: '1 heading carrying the prohibited 600 weight (h4:360) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/FriendInvitePanel.js': {
-    sites: 3,
-    why: '3 headings carrying the prohibited 600 weight (h3:315, h3:445, h3:521) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-22 task 1 (wave 7, 2026-09-16): `app/components/FriendInvitePanel.js`
+  // carried `sites: 3` (h3:315, h3:445, h3:521). All three are `<Heading level={3} size="label">`
+  // now, so they leave this RAW-only population entirely rather than moving to 700 in place.
+  // h3@14 STAYS at 14 per D-04 — `size="label"` is `text-sm`. Entry DELETED, not zeroed.
   'app/components/GroupGamesList.js': {
     sites: 1,
     why: '1 heading carrying the prohibited 600 weight (h3:39) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
@@ -888,11 +893,10 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
     why: '1 raw heading not stating the 700 weight (h4:360 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/FriendInvitePanel.js': {
-    sites: 3,
-    why: '3 raw headings not stating the 700 weight (h3:315 font-semibold; h3:445 font-semibold; h3:521 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-22 task 1 (wave 7, 2026-09-16): same three headings as the
+  // heading-semibold roster above. The 700 now comes from the primitive's `font-bold` base
+  // (Heading.tsx:60) rather than from a stated utility, and a migrated heading leaves this
+  // RAW-only population. Entry DELETED, not zeroed.
   'app/components/GroupGamesList.js': {
     sites: 1,
     why: '1 raw heading not stating the 700 weight (h3:39 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
@@ -1831,12 +1835,13 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '4 off-scale weight sites (4 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-05, 88.6-10, 88.6-13, 88.6-18, 88.6-22, 88.6-31, 88.6-32, 88.6-33, 88.6-39, 88.6-43, 88.6-46.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/FriendInvitePanel.js': {
-    sites: 5,
-    why:
-      '5 off-scale weight sites (2 font-medium, 3 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-08, 88.6-09, 88.6-10, 88.6-13, 88.6-22, 88.6-23, 88.6-24, 88.6-33, 88.6-37, 88.6-43, 88.6-44.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-22 task 1 (wave 7, 2026-09-16): `app/components/FriendInvitePanel.js`
+  // carried `sites: 5` — 3 font-semibold on the h3s (:315, :445, :521), which left with the
+  // `Heading` migration, and 2 font-medium (:364 the friend name, :412 the bulk-invite result
+  // block), both resolved by §4.5's EMPHASIS outcome: the utility is deleted and the distinction
+  // is carried by the colour token each site already had. Plan 22 is this file's sweep owner;
+  // the other eleven plans listed in the old `why` touch it for tokens, not weights.
+  // Entry DELETED, not zeroed.
   'app/components/GameSuggestionCard.js': {
     sites: 2,
     why:

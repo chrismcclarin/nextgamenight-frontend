@@ -541,13 +541,12 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
       '(wave 7), which declares this file.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-31' },
   },
-  'app/components/FriendInvitePanel.js': {
-    sites: 1,
-    why:
-      'RAW-MESSAGE assertion. :268 `toast.error(err.message || …)`. Closed by plan 88.6-22 ' +
-      '(wave 7), which declares this file; the entry is deleted in that commit.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-22' },
-  },
+  // DELETED by plan 88.6-22 task 1 (wave 7, 2026-09-16): `app/components/FriendInvitePanel.js`
+  // carried `sites: 1` here — `:268` pre-edit, `toast.error(err.message || 'Failed to reset
+  // invite link. Please try again.')`. It now routes through `getFetchErrorMessage(err)` with no
+  // fallback, keeping its INTENT (the reset action still reports its own failure) per UI-SPEC
+  // §6.4. Entry DELETED rather than zeroed — the roster is exact in both directions. This file's
+  // FAILED_COPY_EXEMPT entry (3, one of them the same line) closed in the same commit.
   'app/components/GameComboInput.js': {
     sites: 1,
     why:
@@ -709,15 +708,16 @@ const FAILED_COPY_EXEMPT: ExemptionRoster = {
       'by plan 88.6-31 (wave 7), which declares this file.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-31' },
   },
-  'app/components/FriendInvitePanel.js': {
-    sites: 3,
-    why:
-      '"FAILED TO X" assertion. THREE sites (:223, :268, :427) against the census\'s one — ' +
-      ':223 "Failed to send invite" and :427 "Failed to send invites. Please try again." ' +
-      'are copy with no message read, so only the tree scan sees them. Closed by plan ' +
-      '88.6-22 (wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-22' },
-  },
+  // DELETED by plan 88.6-22 task 1 (wave 7, 2026-09-16): `app/components/FriendInvitePanel.js`
+  // carried `sites: 3` — `:223` "Failed to send invite" (the email-invite catch's else arm),
+  // `:268` the reset toast (also its raw-message entry above), and `:427` "Failed to send
+  // invites. Please try again." (the bulk-invite all-failed branch). All three route through
+  // `getFetchErrorMessage` now. `:427` was NOT named by the plan's task text and had no error
+  // object in scope, so `handleBulkInvite` now keeps the FIRST non-terminal failure and the
+  // branch renders the register line from it — see the marker at that site. The file's two
+  // `logger.info('Failed to …', errCtx(err))` developer logs (:251, :267 pre-edit) are exempt
+  // per-line under `isExemptDeveloperLog`, whose channel widening plan 88.6-13 landed at wave 3;
+  // re-measured here and a no-op. Entry DELETED, not zeroed.
   'app/components/GameComboInput.js': {
     sites: 1,
     why:

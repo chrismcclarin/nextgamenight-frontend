@@ -272,6 +272,221 @@ describe('FriendInvitePanel — Req 9 migration proof', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Phase 88.6 plan 22 task 1 — the a11y arms.
+//
+// These are BEHAVIORAL, not markup checks, and the shape is deliberate. Every
+// announcement arm captures the live region BEFORE the outcome fires and asserts
+// on THAT SAME NODE afterwards (`expect(after).toBe(before)`) — the idiom
+// StatusRegion.test.tsx:20-29 already uses. Presence alone is satisfied by a
+// CONDITIONALLY-mounted region, which is precisely the bug: a screen reader
+// announces a CHANGE to a live region, never the conditional mount of a new one.
+//
+// The description arm RESOLVES the description from the email <Input> — a
+// focusable element — and reads the text back. An `aria-describedby` attribute
+// string asserted anywhere on the tree would pass while producing zero
+// AT-observable effect.
+//
+// axe has NO rule for an unassociated error message, so task 3's composed audit
+// is not the catch for any of this.
+// ---------------------------------------------------------------------------
+describe('FriendInvitePanel — error and success are announced (88.6-22)', () => {
+  const emailField = () => screen.getByRole('textbox', { name: 'Invite by Email' });
+  const sendButton = () => screen.getByRole('button', { name: 'Send' });
+  const errorRegion = () => document.getElementById('invite-email-error');
+  const statusRegion = () => document.getElementById('invite-email-status');
+
+  it('mounts both live regions EMPTY before anything happens, with no margin', async () => {
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    const err = errorRegion();
+    const ok = statusRegion();
+    expect(err).not.toBeNull();
+    expect(ok).not.toBeNull();
+    expect(err).toHaveAttribute('role', 'alert');
+    expect(err).toHaveAttribute('aria-live', 'assertive');
+    expect(err).toHaveAttribute('aria-atomic', 'true');
+    expect(ok).toHaveAttribute('role', 'status');
+    expect(ok).toHaveAttribute('aria-live', 'polite');
+    expect(err).toHaveTextContent('');
+    expect(ok).toHaveTextContent('');
+    // The always-mounted EMPTY region must add no visible space: `mt-2` applies
+    // only when filled (the shipped `<p>` carried it unconditionally).
+    expect(err).not.toHaveClass('mt-2');
+    expect(ok).not.toHaveClass('mt-2');
+  });
+
+  it('injects the failure into the SAME assertive node, and the email field resolves it', async () => {
+    const { invitesAPI } = await import('@/lib/api');
+    (invitesAPI.sendInvite as Mock).mockRejectedValueOnce(new Error('nope'));
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+
+    const before = errorRegion();
+    expect(before).toHaveTextContent('');
+    // The field carries NO description while there is no error (FormField's contract).
+    expect(emailField()).not.toHaveAttribute('aria-describedby');
+    expect(emailField()).not.toHaveAttribute('aria-invalid');
+
+    fireEvent.change(emailField(), { target: { value: 'newcomer@example.test' } });
+    fireEvent.click(sendButton());
+
+    await waitFor(() => expect(errorRegion()).not.toHaveTextContent(''));
+    const after = errorRegion();
+    expect(after).toBe(before); // node identity — the region was never remounted
+    expect(after).toHaveClass('mt-2');
+    expect(after).toHaveClass('text-content-status-error');
+    // The register's `unknown` line, not an authored 'Failed to …' string.
+    expect(after).toHaveTextContent('Something went wrong. Refresh the page to try again.');
+
+    // RESOLVE the description from the FOCUSABLE control, then read it back.
+    const field = emailField();
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    const describedBy = field.getAttribute('aria-describedby');
+    expect(describedBy).toBe('invite-email-error');
+    const described = describedBy!
+      .split(' ')
+      .map((id) => document.getElementById(id)?.textContent)
+      .join(' ');
+    expect(described).toContain('Something went wrong. Refresh the page to try again.');
+  });
+
+  it('announces the SUCCESS on the same node — the outcome that was silent before', async () => {
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    const before = statusRegion();
+    expect(before).toHaveTextContent('');
+
+    fireEvent.change(emailField(), { target: { value: 'newcomer@example.test' } });
+    fireEvent.click(sendButton());
+
+    await waitFor(() =>
+      expect(statusRegion()).toHaveTextContent('Invite sent to newcomer@example.test')
+    );
+    expect(statusRegion()).toBe(before);
+    expect(errorRegion()).toHaveTextContent('');
+  });
+
+  it('announces the clipboard copy, keeping the visible label swap', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+    renderPanel();
+    const copy = await screen.findByRole('button', { name: 'Copy Invite Link' });
+    // Captured BEFORE the copy: the sr-only region is already mounted and empty.
+    const regions = Array.from(document.querySelectorAll('[role="status"].sr-only'));
+    expect(regions).toHaveLength(1);
+    const before = regions[0];
+    expect(before).toHaveTextContent('');
+
+    await user.click(copy);
+
+    await waitFor(() => expect(before).toHaveTextContent('Invite link copied to the clipboard.'));
+    // The visible label swap is PRESERVED, not replaced by the announcement.
+    expect(screen.getByRole('button', { name: 'Copied!' })).toBeInTheDocument();
+    expect(document.querySelectorAll('[role="status"].sr-only')[0]).toBe(before);
+  });
+});
+
+describe('FriendInvitePanel — gated controls stay in the focus order (88.6-22)', () => {
+  const emailField = () => screen.getByRole('textbox', { name: 'Invite by Email' });
+
+  it('reports a fixed app-authored error when Send is pressed with an empty field', async () => {
+    const { invitesAPI } = await import('@/lib/api');
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+
+    const send = screen.getByRole('button', { name: 'Send' });
+    // The gate is ARIA, not the native attribute — so the press arrives at all.
+    expect(send).toHaveAttribute('aria-disabled', 'true');
+    expect(send).not.toHaveAttribute('disabled');
+
+    await user.click(send);
+
+    expect(document.getElementById('invite-email-error')).toHaveTextContent(
+      'Enter an email address to send an invite.'
+    );
+    expect(invitesAPI.sendInvite).not.toHaveBeenCalled();
+    // Not the browser's `required` bubble: the form opts out of native validation.
+    expect(emailField().closest('form')).toHaveAttribute('novalidate');
+  });
+
+  it('refuses a second Send while the first is in flight, and keeps focus on the control', async () => {
+    const { invitesAPI } = await import('@/lib/api');
+    let release: (value: unknown) => void = () => {};
+    (invitesAPI.sendInvite as Mock).mockImplementationOnce(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+
+    fireEvent.change(emailField(), { target: { value: 'newcomer@example.test' } });
+    const send = screen.getByRole('button', { name: 'Send' });
+    await user.click(send);
+
+    // In flight: the pressed control is STILL in the document and STILL focused —
+    // the whole point of `aria-disabled` over the native attribute (DR-C).
+    const inFlight = screen.getByRole('button', { name: 'Sending...' });
+    expect(inFlight).toBeInTheDocument();
+    expect(inFlight).toHaveAttribute('aria-disabled', 'true');
+    expect(inFlight).not.toHaveAttribute('disabled');
+    expect(document.activeElement).toBe(inFlight);
+
+    // A second activation while the request is open must be refused by the HANDLER.
+    fireEvent.click(inFlight);
+    fireEvent.click(inFlight);
+    expect(invitesAPI.sendInvite).toHaveBeenCalledTimes(1);
+
+    release({});
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument());
+  });
+
+  it('refuses a second Add Friend press while the first is in flight', async () => {
+    const { friendshipsAPI: api } = await import('@/lib/api');
+    let release: (value: unknown) => void = () => {};
+    (api.searchUserByEmail as Mock).mockResolvedValue({
+      id: FRIEND_UUID,
+      username: 'Dana',
+      email: 'dana@example.test',
+    });
+    (api.sendRequest as Mock).mockImplementationOnce(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+    const user = userEvent.setup();
+    renderPanel({ friends: [] });
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Invite by Email' }),
+      { target: { value: 'dana@example.test' } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    const add = await screen.findByRole('button', { name: 'Add Friend' });
+    await user.click(add);
+
+    const inFlight = screen.getByRole('button', { name: 'Sending...' });
+    expect(inFlight).toHaveAttribute('aria-disabled', 'true');
+    expect(inFlight).not.toHaveAttribute('disabled');
+    expect(document.activeElement).toBe(inFlight);
+
+    fireEvent.click(inFlight);
+    fireEvent.click(inFlight);
+    expect(api.sendRequest).toHaveBeenCalledTimes(1);
+
+    release({});
+    await waitFor(() =>
+      expect(document.getElementById('invite-friend-request-status') ?? document.body)
+        .toHaveTextContent('Friend request sent!')
+    );
+  });
+});
+
 describe('FriendInvitePanel create-path context copy (Req 7 / §6.3)', () => {
   // The create path is the auto-open straight after group creation
   // (createGroup.js). Without the context copy the generic header reads as an
