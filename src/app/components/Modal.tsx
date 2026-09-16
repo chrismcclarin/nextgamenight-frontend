@@ -23,6 +23,7 @@
 
 import * as React from 'react';
 
+import { Button } from '@/components/ui/Button';
 import {
   Dialog,
   DialogClose,
@@ -319,35 +320,97 @@ function ModalFooter({ children, className }: ModalFooterProps) {
 
 export type ModalActionVariant = 'primary' | 'secondary' | 'danger';
 
-const ACTION_CLASS: Record<ModalActionVariant, string> = {
-  primary: 'btn-primary',
-  secondary: 'btn-secondary',
-  // Destructive-footer affordance hook for Phase-88 (maps to --color-error).
-  // No destructive flow is wired this phase — only the variant is provided.
-  danger: 'btn-danger',
-};
+/* DECISION Phase 88.6-08 (D-08): `Modal.Action` RENDERS THE `Button` PRIMITIVE.
 
+   RETIRED WITH THIS CHANGE: the module-private variant map that used to sit on this line —
+   named `ACTION_CLASS`, a `Record<ModalActionVariant, string>` holding `btn-primary`,
+   `btn-secondary` and `btn-danger` — and the `cn('btn', …)` call it fed, which was the
+   tree's SECOND `.btn` emitter after `Button`'s cva base. The name is spelled out here on
+   purpose: the project's DECISION convention is greppable, and a future reader asking why
+   the variant map vanished will search for it. (This retirement is gated on
+   COMMENT-STRIPPED source in `Modal.test.tsx`, not by a raw `git grep`, precisely so a
+   faithful marker and a passing gate are not mutually exclusive.)
+
+   CHOSEN OVER: exempting `ModalAction` as a second primitive and keeping the map here.
+   That arm expresses the variant mapping in two places — the house duplication tenet's
+   explicit target — and leaves the phase's `.btn` emitter census permanently non-zero, so
+   it could never honestly reach one emitter. The swap DELETES a map rather than
+   translating one because `Button.tsx:6-10` records that its variant names were aligned
+   with `ModalActionVariant` "so the later adoption plans are a mechanical swap": the three
+   entries matched 1:1 (primary/secondary/danger), byte-identically.
+
+   `ModalActionVariant` STAYS EXPORTED with the same three members. Narrowing it to
+   `Button`'s `VariantProps` would move the public API that the 14 call sites and
+   `ModalActionProps` read, and this swap's own constraint is that no call site changes.
+
+   WHAT THE 14 CALL SITES GAIN — all three are on UI-SPEC §1.2's closed list of sanctioned
+   visible deltas; none is new:
+     V-1  a 44px height floor at DESKTOP too (`min-h-11` on `Button`'s cva base). Phone was
+          already floored by the unlayered `.btn` `@media (width < 48rem)` rule.
+     V-2  hover elevation — INHERITED ALREADY NARROWED, not introduced here. THIS FILE
+          AUTHORS NO HOVER TOKEN. The lift lives on `Button`'s base as
+          `enabled-hover:shadow-theme-md` (plan 06), and plan 05's `enabled-hover`
+          `@custom-variant` (`globals.css:177-183`) compiles inside a hover-capability
+          media query and excludes BOTH `:disabled` and `[aria-disabled='true']`. So the
+          eight GATED footer actions do not lift: a hover lift on a gated dialog action
+          would be a regression, never a sanctioned V-2 delta. Those eight, read live
+          2026-09-16: `DangerZoneDeleteAccount.tsx:391`, `StartPollModal.js:274` and `:282`,
+          `GroupSettings.js:1168`, `ManageMembers.js:743`, `:750`, `:796`, `:803` — all on
+          the NATIVE `disabled` attribute, which `enabled-hover` excludes directly.
+     V-3  the house focus ring, whose ONE home is `Button`'s cva base (plan 05, ARM A).
+
+   NO `size` PROP IS ADDED. Dialog footer actions are `size="default"` per UI-SPEC §3.3,
+   which caps the `sm` rung at two named adopters; a third `sm` consumer is a decision.
+
+   THE `ref` IS FORWARDED, and that is not scope creep. `ModalAction` was a plain function
+   component, so on React 18 a caller's `ref` was silently dropped — which made this file's
+   own contract at `:61-71` ("A destructive confirmation must open with CANCEL focused")
+   UNREACHABLE through `Modal.Action`. `ConfirmDialog.tsx` gets CANCEL focus only because it
+   uses a bare `<Button ref={cancelRef}>` instead, while `DangerZoneDeleteAccount.tsx:384`'s
+   Cancel IS a `Modal.Action` and that file passes no `initialFocusRef` at all. `Button` is
+   already `forwardRef`, so this is purely additive, and it is a LATENT gap rather than a
+   live regression: zero `Modal.Action` sites pass a `ref` today (measured 2026-09-16 —
+   `grep -rn 'Modal.Action' src | grep -c 'ref='` returns 0 across all 32 matched lines).
+
+   WHAT THE ref DOES NOT DO: it changes no call site's behaviour today, and this plan wires
+   no `initialFocusRef` anywhere. That wiring is ROUTED, not done: plan 30 owns
+   `DangerZoneDeleteAccount.tsx` and plan 19 owns `ManageMembers.js`; `StartPollModal.js:171`
+   already passes its own. This is also NOT the `DialogContent` ref plan 30 routes — that is
+   a different target (the dialog content container, not the footer action) — and D52's
+   mechanism is untouched.
+
+   Re-pointing this back at a bare `<button>` with a local variant map is a decision, not a
+   cleanup. */
 export interface ModalActionProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   /** Visual intent. @default 'primary' */
   variant?: ModalActionVariant;
 }
 
-/** Footer action button mapping to the existing `.btn` variants. Copy via children. */
-function ModalAction({
-  variant = 'primary',
-  className,
-  type = 'button',
-  ...props
-}: ModalActionProps) {
-  return (
-    <button
-      type={type}
-      className={cn('btn', ACTION_CLASS[variant], className)}
-      {...props}
-    />
-  );
-}
+/**
+ * Footer action button — the `Button` primitive behind this file's stable API. Copy via
+ * children. The `danger` rung is the destructive-footer affordance (maps to
+ * `--color-error` through `.btn-danger`).
+ */
+const ModalAction = React.forwardRef<HTMLButtonElement, ModalActionProps>(
+  function ModalAction({ variant = 'primary', className, type = 'button', ...props }, ref) {
+    // `type` is forwarded explicitly even though `Button` also defaults it to 'button':
+    // a caller overriding it to 'submit' (StartPollModal's poll form) must keep that value.
+    return (
+      <Button
+        ref={ref}
+        variant={variant}
+        type={type}
+        className={className}
+        {...props}
+      />
+    );
+  }
+);
+
+// Preserves the devtools name the plain function component gave for free — a bare
+// `forwardRef` wrapper renders as "ForwardRef" in the component tree.
+ModalAction.displayName = 'ModalAction';
 
 export const Modal = Object.assign(ModalRoot, {
   Header: ModalHeader,

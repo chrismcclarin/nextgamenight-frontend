@@ -8,14 +8,22 @@
 //   3. size prop -> max-w mapping
 //   4. dismissable escape hatch (overlay-dismiss defeatable for forms)
 //   5. Close affordance carries an accessible "Close" name + fires onClose
+import fs from 'node:fs';
+import path from 'node:path';
+
 import * as React from 'react';
 import { render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
+
+import { withoutComments } from '../../test-utils/sourceScan';
 import { Modal, preventNonDismissableClose } from './Modal';
 
 afterEach(cleanup);
+
+const MODAL_SRC_RAW = fs.readFileSync(path.resolve(__dirname, 'Modal.tsx'), 'utf8');
+const MODAL_SRC = withoutComments(MODAL_SRC_RAW);
 
 function renderModal(props: Partial<React.ComponentProps<typeof Modal>> = {}) {
   const onClose = vi.fn();
@@ -116,6 +124,49 @@ describe('Modal', () => {
       const event = { preventDefault: vi.fn() };
       preventNonDismissableClose(true, event);
       expect(event.preventDefault).not.toHaveBeenCalled();
+    });
+  });
+
+  // 88.6-08 (D-08). The second `.btn` emitter is retired: `Modal.Action` renders the
+  // `Button` primitive and the module-private variant map is gone.
+  //
+  // THE SCAN IS COMMENT-STRIPPED, AND THAT IS LOAD-BEARING, NOT HYGIENE. The DECISION
+  // marker in `Modal.tsx` names the retired constant on purpose — greppability is the
+  // whole point of the house convention — so a RAW `git grep` for the name can never
+  // reach zero without gutting the marker. The two assertions below are a matched pair:
+  // the RAW source MUST still carry the name (the marker exists) and the STRIPPED source
+  // must NOT (no code refers to it). Either one alone can go green while lying.
+  describe('88.6-08 — the second `.btn` emitter is retired (D-08)', () => {
+    it('no code in Modal.tsx refers to the retired variant map', () => {
+      // Positive control FIRST: if this fails, the file was not read or the marker was
+      // gutted, and the absence assertion below would be vacuous rather than true.
+      expect(MODAL_SRC_RAW).toContain('ACTION_CLASS');
+      expect(MODAL_SRC.length).toBeGreaterThan(1000);
+      expect(MODAL_SRC).not.toContain('ACTION_CLASS');
+    });
+
+    it('Modal.tsx imports the Button primitive by module path (no barrel)', () => {
+      expect(MODAL_SRC).toContain("from '@/components/ui/Button'");
+    });
+
+    it('forwards a caller ref through to the underlying button element', () => {
+      const ref = React.createRef<HTMLButtonElement>();
+      render(
+        <Modal open onClose={vi.fn()}>
+          <Modal.Header>Delete group</Modal.Header>
+          <Modal.Body>This cannot be undone.</Modal.Body>
+          <Modal.Footer>
+            <Modal.Action ref={ref} variant="secondary">
+              Cancel
+            </Modal.Action>
+          </Modal.Footer>
+        </Modal>
+      );
+      // The behaviour that makes `applyInitialFocus`'s CANCEL-focus contract REACHABLE
+      // through `Modal.Action`. No call site passes a ref yet — plans 30 and 19 own the
+      // destructive dialogs' initial-focus wiring.
+      expect(ref.current).toBe(screen.getByRole('button', { name: 'Cancel' }));
+      expect(ref.current).toBeInstanceOf(HTMLButtonElement);
     });
   });
 
