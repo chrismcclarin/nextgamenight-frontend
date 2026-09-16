@@ -688,8 +688,15 @@ const EXPECTED_PROP_SEAMS = 5;
  * entry (`{ 1: 1 }`) is byte-unchanged (P4). The FIVE pseudo-headings this task also touched
  * are deliberately NOT counted here and are deliberately NOT `<Heading>` elements — they have
  * no semantic level to state, and inventing one is what P4 exists to stop.
+ *
+ * RAISED 115 -> 116 by plan 88.6-35 task 3 group 2 (2026-09-16): ONE more —
+ * `AvailabilityPromptDemo.js:63`'s simulated prompt title, `h3 text-sm font-bold` ->
+ * `<Heading level={3} size="label">`. NO size movement: §4.4's "h3 @ 14 stays" row is the
+ * rule, and `size` is passed explicitly BECAUSE the derived value would have been wrong —
+ * level 3 derives `heading` (20), a silent +6px. The file's `EXPECTED_LEVELS` entry
+ * (`{ 3: 1 }`) is byte-unchanged (P4).
  */
-const EXPECTED_MIN_PRIMITIVES = 115;
+const EXPECTED_MIN_PRIMITIVES = 116;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -1617,30 +1624,33 @@ const ARBITRARY_SIZE_ROSTER: ExemptionRoster = {
   // month tile and the week strip, both fixed-height boxes, while this pill is an `inline-flex`
   // inside a wrapping row whose `min-h-11 md:min-h-0` is a floor, not a cap.
   // `EXPECTED_SUB_FLOOR_SITES` drops 10 -> 9 in the same commit. Entry DELETED, not zeroed.
-  'app/components/tutorial/simulated/AvailabilityPromptDemo.js': {
-    sites: 1,
-    why:
-      '1 arbitrary size value (text-[10px]@72), 1 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
-  },
-  'app/components/tutorial/simulated/CheckInDemo.js': {
-    sites: 3,
-    why:
-      '3 arbitrary size values (text-[10px]@41, text-[10px]@77, text-[10px]@81), 3 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
-  },
-  'app/components/tutorial/simulated/HeatmapDemo.js': {
-    sites: 1,
-    why:
-      '1 arbitrary size value (text-[10px]@75), 1 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
-  },
-  'app/components/tutorial/simulated/TutorialGrid.js': {
-    sites: 2,
-    why:
-      '2 arbitrary size values (text-[10px]@40, text-[10px]@63), 2 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
-  },
+  // ALL FOUR TUTORIAL DEMO ENTRIES DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16) — the
+  // SIMULATED-GRID cluster, and D-01's LAST seven sub-12px sites anywhere in the tree:
+  //   `AvailabilityPromptDemo.js` sites: 1 (`text-[10px]`@72, the "Adding: Preferred" chip)
+  //   `CheckInDemo.js`            sites: 3 (@41 and @77, the two email-mock eyebrows; @81, the
+  //                                        "NG" initials inside the 28px avatar disc)
+  //   `HeatmapDemo.js`            sites: 1 (@75, the density legend row)
+  //   `TutorialGrid.js`           sites: 2 (@40, the `w-14` time gutter; @63, the `w-12 h-7`
+  //                                        cell content)
+  // Every cite was EXACT at HEAD. All seven folded UP to `text-xs`, the Caption rung, which
+  // §4.2's CLOSED role list names for "dense-grid cells" and for badge/pill labels and
+  // eyebrows — so 12 is their destination, not a way-station.
+  //
+  // THE REFLOW WAS MEASURED, NOT ASSUMED, because these imitate the month grid and the heatmap
+  // and therefore carry the same V-7 risk plan 26 measured for the real ones. Chromium at
+  // 375px over the compiled live `globals.css` and the app's own Plus Jakarta Sans latin
+  // subset, both arms rendered STATICALLY (a dynamic class swap is not a safe probe here —
+  // 88.6-17-SUMMARY's method note). Result: all THREE fixed boxes hold their geometry exactly
+  // — the `w-14` gutter carries "5:00 PM" at 40.16 -> 48.19px inside 56px, the `w-12 h-7` cell
+  // is 48 x 28 in both arms, the `w-7` avatar 28 x 28 with "NG" at 15.5 -> 18.59px — and no
+  // box overflowed, nothing wrapped, and `document.scrollWidth` stayed 375 in both arms. The
+  // only deltas are a +1px line box on five sites and the chip growing 105.55 -> 123.06px
+  // wide. Full table in `88.6-35-SUMMARY.md`.
+  //
+  // TIGHTEST HEADROOM, recorded because it is one copy edit from becoming a real wrap: the
+  // self-serve eyebrow renders 243.66px inside a 259px header at 375px — 15.34px of slack.
+  //
+  // `EXPECTED_SUB_FLOOR_SITES` drops 7 -> 0 in this same commit. Entries DELETED, not zeroed.
   // `app/gameDetail/page.js` CLOSED by plan 88.6-18 task 3 (wave 7, 2026-09-16): all TEN
   // `text-[10px]` sites folded UP to `text-xs` (12), D-01's own fold target. Every one of them
   // is a badge or pill label — an ENUMERATED caption role in §4.2 — so 12 is their destination
@@ -1673,7 +1683,18 @@ const ARBITRARY_SIZE_ROSTER: ExemptionRoster = {
 // pills folded `text-[10px]` -> `text-xs` together. Same EXACT-equality contract; the reflow was
 // measured in Chromium at 375px per site (see the deleted ARBITRARY_SIZE_ROSTER entry above) and
 // not assumed, because these render inside a floating popover over stacked rows.
-const EXPECTED_SUB_FLOOR_SITES = 7;
+// 7 -> 0, plan 88.6-35 task 3 (wave 7, 2026-09-16): the tutorial SIMULATED-GRID cluster — the
+// last seven in the tree. Two email-mock eyebrows and the 28px avatar initials in
+// `CheckInDemo.js`, the `w-14` time gutter and the `w-12 h-7` cell in `TutorialGrid.js`, the
+// "Adding: Preferred" chip in `AvailabilityPromptDemo.js` and the density legend in
+// `HeatmapDemo.js` all folded `text-[10px]` -> `text-xs` in ONE commit, with all four roster
+// entries deleted alongside. Same EXACT-EQUALITY contract as every fold above, and the same
+// measured-not-assumed discipline: these imitate the month grid and the heatmap, so they carry
+// V-7's reflow risk even though they are simulations.
+// D-01's fold is now COMPLETE at zero. This stays an EXACT equality rather than becoming a
+// `<= 0`: a NEW sub-12px site appearing anywhere in `src/` must red here, and that is the only
+// direction left for this assertion to be useful in.
+const EXPECTED_SUB_FLOOR_SITES = 0;
 
 /** Negative control for the strip on THIS file-level scan. */
 const FIXTURE_ARBITRARY_COMMENTS = `
@@ -2345,18 +2366,27 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // unlayered `.btn` (`font-weight: 600`, globals.css:2200), and it was deleted with the rest
   // of that element's dead classes in its migration to `<Button>`. The file's h1 carried
   // `font-bold` (on-scale) and was never in this population. Entry DELETED, not zeroed.
-  'app/components/tutorial/simulated/AvailabilityPromptDemo.js': {
-    sites: 2,
-    why:
-      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-12, 88.6-35.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
-  'app/components/tutorial/simulated/CheckInDemo.js': {
-    sites: 5,
-    why:
-      '5 off-scale weight sites (2 font-medium, 3 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plan: 88.6-35.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): `app/components/tutorial/simulated/
+  // AvailabilityPromptDemo.js` carried `sites: 2` (2 font-medium) and the count was EXACT.
+  // Both took HIERARCHY -> 700, NOT §4.5's emphasis outcome: the "Adding: Preferred" chip
+  // (`:72`) is ink inside its OWN green fill, which is §4.5's pill/chip-ink reason verbatim,
+  // and the Save control (`:86`) is a simulated button label whose enabled arm also paints its
+  // own fill. Neither is a `.btn`, so neither weight was dead — this is a real 500 -> 700
+  // delta on a tutorial surface. Entry DELETED, not zeroed.
+  // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): `app/components/tutorial/simulated/
+  // CheckInDemo.js` carried `sites: 5` (2 font-medium, 3 font-semibold) and the split was
+  // EXACT. ZERO remain, across TWO of §4.5's outcomes and none of them "dead on a .btn" —
+  // this file contains no `.btn` element at all:
+  //   - EYEBROW (Caption 12 / 700 / uppercase / tracking): the two email-mock kickers at
+  //     `:41` and `:77`, which folded from `text-[10px]` in the same commit. Each KEEPS its
+  //     own `tracking-wide` rather than converging on the ratified eyebrow's tracking — the
+  //     same recorded call plans 22, 28 and 29 made at their own sites.
+  //   - HIERARCHY -> 700: the email sender name (`:85`), the email CTA label (`:104`, ink
+  //     inside its own `bg-btn-primary` fill) and the recurring-schedule line (`:136`). 400 +
+  //     a colour token was REJECTED for all three: each is either ink in its own fill or the
+  //     SUBJECT of its row, and this component's stated job is to be recognisable as the
+  //     production email and card it imitates, which flattening the weights would undo.
+  // Entry DELETED, not zeroed.
   'app/components/tutorial/simulated/ProblemSlide.js': {
     sites: 2,
     why:
@@ -2369,12 +2399,16 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-35.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/tutorial/simulated/TutorialGrid.js': {
-    sites: 2,
-    why:
-      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-35.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): `app/components/tutorial/simulated/
+  // TutorialGrid.js` carried `sites: 2` (2 font-medium) and the count was EXACT. Both took
+  // HIERARCHY -> 700: the day header (`:30`) is the hierarchy label of its column, and the
+  // cell content (`:63`) is ink inside its own density FILL. The tie-break is not a preference
+  // — the PRODUCTION surface this grid exists to imitate already renders both equivalents at
+  // `text-xs font-bold` (`EventHeatmapBackground.js:241`, `:318`), so 700 is what keeps the
+  // simulation recognisable, which is this component's whole documented purpose. Both SIZES
+  // stay at `text-xs`: 12 is the Caption rung and dense-grid cells are an enumerated Caption
+  // role, so sweeping them to 14 would be a misread AND would widen fixed `w-12` columns.
+  // Entry DELETED, not zeroed.
   'app/friends/page.js': {
     // 12 -> 1, plan 88.6-19 task 3, wave 7, 2026-09-16. The ONE survivor is the ARMED-STATE 600
     // on the two-tap remove-friend control, which UI-SPEC §4.5 rules STAYS ("Armed-state 600 on

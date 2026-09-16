@@ -308,11 +308,19 @@ const ALIAS_ROSTER: ExemptionRoster = {
     why: '`shadow-lg` on the floating feedback FAB (:258), which IS a `.btn` element — so if plan 31 adds a hover pin it must use `enabled-hover:`, never bare `hover:`.',
     owner: D49B,
   },
-  'app/components/tutorial/simulated/AvailabilityPromptDemo.js': {
-    sites: 1,
-    why: '`shadow-md` on the simulated prompt card (:84). Plan 35 snaps it to `shadow-theme-md`; hue change in both themes, and this is a TUTORIAL surface so the change is user-visible in the walkthrough.',
-    owner: D49B,
-  },
+  // `app/components/tutorial/simulated/AvailabilityPromptDemo.js` CLOSED by plan 88.6-35
+  // task 3 (wave 7, 2026-09-16): the armed Save chip's `shadow-md` is now `shadow-theme-md`,
+  // in the SAME commit as this deletion. ONE correction to this entry's own text, recorded
+  // rather than absorbed: the class sits inside the `allPainted` arm of a template-literal
+  // className at `:88`, not `:84` — `:84` is the `<button` opening tag, which is the line
+  // this scanner reports, so the pre-fix red named `:84` and the entry's cite named the same
+  // line for a different reason. Both numbers are right about different things.
+  //
+  // NO HOVER PIN, and that is a decision rather than an omission: the element is a DISABLED,
+  // simulated chip inside an animation with no hover state, and it is not a `.btn`, so §3.4
+  // rule 2 — which exists because `Button`'s cva base would shrink a declared elevation on
+  // hover — has nothing to act on. The hue change is user-visible in the walkthrough and is
+  // disclosed in `88.6-35-SUMMARY.md` for `/gsd-ui-review`. Entry DELETED, not zeroed.
   // `app/components/grouplist.js` CLOSED by plan 88.6-21 task 1 (wave 7, 2026-09-16): the
   // per-card "Invite Member" CTA's `shadow-md hover:shadow-lg` is now
   // `shadow-theme-md enabled-hover:shadow-theme-lg`. TWO corrections to this entry's own text,

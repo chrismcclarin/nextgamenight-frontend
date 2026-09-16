@@ -17,6 +17,25 @@ import { TUTORIAL_DAYS, TUTORIAL_TIME_SLOTS } from '../mockData';
  *   Called for each cell. Return the className string and any inner content.
  *   Signature: renderCell(rowIdx, colIdx) -> { className, content }
  */
+/* DECISION Phase 88.6-35 (D-01 / UI-SPEC §4.2): the day header, the time-gutter label and the
+   cell content all sit at `text-xs` (12) and STAY there — 12 is the Caption rung and
+   "dense-grid cells (month tile, week strip, heatmap legend)" is an ENUMERATED Caption role.
+   A `text-xs` in a simulated grid is CORRECT; sweeping it up to 14 under §4.2's 12px-misuse
+   clause would be the misreading this note exists to stop, and it would widen a grid whose
+   columns are fixed `w-12` boxes.
+
+   The gutter and cell arrived here by FOLDING UP from `text-[10px]`, which is off the rung set
+   by definition. MEASURED in Chromium at 375px over the compiled `globals.css` and the app's
+   own Plus Jakarta Sans latin subset, rather than assumed: the `w-14` gutter holds "5:00 PM" at
+   40.16px -> 48.19px inside a 56px box (0 overflow, +1px line box), and the `w-12 h-7` cell is
+   48 x 28 in both arms with its digit at 6.16px -> 7.38px. No fixed box overflowed, nothing
+   wrapped, and the document scrollWidth stayed 375 in both arms.
+
+   The weights go 500 -> 700, not 500 -> 400: the day header is the hierarchy label of its
+   column and the cell digit is ink inside its own density FILL, which is §4.5's pill/chip-ink
+   reason. The production surface this grid imitates already renders its equivalents at
+   `text-xs font-bold` (`EventHeatmapBackground.js:241`, `:318`), so 700 is also what keeps the
+   simulation recognisable as the real thing — which is this component's whole stated purpose. */
 export default function TutorialGrid({ renderCell }) {
   return (
     <div className="bg-surface-card rounded-card border border-line shadow-theme-md p-3 inline-block">
@@ -27,7 +46,7 @@ export default function TutorialGrid({ renderCell }) {
           {TUTORIAL_DAYS.map((day) => (
             <div
               key={day}
-              className="w-12 shrink-0 text-center text-xs font-medium text-content-secondary pb-1"
+              className="w-12 shrink-0 text-center text-xs font-bold text-content-secondary pb-1"
             >
               {day}
             </div>
@@ -37,7 +56,7 @@ export default function TutorialGrid({ renderCell }) {
         {/* Time-slot rows */}
         {TUTORIAL_TIME_SLOTS.map((time, rowIdx) => (
           <div key={time} className="flex">
-            <div className="w-14 shrink-0 text-[10px] text-content-muted py-1 pr-1.5 text-right">
+            <div className="w-14 shrink-0 text-xs text-content-muted py-1 pr-1.5 text-right">
               {time}
             </div>
             {TUTORIAL_DAYS.map((_, colIdx) => {
@@ -60,7 +79,7 @@ export default function TutorialGrid({ renderCell }) {
                 <div
                   key={`${rowIdx}-${colIdx}`}
                   className={cn(
-                    'w-12 h-7 shrink-0 flex items-center justify-center text-[10px] font-medium rounded-xs m-0.5 border border-line transition-all duration-300',
+                    'w-12 h-7 shrink-0 flex items-center justify-center text-xs font-bold rounded-xs m-0.5 border border-line transition-all duration-300',
                     className
                   )}
                 >

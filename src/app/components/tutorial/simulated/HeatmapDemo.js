@@ -72,7 +72,7 @@ export default function HeatmapDemo({ stage }) {
       </div>
 
       {/* Legend — matches the canonical ramp (`mergedCellColor`) */}
-      <div className="mt-2 flex items-center justify-center gap-1 text-[10px] text-content-muted">
+      <div className="mt-2 flex items-center justify-center gap-1 text-xs text-content-muted">
         <span>0</span>
         <div className="w-3 h-3 bg-surface-elevated border border-line rounded-xs" />
         <div className="w-3 h-3 bg-green-100 rounded-xs" />
