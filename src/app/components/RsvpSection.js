@@ -59,7 +59,8 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
      `aria-disabled` rather than the native attribute (see the marker on the trio below), and an
      `aria-disabled` control refuses nothing by itself — the refusal is these refs, read
      SYNCHRONOUSLY on the handler's first line and released in `finally`. Both halves land or
-     neither (`NextGameNightCard.tsx:468-479`; UI-SPEC D52 at `88.6-UI-SPEC.md:1008`). */
+     neither — `NextGameNightCard.tsx:468-479`, and UI-SPEC D52 at `88.6-UI-SPEC.md:1034`, row
+     A-31 (the plan's inherited `:1008` cite has drifted; re-derived by opening the file). */
   const statusLatch = useRef(false);
   const saveNoteLatch = useRef(false);
 
@@ -365,8 +366,10 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
               return (
                 /* DECISION Phase 88.6-29 (W44, D-07/D-08 · UI-SPEC A-5): the trio STAYS a bare
                    `<button>` — no `.btn`, no `<Button>` — and this is a CONSEQUENCE constraint,
-                   not bookkeeping. `.btn` (`globals.css:1955-1967`) is unlayered and declares
-                   `border-radius: 8px`, `font-weight: 600` and `font-size: 0.875rem`; plan 05
+                   not bookkeeping. `.btn` (`globals.css:2194-2205` — the plan's inherited
+                   `:1955-1967` cite has drifted; re-derived by opening the file) is unlayered and
+                   declares `border-radius: 8px` (`:2199`), `font-weight: 600` (`:2200`) and
+                   `font-size: 0.875rem` (`:2201`); plan 05
                    layers ONLY `border: none`. The radius would override
                    `first:rounded-l-[inherit] last:rounded-r-[inherit]` — which
                    `NextGameNightCard.tsx:483-487` records as an owner UAT finding of 2026-09-01
@@ -495,7 +498,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                   fourth would ship a third reading of ONE rule in one component. The split is
                   already ratified twice: `NextGameNightCard.tsx:466-479`'s
                   `DECISION Phase 88.5` marker for the trio, and D52 for the deletion modal's
-                  Cancel (`88.6-UI-SPEC.md:1008` — `aria-disabled` plus a first-line handler
+                  Cancel (`88.6-UI-SPEC.md:1034`, row A-31 — `aria-disabled` plus a first-line handler
                   guard, "**not** the native `disabled` attribute … the recorded rejected
                   alternative").
 
