@@ -194,15 +194,32 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'plan 88.6-20 sweeps GroupSettings.js and lands the swatch a11y items alongside the Button migration',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
-  // PERMANENT AT 2 — the one entry in this roster that never reaches zero.
-  // Seven sites measure here today. Plan 88.6-32 migrates FIVE of them and leaves the two
-  // 32x32 stepper controls (`BrowseMoreModal.js:226` and `:266` — the ELEMENT lines; CONTEXT's
-  // `:232`/`:270` are the className lines, both reading
-  // `btn btn-compact btn-secondary w-8 h-8 ...`) raw. So this entry shrinks 7 -> 2 and then
-  // STAYS at 2 forever, and its `owner` flips from AC-2 to D-10 when that happens.
+  // PERMANENT AT 2 — the one entry in this roster that never reaches zero. SHRUNK 7 -> 2 by
+  // plan 88.6-32 task 1 (wave 7, 2026-09-16), which migrated the other FIVE:
+  //   - the three complexity-tier toggles and the two sort-direction toggles all carried a
+  //     COMPUTED class (`active ? 'bg-btn-primary text-btn-primary-text' : 'btn btn-secondary'`)
+  //     and became `variant={active ? 'primary' : 'secondary'}`. The plan's literal instruction
+  //     was to keep the `bg-*` utilities on `<Button className>`; that was DECLINED and the
+  //     reason is measured — `.btn-secondary` declares `background-color` and `color` UNLAYERED
+  //     (globals.css:2627-2631), so those utilities would be dead and every pressed toggle would
+  //     paint as unpressed. `.btn-primary` (:2378-2381) sets the same two properties off the same
+  //     two tokens. Markers at both sites.
+  //   - the library-empty CTA is a `<Link href="/userProfile">` and took the `asChild` form, so
+  //     it is still a link; `BrowseMoreModal.test.tsx` gained a role+href assertion for it,
+  //     because the text-only assertion it had could not catch a dead button.
+  //   - the Reset-filters CTA is a plain `<Button variant="primary">`.
+  // Dead utilities deleted at all five (`px-*`/`py-*`/`text-sm`/`font-medium`/`rounded*-btn`/
+  // `transition-colors`/`inline-block` are all dead under unlayered `.btn`).
+  //
+  // The TWO that remain are the 32x32 player-count steppers (`BrowseMoreModal.js:226` and `:266`
+  // pre-edit — the ELEMENT lines; CONTEXT's `:232`/`:270` are the className lines, both reading
+  // `btn btn-compact btn-secondary w-8 h-8 ...`). This entry STAYS at 2 forever; its `owner` has
+  // flipped from AC-2 to D-10. Both lines also gained the house focus ring in its
+  // `focus-visible:ring-inset` form in that same commit (AC-10, owner ruling 2026-09-09 option
+  // 1, under plan 05's ARM A) — a focus string is not a `.btn` site and does not move this count.
   'app/components/BrowseMoreModal.js': {
-    sites: 7,
-    why: 'five sites migrate under plan 88.6-32; the remaining TWO are PERMANENT — the 32x32 player-count steppers are not primary actions, 32px clears WCAG 2.2 2.5.8 24px floor, and a `compact` rung on Button was REJECTED because it would convert a closed two-site exemption into an open sub-44 API affordance and silently add `shadow-theme-sm hover:shadow-theme-md` to two 32px squares (D-10)',
+    sites: 2,
+    why: 'PERMANENT, not a debt: the two 32x32 player-count steppers are not primary actions, 32px clears WCAG 2.2 2.5.8 24px floor, and a `compact` rung on Button was REJECTED because it would convert a closed two-site exemption into an open sub-44 API affordance and silently add `shadow-theme-sm hover:shadow-theme-md` to two 32px squares (D-10). The other five sites migrated under plan 88.6-32 (wave 7, 2026-09-16)',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-10' },
   },
   // `app/gameDetail/page.js` CLOSED by plan 88.6-18 task 2 (wave 7, 2026-09-16): all SEVEN

@@ -1828,12 +1828,19 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '2 off-scale weight sites (1 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-33, 88.6-43.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/BrowseMoreModal.js': {
-    sites: 4,
-    why:
-      '4 off-scale weight sites (4 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome leads: dead on a .btn (delete); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-04, 88.6-05, 88.6-06, 88.6-10, 88.6-13, 88.6-32, 88.6-33, 88.6-39, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-32 task 1 (wave 7, 2026-09-16): `app/components/BrowseMoreModal.js`
+  // carried `sites: 4` (4 font-medium, 0 font-semibold) and TWO of §4.5's three outcomes
+  // applied, not one — the entry's stated lead ("dead on a .btn (delete)") was right for three
+  // of the four and wrong for the fourth:
+  //   - THREE were dead on a `.btn` and left with the migration: the complexity-tier toggle and
+  //     the two sort-direction toggles, all now `<Button>`. `.btn` declares `font-weight: 600`
+  //     UNLAYERED (globals.css:2200), so those `font-medium` utilities had never painted.
+  //   - the FOURTH is the "Sort:" `<label>`, which is not a `.btn` at all and took §4.5's
+  //     EMPHASIS outcome instead — 400 plus the `text-content-secondary` token it already
+  //     carried. Resolved HERE rather than decremented and left: plan 88.6-32 is the LAST plan
+  //     to open this file (88.6-33 only READS it; 88.6-39 says in terms "do NOT edit
+  //     BrowseMoreModal.js"), so a decrement would have left the site with no owner.
+  // Entry DELETED rather than zeroed — the roster is exact in both directions.
   // DELETED by plan 88.6-27 task 1 (wave 7, 2026-09-16): `app/components/CalendarListView.js`
   // carried `sites: 8` (0 font-medium, 8 font-semibold) and the count was EXACT. FOUR were the
   // headings, which left this population by migrating onto `Heading` (see the three heading

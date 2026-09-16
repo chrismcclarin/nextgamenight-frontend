@@ -99,15 +99,23 @@ const rel = (file: string): string => path.relative(SRC, file);
  * 88.6-32 still owns GameComboInput's one; the target for this roster is 0.
  */
 const ALERT_EXEMPT: ExemptionRoster = {
-  'app/components/GameComboInput.js': {
-    sites: 1,
-    why:
-      'Interpolates a raw upstream `error.message` into user-facing text as well as ' +
-      'using a native dialog, so it is a T-88-25-01 site AND a Req 11 site. The fix is ' +
-      '`getFetchErrorMessage(err, { fallback })` — the mechanism exists — but it still ' +
-      'needs a fallback string from the Req 14 register.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01' },
-  },
+  // CLOSED by plan 88.6-32 task 1 (2026-09-16), and with it THIS ROSTER IS EMPTY — the app now
+  // raises no native dialog of any kind, which is Req 11 / AC-1 in full.
+  //
+  // `app/components/GameComboInput.js` carried the LAST entry, `sites: 1` at `:131` (the plan's
+  // CONTEXT and the SPEC both cite `:124`; that was stale, and the correction is recorded in
+  // `88.6-32-SUMMARY.md`). It read
+  // ``alert(`Failed to import game from BGG: ${error.message || 'Please try again.'}`)`` and now
+  // reads `toast.error(getFetchErrorMessage(error, { fallback: … }))` on the UI-SPEC §6.2.1
+  // ratified string — which is exactly what the deleted `why` said was blocking it: the register
+  // now has copy for this site. Deleted rather than zeroed; the count is exact in both
+  // directions, so a fossil `sites: 0` reds as hard as a stale `sites: 1`.
+  //
+  // AN EMPTY ROSTER IS THE GOAL STATE, NOT A BROKEN ONE. Tests 1 and 2 still scan the whole
+  // tree and now have no file to skip; test 0's anti-vacuity floor was RE-POINTED in the same
+  // commit (it used to prove liveness by finding this very site, which an empty roster makes
+  // impossible). Do not delete the roster declaration itself — test 3/3b/4 are what force the
+  // next native dialog to arrive as a NAMED, COUNTED, OWNED exemption rather than a silent one.
 };
 
 /** The three blocking browser dialogs, as bare globals or explicitly off `window`. */
@@ -145,13 +153,31 @@ describe('Req 11 native browser dialogs', () => {
 
   it('0. the sweep is scanning a representative app, and the detector is not dead', () => {
     expect(files.length).toBeGreaterThan(100);
-    // It still finds the KNOWN survivors. Without this, "zero offenders" and "the matcher
-    // went blind" look identical — and this gate's whole job is telling those apart.
+    // RE-POINTED by plan 88.6-32 (2026-09-16), because the thing this floor used to stand on
+    // is gone. It read
+    // `expect(byFile.get('app/components/GameComboInput.js')?.length).toBeGreaterThan(0)` —
+    // liveness proved by finding the one KNOWN survivor. That survivor was the last entry in
+    // `ALERT_EXEMPT`, so the assertion could only ever hold while the roster was non-empty, and
+    // the commit that achieved this suite's stated goal (`the target for this roster is 0`)
+    // is the commit that made it unsatisfiable. Deleting it outright was REJECTED: "zero
+    // offenders" and "the matcher went blind" would then look identical, which is the single
+    // failure mode this test exists to tell apart.
     //
-    // Deliberately `> 0` and not an exact count: the exact counts are test 4's job, and
-    // duplicating them here would make one planted defect fail two assertions, which
-    // muddies every future negative check of this file.
-    expect(byFile.get('app/components/GameComboInput.js')?.length).toBeGreaterThan(0);
+    // The replacement proves the same two things WITHOUT depending on a live defect: that the
+    // scanner is reading real file CONTENT off the tree (not empty strings, the shape a broken
+    // `sourceFiles`/`readFileSync` produces — under which tests 1 and 2 pass vacuously), and
+    // that the detector fires on that real content when a dialog IS present. It plants the call
+    // rather than finding one, so it stays meaningful at zero offenders forever.
+    //
+    // This is NOT a duplicate of test 5: that one feeds hand-written fixture strings and proves
+    // the REGEX discriminates; this one feeds shipped source off the scanned tree and proves the
+    // PIPELINE is live. A broken file read passes test 5 and fails this one.
+    const scanned = files.map((f) => fs.readFileSync(f, 'utf8'));
+    const nonEmpty = scanned.filter((s) => s.trim().length > 0);
+    expect(nonEmpty.length).toBe(files.length);
+    expect(scanned.reduce((n, s) => n + s.length, 0)).toBeGreaterThan(100_000);
+    const planted = `${scanned.find((s) => s.length > 1000)}\nalert('planted');\n`;
+    expect(nativeDialogCalls(planted).filter((h) => h.fn === 'alert')).toHaveLength(1);
   });
 
   it('1. no source file raises a native `confirm()` or `prompt()` — no exemptions', () => {

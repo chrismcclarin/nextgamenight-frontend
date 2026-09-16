@@ -526,13 +526,16 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
   //         complete sentences. NO EXEMPTION was written for either: they are displayed to a
   //         user, not developer logs, and the entry's own text forbids one.
   // Entry DELETED rather than zeroed.
-  'app/components/BrowseMoreModal.js': {
-    sites: 1,
-    why:
-      'RAW-MESSAGE assertion. :120 `setError(err.message || …)`. Closed by plan 88.6-32 ' +
-      '(wave 7), which declares this file; the entry is deleted in that commit.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-32' },
-  },
+  // DELETED by plan 88.6-32 task 1 (wave 7, 2026-09-16): `app/components/BrowseMoreModal.js`
+  // carried `sites: 1` here — `:120` pre-edit, `setError(err.message || 'Failed to load
+  // suggestions')`. It now reads `setError(getFetchErrorMessage(err))` with NO `fallback:`
+  // option, because UI-SPEC §6.3's register holds no ratified string for this site and an
+  // executor never mints copy — the code-less arm takes the register's own `unknown` line. In
+  // the SAME edit the site gained a CLASS-ONLY `Sentry.captureException` in the
+  // `FeedbackForm.js:236-240` shape (T-88.6-140): this file has no `console.*`, no `logger` and
+  // no other `Sentry` call, so genericising the copy alone would have deleted the surface's last
+  // diagnostic. Entry DELETED rather than zeroed — the roster is exact in both directions. This
+  // file's FAILED_COPY_EXEMPT entry (1, the same line) closed in the same commit.
   'app/components/FeedbackButton.js': {
     sites: 1,
     why:
@@ -556,14 +559,15 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
   // fallback, keeping its INTENT (the reset action still reports its own failure) per UI-SPEC
   // §6.4. Entry DELETED rather than zeroed — the roster is exact in both directions. This file's
   // FAILED_COPY_EXEMPT entry (3, one of them the same line) closed in the same commit.
-  'app/components/GameComboInput.js': {
-    sites: 1,
-    why:
-      'RAW-MESSAGE assertion. :131 is a T-88-25-01 site AND a Req 11 native-dialog site — ' +
-      "it is the SAME line nativeDialogs.test.ts holds as an exact-count `alert(` " +
-      'exemption. Both rosters shrink together. Closed by plan 88.6-32 (wave 7).',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-32' },
-  },
+  // DELETED by plan 88.6-32 task 1 (wave 7, 2026-09-16): `app/components/GameComboInput.js`
+  // carried `sites: 1` here — `:131` pre-edit, the native `alert()` interpolating
+  // `error.message`. It is now
+  // `toast.error(getFetchErrorMessage(error, { fallback: "We couldn't import that game from BGG.
+  // Please try again." }))` on the UI-SPEC §6.2.1 ratified string. That ONE line was three
+  // roster entries at once — this one, this file's FAILED_COPY_EXEMPT entry, and
+  // `nativeDialogs.test.ts`'s LAST `ALERT_EXEMPT` entry — and all three are deleted in the same
+  // commit, taking the `alert(` roster to EMPTY. Deleted rather than zeroed; the roster is exact
+  // in both directions.
   'app/components/GroupSettings.js': {
     sites: 2,
     why:
@@ -690,13 +694,11 @@ const FAILED_COPY_EXEMPT: ExemptionRoster = {
   // the authored half of the same line its raw-message entry covered. It is GONE rather than
   // reworded: `getFetchErrorMessage(error)` is called with NO fallback, so the ratified register
   // answers and no copy was authored (P1; the §6.2 W16 precedent). Entry DELETED, not zeroed.
-  'app/components/BrowseMoreModal.js': {
-    sites: 1,
-    why:
-      '"FAILED TO X" assertion. :120 "Failed to load suggestions" — the fallback half of ' +
-      'the same line its raw-message entry covers. Closed by plan 88.6-32 (wave 7).',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-32' },
-  },
+  // DELETED by plan 88.6-32 task 1 (wave 7, 2026-09-16): `app/components/BrowseMoreModal.js`
+  // carried `sites: 1` — :120's "Failed to load suggestions", the authored half of the same
+  // line its raw-message entry covered. GONE rather than reworded: `getFetchErrorMessage(err)`
+  // is called with NO fallback, so the ratified register answers and no copy was authored (P1;
+  // the same §6.2 W16 precedent AvailabilityForm.js took above). Entry DELETED, not zeroed.
   'app/components/FeedbackButton.js': {
     sites: 1,
     why:
@@ -721,14 +723,13 @@ const FAILED_COPY_EXEMPT: ExemptionRoster = {
   // `logger.info('Failed to …', errCtx(err))` developer logs (:251, :267 pre-edit) are exempt
   // per-line under `isExemptDeveloperLog`, whose channel widening plan 88.6-13 landed at wave 3;
   // re-measured here and a no-op. Entry DELETED, not zeroed.
-  'app/components/GameComboInput.js': {
-    sites: 1,
-    why:
-      '"FAILED TO X" assertion. :131 — the same line as its raw-message entry and the same ' +
-      "line as nativeDialogs.test.ts's `alert(` exemption. Three rosters, one site, all " +
-      'shrinking together. Closed by plan 88.6-32 (wave 7).',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-32' },
-  },
+  // DELETED by plan 88.6-32 task 1 (wave 7, 2026-09-16): `app/components/GameComboInput.js`
+  // carried `sites: 1` — :131, the same line as its raw-message entry and the same line as
+  // `nativeDialogs.test.ts`'s LAST `alert(` exemption. Three rosters, one site, all deleted in
+  // one commit; the `ALERT_EXEMPT` roster is EMPTY as of that commit. The authored "Failed to
+  // import game from BGG:" string is replaced by the UI-SPEC §6.2.1 RATIFIED fallback, so this
+  // one does carry a `fallback:` where BrowseMoreModal's above does not — the register has copy
+  // for this site and none for that one. Entry DELETED, not zeroed.
   'app/components/GroupSettings.js': {
     sites: 3,
     why:
