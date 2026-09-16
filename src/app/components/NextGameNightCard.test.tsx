@@ -505,3 +505,166 @@ describe('NextGameNightCard — inline RSVP (SPEC Req 4 / D-07, D-08)', () => {
     expect(screen.queryByRole('textbox')).toBeNull();
   });
 });
+
+// W45(a) — THE HERO RSVP-SUCCESS ANNOUNCEMENT (owner ruling 2026-09-16, ARM A).
+//
+// WHAT THIS EXISTS TO CATCH
+// -------------------------
+// 11. A SILENT SUCCESS. The card announced FAILURE (assertive) and nothing at all on
+//     success, so a screen-reader user had no confirmation their answer was saved.
+//
+// 12. ONLY THE FIRST SUCCESS BEING AUDIBLE. A live region announces CHANGES. Re-setting
+//     an IDENTICAL string into an unchanged region is a React bail-out — no DOM mutation,
+//     no announcement — and the ratified string is FIXED ("Response saved"), so without a
+//     clear at the START of `handleRsvp` every success after the first is silent. The
+//     same-status early return blocks only a repeat of the SAME status, so yes -> no ->
+//     yes is an ordinary flow, not an edge case.
+//
+// 13. THE REGION BEING CREATED BY THE EVENT IT ANNOUNCES. A region mounted at the moment
+//     of the announcement announces nothing. PRESENCE cannot prove this: a presence
+//     assertion passes against an implementation that announces exactly once. The proof
+//     below is NODE IDENTITY across two consecutive successes — the region node is
+//     captured ONCE, before any RSVP, and never re-queried.
+//
+// 14. TWO REGIONS CLAIMING CONTRADICTORY OUTCOMES. Success and failure must clear each
+//     other, so "Response saved" and "Could not save your RSVP" can never stand together.
+//
+// 15. A STALE CONFIRMATION SURVIVING A HERO FLIP. Worse than the stale error this plan
+//     already closed: it claims a response the user never gave for the event now on screen.
+const SUCCESS_COPY = 'Response saved';
+
+describe('NextGameNightCard — the RSVP success announcement (W45(a) / V-20)', () => {
+  it('announces EVERY success, proven by NODE IDENTITY across two consecutive successes', async () => {
+    const user = userEvent.setup();
+    renderCard();
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(1));
+
+    // Captured ONCE, before anything happens, and never re-queried. Re-querying between
+    // the steps below would defeat the proof: it would pass against a region that is
+    // unmounted and remounted per announcement, which is the defect being pinned.
+    const region = screen.getByRole('status');
+    expect(region.textContent?.trim()).toBe('');
+
+    // FIRST success.
+    await user.click(yesButton());
+    await waitFor(() => expect(region.textContent?.trim()).toBe(SUCCESS_COPY));
+    expect(screen.getByRole('status')).toBe(region);
+
+    // SECOND success, a DIFFERENT status so the same-status early return does not block it.
+    // Deferred so the in-flight window is observable: the region must be EMPTY while the
+    // second request is still in flight, which is what proves the clear happened at the
+    // START of the handler rather than only alongside the set.
+    const write = deferred<unknown>();
+    submitRsvp.mockReturnValue(write.promise);
+
+    await user.click(noButton());
+    expect(region.textContent?.trim()).toBe('');
+
+    await act(async () => {
+      write.resolve({ id: 'rsvp-own', status: 'no', note: null });
+      await write.promise;
+    });
+
+    await waitFor(() => expect(region.textContent?.trim()).toBe(SUCCESS_COPY));
+    // The SAME node carried both announcements — never remounted.
+    expect(screen.getByRole('status')).toBe(region);
+  });
+
+  it('CLEARS the success when a later write FAILS — the two regions cannot contradict', async () => {
+    const user = userEvent.setup();
+    renderCard();
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(1));
+
+    const success = screen.getByRole('status');
+    const failure = screen.getByRole('alert');
+
+    // POSITIVE settle signal first: a success actually lands before the absence is asserted.
+    await user.click(yesButton());
+    await waitFor(() => expect(success.textContent?.trim()).toBe(SUCCESS_COPY));
+
+    submitRsvp.mockRejectedValue(new Error('network down'));
+    await user.click(noButton());
+
+    await waitFor(() => expect(failure.textContent?.trim()).not.toBe(''));
+    expect(success.textContent?.trim()).toBe('');
+  });
+
+  it('CLEARS the failure when a later write SUCCEEDS — the two regions cannot contradict', async () => {
+    submitRsvp.mockRejectedValue(new Error('network down'));
+    const user = userEvent.setup();
+    renderCard();
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(1));
+
+    const success = screen.getByRole('status');
+    const failure = screen.getByRole('alert');
+
+    await user.click(yesButton());
+    await waitFor(() => expect(failure.textContent?.trim()).not.toBe(''));
+
+    submitRsvp.mockResolvedValue({ id: 'rsvp-own', status: 'no', note: null });
+    await user.click(noButton());
+
+    await waitFor(() => expect(success.textContent?.trim()).toBe(SUCCESS_COPY));
+    expect(failure.textContent?.trim()).toBe('');
+  });
+
+  it('CLEARS the confirmation when the hero FLIPS to a different event', async () => {
+    // A stale CONFIRMATION is worse than the stale error already closed in this plan: it
+    // claims a response the user never gave for the event now on screen. The flip needs no
+    // further interaction at all, which is why the clear lives in the eventId effect.
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <NextGameNightCard event={EVENT} selfUuid={SELF_UUID} onEventClick={vi.fn()} />
+    );
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(1));
+
+    const region = screen.getByRole('status');
+    expect(region.textContent?.trim()).toBe('');
+
+    await user.click(yesButton());
+    await waitFor(() => expect(region.textContent?.trim()).toBe(SUCCESS_COPY));
+
+    const NEXT_EVENT = { ...EVENT, id: 'evt-2' };
+    rerender(
+      <NextGameNightCard event={NEXT_EVENT} selfUuid={SELF_UUID} onEventClick={vi.fn()} />
+    );
+
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledWith('evt-2'));
+    expect(screen.getByRole('status')).toBe(region); // same node — never remounted
+    await waitFor(() => expect(region.textContent?.trim()).toBe(''));
+  });
+
+  it('adds NO idle layout: the two regions share one parent, outside the spaced stack', async () => {
+    // WHAT THIS PIN CAN AND CANNOT PROVE, stated rather than implied. jsdom computes no
+    // layout, so rendered HEIGHT at 375px is NOT measurable here (registered as
+    // `unrun-verify` in WINDOWS.md). What IS structural, and is the whole idle-delta risk:
+    // the outer stack is `space-y-2`, whose `> * + *` rule would add an 8px margin to a
+    // SECOND direct child even while that child is empty and zero-height. Both regions
+    // therefore live inside ONE un-spaced wrapper, so the stack sees exactly one child and
+    // the idle card is byte-identical to the shipped one.
+    renderCard();
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(1));
+
+    const success = screen.getByRole('status');
+    const failure = screen.getByRole('alert');
+
+    expect(success.textContent?.trim()).toBe('');
+    expect(success.parentElement).toBe(failure.parentElement);
+    expect(success.parentElement?.className ?? '').not.toMatch(/space-y|gap-|mt-|my-/);
+  });
+
+  it('renders the ratified copy VISIBLY — never sr-only (owner ruling 2026-09-14, arm 2)', async () => {
+    const user = userEvent.setup();
+    renderCard();
+    await waitFor(() => expect(getEventRsvps).toHaveBeenCalledTimes(1));
+
+    const region = screen.getByRole('status');
+    await user.click(yesButton());
+    await waitFor(() => expect(region.textContent?.trim()).toBe(SUCCESS_COPY));
+
+    // The rejected arm was `sr-only` for all three of the phase's new polite regions.
+    expect(region).not.toHaveClass('sr-only');
+    // And it is NOT re-inked to the error region's red — that ink is the failure's carrier.
+    expect(region.className).not.toContain('text-content-status-error');
+  });
+});
