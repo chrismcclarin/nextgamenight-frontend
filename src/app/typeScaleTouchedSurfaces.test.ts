@@ -695,8 +695,13 @@ const EXPECTED_PROP_SEAMS = 5;
  * rule, and `size` is passed explicitly BECAUSE the derived value would have been wrong —
  * level 3 derives `heading` (20), a silent +6px. The file's `EXPECTED_LEVELS` entry
  * (`{ 3: 1 }`) is byte-unchanged (P4).
+ *
+ * RAISED 116 -> 117 by plan 88.6-35 task 3 group 3 (2026-09-16): ONE more —
+ * `ProblemSlide.js:14`'s tutorial opening title, `h2 text-2xl font-semibold` ->
+ * `<Heading level={2} size="heading">`. This one DOES move a rung: a DISCLOSED 24 -> 20,
+ * D-04's "h2 @ 24" row. Level preserved; `EXPECTED_LEVELS`' `{ 2: 1 }` is byte-unchanged.
  */
-const EXPECTED_MIN_PRIMITIVES = 116;
+const EXPECTED_MIN_PRIMITIVES = 117;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -853,11 +858,14 @@ const RUNG_ROSTER: ExemptionRoster = {
   // raw-only population entirely rather than being re-keyed in place. `size` is passed
   // explicitly because the primitive would otherwise derive `heading` (20) from level 3, a
   // silent +4px. Entry DELETED, not zeroed; the roster is exact in both directions.
-  'app/components/tutorial/simulated/ProblemSlide.js': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h2:14 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): `app/components/tutorial/simulated/
+  // ProblemSlide.js` carried `sites: 1` (h2:14 `text-2xl`) and the cite was EXACT. It MIGRATED
+  // onto `<Heading level={2} size="heading">` — D-04's "h2 @ 24 -> Heading 20" row, a DISCLOSED
+  // 24 -> 20 on the tutorial's opening title — so the rung is supplied by the primitive and the
+  // file leaves this raw-only population entirely rather than being re-keyed in place. Level
+  // PRESERVED, so `EXPECTED_LEVELS`' `{ 2: 1 }` entry is byte-unchanged (P4). The file's OTHER
+  // large-type site (`:47`, the payoff line) is NOT a heading and is deliberately not migrated:
+  // it is a pseudo-heading resolving to `text-xl` / 700 as a `<p>`. Entry DELETED, not zeroed.
   'app/global-error.tsx': {
     sites: 1,
     why: 'a class-less <h1> in the root error boundary, which must not import from src/components/ui/ — it is the last surface standing when the app has crashed',
@@ -974,11 +982,11 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ScheduleList.js`
   // carried `sites: 1` (h3:91 `font-semibold`). Migrated onto `<Heading>`; the 700 comes from
   // the primitive's cva base. Deleted, not zeroed.
-  'app/components/tutorial/simulated/ProblemSlide.js': {
-    sites: 1,
-    why: '1 heading carrying the prohibited 600 weight (h2:14) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): `app/components/tutorial/simulated/
+  // ProblemSlide.js` carried `sites: 1` (h2:14 `font-semibold`). The heading MIGRATED onto
+  // `<Heading>`, so its 700 now comes from the primitive's `font-bold` cva base and the
+  // `font-semibold` was DELETED rather than promoted — it leaves this RAW-only population with
+  // its migration. Entry DELETED, not zeroed.
   'app/groupPlanning/page.js': {
     sites: 1,
     why: '1 heading carrying the prohibited 600 weight (h3:328) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
@@ -1052,11 +1060,9 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
   // `font-bold`, so it leaves this raw-only population with its migration and the `font-medium`
   // utility was DELETED rather than carried. The assertion message below is corrected in the
   // same commit. Entry DELETED, not zeroed; the roster is exact in both directions.
-  'app/components/tutorial/simulated/ProblemSlide.js': {
-    sites: 1,
-    why: '1 raw heading not stating the 700 weight (h2:14 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): the same heading as the
+  // heading-semibold roster above. RAW-ONLY supply rule; it is no longer a raw `<hN>` tag, so
+  // the file leaves this population rather than decrementing. Entry DELETED, not zeroed.
   'app/global-error.tsx': {
     sites: 1,
     why: 'a class-less <h1> in the root error boundary, which must not import from src/components/ui/ — it is the last surface standing when the app has crashed',
@@ -2387,18 +2393,18 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     SUBJECT of its row, and this component's stated job is to be recognisable as the
   //     production email and card it imitates, which flattening the weights would undo.
   // Entry DELETED, not zeroed.
-  'app/components/tutorial/simulated/ProblemSlide.js': {
-    sites: 2,
-    why:
-      '2 off-scale weight sites (0 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-35.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
-  'app/components/tutorial/simulated/ScheduleDemo.js': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-35.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): `app/components/tutorial/simulated/
+  // ProblemSlide.js` carried `sites: 2` (0 font-medium, 2 font-semibold), the split EXACT.
+  // ZERO remain, by two different routes: the h2 at `:14` MIGRATED and takes its 700 from
+  // `Heading`'s cva base, and the payoff line at `:47` is a PSEUDO-HEADING that took a stated
+  // `font-bold` and stayed a `<p>` — it has no outline position, so promoting it to `<Heading>`
+  // would have invented a level, which P4 forbids. Entry DELETED, not zeroed.
+  // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): `app/components/tutorial/simulated/
+  // ScheduleDemo.js` carried `sites: 1` (0 font-medium, 1 font-semibold) — the simulated event
+  // card's title at `:91`. It took HIERARCHY -> 700, NOT the emphasis outcome: it is the one
+  // primary string of that card and the payoff the whole step builds to, and at 400 it would be
+  // separated from the `text-xs` detail line beneath it by SIZE ALONE. Not a `.btn`, so the
+  // weight was alive — a real 600 -> 700 delta. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): `app/components/tutorial/simulated/
   // TutorialGrid.js` carried `sites: 2` (2 font-medium) and the count was EXACT. Both took
   // HIERARCHY -> 700: the day header (`:30`) is the hierarchy label of its column, and the

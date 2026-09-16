@@ -88,7 +88,14 @@ export default function ScheduleDemo({ stage }) {
           <div className="flex items-center gap-3 text-left">
             <div className="w-2 h-10 bg-green-500 rounded-full shrink-0" />
             <div>
-              <div className="text-sm font-semibold text-content-primary">
+              {/* DECISION Phase 88.6-35 (UI-SPEC §4.5 hierarchy row): 600 -> 700 on the
+                  simulated event card's TITLE, chosen OVER the emphasis outcome (400 + a
+                  colour token). It is the one primary string of this card and the payoff the
+                  whole step builds to; the `text-xs` detail line directly beneath it is what
+                  the weight distinguishes it from, and at 400 the two would be separated by
+                  size alone. Not a `.btn`, so the weight was ALIVE — a real 600 -> 700 delta
+                  on a tutorial surface. */}
+              <div className="text-sm font-bold text-content-primary">
                 Game Night
               </div>
               <div className="text-xs text-content-secondary">
