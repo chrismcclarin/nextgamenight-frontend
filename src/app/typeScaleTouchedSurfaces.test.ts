@@ -133,6 +133,24 @@ const PAGE_SURFACES = [
   'app/groupHomePage/page.js',
   'app/userProfile/page.js',
   'app/friends/page.js',
+  // WIDENED by plan 88.6-35 task 2 (wave 7, 2026-09-16) with the four legal/static pages,
+  // whose FIVE h1s are page titles in the strictest sense this list means: one title per
+  // rendered page, nothing conditional about the role, no error or loading branch among them.
+  // They are exactly the sites D-04's h1@36 row names, so pinning them here is what stops the
+  // 36 -> 30 snap being undone by a later edit with nothing to red.
+  //
+  // WHY THIS DOES NOT WIDEN THE RULE ITSELF: the Display assertion stays PER-H1 and stays
+  // scoped to this list. The reason it was deliberately NOT pointed at the whole tree — that
+  // `ErrorFallback.tsx`'s 20px `<h1>` would have to grow to 30 across nine error boundaries —
+  // is untouched by adding four page titles that genuinely are page titles.
+  //
+  // `goodbye/page.tsx` carries TWO h1s and is added anyway, because they are MUTUALLY
+  // EXCLUSIVE ternary branches (verified in-file at this commit) rather than two simultaneous
+  // titles. The assertion is per-h1, so both are checked and both are `size="display"`.
+  'app/about/page.js',
+  'app/privacy/page.js',
+  'app/terms/page.js',
+  'app/goodbye/page.tsx',
 ] as const;
 
 /**
@@ -651,8 +669,19 @@ const EXPECTED_PROP_SEAMS = 5;
  * byte-unchanged (P4). The file's OTHER two headings — the hero h1 at `:15` and the section h2
  * at `:82` — are deliberately NOT migrated and are NOT counted here: both are Phase 88.9 W55
  * exemptions with site comments and roster provenance.
+ *
+ * RAISED 88 -> 114 by plan 88.6-35 task 2 (2026-09-16): TWENTY-SIX more, the complete heading
+ * inventory of the four legal/static pages, re-counted from the files rather than inherited —
+ * `about` 6 (h1:8 + five h2), `privacy` 9 (h1:8 + eight h2), `terms` 9 (h1:8 + eight h2),
+ * `goodbye` 2 (both h1, mutually-exclusive ternary branches). There is NO h3 or h4 on any of
+ * the four, so §4.4's h3 and h4 rows have no site here. The FIVE h1s move 36 -> 30 (D-04's
+ * h1@36 row, disclosed); ALL TWENTY-ONE h2s were already `text-xl`, which IS Heading 20's
+ * rung, so not one of them moves a rung — they are primitive migrations at an unchanged size,
+ * with `size` passed explicitly per §4.6. Every `EXPECTED_LEVELS` entry for the four files is
+ * byte-unchanged (P4), which matters more here than anywhere: these are legal documents whose
+ * outline IS their structure.
  */
-const EXPECTED_MIN_PRIMITIVES = 88;
+const EXPECTED_MIN_PRIMITIVES = 114;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -705,11 +734,11 @@ function scanFixture(key: string, source: string): Heading[] {
 
 /** Headings off the 4-size working set (both arms — see the assertion). */
 const RUNG_ROSTER: ExemptionRoster = {
-  'app/about/page.js': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h1:8 text-4xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-35 task 2 (wave 7, 2026-09-16): `app/about/page.js` carried
+  // `sites: 1` (h1:8 `text-4xl`) and the cite was EXACT. It is now
+  // `<Heading level={1} size="display">` — D-04's h1@36 row, a DISCLOSED 36 -> 30. Its five
+  // h2s were already `text-xl`, so they were never in this roster; they migrate to
+  // `<Heading level={2} size="heading">` at the SAME rung. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-23 task 3 (wave 7, 2026-09-16): `app/availability-form/[token]/page.js`
   // carried `sites: 1` (h1:238 `text-2xl`), the READY-branch page title, now
   // `<Heading level={1} size="display">` (30). Its other TWO h1s were already `text-xl` and stay
@@ -819,11 +848,13 @@ const RUNG_ROSTER: ExemptionRoster = {
     why: 'a class-less <h1> in the root error boundary, which must not import from src/components/ui/ — it is the last surface standing when the app has crashed',
     owner: { kind: 'decision', marker: 'DECISION Phase 88-09 D-20' },
   },
-  'app/goodbye/page.tsx': {
-    sites: 2,
-    why: '2 headings off the 4-size working set (h1:58 text-4xl; h1:91 text-4xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-35 task 2 (wave 7, 2026-09-16): `app/goodbye/page.tsx` carried
+  // `sites: 2` (h1:58, h1:91, both `text-4xl`) and both cites were EXACT. Both are now
+  // `<Heading level={1} size="display">` — D-04's h1@36 row, a DISCLOSED 36 -> 30 on each.
+  // VERIFIED BEFORE THE FILE WAS ADDED TO `PAGE_SURFACES`: the two h1s are in MUTUALLY
+  // EXCLUSIVE branches of the `signedOutFromDeletedAccount` ternary (the `?` is at `:59`
+  // post-edit), so the page renders exactly one page title at a time and the per-h1 Display
+  // assertion is not being handed a page with two simultaneous h1s. Entry DELETED, not zeroed.
   'app/groupPlanning/page.js': {
     sites: 2,
     why: '2 headings off the 4-size working set (h1:268 text-2xl md:text-3xl; h3:328 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
@@ -837,11 +868,15 @@ const RUNG_ROSTER: ExemptionRoster = {
   // already `text-xl` and stay at 20 as `size="heading"` (D-04 row 2, the mutually-exclusive
   // status branches): they were never in this roster because 20 is inside the working set.
   // Entries DELETED, not zeroed.
-  'app/privacy/page.js': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h1:8 text-4xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-35 task 2 (wave 7, 2026-09-16): `app/privacy/page.js` carried
+  // `sites: 1` (h1:8 `text-4xl`) and the cite was EXACT. It is now
+  // `<Heading level={1} size="display">` — D-04's h1@36 row, a DISCLOSED 36 -> 30. Its EIGHT
+  // h2s were already `text-xl` and were never in this roster; they migrate at the SAME rung,
+  // levels preserved, so `EXPECTED_LEVELS`' `{ 1: 1, 2: 8 }` entry is byte-unchanged (P4).
+  // The ~270 lines of legal prose this touched were gated MECHANICALLY, not judged: a
+  // normalising content-integrity comparison against a baseline captured from git HEAD before
+  // the first edit, shown to red on a deleted `<p>`, a one-word heading-line edit and a
+  // one-character `href` change first. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-23 task 2 (wave 7, 2026-09-16): `app/restore/group/[token]/page.tsx`
   // carried `sites: 1` (h1:455 `text-2xl`), the group-name page title, now
   // `<Heading level={1} size="display">` (30). Its THREE other h1s were already `text-xl` and
@@ -851,11 +886,11 @@ const RUNG_ROSTER: ExemptionRoster = {
   // `<Heading level={1} size="display">` (30 — a disclosed +6px). Its two OTHER h1s were already
   // `text-xl` and stay at 20 as `size="heading"` (D-04 row 2); the three are mutually exclusive
   // branches (D-06), so the differing sizes are deliberate. Entry DELETED, not zeroed.
-  'app/terms/page.js': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h1:8 text-4xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-35 task 2 (wave 7, 2026-09-16): `app/terms/page.js` carried
+  // `sites: 1` (h1:8 `text-4xl`) and the cite was EXACT. Same shape as `privacy` above —
+  // `<Heading level={1} size="display">` (a DISCLOSED 36 -> 30) plus EIGHT already-`text-xl`
+  // h2s migrating at the SAME rung, `EXPECTED_LEVELS`' `{ 1: 1, 2: 8 }` byte-unchanged, and
+  // the same content-integrity gate over its legal prose. Entry DELETED, not zeroed.
 };
 
 /** Headings carrying the prohibited 600 weight. */

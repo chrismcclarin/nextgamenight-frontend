@@ -1,5 +1,7 @@
 import type * as React from 'react';
 
+import { Heading } from '../../components/ui/Heading';
+
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -25,6 +27,7 @@ export const metadata: Metadata = {
 // opts this route into per-request DYNAMIC rendering; it was a static prerender
 // before. Fine at this page's traffic — it is a terminal page reached at most
 // once per account, it fetches nothing, and it renders no session data.
+// Phase 88.6-35 (T-88.6-136) APPENDS, and amends nothing above: this page's two titles now render through the `'use client'` `Heading` primitive, so it gained a CLIENT-BOUNDARY CHILD — but not a directive, not a hook and not a fetch of its own, so every clause of the paragraph above is still true, the sessionless contract at `:9-12` is unchanged, and the page stays a server component (MEASURED: `/goodbye` is `ƒ` before and after, 323 B / 196 kB both runs).
 
 /* DECISION Phase 88.8 D-22 / T-88.8-56: the copy is selected by a STRICT
    equality test against the one fixed constant below, chosen OVER interpolating
@@ -55,9 +58,9 @@ export default function Goodbye({
     <div className="max-w-3xl mx-auto px-4 py-16">
       {signedOutFromDeletedAccount ? (
         <>
-          <h1 className="text-4xl font-bold text-content-primary mb-2">
+          <Heading level={1} size="display" className="text-content-primary mb-2">
             This account has been deleted
-          </h1>
+          </Heading>
           <p className="text-sm text-content-muted mb-10">
             You can start fresh whenever you like.
           </p>
@@ -88,7 +91,7 @@ export default function Goodbye({
         </>
       ) : (
         <>
-          <h1 className="text-4xl font-bold text-content-primary mb-2">Your account has been deleted</h1>
+          <Heading level={1} size="display" className="text-content-primary mb-2">Your account has been deleted</Heading>
           <p className="text-sm text-content-muted mb-10">We&apos;re sorry to see you go.</p>
 
           <div className="prose prose-gray max-w-none space-y-8 text-content-secondary leading-relaxed">
