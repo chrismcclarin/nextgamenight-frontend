@@ -597,8 +597,14 @@ const EXPECTED_PROP_SEAMS = 5;
  * size (restore's `text-2xl` group-name page title -> `size="display"`, 30); the other SIX were
  * already `text-xl` and land on `size="heading"` with NO size change. Both files'
  * `EXPECTED_LEVELS` entries (`{ 1: 4 }` and `{ 1: 3 }`) are byte-unchanged (P4).
+ *
+ * RAISED 63 -> 66 by plan 88.6-23 task 3 (2026-09-16): THREE more —
+ * `availability-form/[token]/page.js`'s three mutually-exclusive h1s. ONE moves size (the READY
+ * page title, `text-2xl` -> `size="display"`, 30); the ERROR and SUBMITTED branch headings were
+ * already `text-xl` and land on `size="heading"` with no size change. `EXPECTED_LEVELS`' `{ 1: 3 }`
+ * entry for that file is byte-unchanged (P4).
  */
-const EXPECTED_MIN_PRIMITIVES = 63;
+const EXPECTED_MIN_PRIMITIVES = 66;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -656,11 +662,12 @@ const RUNG_ROSTER: ExemptionRoster = {
     why: '1 heading off the 4-size working set (h1:8 text-4xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/availability-form/[token]/page.js': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h1:238 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-23 task 3 (wave 7, 2026-09-16): `app/availability-form/[token]/page.js`
+  // carried `sites: 1` (h1:238 `text-2xl`), the READY-branch page title, now
+  // `<Heading level={1} size="display">` (30). Its other TWO h1s were already `text-xl` and stay
+  // at 20 as `size="heading"` — the ERROR branch ("Link No Longer Valid") and the SUBMITTED
+  // confirmation ("Availability Submitted!"), both mutually exclusive with the title and
+  // neither a loading branch. Entry DELETED, not zeroed.
   'app/components/BringSummary.js': {
     sites: 1,
     why: '1 heading off the 4-size working set (h3:97 no size utility) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
@@ -779,11 +786,11 @@ const RUNG_ROSTER: ExemptionRoster = {
 
 /** Headings carrying the prohibited 600 weight. */
 const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
-  'app/availability-form/[token]/page.js': {
-    sites: 2,
-    why: '2 headings carrying the prohibited 600 weight (h1:182, h1:206) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-23 task 3 (wave 7, 2026-09-16): `app/availability-form/[token]/page.js`
+  // carried `sites: 2` (h1:182, h1:206 — the ERROR and SUBMITTED branch headings, both
+  // `font-semibold`). Both are `<Heading level={1} size="heading">` now and take their 700 from
+  // the primitive's `font-bold` base, leaving this RAW-only population. Entry DELETED, not
+  // zeroed.
   // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16): `BallotOptionsEditor.js` carried
   // `sites: 1` (h3:9) and `BallotSection.js` carried `sites: 6` (h3:109, :147, :175, :192, :220,
   // :238 — six copies of the same "Game Vote" header across six mutually-exclusive branches).
@@ -868,11 +875,9 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
 
 /** RAW headings that do not state the 700 weight. */
 const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
-  'app/availability-form/[token]/page.js': {
-    sites: 2,
-    why: '2 raw headings not stating the 700 weight (h1:182 font-semibold; h1:206 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-23 task 3 (wave 7, 2026-09-16): the same two headings as the
+  // heading-semibold roster above. Their 700 now comes from the primitive's `font-bold` base
+  // (Heading.tsx:60) rather than a stated utility. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16): the same seven headings as the
   // heading-semibold roster above. Their 700 now comes from the primitive's `font-bold` base
   // (Heading.tsx:60) rather than a stated utility. Entries DELETED, not zeroed.
@@ -1724,12 +1729,19 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-05, 88.6-12, 88.6-13, 88.6-16, 88.6-31, 88.6-34, 88.6-46.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/availability-form/[token]/page.js': {
-    sites: 3,
-    why:
-      '3 off-scale weight sites (1 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-14, 88.6-23, 88.6-24, 88.6-25, 88.6-42.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-23 task 3 (wave 7, 2026-09-16): `app/availability-form/[token]/page.js`
+  // carried `sites: 3`. Resolved per site against UI-SPEC §4.5 — and note that the entry's own
+  // outcome LEAD was wrong on one of them, which is why the rule says the owning sweep confirms
+  // per site: the lead named "dead on a .btn (delete)" and this file has NO `.btn` element at all
+  // (measured 2026-09-16; it is correctly absent from `btnCensus`'s roster).
+  //   - the two `font-semibold` h1s (the ERROR and SUBMITTED branch headings) left with the
+  //     `<Heading>` migration — HIERARCHY, 700, now supplied by the primitive's base;
+  //   - the one `font-medium`, the "Heads up:" lead-in inside the token-expiry warning, took
+  //     HIERARCHY (700) rather than emphasis. The emphasis outcome is "400 + a colour token" and
+  //     that span carries no colour of its own — the whole sentence is already
+  //     `text-content-status-warning` — so 400 would have erased the lead-in distinction rather
+  //     than re-carrying it. Recorded at the site as a decision with 400 named as rejected.
+  // Entry DELETED, not zeroed.
   'app/components/AutoPromptBehaviorBanner.js': {
     sites: 1,
     why:
