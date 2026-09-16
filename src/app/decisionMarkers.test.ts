@@ -135,6 +135,100 @@ describe('D-36 — the eight rejected-floor markers are amended, never deleted',
     const stepper = fs.readFileSync(path.join(SRC, 'app/components/BrowseMoreModal.js'), 'utf8');
     expect([...stepper.matchAll(/btn-compact/g)].length).toBeGreaterThanOrEqual(2);
   });
+
+  // 21-23 — PHASE 88.6 (D-09), the SECOND answer to this marker family's parked question.
+  // Plan 88.6-06 put a 44px floor on the `Button` PRIMITIVE's cva base, which answers the
+  // DESKTOP half; plan 88.6-07 appended an identical `AMENDED Phase 88.6 (D-09)` paragraph to all
+  // eight markers. These three assertions are what stop that paragraph from being deleted while
+  // the 88-28 one survives, and what stop all eight from describing a floor that is not there.
+  //
+  // NUMBERED 21-23, NOT 6-8. This file numbers its tests globally, and 6-11 are the D-37 block
+  // below; 88.6-07-PLAN.md's suggested label ('6. ...') would have produced two test 6s in one
+  // run's output. Recorded because the deviation is deliberate, not a typo.
+  //
+  // WHAT SHAPE THESE DELIBERATELY AVOID — both are catalogued in this file's OWN opening
+  // docblock, which is what makes re-committing either of them here unforgivable:
+  //   - COUNT-ON-A-SUPERSET (:36-39, "the fourth distinct SHAPE ... a COUNT with enough slack to
+  //     absorb the entire defect"; the measured instance is at :23-29, a `grep -rl ... | wc -l`
+  //     gate with SIX FILES of slack that could not fail for the thing it existed to prevent).
+  //     Test 21 therefore counts MARKERS via `allFloorMarkers()` and requires EVERY one to carry
+  //     the paragraph, exactly as test 1 counts markers rather than files.
+  //   - SUBSTRING-MATCH-ANYWHERE (:30-34, `grep -q "88-28"` satisfied by any of three unrelated
+  //     mentions in a 350-line file). Tests 22 and 23 resolve a REGION of `Button.tsx` first and
+  //     match inside it, because a whole-file presence check on `min-h-11` CANNOT red for the
+  //     deletion it exists to catch: after plan 06 that token appears in CODE twice in that file
+  //     — the cva base AND the `icon` size rung, `icon: 'min-h-11 min-w-11'` — so deleting the
+  //     base floor leaves a whole-file check green. (MEASURED 2026-09-15 on the comment-stripped
+  //     source: two occurrences, one `icon:` rung.)
+  //   - A CITE CORRECTION, since this file is about not inheriting claims: 88.6-07-PLAN.md calls
+  //     substring-match-anywhere "shape #4 from this test file's own opening docblock". Re-read
+  //     at :38, the "fourth distinct SHAPE" is the COUNT-with-slack one; substring-match-anywhere
+  //     is the other bullet, :30-34. Both really are catalogued here — the ordinal was attached
+  //     to the wrong one. Corrected rather than copied forward.
+  //
+  // 22 AND 23 ARE TWO ASSERTIONS, NOT ONE, because the two floors are independent decisions and
+  // must fail independently: deleting the cva base token reds 22 and leaves 23 green, and
+  // deleting half the rung's pair reds 23 and leaves 22 green. A single combined assertion would
+  // hide either deletion behind the other. Each was demonstrated red exactly that way, against
+  // only the deletion it covers, before being accepted (transcript in `88.6-07-SUMMARY.md`).
+  //
+  // Comments are stripped first, via the shared `withoutComments`: `Button.tsx`'s own DECISION
+  // markers say `min-h-11` in prose, so an unfiltered match reads the comment and passes vacuously.
+
+  it('21. every one records the phase-88.6 answer to the desktop half', () => {
+    // Four tokens, because three of them are load-bearing beyond "a phase looked at this":
+    // `min-h-11` names the MECHANISM, `Button` names WHERE it lives (the primitive, not the
+    // class), and `STILL REJECTED` keeps the half that is still live from being read as retired.
+    const REQUIRED = ['AMENDED Phase 88.6 (D-09)', 'min-h-11', 'Button', 'STILL REJECTED'];
+    const bad: string[] = [];
+    for (const m of markers) {
+      const missing = REQUIRED.filter((t) => !m.text.includes(t));
+      if (missing.length) bad.push(`${m.file} (missing: ${missing.join(', ')})`);
+    }
+    expect(bad).toEqual([]);
+  });
+
+  const BUTTON = 'components/ui/Button.tsx';
+
+  it('22. the cva BASE floor those eight markers describe is really shipped', () => {
+    const src = withoutComments(fs.readFileSync(path.join(SRC, BUTTON), 'utf8'));
+    // The region the markers actually describe: the class array passed as `cva`'s FIRST argument.
+    const cvaAt = src.indexOf('cva(');
+    expect(cvaAt).toBeGreaterThan(-1);
+    const joinAt = src.indexOf('].join(', cvaAt);
+    expect(joinAt).toBeGreaterThan(cvaAt);
+    const base = src.slice(cvaAt, joinAt);
+
+    const tokens = new Set(
+      base
+        .replace(/['"`,[\]]/g, ' ')
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    // ANTI-VACUITY, both directions. The region really resolved to the base array...
+    expect(tokens.has('btn')).toBe(true);
+    // ...and really EXCLUDES the size map, which is the entire reason for scoping it: if the
+    // rung leaked in, this test would pass on a tree whose base floor had been deleted.
+    expect(base).not.toContain('icon:');
+    expect(tokens.has('min-w-11')).toBe(false);
+
+    expect(tokens.has('min-h-11')).toBe(true);
+  });
+
+  it('23. and the `icon` rung carries its OWN floor pair, failing independently of the base', () => {
+    const src = withoutComments(fs.readFileSync(path.join(SRC, BUTTON), 'utf8'));
+    const rungs = [...src.matchAll(/\bicon:\s*(['"])([^'"]*)\1/g)];
+    // ANTI-VACUITY: exactly one rung region, so the match below is unambiguous rather than
+    // whichever `icon:` happened to come first.
+    expect(rungs).toHaveLength(1);
+    const tokens = new Set(rungs[0][2].split(/\s+/).filter(Boolean));
+    // The PAIR, inside the rung's own region — never a match on its whole string. Plan 88.6-06
+    // deleted this rung's dead `p-0`; an assertion keyed to the full string would have red on
+    // correct code, and the natural repair is to widen it back into a substring check, which is
+    // the defect shape this whole block exists to avoid.
+    expect(tokens.has('min-h-11')).toBe(true);
+    expect(tokens.has('min-w-11')).toBe(true);
+  });
 });
 
 describe('D-37 — the add-friend 44x32 marker is amended in place, and the lever is not pulled', () => {
