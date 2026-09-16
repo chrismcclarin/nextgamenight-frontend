@@ -450,6 +450,43 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
     }
     expect(stale).toEqual([]);
   });
+
+  it('5. the two D62 branch-B survivors are rostered, ruled and dated — one entry each', () => {
+    // Added by plan 88.6-24 task 3 (2026-09-16). Assertions 1-3 above pin the COUNTS; this one
+    // pins the RULING, which is the thing a later phase can lose without any count moving.
+    //
+    // Under the owner's D62 branch-B ruling (2026-09-09) these two reads deliberately SURVIVE
+    // Phase 88.6 and Phase 93 owns the backend `code` that unblocks them. Two ways that record
+    // could rot with every other assertion still green: the entry's owner block could be
+    // downgraded to a SPEC citation (losing the date, which is what makes a disposition
+    // re-testable against a later milestone), or a second row could be added for the
+    // availabilityResponse submit path — plan 14's note makes the PATH and the COUNT the
+    // load-bearing keys, so a duplicate row either collides or doubles the declared count.
+    for (const file of ['app/rsvp/[token]/page.js', 'app/components/AvailabilityForm.js']) {
+      const entry = ENVELOPE_READ_ROSTER[file];
+      expect(entry, `${file} must KEEP its roster entry — the reads survive branch B`).toBeDefined();
+      expect(entry.owner.kind, `${file}'s disposition is an OWNER RULING, not a SPEC citation`).toBe(
+        'owner',
+      );
+      expect(entry.owner).toMatchObject({ date: '2026-09-09' });
+      expect(
+        'ruling' in entry.owner ? entry.owner.ruling : '',
+        `${file}'s ruling must name D62 branch B and Phase 93's removal condition`,
+      ).toMatch(/D62 branch B/);
+    }
+
+    // ONE entry for the submit path, never two.
+    expect(
+      Object.keys(ENVELOPE_READ_ROSTER).filter((k) => k.includes('AvailabilityForm')),
+    ).toEqual(['app/components/AvailabilityForm.js']);
+
+    // Both rulings name Phase 93's BE cutover as the removal condition, so the entries cannot
+    // be read as open FE work.
+    for (const file of ['app/rsvp/[token]/page.js', 'app/components/AvailabilityForm.js']) {
+      const owner = ENVELOPE_READ_ROSTER[file].owner;
+      expect('ruling' in owner ? owner.ruling : '').toMatch(/Phase 93/);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------------------
