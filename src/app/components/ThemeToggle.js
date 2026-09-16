@@ -45,6 +45,31 @@ export default function ThemeToggle({ className = '', variant = 'icon', label })
     )
   }
 
+  // DECISION Phase 88.6-34 (D-11 / D25): this icon variant STAYS A BARE <button> — chosen OVER
+  // migrating it to the `Button` primitive, which is what a mechanical R2 sweep would do to the
+  // raw-palette hover overlay on the className below. It is the LAST of D-11's seven raw-palette
+  // buttons and the only one that resolves bare.
+  //
+  // WHY THE MIGRATION LOSES — geometry, not taste. Shipped this is `p-2` around a `w-5 h-5` icon
+  // = 36x36. A `<Button>` renders against `.btn`'s UNLAYERED `padding: .5rem 1rem`
+  // (globals.css:1963) plus the cva base's `min-h-11` and `icon`'s `min-h-11 min-w-11` = ~52x44.
+  // Its nav sibling `NotificationBell.js:240` (`p-1` around the `w-6 h-6` bell at `:137`) is
+  // 32x32, wears no `btn`, and NO plan migrates it — so migrating this one alone would widen a
+  // 4px sibling difference into ~20px and CREATE a header inconsistency rather than close one.
+  // The numbers are ARITHMETIC: this variant lives in `Header.js:128`'s `hidden md:flex` list,
+  // so it is display:none at 375px and the phone-only e2e harness can never measure it.
+  //
+  // WHY NO TOKEN SWAP EITHER. The overlay is TRANSLUCENT, so its rendered colour depends on the
+  // ground. Composited over `--color-bg-header` it is #423b36 in light and #312d2c in dark,
+  // against `--color-bg-header-hover`'s #4a3d32 / #2d2520 — equal in NEITHER theme, with the
+  // deltas running in OPPOSITE directions, so no one flat step closes both. Minting a token is a
+  // look decision and is Phase 88.9's.
+  //
+  // The 36-vs-32 residual is ROUTED to the owner (.planning/deferred/phase-88.6.md,
+  // "[look/consistency — OWNER DECISION REQUESTED]"), and the reasoning is rostered in
+  // `btnCensus.test.tsx`'s palette roster, which is exact in both directions — deleting that
+  // entry without changing this element reds, and changing this element without deleting it reds
+  // too. Making this a `<Button>` is a decision, not a cleanup.
   return (
     <button
       onClick={() => setTheme(isDark ? 'light' : 'dark')}

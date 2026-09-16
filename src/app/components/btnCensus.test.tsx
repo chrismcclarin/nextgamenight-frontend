@@ -669,11 +669,42 @@ const PALETTE_BUTTON_EXEMPT: ExemptionRoster = {
       'rgb(220,252,231) with the pin and becomes rgb(250,248,245) without it.',
     owner: { kind: 'decision', marker: 'DECISION Phase 88.6-25' },
   },
-  // One site, `ThemeToggle.js:49` — `bg-white/10`, icon chrome in the header.
+  // One site, `ThemeToggle.js:49` (this scanner's OPENING-TAG line; the className carrying
+  // `hover:bg-white/10` is at `:56`). SETTLED by plan 88.6-34 task 1 (wave 7, 2026-09-16) — the
+  // LAST of D-11's seven raw-palette dispositions, and the one that RESOLVES BARE rather than
+  // closing. The entry survives at 1 and is REWRITTEN as a reasoned exemption rather than
+  // deleted, because the site is not a debt awaiting a fix: it is a decision.
   'app/components/ThemeToggle.js': {
     sites: 1,
-    why: 'D-11 -> plan 88.6-34 re-derives: this is icon chrome rather than a primary action, so either `Button` or a semantic token fill with provenance, settled with the rest of D-11 there',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-07 / D-11' },
+    why:
+      'D-11 -> plan 88.6-34, re-derived and RESOLVED BARE (Path 3, D25). TWO reasons, and the ' +
+      'second is the one that decided it. (1) CHROME, NOT A PRIMARY ACTION: `hover:bg-white/10` ' +
+      'is a 10%-white HOVER overlay on an icon-only header toggle, not a resting fill on a CTA, ' +
+      'so the `btn-*` family is the wrong vocabulary for it. (2) GEOMETRY — the CONSEQUENCE ' +
+      "constraint: shipped it is `p-2` around a `w-5 h-5` icon (`:56`, `:17`/`:21`) = 36x36, " +
+      "while a `<Button>` renders against `.btn`'s unlayered `padding: .5rem 1rem` " +
+      "(`globals.css:1963`) plus the cva base's `min-h-11` and `icon: min-h-11 min-w-11` " +
+      '= ~52x44. Its desktop-nav sibling `NotificationBell.js:240` (`p-1` around the `w-6 h-6` ' +
+      'bell at `:137`) is 32x32, wears no `btn`, and is migrated by NO plan — so migrating this ' +
+      'control alone would widen a 4px sibling difference into ~20px and CREATE a header ' +
+      'inconsistency rather than close one. All four box numbers are ARITHMETIC, NOT MEASURED: ' +
+      'the icon variant is emitted inside `Header.js:128`\'s `hidden md:flex` list, so it is ' +
+      '`display:none` at 375px and the repo\'s only geometry harness is phone-only by design ' +
+      '(`e2e/touch-targets.spec.ts:10-15`). Same shape and same outcome as `QRCodeModal.js:38-43`. ' +
+      'COLOUR FINDING (PATH 2 — no shipped token reproduces it, so none is named): composited ' +
+      "with the same arithmetic `tokenContrast.test.ts`'s `resolveOver` applies, `bg-white/10` " +
+      'over `--color-bg-header` gives #423b36 in light (ground warm-800 #2d2520) and #312d2c in ' +
+      'dark (ground warm-900 #1a1614), against `--color-bg-header-hover` of #4a3d32 / #2d2520 — ' +
+      'EQUAL IN NEITHER THEME, and the deltas run in OPPOSITE DIRECTIONS (the shipped hover is ' +
+      'lighter than the composite in light and darker in dark), so no single flat step can be ' +
+      'picked to close both. A white overlay also DESATURATES the warm ground (composite channel ' +
+      'spread 12 vs warm-700\'s 24), so a flat token would be a different KIND of colour, not a ' +
+      'different step. Minting one is a LOOK decision and is Phase 88.9\'s; P6 forbids it here. ' +
+      'NOT PENDING WORK — this entry floors at 1 and its removal condition is a Phase 88.9 ruling ' +
+      'on the header icon-chrome pair, not a sweep. The 36-vs-32 residual is routed at ' +
+      '`.planning/deferred/phase-88.6.md` (`[look/consistency — OWNER DECISION REQUESTED]`). ' +
+      'Migrating this control is a decision, not a cleanup.',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-11' },
   },
   // THE EIGHTH SITE, and the one entry here whose `why` records a SURVIVING fill rather than a
   // fix. `groupHomePage/page.js:872` (`<button`, the Manage Members header CTA) carries
