@@ -342,11 +342,17 @@ const BTN_EXEMPT: ExemptionRoster = {
   // interpolates the group id, and the Go-to-Home `<a href="/">`. Both took the `asChild` form
   // with the element kind and the `href` byte-identical; `inline-block` was deleted as dead under
   // unlayered `.btn`'s `display: inline-flex`. Entry DELETED rather than zeroed.
-  'app/components/AvailabilityForm.js': {
-    sites: 1,
-    why: 'plan 88.6-25 sweeps the event-creation and availability cluster, AvailabilityForm.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // CLOSED by plan 88.6-25 task 2 (wave 7, 2026-09-16): `app/components/AvailabilityForm.js`
+  // carried `sites: 1` — NOT the 2 the plan's task text states; the roster's count was the
+  // accurate one. The site is the availability submit CTA
+  // (`btn btn-primary w-full py-3 min-h-11`), now `<Button type="submit" className="w-full">`.
+  // `py-3` was DEAD under unlayered `.btn` (globals.css:2201) and the per-CTA `min-h-11` dropped
+  // in the SAME commit as the migration per its amended `DECISION Phase 87.8` marker (which is
+  // byte-unchanged and still reports 8/6 in `decisionMarkers.test.ts`); `w-full` survives.
+  // The control ALSO moved off native `disabled` onto `aria-disabled` + a first-line ref latch,
+  // per the plans 17-24 in-flight standard — the call-site `opacity-60 cursor-not-allowed` pair
+  // went with it, superseded by `.btn-primary[aria-disabled]`'s DR-C token pair. Entry DELETED
+  // rather than zeroed; the roster is exact in both directions.
   // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16): `app/components/BallotOptionsEditor.js`
   // carried `sites: 1` — the "+ Add game option" CTA, now `<Button size="default">`. Its `text-sm`
   // was DEAD under unlayered `.btn` (globals.css:2201) and is deleted rather than moved onto the

@@ -153,11 +153,17 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
   {
     file: 'app/components/AvailabilityForm.js',
     receiver: 'prefillStatus',
-    declaredAt: 60,
+    // RE-DERIVED by plan 88.6-25 task 2 (2026-09-16): 60 -> 76. The declaration did not move on
+    // its own — plan 25 added three imports at the top of the file, which is exactly the kind of
+    // drift this citation exists to catch, and it DID catch it (assertion 4 red before this bump).
+    declaredAt: 76,
     declaration: 'const [prefillStatus, setPrefillStatus] = useState(',
     why:
-      'Local pre-fill banner state shaped { source, count, error? } — set only by this ' +
-      "component's own perform* callbacks, never assigned from a response body.",
+      'Local pre-fill banner state shaped { source, count, failed? } — set only by this ' +
+      "component's own perform* callbacks, never assigned from a response body. The shape's " +
+      "third key was `error?`, holding `err.message`, until plan 88.6-25 replaced it with the " +
+      "boolean `failed?` discriminant; the receiver is local either way, which is what this " +
+      'exclusion turns on.',
   },
   {
     file: 'app/userProfile/page.js',
@@ -327,7 +333,15 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
       'emitted for exactly this failure class at Sonnet/routes/magicAuth.js:115. NO TEST is ' +
       'added in 88.6 for this path: plan 25 pins AvailabilityForm.js:130-132 byte-unchanged, ' +
       'and a test pinning the presence-of-`error` behaviour would have to be deleted by Phase ' +
-      '93 anyway.',
+      '93 anyway. ' +
+      // APPENDED by plan 88.6-25 task 2 (2026-09-16), per this file's append-don't-rewrite
+      // convention. Line cites in this `why` are ADVISORY (the roster is count-keyed and the
+      // count is unchanged at 2), but plan 25 moved them and leaving them wrong is the drift
+      // this project's Evidence Rule exists to stop.
+      'LINE CITES RE-DERIVED 2026-09-16 after plan 88.6-25 swept this file: the guard and the ' +
+      'throw are now AvailabilityForm.js:148 and :149 (was :130/:131) and the `onSuccess?.()` ' +
+      'call is :152 (was :134). Both reads are BYTE-UNCHANGED — plan 25 pinned them so, and the ' +
+      'movement is purely the three imports it added at the top of the file.',
     owner: {
       kind: 'owner',
       date: '2026-09-09',

@@ -513,16 +513,19 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
         'disposition is what lets a residual evaporate.',
     },
   },
-  'app/components/AvailabilityForm.js': {
-    sites: 3,
-    why:
-      'RAW-MESSAGE assertion. :142 is the census site; :174 and :203 are the prefill-status ' +
-      'reads the hand census missed. All three are RED FROM THIS WAVE UNTIL PLAN 88.6-25 ' +
-      '(wave 7) LANDS — that plan declares this file and its edit is the removal condition. ' +
-      'This is deliberately NOT a permanent exemption: it shrinks to 0 and is deleted when ' +
-      '25 routes these through getFetchErrorMessage.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-25' },
-  },
+  // DELETED by plan 88.6-25 task 2 (wave 7, 2026-09-16): `app/components/AvailabilityForm.js`
+  // carried `sites: 3` and ALL THREE closed in one commit, which is what the entry's own `why`
+  // required — deleting it after :142 alone would have retired the only receipt that catches the
+  // two prefill renders.
+  //   :142  the submit-path read -> `getFetchErrorMessage(error)`, no fallback (D62 branch B, so
+  //         the register's generic line is what lands, by design and recorded as a residual).
+  //   :174, :203  the two prefill catches, which STORED `err.message` into `prefillStatus` and
+  //         interpolated it verbatim into a rendered sentence on the ANONYMOUS magic-link page.
+  //         They now store `failed: true` and carry NO message at all, and the render says
+  //         "Couldn't import from Google Calendar." / "Couldn't use saved availability." as
+  //         complete sentences. NO EXEMPTION was written for either: they are displayed to a
+  //         user, not developer logs, and the entry's own text forbids one.
+  // Entry DELETED rather than zeroed.
   'app/components/BrowseMoreModal.js': {
     sites: 1,
     why:
@@ -682,14 +685,11 @@ const FAILED_COPY_EXEMPT: ExemptionRoster = {
         'disposition at phase close.',
     },
   },
-  'app/components/AvailabilityForm.js': {
-    sites: 1,
-    why:
-      '"FAILED TO X" assertion. :142 only — :174 and :203 carry a message read but no ' +
-      'authored copy, which is why the two rosters have different counts for this file. ' +
-      'Closed by plan 88.6-25 (wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-25' },
-  },
+  // DELETED by plan 88.6-25 task 2 (wave 7, 2026-09-16): `app/components/AvailabilityForm.js`
+  // carried `sites: 1` — :142's 'Failed to submit availability. Please try again.' fallback,
+  // the authored half of the same line its raw-message entry covered. It is GONE rather than
+  // reworded: `getFetchErrorMessage(error)` is called with NO fallback, so the ratified register
+  // answers and no copy was authored (P1; the §6.2 W16 precedent). Entry DELETED, not zeroed.
   'app/components/BrowseMoreModal.js': {
     sites: 1,
     why:

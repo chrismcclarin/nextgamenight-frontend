@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Controller } from 'react-hook-form';
 import { z } from 'zod';
 import { nextMonday, format, parseISO } from 'date-fns';
@@ -13,6 +13,9 @@ import { availabilityFormAPI } from '../../lib/api';
 import { useAppForm } from '../../lib/useAppForm';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useConfirmAction } from '../../components/ui/useConfirmAction';
+import { Button } from '../../components/ui/Button';
+import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
+import { logger, errCtx } from '@/lib/logger';
 
 /**
  * Zod schema with cross-field validation
@@ -54,8 +57,21 @@ export default function AvailabilityForm({
 }) {
   const [submitError, setSubmitError] = useState(null);
 
+  /* DECISION Phase 88.6-25 (AC-2 sibling / plans 17-24 in-flight standard): the submit CTA is
+     gated with `aria-disabled` plus this synchronous ref latch, chosen OVER the native
+     `disabled` attribute it carried. A natively-disabled button is removed from the tab order
+     the instant it disables, so a keyboard user who pressed Enter on it is dropped to <body>
+     mid-submit with nothing announcing why. `aria-disabled` keeps the control focusable and
+     named; the latch — read and set on the FIRST line of `onSubmit`, released in `finally` —
+     is what actually refuses the second submit, because an aria attribute refuses nothing.
+     The gated LOOK is no longer the call site's `opacity-60`: `.btn-primary[aria-disabled]`
+     paints the shipped DR-C colour pair (globals.css:2328-2331) and `.btn[aria-disabled]`
+     supplies `cursor: not-allowed`, so both call-site utilities were deleted as superseded
+     rather than left to fight the token pair. Putting `disabled` back is a decision. */
+  const submitInFlightRef = useRef(false);
+
   // Phase 81 Plan 02 — shared pre-fill state (Plan 03 reuses both):
-  //   prefillStatus: { source: 'gcal' | 'saved', count, error? } | null
+  //   prefillStatus: { source: 'gcal' | 'saved', count, failed? } | null
   //   isPrefilling: in-flight flag — disables both buttons during fetch
   const [prefillStatus, setPrefillStatus] = useState(null);
   const [isPrefilling, setIsPrefilling] = useState(false);
@@ -101,6 +117,8 @@ export default function AvailabilityForm({
   }, [isUnavailable, setValue]);
 
   const onSubmit = async (data) => {
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     setSubmitError(null);
 
     try {
@@ -139,8 +157,27 @@ export default function AvailabilityForm({
     } catch (error) {
       // Set inline submit-error UI, then RE-THROW so handleAppSubmit's catch
       // logs it to logger.error -> Sentry (the reachable Sentry path, PRIM-06).
-      setSubmitError(error.message || 'Failed to submit availability. Please try again.');
+      //
+      /* DECISION Phase 88.6-25 (R1 / D-31 / T-88-25-01): the ratified register answers this,
+         with NO `fallback` passed — chosen OVER the hand-written
+         'Failed to submit availability. Please try again.' literal that used to sit here, and
+         over interpolating `error.message`. §6.2's W16 precedent is the model: passing no
+         fallback yields the register's own generic line, so no copy is authored (P1).
+
+         WHY THE GENERIC LINE IS WHAT LANDS, and it is a RECORDED RESIDUAL rather than an
+         oversight: `submitResponse` has no `res.ok` check (`lib/api.ts:1086-1091`), so the
+         value arriving here is the plain `Error` thrown two lines below `response.error` — no
+         `ApiError`, no `code` — and `getFetchErrorMessage` therefore resolves `unknown`. Under
+         the owner's D62 BRANCH-B ruling of 2026-09-09 the frontend does NOT learn a `code` for
+         this path in Phase 88.6; `:130-132` and `lib/api.ts` stay byte-untouched (plan 88.6-42
+         owns them, Phase 93 owns the backend `code`). CONSEQUENCE, stated so nobody reports it
+         as a bug: on this anonymous magic-link page an EXPIRED link and a validation refusal
+         render the SAME sentence until Phase 93 lands. Branch A — teaching this path a `code`
+         in 88.6 — was considered and REJECTED on blast radius, not on the merits. */
+      setSubmitError(getFetchErrorMessage(error));
       throw error;
+    } finally {
+      submitInFlightRef.current = false;
     }
   };
 
@@ -170,8 +207,8 @@ export default function AvailabilityForm({
       setPrefillStatus({ source: 'gcal', count });
       setTimeout(() => setPrefillStatus(null), 2500);
     } catch (err) {
-      console.error('[AvailabilityForm] GCal prefill failed:', err);
-      setPrefillStatus({ source: 'gcal', count: 0, error: err.message });
+      logger.info('[AvailabilityForm] GCal prefill failed:', errCtx(err));
+      setPrefillStatus({ source: 'gcal', count: 0, failed: true });
       setTimeout(() => setPrefillStatus(null), 4000);
     } finally {
       setIsPrefilling(false);
@@ -199,8 +236,8 @@ export default function AvailabilityForm({
       setPrefillStatus({ source: 'saved', count });
       setTimeout(() => setPrefillStatus(null), 2500);
     } catch (err) {
-      console.error('[AvailabilityForm] Saved prefill failed:', err);
-      setPrefillStatus({ source: 'saved', count: 0, error: err.message });
+      logger.info('[AvailabilityForm] Saved prefill failed:', errCtx(err));
+      setPrefillStatus({ source: 'saved', count: 0, failed: true });
       setTimeout(() => setPrefillStatus(null), 4000);
     } finally {
       setIsPrefilling(false);
@@ -265,11 +302,11 @@ export default function AvailabilityForm({
       {/* Header Section */}
       <div className="border-b border-line pb-4">
         <div className="flex items-center gap-2 text-sm text-content-secondary">
-          <span className="font-medium">Submitting as:</span>
-          <span className="text-content-primary font-semibold">{userName}</span>
+          <span>Submitting as:</span>
+          <span className="text-content-primary font-bold">{userName}</span>
         </div>
         {isUpdate && (
-          <p className="mt-2 text-sm text-content-link">
+          <p className="mt-2 text-base text-content-link">
             You previously submitted availability for this week. Your response has been pre-filled below.
           </p>
         )}
@@ -282,14 +319,14 @@ export default function AvailabilityForm({
             overlapping this week (a hidden button read as a bug — it should
             instead advertise that saving a schedule unlocks the shortcut). */}
       <div className="bg-surface-elevated border border-line rounded-card p-4 space-y-2">
-        <p className="text-sm font-medium text-content-primary">Start with:</p>
+        <p className="text-sm font-bold text-content-primary">Start with:</p>
         <div className="flex flex-col sm:flex-row gap-2">
           {gcalConnected && (
             <button
               type="button"
               onClick={handleImportGcal}
               disabled={isPrefilling || isUnavailable}
-              className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 font-medium transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 transition-colors disabled:opacity-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             >
               {isPrefilling && prefillStatus?.source !== 'saved' ? 'Importing…' : 'Import from Google Calendar'}
             </button>
@@ -299,7 +336,7 @@ export default function AvailabilityForm({
             onClick={handleUseSaved}
             disabled={!hasSavedAvailability || isPrefilling || isUnavailable}
             title={!hasSavedAvailability ? 'No saved availability for these dates' : undefined}
-            className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-line focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            className="flex-1 px-4 py-2 rounded-btn bg-surface-card border border-line text-content-secondary hover:border-line-strong active:opacity-75 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-line focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
           >
             {isPrefilling && prefillStatus?.source !== 'gcal' ? 'Loading…' : 'Use my saved availability'}
           </button>
@@ -309,12 +346,34 @@ export default function AvailabilityForm({
             No saved availability for these dates — add a weekly schedule in your profile settings to use this shortcut.
           </p>
         )}
+        {/* DECISION Phase 88.6-25 (R1 / D-31 / T-88.6-66): the upstream string is GONE from this
+            sentence, chosen OVER interpolating `prefillStatus.error` (which was `err.message`)
+            after the colon. That message is RAW BACKEND TEXT — `lib/api.ts:1126` and `:1159` both
+            do `const err = await res.json(); throw new Error(err.error || …)` — and this component
+            renders on `app/availability-form/[token]/page.js`, the ANONYMOUS magic-link page, so
+            the old form showed upstream text to a visitor with no session. Restoring "the detail"
+            as a helpfulness improvement would reopen that disclosure. The `api.ts` side — throwing
+            a real `ApiError` through `mapErrorToCode` so the register could name the actual
+            outcome — is strictly better copy AND closes it at source, but `api.ts` is plan
+            88.6-42's (wave 8) and Phase 93's; it is a NAMED follow-up, not a substitute.
+
+            AND THE SECOND HALF, which is the one a tidy-up will take: `failed: true` is
+            LOAD-BEARING. It is the only thing telling a FAILED prefill apart from a SUCCESSFUL one
+            that found nothing, and the success path never sets it. `count: 0` CANNOT serve as the
+            signal — the backend filters `source:'default'`, so a user with zero saved patterns
+            legitimately resolves with zero (see the comment on `performSavedPrefill` above). A
+            catch that wrote only `{ source, count: 0 }` would be byte-identical to an empty
+            success and would tell an anonymous visitor "No saved availability matches this week"
+            when the app does not know — the same empty-vs-failed defect registered as T-88.6-79 on
+            `EventCalendar.js`. Deleting this flag, or re-keying the branch on the presence of a
+            message, is a decision, not a cleanup. Both states are pinned for both arms in
+            `AvailabilityForm.test.tsx`. */}
         {prefillStatus && (
           <p className="text-sm text-content-secondary transition-opacity">
-            {prefillStatus.error
+            {prefillStatus.failed
               ? (prefillStatus.source === 'saved'
-                  ? `Couldn't use saved availability: ${prefillStatus.error}`
-                  : `Couldn't import from Google Calendar: ${prefillStatus.error}`)
+                  ? "Couldn't use saved availability."
+                  : "Couldn't import from Google Calendar.")
               : prefillStatus.source === 'gcal'
                 ? (prefillStatus.count > 0
                     ? `Filled ${prefillStatus.count} slots from Google Calendar.`
@@ -332,7 +391,7 @@ export default function AvailabilityForm({
           type="button"
           onClick={handleUnavailableToggle}
           className={`
-            w-full flex items-center justify-center gap-3 px-4 py-3 rounded-btn font-medium
+            w-full flex items-center justify-center gap-3 px-4 py-3 rounded-btn
             active:opacity-75 transition-colors duration-200
             focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2
             ${isUnavailable
@@ -397,10 +456,10 @@ export default function AvailabilityForm({
       {/* Submit Button */}
       <div className="pt-4 border-t border-line">
         {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the availability-grid surface's primary CTA (~37px today: the `py-3` here is DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `w-full`.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */}
-        <button
+        <Button
           type="submit"
-          disabled={isSubmitting}
-          className={`btn btn-primary w-full py-3 min-h-11 ${isSubmitting ? 'opacity-60 cursor-not-allowed' : ''}`}
+          aria-disabled={isSubmitting || undefined}
+          className="w-full"
         >
           {isSubmitting ? (
             <span className="flex items-center justify-center gap-2">
@@ -413,7 +472,7 @@ export default function AvailabilityForm({
           ) : (
             isUpdate ? 'Update Availability' : 'Submit Availability'
           )}
-        </button>
+        </Button>
       </div>
     </form>
     {/* Deliberately a SIBLING of the <form>, not a child. A portalled dialog

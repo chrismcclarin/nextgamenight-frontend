@@ -1751,12 +1751,18 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plan: 88.6-34.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/AvailabilityForm.js': {
-    sites: 6,
-    why:
-      '6 off-scale weight sites (5 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-07, 88.6-09, 88.6-10, 88.6-13, 88.6-14, 88.6-23, 88.6-24, 88.6-25, 88.6-42, 88.6-43.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-25 task 2 (wave 7, 2026-09-16): `app/components/AvailabilityForm.js`
+  // carried `sites: 6` (5 font-medium, 1 font-semibold), split across TWO §4.5 outcomes — the
+  // "dead on a .btn" lead the entry named turned out to apply to NONE of them (the file's one
+  // `.btn` element carried no weight utility at all):
+  //   HIERARCHY (700): the `{userName}` value in the "Submitting as:" row (the subject of its
+  //     block, 600 -> 700) and the "Start with:" card title (500 -> 700).
+  //   EMPHASIS (utility deleted, the colour token doing the work): the "Submitting as:" label
+  //     itself (its row carries `text-content-secondary` while the name beside it carries
+  //     `text-content-primary`), and the three bare-`<button>` labels — the two prefill CTAs and
+  //     the "I'm unavailable this week" toggle — each already carrying its own token, which is
+  //     the same call plan 88.6-22 made for BallotSection's three choice buttons.
+  // Entry DELETED, not zeroed.
   'app/components/AvailabilityGrid.js': {
     sites: 6,
     why:
@@ -2019,12 +2025,13 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '3 off-scale weight sites (2 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-05, 88.6-09, 88.6-13, 88.6-14, 88.6-33, 88.6-39, 88.6-42, 88.6-46.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/ThresholdSlider.js': {
-    sites: 2,
-    why:
-      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-22, 88.6-23, 88.6-25, 88.6-44.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-25 task 2 (wave 7, 2026-09-16): `app/components/ThresholdSlider.js`
+  // carried `sites: 2` (2 font-medium), and the two resolved OPPOSITE ways — which is why the
+  // entry could not close on one rule. The `<label>` took EMPHASIS (utility deleted;
+  // `text-content-secondary` does the work). The `{value} / {safeMax}` display took HIERARCHY
+  // (700) with a `DECISION Phase 88.6-25` marker at the site: it carries the SAME colour token as
+  // that label, so the emphasis outcome would have left the live value typographically identical
+  // to the static label naming it. Entry DELETED, not zeroed.
   'app/components/TimezoneNudgeBanner.js': {
     sites: 2,
     why:
