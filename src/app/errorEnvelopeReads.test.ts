@@ -162,7 +162,7 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
   {
     file: 'app/userProfile/page.js',
     receiver: 'phoneValidation',
-    declaredAt: 208,
+    declaredAt: 215,
     declaration: 'const [phoneValidation, setPhoneValidation] = useState(',
     why:
       'Local client-side phone-format validation state { valid, error } produced by ' +

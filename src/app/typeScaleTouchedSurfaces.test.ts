@@ -2133,10 +2133,14 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '2 off-scale weight sites (0 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome lead: hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-14, 88.6-24, 88.6-42.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
+  // 35 -> 28 in plan 88.6-17 task 1 (2026-09-16). Seven closed: the breadcrumb current-page span
+  // (emphasis -> 400 + a colour token, plus `aria-current`), the two theme toggles' `font-semibold`
+  // (dead once they migrated to `Button`), and four inside the TCPA disclosure (label -> 700, brand
+  // span -> 700, STOP and HELP -> 400 with `font-mono` intact). Task 3 takes it to its floor.
   'app/userProfile/page.js': {
-    sites: 35,
+    sites: 28,
     why:
-      '35 off-scale weight sites (22 font-medium, 13 font-semibold). UI-SPEC §4.5 outcome leads: emphasis (400 + a colour token); outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. 4 of these are PERMANENT armed-state 600s (see ARMED_STATE_600_ROSTER), so this entry floors at 4 rather than at zero. Owning plans: 88.6-02, 88.6-08, 88.6-09, 88.6-10, 88.6-11, 88.6-14, 88.6-17, 88.6-28, 88.6-37, 88.6-42, 88.6-43, 88.6-44.',
+      '28 off-scale weight sites remaining (22 font-medium, 6 font-semibold) after plan 88.6-17 task 1 closed seven. UI-SPEC §4.5 outcome leads: emphasis (400 + a colour token); outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. 4 of these are PERMANENT armed-state 600s (see ARMED_STATE_600_ROSTER), so this entry floors at 4 rather than at zero. Owning plans: 88.6-02, 88.6-08, 88.6-09, 88.6-10, 88.6-11, 88.6-14, 88.6-17, 88.6-28, 88.6-37, 88.6-42, 88.6-43, 88.6-44.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
   'components/ui/Banner.tsx': {

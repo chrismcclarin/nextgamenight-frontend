@@ -104,6 +104,17 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
 
 vi.mock('@/lib/hooks/selfIdentityCache', () => ({ patchSelfCache: vi.fn() }));
 
+// AC-2 (plan 88.6-17): the page's 20 raw console calls became `logger.info` breadcrumbs.
+// `errCtx` is kept REAL — it is a pure name+message reducer and mocking it would make the
+// PII half of T-84-01 unassertable, which is the only half a test can actually see.
+vi.mock('@/lib/logger', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/logger')>();
+  return {
+    ...actual,
+    logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+  };
+});
+
 vi.mock('@auth0/nextjs-auth0/client', () => ({
   useUser: () => ({
     user: h.authUser,
@@ -209,6 +220,16 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 import Profile from './page';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
+
+/** Accessor for the mocked house logger — AC-2's channel on this surface. */
+export function loggerMock() {
+  return logger as unknown as {
+    error: ReturnType<typeof vi.fn>;
+    warn: ReturnType<typeof vi.fn>;
+    info: ReturnType<typeof vi.fn>;
+  };
+}
 
 /** The four notification rows the page renders, in source order. */
 export const NOTIFICATION_LABELS = [
@@ -1142,36 +1163,53 @@ describe('userProfile microcopy (Req 7)', () => {
   // upstream message as its entire body, with no action offered. Asserted at
   // RUNTIME rather than by grepping the source — a source grep for the
   // interpolation also matches the marker that explains why it was removed.
+  //
+  // AMENDED Phase 88.6-17 (AC-2 convert-on-touch): the developer half of this pin
+  // moved CHANNEL. It used to assert `console.error` was called; the report is now a
+  // Sentry breadcrumb via `logger.info`, emitted from a guarded top-level effect rather
+  // than from the render body. The PROPERTY is unchanged and is what is asserted — the
+  // upstream text reaches the developer and never the person — so this is a re-aim, not
+  // a weakening. Asserting the new channel rather than deleting the half is deliberate:
+  // an in-place swap here would have flooded the session's finite breadcrumb buffer, and
+  // a pin that stopped watching would not have noticed the report disappearing entirely.
   it('renders designed copy, not the raw error, when the session errors', async () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      h.authError = new Error('ECONNREFUSED 10.0.0.4:5432 — pool exhausted');
-      renderProfile();
+    h.authError = new Error('ECONNREFUSED 10.0.0.4:5432 — pool exhausted');
+    renderProfile();
 
-      expect(
-        await screen.findByText("We couldn't load your profile")
-      ).toBeInTheDocument();
-      // The upstream text reaches the developer, never the person.
-      expect(screen.queryByText(/ECONNREFUSED/)).not.toBeInTheDocument();
-      expect(screen.queryByText(/pool exhausted/)).not.toBeInTheDocument();
-      expect(consoleError).toHaveBeenCalled();
-    } finally {
-      consoleError.mockRestore();
-    }
+    expect(
+      await screen.findByText("We couldn't load your profile")
+    ).toBeInTheDocument();
+    // The upstream text reaches the developer, never the person.
+    expect(screen.queryByText(/ECONNREFUSED/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/pool exhausted/)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(loggerMock().info).toHaveBeenCalledWith(
+        'Auth0 session error on /userProfile:',
+        expect.objectContaining({ message: expect.stringContaining('ECONNREFUSED') })
+      )
+    );
+    // And the raw console channel this file used to write to is gone.
+    expect(loggerMock().error).not.toHaveBeenCalled();
+  });
+
+  // AC-2: the effect is GUARDED. Without the `if (!error) return;` it would fire on every
+  // error-free load and evict the session's other breadcrumbs.
+  it('files no session-error breadcrumb on an error-free load', async () => {
+    renderProfile();
+    await screen.findByRole('heading', { name: 'Notification Preferences' });
+    expect(loggerMock().info).not.toHaveBeenCalledWith(
+      'Auth0 session error on /userProfile:',
+      expect.anything()
+    );
   });
 
   // The branch was also a dead end — one red line and nothing to click.
   it('offers a way out of the session-error screen', async () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      h.authError = new Error('boom');
-      renderProfile();
-      expect(
-        await screen.findByRole('button', { name: 'Reload page' })
-      ).toBeInTheDocument();
-    } finally {
-      consoleError.mockRestore();
-    }
+    h.authError = new Error('boom');
+    renderProfile();
+    expect(
+      await screen.findByRole('button', { name: 'Reload page' })
+    ).toBeInTheDocument();
   });
 
   // Errors state what failed AND what to do next (§6.1). Deliberately worded so
@@ -1342,6 +1380,322 @@ describe('userProfile save-status slots (DEF-88-10-02)', () => {
 // body. Before H1 it discarded it: a wrong code marked the phone verified in
 // local state and the immortal self cache while the DB row stayed false — the
 // SMS toggles enabled and SMS silently never sent. These pins hold the gate.
+// ===========================================================================
+// Plan 88.6-17 — the sms_enabled phone block and the theme toggles
+// ===========================================================================
+// Every arm below was run against the PRE-SWEEP component (or a deliberately
+// planted wrong fix) before being accepted; the red-then-green ledger is in
+// `88.6-17-SUMMARY.md`. jsdom performs no layout and loads no stylesheet, so no
+// arm here asserts a width, a height or a computed style — the geometry half is
+// the rendered 375px measurement recorded in the summary.
+// ---------------------------------------------------------------------------
+
+describe('userProfile phone block (plan 88.6-17)', () => {
+  const VALID = '+1 415 555 2671';
+
+  async function reachEditing() {
+    renderProfile({ sms_enabled: true, phone_verified: false });
+    const phone = await screen.findByRole('textbox', { name: 'Phone number' });
+    fireEvent.change(phone, { target: { value: VALID } });
+    return phone;
+  }
+
+  async function reachVerifying() {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.savePhone as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    await reachEditing();
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Verify' }));
+    await screen.findByRole('textbox', { name: 'Verification code' });
+  }
+
+  // R3 #13 / T-88.6-147. The defect: `'input'` and `'saving'` were SIBLING branches, so
+  // pressing Save & Verify destroyed the focused element and dropped focus to <body>
+  // mid-submit. The property is a DOM fact and needs no layout.
+  it('keeps the pressed Save & Verify control mounted and focused while the request is in flight', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    let release: (value?: unknown) => void = () => {};
+    (usersAPI.savePhone as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+
+    await reachEditing();
+    const save = screen.getByRole('button', { name: 'Save & Verify' });
+    save.focus();
+    expect(document.activeElement).toBe(save);
+
+    fireEvent.click(save);
+
+    // Settle on the POSITIVE signal — the in-flight label landing on the SAME node —
+    // rather than on an absence, which is satisfied on the first tick.
+    await waitFor(() => expect(save).toHaveTextContent('Sending code...'));
+    expect(save.isConnected).toBe(true);
+    expect(document.activeElement).toBe(save);
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(save).not.toBeDisabled();
+
+    release({});
+    await screen.findByRole('textbox', { name: 'Verification code' });
+  });
+
+  // The other half of the same pair. An `aria-disabled` control with no handler refusal is
+  // a re-submittable button — and the shipped `resendCooldown > 0` guard shape cannot help
+  // here at all, because nothing is set before the await.
+  it('dispatches savePhone exactly once when Save & Verify is pressed three times in flight', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    let release: (value?: unknown) => void = () => {};
+    (usersAPI.savePhone as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+
+    await reachEditing();
+    const save = screen.getByRole('button', { name: 'Save & Verify' });
+    fireEvent.click(save);
+    await waitFor(() => expect(save).toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(save);
+    fireEvent.click(save);
+
+    expect(usersAPI.savePhone).toHaveBeenCalledTimes(1);
+    release({});
+    await screen.findByRole('textbox', { name: 'Verification code' });
+  });
+
+  // Rule of KIND: a precondition gate sits on a control nobody has activated, so it stays
+  // native. Only the control the user is standing on moves to `aria-disabled`.
+  it('leaves the invalid-input and incomplete-code precondition gates natively disabled', async () => {
+    renderProfile({ sms_enabled: true, phone_verified: false });
+    const save = await screen.findByRole('button', { name: 'Save & Verify' });
+    expect(save).toBeDisabled();
+    expect(save).not.toHaveAttribute('aria-disabled');
+
+    cleanup();
+    await reachVerifying();
+    const code = screen.getByRole('textbox', { name: 'Verification code' });
+    const verify = within(code.parentElement as HTMLElement).getByRole('button', { name: 'Verify' });
+    expect(verify).toBeDisabled();
+    expect(verify).not.toHaveAttribute('aria-disabled');
+  });
+
+  // D-11 / §3.4 rule 3 / §3.5: on the primitive, with the dead classes gone and the floor
+  // supplied by the cva base rather than by a call-site utility.
+  it('renders the migrated phone-block controls as `Button` with the primitive floor and no dead classes', async () => {
+    await reachEditing();
+    const save = screen.getByRole('button', { name: 'Save & Verify' });
+    const classes = save.className.split(/\s+/);
+    expect(classes).toContain('btn');
+    expect(classes).toContain('btn-primary');
+    expect(classes).toContain('min-h-11');
+    expect(classes).not.toContain('bg-indigo-600');
+    for (const dead of ['text-sm', 'px-4', 'py-2', 'rounded-lg', 'font-semibold', 'gap-2']) {
+      expect(classes, `${dead} is dead on a .btn element and must not survive`).not.toContain(dead);
+    }
+  });
+
+  // D-8. The countdown is a label the user has to READ, so it must not be washed out by
+  // `.btn:disabled { opacity: .5 }` — which is exactly what keeping the native attribute
+  // would have done, while ghost's gated ink (keyed on `aria-disabled:`) never fired.
+  it('gates Resend with aria-disabled, never natively, and keeps the countdown ink readable', async () => {
+    await reachVerifying();
+    const resend = screen.getByRole('button', { name: 'Resend code' });
+    expect(resend).not.toBeDisabled();
+
+    fireEvent.click(resend);
+    const cooling = await screen.findByRole('button', { name: /^Resend in \d+s$/ });
+    expect(cooling).toHaveAttribute('aria-disabled', 'true');
+    expect(cooling).not.toBeDisabled();
+    const classes = cooling.className.split(/\s+/);
+    expect(classes).toContain('aria-disabled:text-content-muted');
+    expect(classes.some((c) => /^disabled:opacity-/.test(c))).toBe(false);
+  });
+
+  // R2 #29 / T-88.6-146. This control's per-press side effect is an outbound SMS — the one
+  // control in this phase with a money cost per press. `setResendCooldown(60)` runs AFTER
+  // the await, so the shipped cooldown guard passes for the whole in-flight window.
+  it('dispatches one outbound SMS when Resend is pressed three times in flight', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    await reachVerifying();
+
+    let release: (value?: unknown) => void = () => {};
+    (usersAPI.savePhone as ReturnType<typeof vi.fn>).mockClear();
+    (usersAPI.savePhone as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+
+    const resend = screen.getByRole('button', { name: 'Resend code' });
+    fireEvent.click(resend);
+    fireEvent.click(resend);
+    fireEvent.click(resend);
+
+    expect(usersAPI.savePhone).toHaveBeenCalledTimes(1);
+    release({});
+    await screen.findByRole('button', { name: /^Resend in \d+s$/ });
+  });
+
+  // R2 #29, second defect: the ticker was a LOCAL `const timer`, cleared only by its own
+  // tick, so an unmount mid-countdown leaked it.
+  it('clears the cooldown ticker on unmount', async () => {
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+    try {
+      await reachVerifying();
+      fireEvent.click(screen.getByRole('button', { name: 'Resend code' }));
+      await screen.findByRole('button', { name: /^Resend in \d+s$/ });
+
+      const timerId = setIntervalSpy.mock.results.at(-1)?.value;
+      expect(timerId).toBeDefined();
+      clearIntervalSpy.mockClear();
+      cleanup();
+      expect(clearIntervalSpy).toHaveBeenCalledWith(timerId);
+    } finally {
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
+    }
+  });
+
+  // A10 / T-88.6-43 + T-88.6-41. These three stay RAW `<button>`s: `.btn`'s unlayered
+  // `font-weight: 600` would render both arms of the Remove ternary at 600 and delete the
+  // armed cue on the SOLE path to removing a verified phone number. This arm pins the
+  // MECHANISM and the preserved ink; the 44px measurement is the rendered one.
+  it('floors the token-inked block controls in place, keeps them off the primitive, and preserves the armed cue', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+    const change = await screen.findByRole('button', { name: 'Change number' });
+    const remove = screen.getByRole('button', { name: 'Remove' });
+
+    for (const el of [change, remove]) {
+      const classes = el.className.split(/\s+/);
+      expect(classes).toContain('min-h-11');
+      expect(classes, 'these are floored IN PLACE, not migrated').not.toContain('btn');
+      expect(classes).toContain('focus-visible:ring-focus-ring');
+      expect(classes).toContain('focus-visible:ring-offset-2');
+    }
+    expect(remove.className).toMatch(/\btext-content-status-error\b/);
+
+    fireEvent.click(remove);
+    const armed = screen.getByRole('button', { name: 'Tap again to remove' });
+    expect(armed.className).toMatch(/\bfont-semibold\b/);
+    expect(usersAPI.removePhone).not.toHaveBeenCalled();
+  });
+
+  it('floors the SMS-disabled banner dismiss in place and leaves its glyph sizing alone', async () => {
+    const { usersAPI } = await import('@/lib/api');
+    (usersAPI.removePhone as ReturnType<typeof vi.fn>).mockResolvedValue({
+      sms_enabled: true,
+      phone: null,
+      notification_preferences: DEFAULT_PREFS,
+    });
+    renderProfile({ sms_enabled: true, phone: VALID, phone_verified: true });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tap again to remove' }));
+
+    const dismiss = await screen.findByRole('button', { name: 'Dismiss' });
+    const classes = dismiss.className.split(/\s+/);
+    expect(classes).toContain('min-h-11');
+    expect(classes).toContain('min-w-11');
+    expect(classes).toContain('focus-visible:ring-focus-ring');
+    // §4.3: a glyph-only control is ICON sizing, never a type rung — byte-unchanged.
+    expect(classes).toContain('text-lg');
+  });
+});
+
+describe('userProfile theme toggles + landmark + legal text (plan 88.6-17)', () => {
+  // W19's precondition, asserted HERE as well as in `cascadeOrder.test.ts`, because this is
+  // the file whose controls lose a visible border if the reset goes back to being unlayered
+  // — and that failure is silent.
+  it('W19: the `.btn` border reset is inside `@layer components`', async () => {
+    const css = await import('node:fs/promises').then((fs) =>
+      fs.readFile('src/app/globals.css', 'utf8')
+    );
+    expect(css).toMatch(/@layer components\s*\{\s*\.btn\s*\{\s*border:\s*none;\s*\}\s*\}/);
+  });
+
+  // D-11 outcome (a). The fill is byte-unchanged (P6) and the border survives (W19).
+  it('renders both theme toggles as `Button` with their fills, borders and pressed state intact', async () => {
+    renderProfile();
+    const light = await screen.findByRole('button', { name: 'Light' });
+    const dark = screen.getByRole('button', { name: 'Dark' });
+    const lightClasses = light.className.split(/\s+/);
+
+    expect(lightClasses).toContain('btn');
+    expect(lightClasses).toContain('min-h-11');
+    expect(light).toHaveAttribute('aria-pressed', 'true');
+    expect(dark).toHaveAttribute('aria-pressed', 'false');
+
+    // P6: the fill and the amber border are byte-unchanged.
+    expect(lightClasses).toContain('bg-amber-50');
+    expect(lightClasses).toContain('border-amber-500');
+    expect(lightClasses).toContain('border');
+    // `resolvedTheme` is mocked 'light', so Dark renders its UNSELECTED arm here.
+    expect(dark.className.split(/\s+/)).toContain('bg-surface-card');
+    expect(dark.className.split(/\s+/)).toContain('border-line');
+    // The selected DARK arm is unreachable under this mock, so its fill and its hover pin
+    // are held at the source rather than left unasserted.
+    const source = await pageSource();
+    expect(source).toContain("'border-amber-500 bg-purple-900 enabled-hover:bg-purple-900 text-white'");
+
+    // The selected fill is PINNED through hover: ghost's base carries
+    // `enabled-hover:bg-surface-hover`, which would otherwise wash the amber on hover.
+    expect(lightClasses).toContain('enabled-hover:bg-amber-50');
+    expect(lightClasses).not.toContain('enabled-hover:bg-surface-hover');
+
+    // The dead classes went with the migration.
+    for (const dead of ['px-4', 'py-2', 'rounded-lg', 'font-semibold', 'gap-2']) {
+      expect(lightClasses).not.toContain(dead);
+    }
+  });
+
+  // Owner ruling 175 (2026-09-14). The property is the landmark's accessible NAME, so it is
+  // asserted by a role-plus-name query and not by pinning the attribute.
+  it('names the breadcrumb landmark', async () => {
+    renderProfile();
+    expect(
+      await screen.findByRole('navigation', { name: 'Breadcrumb' })
+    ).toBeInTheDocument();
+  });
+
+  // T-88.6-138: once the current-page span drops to 400, colour is the only remaining
+  // VISUAL cue, so the state is exposed programmatically as well.
+  it('exposes the breadcrumb current page programmatically, at 400', async () => {
+    renderProfile();
+    const nav = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+    const current = within(nav).getByText('Profile');
+    expect(current).toHaveAttribute('aria-current', 'page');
+    const classes = current.className.split(/\s+/);
+    expect(classes).toContain('font-normal');
+    expect(classes).not.toContain('font-semibold');
+    expect(classes).toContain('text-content-primary');
+  });
+
+  // D-01 / T-88.6-42: legal text is never caption-sized.
+  it('renders the TCPA disclosure at 14, with its three inner spans dispositioned', async () => {
+    renderProfile({ sms_enabled: true });
+    const label = await screen.findByText('SMS Notifications Disclosure');
+    expect(label.className.split(/\s+/)).toContain('text-sm');
+    expect(label.className.split(/\s+/)).toContain('font-bold');
+    expect(label.className.split(/\s+/)).not.toContain('text-xs');
+
+    const stop = screen.getByText('STOP');
+    const body = stop.parentElement as HTMLElement;
+    expect(body.className.split(/\s+/)).toContain('text-sm');
+    expect(body.className.split(/\s+/)).not.toContain('text-xs');
+
+    // STOP / HELP keep `font-mono`, a NON-COLOUR cue, so they drop to 400.
+    for (const keyword of ['STOP', 'HELP']) {
+      const span = screen.getByText(keyword);
+      expect(span.className.split(/\s+/)).toContain('font-mono');
+      expect(span.className.split(/\s+/)).toContain('font-normal');
+    }
+    // The brand span has no surviving non-colour cue, so it takes 700 rather than
+    // 400-plus-colour, which would leave a colour-only distinction inside legal text.
+    expect(screen.getByText('NextGameNight').className.split(/\s+/)).toContain('font-bold');
+
+    // P1: the wording is byte-unchanged.
+    expect(body.textContent).toContain(
+      'Consent is not a condition of using the service.'
+    );
+  });
+});
+
 describe('phone verification — wrong code shows error, never verifies (H1)', () => {
   async function reachArmedVerify() {
     renderProfile({ sms_enabled: true, phone_verified: false });

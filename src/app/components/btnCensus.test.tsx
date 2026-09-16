@@ -527,13 +527,27 @@ const PALETTE_COUNTS = countByFile(PALETTE_BUTTONS);
 // with no population is a gate that cannot red.
 // ---------------------------------------------------------------------------------------
 const PALETTE_BUTTON_EXEMPT: ExemptionRoster = {
-  // Five sites: three `bg-indigo-600` buttons in the `sms_enabled`-gated phone block
-  // (`:1631`, `:1650`, `:1675`) and the two theme toggles (`:1857` `bg-amber-50`,
-  // `:1871` `bg-purple-900`).
+  // SHRUNK 5 -> 2 by plan 88.6-17 (wave 7, 2026-09-16), and 2 is where it FLOORS — this entry is
+  // not on a path to zero and must not be read as pending work.
+  //
+  // The three `bg-indigo-600` phone-block buttons are gone: the Save & Verify control and its
+  // in-flight render merged into ONE `<Button variant="primary">` across both `phoneState` arms
+  // (R3 #13), and Verify is a second `variant="primary"`. The Resend link became
+  // `variant="ghost"`, which never counted here anyway — it carried `text-indigo-600`, a raw
+  // palette INK, and `PALETTE_FILL` matches FILLS only. That is why the pre-sweep measurement was
+  // FIVE and not the six D-11's control census names: the two populations differ by one.
+  //
+  // The two survivors are the theme toggles (`bg-amber-50` / `bg-purple-900`). They are now
+  // `<Button variant="ghost">`, which this rule still scans by design, and they KEEP their raw
+  // fills because P6 forbids changing a shipped visual state. Both resolve to literal TAILWIND
+  // DEFAULT steps re-declared in the repo's `@theme` palette block (`--color-amber-50: #fffbeb`,
+  // `--color-purple-900: #581c87`), NOT to the repo's own `--purple-900` (#232d3e), which
+  // `@theme` never exposes as a utility — so they are palette steps under both readings of the
+  // name ambiguity this rule's docblock describes.
   'app/userProfile/page.js': {
-    sites: 5,
-    why: 'D-11 -> plan 88.6-17: the three bg-indigo-600 phone-block buttons become `Button variant="primary"` with the Resend link as `variant="ghost"`; the two theme toggles become `Button` with the variant chosen from their current fill semantics',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-07 / D-11' },
+    sites: 2,
+    why: 'the two theme toggles, migrated to `Button variant="ghost"` by plan 88.6-17 with their fills kept verbatim under P6. Converging `bg-amber-50` / `bg-purple-900` onto semantic tokens is a LOOK change and is out of 88.6 contract; the site marker records the fill determination and the migrate-or-exclude outcome. Not pending work — this entry floors at 2.',
+    owner: { kind: 'decision', marker: 'DECISION Phase 88.6-17' },
   },
   // One site, `AvailabilityGrid.js:621` — the paint-mode toggle, carrying `bg-green-100` and
   // `bg-yellow-100` across its two arms. One ELEMENT, so one site.

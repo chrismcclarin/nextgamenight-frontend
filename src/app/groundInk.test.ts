@@ -202,7 +202,7 @@ const OFFENDERS: ExemptionRoster = {
   },
   'app/userProfile/page.js': {
     sites: 1,
-    why: 'text-content-link (3.9909) at :2539 under a muted ground in the same chunk. D-16 census site. Closed by plan 17, which must decrement this entry in the same commit.',
+    why: 'text-content-link (3.9909) at :2788 (was :2539 before the plan 88.6-17 sweep shifted the file) under a muted ground in the same chunk. D-16 census site. Closed by plan 17 task 3, which must delete this entry in the same commit.',
     owner: D16,
   },
 };
@@ -348,7 +348,7 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
       ['app/friends/page.js:748', 'text-content-link'],
       ['app/gameDetail/page.js:1330', 'text-content-link'],
       ['app/gameDetail/page.js:2753', 'text-content-link'],
-      ['app/userProfile/page.js:2539', 'text-content-link'],
+      ['app/userProfile/page.js:2788', 'text-content-link'],
       ['app/components/CalendarMonthView.js:788', 'text-content-link'],
     ];
     const missing = byName.filter(
@@ -417,7 +417,7 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
       'app/friends/page.js:748',
       'app/gameDetail/page.js:1330',
       'app/gameDetail/page.js:2753',
-      'app/userProfile/page.js:2539',
+      'app/userProfile/page.js:2788',
       'app/components/CalendarMonthView.js:788',
       'app/components/SuggestionCard.js:92',
       'app/components/SuggestionCard.js:116',

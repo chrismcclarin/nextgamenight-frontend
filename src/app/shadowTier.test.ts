@@ -286,11 +286,10 @@ const ALIAS_ROSTER: ExemptionRoster = {
   // `app/components/KebabMenu.js` CLOSED by plan 88.6-16 (wave 6, 2026-09-15): the dropdown
   // panel's `shadow-lg` is now `shadow-theme-lg`. Entry DELETED rather than zeroed — the roster
   // is exact in both directions, so a zeroed entry would red as a fossil permission.
-  'app/userProfile/page.js': {
-    sites: 1,
-    why: '`hover:shadow-md` on a profile card surface (:2610) — non-button, so plain `hover:shadow-theme-md`. Plan 17 snaps it.',
-    owner: D49B,
-  },
+  // `app/userProfile/page.js` CLOSED by plan 88.6-17 (wave 7, 2026-09-16): the owned-game card's
+  // `hover:shadow-md` is now `hover:shadow-theme-md` — plain `hover:`, because the site is a card
+  // `div` and not a `.btn`. Entry DELETED rather than zeroed; the roster is exact in both
+  // directions, so a zeroed entry would red as a fossil permission.
   'components/ui/BottomSheet.tsx': {
     sites: 1,
     why: '`shadow-lg` on the bottom-sheet panel (:199). Plan 37 snaps it to `shadow-theme-lg`; non-button surface.',

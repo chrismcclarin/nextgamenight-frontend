@@ -44,6 +44,13 @@ import { Combobox } from '../../components/ui/Combobox';
 import { StatusRegion } from '../../components/ui/StatusRegion';
 import { Input, SelectControl } from '../../components/ui/Input';
 import { ErrorFallback } from '../../components/ui/ErrorFallback';
+import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
+// AC-2 convert-on-touch (owner ruling 2026-09-09; LEVEL AMENDED 2026-09-13). This file's
+// 20 raw console calls route through the house logger at `info`, which is
+// Sentry.addBreadcrumb (logger.ts:34-36) — a BREADCRUMB, not an event. `errCtx` is the
+// shared name+message builder (88.6-13); the raw Error is never passed as `ctx`.
+import { logger, errCtx } from '../../lib/logger';
 
 const NOTIFICATION_TYPES = [
     { key: 'event_created', label: 'New Event', description: 'When a game session is scheduled' },
@@ -209,6 +216,29 @@ function Profile(){
     const [verificationCode, setVerificationCode] = useState('');
     const [phoneError, setPhoneError] = useState(null);
     const [resendCooldown, setResendCooldown] = useState(0);
+
+    /* DECISION Phase 88.6-17 (R2 #29 / T-88.6-146, T-88.6-147): the two phone-flow senders
+       carry a SYNCHRONOUS in-flight latch as their handler's first statement, released in a
+       `finally` — chosen OVER relying on the rendered gate alone.
+
+       WHICH WINDOW THE SHIPPED GUARD COVERS. `handleResendCode`'s `if (… || resendCooldown > 0)`
+       early return guards the COOLDOWN window ONLY: `setResendCooldown(60)` runs AFTER the
+       `await usersAPI.savePhone(...)`, so `resendCooldown` is still 0 for the whole in-flight
+       window and that guard PASSES. D-8 removes this control's native `disabled` attribute, and
+       `aria-disabled` refuses nothing at the DOM level — so without the latch a second press
+       while the first request is in flight dispatches a second outbound SMS, the one per-press
+       money cost in this phase. The same shape applies to Save & Verify once its in-flight arm
+       moves to `aria-disabled` (R3 #13): the pressed control now SURVIVES the submit, which is
+       the point, and a surviving control can be pressed again.
+
+       Both halves land together or neither does: an `aria-disabled` control with no handler
+       refusal is a re-submittable button. Removing either one is a decision, not a cleanup. */
+    const saveInFlightRef = useRef(false);
+    const resendInFlightRef = useRef(false);
+    /* R2 #29, second defect: the cooldown ticker used to be a LOCAL `const timer`, cleared only
+       by its own tick — nothing cancelled it on unmount. Held in a ref and cleared in the
+       existing unmount effect below, alongside removeArmedTimerRef. */
+    const resendTimerRef = useRef(null);
 
     // Two-tap remove confirmation state (D-PHONE-01, mirrors KebabMenu twoTap pattern):
     // first tap arms a 3s revert timer; second tap commits via usersAPI.removePhone.
@@ -482,7 +512,7 @@ function Profile(){
             await usersAPI.resetTutorial(selfUuid);
             replayTutorial();
         } catch (error) {
-            console.error('Error replaying tutorial:', error);
+            logger.info('Error replaying tutorial:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't restart the tour. Please try again.",
@@ -522,11 +552,16 @@ function Profile(){
     };
 
     const handleSaveAndVerify = async () => {
+        // R3 #13 / T-88.6-147: the in-flight refusal, synchronous and FIRST. The rendered
+        // control is `aria-disabled` while saving, not natively `disabled`, so it stays in the
+        // document (and keeps focus) — see the marker on `saveInFlightRef`.
+        if (saveInFlightRef.current) return;
         if (!user?.sub || !phoneValidation.valid) return;
         if (!selfUuid) {
             setPhoneError('Still loading your account — please try again in a moment.');
             return;
         }
+        saveInFlightRef.current = true;
         try {
             setPhoneState('saving');
             setPhoneError(null);
@@ -537,7 +572,7 @@ function Profile(){
             patchSelfCache(queryClient, { phone: phoneInput, phone_verified: false });
             setPhoneState('verifying');
         } catch (error) {
-            console.error('Error saving phone:', error);
+            logger.info('Error saving phone:', errCtx(error));
             setPhoneError(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't send the code. Check the number and try again.",
@@ -545,6 +580,9 @@ function Profile(){
                 })
             );
             setPhoneState('editing');
+        } finally {
+            // Released in `finally` so a FAILED request does not strand the control.
+            saveInFlightRef.current = false;
         }
     };
 
@@ -576,7 +614,7 @@ function Profile(){
             setUserData(prev => (prev ? { ...prev, phone: phoneInput, phone_verified: true } : prev));
             patchSelfCache(queryClient, { phone: phoneInput, phone_verified: true });
         } catch (error) {
-            console.error('Error verifying code:', error);
+            logger.info('Error verifying code:', errCtx(error));
             setPhoneError(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't check that code. Please try again.",
@@ -596,40 +634,57 @@ function Profile(){
     };
 
     const handleResendCode = async () => {
+        // R2 #29 / T-88.6-146: the IN-FLIGHT refusal, synchronous and FIRST. The line below
+        // guards the COOLDOWN window only — `setResendCooldown(60)` runs after the await, so
+        // during the request `resendCooldown` is still 0 and that guard passes. This control's
+        // per-press side effect is an outbound SMS.
+        if (resendInFlightRef.current) return;
         if (!user?.sub || resendCooldown > 0) return;
         if (!selfUuid) {
             setPhoneError('Still loading your account — please try again in a moment.');
             return;
         }
+        resendInFlightRef.current = true;
         try {
             setPhoneError(null);
             await usersAPI.savePhone(selfUuid, phoneInput);
             setResendCooldown(60);
-            const timer = setInterval(() => {
+            if (resendTimerRef.current) clearInterval(resendTimerRef.current);
+            resendTimerRef.current = setInterval(() => {
                 setResendCooldown(prev => {
                     if (prev <= 1) {
-                        clearInterval(timer);
+                        clearInterval(resendTimerRef.current);
+                        resendTimerRef.current = null;
                         return 0;
                     }
                     return prev - 1;
                 });
             }, 1000);
         } catch (error) {
-            console.error('Error resending code:', error);
+            logger.info('Error resending code:', errCtx(error));
             setPhoneError(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't resend the code. Please try again.",
                 })
             );
+        } finally {
+            // Released in `finally` so a FAILED resend does not strand the control.
+            resendInFlightRef.current = false;
         }
     };
 
     // Cleanup the two-tap revert timer on unmount (mirrors KebabMenu lines 64-71).
+    // R2 #29: the resend cooldown ticker is cleared HERE too — an ADDITION to this effect's
+    // body, deliberately not a second unmount effect.
     useEffect(() => {
         return () => {
             if (removeArmedTimerRef.current) {
                 clearTimeout(removeArmedTimerRef.current);
                 removeArmedTimerRef.current = null;
+            }
+            if (resendTimerRef.current) {
+                clearInterval(resendTimerRef.current);
+                resendTimerRef.current = null;
             }
         };
     }, []);
@@ -678,7 +733,7 @@ function Profile(){
             setPhoneJustRemoved(true); // Session flag — gates the amber banner.
             setSmsDisabledBannerDismissed(false); // Reset dismissal so banner shows fresh.
         } catch (error) {
-            console.error('Error removing phone:', error);
+            logger.info('Error removing phone:', errCtx(error));
             setPhoneError(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't remove your number. Please try again.",
@@ -747,7 +802,7 @@ function Profile(){
             patchSelfCache(queryClient, { notification_preferences: updatedPrefs });
             setSaveStatus(slot, 'saved', 2000);
         } catch (error) {
-            console.error('Error updating preference:', error);
+            logger.info('Error updating preference:', errCtx(error));
             setPreferences(previousPrefs);
             setSaveStatus(slot, 'error', 3000);
         }
@@ -773,7 +828,7 @@ function Profile(){
             patchSelfCache(queryClient, { notification_preferences: updatedPrefs });
             setSaveStatus(REMINDER_WINDOW_SLOT, 'saved', 2000);
         } catch (error) {
-            console.error('Error updating reminder window:', error);
+            logger.info('Error updating reminder window:', errCtx(error));
             setPreferences(previousPrefs);
             setSaveStatus(REMINDER_WINDOW_SLOT, 'error', 3000);
         }
@@ -795,7 +850,7 @@ function Profile(){
             patchSelfCache(queryClient, { notification_preferences: DEFAULT_PREFERENCES });
             setSaveStatus(RESET_SLOT, 'saved', 2000);
         } catch (error) {
-            console.error('Error resetting preferences:', error);
+            logger.info('Error resetting preferences:', errCtx(error));
             setPreferences(previousPrefs);
             setSaveStatus(RESET_SLOT, 'error', 3000);
         }
@@ -905,7 +960,7 @@ function Profile(){
             setEditingUsername(false);
             toast.success('Username updated');
         } catch (error) {
-            console.error('Error updating username:', error);
+            logger.info('Error updating username:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't save your username. Please try again.",
@@ -928,7 +983,7 @@ function Profile(){
             const status = await googleCalendarAPI.getStatus(selfUuid);
             setGoogleCalendarConnected(status.connected || false);
         } catch (error) {
-            console.error('Error checking Google Calendar status:', error.message);
+            logger.info('Error checking Google Calendar status:', errCtx(error));
             setGoogleCalendarConnected(false);
         } finally {
             setCheckingCalendarStatus(false);
@@ -991,7 +1046,7 @@ function Profile(){
             setGoogleCalendarConnected(false);
             toast.success('Google Calendar disconnected');
         } catch (error) {
-            console.error('Error disconnecting Google Calendar:', error);
+            logger.info('Error disconnecting Google Calendar:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't disconnect Google Calendar. Please try again.",
@@ -1033,7 +1088,7 @@ function Profile(){
             const games = await userGamesAPI.getOwnedGames(selfUuid);
             setOwnedGames(games || []);
         } catch (error) {
-            console.error('Error fetching owned games:', error);
+            logger.info('Error fetching owned games:', errCtx(error));
             setOwnedGames([]);
         } finally {
             setLoadingGames(false);
@@ -1050,7 +1105,7 @@ function Profile(){
                 toast('No games found. Try a different search term.');
             }
         } catch (error) {
-            console.error('Error searching BGG:', error);
+            logger.info('Error searching BGG:', errCtx(error));
             setBggSearchResults([]);
             /* DECISION Phase 88-25 (Req 14 / T-88-25-01): the BGG-unavailable case is selected by
                `ApiError.code`, chosen OVER the shipped `errorMessage.includes('401')` /
@@ -1101,7 +1156,7 @@ function Profile(){
             // without a receipt the only feedback is a panel vanishing.
             toast.success('Game added');
         } catch (error) {
-            console.error('Error adding game to collection:', error);
+            logger.info('Error adding game to collection:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't add that game. Please try again.",
@@ -1121,7 +1176,7 @@ function Profile(){
             await fetchOwnedGames();
             toast.success('Game removed');
         } catch (error) {
-            console.error('Error removing game from collection:', error);
+            logger.info('Error removing game from collection:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't remove that game. Please try again.",
@@ -1208,7 +1263,7 @@ function Profile(){
             // into it. The created rows are visible in the list directly below.
             toast.success('Schedules created');
         } catch (error) {
-            console.error('Error creating schedule:', error);
+            logger.info('Error creating schedule:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't save that schedule. Please try again.",
@@ -1242,7 +1297,7 @@ function Profile(){
             });
             toast.success('Override created');
         } catch (error) {
-            console.error('Error creating specific override:', error);
+            logger.info('Error creating specific override:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't save that override. Please try again.",
@@ -1259,7 +1314,7 @@ function Profile(){
             await patternsQuery.refetch();
             toast.success('Pattern deleted');
         } catch (error) {
-            console.error('Error deleting pattern:', error);
+            logger.info('Error deleting pattern:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't delete that entry. Please try again.",
@@ -1341,7 +1396,7 @@ function Profile(){
                 setImportProgress(null);
             }, 5000);
         } catch (error) {
-            console.error('Error importing BGG collection:', error);
+            logger.info('Error importing BGG collection:', errCtx(error));
             setImportProgress({
                 status: 'error',
                 message: getFetchErrorMessage(error, {
@@ -1352,6 +1407,41 @@ function Profile(){
             setImportingCollection(false);
         }
     };
+
+    /* DECISION Phase 88.6-17 (AC-2): the Auth0 session-error report is a GUARDED TOP-LEVEL
+       EFFECT — chosen OVER the IN-PLACE swap every one of this file's other nineteen
+       converted sites gets, and over escalating this one site to `logger.error`.
+
+       WHY NOT THE IN-PLACE SWAP. The report it replaces executed in the component's RENDER
+       BODY, inside the `if (error)` branch below — not in a handler, not in an effect. An
+       unlatched render-body report re-enters on EVERY paint, and the Sentry breadcrumb buffer
+       is finite (`@sentry/core/build/cjs/breadcrumbs.js:11`, DEFAULT_BREADCRUMBS = 100; nothing
+       sets `maxBreadcrumbs` in `sentry.client.config.js`). So an in-place swap would evict
+       every other breadcrumb in the session and destroy the diagnostic value of whatever event
+       that session later files. That is the same unbounded per-paint flood
+       `src/lib/colorUtils.js:583-602` already litigated and rejected — including the tempting
+       escape hatch, since `dedupeIntegration` compares only against the immediately preceding
+       event. That precedent is worded in EVENTS and these calls emit none; it is cited anyway
+       because it is the shipped LATCH idiom, and a latch is what an unbounded per-paint report
+       needs at ANY level.
+
+       WHY NOT `logger.error` HERE. (1) AC-2's uniformity is the property the owner's ruling
+       bought — executors do not re-decide the level per call. (2) It would not even deliver a
+       diagnostic: Auth0's `RequestError` calls a bare `super()` and carries its only detail on
+       `.status` (`@auth0/nextjs-auth0/dist/client/use-user.js`), so the message is empty and
+       the name is 'Error', and no extra-error-data integration is configured to carry `.status`
+       into the payload. An escalation here would file an empty-valued, fingerprint-collapsed
+       issue strictly LESS informative than the line it replaced.
+
+       The guard is part of the requirement, not a refinement: without it the effect fires on an
+       error-free load. `@auth0/nextjs-auth0`'s `error` identity is stable across renders, so a
+       guarded effect keyed on it reports once per distinct error. It is declared HERE, above the
+       early returns, because a hook inside the `if (error)` block is a conditional hook the
+       `react-hooks` rules reject. */
+    useEffect(() => {
+        if (!error) return;
+        logger.info('Auth0 session error on /userProfile:', errCtx(error));
+    }, [error]);
 
     // §6.3: loading copy NAMES the thing. Worded identically to this route's own
     // `loading.tsx` fallback so the boundary and the component do not greet the
@@ -1372,9 +1462,17 @@ function Profile(){
        The fallback ships both affordances.
 
        Deliberately NOT worded "failed to load" — plan 88-25 arms a negative gate
-       on that phrase across this file. */
+       on that phrase across this file.
+
+       ——— AMENDED Phase 88.6-17, 2026-09-16 (D12 / AC-2) ———
+       Clause (1)'s last sentence described a CHANNEL this file no longer has. Under AC-2's
+       convert-on-touch gate the developer-facing detail now travels as a Sentry BREADCRUMB,
+       emitted from the guarded top-level effect declared above, rather than to the browser's
+       developer output. The security half is UNCHANGED and is the load-bearing half: the
+       fallback still takes NO error prop by contract (ASVS V7), so no upstream message can
+       reach the DOM, and the move changes only where the developer detail goes — it does not
+       delete the report. The rest of this marker stands as written. */
     if (error) {
-        console.error('Auth0 session error on /userProfile:', error);
         return (
             <ErrorFallback
                 title="We couldn't load your profile"
@@ -1397,10 +1495,23 @@ function Profile(){
                         <p className="flex-1 text-sm text-amber-900 dark:text-amber-100">
                             SMS disabled — add a phone number to re-enable.
                         </p>
+                        {/* DECISION Phase 88.6-17 (A10 / T-88.6-43 + R3 finding 144): this dismiss stays a
+                            RAW `<button>` and is floored to 44x44 IN PLACE — chosen OVER migrating it
+                            to `<Button variant="ghost" size="icon">`. `.btn`'s unlayered
+                            `font-size: .875rem` would shrink the `×` glyph, and `.btn`'s padding would
+                            widen a control that has to sit flush in a `flex items-start` banner row.
+                            `inline-flex` + `min-h-11 min-w-11` + `items-center justify-center` supply the
+                            floor without changing the glyph's own size or the row's rhythm; the negative
+                            `-m-2` keeps the banner's visual padding unchanged while the TAP TARGET grows
+                            outward. The INK classes and the glyph's `text-lg` icon sizing are
+                            byte-unchanged (§4.3: a glyph-only control is icon sizing, never a type rung).
+                            The focus ring is the house string `globals.css` states verbatim, added
+                            PER-SITE under the rule recorded there — this control carried none, so a
+                            keyboard or switch user got only whatever the UA supplies. */}
                         <button
                             type="button"
                             onClick={() => setSmsDisabledBannerDismissed(true)}
-                            className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 text-lg leading-none shrink-0"
+                            className="-m-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-btn text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 text-lg leading-none shrink-0 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                             aria-label="Dismiss"
                         >
                             ×
@@ -1408,11 +1519,20 @@ function Profile(){
                     </div>
                 )}
 
-                {/* Breadcrumbs */}
-                <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
+                {/* Breadcrumbs. Owner ruling 175 (2026-09-14): every breadcrumb `<nav>` in the
+                    tree carries an accessible NAME, so it does not announce as one more unnamed
+                    navigation landmark beside the page's others. This plan owns one of the five;
+                    plans 18 and 21 own the other four. */}
+                <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
                     <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
                     <span className="text-content-muted mx-2">{'>'}</span>
-                    <span className="text-content-primary font-semibold">Profile</span>
+                    {/* DECISION Phase 88.6-17 (D-03 emphasis / T-88.6-138): the current-page span
+                        takes 400 plus a colour token, and gains `aria-current="page"` in the SAME
+                        edit — chosen OVER the colour token alone. Its `font-semibold` was the only
+                        thing distinguishing it from the sibling link; once that becomes 400, colour
+                        is the sole remaining VISUAL cue, so the state is exposed programmatically
+                        as well. Dropping `aria-current` later is a decision, not a cleanup. */}
+                    <span aria-current="page" className="text-content-primary font-normal">Profile</span>
                 </nav>
 
                 {/* Profile Header */}
@@ -1575,7 +1695,29 @@ function Profile(){
                         scrollIntoView + focus the inner <input type="tel">. */}
                     {userData?.sms_enabled && (
                     <div className="mt-2" ref={phoneInputRef}>
-                                    {(phoneState === 'idle' || phoneState === 'editing') && (
+                                    {/* DECISION Phase 88.6-17 (R3 #13 / T-88.6-147): the input-plus-action
+                                        row renders ONCE across the `'input'` and `'saving'` states —
+                                        chosen OVER the two sibling `phoneState` branches this shipped as.
+
+                                        Those were not one control in two states: the Save & Verify
+                                        button lived inside the idle/editing branch and a second,
+                                        natively-disabled "Sending code..." button lived inside the
+                                        `'saving'` branch. Pressing Save & Verify therefore DESTROYED the
+                                        focused element and dropped focus to `<body>` mid-submit, on an
+                                        account-level flow. Now the Input's disabled state, the button's
+                                        label and the button's `aria-disabled` are all driven by
+                                        `phoneState`, so the element the user pressed is still in the
+                                        document and still focused while the request is in flight.
+
+                                        The native `disabled` attribute still carries the INVALID-INPUT
+                                        precondition — a gate on a control nobody has activated, which the
+                                        rule of KIND leaves native. Only the in-flight state moved to
+                                        `aria-disabled`, and it is paired with the synchronous first-line
+                                        refusal in `handleSaveAndVerify` (see the `saveInFlightRef` marker):
+                                        an `aria-disabled` control with no handler refusal is a
+                                        re-submittable button. Splitting these branches apart again, or
+                                        dropping either half of the pair, is a decision, not a cleanup. */}
+                                    {(phoneState === 'idle' || phoneState === 'editing' || phoneState === 'saving') && (
                                         <div className="flex flex-col sm:flex-row sm:items-start gap-2">
                                             <div className="flex-1 relative">
                                                 {/* Named explicitly: this control has no visible
@@ -1587,6 +1729,7 @@ function Profile(){
                                                     value={phoneInput}
                                                     onChange={(e) => handlePhoneChange(e.target.value)}
                                                     placeholder="+1 555-123-4567"
+                                                    disabled={phoneState === 'saving'}
                                                     aria-invalid={
                                                         phoneValidation.error || phoneError ? 'true' : undefined
                                                     }
@@ -1599,6 +1742,7 @@ function Profile(){
                                                             .join(' ') || undefined
                                                     }
                                                     className={
+                                                        phoneState === 'saving' ? 'bg-surface-muted' :
                                                         phoneValidation.valid ? 'border-status-success' :
                                                         phoneValidation.error ? 'border-status-error' :
                                                         ''
@@ -1628,31 +1772,25 @@ function Profile(){
                                                     </p>
                                                 )}
                                             </div>
-                                            <button
+                                            {/* The in-flight cue is the LABEL SWAP plus the muted input
+                                                ground, stated rather than inherited: the retired
+                                                `'saving'` branch carried an unconditional
+                                                `opacity-50 cursor-not-allowed`, and `.btn:disabled`'s
+                                                own opacity wash keys on the NATIVE attribute this
+                                                control no longer sets while in flight. A call-site
+                                                `disabled:opacity-*` is DEAD on a `.btn` element and is
+                                                deliberately not used as the replacement. The
+                                                not-allowed cursor still arrives, from
+                                                `.btn[aria-disabled='true']` in globals.css. */}
+                                            <Button
+                                                variant="primary"
                                                 onClick={handleSaveAndVerify}
                                                 disabled={!phoneValidation.valid}
-                                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                                aria-disabled={phoneState === 'saving' ? 'true' : undefined}
+                                                className="whitespace-nowrap"
                                             >
-                                                Save & Verify
-                                            </button>
-                                        </div>
-                                    )}
-
-                                    {phoneState === 'saving' && (
-                                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                                            <Input
-                                                type="tel"
-                                                aria-label="Phone number"
-                                                value={phoneInput}
-                                                disabled
-                                                className="flex-1 bg-surface-muted"
-                                            />
-                                            <button
-                                                disabled
-                                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm opacity-50 cursor-not-allowed whitespace-nowrap"
-                                            >
-                                                Sending code...
-                                            </button>
+                                                {phoneState === 'saving' ? 'Sending code...' : 'Save & Verify'}
+                                            </Button>
                                         </div>
                                     )}
 
@@ -1672,24 +1810,51 @@ function Profile(){
                                                     aria-describedby={phoneError ? 'phone-flow-error' : undefined}
                                                     className="w-32 text-center tracking-widest"
                                                 />
-                                                <button
+                                                {/* An incomplete-code PRECONDITION gate on a control
+                                                    nobody has activated — the rule of kind leaves it
+                                                    natively `disabled`. */}
+                                                <Button
+                                                    variant="primary"
                                                     onClick={handleVerifyCode}
                                                     disabled={verificationCode.length !== 6}
-                                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                                    className="whitespace-nowrap"
                                                 >
                                                     Verify
-                                                </button>
-                                                <button
+                                                </Button>
+                                                {/* DECISION Phase 88.6-17 (D-8): the cooldown gate is
+                                                    `aria-disabled`, with the native `disabled` attribute
+                                                    REMOVED — the shipped EmailAddressSection cooldown
+                                                    idiom, reused verbatim. Keeping `disabled` here would
+                                                    be a defect, not a no-op: the unlayered
+                                                    `.btn:disabled { opacity: .5 }` would WASH OUT a
+                                                    countdown label the user has to READ, and ghost's
+                                                    gated ink is keyed on `aria-disabled:`
+                                                    (Button.tsx), so it would never fire. A call-site
+                                                    `disabled:opacity-100` cannot rescue it —
+                                                    `disabled:opacity-*` is dead on a `.btn`. The
+                                                    disclosed behaviour delta is that a cooling-down
+                                                    Resend stays in the tab order, which is DR-C's chosen
+                                                    behaviour, and the re-press is refused in
+                                                    `handleResendCode`. */}
+                                                <Button
+                                                    variant="ghost"
                                                     onClick={handleResendCode}
-                                                    disabled={resendCooldown > 0}
-                                                    className="text-sm text-indigo-600 hover:text-indigo-700 disabled:text-content-muted whitespace-nowrap"
+                                                    aria-disabled={resendCooldown > 0 ? 'true' : undefined}
+                                                    className="whitespace-nowrap"
                                                 >
                                                     {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
-                                                </button>
+                                                </Button>
                                             </div>
+                                            {/* A10: floored to 44px IN PLACE as a raw `<button>` — see the
+                                                marker on the Remove control below for why these three
+                                                block links do not migrate. `inline-flex min-h-11
+                                                items-center` plus the negative inline margins keeps the
+                                                ink, the label and the row rhythm byte-identical while the
+                                                tap target grows to the floor. Focus ring added per-site
+                                                (R3 finding 144) — this control carried none. */}
                                             <button
                                                 onClick={handleChangeNumber}
-                                                className="text-sm text-content-muted hover:text-content-secondary mt-1"
+                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary mt-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                                             >
                                                 Change number
                                             </button>
@@ -1704,17 +1869,39 @@ function Profile(){
                                                 </svg>
                                             </span>
                                             <span className="text-sm text-content-status-success font-medium">Phone verified</span>
+                                            {/* A10: floored in place — see the Remove marker below. */}
                                             <button
                                                 onClick={handleChangeNumber}
-                                                className="text-sm text-content-muted hover:text-content-secondary underline ml-2"
+                                                className="-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm text-content-muted hover:text-content-secondary underline ml-2 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                                             >
                                                 Change number
                                             </button>
                                             {/* Two-tap remove link (D-PHONE-01): first tap arms 3s revert timer
-                                                + flips label red; second tap commits via usersAPI.removePhone. */}
+                                                + flips label red; second tap commits via usersAPI.removePhone.
+
+                                                DECISION Phase 88.6-17 (A10 / T-88.6-43, with T-88.6-41):
+                                                this control is floored to 44px IN PLACE as a raw
+                                                `<button>` and is deliberately NOT migrated to `<Button>`.
+                                                `.btn` declares `font-weight: 600` UNLAYERED, so on the
+                                                primitive both arms of the ternary below would render at
+                                                600 and the ARMED `font-semibold` cue — the thing that
+                                                tells you the destructive second tap is live — would be
+                                                deleted with nothing red anywhere. That is a CONSEQUENCE
+                                                constraint: this is the SOLE path to removing a verified
+                                                phone number. The two `Change number` links above are
+                                                floored the same way for consistency of mechanism within
+                                                the block.
+
+                                                Neither shipped gate can see these three: `btnCensus`'s
+                                                rule for this file is raw PALETTE fills and they carry
+                                                tokens, and `controlSizeFloor` proves the floor only for
+                                                `Button` elements. The floor here is therefore held by
+                                                this marker and by the rendered 375px measurement recorded
+                                                in `88.6-17-SUMMARY.md`, not by a class-list pin. Removing
+                                                `min-h-11` is a decision, not a cleanup. */}
                                             <button
                                                 onClick={handleRemovePhone}
-                                                className={`text-sm underline ml-3 ${
+                                                className={`-mx-2 inline-flex min-h-11 items-center rounded-btn px-2 text-sm underline ml-3 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
                                                     removeArmed
                                                         ? 'text-content-status-error font-semibold'
                                                         : 'text-content-status-error hover:text-red-700'
@@ -1852,39 +2039,86 @@ function Profile(){
                         and `aria-pressed` is their state attribute. Converting these to
                         a Switch "for consistency with the toggles below" is a decision
                         about what the control MEANS, not a cleanup. */}
+                    {/* DECISION Phase 88.6-17 (D-11, outcome (a)): both theme toggles MIGRATE to
+                        `<Button variant="ghost">` and KEEP their own fill utilities on `className` —
+                        chosen OVER outcome (b), leaving them raw behind an exclusion marker.
+
+                        TWO DELTAS FALL OUT OF THIS AND ARE ACCEPTED, NOT OVERLOOKED. (1) The label
+                        goes 16px -> 14px: these carried no size class and no ancestor sets one, and
+                        `.btn`'s unlayered `font-size: .875rem` beats any call-site `text-base`. (2)
+                        The UNSELECTED arm goes 400 -> 600, because `.btn` declares `font-weight: 600`
+                        — so the weight half of the selection cue is gone. What still carries
+                        selection: the amber border, the fill, and `aria-pressed`, which the
+                        `DECISION Phase 88-10` marker above records as this control's state mechanism.
+
+                        WHY (a) OVER (b). Under (b) neither shipped gate can see these controls —
+                        `btnCensus`'s palette rule keys on the FILL (which survives either way) and
+                        `controlSizeFloor` proves the 44px floor only for `Button` elements — so a
+                        hand-rolled floor here would be watched by nothing and could be undone
+                        silently. On the primitive the floor is `min-h-11` on the cva base, at every
+                        viewport, and is gated forever. 14px is also the size every other button on
+                        this page already renders at; the 16px floor is a TEXT-ENTRY rule (iOS
+                        focus-zoom), not a button-label rule.
+
+                        W19 PRECONDITION, CHECKED BEFORE THIS EDIT: `.btn { border: none }` now lives
+                        inside `@layer components` in globals.css, so these controls' visible border
+                        survives the migration. Before that move it would have been DELETED with no
+                        test failure. If a future edit un-layers that reset, this pair loses its
+                        border silently.
+
+                        THE FILL STAYS RAW (P6) and therefore so does this file's raw-palette roster
+                        entry, at 2 with decision provenance. `bg-purple-900` is ambiguous BY NAME —
+                        the repo mints its own `--purple-900` as well — and it was RESOLVED before
+                        this edit rather than assumed: `@theme` exposes `--color-purple-900` as
+                        Tailwind's own default step, and the repo's dark-navy `--purple-900` is never
+                        exposed as a utility at all, so this is a palette STEP under both readings.
+                        `bg-amber-50` resolves the same way. The measured values are recorded in
+                        `88.6-17-SUMMARY.md` rather than spelled here, so this file's own
+                        untagged-raw-hex pin stays honest — the same reason the BGG input comment
+                        below spells a utility in words. Converging these fills onto semantic tokens
+                        is a look change and is out of this phase's contract.
+
+                        `enabled-hover:bg-*` pins the SELECTED arm's fill through hover: ghost's base
+                        carries `enabled-hover:bg-surface-hover`, which would otherwise wash the amber
+                        (and the purple) on hover — a fill change P6 forbids. */}
                     {themeMounted ? (
                         <div className="flex gap-3">
-                            <button
+                            <Button
+                                variant="ghost"
                                 onClick={() => setTheme('light')}
                                 aria-pressed={resolvedTheme === 'light'}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                                className={`border transition-colors ${
                                     resolvedTheme === 'light'
-                                        ? 'border-amber-500 bg-amber-50 font-semibold text-content-primary'
-                                        : 'border-line bg-surface-card hover:bg-surface-hover text-content-secondary'
+                                        ? 'border-amber-500 bg-amber-50 enabled-hover:bg-amber-50 text-content-primary'
+                                        : 'border-line bg-surface-card enabled-hover:bg-surface-hover text-content-secondary'
                                 }`}
                             >
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                                 </svg>
                                 Light
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                                variant="ghost"
                                 onClick={() => setTheme('dark')}
                                 aria-pressed={resolvedTheme === 'dark'}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                                className={`border transition-colors ${
                                     resolvedTheme === 'dark'
-                                        ? 'border-amber-500 bg-purple-900 font-semibold text-white'
-                                        : 'border-line bg-surface-card hover:bg-surface-hover text-content-secondary'
+                                        ? 'border-amber-500 bg-purple-900 enabled-hover:bg-purple-900 text-white'
+                                        : 'border-line bg-surface-card enabled-hover:bg-surface-hover text-content-secondary'
                                 }`}
                             >
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                                 </svg>
                                 Dark
-                            </button>
+                            </Button>
                         </div>
                     ) : (
-                        <div className="h-10 w-48 bg-surface-muted rounded-lg animate-pulse" />
+                        // The skeleton matches the control it stands in for: `min-h-11` (44px), not
+                        // the `h-10` (40px) it shipped as, so the placeholder does not disagree with
+                        // the migrated pair's floor.
+                        <div className="min-h-11 w-48 bg-surface-muted rounded-lg animate-pulse" />
                     )}
                 </div>
 
@@ -1938,9 +2172,24 @@ function Profile(){
                     {/* SMS Consent Disclosure (TCPA / carrier compliance) */}
                     {userData?.sms_enabled && (
                         <div className="mb-4 p-3 rounded-card border border-line bg-surface-sunken">
-                            <p className="text-xs font-semibold text-content-primary mb-1">SMS Notifications Disclosure</p>
-                            <p className="text-xs text-content-secondary leading-relaxed">
-                                By enabling any SMS toggle below, you agree to receive recurring text messages from <span className="font-semibold">NextGameNight</span> about your game group activity, including event creation, updates, cancellations, and reminders. Message frequency varies based on group activity. Message and data rates may apply. Reply <span className="font-mono font-semibold">STOP</span> to unsubscribe at any time, or <span className="font-mono font-semibold">HELP</span> for help. Consent is not a condition of using the service. See our{' '}
+                            {/* DECISION Phase 88.6-17 (D-01 / T-88.6-42): legal text moves OFF the
+                                caption rung — label 14/700, body 14/400. Caption's closed role list is
+                                chips, counters, timestamps, eyebrows, dense-grid cells and helper text;
+                                a compliance disclosure is none of them, so 12px here was MISUSE, not a
+                                caption. The wording is byte-unchanged (P1).
+
+                                The three inner spans are dispositioned individually, and neither
+                                disposition generalises — D-03 is a recorded CONSEQUENCE constraint and
+                                these are two narrow carve-outs, not a licence for 600 anywhere. STOP and
+                                HELP drop to 400 because `font-mono` is a NON-COLOUR cue that survives
+                                the weight change intact, so the keywords stay distinguishable without
+                                relying on colour. The brand span has no such surviving cue, so it takes
+                                700 (D-03's hierarchy outcome) rather than the 400-plus-colour emphasis
+                                outcome, which would leave a colour-only distinction inside a compliance
+                                surface. */}
+                            <p className="text-sm font-bold text-content-primary mb-1">SMS Notifications Disclosure</p>
+                            <p className="text-sm text-content-secondary leading-relaxed">
+                                By enabling any SMS toggle below, you agree to receive recurring text messages from <span className="font-bold">NextGameNight</span> about your game group activity, including event creation, updates, cancellations, and reminders. Message frequency varies based on group activity. Message and data rates may apply. Reply <span className="font-mono font-normal">STOP</span> to unsubscribe at any time, or <span className="font-mono font-normal">HELP</span> for help. Consent is not a condition of using the service. See our{' '}
                                 <a href="/privacy" className="text-content-link hover:underline">Privacy Policy</a>
                                 {' '}and{' '}
                                 <a href="/terms" className="text-content-link hover:underline">Terms of Service</a>.
@@ -2607,7 +2856,13 @@ function Profile(){
                     ) : ownedGames.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {ownedGames.map((game) => (
-                                <div key={game.id} className="border border-line rounded-lg p-4 hover:shadow-md transition-shadow">
+                                // D49-b (owner ruling 2026-09-09, option i): `hover:shadow-md` here was
+                                // Tailwind's INLINED built-in scale, not the theme tier, so it snaps to
+                                // `hover:shadow-theme-md`. Plain `hover:` and not plan 05's
+                                // `enabled-hover:` — this is a card `div`, not a `.btn`. The snap
+                                // changes hue (warm tint in light, purple hairline plus glow in dark);
+                                // that is disclosed, not accidental.
+                                <div key={game.id} className="border border-line rounded-lg p-4 hover:shadow-theme-md transition-shadow">
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="flex-1">
                                             <h3 className="text-base font-bold text-content-primary">{game.name}</h3>
