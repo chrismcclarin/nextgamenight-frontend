@@ -424,7 +424,10 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // :249). Deleting this block with the fixed site would have quietly retired the only thing
     // proving the walk still produces candidate fan-out at all — and the by-name set above is
     // empty now, so nothing else in this test would notice.
-    const cell = FORBIDDEN_ON_MUTED.find((r) => siteOf(r) === 'app/components/CalendarMonthView.js:858');
+    // Re-derived by CONTENT after this plan's LAST edit to the component (:858 -> :888). A
+    // line-keyed pin has to be re-derived after the final edit, not after the first: this plan
+    // moved the file twice and the intermediate number was already stale when it was written.
+    const cell = FORBIDDEN_ON_MUTED.find((r) => siteOf(r) === 'app/components/CalendarMonthView.js:888');
     expect(cell, 'the day cell\'s rostered ink site must still be reported by the walk').toBeDefined();
     expect(
       cell!.grounds.length,
@@ -432,7 +435,7 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     ).toBeGreaterThan(1);
     expect(
       cell!.grounds.some((g) => g.token === MUTED && g.frameLine === 263),
-      `:858 must CONTAIN a ${MUTED} candidate whose frame line is 263; got ${JSON.stringify(cell!.grounds.map((g) => `${g.token}@${g.frameLine}`))}`,
+      `:888 must CONTAIN a ${MUTED} candidate whose frame line is 263; got ${JSON.stringify(cell!.grounds.map((g) => `${g.token}@${g.frameLine}`))}`,
     ).toBe(true);
   });
 
@@ -490,7 +493,7 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
       // RE-POINTED by plan 88.6-27 task 3 (2026-09-16): :788 was FIXED and left the debt set
       // with its fix (the rule this list's own comment states); the file's surviving debt is
       // the empty-day "+" hint, now at :858.
-      'app/components/CalendarMonthView.js:858',
+      'app/components/CalendarMonthView.js:888',
       'app/components/SuggestionCard.js:92',
       'app/components/SuggestionCard.js:116',
       'app/components/SuggestionCard.js:122',
