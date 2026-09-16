@@ -139,6 +139,84 @@ describe('AvailabilityGrid — BUG-01 profile-TZ round-trip (F-810)', () => {
 // mirror of the painted grid (checked ⟺ every slot in the column is painted)
 // with bulk fill/clear semantics, and the cross-day broadcast is REMOVED —
 // no gesture ever writes outside its own cell/day.
+// ---------------------------------------------------------------------------------------
+// Plan 88.6-25 task 3 — T-88.6-69 (the seven unnamed checkboxes) and AC-18 (their hit area).
+// ---------------------------------------------------------------------------------------
+// BEFORE this plan the whole file carried ZERO aria- and zero role= attributes, so these seven
+// announced as bare "checkbox, not checked" with no day — WCAG 4.1.2 / 1.3.1.
+//
+// The expected names are NOT literals this suite invents. They are read off the rendered HEADER
+// CELLS, which are the other consumer of the same `formatDayHeader` callback — so the assertion
+// is "the checkbox announces exactly what a sighted user reads in that column", which is the
+// property, rather than "the checkbox announces the string this test happens to expect". A
+// hard-coded table would keep passing if formatDayHeader's format string changed under it.
+describe('AvailabilityGrid — the seven per-day checkboxes announce their day, at a 44px target', () => {
+  it('names each checkbox with its own column header text (T-88.6-69)', () => {
+    const { container } = render(
+      <Grid
+        value={[]}
+        onChange={() => {}}
+        numDays={7}
+        weekStartDate={WEEK_START}
+        timezone={PROFILE_TZ}
+      />
+    );
+
+    // `border-b` is unique to the day-header cells in this component (grep: one site).
+    const headerText = [...container.querySelectorAll('div.border-b')].map((d) =>
+      (d.textContent ?? '').trim()
+    );
+    // Anti-vacuity, both halves: seven cells, none of them empty. Without this, a render that
+    // produced seven blank headers would make the equality below pass against seven blank names.
+    expect(headerText).toHaveLength(7);
+    expect(headerText.every((t) => t.length > 0)).toBe(true);
+
+    const [, ...dayBoxes] = screen.getAllByRole('checkbox'); // [All, day0 … day6]
+    expect(dayBoxes).toHaveLength(7);
+    expect(dayBoxes.map((b) => b.getAttribute('aria-label'))).toEqual(headerText);
+
+    // …and each is REACHABLE by that name, which is what a screen-reader user actually has.
+    for (const t of headerText) {
+      expect(screen.getByRole('checkbox', { name: t })).toBeTruthy();
+    }
+  });
+
+  it('puts the AC-18 hit-area floor on the WRAPPER and leaves the checkbox GLYPH at 16px', () => {
+    // The rejected alternative is the one a future reader will reach for: moving the floor onto
+    // the <input>. `w-4 h-4` on a native checkbox sizes the RENDERED GLYPH, so `w-11 h-11` there
+    // paints a 44px checkbox — a look change this phase has no ruling for. jsdom performs no
+    // layout, so this pins the MECHANISM (which element carries which class); the rendered
+    // numbers are in 88.6-25-SUMMARY.md, measured in Chromium at 375px and 1280px.
+    render(
+      <Grid
+        value={[]}
+        onChange={() => {}}
+        numDays={7}
+        weekStartDate={WEEK_START}
+        timezone={PROFILE_TZ}
+      />
+    );
+
+    const [allBox, ...dayBoxes] = screen.getAllByRole('checkbox');
+    for (const box of dayBoxes) {
+      const wrapper = box.parentElement!;
+      expect(wrapper.className).toContain('min-h-11');
+      expect(wrapper.className).toContain('min-w-11');
+      expect(box.className).toContain('w-4');
+      expect(box.className).toContain('h-4');
+      expect(box.className).not.toContain('w-11');
+    }
+    // The "All" toggle took the same rung on its own wrapper — the <label> that owns its box —
+    // and its 14px glyph is likewise unchanged. Its accessible NAME was already correct (the
+    // visible "All" text inside the label) and is deliberately untouched.
+    const allWrapper = allBox.parentElement!;
+    expect(allWrapper.tagName).toBe('LABEL');
+    expect(allWrapper.className).toContain('min-h-11');
+    expect(allWrapper.className).toContain('min-w-11');
+    expect(allBox.className).toContain('w-3.5');
+    expect(screen.getByRole('checkbox', { name: 'All' })).toBe(allBox);
+  });
+});
 describe('AvailabilityGrid — mirror day checkboxes + bulk fill/clear (SPEC R9, owner ruling 2026-08-02)', () => {
   it('tapping an unchecked day checkbox fills every empty slot in that column only', () => {
     const onChange = renderHarness(2);

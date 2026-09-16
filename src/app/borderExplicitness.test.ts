@@ -233,8 +233,14 @@ export function universalBorderColourRules(css: string): string[] {
  */
 const PAIRED_ELSEWHERE: Record<string, string> = {
   // ── bare-token sites (88-26) ──────────────────────────────────────────────
-  'app/components/AvailabilityGrid.js':
-    'paint-mode ternary: both branches name a colour (green-400 / yellow-400)',
+  // REMOVED by plan 88.6-25 task 3 (wave 7, 2026-09-16), and removed because the site was FIXED,
+  // not because it was tidied: the paint-mode toggle's bare `border` used to sit in the static
+  // chunk of a template literal while the colour arrived from a separate `${…}` ternary chunk,
+  // which is exactly the "paired elsewhere" shape this list exists for. The migration to
+  // `<Button variant="ghost">` collapsed the className to ONE ternary whose every branch carries
+  // `border` AND its own `border-green-400` / `border-yellow-400` in the same chunk — so the
+  // scanner now sees the pairing directly and the file has no bare border left. Test 2 (allow-list
+  // staleness) caught this on the first run after the migration, which is what it is for.
   'app/components/FriendInvitePanel.js':
     'friend-row ternary: all three branches name a colour (line / accent / line)',
   'app/components/GroupGamesList.js':

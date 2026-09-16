@@ -9,6 +9,7 @@ import { format, addDays, addMinutes, startOfWeek, nextMonday, parseISO } from '
 // vitest — mirrors AvailabilityForm's `../../lib/api` note.
 import { wallClockToUtc } from '../../lib/datetime';
 import WriteCell from './heatmap/WriteCell';
+import { Button } from '../../components/ui/Button';
 
 // Zero-pad an hour/minute to two digits for the "yyyy-MM-ddTHH:mm" wall-clock
 // string handed to wallClockToUtc. Module-level (stable identity, no deps).
@@ -612,46 +613,77 @@ export default function AvailabilityGrid({
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         {/* Timezone display */}
         <div className="text-sm text-content-secondary">
-          Times shown in: <span className="font-medium">{getTimezoneDisplay(timezone)}</span>
+          Times shown in: <span className="font-bold">{getTimezoneDisplay(timezone)}</span>
         </div>
 
         {/* Controls */}
         <div className="flex items-center gap-3">
-          {/* Paint mode toggle */}
-          <button
-            type="button"
+          {/* Paint mode toggle.
+
+              DECISION Phase 88.6-25 (D-11 / SPEC-88.6 R2): this is a CONTROL, not a grid cell —
+              re-derived at the file, not inherited: it is the <button> opener of the paint-mode
+              toggle, onClick={togglePaintMode}, sitting in the toolbar div beside Clear All.
+              It is now <Button variant="ghost"> and BOTH ternary arms KEEP their raw palette
+              fills, which is a choice with two halves.
+
+              WHY THE FILLS STAY (PATH 2 — the fill encodes paint MODE state, not chrome). The
+              green/yellow pair is the legend's pair: the swatches directly below this toolbar are
+              bg-green-300 "Preferred" and bg-yellow-300 "If Need Be", so the toggle's fill tells
+              the user which colour they are about to paint. Migrating it to a semantic variant
+              would break that correspondence. And no shipped status token reproduces either arm at
+              BYTE-EQUAL value — measured 2026-09-16 against globals.css: green-100 #dcfce7 vs
+              --color-status-success-subtle #dcf1e4; green-400 #4ade80 vs
+              --color-status-success-border #166534; yellow-100 #fef9c3 vs
+              --color-status-warning-subtle #f9ebda; yellow-400 #facc15 vs
+              --color-status-warning-border #854d0e. Only the two INK values happen to match. The
+              status family also flips in dark mode while these raw steps do not, so adopting it
+              would change the dark look as well. Minting a token for this pair is a LOOK decision
+              owned by Phase 88.9 — P6 forbids it here. The btnCensus PALETTE_BUTTON_EXEMPT entry
+              is therefore rewritten to cover BOTH arms as one unit rather than retired: retiring
+              it on the green arm alone would delete the only receipt that catches a surviving
+              yellow twin.
+
+              WHY THE HOVER IS PINNED AT THE CALL SITE. Button's ghost variant emits
+              bg-transparent text-content-secondary enabled-hover:bg-surface-hover (Button.tsx).
+              Under tailwind-merge the call site's own bg-* beats bg-transparent, but with no
+              call-site hover the variant's enabled-hover:bg-surface-hover SURVIVES and repaints
+              this toggle neutral on hover — erasing the mode colour exactly when the user is
+              reaching for it (T-88.6-71). So each arm pins its own enabled-hover:bg-* to the same
+              value it rests at, and the hover CUE is enabled-hover:opacity-80, which is what the
+              site used to express as a bare hover: inside a disabled ternary. REJECTED: stripping
+              the hover from Button.tsx — 8 shipped ghost consumers plus every site plans 15-39
+              migrate depend on it. Fix the call site, never the primitive.
+
+              DEAD AND DELETED under unlayered .btn: px-3 py-1.5 (padding), text-sm (font-size),
+              font-medium (weight), rounded-md (radius) and transition-colors (transition). The
+              disabled arm's opacity-50 cursor-not-allowed went too — .btn:disabled supplies both
+              — and active:opacity-75 is .btn:active:not(:disabled)'s job now. The native
+              `disabled` STAYS: it is a MODE gate (the whole grid is disabled while "I'm
+              unavailable" is checked), not an in-flight gate on a control the user is operating,
+              which is the rule-of-kind split plans 17-24 record. */}
+          <Button
+            variant="ghost"
             onClick={togglePaintMode}
             disabled={disabled}
-            className={`
-              px-3 py-1.5 text-sm font-medium rounded-md border
-              transition-colors
-              focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2
-              ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80 active:opacity-75'}
-              ${
-                paintMode === 'preferred'
-                  ? 'bg-green-100 border-green-400 text-green-800'
-                  : 'bg-yellow-100 border-yellow-400 text-yellow-800'
-              }
-            `}
+            className={
+              paintMode === 'preferred'
+                ? 'border bg-green-100 enabled-hover:bg-green-100 border-green-400 text-green-800 enabled-hover:opacity-80'
+                : 'border bg-yellow-100 enabled-hover:bg-yellow-100 border-yellow-400 text-yellow-800 enabled-hover:opacity-80'
+            }
           >
             {paintMode === 'preferred' ? 'Adding: Preferred' : 'Adding: If Need Be'}
-          </button>
+          </Button>
 
           {/* Clear all button */}
           {value.length > 0 && (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               onClick={handleClearAll}
               disabled={disabled}
-              className={`
-                px-3 py-1.5 text-sm font-medium rounded-btn border border-line
-                text-content-secondary bg-surface-card
-                focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2
-                ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-surface-hover active:opacity-75'}
-              `}
+              className="border border-line text-content-secondary bg-surface-card"
             >
               Clear All
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -718,7 +750,7 @@ export default function AvailabilityGrid({
             {days.map((day, index) => (
               <div
                 key={day.toISOString()}
-                className="w-[76px] sm:w-28 shrink-0 text-center py-2 text-sm font-medium text-content-secondary border-b border-line"
+                className="w-[76px] sm:w-28 shrink-0 text-center py-2 text-sm text-content-secondary border-b border-line"
               >
                 {formatDayHeader(day)}
               </div>
@@ -730,7 +762,15 @@ export default function AvailabilityGrid({
             {/* Select All toggle in the time-label spacer — same sticky
                 treatment as the label column so "All" never scrolls away. */}
             <div className="w-12 sm:w-20 shrink-0 flex items-center justify-end pr-2 sticky left-0 z-10 bg-surface-card">
-              <label className="flex items-center gap-1 cursor-pointer select-none">
+              {/* AC-18 extended 2026-09-14: this control was measured in the SAME 375px render as
+                  the seven. Its <input> is w-3.5 h-3.5 (14px) — SMALLER than the seven's 16px —
+                  inside a text-xs label, so its composite target was short of even WCAG 2.2 SC
+                  2.5.8's 24px floor. It takes the SAME rung and the SAME wrapper-not-glyph
+                  mechanism: min-h-11 min-w-11 goes on the <label>, which owns the box (the outer
+                  <div> is the w-12 sticky gutter shared with the time-label column, and floors on
+                  it would fight that shared width). The glyph stays 14px. Its accessible NAME was
+                  already correct — the visible "All" text inside this label — and is untouched. */}
+              <label className="flex items-center gap-1 cursor-pointer select-none min-h-11 min-w-11 justify-end">
                 <input
                   type="checkbox"
                   checked={allChecked}
@@ -738,18 +778,42 @@ export default function AvailabilityGrid({
                   disabled={disabled}
                   className="w-3.5 h-3.5 accent-blue-600 cursor-pointer disabled:cursor-not-allowed"
                 />
-                <span className="text-xs text-content-muted font-medium">All</span>
+                <span className="text-xs text-content-muted">All</span>
               </label>
             </div>
 
             {/* Individual day checkboxes */}
             {days.map((day, index) => (
+              /* DECISION Phase 88.6-25 (AC-18, owner-ruled 2026-09-09, amended 2026-09-14 + T-88.6-69):
+                 TWO things live on this cell and neither is obvious from the markup.
+
+                 (1) THE ACCESSIBLE NAME. Before this plan the file carried ZERO aria- and zero
+                 role= attributes (measured: grep -c 'aria-|role=' returned 0), so these seven
+                 announced as bare "checkbox, not checked" with no day — WCAG 4.1.2 and 1.3.1. The
+                 name is formatDayHeader(day), the SAME callback the matching header cell renders
+                 directly above, so the name a screen reader hears is byte-identical to the text a
+                 sighted user reads in that column and NO new copy is authored (P1). REJECTED:
+                 copying the file's one naming idiom — the "All" label wrap with VISIBLE text —
+                 which would mean authoring per-cell day text inside 76px columns that already
+                 carry a day-header row, colliding with the six-site column lockstep pinned in
+                 availabilityGridColumns.test.ts.
+
+                 (2) THE HIT AREA, and it is on the WRAPPER on purpose. min-h-11 min-w-11 here
+                 gives a 44x44 target around a checkbox whose RENDERED GLYPH stays 16px — the
+                 wrapper is already flex items-center justify-center, so the glyph simply centres
+                 in a bigger box. REJECTED, and stated here so it is not re-derived: putting the
+                 floor on the <input> itself. w-4 h-4 on a native checkbox sizes the GLYPH, so
+                 w-11 h-11 there would paint a 44px checkbox — a look change this phase has no
+                 ruling for. The 44 rung was taken because the 375px measurement says the row
+                 still fits: min-w-11 is 44px inside a 76px column, so the column arithmetic is
+                 untouched and only the row's HEIGHT grows. Shrinking either class is a decision. */
               <div
                 key={`cb-${day.toISOString()}`}
-                className="w-[76px] sm:w-28 shrink-0 flex items-center justify-center py-1"
+                className="w-[76px] sm:w-28 shrink-0 flex items-center justify-center py-1 min-h-11 min-w-11"
               >
                 <input
                   type="checkbox"
+                  aria-label={formatDayHeader(day)}
                   checked={!!dayFull[index]}
                   onChange={() => toggleDayCheck(index)}
                   disabled={disabled}
@@ -766,7 +830,7 @@ export default function AvailabilityGrid({
                   left-0 pins the time axis while the grid scrolls horizontally
                   (Phase 87.8 TOUCH); the opaque bg is required — sticky labels
                   over painted cells are unreadable without one. */}
-              <div className="w-12 sm:w-20 shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary font-medium sticky left-0 z-10 bg-surface-card">
+              <div className="w-12 sm:w-20 shrink-0 flex items-center justify-end pr-2 text-xs sm:text-sm text-content-secondary sticky left-0 z-10 bg-surface-card">
                 <span className="sm:hidden">{formatTimeLabelCompact(timeSlot)}</span>
                 <span className="hidden sm:inline">{formatTimeLabel(timeSlot)}</span>
               </div>

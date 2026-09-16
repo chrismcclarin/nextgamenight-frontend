@@ -1763,12 +1763,20 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     the "I'm unavailable this week" toggle — each already carrying its own token, which is
   //     the same call plan 88.6-22 made for BallotSection's three choice buttons.
   // Entry DELETED, not zeroed.
-  'app/components/AvailabilityGrid.js': {
-    sites: 6,
-    why:
-      '6 off-scale weight sites (6 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-22, 88.6-25.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-25 task 3 (wave 7, 2026-09-16): `app/components/AvailabilityGrid.js`
+  // carried `sites: 6` (6 font-medium), across all THREE of §4.5's outcomes — the entry's
+  // "dead on a .btn" lead was true only AFTER the migration, not before it:
+  //   DEAD (deleted): the paint-mode toggle's and Clear All's, which became dead the moment
+  //     those two controls wore unlayered `.btn` through `<Button>`.
+  //   HIERARCHY (700): the timezone VALUE in "Times shown in: <tz>" — the one string in that
+  //     line the user is actually reading, and its label carries no colour of its own to do the
+  //     work the weight was doing.
+  //   EMPHASIS (deleted): the seven day-header cells, the "All" caption and the sticky
+  //     time-label column — matrix header cells and axis labels, each already carrying
+  //     `text-content-secondary` or `text-content-muted`. This is the same reading plan 88.6-17
+  //     recorded for `userProfile`'s matrix header cells: the text itself says what it is, so
+  //     the weight was decorative rather than informational.
+  // Entry DELETED, not zeroed.
   // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16), both files, every site resolved per
   // UI-SPEC §4.5 rather than swept to one outcome:
   //   `BallotOptionsEditor.js` (1) — h3:9's font-semibold left with the `Heading` migration.

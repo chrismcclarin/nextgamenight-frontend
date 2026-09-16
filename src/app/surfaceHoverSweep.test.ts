@@ -236,6 +236,17 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
     // re-spelled `dark:enabled-hover:` in the same edit or the ghost variant's light-theme
     // surface token would have silently won in dark mode.
     //
+    // 31 -> 30, plan 88.6-25 task 3 (wave 7, 2026-09-16), WITH ITS ONE DEPARTING SITE NAMED:
+    // `app/components/AvailabilityGrid.js`'s "Clear All" toolbar button, migrated to
+    // `<Button variant="ghost">`, whose cva variant already supplies the byte-equal
+    // `enabled-hover:bg-surface-hover`. The bare form could not be kept for the same reason
+    // plans 18 and 21 could not keep theirs: this control is natively `disabled` while the
+    // grid is disabled, and a bare `hover:` re-lights a gated control. It carries no dark-arm
+    // hover, so plan 21's second, sharper reason does not apply here. The site's sibling in
+    // the same toolbar — the paint-mode toggle — was migrated in the same commit and is NOT a
+    // departure from this set: it never carried `bg-surface-hover` at all, it pins its own
+    // raw-palette `enabled-hover:bg-*` per mode.
+    //
     // So the property this floor protects — the wash is really adopted — is intact; what
     // changed is the SPELLING (bare `hover:` -> the gated `enabled-hover:` on the primitive)
     // and the OWNER (a per-site string -> a shared component). This scanner deliberately
@@ -244,7 +255,7 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
     // the same way. A future lowering must likewise name every site that left; lowering it
     // bare is forbidden.
     const sites = sitesOf(files, `${HOVER_PREFIX}${NEW_HOVER}`);
-    expect(sites.length, `adopted at: ${sites.join(', ')}`).toBeGreaterThanOrEqual(31);
+    expect(sites.length, `adopted at: ${sites.join(', ')}`).toBeGreaterThanOrEqual(30);
   });
 
   it('4b. the three dark-chrome menu rows are on the HEADER family, not the card one', () => {
