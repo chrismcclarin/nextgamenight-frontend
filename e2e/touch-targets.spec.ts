@@ -2,6 +2,13 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 // Plan 88.1-19 MEASUREMENT instruments — read-only attachments, no assertions, and NOT a
 // spec file so Playwright cannot collect it as a suite. See `e2e/support/diagnostics.ts`.
 import { attachDiagnostics, probeOverflowCulprits, probeViewport } from './support/diagnostics';
+// Phase 88.6-12 task 4: the keyboard-modality focus idiom, IMPORTED rather than re-implemented.
+// `focusByKeyboard` presses Tab (to set Chromium's focus-visible heuristic to KEYBOARD) and then
+// focuses the target; without the Tab a script-focused <button> never matches `:focus-visible` and
+// the ring rules never apply. Its own docblock in `e2e/support/contrast.ts` carries the reasoning.
+// A local copy would be the duplication this project's tenet forbids; `support/contrast.ts` is not
+// a spec file, so importing it adds no collected suite.
+import { focusByKeyboard } from './support/contrast';
 
 /**
  * Phase 87.8 Plan 08 — SPEC R4 (44x44 effective hit areas) + SPEC R6 (pressed-state
@@ -842,7 +849,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
      * migration can take away.
      *
      * The probe is not a generic one: it wears the exact class string "Manage Members" ships
-     * with today (`groupHomePage/page.js:871-878`, re-derived 2026-09-15) minus nothing, so the
+     * with today (`groupHomePage/page.js:872-878`, re-derived 2026-09-15) minus nothing, so the
      * cascade fact being measured is the same one — a `.btn` carrying a pile of padding and
      * ring utilities and NO `min-h-*`, whose only 44px source is the `@media (width < 48rem)`
      * rule. It is distinct from the `bare` probe below, which is the minimal `btn btn-secondary`
@@ -867,7 +874,7 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       const compact = make('btn btn-compact btn-secondary w-8 h-8');
       const bare = make('btn btn-secondary');
       // The re-pointed real-call-site arm: "Manage Members"'s own shipped class string
-      // (groupHomePage/page.js:871-878). Every class here is emitted because that call site
+      // (groupHomePage/page.js:872-878). Every class here is emitted because that call site
       // wears it today; `e2e/` is outside the `@source` globs (globals.css:10, :86-88), so a
       // class no `src/` file wears would render nothing and measure nothing.
       const shipped = make(
@@ -1761,5 +1768,437 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     //    Removing this step is a decision, not a cleanup.
     await discard.click();
     await expect(page.getByRole('button', { name: 'Change', exact: true })).toBeVisible();
+  });
+});
+
+/* ==========================================================================================
+   Phase 88.6-12 task 4 — D10 item 6: the GATED-HOVER, FOCUS-RING and HOVER-PIN proofs.
+   DESKTOP `journeys` PROJECT ONLY.
+   ==========================================================================================
+
+   WHY THIS CANNOT LIVE IN THE PHONE PROJECT. Plan 05's `enabled-hover` custom variant compiles
+   INSIDE a hover-capability media query (`globals.css:177-183`):
+
+       @custom-variant enabled-hover {
+         @media (hover: hover) {
+           &:not(:disabled):not([aria-disabled='true']):hover { @slot; }
+         }
+       }
+
+   Playwright's phone device profile reports `isMobile: true, hasTouch: true` and
+   `matchMedia('(hover: hover)')` FALSE — recorded at `playwright.config.ts:106-110`, where the
+   same fact is noted as making all ~222 `hover:` occurrences inert. A hover assertion run there
+   would pass by never applying anything, which is the exact vacuity shape this plan exists to
+   prevent.
+
+   NAMING THE PROJECT IS NOT ENOUGH — THE FILE'S STRUCTURE IS WHAT SELECTS IT, and as the file
+   stands it selects the WRONG one in both directions:
+     - written INSIDE the file-wide describe (which opens at `:578` and carries
+       `test.skip(({ isMobile }) => !isMobile, …)` at `:582`), this arm would inherit that skip,
+       collect ZERO tests under `--project=journeys`, and its `<automated>` command would pass on
+       an empty run;
+     - hoisted out to fix that but left UNGUARDED, it would ALSO run under `--project=phone`,
+       where `enabled-hover` never applies and all three proofs pass having asserted nothing.
+   Both failure modes are green. So this describe sits OUTSIDE that block and carries the MIRROR
+   guard — skip when the project IS mobile — as an EXECUTABLE statement, not a comment and not a
+   naming convention. Each test additionally asserts `isMobile === false` in its own body, so an
+   inverted guard reds instead of silently measuring the wrong capability.
+
+   TASK 2(d)'s §9.3 E1/E5 ARM IS THE OPPOSITE CASE AND WAS DELIBERATELY LEFT ALONE: it is a 375px
+   measurement, it belongs inside the existing phone-only describe, and it takes no guard. Do not
+   "converge" the two.
+
+   PLANTED PROBES, NOT SHIPPED CALL SITES. This plan runs in wave 5, BEFORE the gated-state
+   migrations in plans 08 and 15-39, so no migrated subject exists yet. Same idiom as the D-36
+   block above: `document.createElement`, one `page.evaluate` per read, classes that `src/` already
+   emits, elements removed before the test ends.
+
+   CI ONLY: `playwright.config.ts:22-24` (credentials absent locally by design) and `ci.yml:652`
+   (`--project=setup --project=journeys --project=phone`). A local skip is not a pass.
+
+   EXECUTED-COUNT FLOOR — DISCLOSED GAP. `scripts/gate-c-executed-floor.mjs` is this repo's idiom
+   for "assert the gate actually EXECUTED", but it is scoped to `contrast.spec.ts` in the `phone`
+   project. No equivalent floor covers this arm in `journeys`. The in-body `isMobile` assertions
+   are the local substitute; the durable floor is registered in `.planning/WINDOWS.md`. */
+
+/** The `Button` cva base, variant `primary`, as it ships after plan 06.
+ *
+ *  TRANSCRIBED from `src/components/ui/Button.tsx` (the cva base array plus
+ *  `variant.primary`), and transcription is the only option here: importing `buttonVariants`
+ *  into a Playwright spec would pull React, Radix Slot and `cva` through the Playwright
+ *  transpiler. THE DRIFT GUARD IS NOT THIS COMMENT: `src/lib/cn.twMergeV3.test.ts` freezes the
+ *  same literal and plan 06 made itself its re-seed owner, so a base change that forgets this
+ *  file reds there. And if the base drifts in a way that matters HERE, proof 2's focused-vs-
+ *  unfocused differential and proof 3's lg-vs-md comparison red rather than pass — neither is a
+ *  string comparison against a transcribed value. */
+const BTN_RING = 'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
+/** Everything in the base EXCEPT the elevation tokens, so each probe can supply its own pair
+ *  and the resulting `box-shadow` composites stay comparable layer-for-layer. */
+const BTN_SKELETON = `btn btn-primary ${BTN_RING} min-h-11`;
+/** The base's own resting/hover elevation pair (plan 06, D10). */
+const BASE_ELEVATION = 'shadow-theme-sm enabled-hover:shadow-theme-md';
+
+/** Split a computed `box-shadow` into LAYERS on TOP-LEVEL commas only.
+ *
+ *  `rgba(0, 0, 0, 0)` contains commas, so a naive `value.split(',')` shatters one layer into
+ *  four fragments and the per-layer loop then either throws on them or passes vacuously. The
+ *  same reasoning and the same implementation are in `e2e/support/contrast.ts`
+ *  (`shadowLayers`); it is private there, so this is a second copy rather than an import —
+ *  registered in `.planning/WINDOWS.md` with the convergence owner. */
+function shadowLayersOf(value: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of value) {
+    if (ch === '(') depth += 1;
+    else if (ch === ')') depth -= 1;
+    if (ch === ',' && depth === 0) {
+      out.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim().length > 0) out.push(current.trim());
+  return out;
+}
+
+/** The alpha of a layer's colour, or 1 when it carries no explicit alpha. */
+function layerAlpha(layer: string): number {
+  const rgba = /rgba?\(([^)]*)\)/i.exec(layer);
+  if (!rgba) return 1;
+  const parts = rgba[1].replace(/\//g, ' ').split(/[\s,]+/).filter(Boolean);
+  return parts.length >= 4 ? Number(parts[3]) : 1;
+}
+
+interface PlantedProbe {
+  /** Accessible name, which is also how the test locates it. */
+  name: string;
+  className: string;
+  disabled?: boolean;
+  ariaDisabled?: boolean;
+}
+
+/** Plant a set of probes into a host container and return a remover. */
+async function plantProbes(page: Page, probes: PlantedProbe[]): Promise<void> {
+  await page.evaluate((specs) => {
+    const host = document.createElement('div');
+    host.setAttribute('data-e2e-hover-ring-probes', '');
+    // Inline style, never a Tailwind class: `e2e/` is outside the `@source` globs
+    // (globals.css:10, :86-88), so a class only this file wears is never emitted.
+    host.setAttribute('style', 'position: relative; display: flex; gap: 8px; padding: 8px;');
+    for (const spec of specs) {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = spec.className;
+      el.textContent = spec.name;
+      if (spec.disabled) el.disabled = true;
+      if (spec.ariaDisabled) el.setAttribute('aria-disabled', 'true');
+      host.appendChild(el);
+    }
+    document.body.appendChild(host);
+  }, probes);
+}
+
+async function removeProbes(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    document.querySelectorAll('[data-e2e-hover-ring-probes]').forEach((el) => el.remove());
+  });
+}
+
+interface ShadowRead {
+  boxShadow: string;
+  ringColor: string;
+}
+
+/**
+ * Read one probe's computed `box-shadow` plus its resolved ring colour, AFTER the transition
+ * has settled.
+ *
+ * THE SETTLE IS NOT DEFENSIVE — IT IS THE WHOLE CORRECTNESS OF THIS ARM, and it was found by
+ * running the probes in a real Chromium rather than by reasoning. `.btn` carries
+ * `transition: var(--theme-transition)` (globals.css:2173), and `--theme-transition`
+ * (globals.css:1684) includes `box-shadow 0.25s ease`. Reading `getComputedStyle` immediately
+ * after a `hover()` or a `focus()` therefore returns an INTERPOLATED value. Measured
+ * 2026-09-15 in Chromium at 1280x720, reading with no settle:
+ *
+ *   focused default probe -> `rgba(251, 191, 36, 0.05) 0px 0px 0px 0.199587px`
+ *
+ * i.e. the amber focus ring at 5% of its alpha and 1/20th of its spread — about one frame into a
+ * 250ms transition. The consequences, both of them silent:
+ *   - the ring's non-transparent-layer check read alpha 0.05 and FAILED on a correct tree;
+ *   - the gated probe's focused read came back byte-identical to its unfocused one (0% progress),
+ *     so the focused-vs-unfocused DIFFERENTIAL failed on a correct tree too.
+ * A settle-less version of this arm is a flaky red that a future reader would "fix" by loosening
+ * the ring assertions — which is the failure this note exists to prevent.
+ *
+ * Two gates, the same pair `settleOpenAnimation` above uses and for the same reason: the Web
+ * Animations API alone can miss a transition that starts a frame later, and a poll alone can
+ * catch two identical mid-flight frames on a slow runner.
+ */
+async function readShadow(locator: Locator): Promise<ShadowRead> {
+  await locator.evaluate(async (node) => {
+    const running = (node as HTMLElement)
+      .getAnimations()
+      .filter((a) => a.effect?.getTiming().iterations !== Infinity);
+    await Promise.all(running.map((a) => a.finished.catch(() => undefined)));
+  });
+
+  const latest: { value: ShadowRead | null } = { value: null };
+  let previous: string | null = null;
+  await expect
+    .poll(
+      async () => {
+        const now = await locator.evaluate((node) => {
+          const cs = getComputedStyle(node as HTMLElement);
+          return {
+            boxShadow: cs.boxShadow,
+            ringColor: cs.getPropertyValue('--tw-ring-color').trim(),
+          };
+        });
+        const stable = previous !== null && now.boxShadow === previous;
+        previous = now.boxShadow;
+        latest.value = now;
+        return stable;
+      },
+      {
+        message:
+          'D10 item 6: the computed `box-shadow` never stopped changing. `.btn` transitions box-shadow over 0.25s (globals.css:1684, :2173); if it is still moving after 5s something is animating it continuously. Do NOT remove the settle and read the interpolated value instead.',
+        timeout: 5_000,
+        intervals: [50, 50, 100, 100, 250],
+      },
+    )
+    .toBe(true);
+
+  const settled = latest.value;
+  if (settled === null) throw new Error('D10 item 6: the shadow poll produced no reading at all.');
+  return settled;
+}
+
+test.describe('Phase 88.6-12 D10 item 6 — gated hover, focus ring and hover pin (journeys/desktop project)', () => {
+  // THE MIRROR GUARD. The file-wide describe above skips when NOT mobile; this one skips when it
+  // IS. Both halves are needed: without this line these three proofs also run at 375px, where
+  // `enabled-hover` never applies and every one of them passes having asserted nothing.
+  test.skip(
+    ({ isMobile }) => isMobile,
+    'D10 item 6: `enabled-hover` compiles inside @media (hover: hover), which the phone device profile never satisfies — these proofs are desktop-only by construction',
+  );
+
+  test.afterEach(async ({ page }) => {
+    await removeProbes(page);
+  });
+
+  test('D10: a gated Button does not lift on hover — natively disabled AND aria-disabled', async ({
+    page,
+    isMobile,
+  }) => {
+    expect(
+      isMobile,
+      'D10 item 6: this test is running in a MOBILE project. The mirror guard above has been inverted or removed, and `enabled-hover` cannot apply here — the assertions below would pass having measured nothing',
+    ).toBe(false);
+
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    await assertDarkTheme(page);
+
+    await plantProbes(page, [
+      { name: 'gated native probe', className: `${BTN_SKELETON} ${BASE_ELEVATION}`, disabled: true },
+      { name: 'gated aria probe', className: `${BTN_SKELETON} ${BASE_ELEVATION}`, ariaDisabled: true },
+      { name: 'enabled control probe', className: `${BTN_SKELETON} ${BASE_ELEVATION}` },
+    ]);
+
+    const gated = [
+      { label: 'natively `disabled`', locator: page.getByRole('button', { name: 'gated native probe' }) },
+      { label: '`aria-disabled="true"`', locator: page.getByRole('button', { name: 'gated aria probe' }) },
+    ];
+
+    for (const probe of gated) {
+      await guardResolved(probe.locator, `the ${probe.label} planted probe`);
+      const resting = await readShadow(probe.locator);
+      // VACUITY GUARD FIRST: if the resting value is empty or the bare keyword, the comparison
+      // below proves nothing. `--shadow-sm` holds a valid transparent zero-length shadow after
+      // 88.6-05's N1, so a real composite is expected here — the bare keyword `none` is the
+      // signature of that revert, and its dedicated detector is plan 05's two Gate C pins in
+      // `e2e/contrast.spec.ts`, not this arm.
+      expect(
+        resting.boxShadow.trim(),
+        `D10 item 6: the ${probe.label} probe's RESTING computed box-shadow is empty — the hover comparison below would be vacuous. Check that the probe's classes are ones \`src/\` still emits (globals.css:10, :86-88)`,
+      ).not.toBe('');
+      expect(
+        resting.boxShadow.trim(),
+        `D10 item 6: the ${probe.label} probe's RESTING computed box-shadow is the bare keyword \`none\`. That is invalid inside Tailwind's composite list and annihilates the focus ring; the revert detector for it is plan 05's two Gate C pins in e2e/contrast.spec.ts. Fix \`--shadow-sm\`, do not loosen this`,
+      ).not.toBe('none');
+
+      await probe.locator.hover();
+      const hovered = await readShadow(probe.locator);
+      expect(
+        hovered.boxShadow,
+        `D10 item 6: the ${probe.label} probe's box-shadow CHANGED under hover (rest \`${resting.boxShadow}\` -> hover \`${hovered.boxShadow}\`) — a gated control lifted under the pointer and reads as pressable. TWO mechanisms can cause this and the failure is one or the other: (1) plan 05's \`enabled-hover\` variant lost one of its three clauses — the @media (hover: hover) wrapper, :not(:disabled), or :not([aria-disabled='true']) — each of which compiles clean on its own (globals.css:177-183, gated separately by src/app/cascadeOrder.test.ts); or (2) plan 06's cva base reverted its hover token to a bare \`hover:\` spelling (src/components/ui/Button.tsx)`,
+      ).toBe(resting.boxShadow);
+      // Move the pointer away so the next probe starts unhovered.
+      await page.mouse.move(1, 1);
+    }
+
+    // POSITIVE CONTROL, so the three assertions above cannot pass because hover is inert here.
+    // An ENABLED probe wearing the same base MUST change under hover; if it does not, the media
+    // query is not matching and the gated results mean nothing.
+    const enabled = page.getByRole('button', { name: 'enabled control probe' });
+    await guardResolved(enabled, 'the ENABLED positive-control probe');
+    const enabledRest = await readShadow(enabled);
+    await enabled.hover();
+    const enabledHover = await readShadow(enabled);
+    expect(
+      enabledHover.boxShadow,
+      `D10 item 6 (positive control): an ENABLED probe wearing the same \`${BASE_ELEVATION}\` pair did NOT change under hover (\`${enabledRest.boxShadow}\`). \`enabled-hover\` is not applying at all in this project, so the two gated assertions above passed for the wrong reason. Check that this describe really runs in \`journeys\` and that matchMedia('(hover: hover)') is true there`,
+    ).not.toBe(enabledRest.boxShadow);
+    await page.mouse.move(1, 1);
+  });
+
+  test('D10: a focus-visible ring survives on BOTH a gated and a default Button — differential, non-transparent layer, and a ring-less negative control', async ({
+    page,
+    isMobile,
+  }) => {
+    expect(isMobile, 'D10 item 6: running in a MOBILE project — the mirror guard is inverted').toBe(false);
+
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    await assertDarkTheme(page);
+
+    await plantProbes(page, [
+      { name: 'ring default probe', className: `${BTN_SKELETON} ${BASE_ELEVATION}` },
+      { name: 'ring gated probe', className: `${BTN_SKELETON} ${BASE_ELEVATION}`, ariaDisabled: true },
+      // NEGATIVE CONTROL: the same base MINUS the three ring utilities. It must FAIL the same
+      // predicate. A one-sided proof of a "the ring exists" rule is exactly the shape that
+      // passes when the ring is gone.
+      { name: 'ringless negative control probe', className: `btn btn-primary min-h-11 ${BASE_ELEVATION}` },
+    ]);
+
+    /* WHY THIS IS NOT A `box-shadow !== 'none'` COMPARISON, stated because that is the obvious
+       version and it is VACUOUS on this tree. Plan 05's N1 changed `--shadow-sm` from the bare
+       keyword `none` to `0 0 #0000`, so every `<Button>` now computes a VALID all-transparent
+       composite at rest and in every state and is never the string `none`. A `!== 'none'`
+       assertion would therefore pass with `focus-visible:ring-2` deleted, with twMerge dropping
+       it against a call-site `ring-0`, with `--color-focus-ring` transparent, and with plan 05's
+       `enabled-hover` scoping suppressing it. Three independent checks replace it. */
+    const predicate = async (
+      name: string,
+    ): Promise<{ differs: boolean; hasOpaqueRingLayer: boolean; unfocused: string; focused: string; ringColor: string }> => {
+      const locator = page.getByRole('button', { name });
+      await guardResolved(locator, `the planted probe "${name}"`);
+      // Blur everything first so the "unfocused" read really is unfocused.
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      const unfocused = await readShadow(locator);
+      // The shipped keyboard-modality idiom (`e2e/support/contrast.ts` `focusByKeyboard`): a Tab
+      // press sets the heuristic to KEYBOARD, then `.focus()` lands on the target. Without the
+      // Tab, `:focus-visible` never matches a script-focused button in Chromium and the ring
+      // rules never apply — which would make this whole proof read as "the ring is gone".
+      await focusByKeyboard(page, locator);
+      const focused = await readShadow(locator);
+
+      // Normalise the ring colour THROUGH THE BROWSER rather than string-matching a format:
+      // `--tw-ring-color` may serialise as `oklch(...)` while `box-shadow` serialises as
+      // `rgb(...)`/`rgba(...)`. Painting it onto a throwaway element and reading `color` back
+      // gives the same normalised form the shadow uses. NEVER a hard-coded colour string.
+      const normalisedRing = await page.evaluate((raw) => {
+        if (raw === '') return '';
+        const probe = document.createElement('span');
+        probe.style.color = raw;
+        document.body.appendChild(probe);
+        const out = getComputedStyle(probe).color;
+        probe.remove();
+        return out;
+      }, focused.ringColor);
+
+      const layers = shadowLayersOf(focused.boxShadow);
+      const hasOpaqueRingLayer =
+        normalisedRing !== '' &&
+        layerAlpha(normalisedRing) > 0 &&
+        layers.some((layer) => layer.includes(normalisedRing) && layerAlpha(layer) > 0);
+
+      return {
+        differs: focused.boxShadow !== unfocused.boxShadow,
+        hasOpaqueRingLayer,
+        unfocused: unfocused.boxShadow,
+        focused: focused.boxShadow,
+        ringColor: normalisedRing,
+      };
+    };
+
+    for (const name of ['ring default probe', 'ring gated probe']) {
+      const r = await predicate(name);
+      // (a) THE DIFFERENTIAL.
+      expect(
+        r.differs,
+        `D10 item 6: "${name}" computes the SAME box-shadow focused and unfocused (\`${r.focused}\`) — the focus-visible ring is not painting. Causes, in order of likelihood: the three ring utilities were dropped from the cva base (src/components/ui/Button.tsx); twMerge dropped them against a conflicting token; \`--color-focus-ring\` resolved transparent; or plan 05's \`enabled-hover\` scoping swallowed the ring line. NOT a \`--shadow-sm\` revert — that detector is plan 05's two Gate C pins in e2e/contrast.spec.ts`,
+      ).toBe(true);
+      // (b) A NON-TRANSPARENT LAYER CARRYING THE PAGE-RESOLVED RING COLOUR.
+      expect(
+        r.hasOpaqueRingLayer,
+        `D10 item 6: "${name}" focused, no box-shadow layer carries the page-resolved ring colour (\`${r.ringColor || '(--tw-ring-color is EMPTY, i.e. the element never matched :focus-visible)'}\`) at non-zero alpha. Layers: ${shadowLayersOf(r.focused).join(' || ')}. A differential alone is not enough — an all-transparent change would satisfy it`,
+      ).toBe(true);
+    }
+
+    // (c) THE PAIRED NEGATIVE CONTROL. It must FAIL the same predicate, in the spirit of the two
+    // paired D-36 probes above: if a probe that CANNOT have a ring still satisfies the predicate,
+    // the predicate is measuring something else and the two passes above are worthless.
+    const control = await predicate('ringless negative control probe');
+    expect(
+      control.differs && control.hasOpaqueRingLayer,
+      `D10 item 6 (negative control): a probe wearing the base classes MINUS \`${BTN_RING}\` SATISFIED the ring predicate (differs=${control.differs}, opaqueRingLayer=${control.hasOpaqueRingLayer}, focused=\`${control.focused}\`). The predicate is therefore not measuring the ring, and the two positive results above prove nothing. Do not weaken the positive assertions — fix the predicate`,
+    ).toBe(false);
+  });
+
+  test('D10 / UI-SPEC §3.4 rule 2: a site that pins its own elevation hovers to ITS tier, not the base\'s', async ({
+    page,
+    isMobile,
+  }) => {
+    expect(isMobile, 'D10 item 6: running in a MOBILE project — the mirror guard is inverted').toBe(false);
+
+    await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
+    await assertDarkTheme(page);
+
+    await plantProbes(page, [
+      // The pinned site, in the spelling UI-SPEC §3.4 rule 2 requires. This is also the string
+      // plan 06 MEASURED as the post-merge output: a call-site `enabled-hover:shadow-theme-lg`
+      // de-dupes the base's `enabled-hover:shadow-theme-md` out of the merged class list, so the
+      // shipped DOM carries exactly one `enabled-hover:` shadow token. The probe reproduces that.
+      { name: 'pinned lg probe', className: `${BTN_SKELETON} shadow-theme-lg enabled-hover:shadow-theme-lg` },
+      // REFERENCE probes, so the comparison is against values READ FROM THE PAGE rather than
+      // hard-coded shadow strings. They wear the identical skeleton, differing only in the
+      // resting elevation token and carrying no hover variant — so their composites are
+      // layer-for-layer comparable with the pinned probe's hovered composite.
+      { name: 'reference lg probe', className: `${BTN_SKELETON} shadow-theme-lg` },
+      { name: 'reference md probe', className: `${BTN_SKELETON} shadow-theme-md` },
+    ]);
+
+    const pinned = page.getByRole('button', { name: 'pinned lg probe' });
+    const refLg = page.getByRole('button', { name: 'reference lg probe' });
+    const refMd = page.getByRole('button', { name: 'reference md probe' });
+    for (const [label, locator] of [
+      ['the pinned probe', pinned],
+      ['the reference lg probe', refLg],
+      ['the reference md probe', refMd],
+    ] as const) {
+      await guardResolved(locator, label);
+    }
+
+    const lgValue = (await readShadow(refLg)).boxShadow;
+    const mdValue = (await readShadow(refMd)).boxShadow;
+    // ANTI-VACUITY: the two tiers must actually differ, or the comparison below cannot fail.
+    expect(
+      lgValue,
+      `D10 item 6: the resolved \`shadow-theme-lg\` and \`shadow-theme-md\` composites are IDENTICAL (\`${lgValue}\`), so no hover comparison can distinguish them. Either both tokens resolved to the same value or neither utility emitted`,
+    ).not.toBe(mdValue);
+
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await pinned.hover();
+    const hovered = (await readShadow(pinned)).boxShadow;
+    expect(
+      hovered,
+      `D10 item 6 / UI-SPEC §3.4 rule 2: the pinned probe hovered to \`${hovered}\`, which is NOT the resolved \`shadow-theme-lg\` value (\`${lgValue}\`). If it matches the \`md\` value (\`${mdValue}\`) the base's hover token won and the pinned CTA SHRINKS on hover — an inverted elevation. Two mechanisms: plan 05's \`enabled-hover\` variant, or plan 06's cva base token. The source-level half of this rule is \`src/app/shadowTier.test.ts\`'s hover-pin assertion`,
+    ).toBe(lgValue);
+    expect(
+      hovered,
+      `D10 item 6 / UI-SPEC §3.4 rule 2: the pinned probe hovered to the base's \`md\` tier (\`${mdValue}\`) instead of its own \`lg\` pin — the inverted-elevation defect itself`,
+    ).not.toBe(mdValue);
+    await page.mouse.move(1, 1);
   });
 });
