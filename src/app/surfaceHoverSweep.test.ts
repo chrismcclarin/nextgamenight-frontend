@@ -226,6 +226,16 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
     //     RETIRED onto the shared `KebabMenu`, whose own trigger and items carry the wash and
     //     are already counted in this set (`KebabMenu.js:429`, `:549`, `:550`).
     //
+    // 32 -> 31, plan 88.6-21 task 2 (wave 7, 2026-09-16), WITH ITS ONE DEPARTING SITE NAMED:
+    // `app/groupHomePage/page.js`'s "Manage Members" header CTA, migrated to
+    // `<Button variant="ghost">`, whose cva variant already supplies the byte-equal
+    // `enabled-hover:bg-surface-hover`. The bare form could not be kept for the same reason
+    // plan 18's GuestInviteButton could not keep it — and here there is a second, sharper
+    // reason: this control ALSO carries a dark-arm hover (`dark:bg-white/20`), and
+    // `enabled-hover` is (0,4,0) against the dark variant's (0,2,0), so the dark arm had to be
+    // re-spelled `dark:enabled-hover:` in the same edit or the ghost variant's light-theme
+    // surface token would have silently won in dark mode.
+    //
     // So the property this floor protects — the wash is really adopted — is intact; what
     // changed is the SPELLING (bare `hover:` -> the gated `enabled-hover:` on the primitive)
     // and the OWNER (a per-site string -> a shared component). This scanner deliberately
@@ -234,7 +244,7 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
     // the same way. A future lowering must likewise name every site that left; lowering it
     // bare is forbidden.
     const sites = sitesOf(files, `${HOVER_PREFIX}${NEW_HOVER}`);
-    expect(sites.length, `adopted at: ${sites.join(', ')}`).toBeGreaterThanOrEqual(32);
+    expect(sites.length, `adopted at: ${sites.join(', ')}`).toBeGreaterThanOrEqual(31);
   });
 
   it('4b. the three dark-chrome menu rows are on the HEADER family, not the card one', () => {

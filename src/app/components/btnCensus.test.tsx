@@ -272,15 +272,16 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'plan 88.6-21 sweeps grouplist.js alongside groupHomePage/page.js',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
-  // One of these three is `groupHomePage/page.js:872`, the Manage Members header CTA, which
-  // ALSO carries a raw palette fill and is therefore in task 2's roster as well. The two rules
-  // see the same element for different reasons and neither subsumes the other: the `.btn` here
-  // CLOSES under plan 88.6-21, while the `bg-white/80` wash SURVIVES it (88.3-16, owner ruling 2).
-  'app/groupHomePage/page.js': {
-    sites: 3,
-    why: 'plan 88.6-21 sweeps groupHomePage/page.js and converges the Create-Event amber CTA onto `variant="accent"`',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // `app/groupHomePage/page.js` CLOSED by plan 88.6-21 task 2 (wave 7, 2026-09-16): all three
+  // header CTAs are on the primitive — Manage Members `<Button variant="ghost">`, Plan Game
+  // Session `<Button asChild variant="primary">`, Add New Game Event `<Button variant="accent">`
+  // with its inline amber `style` deleted. Entry DELETED rather than zeroed; the roster is exact
+  // in both directions.
+  //
+  // WHAT DOES NOT GO WITH IT: the Manage Members control ALSO carries a raw palette fill
+  // (`bg-white/80`) and is therefore in the PALETTE_BUTTON_EXEMPT roster below as well. The two
+  // rules saw one element for different reasons and neither subsumes the other — the `.btn`
+  // closes here, the wash SURVIVES (88.3-16, owner ruling 2 of 2026-08-27).
   'app/components/CalendarMonthView.js': {
     sites: 2,
     why: 'plan 88.6-27 sweeps the calendar cluster, CalendarMonthView.js included',
@@ -582,16 +583,24 @@ const PALETTE_BUTTON_EXEMPT: ExemptionRoster = {
   // this phase. Plan 88.6-21 HOLDS it; it does not close it, and this entry must NOT be
   // rewritten as a pending fill change nor deleted when 21 lands.
   //
-  // Note this same element ALSO wears `btn` (`:875`) and is therefore counted in task 1's `.btn`
-  // census too. The two rules see one element for different reasons and neither subsumes the
-  // other: the `.btn` there CLOSES under plan 21, the wash SURVIVES it.
+  // Note this same element ALSO wore `btn` (`:875`) and was therefore counted in task 1's `.btn`
+  // census too. The two rules saw one element for different reasons and neither subsumed the
+  // other: the `.btn` there CLOSED under plan 21, the wash SURVIVES it.
+  //
+  // UPDATED by plan 88.6-21 task 2 (wave 7, 2026-09-16): that `.btn` is gone — the control is a
+  // `<Button variant="ghost">` now, and its BTN_EXEMPT entry was deleted in the same commit. The
+  // element still matches THIS rule, which scans `<Button>` as well as `<button>`, and the wash
+  // is still the 2026-08-27 owner ruling. The cites above are the PRE-migration line numbers and
+  // are deliberately left as written: they are where the ruling was made, and this phase rewrites
+  // line numbers in every file it sweeps, so re-pointing them each wave is churn. Locate the
+  // control by `bg-white/80 ring-1 ring-line-control`, never by line.
   //
   // This is also the site that breaks round 2's framing of the census as "7 of the 88 buttons
   // that do NOT wear `btn`" — it wears both, so that framing structurally could not see it, and
   // it is why the palette rule runs over EVERY button control rather than only the non-`btn` ones.
   'app/groupHomePage/page.js': {
     sites: 1,
-    why: 'SURVIVING, not pending: the 80% white wash plus 1px ring is owner ruling 2 of 2026-08-27, recorded as `DECISION Phase 88.3-16` at groupHomePage/page.js:795 and re-affirmed 2026-09-14; plan 88.6-21 HOLDS this exemption rather than closing it, and the element also wears `btn` at :875 so it appears in the .btn census too',
+    why: 'SURVIVING, not pending: the 80% white wash plus 1px ring is owner ruling 2 of 2026-08-27, recorded as `DECISION Phase 88.3-16` at groupHomePage/page.js:795 and re-affirmed 2026-09-14. Plan 88.6-21 task 2 MIGRATED the control to `<Button variant="ghost">` with the wash, the ring and the dark arm carried across byte-for-byte, and HOLDS this exemption rather than closing it. It no longer appears in the `.btn` element census — that entry closed with the migration — but this rule scans `<Button>` too, so the site is still here and must not be deleted.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-07 / 88.3-16' },
   },
 };

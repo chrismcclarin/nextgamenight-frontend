@@ -146,7 +146,18 @@ const BTN_FAMILY_RING_SITES: RingSite[] = [
   {
     file: 'app/groupHomePage/page.js',
     label: 'Manage Members',
-    anchor: 'text-content-primary bg-white/80 ring-1 ring-line-control dark:ring-0 ',
+    // RE-ANCHORED by plan 88.6-21 task 2 (wave 7, 2026-09-16), and the reason is specific to
+    // THIS entry rather than general tidying. Every other entry here anchors on a class string
+    // that DEPARTS when its site migrates, which is what makes "anchor absent => already
+    // migrated => skip" the right rule. This one anchored on
+    // `text-content-primary bg-white/80 ring-1 ring-line-control dark:ring-0 ` — the 88.3-16
+    // owner-ruled wash and ring, which SURVIVES the migration by design (ruling 2 of
+    // 2026-08-27, marker at `groupHomePage/page.js:795`). So after a CORRECT migration the
+    // anchor was still found while the per-site ring was correctly gone, and assertion 4 red on
+    // a tree that had done exactly what ARM A asks. Re-anchored onto the `.btn` class string the
+    // migration really does delete. The entry STAYS in the list (the list is pinned at ten and
+    // shrinking it is a decision); it is now inert, like every other migrated site's.
+    anchor: 'btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap ',
     window: 320,
   },
   {

@@ -318,11 +318,10 @@ const OFF_TIER_ROSTER: ExemptionRoster = {
     why: '`hover:shadow-xl` on the logged-out hero CTA (:23, className at :25) — named by D-14b. `--shadow-xl` is undeclared, so this falls through to Tailwind\'s default. Plan 35 closes it; the element is a `.btn`, so its replacement hover pin takes `enabled-hover:`.',
     owner: { kind: 'spec', id: 'SPEC-88.6 D-14b / UI-SPEC §3.4 rule 1' },
   },
-  'app/groupHomePage/page.js': {
-    sites: 1,
-    why: '`hover:shadow-xl` on the "Plan Game Session" CTA (:894, className at :905) — named by D-14b, same undeclared-token mechanism as LandingPage. Plan 21 closes it; the element is a `.btn`, so `enabled-hover:` is the pin spelling.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 D-14b / UI-SPEC §3.4 rule 1' },
-  },
+  // `app/groupHomePage/page.js` CLOSED by plan 88.6-21 task 2 (wave 7, 2026-09-16): the "Plan
+  // Game Session" CTA's `hover:shadow-xl` is now `enabled-hover:shadow-theme-lg`, which closes
+  // the off-tier half and the bare-`hover:`-pin half in one edit. Entry DELETED rather than
+  // zeroed; the roster is exact in both directions. Test 2's floor drops 3 -> 2 with it.
   'app/components/EventDayModal.js': {
     sites: 1,
     why: '`shadow-xs` on a 40px group-avatar disc (:327). UNNAMED BY D-14b and MARKERLESS — RESEARCH §C.2 Open Question 6. It may well be a deliberate hairline on a small round avatar rather than an oversight, and it is NOT pre-decided here: plan 27 decides it at the site under the tier rule and records the outcome with a DECISION marker either way. This gate\'s job is to make it visible.',
@@ -349,11 +348,12 @@ const HOVER_PIN_ROSTER: ExemptionRoster = {
     why: 'The hero CTA (:23) carries `shadow-theme-lg` with `hover:shadow-xl` — a bare `hover:` pin AND an off-tier value, so it fails this rule on both counts. Plan 35 replaces it with `enabled-hover:shadow-theme-lg` in the same edit that closes the off-tier entry.',
     owner: { kind: 'spec', id: 'SPEC-88.6 / UI-SPEC §3.4 rule 2' },
   },
-  'app/groupHomePage/page.js': {
-    sites: 2,
-    why: 'Two subjects. `:894` ("Plan Game Session", className `:905`) carries `shadow-theme-lg hover:shadow-xl` — bare `hover:` and off-tier. `:914` (the Add-New-Game-Event `.btn`, className `:921`) carries `shadow-theme-lg` with NO hover rule at all, which is the certain inverted-elevation case RESEARCH §B.1 names. Plan 21 pins both with `enabled-hover:shadow-theme-lg`.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 / UI-SPEC §3.4 rule 2' },
-  },
+  // `app/groupHomePage/page.js` CLOSED by plan 88.6-21 task 2 (wave 7, 2026-09-16): both
+  // subjects — "Plan Game Session" and the Add-New-Game-Event CTA, now `<Button asChild
+  // variant="primary">` and `<Button variant="accent">` — carry
+  // `shadow-theme-lg enabled-hover:shadow-theme-lg`. Entry DELETED rather than zeroed; the
+  // roster is exact in both directions. Test 8's negative control is unaffected: the
+  // "Manage Members" control still rests at `shadow-theme-md` with no `-lg` pin.
 };
 
 /** Is this element a `.btn` / `<Button>`, i.e. does the cva base's hover token reach it? */
@@ -406,12 +406,18 @@ describe('D-14b / D49-b: the three-tier shadow rule', () => {
   it('2. located shadow-family sites (anti-vacuity companion for family (a))', () => {
     // A rule that matches nothing passes forever. Measured 2026-09-15: 3 off-tier sites
     // (LandingPage.js, groupHomePage/page.js, EventDayModal.js) and 17 alias occurrences.
+    //
+    // 3 -> 2, plan 88.6-21 task 2 (wave 7, 2026-09-16), WITH THE DEPARTING SITE NAMED, which is
+    // the only form in which this floor may be lowered: `groupHomePage/page.js`'s "Plan Game
+    // Session" CTA carried `hover:shadow-xl` and now carries `enabled-hover:shadow-theme-lg`.
+    // Its OFF_TIER_ROSTER entry is deleted in this same commit. The two survivors are
+    // `LandingPage.js:23` (plan 35) and `EventDayModal.js:327` (plan 27).
     expect(
       offTierSites.map((s) => `${s.rel}:${s.line} ${s.token}`),
-      'the off-tier scan located fewer than 3 sites. Either the three known live subjects were ' +
-        'all closed (in which case delete their roster entries and lower this floor in the same ' +
+      'the off-tier scan located fewer than 2 sites. Either both known live subjects were ' +
+        'closed (in which case delete their roster entries and lower this floor in the same ' +
         'commit, recording why) or the token match broke.',
-    ).toHaveLength(3);
+    ).toHaveLength(2);
     expect(aliasSites.length, 'the alias scan located nothing').toBeGreaterThan(0);
   });
 
@@ -516,12 +522,21 @@ describe('D-14b / D49-b: the three-tier shadow rule', () => {
         element.tokens.some(({ base }) => base === 'shadow-theme-md') &&
         !element.tokens.some(({ base }) => base === PINNED_TIER),
     );
+    // RE-KEYED from `app/groupHomePage/page.js:872` to the FILE plus an exact count, by plan
+    // 88.6-21 task 2 (wave 7, 2026-09-16). The line number was the subject's `<button>` opening
+    // tag, and this phase's sweeps rewrite line numbers in every file they touch — this suite's
+    // own sibling `cascadeOrder.test.ts` records the same rule in terms ("Never on a line number
+    // ... every number moves"). The count is what keeps it from weakening to a file-presence
+    // check: `shadow-theme-md` with no `-lg` pin occurs exactly ONCE in that file, so a second
+    // occurrence reds here and has to be looked at rather than absorbed.
+    const mdInHeader = mdSites.filter((s) => s.rel === 'app/groupHomePage/page.js');
     expect(
-      mdSites.map((s) => `${s.rel}:${s.line}`),
+      mdInHeader.map((s) => `${s.rel}:${s.line}`),
       'the `shadow-theme-md` negative-control subject was not located, so rule 7 has no ' +
         'demonstrated lower boundary. Re-find it before changing rule 7 — the shipped subject is ' +
-        'the "Manage Members" button in app/groupHomePage/page.js.',
-    ).toContain('app/groupHomePage/page.js:872');
+        'the "Manage Members" control in app/groupHomePage/page.js, a `<Button variant="ghost">` ' +
+        'since 88.6-21.',
+    ).toHaveLength(1);
     // And it must be absent from rule 7's roster, in BOTH files it could have been filed under.
     for (const [file, entry] of Object.entries(HOVER_PIN_ROSTER)) {
       if (file !== 'app/groupHomePage/page.js') continue;

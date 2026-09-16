@@ -27,6 +27,7 @@ import GroupSettings from '../components/GroupSettings';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { Button } from '../../components/ui/Button';
 
 // A groups home page
 function GroupHomePage(){
@@ -418,6 +419,12 @@ function GroupHomePage(){
      */
     const darkArm = !ground || isDarkBackground(ground);
 
+    // 88.6-21 (D-31, owner ruling 2026-08-27): the group-settings entry gate. Spelled as the
+    // SAME expression `grouplist.js` already ships for the same decision, rather than a second
+    // formulation of it. PRESENTATION ONLY — the backend 403 (`routes/groups.js:1521`) is the
+    // authorization control; see the marker on the kebab below.
+    const canEditGroup = userRole === 'owner' || userRole === 'admin';
+
     /*
      * The title/subtitle treatment is computed TWICE — once against the stored
      * hex (what dark mode paints) and once against the rendered tint (what
@@ -682,14 +689,53 @@ function GroupHomePage(){
                     </div>
                     {/* Kebab lives in the title row at every breakpoint so it
                         sits beside the group name (CONTEXT D-LEAVE-01 entry to
-                        GroupSettings). Active members only. */}
-                    {userRole && userRole !== 'pending' && (
+                        GroupSettings). Active members only.
+
+                        ——— AMENDED Phase 88.6-21 (D-31), the line above KEPT AS HISTORY ———
+
+                        "Active members only" IS SUPERSEDED, not contradicted: the entry is now
+                        OWNER/ADMIN only. Owner ruling 2026-08-27, phone UAT test 6, option 1. The
+                        single item is "Group settings", whose SAVE the backend 403s for anyone
+                        else (`routes/groups.js:1507-1521`, the refusal at `:1521`), so an active
+                        member was being offered an action that could only end in a failure toast.
+                        The expression matches the one `grouplist.js` already ships for the same
+                        decision (`canEdit = userRole === 'owner' || userRole === 'admin'`).
+
+                        THIS GATE IS PRESENTATION ONLY. The BACKEND 403 remains the authorization
+                        control and must never be "simplified away" on the strength of this line —
+                        a UI gate mistaken for authorization is a real privilege defect
+                        (T-88.6-54). The 403's user-facing copy is `MESSAGE_BY_CODE.forbidden`
+                        (`useFetchErrorState.ts:50`, already ratified — no new string), routed and
+                        asserted by plan 88.6-20 at `GroupSettings.js`'s settings-save catch, not
+                        here. That path stays reachable: the role can change after the modal
+                        renders (SPEC Edge Coverage, `ordering / R1`).
+
+                        BOTH the wrapper AND the item are gated, deliberately. Plan 16's
+                        zero-items-renders-no-trigger rule still holds as a rule (UI-SPEC §9 / §7.3)
+                        but is NOT what is relied on here — in plan 18's own words, so this phase
+                        ships one posture on the question, "that rule is a TEST CONTRACT, not an
+                        authorization gate, and keeping the wrapper is cheaper than depending on
+                        it".
+
+                        IT STRANDS NOBODY. Leave Group lives in Manage Members
+                        (`ManageMembers.js:641-647`, rendered for `isCurrentUser && !isOwner`),
+                        whose opener sits under the same active-member gate in the CTA row below
+                        and is reachable by every active member.
+
+                        The TRIGGER stays swappable — Phase 88.9 owns replacing it with a gear
+                        glyph, and this phase changes only what plan 16's component change brings.
+                        Widening this gate back to any active member is a decision, not a cleanup. */}
+                    {canEditGroup && (
                         <div className="shrink-0 relative z-20">
                             <KebabMenu
                                 ariaLabel="Group actions"
-                                items={[
-                                    { label: 'Group settings', onClick: () => setShowGroupSettings(true) },
-                                ]}
+                                items={
+                                    canEditGroup
+                                        ? [
+                                              { label: 'Group settings', onClick: () => setShowGroupSettings(true) },
+                                          ]
+                                        : []
+                                }
                             />
                         </div>
                     )}
@@ -869,13 +915,65 @@ function GroupHomePage(){
                            Phase 88.6's `Button` migration still owns the real border/ring MODEL;
                            this is an interim per-site edge. Changing it is a decision, not a
                            cleanup. */
-                        <button
+                        /* ——— AMENDED Phase 88.6-21 (task 2, UI-SPEC §3.2 `:208`), everything
+                           above KEPT AS HISTORY ———
+
+                           THIS CONTROL IS NOW A `<Button variant="ghost">`, AND EVERY EDGE
+                           TREATMENT THE MARKER ABOVE DESCRIBES SURVIVES IT. `bg-white/80`,
+                           `ring-1 ring-line-control`, `dark:ring-0` and the whole dark arm move
+                           onto `<Button className>` unchanged and win through `cn`'s
+                           tailwind-merge last-wins, exactly as §3.2's `btn`-alone row says. Every
+                           ratio measured above is therefore still the shipped ratio.
+
+                           `variant="secondary"` was NOT available: the opaque `bg-btn-secondary`
+                           alternative is the RECORDED NEXT STEP priced at 1.1330 in the bullet
+                           above, i.e. a WEAKER cue than the ring, and taking it here would have
+                           been the rejected arm of ruling 2. `variant="primary"` is forbidden for
+                           a bare `.btn` outright (§3.2 `:214`).
+
+                           FOUR MECHANICAL CHANGES, each of which touches something this marker
+                           states, so each is recorded rather than left to be discovered:
+
+                             1. `hover:bg-surface-hover` is DELETED from the call site. It is not
+                                lost — `variant="ghost"` supplies the byte-equal
+                                `enabled-hover:bg-surface-hover` from the cva variant map. The
+                                spelling had to change: `enabled-hover` excludes `:disabled` and
+                                `[aria-disabled]`, and a bare `hover:` left beside it would not
+                                de-dupe under tailwind-merge, so both would survive.
+                             2. `dark:hover:bg-white/20` becomes `dark:enabled-hover:bg-white/20`,
+                                and this one is LOAD-BEARING rather than tidy. `enabled-hover`
+                                compiles to `&:not(:disabled):not([aria-disabled='true']):hover`
+                                — (0,4,0). The dark variant is `:where(.dark, *)`, which is
+                                zero-specificity, so the old `dark:hover:` form is (0,2,0) and
+                                would now LOSE to the ghost variant's hover in dark mode: the 10%
+                                -> 20% white wash would have silently become the light-theme
+                                surface token. Verified against the compiled stylesheet, not
+                                reasoned from the class names.
+                             3. The per-site focus ring is DELETED — `A-2 ARM A` (owner ruling
+                                2026-09-15) puts the `.btn` family's ring in `Button.tsx`'s cva
+                                base and forbids a second expression of it. `cascadeOrder.test.ts`
+                                keeps the half-migration (class string kept, ring dropped) red.
+                             4. `px-4 py-2 md:px-6 md:py-3`, `rounded-btn` and `transition-all`
+                                are DELETED as dead: `.btn` declares `padding`, `border-radius`
+                                and `transition` UNLAYERED (`globals.css:2194-2205`), so no
+                                `@layer utilities` class of any of the three ever painted here.
+                                `transition-all` in particular is worth naming: the hover fill
+                                DOES transition, from `.btn`'s own
+                                `transition: var(--theme-transition)` (`:1684` —
+                                background-color, color, border-color, box-shadow), never from
+                                this class.
+
+                           `shadow-theme-md` STAYS and gains NO hover pin: the base emits
+                           `enabled-hover:shadow-theme-md`, so hover resolves to the SAME tier it
+                           rests at. Measured-safe, and `shadowTier.test.ts` test 8 is the shipped
+                           negative control for exactly that. */
+                        <Button
+                            variant="ghost"
                             onClick={() => setMemberModal(true)}
                             className={
-                                'btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap ' +
+                                'whitespace-nowrap ' +
                                 'text-content-primary bg-white/80 ring-1 ring-line-control dark:ring-0 ' +
-                                'rounded-btn hover:bg-surface-hover transition-all shadow-theme-md ' +
-                                'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2' +
+                                'shadow-theme-md' +
                                 // The 10% white wash moves from an inline `style` to
                                 // `dark:bg-white/10`, because an inline declaration cannot
                                 // be forked by a `dark:` class. On a light ground it was
@@ -883,16 +981,45 @@ function GroupHomePage(){
                                 // `backdrop-blur-xs` comes with it: it only ever did
                                 // visible work over that translucent wash or an image.
                                 (darkArm
-                                    ? ' dark:text-white dark:bg-white/10 dark:hover:bg-white/20 dark:backdrop-blur-xs'
+                                    ? ' dark:text-white dark:bg-white/10 dark:enabled-hover:bg-white/20 dark:backdrop-blur-xs'
                                     : '')
                             }
                         >
                             Manage Members
-                        </button>
+                        </Button>
                     )}
                     {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the groupHomePage primary CTA (~37px: the px/py utilities here are DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text link.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */}
-                    <Link
-                        href={`/groupPlanning?group_id=${Router}`}
+                    {/* DECISION Phase 88.6-21 (task 2, UI-SPEC §3.2 asChild row / §13 correction 4):
+                        this is the PURPLE `btn btn-primary` CTA, not the amber one — the SPEC's
+                        own §13 correction 4 exists because an earlier reading swapped the two. It
+                        becomes `<Button asChild variant="primary">` wrapping the `<Link>`, and the
+                        surviving utilities go on `<Button className>`, NEVER on the slotted child:
+                        Radix `Slot` concatenates the child's className onto the slot's WITHOUT
+                        tailwind-merge, so a utility left on the child cannot win a conflict and can
+                        silently double up. `asChild` correctly omits `type` on a slotted anchor.
+
+                        `hover:shadow-xl` is GONE, for two independent reasons that happen to have
+                        one fix. It is OFF-TIER — `--shadow-xl` is not declared in `globals.css`, so
+                        it fell through to Tailwind's inlined black default rather than the
+                        re-tinted project scale (D-14b, `DECISION Phase 87.7`). And it is a BARE
+                        `hover:` pin, which re-lifts a gated control and does not de-dupe against
+                        the primitive's `enabled-hover:` base token, so both would have survived
+                        the merge. The replacement is `enabled-hover:shadow-theme-lg`, which also
+                        satisfies §3.4 rule 2: without a pin the base's `enabled-hover:shadow-theme-md`
+                        would SHRINK this control's `lg` resting elevation on hover.
+
+                        `min-h-11` DROPS HERE, in the same commit as the migration and never before
+                        it — the amended D-36 marker above says this class is the ONLY thing holding
+                        the CTA at 44px at `md`+, so dropping it first opens a window with no desktop
+                        floor. `Button`'s cva base now supplies that floor at every viewport (D-09).
+                        The MARKER stays; only the class goes.
+
+                        `px-4 py-2 md:px-6 md:py-3` are deleted as dead (unlayered `.btn` padding),
+                        and the per-site focus ring with them (A-2 ARM A — the ring's one home is
+                        the cva base). A decision, not a cleanup. */}
+                    <Button
+                        asChild
+                        variant="primary"
                         /* The inline boxShadow this replaces carried TWO halves: a
                            pure-black drop shadow AND a 2px white ring. Req 3 moves
                            the black half onto the warm `shadow-theme-lg` token —
@@ -902,38 +1029,68 @@ function GroupHomePage(){
                            2px. Dropping the ring would still pass 88-29's
                            zero-`rgba(0,0,0` gate while looking wrong. */
                         className={
-                            'btn btn-primary px-4 py-2 md:px-6 md:py-3 font-semibold shadow-theme-lg hover:shadow-xl ' +
-                            'text-sm md:text-base whitespace-nowrap text-center min-h-11 ' +
-                            'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2' +
+                            'shadow-theme-lg enabled-hover:shadow-theme-lg ' +
+                            'whitespace-nowrap text-center' +
                             (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
                         }
                     >
-                        Plan Game Session
-                    </Link>
+                        <Link href={`/groupPlanning?group_id=${Router}`}>
+                            Plan Game Session
+                        </Link>
+                    </Button>
                     {userRole && userRole !== 'pending' && (
-                        <button
+                        /* DECISION Phase 88.6-21 (task 2, D-09 / UI-SPEC §3.2 accent row): the
+                           amber Create-Event CTA converges onto `<Button variant="accent">` and
+                           its inline `style` is DELETED. That inline pair was the SECOND
+                           expression of one design decision — the first is `.btn-accent`
+                           (`globals.css:2478-2481`) — which is exactly the routed duplication the
+                           `DECISION Phase 88.3-18` marker at `globals.css:2389` exists to prevent.
+                           The OI-6 reasoning the deleted comment carried is KEPT here rather than
+                           lost: the fill was `var(--amber-600)`, white on it 3.19:1, a pre-existing
+                           AA failure in both themes; `--amber-700` is 5.0216:1; `amber-800` (7.09)
+                           was offered and REJECTED by the owner as too dark.
+
+                           BYTE-EQUAL AT REST, MEASURED AT EXECUTION ACROSS ALL THREE TOKENS, not
+                           two: `--color-btn-accent-bg` is `var(--amber-700)` in both theme blocks
+                           (`globals.css:1390`, `:1827`), `--color-btn-accent-text` is `#ffffff` in
+                           both (`:1392`, `:1829`), and `--color-btn-accent-hover` is
+                           `var(--amber-800)` in both (`:1391`, `:1828`).
+
+                           THE HOVER STATE IS NOT BYTE-EQUAL, AND THAT IS DISCLOSED RATHER THAN
+                           SUPPRESSED. Today the amber is an INLINE declaration, which beats every
+                           class rule, so the fill is INVARIANT under hover — `.btn` declares no
+                           background of its own. After this migration
+                           `.btn-accent:hover:not(:disabled):not([aria-disabled='true'])`
+                           (`globals.css:2483-2484`) applies `--color-btn-accent-hover`, and
+                           `.btn`'s own unlayered `transition: var(--theme-transition)` (`:1684`)
+                           covers background-color — so the control now visibly DARKENS on hover
+                           where it previously did not move. It is an ADDED state, not a changed
+                           one, and the added state is STRONGER than the rest state it lifts from:
+                           white on amber-800 measures 7.0900 (`tokenContrast.test.ts:1257`) against
+                           the rest state's 5.0216. Recorded in `88.6-21-SUMMARY.md` for
+                           `/gsd-ui-review`. Re-adding an inline fill to suppress it is a decision,
+                           not a cleanup.
+
+                           `shadow-theme-lg enabled-hover:shadow-theme-lg` is UI-SPEC §3.4 rule 2
+                           and this control is its certain subject: it rests at `lg` with no hover
+                           rule today, so the base's `enabled-hover:shadow-theme-md` would have
+                           SHRUNK it. The spelling is plan 05's `enabled-hover` variant, never a
+                           bare `hover:` — plan 12's hover-pin gate rejects the bare form because it
+                           re-lifts the gated controls the variant exists to exclude. */
+                        <Button
+                            variant="accent"
                             onClick={toggleEventModal}
                             /* Same two-half shadow as the CTA above: black half ->
                                `shadow-theme-lg`, white ring half preserved as
                                `ring-2 ring-white/15`. */
                             className={
-                                'btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap ' +
-                                'rounded-btn transition-all shadow-theme-lg ' +
-                                'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2' +
+                                'whitespace-nowrap ' +
+                                'shadow-theme-lg enabled-hover:shadow-theme-lg' +
                                 (darkArm ? ' dark:ring-2 dark:ring-white/15' : '')
                             }
-                            style={{
-                                // OI-6: was `var(--amber-600)`, white on it 3.19:1 — a
-                                // pre-existing failure in BOTH themes. `--amber-700` is
-                                // 5.02:1. The inline fill STAYS: `.btn` sets no background
-                                // of its own, and moving this to a class is a separate
-                                // decision (Phase 88.6's `Button`).
-                                backgroundColor: 'var(--amber-700)',
-                                color: 'white',
-                            }}
                         >
                             Add New Game Event
-                        </button>
+                        </Button>
                     )}
                 </div>
             </div>

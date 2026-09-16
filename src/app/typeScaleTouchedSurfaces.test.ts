@@ -2117,9 +2117,13 @@ const WEIGHT_ROSTER: ExemptionRoster = {
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
   'app/groupHomePage/page.js': {
-    sites: 7,
+    // 7 -> 4, plan 88.6-21 task 2 (wave 7, 2026-09-16): the three header CTAs' `font-semibold`
+    // left with their migration onto `Button`, where the 600 label weight comes from `.btn`'s own
+    // unlayered `font-weight` (`globals.css:2199`) and a call-site weight utility is dead. Task 3
+    // settles the remaining four.
+    sites: 4,
     why:
-      '7 off-scale weight sites (3 font-medium, 4 font-semibold). UI-SPEC §4.5 outcome leads: emphasis (400 + a colour token); outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-07, 88.6-10, 88.6-12, 88.6-13, 88.6-19, 88.6-20, 88.6-21, 88.6-41, 88.6-43, 88.6-46.',
+      '4 off-scale weight sites (3 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: emphasis (400 + a colour token); outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-07, 88.6-10, 88.6-12, 88.6-13, 88.6-19, 88.6-20, 88.6-21, 88.6-41, 88.6-43, 88.6-46.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
   'app/groupPlanning/page.js': {
