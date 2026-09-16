@@ -2585,12 +2585,21 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // suite and the component's own are jsdom, which performs no layout and loads no stylesheet, so
   // a before/after `getComputedStyle().fontWeight` reads the UA default both times (the D28 rule).
   // The pins are class-level, in `useFetchErrorState.test.tsx`. Entry DELETED, not zeroed.
-  'components/ui/UserChip.tsx': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-37.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-37 task 1 (wave 7, 2026-09-16): `components/ui/UserChip.tsx` carried
+  // `sites: 1` (0 font-medium, 1 font-semibold) — the initials-fallback fill at `UserChip.tsx:87`
+  // pre-edit. Its entry's outcome lead was the generic "set by the owning sweep", and the sweep
+  // confirmed it per site as UI-SPEC §4.5's PILL/CHIP-INK row -> 700, NOT the emphasis 400: it is
+  // 12px/14px ink on a coloured fill (`bg-surface-elevated`) at FIXED geometry (`h-6 w-6` /
+  // `h-8 w-8`), which is the identical shape `MemberChipStack.tsx:85` took `font-bold` for in plan
+  // 88.6-28 (W36) — the twin named in §4.5's own row. 400 loses because the ink is already spoken
+  // for by `text-content-secondary`, so there is no colour token left to carry the distinction,
+  // and D-01 already rejected folding the 12px rung up to 14 on these fixed boxes. The reasoning
+  // is written at the site, not only here. The COMPUTED rendered weight was NOT measured and no
+  // assertion claims it was — this suite and `UserChip.test.tsx` are jsdom, which performs no
+  // layout and loads no stylesheet, so a before/after `getComputedStyle().fontWeight` reads the UA
+  // default both times (the D28 rule). The pin is class-level, in `UserChip.test.tsx`
+  // ("the initials fill carries font-bold (700), never 600 or 500"). Entry DELETED, not zeroed —
+  // the roster is exact in both directions, so a zeroed entry would red as a fossil permission.
 };
 
 /**
