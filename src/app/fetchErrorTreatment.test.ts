@@ -362,9 +362,13 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
     contains: "const msg = err?.message || '';",
     why:
       'CONTROL FLOW. `classifyError`\'s local — a classifier over fetch-`TypeError` text ' +
-      'that picks transient-vs-permanent; the backend-prose arms are removed by 88.6-23 ' +
-      '(wave 7), which declares this file. Never displayed: the copy this classifier ' +
-      'selects is ratified register copy, not the message.',
+      'that picks transient-vs-permanent. AMENDED by plan 88.6-23 (wave 7, 2026-09-16), ' +
+      'which executed the removal the previous wording predicted: the FIVE backend-prose ' +
+      'arms of `isPermanent` are GONE and that half now reads `httpStatus === 404 || ' +
+      'httpStatus === 410`. What this local still feeds is the `isTransient` half, whose ' +
+      'arms match text the CLIENT produces (fetch / `TypeError`), so plan 88.6-42\'s ' +
+      'alias drop cannot reach them and this read is not on a path to zero. Never ' +
+      'displayed: the copy the classifier selects is ratified register copy.',
   },
   {
     file: 'app/invite/game/[token]/page.js',
@@ -372,21 +376,23 @@ const CONTROL_FLOW_ALLOWED: Array<{ file: string; contains: string; why: string 
     why:
       'CONTROL FLOW, and it is on the "Failed to X" assertion, not the raw-message one: ' +
       "the lower-cased literal 'failed to fetch' is the browser's own TypeError text being " +
-      'MATCHED, not copy being authored. Removed with the classifier by 88.6-23 (wave 7).',
+      'MATCHED, not copy being authored. AMENDED by plan 88.6-23 (wave 7, 2026-09-16): the ' +
+      'previous wording said "Removed with the classifier by 88.6-23", which was WRONG in ' +
+      'both halves — the classifier survives and this arm was deliberately left untouched. ' +
+      'Only the prose arms of `isPermanent` were removed. This entry is PERMANENT unless the ' +
+      'transient classification itself is redesigned.',
   },
-  {
-    file: 'app/invite/game/[token]/page.js',
-    contains:
-      "if (err.message && (err.message.includes('expired') || err.message.includes('passed'))) {",
-    why:
-      'CONTROL FLOW, and BLOCKED ON THE BACKEND EMITTING A `code`: this is prose-matching ' +
-      'on a 410 body, the same fragility class plan 88.6-14 rosters at ' +
-      'rsvp/[token]/page.js:87,93. Never displayed — it selects the `expired` status and ' +
-      'its own register copy. Removed by 88.6-23 (wave 7) only as far as the FE can go; ' +
-      'the durable fix needs the backend envelope, so it points at the SAME destination as ' +
-      "its siblings — plan 88.6-24's checkpoint / .planning/deferred/phase-93.md — rather " +
-      'than burying a Phase 93 item in a silent allow-list line.',
-  },
+  // DELETED by plan 88.6-23 task 1 (wave 7, 2026-09-16): the third
+  // `app/invite/game/[token]/page.js` entry, which allow-listed the prose-matched 410 guard
+  // `if (err.message && (err.message.includes('expired') || …))`. That line no longer exists —
+  // the branch is selected by `err?.status === 410` now (D-45 / D-59), ahead of plan 88.6-42's
+  // `body.error` alias drop in wave 8, which would otherwise have turned every one of those
+  // strings into `HTTP error! status: 410` and silently killed the expired screen on the public
+  // QR/SMS entry surface. The old entry routed the durable fix to Phase 93 on the ground that
+  // "the durable fix needs the backend envelope"; that is no longer true for THIS site, because
+  // `GET /events/invite-preview/:token` emits 410 at exactly one place (`routes/events.js:1306`),
+  // so the status alone is unambiguous here. Entry DELETED, not left as a fossil permission —
+  // the anti-vacuity assertion below reds on a stale one.
   {
     file: 'lib/logger.ts',
     contains: "const message = typeof e?.message === 'string' ? e.message : String(err);",
@@ -627,22 +633,16 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
       'displayed. Closed by plan 88.6-23 (wave 7), which declares this file.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-23' },
   },
-  'app/invite/game/[token]/page.js': {
-    sites: 2,
-    why:
-      'RAW-MESSAGE assertion. :90 and :143 are the DISPLAY sites (`setError(err.message || ' +
-      '…)`); the three control-flow reads in the same file (:28, :36, :79) are allow-list ' +
-      'entries, not roster sites, which is the per-LINE rule working. Closed by plan ' +
-      '88.6-23 (wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-23' },
-  },
-  'app/invite/group/[token]/page.js': {
-    sites: 1,
-    why:
-      'RAW-MESSAGE assertion. :109 `setError(err.message || "Failed to join group.")`. ' +
-      'Closed by plan 88.6-23 (wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-23' },
-  },
+  // DELETED by plan 88.6-23 task 1 (wave 7, 2026-09-16). `app/invite/game/[token]/page.js`
+  // carried `sites: 2` (:90 and :143, both `setError(err.message || …)`) and
+  // `app/invite/group/[token]/page.js` carried `sites: 1` (:109). All three now read
+  // `setError(getFetchErrorMessage(err))` — the ratified register, no fallback string authored:
+  // a real network failure already arrives as `ApiError(…, 'network', 0)` (api.ts:348-352), so
+  // the register's own `network` line covers the case the hand-rolled fallbacks were written for.
+  // Of the THREE allow-list entries the old `why` named for the game page, one is GONE with the
+  // code it described (:79, the prose-matched 410 guard, re-keyed to `err?.status === 410`) and
+  // two SURVIVE (:28 and :36, both inside `classifyError`'s fetch-`TypeError` arms, which the
+  // re-key deliberately left alone). Entries DELETED, not zeroed.
   'lib/api.ts': {
     sites: 3,
     why:
@@ -803,21 +803,14 @@ const FAILED_COPY_EXEMPT: ExemptionRoster = {
       'covers. Closed by plan 88.6-33 (wave 7), which declares this file.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-33' },
   },
-  'app/invite/game/[token]/page.js': {
-    sites: 1,
-    why:
-      '"FAILED TO X" assertion. :143 "Failed to join game night." only — :36\'s ' +
-      "`'failed to fetch'` is the browser's TypeError text being MATCHED, so it is an " +
-      'allow-list entry rather than a roster site. Closed by plan 88.6-23 (wave 7).',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-23' },
-  },
-  'app/invite/group/[token]/page.js': {
-    sites: 1,
-    why:
-      '"FAILED TO X" assertion. :109 "Failed to join group." — the same line its ' +
-      'raw-message entry covers. Closed by plan 88.6-23 (wave 7).',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-23' },
-  },
+  // DELETED by plan 88.6-23 task 1 (wave 7, 2026-09-16). `app/invite/game/[token]/page.js`
+  // carried `sites: 1` (:143 "Failed to join game night.") and
+  // `app/invite/group/[token]/page.js` carried `sites: 1` (:109 "Failed to join group.") —
+  // the same lines their raw-message entries covered. Both hand-rolled strings went with the
+  // `getFetchErrorMessage(err)` re-key. The game page's `:36` `'failed to fetch'` is NOT
+  // affected: it is the browser's own TypeError text being MATCHED, it stays an allow-list
+  // entry, and `classifyError`'s transient arms were deliberately left untouched by the re-key.
+  // Entries DELETED, not zeroed.
   'lib/api.ts': {
     sites: 2,
     why:

@@ -231,11 +231,15 @@ const BTN_EXEMPT: ExemptionRoster = {
   // vs `globals.css:2202`, `text-sm` vs `:2201`, `font-medium` vs `:2200`, `inline-block` and
   // `flex items-center gap-2` vs `:2195-2198`, the `disabled:` pair vs `:2250-2253`), so all of
   // them are deleted and NONE moved onto a `Button className`. Entry DELETED rather than zeroed.
-  'app/invite/game/[token]/page.js': {
-    sites: 6,
-    why: 'plan 88.6-23 sweeps the invite and restore token entry pages, this file among them',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // `app/invite/game/[token]/page.js` CLOSED by plan 88.6-23 task 1 (wave 7, 2026-09-16): all SIX
+  // `.btn` elements are `<Button size="default">`. THREE are anchors and took the UI-SPEC §3.2
+  // `asChild` form with their `href` byte-identical — the `/api/auth/login?returnTo=…` sign-in
+  // `<a>` (which stays an `<a>`, never a `<Link>`: an Auth0 handoff needs a hard navigation) and
+  // the two `<Link href="/">` Go-Home CTAs. `block` was DEAD under unlayered `.btn`'s
+  // `display: inline-flex` (globals.css:2195) and is deleted; `w-full`, `text-center` and `mb-2`
+  // are NOT dead (`.btn` declares no width, no `text-align` and no margin) and moved onto the
+  // `Button` className, where tailwind-merge keeps them. Entry DELETED rather than zeroed; the
+  // roster is exact in both directions, so a zeroed entry would red as a fossil permission.
   // DELETED by plan 88.6-22 task 1 (wave 7, 2026-09-16): `app/components/FriendInvitePanel.js`
   // carried `sites: 5` here (the bulk-invite CTA, the email Send, Add Friend, Copy Invite Link
   // and the admin-only Reset invite link). All five are `<Button size="default">` now. Every
@@ -315,11 +319,10 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'plan 88.6-32 sweeps the group-library and scheduling cluster, ScheduleForm.js included',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
-  'app/invite/group/[token]/page.js': {
-    sites: 2,
-    why: 'plan 88.6-23 sweeps the invite and restore token entry pages, this file among them',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // `app/invite/group/[token]/page.js` CLOSED by plan 88.6-23 task 1 (wave 7, 2026-09-16): BOTH
+  // `.btn` elements are anchors and took the `asChild` form — the `/api/auth/login?returnTo=…`
+  // sign-in `<a>` (stays an `<a>`) and the `<Link href="/">` Go-Home CTA. Same dead/alive split
+  // as the sibling invite page above. Entry DELETED rather than zeroed.
   'app/rsvp/[token]/page.js': {
     sites: 2,
     why: 'plan 88.6-24 sweeps rsvp/[token]/page.js and resolves R9 cross-repo read points there',

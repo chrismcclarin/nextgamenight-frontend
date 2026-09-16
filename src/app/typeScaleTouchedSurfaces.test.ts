@@ -584,8 +584,15 @@ const EXPECTED_PROP_SEAMS = 5;
  * no size change at any of them. `EXPECTED_LEVELS`' `{ 3: 3 }` entry for that file is
  * byte-unchanged (P4). The `id="invite-by-email-heading"` on the middle one is carried through:
  * it is the email field's only accessible name via `aria-labelledby`.
+ *
+ * RAISED 46 -> 56 by plan 88.6-23 task 1 (2026-09-16): TEN more — `invite/game/[token]/page.js`'s
+ * SIX h1s (one per mutually-exclusive status branch) and `invite/group/[token]/page.js`'s FOUR.
+ * THREE of the ten move size (the two `text-2xl` page titles on the game page and the one on the
+ * group page -> `size="display"`, 30); the other SEVEN were already `text-xl` and land on
+ * `size="heading"` with NO size change, per D-04's "h1 @ 20 stays 20" row. Both files'
+ * `EXPECTED_LEVELS` entries (`{ 1: 6 }` and `{ 1: 4 }`) are byte-unchanged (P4).
  */
-const EXPECTED_MIN_PRIMITIVES = 46;
+const EXPECTED_MIN_PRIMITIVES = 56;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -735,16 +742,14 @@ const RUNG_ROSTER: ExemptionRoster = {
     why: '2 headings off the 4-size working set (h1:268 text-2xl md:text-3xl; h3:328 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/invite/game/[token]/page.js': {
-    sites: 2,
-    why: '2 headings off the 4-size working set (h1:238 text-2xl; h1:263 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
-  'app/invite/group/[token]/page.js': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h1:148 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-23 task 1 (wave 7, 2026-09-16): `app/invite/game/[token]/page.js`
+  // carried `sites: 2` (h1:238, h1:263 — both `text-2xl`) and
+  // `app/invite/group/[token]/page.js` carried `sites: 1` (h1:148 `text-2xl`). All three are
+  // `<Heading level={1} size="display">` (30) now — D-04's "h1 @ 24 (page titles)" row — and
+  // leave this RAW-only population entirely. The SEVEN OTHER h1s across the two files were
+  // already `text-xl` and stay at 20 as `size="heading"` (D-04 row 2, the mutually-exclusive
+  // status branches): they were never in this roster because 20 is inside the working set.
+  // Entries DELETED, not zeroed.
   'app/privacy/page.js': {
     sites: 1,
     why: '1 heading off the 4-size working set (h1:8 text-4xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
@@ -2140,18 +2145,18 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '3 off-scale weight sites (3 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-13, 88.6-23, 88.6-43.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/invite/game/[token]/page.js': {
-    sites: 3,
-    why:
-      '3 off-scale weight sites (1 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-18, 88.6-23, 88.6-24.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
-  'app/invite/group/[token]/page.js': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-18, 88.6-23.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-23 task 1 (wave 7, 2026-09-16): `app/invite/game/[token]/page.js`
+  // carried `sites: 3` and `app/invite/group/[token]/page.js` carried `sites: 1`. Resolved per
+  // site against UI-SPEC §4.5:
+  //   - the three LOADING/JOINING status labels (`{label}` on game, `Joining {group}…` on
+  //     group) — §4.5 EMPHASIS: the 500 dropped to 400 and each keeps the `text-content-primary`
+  //     colour token it already carried. No informational distinction was carried by the weight
+  //     (each is the only string in its card), so this is recorded as decorative rather than
+  //     asserted safe;
+  //   - the game page's TWO `font-semibold` event-name lines in the joined / already-joined
+  //     summary block — §4.5 HIERARCHY: 600 -> 700 (`font-bold`). Each IS the subject of its
+  //     block, with the event date at 14/muted directly beneath it.
+  // Entries DELETED, not zeroed; the roster is exact in both directions.
   'app/restore/group/[token]/page.tsx': {
     sites: 1,
     why:

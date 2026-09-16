@@ -4,6 +4,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import Link from 'next/link';
 import { eventsAPI } from '../../../../lib/api';
+import { Button } from '@/components/ui/Button';
+import { Heading } from '@/components/ui/Heading';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 
 // POLL-05 status enum (D-INVITE-LANDING-04 zero-flash mandate):
 // loading → preview (unauth) | joining → joined | already-joined | expired
@@ -35,14 +38,28 @@ function GameInvitePage() {
       lowerMsg.includes('network') ||
       lowerMsg.includes('failed to fetch') ||
       lowerMsg.includes('fetch');
-    const isPermanent =
-      httpStatus === 404 ||
-      httpStatus === 410 ||
-      msg.includes('expired') ||
-      msg.includes('passed') ||
-      msg.includes('full') ||
-      msg.includes('deleted') ||
-      msg.includes('Invalid invite');
+    /* DECISION Phase 88.6-23 (D-45 / D-59): `isPermanent` decides on the HTTP STATUS ALONE —
+       chosen OVER the five backend-prose arms it replaced (`expired`, `passed`, `full`,
+       `deleted`, `Invalid invite`), which is the shape that ships today and the one a future
+       reader is most likely to "restore" when a new copy string appears.
+
+       WHY THE PROSE ARMS HAD TO GO. `ApiError.message` is
+       `body.message ?? body.error ?? HTTP error! status: N` (api.ts `extractErrorMessage`).
+       Plan 88.6-42 (wave 8) DROPS the `body.error` alias, after which every one of those five
+       strings becomes `HTTP error! status: 410` and not one arm matches — on the public QR/SMS
+       entry surface, silently. This plan is wave 7, so the re-key lands FIRST.
+
+       WHY STATUS IS EXHAUSTIVE HERE, measured 2026-09-14 against the two routes this page
+       calls: `GET /events/invite-preview/:token` and `POST /events/join-game-by-token`.
+       `expired`/`passed` is emitted at exactly one place per route and both are 410
+       (`routes/events.js:1306`, `:1353`); `Invalid invite link` is 404 (`:1301`, `:1348`);
+       `full` and `deleted` have NO emitter on either route at all. (`:1359` is a second 404 —
+       `User not found` on the join route — which lands permanent either way, so the mapping
+       is unchanged by it.)
+
+       THE `isTransient` ARMS BELOW ARE DELIBERATELY UNTOUCHED: they match fetch/`TypeError`
+       text the CLIENT produces, not backend prose, so the alias drop cannot reach them. */
+    const isPermanent = httpStatus === 404 || httpStatus === 410;
     // Ambiguous → treat as transient. findOrCreate makes retry idempotent.
     return isPermanent && !isTransient ? 'permanent' : 'transient';
   };
@@ -75,8 +92,18 @@ function GameInvitePage() {
         setEventInfo(data);
       } catch (err) {
         if (cancelled) return;
-        // 410 expired event — distinct UI state with its own copy
-        if (err.message && (err.message.includes('expired') || err.message.includes('passed'))) {
+        /* DECISION Phase 88.6-23 (D-45 / D-59): the expired branch is selected by the HTTP
+           STATUS (410), chosen OVER the shipped
+           `err.message.includes('expired') || err.message.includes('passed')` prose match.
+           Same reason as the `isPermanent` marker above: plan 88.6-42 drops the `body.error`
+           alias in wave 8 and every one of those strings becomes `HTTP error! status: 410`.
+           PRECONDITION, verified 2026-09-14: `GET /events/invite-preview/:token` emits 410 at
+           exactly ONE place (`routes/events.js:1306`) and it is the has-already-passed gate,
+           so 410 on this call means "passed" and nothing else. If a second 410 is ever added
+           to that route, this branch needs an envelope `code` — it does not need the prose
+           back. Pinned by `page.test.tsx`, whose 410/404 arms are built with the
+           POST-alias-drop message shape so a green run proves the branch is alias-independent. */
+        if (err?.status === 410) {
           setStatus('expired');
           return;
         }
@@ -87,7 +114,7 @@ function GameInvitePage() {
         const kind = classifyError(err);
         if (kind === 'transient') {
           setStatus('error-transient');
-          setError(err.message || 'Could not reach the server.');
+          setError(getFetchErrorMessage(err));
         } else {
           setStatus('error-permanent');
           setError('This invite link is no longer valid.');
@@ -140,7 +167,12 @@ function GameInvitePage() {
         // D-INVITE-LANDING-03: branch transient vs permanent via shared
         // classifier (also used by preview fetch). findOrCreate on the
         // backend makes retry idempotent.
-        setError(err?.message || 'Failed to join game night.');
+        // R1 (SPEC DEF-88-25-01): the ratified register replaces the raw upstream text and
+        // the hand-rolled "Failed to join game night." fallback. MUTATION-path failure, but
+        // the toast arm of UI-SPEC §6.2 does not apply: this page IS the mutation and has no
+        // other content to preserve context for, so the whole-page error branch below is the
+        // placement, with the register supplying the words.
+        setError(getFetchErrorMessage(err));
         setStatus(classifyError(err) === 'permanent' ? 'error-permanent' : 'error-transient');
       });
     // NOTE: `status` deliberately omitted from deps — its inclusion was the
@@ -193,7 +225,7 @@ function GameInvitePage() {
       <div className="min-h-screen bg-surface-page flex items-center justify-center">
         <div className="bg-surface-card rounded-card shadow-theme-md p-8 max-w-md w-full mx-4 text-center">
           <div className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4" />
-          <p className="text-content-primary font-medium">{label}</p>
+          <p className="text-content-primary">{label}</p>
         </div>
       </div>
     );
@@ -235,18 +267,25 @@ function GameInvitePage() {
                 <circle cx="15.75" cy="15.75" r="1.25" fill="currentColor" stroke="none" />
               </svg>
             </div>
-            <h1 className="text-2xl font-bold text-content-primary mb-2">
+            <Heading level={1} size="display" className="text-content-primary mb-2">
               {eventInfo.game_name || 'Game Night'}
-            </h1>
+            </Heading>
             <p className="text-content-muted mb-6">
               {formatEventDate(eventInfo.event_date)}
             </p>
-            <a
-              href={`/api/auth/login?returnTo=${encodeURIComponent(`/invite/game/${token}`)}`}
-              className="btn btn-primary block w-full text-center"
-            >
-              Join Game Night
-            </a>
+            {/* UI-SPEC §3.2 `asChild`: the element stays an `<a>` — a client-router
+                navigation to the Auth0 handoff route is a behaviour change, not a cleanup —
+                and the `href` is byte-identical. Surviving utilities go on `<Button
+                className>`, never on the slotted child (Slot concatenates without
+                tailwind-merge). `block` is dead under unlayered `.btn`'s
+                `display: inline-flex` (globals.css:2195); `w-full` and `text-center` are not. */}
+            <Button asChild variant="primary" size="default" className="w-full text-center">
+              <a
+                href={`/api/auth/login?returnTo=${encodeURIComponent(`/invite/game/${token}`)}`}
+              >
+                Join Game Night
+              </a>
+            </Button>
             <p className="text-xs text-content-muted mt-4">
               Don&apos;t have an account? Signing in will create one automatically.
             </p>
@@ -260,22 +299,23 @@ function GameInvitePage() {
             <div className="mx-auto mb-4 w-16 h-16 bg-status-success-subtle rounded-full flex items-center justify-center">
               <span className="text-3xl" role="img" aria-label="game die">🎲</span>
             </div>
-            <h1 className="text-2xl font-bold text-content-primary mb-2">
+            <Heading level={1} size="display" className="text-content-primary mb-2">
               You&apos;re in!
-            </h1>
+            </Heading>
             {eventInfo && (
               <div className="mb-6 p-4 bg-surface-elevated rounded-lg">
-                <p className="font-semibold text-content-primary">{eventInfo.game_name || 'Game Night'}</p>
+                <p className="font-bold text-content-primary">{eventInfo.game_name || 'Game Night'}</p>
                 <p className="text-sm text-content-muted mt-1">{formatEventDate(eventInfo.event_date)}</p>
               </div>
             )}
-            <button
-              type="button"
+            <Button
+              variant="primary"
+              size="default"
               onClick={() => router.push(goToEventHref)}
-              className="btn btn-primary block w-full text-center"
+              className="w-full text-center"
             >
               Go to event
-            </button>
+            </Button>
             <p className="text-xs text-content-muted mt-4">
               We&apos;ve added you to the participant list.
             </p>
@@ -291,25 +331,31 @@ function GameInvitePage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold text-content-primary mb-2">
+            {/* h1 @ 20 STAYS at 20 (D-04's second row): this is a mutually-exclusive STATUS
+                branch, not the page title. The `ErrorFallback` precedent
+                (`typeScaleTouchedSurfaces.test.ts:263-271`) is why level and size are
+                separate facts. Promoting it to Display would be the demotion-in-reverse the
+                88-29 amendment describes. */}
+            <Heading level={1} size="heading" className="text-content-primary mb-2">
               You&apos;re already in this game
-            </h1>
+            </Heading>
             <p className="text-content-secondary mb-4">
               You joined earlier — see you there!
             </p>
             {eventInfo && (
               <div className="mb-6 p-4 bg-surface-elevated rounded-lg">
-                <p className="font-semibold text-content-primary">{eventInfo.game_name || 'Game Night'}</p>
+                <p className="font-bold text-content-primary">{eventInfo.game_name || 'Game Night'}</p>
                 <p className="text-sm text-content-muted mt-1">{formatEventDate(eventInfo.event_date)}</p>
               </div>
             )}
-            <button
-              type="button"
+            <Button
+              variant="primary"
+              size="default"
               onClick={() => router.push(goToEventHref)}
-              className="btn btn-primary block w-full text-center"
+              className="w-full text-center"
             >
               Go to event
-            </button>
+            </Button>
           </div>
         )}
 
@@ -321,18 +367,17 @@ function GameInvitePage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold text-content-primary mb-2">
+            <Heading level={1} size="heading" className="text-content-primary mb-2">
               Game Night Has Passed
-            </h1>
+            </Heading>
             <p className="text-content-muted mb-6">
               This game night has already passed. Ask the organizer for an invite to the next one!
             </p>
-            <Link
-              href="/"
-              className="btn btn-primary block w-full text-center"
-            >
-              Go Home
-            </Link>
+            <Button asChild variant="primary" size="default" className="w-full text-center">
+              <Link href="/">
+                Go Home
+              </Link>
+            </Button>
           </div>
         )}
 
@@ -345,20 +390,21 @@ function GameInvitePage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold text-content-primary mb-2">
+            <Heading level={1} size="heading" className="text-content-primary mb-2">
               Couldn&apos;t join game night
-            </h1>
+            </Heading>
             <p className="text-content-secondary mb-2">{error}</p>
             <p className="text-xs text-content-muted mb-6">
               Check your connection and try again.
             </p>
-            <button
-              type="button"
+            <Button
+              variant="primary"
+              size="default"
               onClick={handleRetry}
-              className="btn btn-primary block w-full text-center mb-2"
+              className="w-full text-center mb-2"
             >
               Retry
-            </button>
+            </Button>
             <Link
               href="/"
               className="block w-full text-center text-sm text-content-muted hover:text-content-secondary mt-2"
@@ -378,19 +424,18 @@ function GameInvitePage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold text-content-primary mb-2">
+            <Heading level={1} size="heading" className="text-content-primary mb-2">
               This invite is no longer valid
-            </h1>
+            </Heading>
             <p className="text-content-secondary mb-6">{error}</p>
             <p className="text-sm text-content-muted mb-6">
               Contact the group owner for a new invite link.
             </p>
-            <Link
-              href="/"
-              className="btn btn-primary block w-full text-center"
-            >
-              Go Home
-            </Link>
+            <Button asChild variant="primary" size="default" className="w-full text-center">
+              <Link href="/">
+                Go Home
+              </Link>
+            </Button>
           </div>
         )}
 
