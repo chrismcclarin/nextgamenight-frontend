@@ -680,8 +680,16 @@ const EXPECTED_PROP_SEAMS = 5;
  * with `size` passed explicitly per §4.6. Every `EXPECTED_LEVELS` entry for the four files is
  * byte-unchanged (P4), which matters more here than anywhere: these are legal documents whose
  * outline IS their structure.
+ *
+ * RAISED 114 -> 115 by plan 88.6-35 task 3 group 1 (2026-09-16): ONE more —
+ * `WelcomeSlide.js:17`'s tutorial title, `h1 text-3xl font-bold` ->
+ * `<Heading level={1} size="display">`. NO size movement: `text-3xl` IS Display 30, so the
+ * rung is unchanged and only its SOURCE moves to the primitive. The file's `EXPECTED_LEVELS`
+ * entry (`{ 1: 1 }`) is byte-unchanged (P4). The FIVE pseudo-headings this task also touched
+ * are deliberately NOT counted here and are deliberately NOT `<Heading>` elements — they have
+ * no semantic level to state, and inventing one is what P4 exists to stop.
  */
-const EXPECTED_MIN_PRIMITIVES = 114;
+const EXPECTED_MIN_PRIMITIVES = 115;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -2313,18 +2321,30 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // and Label 14 is its rung, and the axis column's `text-xs sm:text-sm` pair is load-bearing
   // geometry inside a 24px gutter rather than a §4.3 breakpoint violation (BREAKPOINT_ROSTER is
   // heading-scoped). Entry DELETED, not zeroed.
-  'app/components/tutorial/TutorialOverlay.js': {
-    sites: 9,
-    why:
-      '9 off-scale weight sites (4 font-medium, 5 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-35.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
-  'app/components/tutorial/WelcomeSlide.js': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-35.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): `app/components/tutorial/
+  // TutorialOverlay.js` carried `sites: 9` (4 font-medium, 5 font-semibold) and the split was
+  // EXACT. ZERO remain, resolved across all three of §4.5's outcomes and NOT by one rule:
+  //   - HIERARCHY -> 700: the four scene lead lines (`:234`, `:248`, `:260`, `:278` pre-edit)
+  //     and `HandoffSlide`'s lead (`:355`). All five are PSEUDO-HEADINGS — `text-lg`/`text-xl`
+  //     residue that §4.3 resolves to `text-xl` / 700 — and all five stay `<p>` elements. They
+  //     do NOT become `<Heading>`: this overlay has no heading of its own, so any level would
+  //     be INVENTED, which P4 forbids. Marker at the scene block.
+  //   - EMPHASIS -> 400 + a colour token: the step indicator ("Step 3 of 6", `:194`), the
+  //     amber peak callout (`:267`) and the Back/Next PAIR (`:317`, `:336`). Neither footer
+  //     control is a `.btn` — both wear `rounded-btn` only — so their weight was ALIVE and
+  //     this is a real 500 -> 400 delta, not a no-op deletion. The pair is resolved together
+  //     because the file's own comment makes their symmetry a stated design property. 700 was
+  //     rejected for all four; the reason is at the footer marker.
+  //   - DEAD ON A `.btn` -> delete: none. The one `.btn` element in this file (`:366`) wore
+  //     no weight utility at all, which is why this roster's 9 and `btnCensus`'s 1 do not
+  //     overlap.
+  // Entry DELETED, not zeroed.
+  // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): `app/components/tutorial/
+  // WelcomeSlide.js` carried `sites: 1` (0 font-medium, 1 font-semibold) and the lead was
+  // right for once: the `font-semibold` was on the `btn btn-primary` CTA at `:26`, DEAD under
+  // unlayered `.btn` (`font-weight: 600`, globals.css:2200), and it was deleted with the rest
+  // of that element's dead classes in its migration to `<Button>`. The file's h1 carried
+  // `font-bold` (on-scale) and was never in this population. Entry DELETED, not zeroed.
   'app/components/tutorial/simulated/AvailabilityPromptDemo.js': {
     sites: 2,
     why:

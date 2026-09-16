@@ -471,16 +471,22 @@ const BTN_EXEMPT: ExemptionRoster = {
   // inheritance an owner UAT fix of 2026-09-01 put there. A criterion signed off on an unnamed
   // site is exactly how that trio would get migrated by accident.
   // Entry DELETED rather than zeroed — the count is exact in both directions.
-  'app/components/tutorial/TutorialOverlay.js': {
-    sites: 1,
-    why: 'plan 88.6-35 sweeps the marketing, legal and tutorial surfaces, TutorialOverlay.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
-  'app/components/tutorial/WelcomeSlide.js': {
-    sites: 1,
-    why: 'plan 88.6-35 sweeps the marketing, legal and tutorial surfaces, WelcomeSlide.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): `app/components/tutorial/
+  // TutorialOverlay.js` carried `sites: 1` and the count was EXACT — the `HandoffSlide`
+  // primary CTA (`:366` pre-edit, `btn btn-primary px-6 py-3`), now `<Button
+  // variant="primary">` with both padding utilities deleted as dead and nothing surviving to
+  // move. THE THREE SITES THIS DELETION IS NOT SIGNED OFF ON ARE NAMED ON PURPOSE, because
+  // all three look like census sites in a grep for `btn`: `:212` is `bg-btn-primary`, a TOKEN
+  // on a 6px progress dot, and `:317` / `:336` (the Back and Next step controls) carry
+  // `rounded-btn` only. None of the three wears `.btn`, so none is a census site and the
+  // utilities on all three are ALIVE. Entry DELETED rather than zeroed.
+  //
+  // DELETED by plan 88.6-35 task 3 (wave 7, 2026-09-16): `app/components/tutorial/
+  // WelcomeSlide.js` carried `sites: 1`, also EXACT — the "Show me how it works" CTA (`:26`
+  // pre-edit), now `<Button variant="primary" className="w-full">`. `py-3 px-6 font-semibold
+  // text-base` GO as dead under unlayered `.btn`, and `transition-colors` goes with them
+  // (`.btn` declares `transition: var(--theme-transition)` unlayered at globals.css:2203).
+  // `w-full` STAYS: `.btn` declares no width, so it was never dead. Entry DELETED, not zeroed.
 };
 
 describe('D-07 / AC-2: the `.btn` element census', () => {
