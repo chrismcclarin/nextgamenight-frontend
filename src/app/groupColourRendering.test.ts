@@ -246,8 +246,10 @@ function functionBody(src: string, name: string): string {
  * uses, so a `>` inside `onClick={() => f(a > b)}` or inside a string does not end the
  * tag early.
  */
-function openTags(src: string): { line: number; tag: string; attrs: string }[] {
-  const out: { line: number; tag: string; attrs: string }[] = [];
+function openTags(src: string): { line: number; offset: number; tag: string; attrs: string }[] {
+  // `offset` added by plan 88.6-21: test 22's `asChild` slot check has to look BACKWARDS from a
+  // slotted child to the `<Button>` that supplies its ring, and a line number cannot do that.
+  const out: { line: number; offset: number; tag: string; attrs: string }[] = [];
   for (const m of src.matchAll(/<([A-Za-z][A-Za-z0-9_.]*)/g)) {
     const from = m.index ?? 0;
     let i = from + m[0].length;
@@ -270,7 +272,7 @@ function openTags(src: string): { line: number; tag: string; attrs: string }[] {
       i += 1;
     }
     if (end < 0) continue;
-    out.push({ line: lineAt(src, from), tag: m[1], attrs: src.slice(attrStart, end) });
+    out.push({ line: lineAt(src, from), offset: from, tag: m[1], attrs: src.slice(attrStart, end) });
   }
   return out;
 }
@@ -308,6 +310,24 @@ const RING_SCAN_FILES: { file: string; floor: number }[] = [
  * assertion against that primitive's base class.
  */
 const RING_BEARING_PRIMITIVES = new Set(['Button', 'SelectControl', 'KebabMenu']);
+
+/**
+ * The three groupHomePage header controls — Manage Members, Plan Game Session, Add New Game Event.
+ *
+ * RE-POINTED by plan 88.6-21 (wave 7, 2026-09-16). Tests 15, 16 and 19 located them with
+ * `attrExprs(src, 'className').filter((e) => /'btn[ ']/.test(e.text))`, which stopped matching the
+ * moment they became `<Button>`s: the `.btn` class now comes from the primitive's cva base and no
+ * longer appears as a literal at the call site. That is the migration succeeding, not a
+ * regression, so the LOCATOR moved rather than the property.
+ *
+ * Returned in source order with the className expression each carries, so the label-narrowing in
+ * test 19 still works unchanged.
+ */
+function headerControls(src: string): { offset: number; attrs: string; end: number }[] {
+  return openTags(src)
+    .filter((t) => t.tag === 'Button')
+    .map((t) => ({ offset: t.offset, attrs: t.attrs, end: t.offset + t.attrs.length }));
+}
 
 /** Where each exempted primitive's own ring lives, so the exemption is PAID FOR. */
 const PRIMITIVE_RING_SOURCE: Record<string, string> = {
@@ -1086,8 +1106,17 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       'style={getSubtitleStyle(',
     );
 
-    const title = attrExprs(src, 'className').find((e) => e.text.includes('text-3xl'));
-    expect(title, 'the h1 was not found by its text-3xl Display size').toBeTruthy();
+    // RE-POINTED by plan 88.6-21: this found the title by `text-3xl`, which left the call site
+    // when the h1 became `<Heading level={1} size="display">` — the Display rung IS `text-3xl`,
+    // emitted by the primitive. The fork tokens below are what this test is actually about and
+    // they all survive, so one of them is the anchor now. The rung is asserted separately, so the
+    // re-point loses nothing: it gains the guarantee that the heading really is on Display and is
+    // not merely un-sized.
+    expect(src, 'the page title is no longer on the Display rung').toContain('size="display"');
+    const title = attrExprs(src, 'className').find((e) =>
+      e.text.includes('[text-shadow:var(--t-shadow-l)]'),
+    );
+    expect(title, 'the h1 was not found by its light-arm text-shadow fork').toBeTruthy();
     for (const util of [
       '[color:var(--t-color-l)]',
       'dark:[color:var(--t-color)]',
@@ -1156,7 +1185,19 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     expect(src, 'the amber fill regressed to amber-600 (white 3.19:1)').not.toContain(
       'var(--amber-600)',
     );
-    expect((src.match(/var\(--amber-700\)/g) ?? []).length).toBe(1);
+    // RE-POINTED by plan 88.6-21 (D-09). The fill used to be an INLINE `var(--amber-700)` at this
+    // call site and this line counted it. The migration onto `<Button variant="accent">` deletes
+    // that inline pair deliberately — it was the SECOND expression of one decision, which is the
+    // routed duplication `globals.css`'s 88.3-18 marker exists to prevent — so a count of 1 here
+    // now asserts the duplication is BACK. The property is unchanged: the CTA's fill is amber-700,
+    // not amber-600. It is now read where it lives.
+    expect(src, 'the Create-Event CTA is no longer on the accent variant').toContain(
+      'variant="accent"',
+    );
+    expect(
+      (src.match(/var\(--amber-700\)/g) ?? []).length,
+      'an inline amber literal is back at this call site — that is the routed duplication again',
+    ).toBe(0);
     // …and the ratio itself, read out of globals.css rather than restated, so a
     // future palette edit reds here instead of drifting past a copied number.
     // This is the OI-6 half of Gate A's ledger, which plan 05 deliberately left
@@ -1173,11 +1214,21 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // UI-SPEC §4 obligation 1. `typeScaleTouchedSurfaces.test.ts` CANNOT see
     // these — its population is `<h1..h6>` only (RESEARCH C-10) — so the three
     // controls' type scale has no other guard.
-    const controls = attrExprs(src, 'className').filter((e) => /'btn[ ']/.test(e.text));
-    expect(controls.length, 'the three .btn controls were not found').toBe(3);
+    // RE-POINTED AND INVERTED by plan 88.6-21, and the inversion is the point rather than a
+    // weakening. These three used to carry `text-sm md:text-base`, and this line pinned them
+    // because `typeScaleTouchedSurfaces.test.ts`'s population is `<h1..h6>` only and nothing else
+    // watched them. On a `<Button>` a text-size utility is DEAD — `.btn` declares `font-size`
+    // unlayered (`globals.css:2201`) and an `@layer utilities` class cannot beat it — so keeping
+    // the old assertion would have required three dead classes to stay. They are deleted, and
+    // `btnCensus.test.tsx`'s "no text-size utility on a `<Button>`" rule is the guard that
+    // replaces this one tree-wide. What is asserted here is that this file honours it.
+    const controls = headerControls(src);
+    expect(controls.length, 'the three header controls were not found').toBe(3);
     for (const c of controls) {
-      expect(c.text, 'a header control lost text-sm').toContain('text-sm');
-      expect(c.text, 'a header control lost md:text-base').toContain('md:text-base');
+      expect(
+        /\btext-(?:xs|sm|base|lg|xl|2xl|3xl|\[)/.test(c.attrs),
+        'a header control carries a text-size utility, which is DEAD under unlayered `.btn`',
+      ).toBe(false);
     }
 
     // The Manage Members blur moved to the dark arm — it only ever did visible
@@ -1216,12 +1267,24 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // is DEAD under the unlayered `.btn { border: none }` — so this ring is the
     // only asserted keyboard-visible affordance these three elements have. The
     // border/ring model itself is Phase 88.6's `Button` migration.
-    const controls = attrExprs(src, 'className').filter((e) => /'btn[ ']/.test(e.text));
+    // RE-POINTED AND INVERTED by plan 88.6-21 (A-2 ARM A, owner ruling 2026-09-15). When these
+    // three were bare `.btn` elements their per-site ring was their ONLY keyboard affordance and
+    // this line pinned it present. They are `<Button>`s now, and the ring's ONE home is the cva
+    // base (`Button.tsx`) — a second copy at the call site is what ARM A forbids, because a CSS
+    // `outline` and a Tailwind `ring-*` box-shadow are different properties and neither
+    // suppresses the other. So the assertion flips: no per-site ring, and the base really carries
+    // one. `cascadeOrder.test.ts` owns the XOR itself; this is the per-file half.
+    const controls = headerControls(src);
     expect(controls.length).toBe(3);
+    expect(
+      code('components/ui/Button.tsx'),
+      'the cva base these three now depend on carries no ring',
+    ).toContain('focus-visible:ring-focus-ring');
     for (const c of controls) {
-      expect(c.text, 'a header control has no author focus ring').toContain(
-        'focus-visible:ring-focus-ring',
-      );
+      expect(
+        c.attrs,
+        'a header control carries its OWN focus ring beside the primitive base\'s — two rings',
+      ).not.toContain('focus-visible:ring-focus-ring');
     }
 
     // and no `useTheme` — the theme half rides the cascade, as it does at plan
@@ -1242,7 +1305,18 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     expect(marker, 'the 87.8 D-13/D-14 + 88-28 D-36 min-h-11 marker was edited away').toMatch(
       /this per-CTA `min-h-11` is NOT made redundant/,
     );
-    expect(code(HEADER), 'min-h-11 itself is gone from the CTA').toContain('min-h-11');
+    // INVERTED by plan 88.6-21 (D-09). The marker above stays and its EXPLANATION is still what
+    // this line protects — but the marker's own CONSEQUENCE clause says the per-CTA class becomes
+    // redundant "ONLY once this element is a `<Button>`", and it now is. So the class is gone from
+    // the call site and the floor must be shown to have moved, not merely to have vanished.
+    expect(
+      code(HEADER),
+      'the per-CTA min-h-11 is back at the call site — the primitive already supplies it',
+    ).not.toContain('min-h-11');
+    expect(
+      code('components/ui/Button.tsx'),
+      'the 44px floor is in NEITHER place — the CTA renders ~37px on desktop',
+    ).toContain('min-h-11');
 
     // The inline-boxShadow marker records, in its own words, that dropping the
     // white ring "would still pass 88-29's zero-`rgba(0,0,0` gate while looking
@@ -1286,8 +1360,11 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // header controls (the `'btn '` filter), then narrowed by the label text
     // that follows the className expression — never by a line number.
     const header = code(HEADER);
-    const controls = attrExprs(header, 'className').filter((e) => /'btn[ ']/.test(e.text));
-    expect(controls.length, 'the three .btn header controls were not found').toBe(3);
+    // RE-POINTED by plan 88.6-21 — see `headerControls`. The label-narrowing is unchanged, and so
+    // is every utility asserted below: the 88.3-16 wash, ring and dark arm SURVIVE the migration
+    // onto `<Button variant="ghost">` by owner ruling, riding `cn`'s tailwind-merge last-wins.
+    const controls = headerControls(header);
+    expect(controls.length, 'the three header controls were not found').toBe(3);
     const manage = controls.find((e) => header.slice(e.end, e.end + 400).includes('Manage Members'));
     expect(manage, 'the Manage Members control was not found by its label').toBeDefined();
 
@@ -1302,7 +1379,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       // dark stays byte-equivalent to what shipped: no resting ring there
       'dark:ring-0',
     ]) {
-      expect(manage!.text, `Manage Members lost its ${util} — Req 12 test 7 reopens`).toContain(
+      expect(manage!.attrs, `Manage Members lost its ${util} — Req 12 test 7 reopens`).toContain(
         util,
       );
     }
@@ -1332,7 +1409,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     // neutral-border band is 1.20-1.57 and warm-500 is 2.3x its top). It must not
     // creep back in as a "strengthening" edit.
     for (const [name, expr] of [
-      ['Manage Members', manage!.text],
+      ['Manage Members', manage!.attrs],
       ['the cog', cog!.text],
     ] as const) {
       expect(expr, `${name} was pointed at the rejected >= 3:1 border token`).not.toMatch(
@@ -1605,7 +1682,7 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     for (const { file, floor } of RING_SCAN_FILES) {
       const src = code(file);
       let found = 0;
-      for (const { line, tag, attrs } of openTags(src)) {
+      for (const { line, offset, tag, attrs } of openTags(src)) {
         const isAnchor = tag === 'a' && /\bhref\s*=/.test(attrs);
         const isFocusable =
           tag === 'button' ||
@@ -1616,6 +1693,22 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         if (!isFocusable) continue;
         found += 1;
         if (RING_BEARING_PRIMITIVES.has(tag)) continue;
+        // THE `asChild` SLOT, added by plan 88.6-21. `<Button asChild><Link …/></Button>` renders
+        // the CHILD and gives it the slot's className, so the ring is on the `<Button>` and never
+        // on the `<Link>` — UI-SPEC §3.2 requires exactly that placement, because Radix `Slot`
+        // concatenates the child's className onto the slot's WITHOUT tailwind-merge, so a utility
+        // left on the child cannot win a conflict. Counted (it is a real focusable) and then
+        // exempted, on the strength of the enclosing `<Button>`, which is looked up rather than
+        // assumed: the nearest preceding `<Button` open tag must itself carry `asChild`.
+        if (tag === 'Link' || isAnchor) {
+          const before = src.slice(0, offset);
+          const btnAt = before.lastIndexOf('<Button');
+          const slotted =
+            btnAt > -1 &&
+            offset - btnAt < 1500 &&
+            /\basChild\b/.test(src.slice(btnAt, offset));
+          if (slotted) continue;
+        }
         if (!attrs.includes('focus-visible:ring-')) {
           offenders.push(`${file}:${line} <${tag}> has no focus-visible:ring-* class`);
         }

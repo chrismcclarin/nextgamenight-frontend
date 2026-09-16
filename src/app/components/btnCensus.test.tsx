@@ -261,17 +261,16 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'plan 88.6-25 sweeps the event-creation and availability cluster (markup and classes only)',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
-  'app/components/grouplist.js': {
-    // 3 -> 2, plan 88.6-21 task 1 (wave 7, 2026-09-16). The departing site is the per-card
-    // "Invite Member" CTA, which migrated to `<Button variant="primary">` alongside the W42
-    // keyboard remedy because that remedy's own acceptance requires a visible focus indicator on
-    // every descendant and a bare `.btn` has none of its own. The two survivors are the twin
-    // "+ Create New Group" header CTAs (the live branch and the identity-error branch); task 3
-    // migrates both and DELETES this entry.
-    sites: 2,
-    why: 'plan 88.6-21 sweeps grouplist.js alongside groupHomePage/page.js',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // `app/components/grouplist.js` CLOSED by plan 88.6-21 (wave 7, 2026-09-16), in two commits
+  // rather than one and the split is recorded because it is unusual: task 1 migrated the per-card
+  // "Invite Member" CTA (3 -> 2) because the W42 keyboard remedy's own acceptance requires a
+  // visible focus indicator on every descendant and a bare `.btn` has none, and task 3 migrated
+  // the twin "+ Create New Group" header CTAs (2 -> 0). Entry DELETED rather than zeroed; the
+  // roster is exact in both directions.
+  //
+  // NOT in this census and deliberately still a bare `<button>`: the home-card settings cog. It
+  // never wore `.btn`, so it was never counted here; its >= 44px geometry is plan 40's, rostered
+  // in `controlSizeFloor.test.tsx`'s D13_FLOOR_ROSTER with that owner named.
   // `app/groupHomePage/page.js` CLOSED by plan 88.6-21 task 2 (wave 7, 2026-09-16): all three
   // header CTAs are on the primitive — Manage Members `<Button variant="ghost">`, Plan Game
   // Session `<Button asChild variant="primary">`, Add New Game Event `<Button variant="accent">`

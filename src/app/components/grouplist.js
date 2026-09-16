@@ -24,6 +24,7 @@ import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
 import { Heading } from '../../components/ui/Heading';
+import { logger, errCtx } from '../../lib/logger';
 
 const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
   const router = useRouter();
@@ -89,7 +90,15 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
       const groupsData = await groupsAPI.getUserGroups(selfUuid);
       setGroups(groupsData || []);
     } catch (error) {
-      console.error('Error fetching groups:', error.message || 'Unknown error');
+      // A DEVELOPER log, deliberately NOT routed through `getFetchErrorMessage`: this line is
+      // diagnostic only and never reaches a person. The user-facing copy for this failure comes
+      // from `groupsErrorState` below, which is why the ERROR OBJECT is kept rather than a
+      // flattened string. AC-2 (owner ruling 2026-09-09, LEVEL amended 2026-09-13) moved the
+      // channel to the house logger at `info` — a Sentry BREADCRUMB, not an event. The ctx goes
+      // through `errCtx`, never a `.message` read written out here: `fetchErrorTreatment`'s R1
+      // scan matches ONE PHYSICAL LINE and its user-facing-sink pattern ends in a bare
+      // `message:` arm, so spelling the key at the call site reds a gate this line never touched.
+      logger.info('Error fetching groups:', errCtx(error));
       // Keep the ERROR object, not a flattened string: useFetchErrorState reads
       // `ApiError.code` off it to pick the right user-facing copy.
       setGroupsError(
@@ -133,17 +142,18 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     return (
       <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
-          <h2 className="text-xl font-bold text-content-primary">Your Groups</h2>
+          <Heading level={2} size="heading" className="text-content-primary">Your Groups</Heading>
           {onCreateGroup && (
             /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA (error-state render branch of the same CTA below). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
-            <button
-              className="btn btn-primary text-sm whitespace-nowrap min-h-11"
+            <Button
+              variant="primary"
+              className="whitespace-nowrap"
               onClick={onCreateGroup}
               aria-label="Create new group"
               data-tutorial="create-group-btn"
             >
               + Create New Group
-            </button>
+            </Button>
           )}
         </div>
         <div className="py-8 px-4">
@@ -177,17 +187,18 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
     // not a cleanup.
     <div className="w-full max-w-[400px] md:max-w-[400px] max-md:max-w-full bg-surface-page rounded-card surface-flat-phone md:p-4 flex flex-col overflow-hidden h-full">
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-line">
-        <h2 className="text-xl font-bold text-content-primary">Your Groups</h2>
+        <Heading level={2} size="heading" className="text-content-primary">Your Groups</Heading>
         {onCreateGroup && (
           /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the home surface's primary CTA. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: wide text button.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
-          <button
-            className="btn btn-primary text-sm whitespace-nowrap min-h-11"
+          <Button
+            variant="primary"
+            className="whitespace-nowrap"
             onClick={onCreateGroup}
             aria-label="Create new group"
             data-tutorial="create-group-btn"
           >
             + Create New Group
-          </button>
+          </Button>
         )}
       </div>
 
@@ -221,7 +232,6 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
               onCreateGroup ? (
                 <Button
                   variant="primary"
-                  className="min-h-11"
                   onClick={onCreateGroup}
                   aria-label="Create new group"
                 >
@@ -307,6 +317,14 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             // dim + white text over NO image — a solid near-black card (the
             // walk's /bgg-logo.png black-card mystery). Invalid URLs now
             // degrade to the plain color card.
+            /* W49 REFERENCE SHAPE (FSEC-03) — plans 27 and 40 converge four other
+               `hasBackgroundImage` sites onto THIS one, so it is labelled here rather than
+               re-derived there. The rule: every text treatment derives from the VALIDATED
+               `safeBgImageStyle` result, NEVER from the raw `background_image_url`. A URL the
+               allowlist rejects paints no image, so that card IS a plain coloured card and must
+               get its colour-card ink; keying off the raw string renders the 0.7 dim and white
+               text over nothing — a solid near-black card, which is the walkthrough's
+               /bgg-logo.png mystery. Copy the two lines below, not the intent. */
             const bgImageStyle = safeBgImageStyle(bgImage);
             const hasBgImage = !!bgImageStyle;
             // The text treatment forks in the CSS cascade, exactly like the
@@ -533,8 +551,16 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         for any colourless group. Chosen OVER keeping the sibling
                         symmetry. Re-adding the inline style is a decision, not a
                         cleanup. */}
+                    {/* DECISION Phase 88.6-21 (D-03 / UI-SPEC §4.5 pill-ink row): this pill's
+                        ink goes 600 -> 700, not 600 -> 400. REJECTED: §4.5's other outcome,
+                        "400 + a colour token" — this is a 12px label sitting in its OWN fill
+                        (`bg-btn-primary`), where 400 at that size on a saturated ground reads as
+                        a smudge; the weight is doing legibility work, not hierarchy signalling.
+                        Same call, same reason, as the `getRoleBadge` pill in `ManageMembers.js`
+                        (plan 88.6-19). The SIZE stays at 12: §4.2 names badge labels as a Caption
+                        role, so this is not a sub-12px fold site. A decision, not a cleanup. */}
                     <span
-                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-semibold ml-2 shrink-0"
+                      className="bg-btn-primary text-btn-primary-text px-2.5 py-0.5 rounded-xl text-xs font-bold ml-2 shrink-0"
                     >
                       {groupUsers.length} {groupUsers.length === 1 ? 'player' : 'players'}
                     </span>
@@ -702,7 +728,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                       - IF YOU ARE HERE TO "RESTORE" `text-content-primary` ON THE
                         TINTED ARM: that is a decision requiring an owner ruling, not
                         a cleanup. See the DECISION marker directly below. */}
-                <div className={`border-t border-line pt-3 [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] ${cardTextBold ? 'font-semibold' : ''}`}>
+                <div className={`border-t border-line pt-3 [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] ${cardTextBold ? 'font-bold' : ''}`}>
                   {/* DECISION Phase 88.3.1 (SPEC Req 8, site 1 of 3 — UI-SPEC 3.5). This block
                       REPLACES the 88.3-cr M1 LIMIT block (2026-08-28), which is closed, not lost:
                       that LIMIT said these two rows take the THEME token on the tinted arm rather

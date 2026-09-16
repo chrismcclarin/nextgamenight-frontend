@@ -574,7 +574,7 @@ const EXPECTED_PROP_SEAMS = 5;
  * `text-xl` -> `size="heading"`, likewise unchanged. `EXPECTED_LEVELS`' `{ 1: 4, 2: 1 }` entry
  * for that file is byte-unchanged (P4).
  */
-const EXPECTED_MIN_PRIMITIVES = 33;
+const EXPECTED_MIN_PRIMITIVES = 36;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -2028,15 +2028,19 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '10 off-scale weight sites (10 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-07, 88.6-10, 88.6-13, 88.6-22, 88.6-25, 88.6-37, 88.6-39, 88.6-43, 88.6-44.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/grouplist.js': {
-    // 3 -> 2, plan 88.6-21 task 1 (wave 7, 2026-09-16): the group-name h3's `font-semibold` left
-    // with the heading, which is now `<Heading level={3} size="heading">` and takes its 700 from
-    // the primitive's base. Task 3 settles the remaining two.
-    sites: 2,
-    why:
-      '2 off-scale weight sites (0 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); dead on a .btn (delete); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-05, 88.6-07, 88.6-10, 88.6-11, 88.6-12, 88.6-13, 88.6-20, 88.6-21, 88.6-32, 88.6-34, 88.6-36, 88.6-40, 88.6-41, 88.6-43, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // `app/components/grouplist.js` CLOSED by plan 88.6-21 (wave 7, 2026-09-16), all three sites,
+  // each resolving to a DIFFERENT §4.5 outcome — which is why the entry could not be closed by
+  // one rule:
+  //   - the group-name h3's `font-semibold` LEFT with the heading (now
+  //     `<Heading level={3} size="heading">`, 700 from the primitive's base);
+  //   - the players pill's went 600 -> 700, §4.5's pill-ink row, with a DECISION marker at the
+  //     site recording that "400 + a colour token" was rejected because a 12px label in its own
+  //     saturated fill needs the weight;
+  //   - the card's `cardTextBold` flag went 600 -> 700. That one is a LEGIBILITY device, not
+  //     hierarchy: `getTextStyle`'s image branch sets it so a title over an arbitrary photograph
+  //     stays readable, so dropping it to 400 would have deleted an affordance rather than
+  //     normalising a scale.
+  // Entry DELETED rather than zeroed; the roster is exact in both directions.
   'app/components/heatmap/WeekGrid.tsx': {
     sites: 2,
     why:
@@ -2116,16 +2120,18 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '1 off-scale weight site: the armed-state 600 on the two-tap participant Remove. UI-SPEC §4.5 rules this family Button-owned and it STAYS. Owning plans: 88.6-18 (swept), 88.6-46 (closeout).',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/groupHomePage/page.js': {
-    // 7 -> 4, plan 88.6-21 task 2 (wave 7, 2026-09-16): the three header CTAs' `font-semibold`
-    // left with their migration onto `Button`, where the 600 label weight comes from `.btn`'s own
-    // unlayered `font-weight` (`globals.css:2199`) and a call-site weight utility is dead. Task 3
-    // settles the remaining four.
-    sites: 4,
-    why:
-      '4 off-scale weight sites (3 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: emphasis (400 + a colour token); outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-07, 88.6-10, 88.6-12, 88.6-13, 88.6-19, 88.6-20, 88.6-21, 88.6-41, 88.6-43, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // `app/groupHomePage/page.js` CLOSED by plan 88.6-21 (wave 7, 2026-09-16), all seven sites:
+  //   - the three header CTAs' `font-semibold` left with their migration onto `Button`, where
+  //     the 600 label weight comes from `.btn`'s own unlayered `font-weight` and a call-site
+  //     weight utility is dead;
+  //   - the breadcrumb HOME LINK's `font-medium` DELETED — §4.5's emphasis case, already carried
+  //     by `text-content-link`, so 400 + a colour token with no visible delta;
+  //   - the breadcrumb CURRENT-PAGE span 600 -> 700 and GAINED `aria-current="page"` (R2 #171 /
+  //     T-88.6-138), matching the three breadcrumbs plans 17 and 18 settled;
+  //   - the two TAB labels' `font-medium` DELETED. The weight sat on BOTH arms, so it never
+  //     carried the active state; that state gained `aria-current` in the same edit, which is a
+  //     separate Rule-2 add and not this rule's outcome.
+  // Entry DELETED rather than zeroed; the roster is exact in both directions.
   'app/groupPlanning/page.js': {
     sites: 4,
     why:

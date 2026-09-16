@@ -28,6 +28,8 @@ import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
+import { logger, errCtx } from '../../lib/logger';
 
 // A groups home page
 function GroupHomePage(){
@@ -89,6 +91,14 @@ function GroupHomePage(){
     const isRemovedFromGroupError = (error) => {
         const status = error?.status || error?.response?.status;
         if (status === 403 || status === 404) return true;
+        // CONTROL FLOW, not a user-facing read, and rostered as such in
+        // `fetchErrorTreatment.test.ts`'s `CONTROL_FLOW_ALLOWED` (`:314-318`), whose `why` reads:
+        // "isRemovedFromGroupError — routes a removal 403 to a redirect. Never displayed."
+        // This line is DELIBERATELY byte-unchanged. A later R1 sweep that "completes" the work by
+        // routing it through `getFetchErrorMessage` would turn a deliberate control-flow read into
+        // a false offender and break the removed-member redirect. Comment sits ABOVE the line
+        // because both that allow-list check and the suite's anti-vacuity companion match with
+        // `includes` on the stripped line.
         const msg = (error?.message || '').toLowerCase();
         return (
             msg.includes('not a member') ||
@@ -116,7 +126,7 @@ function GroupHomePage(){
                 redirectToHomeAsRemoved();
                 return;
             }
-            console.error('Error fetching group:', error);
+            logger.info('Error fetching group:', errCtx(error));
         }
     };
 
@@ -133,7 +143,18 @@ function GroupHomePage(){
 
             // Ensure data is an array before processing
             if (!Array.isArray(data)) {
-                console.warn('Group members data is not an array:', data);
+                /* DECISION Phase 88.6-21 (AC-2 / T-84-01): this call is RESHAPED, not merely
+                   re-channelled. It used to log the rejected member-list payload itself — the
+                   response body T-84-01 excludes by name, carrying member PII — and the house
+                   logger egresses its ctx to Sentry, so re-channelling it unchanged would have
+                   sent that payload out of the browser. A SHAPE DESCRIPTOR goes instead; the
+                   payload never does. `logger.warn` is NOT the matching level: it is
+                   `Sentry.captureMessage` (`logger.ts:31-32`), an EVENT, and AC-2's amended level
+                   (owner 2026-09-13) is `info` — a breadcrumb. Restoring `data` here is one
+                   keystroke and is exactly what T-84-01 forbids. */
+                logger.info('Group members data is not an array:', {
+                    received: data === null ? 'null' : typeof data,
+                });
                 setUserList([]);
                 return;
             }
@@ -159,7 +180,7 @@ function GroupHomePage(){
                 redirectToHomeAsRemoved();
                 return;
             }
-            console.error('Error fetching group members:', error);
+            logger.info('Error fetching group members:', errCtx(error));
             setUserList([]);
         }
     };
@@ -170,7 +191,7 @@ function GroupHomePage(){
             const data = await eventsAPI.getGroupEvents(Router, { includeRsvpSummary: true });
             setGroupEvents(data || []);
         } catch (error) {
-            console.error('Error fetching group events:', error);
+            logger.info('Error fetching group events:', errCtx(error));
             setGroupEvents([]);
         }
     };
@@ -198,7 +219,7 @@ function GroupHomePage(){
                 redirectToHomeAsRemoved();
                 return;
             }
-            console.error('Error fetching games:', error);
+            logger.info('Error fetching games:', errCtx(error));
             /* DECISION Phase 88-25 (Req 14 / DEF-88-18-01, T-88-18-01): a failed games request is
                TRACKED as a failure here and handed to GroupGamesList as an `errorState` prop —
                chosen OVER the `setGamesList([])` this shipped with. GroupGamesList takes `games`
@@ -502,10 +523,27 @@ function GroupHomePage(){
                 default outline paints on. Chosen OVER a global `a:focus-visible`
                 rule in `globals.css`: that would repaint every link in the app from
                 inside a phase that has no rendered gate on most of them. */}
-            <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
-                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
+            {/* DECISION Phase 88.6-21 (#175, owner ruling 2026-09-14, option 2 — label all five
+                breadcrumb navs). Without a name, every `<nav>` in the app is announced as the same
+                anonymous "navigation" landmark, so a screen-reader user's landmark list cannot
+                tell the breadcrumb from the site nav. The other four are plans 17 and 18's; this
+                one and `groupPlanning/page.js`'s are this plan's, and the ruling is assigned ONCE
+                per nav, so plans 07/41/43 must not re-add it here.
+
+                R2 #171 on the two spans below, each resolving differently:
+                  - the HOME LINK's `font-medium` is DELETED. It is §4.5's emphasis case and the
+                    emphasis is already carried by `text-content-link` plus the underline-on-hover,
+                    so 400 + a colour token is exactly what it becomes, with no delta to look at.
+                  - the CURRENT PAGE span KEEPS its weight (600 -> 700 under D-03) AND GAINS
+                    `aria-current="page"` (T-88.6-138), matching plans 17 and 18's three
+                    breadcrumbs so the five behave alike. Without the attribute, "you are here" is
+                    carried by WEIGHT alone — nothing a screen reader exposes — and R2 #171 is the
+                    rule that a weight may not be the sole carrier of information. The weight stays
+                    because it is also the sighted cue; the attribute is an addition, not a swap. */}
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
+                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2">Home</Link>
                 <span className="text-content-muted mx-2">{'>'}</span>
-                <span className="text-content-primary font-semibold wrap-break-word">{Group?.name || 'Group'}</span>
+                <span aria-current="page" className="text-content-primary font-bold wrap-break-word">{Group?.name || 'Group'}</span>
             </nav>
 
             {/* Header — Phase 69-04 layout: ALWAYS stack title row above
@@ -671,12 +709,23 @@ function GroupHomePage(){
                             (:1268) and gameDetail (:1036) both already render their h1 at 30px
                             unconditionally, so this surface was the last outlier. `wrap-break-word`
                             is what keeps a long group name safe at 375px and must stay. */}
-                        <h1
-                            className="text-3xl font-bold wrap-break-word [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)]"
+                        <Heading
+                            level={1}
+                            size="display"
+                            /* `size="display"` IS `text-3xl` + 700 — no rung movement, so no
+                               visible delta. The two ARBITRARY `[font-weight:var(--t-weight*)]`
+                               declarations STAY and are load-bearing: they are the ground-derived
+                               weight `getTextStyle` computes for a title over a photograph, and
+                               tailwind-merge does not treat an arbitrary PROPERTY as conflicting
+                               with `font-bold`, so both emit exactly as they do today and the
+                               later one wins. `wrap-break-word` is dropped for the primitive's
+                               own `wrap-anywhere`, the same trade plans 17-19 made on every
+                               migrated heading. */
+                            className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)]"
                             style={headerTitleVars}
                         >
                             {Group?.name || 'Group'}
-                        </h1>
+                        </Heading>
                         <p
                             className="mt-1 [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)] [font-weight:var(--t-weight-l)] dark:[font-weight:var(--t-weight)]"
                             style={headerSubtitleVars}
@@ -1098,10 +1147,34 @@ function GroupHomePage(){
             {userRole === 'pending' && <PendingMemberBanner groupId={Router} />}
 
             {/* Tab bar */}
+            {/* DECISION Phase 88.6-21 (R2 #171 + a Rule-2 a11y add): these two tabs conveyed their
+                ACTIVE state to nobody. They are bare `<button>`s with no `role`, no
+                `aria-selected` and no `aria-current`; the active one differs by fill, ink and a
+                bottom border, none of which is exposed to assistive technology. They are this
+                page's only content switch. `aria-current` is one attribute with ZERO visual delta,
+                and it is the same fix plan 88.6-19 made on the friends tab strip, so the two
+                surfaces stay one idiom.
+
+                The `font-medium` DELETION is a separate correction and is NOT the fix above: the
+                weight sat on BOTH arms, so it never carried the active state at all — it is
+                simply §4.5's 500-is-not-a-rung case, and 400 is what a control label is.
+
+                REJECTED: `role="tab"` + `aria-selected` + a `tablist` parent. That is the full
+                ARIA tabs pattern and it brings obligations these buttons do not meet — arrow-key
+                roving focus, `aria-controls` onto a `role="tabpanel"`. Claiming the pattern
+                without the keyboard contract is worse than not claiming it (the same reasoning
+                `KebabMenu` records for refusing the menu pattern, 88.6-16 D-12). Adding the full
+                pattern is a decision for Phase 88.9, not a cleanup.
+
+                REJECTED: migrating these onto `Button`. They are tab chrome, not buttons — `.btn`
+                would impose its own padding, its 44px floor and the elevation pair on a flush tab
+                strip, which is a look change (P6). They wear no `.btn` today and no census counts
+                them. */}
             <div className="flex border-b border-line mb-4">
                 <button
                     onClick={() => setActiveTab('home')}
-                    className={`px-4 py-2 text-sm font-medium active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
+                    aria-current={activeTab === 'home' ? 'true' : undefined}
+                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
                         activeTab === 'home'
                             ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
                             : 'text-content-secondary hover:text-content-primary'
@@ -1111,7 +1184,8 @@ function GroupHomePage(){
                 </button>
                 <button
                     onClick={() => setActiveTab('library')}
-                    className={`px-4 py-2 text-sm font-medium active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
+                    aria-current={activeTab === 'library' ? 'true' : undefined}
+                    className={`px-4 py-2 text-sm active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
                         activeTab === 'library'
                             ? 'text-btn-primary-text bg-btn-primary border-b-2 border-btn-primary rounded-btn'
                             : 'text-content-secondary hover:text-content-primary'

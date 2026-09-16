@@ -247,7 +247,14 @@ export default function GroupPlanningPage() {
     return (
         <div className="p-4 md:p-6 max-w-7xl mx-auto">
             {/* Breadcrumbs */}
-            <nav className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
+            {/* DECISION Phase 88.6-21 (#175, owner ruling 2026-09-14, option 2 — label all five
+                breadcrumb navs). THIS ATTRIBUTE IS THE ONLY EDIT PLAN 21 MAKES TO THIS FILE. The
+                file is not swept, not migrated, and its `no-console` allowlist entry
+                (`.eslintrc.json:59`) is deliberately untouched: AC-2's convert-on-touch rule is
+                scoped to plans that convert LOGGING, and an `aria-label` converts none — so plan
+                43's census is undisturbed. The ruling is assigned ONCE per nav; the other four
+                belong to plans 17 and 18 and are already done. */}
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
                 <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
                 <span className="text-content-muted mx-2">{'>'}</span>
                 {group && (
