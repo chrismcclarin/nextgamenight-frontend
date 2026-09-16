@@ -331,11 +331,11 @@ const BTN_EXEMPT: ExemptionRoster = {
   // `.btn` elements are anchors and took the `asChild` form — the `/api/auth/login?returnTo=…`
   // sign-in `<a>` (stays an `<a>`) and the `<Link href="/">` Go-Home CTA. Same dead/alive split
   // as the sibling invite page above. Entry DELETED rather than zeroed.
-  'app/rsvp/[token]/page.js': {
-    sites: 2,
-    why: 'plan 88.6-24 sweeps rsvp/[token]/page.js and resolves R9 cross-repo read points there',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // CLOSED by plan 88.6-24 task 2 (wave 7, 2026-09-16): `app/rsvp/[token]/page.js` carried
+  // `sites: 2` and BOTH were anchors, not `<button>`s — the Go-to-Group `<a>` whose `href`
+  // interpolates the group id, and the Go-to-Home `<a href="/">`. Both took the `asChild` form
+  // with the element kind and the `href` byte-identical; `inline-block` was deleted as dead under
+  // unlayered `.btn`'s `display: inline-flex`. Entry DELETED rather than zeroed.
   'app/components/AvailabilityForm.js': {
     sites: 1,
     why: 'plan 88.6-25 sweeps the event-creation and availability cluster, AvailabilityForm.js included',

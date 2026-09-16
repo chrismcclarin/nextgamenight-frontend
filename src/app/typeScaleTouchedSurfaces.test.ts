@@ -603,8 +603,14 @@ const EXPECTED_PROP_SEAMS = 5;
  * page title, `text-2xl` -> `size="display"`, 30); the ERROR and SUBMITTED branch headings were
  * already `text-xl` and land on `size="heading"` with no size change. `EXPECTED_LEVELS`' `{ 1: 3 }`
  * entry for that file is byte-unchanged (P4).
+ *
+ * RAISED 66 -> 69 by plan 88.6-24 task 2 (2026-09-16): THREE more — `rsvp/[token]/page.js`'s three
+ * mutually-exclusive h1s. ONE moves size (the confirmation page title, `text-2xl` -> `size="display"`,
+ * 30 — a disclosed +6px); the EVENT_PASSED and ERROR branch headings were already `text-xl` and land
+ * on `size="heading"` with no size change. `EXPECTED_LEVELS`' `{ 1: 3 }` entry for that file is
+ * byte-unchanged (P4).
  */
-const EXPECTED_MIN_PRIMITIVES = 66;
+const EXPECTED_MIN_PRIMITIVES = 69;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -772,11 +778,11 @@ const RUNG_ROSTER: ExemptionRoster = {
   // carried `sites: 1` (h1:455 `text-2xl`), the group-name page title, now
   // `<Heading level={1} size="display">` (30). Its THREE other h1s were already `text-xl` and
   // stay at 20 as `size="heading"` (D-04 row 2). Entry DELETED, not zeroed.
-  'app/rsvp/[token]/page.js': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h1:149 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-24 task 2 (wave 7, 2026-09-16): `app/rsvp/[token]/page.js` carried
+  // `sites: 1` (h1:149 `text-2xl`), the RSVP confirmation page title, now
+  // `<Heading level={1} size="display">` (30 — a disclosed +6px). Its two OTHER h1s were already
+  // `text-xl` and stay at 20 as `size="heading"` (D-04 row 2); the three are mutually exclusive
+  // branches (D-06), so the differing sizes are deliberate. Entry DELETED, not zeroed.
   'app/terms/page.js': {
     sites: 1,
     why: '1 heading off the 4-size working set (h1:8 text-4xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
@@ -866,11 +872,10 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
     why: '1 heading carrying the prohibited 600 weight (h3:328) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/rsvp/[token]/page.js': {
-    sites: 2,
-    why: '2 headings carrying the prohibited 600 weight (h1:190, h1:220) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-24 task 2 (wave 7, 2026-09-16): `app/rsvp/[token]/page.js` carried
+  // `sites: 2` (h1:190, h1:220 — the EVENT_PASSED and ERROR branch headings, both
+  // `font-semibold`). Both are `<Heading level={1} size="heading">` now and take their 700 from
+  // the primitive's `font-bold` base, leaving this RAW-only population. Entry DELETED, not zeroed.
 };
 
 /** RAW headings that do not state the 700 weight. */
@@ -961,11 +966,9 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
     why: '1 raw heading not stating the 700 weight (h3:328 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/rsvp/[token]/page.js': {
-    sites: 2,
-    why: '2 raw headings not stating the 700 weight (h1:190 font-semibold; h1:220 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-24 task 2 (wave 7, 2026-09-16): the same two headings as the
+  // heading-semibold roster above. Their 700 now comes from the primitive's `font-bold` base
+  // (Heading.tsx:60) rather than a stated utility. Entry DELETED, not zeroed.
 };
 
 /** Headings whose size changes at a breakpoint. */
@@ -2177,12 +2180,12 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-23 task 2 (wave 7, 2026-09-16): `app/restore/group/[token]/page.tsx`
   // carried `sites: 1` — the "Bringing back {group}..." status label, §4.5 EMPHASIS, 500 -> 400
   // with its `text-content-primary` colour token kept. Entry DELETED, not zeroed.
-  'app/rsvp/[token]/page.js': {
-    sites: 2,
-    why:
-      '2 off-scale weight sites (0 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome lead: hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-14, 88.6-24, 88.6-42.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-24 task 2 (wave 7, 2026-09-16): `app/rsvp/[token]/page.js` carried
+  // `sites: 2` — both `font-semibold`, and both were the branch h1s, so both resolved through the
+  // `<Heading>` migration rather than through a weight edit. The entry's outcome lead said
+  // "hierarchy (700)" and that is what landed, supplied by the primitive's `font-bold` base.
+  // The file has NO remaining off-scale weight site (0 font-medium, 0 font-semibold).
+  // Entry DELETED, not zeroed.
   // AT ITS FLOOR — 35 -> 28 (task 1) -> 5 (task 3) in plan 88.6-17, 2026-09-16. This entry is NOT
   // on a path to zero and must not be read as pending work: all five survivors are PERMANENT.
   //
