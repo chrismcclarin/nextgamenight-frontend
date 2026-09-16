@@ -611,7 +611,7 @@ const EXPECTED_PROP_SEAMS = 5;
  * on `size="heading"` with no size change. `EXPECTED_LEVELS`' `{ 1: 3 }` entry for that file is
  * byte-unchanged (P4).
  */
-const EXPECTED_MIN_PRIMITIVES = 74;
+const EXPECTED_MIN_PRIMITIVES = 78;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -693,11 +693,13 @@ const RUNG_ROSTER: ExemptionRoster = {
     why: '1 heading off the 4-size working set (h2:259 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/EventCalendar.js': {
-    sites: 2,
-    why: '2 headings off the 4-size working set (h2:171 text-2xl; h2:192 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-27 task 3 (wave 7, 2026-09-16): `app/components/EventCalendar.js`
+  // carried `sites: 2` and both cites were EXACT. Both `text-2xl` h2s ("Game Sessions Calendar",
+  // once in the identity-error branch and once in the render body) are
+  // `<Heading level={2} size="heading">` — 24 -> 20, a DISCLOSED visible delta on this app's
+  // most-looked-at card title. Levels PRESERVED. A THIRD h2 at the same level joins them in this
+  // commit for the new events-fetch error branch (see the EXPECTED_LEVELS note), which is a new
+  // mutually-exclusive BRANCH rather than a level change. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-27 task 2 (wave 7, 2026-09-16): `app/components/EventDayModal.js`
   // carried `sites: 1` and the cite was EXACT. The event-row title `<h4>` had NO size utility at
   // all — it rendered at body size by inheritance — and is now `<Heading level={4} size="body">`
@@ -818,11 +820,12 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
   // roster above. Their 700 now comes from `Heading`'s `font-bold` base rather than a stated
   // utility, so a MIGRATED heading leaves this RAW-only population entirely. Entry DELETED,
   // not zeroed.
-  'app/components/CalendarMonthView.js': {
-    sites: 1,
-    why: '1 heading carrying the prohibited 600 weight (h3:193) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-27 task 3 (wave 7, 2026-09-16): `app/components/CalendarMonthView.js`
+  // carried `sites: 1` (the month/year `<h3>` at :193, cite EXACT). It is
+  // `<Heading level={3} size="heading">` now — level preserved, size unchanged (`text-xl` IS the
+  // 20 rung, which is why this file was never on the rung roster) — so its 700 comes from the
+  // primitive's `font-bold` base and it leaves this RAW-only population. Entry DELETED, not
+  // zeroed.
   // DELETED by plan 88.6-27 task 2 (wave 7, 2026-09-16): the same heading as the rung roster
   // above. Its 700 comes from `Heading`'s `font-bold` base now, so a MIGRATED heading leaves
   // this RAW-only population. Entry DELETED, not zeroed.
@@ -898,11 +901,9 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-27 task 1 (wave 7, 2026-09-16): same four headings as the
   // heading-semibold roster above. Their 700 comes from the primitive's `font-bold` base now,
   // and a migrated heading leaves this RAW-only population. Entry DELETED, not zeroed.
-  'app/components/CalendarMonthView.js': {
-    sites: 1,
-    why: '1 raw heading not stating the 700 weight (h3:193 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-27 task 3 (wave 7, 2026-09-16): same heading as the heading-semibold
+  // roster above; its 700 comes from the primitive's base rather than a stated utility.
+  // Entry DELETED, not zeroed.
   // DELETED by plan 88.6-27 task 2 (wave 7, 2026-09-16): same heading as the heading-semibold
   // roster above; the 700 now comes from the primitive's base rather than a stated utility.
   // Entry DELETED, not zeroed.
@@ -1353,7 +1354,13 @@ const EXPECTED_LEVELS: Record<string, Partial<Record<1 | 2 | 3 | 4 | 5 | 6, numb
   'app/components/CalendarMonthView.js': { 3: 1 },
   'app/components/DangerZoneDeleteAccount.tsx': { 2: 1 },
   'app/components/EmailAddressSection.tsx': { 2: 3 },
-  'app/components/EventCalendar.js': { 2: 2 },
+  // 2 -> 3, plan 88.6-27 task 3 (wave 7, 2026-09-16). NOT a level change, which is what this
+  // map exists to forbid: the same `<h2>` card title now renders in a THIRD mutually-exclusive
+  // branch, the events-fetch error branch §6.2 required (a failed fetch used to render an empty
+  // calendar). Same level, same text, same card frame as the identity-error branch beside it, so
+  // the document OUTLINE is unchanged in every reachable render — only the number of places that
+  // outline is written down moved. The two pre-existing h2s are byte-unchanged in level.
+  'app/components/EventCalendar.js': { 2: 3 },
   'app/components/EventDayModal.js': { 4: 1 },
   'app/components/FriendInvitePanel.js': { 3: 3 },
   'app/components/GroupGamesList.js': { 2: 2, 3: 1 },
@@ -1489,12 +1496,11 @@ const ARBITRARY_SIZES: readonly SizeSite[] = FILES.flatMap((f) =>
  * unowned straggler. Plans 26 and 27 shrink this as the fold lands.
  */
 const ARBITRARY_SIZE_ROSTER: ExemptionRoster = {
-  'app/components/CalendarMonthView.js': {
-    sites: 1,
-    why:
-      '1 arbitrary size value (text-[10px]@651), 1 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
-  },
+  // DELETED by plan 88.6-27 task 3 (wave 7, 2026-09-16): `app/components/CalendarMonthView.js`
+  // carried `sites: 1` (`text-[10px]`@651, cite EXACT) — the per-cell RSVP counter inside the
+  // COMPACT month tile. It folded UP to `text-xs`, the Caption rung, which is on §4.2's closed
+  // role list for a counter. `EXPECTED_SUB_FLOOR_SITES` drops 11 -> 10 in the same commit.
+  // Entry DELETED, not zeroed.
   'app/components/ClickableMemberName.js': {
     sites: 2,
     why:
@@ -1560,7 +1566,10 @@ const ARBITRARY_SIZE_ROSTER: ExemptionRoster = {
  * the sites D-01 names as the NAMED REFLOW RISK (delta V-7), so the fold was measured in
  * Chromium at 375px per site before it landed — see 88.6-26-SUMMARY.md.
  */
-const EXPECTED_SUB_FLOOR_SITES = 11;
+// 11 -> 10, plan 88.6-27 task 3 (wave 7, 2026-09-16): `CalendarMonthView.js`'s compact-tile
+// RSVP counter folded `text-[10px]` -> `text-xs`. An EXACT equality, in the same commit as the
+// fold, so a missed site cannot hide behind a `>=`.
+const EXPECTED_SUB_FLOOR_SITES = 10;
 
 /** Negative control for the strip on THIS file-level scan. */
 const FIXTURE_ARBITRARY_COMMENTS = `
@@ -1822,12 +1831,21 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // (`<DayHeading>`, which is why the raw-heading scanners never saw it), and `EventRow`'s row
   // title in BOTH of its arms (the sheet's `line-clamp-2` arm and the desktop `truncate` arm are
   // two branches of one ternary, counted as two sites). Entry DELETED rather than zeroed.
-  'app/components/CalendarMonthView.js': {
-    sites: 7,
-    why:
-      '7 off-scale weight sites (4 font-medium, 3 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep; emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-05, 88.6-09, 88.6-10, 88.6-12, 88.6-27, 88.6-39, 88.6-40, 88.6-41, 88.6-45, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-27 task 3 (wave 7, 2026-09-16): `app/components/CalendarMonthView.js`
+  // carried `sites: 7` (4 font-medium, 3 font-semibold) and the count was EXACT. All THREE of
+  // §4.5's outcomes fired, which is why the entry could not close on one rule — named per site
+  // so nobody re-derives them:
+  //   HIERARCHY -> 700: the month/year `<h3>` (by migrating onto `Heading`, see the two heading
+  //     rosters above), the weekday header row, and BOTH tile variants' game-name elements (the
+  //     compact tile's own span and the full tile's inner name span — twins, one weight).
+  //   EMPHASIS -> 400 + a colour token: the day NUMBER, which already forks its ink four ways
+  //     for exactly the hierarchy the 500 was carrying; and the "+N more" row, whose colour
+  //     token was FIXED in the same commit (D-16, `text-content-link` -> `text-content-secondary`)
+  //     so the 400 lands on an ink that can actually be read.
+  //   DELETED AS DEAD FOR TEXT: the full tile's container 500, which governs only the name span
+  //     (which declares its own weight) and the emoji fallback (where weight is meaningless).
+  // Every `text-xs` in this file STAYS at 12 — a month tile is a dense-grid cell and Caption 12
+  // is its ratified role (§4.2), so none of these were swept to 14. Entry DELETED, not zeroed.
   'app/components/ClickableMemberName.js': {
     sites: 3,
     why:

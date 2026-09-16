@@ -303,11 +303,12 @@ const BTN_EXEMPT: ExemptionRoster = {
   // (`bg-white/80`) and is therefore in the PALETTE_BUTTON_EXEMPT roster below as well. The two
   // rules saw one element for different reasons and neither subsumes the other — the `.btn`
   // closes here, the wash SURVIVES (88.3-16, owner ruling 2 of 2026-08-27).
-  'app/components/CalendarMonthView.js': {
-    sites: 2,
-    why: 'plan 88.6-27 sweeps the calendar cluster, CalendarMonthView.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-27 task 3 (wave 7, 2026-09-16): `app/components/CalendarMonthView.js`
+  // carried `sites: 2` and the count was EXACT — the two month-nav CTAs (Previous / Next), both
+  // `btn btn-primary` with nothing but the per-site focus-ring string beside them. Both are
+  // `<Button variant="primary">` now and both rings retired to the primitive's cva base (A-2
+  // ARM A). The "Go to Today" text link between them was NEVER a `.btn`, is not in this census,
+  // and KEEPS its own focus string. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-27 task 2 (wave 7, 2026-09-16): `app/components/EventDayModal.js`
   // carried `sites: 2` and the count was EXACT. Both are now the primitive — the "+ New event on
   // this day" CTA (`btn btn-primary w-full sm:w-auto`, where only the two WIDTH utilities
@@ -386,11 +387,11 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'plan 88.6-30 hardens the deletion modal and sweeps DangerZoneDeleteAccount.tsx alongside it',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
-  'app/components/EventCalendar.js': {
-    sites: 1,
-    why: 'plan 88.6-27 sweeps the calendar cluster, EventCalendar.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-27 task 3 (wave 7, 2026-09-16): `app/components/EventCalendar.js`
+  // carried `sites: 1` — the List/Month view toggle (`btn btn-secondary text-sm` plus the
+  // per-site ring string), now `<Button variant="secondary">`. `text-sm` was DEAD under
+  // unlayered `.btn` (`globals.css:2201`) and is deleted rather than moved; the ring retired to
+  // the primitive's base. Entry DELETED, not zeroed.
   'app/components/LandingPage.js': {
     sites: 1,
     why: 'plan 88.6-35 sweeps the marketing, legal and tutorial surfaces, LandingPage.js included',

@@ -12,6 +12,8 @@ import {
   SUBTEXT_MUTED_ON_LIGHT,
 } from '../../lib/colorUtils';
 import { safeBgImageStyle } from '../../lib/safeBgImageStyle';
+import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
 import SafeImage from './SafeImage';
 import RsvpCount from './RsvpCount';
 
@@ -183,16 +185,19 @@ export default function CalendarMonthView({
           Task 2(B) of this plan adds that positive scan across the five
           group-page render-tree files. Removing a ring here reds it. */}
       <div className="flex justify-between items-center mb-4">
-        <button
-          onClick={() => onNavigateMonth(-1)}
-          className="btn btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-        >
+        {/* Phase 88.6-27: both `.btn btn-primary` nav controls take the primitive, and their
+            per-site focus-ring strings retire with the migration — the ring lives ONCE in the
+            primitive's cva base (A-2 ARM A, owner ruling 2026-09-15). The 88.3-17 marker above
+            is byte-unchanged and still true of what the user sees; only WHERE the ring is
+            expressed moved. The "Go to Today" text link between them is NOT a `.btn` and KEEPS
+            its own string — it is not a member of the family that marker's ARM A covers. */}
+        <Button variant="primary" onClick={() => onNavigateMonth(-1)}>
           &larr; Previous
-        </button>
+        </Button>
         <div className="text-center">
-          <h3 className="text-xl font-semibold text-content-primary">
+          <Heading level={3} size="heading" className="text-content-primary">
             {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
-          </h3>
+          </Heading>
           {tzLegend && (
             <p className="text-xs text-content-muted mt-0.5">
               Times shown in {tzLegend}
@@ -205,18 +210,27 @@ export default function CalendarMonthView({
             Go to Today
           </button>
         </div>
-        <button
-          onClick={() => onNavigateMonth(1)}
-          className="btn btn-primary focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-        >
+        <Button variant="primary" onClick={() => onNavigateMonth(1)}>
           Next &rarr;
-        </button>
+        </Button>
       </div>
 
       {/* Calendar Grid */}
+      {/* UI-SPEC §4.5: the weekday header below is HIERARCHY, so 600 -> 700.
+          THE SIZE IS HELD AT 14 DELIBERATELY, and the reason is a premise check rather than an
+          omission. Plan 88.6-26's D-03 correction folded two OTHER weekday header rows to
+          12/700 over 12/400 on the stated ground that the header and the row beneath it "share
+          text-content-muted, so weight is the only hierarchy left". That premise is FALSE here:
+          this header is `text-content-secondary` while the day number below it forks its ink
+          four ways (accent for today, muted for an adjacent-month or past date, primary
+          otherwise), so colour is already carrying the hierarchy and this is not the one-ink
+          case D-03 addresses. Nothing in this plan's text asks for a size reduction here
+          either. Folding this row to 12 is therefore a DECISION for /gsd-ui-review or Phase
+          88.9, not a cleanup — and it is disclosed as an open question in
+          `88.6-27-SUMMARY.md` rather than taken silently. */}
       <div className="grid grid-cols-7 gap-1 mb-4">
         {dayNames.map(day => (
-          <div key={day} className="text-center font-semibold text-content-secondary py-2 text-sm">
+          <div key={day} className="text-center font-bold text-content-secondary py-2 text-sm">
             {day}
           </div>
         ))}
@@ -254,7 +268,14 @@ export default function CalendarMonthView({
             >
               {date && (
                 <>
-                  <div className={`${variant === 'compact' ? 'text-xs' : 'text-sm'} font-medium mb-1 ${
+                  {/* UI-SPEC §4.5, the EMPHASIS outcome (400 + a colour token): the 500 is
+                     deleted rather than promoted, because this element ALREADY forks its colour
+                     four ways for exactly the hierarchy the weight was carrying — accent for
+                     today, muted for an adjacent-month or past date, primary otherwise — and
+                     today's cell additionally has its own ground and accent border. Promoting to
+                     700 instead would bold all 42 day numbers in the grid and flatten that fork
+                     rather than support it. */}
+                  <div className={`${variant === 'compact' ? 'text-xs' : 'text-sm'} mb-1 ${
                     isCurrentDay ? 'text-content-accent' :
                     isAdjacent ? 'text-content-muted' :
                     variant === 'full' && isPastDate ? 'text-content-muted' :
@@ -564,7 +585,11 @@ export default function CalendarMonthView({
                                   onEventClick(event);
                                 }
                               }}
-                              className={`text-xs p-0.5 rounded-sm font-medium cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] hover:opacity-90' : 'bg-surface-muted hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}`}
+                              /* §4.5 HIERARCHY -> 700: this span IS the compact tile's game
+                                 name, its primary content. `text-xs` STAYS — a month tile is a
+                                 dense-grid cell and Caption 12 is its ratified role (§4.2), so
+                                 this is one of the sites that must NOT be swept to 14. */
+                              className={`text-xs p-0.5 rounded-sm font-bold cursor-pointer transition-[background-color,opacity] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)] hover:opacity-90' : 'bg-surface-muted hover:bg-surface-elevated'} ${tinted ? '[color:var(--t-color-l)] dark:[color:var(--t-color)]' : 'text-content-accent'}`}
                               style={{
                                 ...(tinted && {
                                   '--group-ground': ground,
@@ -648,7 +673,11 @@ export default function CalendarMonthView({
                                   rsvpSummary={rs}
                                   variant="compact"
                                   inheritColor={!!tinted}
-                                  className="text-[10px] leading-tight mt-0.5"
+                                  /* D-01: `text-[10px]` folds UP to the 12px floor. An arbitrary
+                                     value is off the rung set by definition, and 10px is below
+                                     the app's floor. `text-xs` is the Caption rung and a
+                                     per-cell RSVP counter is on §4.2's closed role list. */
+                                  className="text-xs leading-tight mt-0.5"
                                 />
                               )}
                             </div>
@@ -682,7 +711,12 @@ export default function CalendarMonthView({
                                 onEventClick(event);
                               }
                             }}
-                            className={`text-xs p-1 rounded-sm truncate hover:opacity-90 transition-opacity flex items-center gap-1 font-medium cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset [color:var(--t-color-l)] dark:[color:var(--t-color)] ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : ''}`}
+                            /* §4.5: the 500 here is DELETED rather than resolved to a weight,
+                               because it governs no text. The only text inside this container is
+                               the game-name span below, which declares its own weight, and the
+                               emoji fallback, where weight is meaningless. `text-xs` STAYS —
+                               dense-grid cell, Caption 12 (§4.2). */
+                            className={`text-xs p-1 rounded-sm truncate hover:opacity-90 transition-opacity flex items-center gap-1 cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset [color:var(--t-color-l)] dark:[color:var(--t-color)] ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : ''}`}
                             style={{
                               ...(tinted && {
                                 '--group-ground': ground,
@@ -775,7 +809,9 @@ export default function CalendarMonthView({
                                   `dark:` class, so a merely-overridden inline
                                   value would leave the light arm inert. */}
                               <span
-                                className="truncate font-semibold [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
+                                /* §4.5 HIERARCHY -> 700: the full tile's game name, the twin of
+                                   the compact tile's above. One control, one weight. */
+                                className="truncate font-bold [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
                               >
                                 {event.Game?.name || 'Game Night'}
                               </span>
@@ -785,7 +821,21 @@ export default function CalendarMonthView({
                       })}
                       {dayEvents.length > 2 && (
                         <div
-                          className="text-xs text-content-link font-medium pointer-events-none select-none"
+                          /* DECISION Phase 88.6-27 (D-16, SPEC Req 8): `text-content-link` ->
+                             `text-content-secondary`. This span is `pointer-events-none
+                             select-none` — definitively NOT a link — and the link ink measured
+                             3.9909 on the `bg-surface-muted` day-cell ground (`:249`), below the
+                             4.5 AA floor. `text-content-secondary` measures 6.9620 on the same
+                             ground.
+                             REJECTED: making it an actual link/button to justify the ink. The
+                             day CELL already handles the tap (`onDayClick`), and a nested
+                             control inside a `role`-less clickable cell is the children-
+                             presentational trap `EventDayModal`'s H1 remedy exists for.
+                             The 500 weight goes with it, §4.5's EMPHASIS outcome: 400 plus the
+                             colour token that is now correct, rather than weight standing in for
+                             an ink that could not be read. `text-xs` STAYS — dense-grid cell,
+                             Caption 12 (§4.2). */
+                          className="text-xs text-content-secondary pointer-events-none select-none"
                           title={`Tap the day to see all ${dayEvents.length} games`}
                         >
                           +{dayEvents.length - 2} more

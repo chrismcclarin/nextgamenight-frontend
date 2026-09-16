@@ -364,8 +364,15 @@ export default function EventDayModal({
                        a past row's edge disappears — it was already effectively invisible
                        there (10% black over a dark card), while the NON-past row GAINS the
                        theme border the hardcoded black had been suppressing. Re-introducing an
-                       inline colour here is a decision, not a cleanup. */
-                    className={`p-4 border ${isPastEvent ? 'border-line-control' : 'border-line'} rounded-lg transition-all hover:shadow-theme-md cursor-pointer ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
+                       inline colour here is a decision, not a cleanup.
+                       THE `border` WIDTH IS REPEATED INSIDE BOTH TERNARY ARMS ON PURPOSE, not
+                       hoisted out beside `p-4`: `borderExplicitness.test.ts` (D-35, Req 16)
+                       forbids a bare `border` that leaves its colour to the base-layer shim, and
+                       it reads STATIC string chunks — a hoisted `border` with the colour in a
+                       template expression reads to it as exactly that offence, and it reds.
+                       Each arm therefore carries width AND colour together. Hoisting the width
+                       out is a decision, not a cleanup. */
+                    className={`p-4 ${isPastEvent ? 'border border-line-control' : 'border border-line'} rounded-lg transition-all hover:shadow-theme-md cursor-pointer ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
                     style={{
                       ...(tinted && {
                         '--group-ground': ground,

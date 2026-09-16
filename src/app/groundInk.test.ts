@@ -171,8 +171,14 @@ const OFFENDERS: ExemptionRoster = {
     owner: D16,
   },
   'app/components/CalendarMonthView.js': {
-    sites: 2,
-    why: ':788 is text-content-link (3.9909), the "+N more" row, under the day-cell ground candidate at :249 inside the five-arm className ternary at :245-253 — the D-16 census site, closed by plan 27. :808 is text-content-muted (4.3725), the empty-day "+" hint, under the SAME :249 ground and NOT in any census. :808 is rostered rather than excluded because the pairing is structurally POSSIBLE (an empty day can be today), but it is not renderable TODAY for two separate reasons: the `group` marker that arms its `group-hover:opacity-40` sits on the cellClickable arm at :251, which is mutually exclusive with the :249 ground, so the hint stays opacity-0 on a current day. Plan 40 hoists that `group`, at which point this becomes a live AA failure — which is exactly why it is recorded here instead of dropped. No sweep plan owns it; routed to the owner in 88.6-09-SUMMARY.md.',
+    sites: 1,
+    // 2 -> 1, plan 88.6-27 task 3 (wave 7, 2026-09-16). The D-16 CENSUS site is CLOSED: the
+    // "+N more" row was `text-content-link` (3.9909) on the day-cell muted ground and is now
+    // `text-content-secondary` (6.9620), with a `DECISION Phase 88.6-27 (D-16)` marker at the
+    // site. It leaves this roster with its fix rather than being renumbered — a fixed site is
+    // no longer debt. The entry SURVIVES at 1 for the site below, which this plan did NOT close
+    // and does not own.
+    why: 'The empty-day "+" hint is text-content-muted (4.3725) under the day-cell ground candidate inside the five-arm className ternary, and it is NOT in any census. It is rostered rather than excluded because the pairing is structurally POSSIBLE (an empty day can be today), but it is not renderable TODAY: the `group` marker that arms its `group-hover:opacity-40` sits on the cellClickable arm, which is mutually exclusive with the isCurrentDay ground, so the hint stays opacity-0 on a current day. PLAN 40 HOISTS THAT `group`, at which point this becomes a live AA failure — which is exactly why it is recorded here instead of dropped, and why plan 88.6-27 left it standing rather than closing a site whose element plan 40 owns. Line cites are deliberately NOT written into this `why`: plan 88.6-27 moved this file by ~50 lines and the previous text carried four stale ones. No sweep plan owns it; routed to the owner in 88.6-09-SUMMARY.md.',
     owner: D16,
   },
   'app/components/GroupSettings.js': {
@@ -258,23 +264,30 @@ type FalsePositive = Omit<Exemption, 'owner'> & {
 
 /** Keyed by `file:line` — the ink site, because one file can hold both real debt and a FP. */
 const FALSE_POSITIVES: Record<string, FalsePositive> = {
-  'app/components/CalendarMonthView.js:259': {
+  // RE-POINTED by plan 88.6-27 task 3 (wave 7, 2026-09-16): ink 259 -> 280 and 260 -> 281,
+  // ground 249 -> 263. The MECHANISM is unchanged and still holds — the ink ternary still tests
+  // isCurrentDay first and the muted ground candidate still requires isCurrentDay. Only the line
+  // numbers moved, because this plan's markers and its Button/Heading migrations sit above them.
+  // These keys are LINE-keyed, so a stale key silently reclassifies a declared false positive as
+  // a REAL offender: test 1 reported 3 CalendarMonthView sites against a 2-site roster before
+  // this re-point, which is the shape that failure takes.
+  'app/components/CalendarMonthView.js:280': {
     sites: 1,
-    why: 'The ink ternary at :258-261 tests isCurrentDay FIRST (:258 -> text-content-accent), so the isAdjacent arm at :259 can only be reached when isCurrentDay is false — while the muted ground candidate at :249 requires isCurrentDay. Structurally impossible, not debt.',
+    why: 'The ink ternary tests isCurrentDay FIRST (-> text-content-accent), so the isAdjacent arm can only be reached when isCurrentDay is false — while the muted ground candidate requires isCurrentDay. Structurally impossible, not debt.',
     owner: {
       kind: 'false-positive',
-      inkLine: 'app/components/CalendarMonthView.js:259',
-      groundLine: 'app/components/CalendarMonthView.js:249',
+      inkLine: 'app/components/CalendarMonthView.js:280',
+      groundLine: 'app/components/CalendarMonthView.js:263',
       conditions: ['ink requires !isCurrentDay && isAdjacent', 'ground requires isCurrentDay'],
     },
   },
-  'app/components/CalendarMonthView.js:260': {
+  'app/components/CalendarMonthView.js:281': {
     sites: 1,
-    why: 'Same ink ternary: the "variant === full && isPastDate" arm at :260 is reached only when isCurrentDay and isAdjacent are both false, while the muted ground candidate at :249 requires isCurrentDay. Structurally impossible, not debt.',
+    why: 'Same ink ternary: the "variant === full && isPastDate" arm is reached only when isCurrentDay and isAdjacent are both false, while the muted ground candidate requires isCurrentDay. Structurally impossible, not debt.',
     owner: {
       kind: 'false-positive',
-      inkLine: 'app/components/CalendarMonthView.js:260',
-      groundLine: 'app/components/CalendarMonthView.js:249',
+      inkLine: 'app/components/CalendarMonthView.js:281',
+      groundLine: 'app/components/CalendarMonthView.js:263',
       conditions: [
         'ink requires !isCurrentDay && !isAdjacent && variant === "full" && isPastDate',
         'ground requires isCurrentDay',
@@ -380,34 +393,46 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // tab-count pill took `text-content-secondary`) and its row left with the fix, in the same
     // commit that deleted its class-rule roster entry — a partial update reds, which is what
     // keeps the two halves together.
-    const byName: [string, string][] = [
-      ['app/components/CalendarMonthView.js:788', 'text-content-link'],
-    ];
+    // AMENDED AGAIN Phase 88.6-27 task 3 (2026-09-16): 1 -> 0. `CalendarMonthView.js`'s
+    // "+N more" row was the LAST open D-16 CENSUS site; it took `text-content-secondary`
+    // (6.9620, from 3.9909) and its row left this set with the fix, in the same commit that
+    // shrank its class-rule roster entry. An empty by-name set is a real END STATE here, not a
+    // broken scan — see the fan-out assertion below, which was RE-POINTED rather than deleted
+    // precisely so this test keeps proving the walk can still SEE a multi-arm ground.
+    const byName: [string, string][] = [];
     expect(
       byName.length,
       'the open D-16 by-name set: 5 at plan 88.6-09, 4 since plan 88.6-17 closed userProfile, ' +
         '2 since plan 88.6-18 closed both gameDetail badges, ' +
-        '1 since plan 88.6-19 closed the friends tab-count pill. ' +
+        '1 since plan 88.6-19 closed the friends tab-count pill, ' +
+        '0 since plan 88.6-27 closed the CalendarMonthView "+N more" row. ' +
         'Shrink this number in the SAME commit that closes a site, and never grow it without a ' +
         'roster entry to match',
-    ).toBe(1);
+    ).toBe(0);
     const missing = byName.filter(
       ([site, ink]) => !FORBIDDEN_ON_MUTED.some((r) => siteOf(r) === site && r.inkToken === ink),
     );
     expect(missing.map(([s]) => s)).toEqual([]);
 
-    // CalendarMonthView.js:788 is asserted by MEMBERSHIP, never by index. Its ground is one of
-    // FIVE arms in the template ternary at :245-253, and asserting on grounds[0] / first / last
-    // is exactly how the arbitrary single-ground pick this contract removes gets reinstated.
-    const cell = FORBIDDEN_ON_MUTED.find((r) => siteOf(r) === 'app/components/CalendarMonthView.js:788');
-    expect(cell).toBeDefined();
+    // The CalendarMonthView day cell is asserted by MEMBERSHIP, never by index. Its ground is
+    // one of FIVE arms in the template ternary, and asserting on grounds[0] / first / last is
+    // exactly how the arbitrary single-ground pick this contract removes gets reinstated.
+    //
+    // RE-POINTED by plan 88.6-27 task 3 (2026-09-16), NOT deleted: the subject moves from the
+    // now-fixed "+N more" row (:788) to the file's SURVIVING rostered site, the empty-day "+"
+    // hint (:858), whose ground is the SAME five-arm ternary at the SAME muted arm (:263, was
+    // :249). Deleting this block with the fixed site would have quietly retired the only thing
+    // proving the walk still produces candidate fan-out at all — and the by-name set above is
+    // empty now, so nothing else in this test would notice.
+    const cell = FORBIDDEN_ON_MUTED.find((r) => siteOf(r) === 'app/components/CalendarMonthView.js:858');
+    expect(cell, 'the day cell\'s rostered ink site must still be reported by the walk').toBeDefined();
     expect(
       cell!.grounds.length,
       'the five-arm ternary must produce candidate fan-out, otherwise the membership assertion below is trivially satisfied',
     ).toBeGreaterThan(1);
     expect(
-      cell!.grounds.some((g) => g.token === MUTED && g.frameLine === 249),
-      `:788 must CONTAIN a ${MUTED} candidate whose frame line is 249; got ${JSON.stringify(cell!.grounds.map((g) => `${g.token}@${g.frameLine}`))}`,
+      cell!.grounds.some((g) => g.token === MUTED && g.frameLine === 263),
+      `:858 must CONTAIN a ${MUTED} candidate whose frame line is 263; got ${JSON.stringify(cell!.grounds.map((g) => `${g.token}@${g.frameLine}`))}`,
     ).toBe(true);
   });
 
@@ -440,8 +465,10 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // Three checks, because three different things can go wrong.
     // (a) EXACT LENGTH — a fifth entry cannot be added quietly.
     expect(Object.keys(FALSE_POSITIVES).sort()).toEqual([
-      'app/components/CalendarMonthView.js:259',
-      'app/components/CalendarMonthView.js:260',
+      // RE-POINTED by plan 88.6-27 task 3 (2026-09-16), 259/260 -> 280/281. This literal is the
+      // SECOND place the line pin is written; both must move together.
+      'app/components/CalendarMonthView.js:280',
+      'app/components/CalendarMonthView.js:281',
       // RE-POINTED by plan 88.6-22 task 1 (2026-09-16), 364/370 -> 484/490. This literal is the
       // SECOND place the line pin is written; both must move together. See the re-point note on
       // the entries themselves.
@@ -460,7 +487,10 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
       // The two `app/gameDetail/page.js` rows left this set with their fix (plan 88.6-18), and
       // `app/friends/page.js:748` left it with its fix (plan 88.6-19). A fixed site must LEAVE
       // this set: it is no longer debt, and the disjointness check below is about what IS.
-      'app/components/CalendarMonthView.js:788',
+      // RE-POINTED by plan 88.6-27 task 3 (2026-09-16): :788 was FIXED and left the debt set
+      // with its fix (the rule this list's own comment states); the file's surviving debt is
+      // the empty-day "+" hint, now at :858.
+      'app/components/CalendarMonthView.js:858',
       'app/components/SuggestionCard.js:92',
       'app/components/SuggestionCard.js:116',
       'app/components/SuggestionCard.js:122',

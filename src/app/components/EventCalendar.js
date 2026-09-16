@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { eventsAPI } from '../../lib/api';
 import { useUser as Auth } from '@auth0/nextjs-auth0/client';
@@ -13,6 +13,9 @@ import { formatWithTzAbbr } from '../../lib/datetime';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
 import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
+import { logger, errCtx } from '../../lib/logger';
 
 export default function EventCalendar({
   refreshKey = 0,
@@ -33,6 +36,39 @@ export default function EventCalendar({
   const selfIdentityErrorState = useFetchErrorState(selfIdentityQuery);
   const [internalEvents, setInternalEvents] = useState([]);
   const [loading, setLoading] = useState(externalEvents === null);
+  /* DECISION Phase 88.6-27 (UI-SPEC §6.2, the error-branch-before-empty-branch rule): the
+     calendar fetch's failure is TRACKED, chosen OVER the shipped `setInternalEvents([])`-and-
+     move-on.
+
+     THE DEFECT THIS CLOSES, in the user's words rather than the code's: a failed fetch rendered
+     an EMPTY CALENDAR. The app told someone there was nothing on their calendar when the truth
+     was that it could not find out. That is the same class as the `DECISION Phase 88-18` bug on
+     the upcoming-events card and the WR-03 stuck spinner one state over — and this very plan
+     enforces §6.2 on this component's OWN hosts, so leaving it standing inside the file would
+     have been the rule applied everywhere except where it was inconvenient.
+
+     RESOLVED HERE (arm a) rather than routed, because this file ALREADY HAS the failure idiom:
+     it imports `useFetchErrorState` and `FetchErrorBanner` and already renders that exact
+     banner, in this exact card frame, for the identity branch below. No new copy is authored —
+     `useFetchErrorState` supplies the ratified message from the caught `ApiError`.
+
+     The adapter shape (`isError`/`error`/`refetch` onto the hook) is the shipped 88-14 friends
+     pattern, copied from `UserHomePage.js`'s upcoming-events adapter rather than invented.
+     `retry` must be STABLE — the hook holds it in an effect dep — so it bumps a key that
+     re-runs the fetch effect instead of duplicating the fetch body. */
+  const [fetchError, setFetchError] = useState(null);
+  const [fetchRetryKey, setFetchRetryKey] = useState(0);
+  const fetchRetryRef = useRef(null);
+  fetchRetryRef.current = () => setFetchRetryKey((k) => k + 1);
+  const retryFetch = useCallback(() => {
+    fetchRetryRef.current?.();
+    return Promise.resolve();
+  }, []);
+  const fetchErrorState = useFetchErrorState({
+    isError: Boolean(fetchError),
+    error: fetchError,
+    refetch: retryFetch,
+  });
   // CAL-03/CAL-07: initial state is hydrated synchronously from localStorage
   // so the very first render reflects the persisted view (no flicker between
   // default 'month' and the user's saved 'list' choice).
@@ -48,14 +84,45 @@ export default function EventCalendar({
 
   const activeEvents = externalEvents !== null ? externalEvents : internalEvents;
 
+  /* DECISION Phase 88.6-27 (R2 #45/#122): the phase's ONE cancelled-generation staleness guard,
+     applied here — this file was the FOURTH unguarded post-await state write in the phase, and
+     the phase claims in four separate plan files that the idiom is "defined once and completely".
+     A site left unguarded in a file this same plan is already editing would make that claim
+     false.
+
+     THE SHAPE IS CITED, NOT RE-DERIVED: the shipped source plan 29 names is
+     `NextGameNightCard.tsx:197/204-205/209-211` — an effect-scoped `let cancelled`, invalidated
+     in the effect's cleanup and checked before every post-await write. `AbortController` is
+     REJECTED for this class BY NAME in that same record; do not re-open it.
+
+     FOUR POINTS, named so nobody invents a second shape: the flag is INVALIDATED in this
+     effect's cleanup (which, until this plan, this effect did not have at all — it returned
+     nothing), and CHECKED before each of the three post-await writes inside `fetchEvents`. */
   useEffect(() => {
     // Mount-fire gate: only fetch once the caller's own UUID resolves. selfUuid
     // is in the dep array (async-resolution rule) so the fetch fires once
     // identity resolves, not only at initial mount.
+    let cancelled = false;
     if (externalEvents === null && selfUuid) {
-      fetchEvents();
+      fetchEvents(() => cancelled);
     }
-  }, [user, refreshKey, selfUuid]); // Refetch when refreshKey or identity changes
+    return () => {
+      cancelled = true;
+    };
+    /* Refetch when refreshKey, identity or the retry key changes.
+
+       `user?.sub` RATHER THAN `user` — [Rule 1 fix, plan 88.6-27 task 3]. `useUser()` returns a
+       fresh object on every render, so a bare `user` dep re-fired this effect on EVERY render.
+       Until this plan that loop was invisible: the catch's `setInternalEvents([])` allocated a
+       new array, which re-rendered, which re-fired the effect, which refetched — a silent
+       refetch storm on any failing calendar, with nothing rendering differently to show it. The
+       moment the failure got a VISIBLE branch (the §6.2 fix above) the loop surfaced as a
+       surface oscillating between "Loading calendar..." and the error banner, which is how it
+       was caught. The sibling that already does this correctly is `UserHomePage.js`'s
+       upcoming-events effect, whose deps are `[user?.sub, refreshKey, selfUuid,
+       upcomingRetryKey]`; this converges on it rather than inventing a third shape. Widening
+       this back to the object is a decision, not a cleanup. */
+  }, [user?.sub, refreshKey, selfUuid, fetchRetryKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // CAL-03/CAL-07: persist viewMode + currentDate whenever either changes.
   // Save fires after user interactions (toggle list, navigate month) so
@@ -65,17 +132,41 @@ export default function EventCalendar({
     saveCalendarPrefs(scope, { viewMode, currentDate });
   }, [scope, viewMode, currentDate]);
 
-  const fetchEvents = async () => {
+  const fetchEvents = async (isCancelled = () => false) => {
     if (!selfUuid) return;
     try {
       setLoading(true);
+      setFetchError(null);
       const data = await eventsAPI.getUserEvents(selfUuid, { includeRsvpSummary: true });
+      if (isCancelled()) return;
       setInternalEvents(data || []);
     } catch (error) {
-      console.error('Error fetching events:', error.message || 'Unknown error');
+      /* AC-2, at the level the owner amended it to on 2026-09-13: `logger.info`, REPLACING the
+         raw `console.error` rather than sitting beside it. STATE THE COST: `logger.info` is
+         `Sentry.addBreadcrumb` (`logger.ts:34-36`), so this failure reaches Sentry only attached
+         to a later event in the same session — it does not file an issue of its own. Lint does
+         NOT govern this choice: this file is on `.eslintrc.json`'s `no-console: off` allowlist,
+         so a raw call would have passed; UI-SPEC §6.4 and `logger.ts`'s own module contract are
+         what decide it, and this plan states ONE direction for all three of its console sites.
+         `errCtx(error)` and never the raw `Error`: the second parameter is a plain object, and
+         `checkJs: false` hides that mistake in a `.js` file. NOTE the egress widening, recorded
+         rather than discovered later: the shipped call passed a bare STRING
+         (`error.message || 'Unknown error'`); `errCtx` adds the error's NAME. Nothing else —
+         no response body, no event or group title, no attendee name or email (T-84-01).
+         Reported REGARDLESS of cancellation: a developer log is not user-facing context, and a
+         failure that happened still happened. */
+      logger.info('Error fetching events', errCtx(error));
+      if (isCancelled()) return;
+      /* §6.2: the error branch is now DISTINGUISHABLE from a genuinely empty calendar. The list
+         is still cleared — a stale list beside an error banner is its own lie — but `fetchError`
+         is what the render reads FIRST, so "we could not load this" is no longer rendered as
+         "you have nothing scheduled". */
+      setFetchError(
+        error instanceof Error ? error : new Error('The calendar request did not complete.')
+      );
       setInternalEvents([]);
     } finally {
-      setLoading(false);
+      if (!isCancelled()) setLoading(false);
     }
   };
 
@@ -168,11 +259,31 @@ export default function EventCalendar({
   if (externalEvents === null && selfIdentityErrorState.showError) {
     return (
       <div className="card p-3 md:p-6">
-        <h2 className="text-2xl font-bold text-content-primary mb-6">{title}</h2>
+        <Heading level={2} size="heading" className="text-content-primary mb-6">{title}</Heading>
         <FetchErrorBanner
           state={selfIdentityErrorState}
           title="Couldn't load your calendar"
           reportContext="event calendar — self-identity resolution"
+        />
+      </div>
+    );
+  }
+
+  /* §6.2 — THE ERROR BRANCH IS CHECKED BEFORE THE EMPTY ONE, and the ORDER here is the whole
+     fix. It sits after the identity branch above (a failure that means the fetch never fired)
+     and before `loading` and the grid below (which, with `internalEvents` cleared, would paint
+     an empty calendar). Same card frame, same banner component, same ratified copy source as
+     its sibling — the only thing that is new is that a failed fetch now has somewhere to go.
+     Only in SELF-FETCH mode: when `externalEvents` is supplied the parent owns the fetch and
+     this state can never be set. */
+  if (externalEvents === null && fetchErrorState.showError) {
+    return (
+      <div className="card p-3 md:p-6">
+        <Heading level={2} size="heading" className="text-content-primary mb-6">{title}</Heading>
+        <FetchErrorBanner
+          state={fetchErrorState}
+          title="Couldn't load your calendar"
+          reportContext="event calendar — events fetch"
         />
       </div>
     );
@@ -189,7 +300,7 @@ export default function EventCalendar({
   return (
     <div className="card p-3 md:p-6">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-content-primary">{title}</h2>
+        <Heading level={2} size="heading" className="text-content-primary">{title}</Heading>
         {showListView && (
           <div className="flex gap-2">
             {/* DECISION Phase 88.3-17 (DEF-88.3-13-04, owner ruling A, 2026-08-27):
@@ -205,12 +316,20 @@ export default function EventCalendar({
                 `box-shadow` and therefore survives the unlayered
                 `.btn { border: none }`; a `focus-visible:border-*` would not.
                 Pinned by the five-file scan in `groupColourRendering.test.ts`. */}
-            <button
+            {/* Phase 88.6-27: `btn btn-secondary` -> the primitive's secondary variant. TWO
+                classes go and neither is a loss. `text-sm` was DEAD — `.btn` declares
+                `font-size` unlayered (`globals.css:2201`) — and the per-site focus-ring string
+                is retired because the ring now lives ONCE in the primitive's cva base
+                (`Button.tsx:113`, A-2 ARM A, owner ruling 2026-09-15). The 88.3-17 marker above
+                is byte-unchanged and still true: this control has a project focus ring, it just
+                no longer states it itself. `cascadeOrder.test.ts` asserts exactly one of the two
+                mechanisms exists, so keeping both would red. */}
+            <Button
+              variant="secondary"
               onClick={() => setViewMode(viewMode === 'month' ? 'list' : 'month')}
-              className="btn btn-secondary text-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             >
               {viewMode === 'month' ? 'List View' : 'Month View'}
-            </button>
+            </Button>
           </div>
         )}
       </div>
