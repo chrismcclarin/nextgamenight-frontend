@@ -744,15 +744,12 @@ const FAILED_COPY_EXEMPT: ExemptionRoster = {
       'Closed by plan 88.6-19 (wave 7), which declares this file.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-19' },
   },
-  'app/components/PromptScheduleManager.js': {
-    sites: 2,
-    why:
-      '"FAILED TO X" assertion. :100 and :111 — the SAME two lines nativeDialogs.test.ts ' +
-      'carries as its `alert(` exemption, and for the same recorded reason: routing them ' +
-      'needs a fallback string the ratified register does not yet have. Closed by plan ' +
-      '88.6-15 (wave 6), which declares this file; both rosters shrink together.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-15' },
-  },
+  // DELETED by plan 88.6-15 (2026-09-16): `app/components/PromptScheduleManager.js` carried
+  // `sites: 2` here (`:100`, `:111`) — the same two lines `nativeDialogs.test.ts` carried as
+  // its `alert(` exemption. Both are now `toast.error(getFetchErrorMessage(err, { fallback }))`
+  // on the UI-SPEC §6.3 ratified strings, so the file holds ZERO "Failed to X" sites and the
+  // entry is deleted rather than zeroed (exact in both directions). Both rosters shrank in the
+  // same commit, as this entry's `why` said they would.
   'app/components/ResponseDashboard.js': {
     sites: 2,
     why:

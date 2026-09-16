@@ -12,8 +12,15 @@ import {
 import ScheduleForm from './ScheduleForm';
 import ScheduleList from './ScheduleList';
 import { Modal } from './Modal';
-import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
+import {
+  useFetchErrorState,
+  getFetchErrorMessage,
+} from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
+import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
+import { toast } from 'sonner';
+import { logger, errCtx } from '@/lib/logger';
 
 /**
  * PromptScheduleManager - Main container for schedule management
@@ -28,7 +35,6 @@ import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
  * @param {string} props.variant - 'modal' (default) or 'inline' rendering mode
  */
 export default function PromptScheduleManager({ groupId, group, userRole, onClose, variant = 'modal' }) {
-  const [error, setError] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState(null);
   // POLL-03: bump on every Create open so React fully remounts ScheduleForm
@@ -96,8 +102,12 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
       await promptSettingsAPI.toggleSchedule(groupId, scheduleId);
       await invalidateSettings(); // Refresh to get updated status
     } catch (err) {
-      console.error('Error toggling schedule:', err);
-      alert('Failed to toggle schedule. Please try again.');
+      logger.info('Error toggling schedule:', errCtx(err));
+      toast.error(
+        getFetchErrorMessage(err, {
+          fallback: "We couldn't update the schedule. Please try again.",
+        })
+      );
     }
   };
 
@@ -107,8 +117,22 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
       await promptSettingsAPI.deleteSchedule(groupId, scheduleId);
       await invalidateSettings(); // Refresh to remove deleted schedule
     } catch (err) {
-      console.error('Error deleting schedule:', err);
-      alert('Failed to delete schedule. Please try again.');
+      logger.info('Error deleting schedule:', errCtx(err));
+      /* DECISION Phase 88.6-15 (AC-8, owner ruling 2026-09-09 arm 2): this DELETE-failure toast
+         is STICKY (`duration: Infinity`), chosen OVER the ~4s house default the toggle path a
+         few lines above deliberately keeps. WHY: the throw skips `invalidateSettings()`, so the
+         row the user just tried to delete stays on screen — a missed 4s notice therefore reads
+         as SUCCESS. Dismissal costs no new user-visible string: the single `<Toaster>` at
+         `src/app/layout.js` is already `closeButton`. A Toaster-level duration is REJECTED
+         (88-UI-SPEC §6.2 OI-5 / D-12 keeps every existing toast as-is), and so is making the
+         toggle path sticky too — the toggle is non-destructive and its row updates on retry.
+         Restoring the house default here is a decision, not a cleanup. */
+      toast.error(
+        getFetchErrorMessage(err, {
+          fallback: "We couldn't delete the schedule. Please try again.",
+        }),
+        { duration: Infinity }
+      );
     }
   };
 
@@ -131,12 +155,16 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
   // Shared content rendered in both modal and inline variants
   const renderContent = () => (
     <>
-      {/* Error message */}
-      {error && (
-        <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
-          <p className="text-content-status-error text-sm">{error}</p>
-        </div>
-      )}
+      {/* DECISION Phase 88.6-15 (R1 / UI-SPEC §6.2 :522-524): the `{error && …}` block that used
+          to open this fragment is DELETED rather than rewired to the mutation failures, and its
+          `useState(null)` with it. It was DEAD: `setError` had exactly one occurrence in this
+          file — its own declaration — so the block could never render. The LOAD failure is
+          already owned by `useFetchErrorState(settingsQuery)` → `<FetchErrorBanner>` below,
+          under the `DECISION Phase 88-18` marker, and the MUTATION failures now route to
+          `toast.error` in the two handlers above. A SECOND `<FetchErrorBanner>` on this surface
+          is PROHIBITED (exactly one live region per failure), which is the alternative this
+          deletion rejects. Re-introducing an inline error box here is a decision, not a
+          cleanup. */}
 
       {/* Create button (owner/admin only).
           DECISION Phase 88-18 (Req 6): SUPPRESSED while the empty state is showing, chosen OVER
@@ -146,12 +174,13 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
           Restoring the unconditional render is a decision, not a cleanup. */}
       {canManageSchedules && !showForm && !loading && !settingsErrorState.showError && schedules.length > 0 && (
         /* DECISION Phase 87.8 (D-13/D-14/AF-2): per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor — rejected because it would silently distort ~15 shipped compact/icon `.btn` sites (AF-2); 44px chosen OVER Material's 48dp, consciously declined (D-14). Global `.btn` sizing stays with Phase 88 (DEF-1) — a decision, not an oversight. No `min-w-11`: wide text button, 141px measured.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
-        <button
+        <Button
+          variant="primary"
           onClick={handleCreate}
-          className="mb-4 btn btn-primary min-h-11"
+          className="mb-4"
         >
           + New Schedule
-        </button>
+        </Button>
       )}
 
       {/* Content */}
@@ -196,7 +225,7 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
       {/* Permission notice for members */}
       {!canManageSchedules && !loading && (
         <div className="mt-4 p-3 bg-surface-sunken border border-line-accent rounded-btn">
-          <p className="text-content-accent text-sm">
+          <p className="text-content-accent text-base">
             You are viewing schedules as a member. Only group owners and admins can create or edit schedules.
           </p>
         </div>
@@ -210,7 +239,9 @@ export default function PromptScheduleManager({ groupId, group, userRole, onClos
       <div className="bg-surface-card rounded-card border border-line surface-flat-phone">
         {/* Header without close button */}
         <div className="flex justify-between items-center p-4 pb-3 border-b border-line">
-          <h3 className="text-lg font-semibold text-content-primary">Recurring Check-ins</h3>
+          <Heading level={3} size="heading" className="text-content-primary">
+            Recurring Check-ins
+          </Heading>
         </div>
         {/* Content */}
         {/* DECISION Phase 87.8 (D-02/D-03): this `p-4 pt-3` was the FIFTH unconditional padding level of the groupPlanning chain — invisible to every upstream artifact (CONTEXT and UI-SPEC both missed it; only RESEARCH C-2's JSX trace found it), because PromptScheduleSection.js is a zero-padding intermediary that made the chain longer than it looked. Do not "restore" a bare `p-4` here as an obvious oversight. Padding is `pt-3 md:px-4 md:pb-4` — NOT `md:p-4` — chosen deliberately: today's `p-4 pt-3` computes desktop padding-top 12px (same-layer `pt-3` wins over the shorthand), and `md:p-4` would sort AFTER the unprefixed `pt-3` at >=768px and silently bump padding-top to 16px; leaving padding-top out of the md layer preserves 12px at every width by construction, not by emission order. */}

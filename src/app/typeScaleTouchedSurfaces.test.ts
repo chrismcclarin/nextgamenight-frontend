@@ -539,15 +539,20 @@ const EXPECTED_PROP_SEAMS = 5;
  * The `heading-primitive` floor, asserted SEPARATELY from `prop-seam` so neither can be
  * masked by the other.
  *
- * ZERO at this plan's commit: `src/components/ui/Heading.tsx` does not exist yet (plan 03
- * creates it) and there are zero `<Heading` call sites in `src/`.
+ * ZERO at plan 11's commit: `src/components/ui/Heading.tsx` did not exist yet (plan 03
+ * creates it) and there were zero `<Heading` call sites in `src/`.
  *
  * THE RULE FOR SWEEPS: each migrating sweep RAISES this floor in the same commit as the
  * migration it lands. An unchanged zero after a sweep wave is a RED, not a pass — that is
  * the whole point of flooring it separately from the five immovable seams, which would
  * otherwise satisfy a combined non-raw floor forever.
+ *
+ * RAISED 0 -> 1 by plan 88.6-15 task 1 (2026-09-16): `PromptScheduleManager.js:213`'s h3 is the
+ * FIRST `<Heading>` call site in the tree. 88.6-11-SUMMARY "Downstream plan corrections" #2
+ * recorded that NO sweep plan's text instructs this raise — the tracer does it anyway, and says
+ * so here, so the ~20 expansion sweeps inherit the habit rather than the omission.
  */
-const EXPECTED_MIN_PRIMITIVES = 0;
+const EXPECTED_MIN_PRIMITIVES = 1;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -655,11 +660,11 @@ const RUNG_ROSTER: ExemptionRoster = {
     why: '2 headings off the 4-size working set (h3:434 text-lg; h3:663 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/PromptScheduleManager.js': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h3:213 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-15 (2026-09-16): `app/components/PromptScheduleManager.js` carried
+  // `sites: 1` (h3:213 `text-lg`). That heading MIGRATED onto `<Heading level={3}
+  // size="heading">`, so the rung is supplied by the primitive and the file leaves this
+  // population entirely rather than decrementing (88.6-11-SUMMARY "Downstream plan
+  // corrections" #1). Deleted, not zeroed — the count is exact in both directions.
   'app/components/PromptScheduleReadOnly.js': {
     sites: 1,
     why: '1 heading off the 4-size working set (h3:46 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
@@ -794,11 +799,10 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
     why: '2 headings carrying the prohibited 600 weight (h3:434, h3:663) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/PromptScheduleManager.js': {
-    sites: 1,
-    why: '1 heading carrying the prohibited 600 weight (h3:213) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-15 (2026-09-16): `app/components/PromptScheduleManager.js` carried
+  // `sites: 1` (h3:213 `font-semibold`). The heading migrated onto `<Heading>`, whose cva base
+  // is `font-bold`, so the call site states no weight at all and the file leaves this
+  // population. Deleted, not zeroed.
   'app/components/PromptScheduleReadOnly.js': {
     sites: 1,
     why: '1 heading carrying the prohibited 600 weight (h3:46) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
@@ -898,11 +902,10 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
     why: '2 raw headings not stating the 700 weight (h3:434 font-semibold; h3:663 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/PromptScheduleManager.js': {
-    sites: 1,
-    why: '1 raw heading not stating the 700 weight (h3:213 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-15 (2026-09-16): `app/components/PromptScheduleManager.js` carried
+  // `sites: 1` (h3:213). This roster is a RAW-ONLY supply rule; the heading is no longer a raw
+  // `<hN>` tag, so the file leaves the population rather than decrementing. The 700 is now
+  // supplied by `Heading`'s cva base and pinned in `Heading.test.tsx`. Deleted, not zeroed.
   'app/components/PromptScheduleReadOnly.js': {
     sites: 1,
     why: '1 raw heading not stating the 700 weight (h3:46 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
@@ -1925,12 +1928,11 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-29.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/PromptScheduleManager.js': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-04, 88.6-07, 88.6-10, 88.6-15, 88.6-32, 88.6-33, 88.6-43, 88.6-44.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-15 (2026-09-16): `app/components/PromptScheduleManager.js` carried
+  // `sites: 1` (0 font-medium, 1 font-semibold). The §4.5 outcome lead was HIERARCHY (700) and
+  // that is what landed — not as a `font-bold` utility at the call site, but by migrating the
+  // h3 onto `<Heading>`, whose cva base is `font-bold`. Zero off-scale weight sites remain in
+  // the file, so the entry is deleted rather than zeroed.
   'app/components/PromptScheduleReadOnly.js': {
     sites: 2,
     why:

@@ -90,24 +90,15 @@ const rel = (file: string): string => path.relative(SRC, file);
  * `sites` counts are byte-unchanged — they are the record of why each site survived Phase
  * 88 and are not rewritten while being re-typed.
  *
- * Neither site is closed here. Plan 88.6-15 closes PromptScheduleManager's two and plan
- * 88.6-32 closes GameComboInput's one; each SHRINKS its entry and deletes it at zero,
- * which is what the exact count in both directions forces.
+ * CLOSED by plan 88.6-15 (2026-09-16): `PromptScheduleManager.js`'s TWO sites are gone and its
+ * entry is DELETED rather than zeroed — the count is exact in both directions, so a fossil
+ * `sites: 0` reds exactly as hard as a stale `sites: 2`. Both alerts became
+ * `toast.error(getFetchErrorMessage(err, { fallback }))` carrying the UI-SPEC §6.3 ratified
+ * strings ("We couldn't update/delete the schedule. Please try again."), which is precisely
+ * what the deleted `why` said was blocking them: the register now has copy for both. Plan
+ * 88.6-32 still owns GameComboInput's one; the target for this roster is 0.
  */
 const ALERT_EXEMPT: ExemptionRoster = {
-  'app/components/PromptScheduleManager.js': {
-    sites: 2,
-    why:
-      'Both carry "Failed to X" copy, which is the idiom Req 14 / plan 88-25 is ' +
-      'standardising away. Routing them to a toast means choosing a fallback string, and ' +
-      'this phase forbids authoring copy outside the ratified register — which has none ' +
-      'for a schedule toggle or delete. Rewording them independently of the Req 14 ' +
-      'register would create a second register, which is the defect, not the fix.',
-    // The routing question the old prose left open ("no owning phase") is now ANSWERED:
-    // Phase 88.6 owns it and plan 15 closes it. That is the whole point of the union — an
-    // unrouted deferral and a routed one are no longer the same value.
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01' },
-  },
   'app/components/GameComboInput.js': {
     sites: 1,
     why:

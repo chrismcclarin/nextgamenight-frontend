@@ -354,11 +354,12 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'plan 88.6-32 sweeps the group-library and scheduling cluster, OpenPollsList.js included',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
-  'app/components/PromptScheduleManager.js': {
-    sites: 1,
-    why: 'plan 88.6-15 is the phase tracer and takes the prompt-schedule trio through every layer first',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-15 (2026-09-16), the phase TRACER: `app/components/PromptScheduleManager.js`
+  // carried `sites: 1` (`:151`, `mb-4 btn btn-primary min-h-11`). It is now
+  // `<Button variant="primary" className="mb-4">` — `min-h-11` dropped because the cva base
+  // supplies it at every viewport (88.6-06 D-09), `mb-4` KEPT because `.btn` declares no margin.
+  // Deleted rather than zeroed: the count is exact in both directions, which is exactly the
+  // property the tracer set out to prove before ~20 expansion sweeps depend on it.
   'app/components/RsvpSection.js': {
     sites: 1,
     why: 'plan 88.6-29 sweeps the RSVP cluster and closes its four recorded residuals',
