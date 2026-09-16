@@ -595,3 +595,149 @@ describe('D-07 / D-11: no button control on a raw palette fill', () => {
     expect(assertExactCounts(PALETTE_BUTTON_EXEMPT, PALETTE_COUNTS)).toEqual([]);
   });
 });
+
+// =====================================================================================
+// THE SCANNER FIXTURE HARNESS — proving both rules CAN fail.
+// =====================================================================================
+//
+// A gate that has never failed is a gate that cannot fail. This project's ledger records
+// TWELVE defective gates (`src/app/decisionMarkers.test.ts:1-40` carries the tally and the
+// taxonomy), and they fall into four SHAPES, every one of which is a way to look green while
+// measuring nothing:
+//
+//   1. FILE-COUNT-WITH-SLACK — assert a threshold on a SUPERSET of the population you care
+//      about. 88-28's `grep -rl 'DECISION Phase 87.8' | wc -l -ge 6` stayed green after
+//      deleting all eight markers it existed to protect, because twelve files matched.
+//   2. COMMENT-BLINDNESS — the gate matches its own DECISION markers, which necessarily quote
+//      the tokens they forbid. DEF-88-25-02 (twice), DEF-88-27-01, DEF-88-28-01.
+//   3. LINE-BASED MATCHING — `grep` and `[^>]*` cannot cross a newline, and every className in
+//      this repo sits on a different line from its opening tag. DEF-88-21-01's control gate
+//      matched 0 of 14 real controls.
+//   4. SUBSTRING-MATCH-ANYWHERE — `grep -q "88-28"` proves a string exists somewhere in a
+//      350-line file, not that the edit was made.
+//
+// The assertions below are the antidote, in the shape `src/lib/ci-grep-gate.fixture.test.ts`
+// shipped: they run the REAL scanner (`scanSource`, the same function the module-scope walk
+// uses) against in-file fixture STRINGS. Nothing on disk is perturbed, and they run on every CI
+// pass rather than once by hand — which is what makes the demonstration durable instead of a
+// probe someone did in a terminal and wrote a sentence about.
+//
+// The fixtures live inside a `.test.tsx` file, which `sourceFiles` excludes by construction, so
+// the live census can never see them.
+
+/** Run the `.btn` rule over a fixture string, exactly as the tree walk does. */
+function btnHits(fixture: string): string[] {
+  return scanSource('fixture.tsx', fixture)
+    .filter((t) => t.chunks.some((c) => BTN.test(c)))
+    .map((t) => `<${t.name}>`);
+}
+
+/** Run the raw-palette button-control rule over a fixture string, exactly as the tree walk does. */
+function paletteHits(fixture: string): string[] {
+  return scanSource('fixture.tsx', fixture)
+    .filter((t) => BUTTON_CONTROL.test(t.name) && t.classes.some((c) => PALETTE_FILL.test(c)))
+    .map((t) => `<${t.name}>`);
+}
+
+describe('the census scanner can actually fail (fixture harness)', () => {
+  it('DETECTS `cn(...)` expression usage — the W19 shape a literal-only scan misses', () => {
+    // This is the exact shape `Modal.tsx:346` carried until plan 88.6-08 retired it.
+    expect(btnHits('<button className={cn(\'btn\', \'btn-primary\')}>Go</button>')).toEqual([
+      '<button>',
+    ]);
+  });
+
+  it('DETECTS a className on its own line — the multiline shape a `[^>]*` regex misses', () => {
+    const fixture = ['<button', '  type="button"', '  className="btn btn-secondary"', '>', 'Go', '</button>'].join('\n');
+    expect(btnHits(fixture)).toEqual(['<button>']);
+  });
+
+  it('does NOT detect a `.btn` written inside a comment (comment-blindness, shape 2)', () => {
+    const fixture = ['// <button className="btn"> in a comment', 'const x = 1;'].join('\n');
+    expect(btnHits(fixture)).toEqual([]);
+  });
+
+  it('does NOT detect `rounded-btn` — the lookbehind keeps Input/SelectField out of the census', () => {
+    // Plan 88.6-09 measured that a plain `\bbtn\b` sweeps `rounded-btn` in and drags
+    // `Input.tsx` and `SelectField.tsx` into any naive census. This pins the fix.
+    expect(btnHits('<input className="rounded-btn border border-line" />')).toEqual([]);
+  });
+
+  it('DETECTS a raw palette fill on a `<button>`', () => {
+    expect(paletteHits('<button className="bg-indigo-600">Save</button>')).toEqual(['<button>']);
+  });
+
+  it('does NOT flag a semantic token fill on a `<button>` (the any-`bg-*` rule was rejected)', () => {
+    expect(paletteHits('<button className="bg-surface-card">Save</button>')).toEqual([]);
+  });
+
+  it('does NOT flag a non-button element — the rule is scoped to button CONTROLS', () => {
+    expect(paletteHits('<div className="bg-indigo-600">panel</div>')).toEqual([]);
+  });
+
+  // THE POSITIVE CONTROL FOR THE WIDENED PREDICATE. Without this, the `<Button>` half of the
+  // rule is unproven — and it is the half that keeps the rule alive after the migration, since
+  // every sweep converts a `<button>` into a `<Button>` and carries its className along.
+  it('DETECTS a raw palette fill on a `<Button>` — the half that survives the migration', () => {
+    expect(paletteHits('<Button className="bg-indigo-600">Save</Button>')).toEqual(['<Button>']);
+  });
+
+  it('matches `bg-white/10` — an opacity suffix does not evade the palette rule', () => {
+    expect(paletteHits('<button className="bg-white/10">x</button>')).toEqual(['<button>']);
+  });
+});
+
+// =====================================================================================
+// SPEC AC-3's SIBLING — no text-size utility on a `<Button>`.
+// =====================================================================================
+//
+// `Button`'s cva base owns the control's type rung. A `text-sm` handed in from a call site
+// wins through `cn()` / `twMerge` and silently re-tiers the control, which is the same
+// last-wins hazard `controlSizeFloor.test.tsx:24-32` records for `<Input>`.
+//
+// DELIBERATELY NARROW, and it does NOT duplicate plan 88.6-11. That plan WIDENED
+// `src/app/typeScaleTouchedSurfaces.test.ts`, which carries the TREE-WIDE type-rung rule over
+// every surface. This assertion is the `Button`-scoped one, and it belongs beside the button
+// census rather than in the type scanner because its population is defined by the tag, not by
+// the surface. Folding it into the tree-wide scanner is a decision, not a cleanup.
+//
+// RESEARCH B.1 measured 59 dead `text-*` sites across the `.btn` census, but those sit on raw
+// `.btn` ELEMENTS; they only become this rule's population after the sweeps convert them. At
+// this wave the live measurement on `<Button>` tags is small, and the roster is what the
+// scanner reported rather than what the plan predicted.
+
+/** Text-size utilities, plus the arbitrary `text-[13px]` form. */
+const TEXT_SIZE = /^text-(?:xs|sm|base|lg|xl|2xl|3xl)$|^text-\[[^\]]*px\]$/;
+
+const BUTTON_COMPONENTS = TAGS.filter((t) => t.name === 'Button');
+const TYPED_BUTTONS = BUTTON_COMPONENTS.filter((t) => t.classes.some((c) => TEXT_SIZE.test(c)));
+const TYPED_BUTTON_COUNTS = countByFile(TYPED_BUTTONS);
+
+// Seeded from the live scan, 2026-09-15: TWO sites, both in `gameDetail/page.js`
+// (`:1282` and `:1290`, the desktop Edit/Delete ghost pair, each `className="px-3 py-1 text-sm"`).
+const TYPED_BUTTON_EXEMPT: ExemptionRoster = {
+  'app/gameDetail/page.js': {
+    sites: 2,
+    why: 'the two desktop ghost session actions carry `px-3 py-1 text-sm`; plan 88.6-18 sweeps gameDetail/page.js and re-tiers them onto a Button rung rather than a call-site text size',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-3' },
+  },
+};
+
+describe('AC-3 sibling: no text-size utility on a `<Button>`', () => {
+  // ANTI-VACUITY. Unlike the `<button>` population, the `<Button>` one only GROWS as the phase
+  // lands, so a floor here can never fall by the migration succeeding. 10 is the floor; 21 is
+  // the live measurement. Without it this whole describe passes vacuously if the scanner stops
+  // resolving component tags — and the combined floor above cannot catch that, because 213 raw
+  // `<button>` tags would carry it on their own.
+  it('found `<Button>` call sites to check', () => {
+    expect(BUTTON_COMPONENTS.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it('has a well-formed roster', () => {
+    expect(assertRosterShape(TYPED_BUTTON_EXEMPT)).toEqual([]);
+  });
+
+  it('has zero text-size utilities on `<Button>` outside the roster', () => {
+    expect(assertExactCounts(TYPED_BUTTON_EXEMPT, TYPED_BUTTON_COUNTS)).toEqual([]);
+  });
+});
