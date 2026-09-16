@@ -22,6 +22,35 @@
  * the `enabled-hover:` lift, `p-0` deleted from the `icon` rung). Importing it would red this wave-1
  * gate the moment plan 06 lands, inside a plan that declares only `Button.tsx`/`Button.test.tsx` and
  * therefore cannot fix it. Using `buttonVariants` here is a decision, not a cleanup.
+ *
+ * RE-SEED PASS — Phase 88.6-37, 2026-09-16, under owner ruling R6. This file is declared by no
+ * plan in the phase; R6 authorised plan 37 to re-seed it so the frozen literals stop being
+ * STALE-BUT-GREEN, and the undeclared-file edit is disclosed in `.planning/WINDOWS.md` and
+ * `88.6-37-SUMMARY.md`. Every expectation touched below was produced the way this header
+ * requires — by running the suite with placeholder values and pasting the REAL output back in —
+ * never hand-written from intent. What the pass found, all four measured at this commit:
+ *
+ *   - `MODAL_ACTION_CLASS` -> `BUTTON_VARIANT_CLASS`. A stale CITE and a stale NAME, NOT a wrong
+ *     expectation: plan 08 retired `ACTION_CLASS` and `Modal.Action` now renders `Button`, whose
+ *     variant map is byte-identical. RE-SEEDED; both strings recorded at the assertion.
+ *   - The `BottomSheet` surface literal. RE-SEEDED for plan 37's OWN D49-b snap
+ *     (`shadow-lg` -> `shadow-theme-lg`); both strings recorded at the assertion. The only delta
+ *     is that token's spelling, so the resolver behaviour is unchanged.
+ *   - `BUTTON_CVA_BASE`. **MEASURED CURRENT — no change.** R6's premise that plan 06's cva
+ *     rewrite had left it stale was already discharged: plan 06 re-seeded it on 2026-09-15 (that
+ *     record is below), and re-reading the live `cva` base entries at `Button.tsx:74`, `:81`,
+ *     `:113`, `:168` reproduces this literal exactly. Recorded as CONFIRMED rather than assumed —
+ *     "I checked and it was already right" is the half of a re-seed that otherwise leaves no
+ *     trace.
+ *   - `COMBOBOX_OPTION_ROW_ACTIVE`. **MEASURED CURRENT — no change.** Plan 02's re-seed still
+ *     matches the live option-row class list, and plan 37's own W38 edit deliberately did not
+ *     touch it (the new sr-only region is a sibling node; the option row is byte-unchanged).
+ *
+ * NO MERGE DIFFERED FROM WHAT SHIPPED, so this pass produced no finding of the kind this header
+ * warns about. Both re-seeds are owned re-derives — a diff that follows a same-phase edit to a
+ * transcribed source is a RE-SEED by plan 01's pre-classification, not a resolver fork. Plan 01's
+ * `DECISION Phase 88.6-01 (W33)` above is UNCHANGED by this pass: the literals stay transcribed,
+ * because importing the live symbols would turn this gate into a tautology.
  */
 import { HEIGHT_CLASS } from '@/components/ui/BottomSheet';
 import { controlClass } from '@/components/ui/Input';
@@ -61,17 +90,38 @@ const BUTTON_CVA_BASE =
   'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 min-h-11';
 
 /**
- * SOURCE: `src/app/components/Modal.tsx:322` (`const ACTION_CLASS`), emitted by `ModalAction` as
+ * SOURCE (RE-SEEDED — see below): `src/components/ui/Button.tsx:104-106`, the `cva` VARIANT map.
+ *
+ * WAS: `src/app/components/Modal.tsx:322` (`const ACTION_CLASS`), emitted by `ModalAction` as
  * `cn('btn', ACTION_CLASS[variant], className)` at `Modal.tsx:346`.
  *
- * Transcription is the ONLY route here: `ACTION_CLASS` is a module-private `const` and this plan
- * declares neither `Modal.tsx` nor `Combobox.tsx`, so it does NOT add exports to them (an edit lands
- * only in a file its plan declares).
+ * RE-SEEDED Phase 88.6-37 (R6, owner ruling 2026-09-16), and this one is a STALE CITE AND A STALE
+ * NAME, not a wrong expectation — the distinction matters, so it is spelled out.
+ *
+ * WHAT HAPPENED. Plan 88.6-08 (D-08) made `Modal.Action` render the `Button` primitive and RETIRED
+ * `ACTION_CLASS` outright — the file's own `DECISION Phase 88.6-08` marker at `Modal.tsx:364-383`
+ * spells the retired name for exactly this kind of search. Both constructs this literal cited were
+ * gone, and because both sides of the comparison were frozen the assertion stayed GREEN while no
+ * longer describing any shipped emitter. Plan 08 measured this, could not fix it (its own
+ * acceptance criterion forbade a third suite in its diff, and no plan in the phase DECLARED this
+ * file), and routed it to the owner; R6 is the ruling that authorised the re-seed here.
+ *
+ * WHY THE VALUES DID NOT MOVE. Plan 08's marker records that `Button`'s variant names were aligned
+ * with `ModalActionVariant` "so the later adoption plans are a mechanical swap": the three entries
+ * matched 1:1, byte-identically. Re-read from `Button.tsx:104-106` at this commit — `primary:
+ * 'btn-primary'`, `secondary: 'btn-secondary'`, `danger: 'btn-danger'` — the map is unchanged. So
+ * there is NO merge finding here; what was wrong was which source the literal claimed to track.
+ *
+ * TRANSCRIPTION IS STILL THE ROUTE, deliberately. `buttonVariants` IS exported
+ * (`Button.tsx:287`), but plan 01's `DECISION Phase 88.6-01 (W33)` in the header above chose a
+ * frozen literal over importing it, and that decision is UNCHANGED by this re-seed: importing the
+ * live symbol would make this gate assert a tautology (source compared against itself) instead of
+ * a transcription that can drift and be caught.
  *
  * RE-DERIVE NOTE: a later plan renaming any token inside this literal OWNS re-deriving it from
- * `Modal.tsx:322` at that time and recording both strings in its own summary.
+ * `Button.tsx:104-106` at that time and recording both strings in its own summary.
  */
-const MODAL_ACTION_CLASS = {
+const BUTTON_VARIANT_CLASS = {
   primary: 'btn-primary',
   secondary: 'btn-secondary',
   danger: 'btn-danger',
@@ -124,21 +174,48 @@ describe('primitive merges are byte-identical across the tailwind-merge bump', (
     );
   });
 
-  it('Modal: ModalAction emits cn("btn", ACTION_CLASS[variant], className)', () => {
-    expect(cn('btn', MODAL_ACTION_CLASS.primary, 'btn-secondary w-full')).toBe(
-      'btn btn-primary btn-secondary w-full'
+  it('Modal: ModalAction emits Button, i.e. cn(buttonVariants({variant,size}), className)', () => {
+    // RE-SEEDED Phase 88.6-37 (R6). The modelled emitter moved with plan 08's swap: it is now
+    // `Button.tsx:278`'s `cn(buttonVariants({ variant, size }), className)`, with cva defaults
+    // `variant: 'primary'`, `size: 'default'` (`Button.tsx:255`; the `default` size rung is the
+    // empty string, `:103`). The caller half is unchanged from the seeded shape.
+    //   PRE  (emitter `cn('btn', ACTION_CLASS.primary, className)`, retired by plan 08):
+    //     btn btn-primary btn-secondary w-full
+    //   POST (emitter `cn(buttonVariants({variant,size}), className)`):
+    //     btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 min-h-11 btn-primary btn-secondary w-full
+    // THE DELTA IS THE POINT AND IT IS A MEASUREMENT, not a prediction: a Modal footer action
+    // now carries the WHOLE Button base — the elevation pair, the focus ring, and `min-h-11` —
+    // where it used to carry the bare `.btn`. Those are precisely the V-1 / V-2 sanctioned
+    // deltas plan 08's `DECISION Phase 88.6-08 (D-08)` marker enumerates for its 14 call sites,
+    // so this literal now measures them instead of describing a retired emitter. The two
+    // `.btn-*` classes still BOTH survive, in source order: they are project CSS classes
+    // `tailwind-merge` does not know, under either major.
+    expect(
+      cn(BUTTON_CVA_BASE, BUTTON_VARIANT_CLASS.primary, 'btn-secondary w-full')
+    ).toBe(
+      'btn shadow-theme-sm enabled-hover:shadow-theme-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 min-h-11 btn-primary btn-secondary w-full'
     );
   });
 
   it('BottomSheet: the surface class list + HEIGHT_CLASS + a caller override', () => {
+    // RE-SEEDED Phase 88.6-37 (task 3's D49-b snap). The transcribed surface literal's
+    // `shadow-lg` is now `shadow-theme-lg` — re-read from `BottomSheet.tsx:238` at this
+    // commit, not predicted.
     expect(
       cn(
-        'fixed inset-x-0 bottom-0 z-50 flex w-full flex-col overflow-hidden rounded-t-[12px] border-t border-line bg-surface-card shadow-lg',
+        'fixed inset-x-0 bottom-0 z-50 flex w-full flex-col overflow-hidden rounded-t-[12px] border-t border-line bg-surface-card shadow-theme-lg',
         HEIGHT_CLASS.content,
         'max-h-[50dvh] bg-surface-page'
       )
     ).toBe(
-      'fixed inset-x-0 bottom-0 z-50 flex w-full flex-col overflow-hidden rounded-t-[12px] border-t border-line shadow-lg max-h-[50dvh] bg-surface-page'
+      //   PRE : … border-t border-line shadow-lg max-h-[50dvh] bg-surface-page
+      //   POST: … border-t border-line shadow-theme-lg max-h-[50dvh] bg-surface-page
+      // The ONLY delta is the shadow token's spelling. Every other class, and the merged
+      // ORDER, is byte-identical — the caller's `bg-surface-page` still beats the surface's
+      // `bg-surface-card` and its `max-h-[50dvh]` still beats `HEIGHT_CLASS.content`. So
+      // `tailwind-merge` resolves the theme-tier token exactly as it resolved the alias, and
+      // this is a RE-SEED owned by the plan that made the edit, not a resolver finding.
+      'fixed inset-x-0 bottom-0 z-50 flex w-full flex-col overflow-hidden rounded-t-[12px] border-t border-line shadow-theme-lg max-h-[50dvh] bg-surface-page'
     );
   });
 
