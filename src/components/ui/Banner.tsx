@@ -104,7 +104,15 @@ const Banner = React.forwardRef<HTMLDivElement, BannerProps>(
           politeness={assertive ? 'assertive' : 'polite'}
           className="flex-1"
         >
-          {title && <span className="block font-semibold">{title}</span>}
+          {/* DECISION Phase 88.6-36 (D-03 / UI-SPEC §4.5): the title is 700, chosen OVER the
+              shipped 600 and OVER §4.5's other outcome (400 plus a colour token). This is the
+              HIERARCHY case and not the emphasis one: the title is the only thing distinguishing
+              itself from the message directly beneath it — same ink, same rung, same box — so
+              dropping to 400 would erase the distinction rather than re-carry it. 600 is a
+              prohibition outside `Button` (§4.2), and this is the last 600 in this primitive.
+              The banner BODY stays at `text-sm` (the cva base above): that rung is a ruled
+              question for the whole banner family, not this sweep's to answer. */}
+          {title && <span className="block font-bold">{title}</span>}
           {children}
         </StatusRegion>
       </div>

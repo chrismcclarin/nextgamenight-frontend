@@ -268,6 +268,121 @@ describe('FetchErrorBanner — SPEC Edge Coverage (R1)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Phase 88.6-36 task 3 — the `compact` branch's EMPTY-FIRST region (T-88.6-102, W38 class).
+//
+// WHAT THESE ARMS PROVE, and it is narrower than it looks: the COMPONENT is empty-first — its
+// compact live region is mounted, empty and `sr-only` BEFORE the failure, and the notice arrives
+// as a text CHANGE to that same node. They do NOT prove that any CONSUMER announces. Six of the
+// twelve `compact` call sites gate the banner on `showError` at the CALLER, so the whole
+// component is created by the failure and a component-level render like the one below passes
+// green at all twelve regardless. Those six are named by `file:line` in
+// `.planning/deferred/phase-88.6.md`. This is the same honesty clause the single-live-region arm
+// above already carries; it is restated here because this is the arm most likely to be cited as
+// if it closed the whole row.
+//
+// Three things are pinned, because a presence-only check stays green while React tears the region
+// down and rebuilds it — which is exactly the failure mode the fix is about:
+//   (a) POSITION  — the region is the FIRST child and a SIBLING of the visible compact wrapper,
+//                   never nested inside it, so the wrapper's own mount cannot carry it;
+//   (b) IDENTITY  — the element reference is CAPTURED before the transition and asserted to be
+//                   the SAME node afterwards (`toBe`), not merely present in both states;
+//   (c) VISIBILITY— `sr-only` in BOTH states, asserted mechanically. `StatusRegion` supplies no
+//                   default visibility (`StatusRegion.tsx:43` is `cn('text-sm', className)`), so
+//                   an unstated className would ship a visible empty node on every consumer.
+// ---------------------------------------------------------------------------
+
+/** The healthy twin of `errorState` — same shape, `showError` false. */
+const healthyState = (): FetchErrorState => ({
+  showError: false,
+  message: '',
+  code: 'unknown',
+  retry: vi.fn().mockResolvedValue(undefined),
+});
+
+describe('FetchErrorBanner — the compact branch announces (plan 88.6-36)', () => {
+  it('mounts the compact region EMPTY and sr-only before the failure, and keeps the SAME node after it', () => {
+    const { container, rerender } = render(
+      <FetchErrorBanner compact state={healthyState()} />
+    );
+
+    // (a) POSITION, healthy: exactly one live region, and it is the FIRST child of the render.
+    const before = container.querySelectorAll('[aria-live]');
+    expect(before, 'exactly one live region in the compact branch').toHaveLength(1);
+    const region = before[0] as HTMLElement;
+    expect(region, 'the region is the first rendered node, not nested in the visible wrapper')
+      .toBe(container.firstElementChild);
+
+    // EMPTY-FIRST: mounted with no text to announce.
+    expect(region.textContent).toBe('');
+    // (c) VISIBILITY, healthy.
+    expect(region).toHaveClass('sr-only');
+    expect(region).toHaveAttribute('role', 'status');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    // The VISIBLE copy has NOT moved above the guard — only the announcing node did.
+    expect(container.textContent).toBe('');
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+
+    rerender(<FetchErrorBanner compact state={errorState('boom')} />);
+
+    const after = container.querySelectorAll('[aria-live]');
+    expect(after, 'still exactly one live region — the notice is a CHANGE, not a second region')
+      .toHaveLength(1);
+    // (b) IDENTITY — the load-bearing assertion. A remount here would make the fix a no-op
+    // while every presence check above still passed. PROVEN NON-VACUOUS at plan 88.6-36's
+    // commit by planting a `key` that changes with `showError` on the region: this line is the
+    // one that reds ("the SAME DOM node carries the notice … Object.is equality"). Measured in
+    // the same sitting and recorded because the component's marker was first drafted with the
+    // opposite claim: the `if (!showError) return <StatusRegion/>` early-return shape does NOT
+    // remount — React reconciles a single-element child against the first child of an array by
+    // position — so this arm does not distinguish that refactor, and does not claim to.
+    expect(after[0], 'the SAME DOM node carries the notice').toBe(region);
+    expect(region.textContent).toBe('Some personal controls are unavailable.');
+    // (c) VISIBILITY, failed.
+    expect(region).toHaveClass('sr-only');
+    // (a) POSITION, failed: still first, and the visible wrapper is its SIBLING.
+    expect(region).toBe(container.firstElementChild);
+    const visible = container.children[1] as HTMLElement;
+    expect(visible.querySelector('[aria-live]'), 'the visible wrapper holds no live region')
+      .toBeNull();
+    expect(visible).not.toHaveAttribute('role', 'status');
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('adds no region to the FULL branch — the gate on `compact` is what keeps plan 13 green', () => {
+    // The `showError` guard covers BOTH branches, so an UNGATED hoist would put this polite
+    // region in the full branch alongside the one already composed there. That is the exact
+    // shape the arm above ("mounts exactly ONE assertive and ONE polite") goes red on; this is
+    // its positive control from the other side.
+    const { container } = render(<FetchErrorBanner state={healthyState()} />);
+    expect(container.innerHTML, 'the full branch still renders nothing while healthy').toBe('');
+  });
+
+  it('carries no weight utility on any of the three link-buttons, colour and underline intact', () => {
+    // UI-SPEC §4.5 names these three sites as the EMPHASIS case. CLASS-LEVEL on purpose: this
+    // suite is jsdom, which performs no layout and loads no stylesheet, so a computed
+    // `fontWeight` reads the UA default identically before and after the deletion and would
+    // prove nothing (the D28 rule). The rendered-weight half is a browser measurement this
+    // plan does not claim to have taken.
+    const { unmount } = render(<FetchErrorBanner compact state={errorState('boom')} />);
+    const compactRetry = screen.getByRole('button', { name: 'Retry' });
+    expect(compactRetry).not.toHaveClass('font-medium');
+    expect(compactRetry).toHaveClass('text-content-link');
+    expect(compactRetry).toHaveClass('underline');
+    unmount();
+
+    render(<FetchErrorBanner state={errorState('boom')} />);
+    for (const name of ['Try again', 'Report this']) {
+      const button = screen.getByRole('button', { name });
+      expect(button, `${name}: 500 is a §4.5 prohibition outside Button`).not.toHaveClass(
+        'font-medium'
+      );
+      expect(button, `${name}: the emphasis is the colour`).toHaveClass('text-content-link');
+      expect(button, `${name}: and the underline`).toHaveClass('underline');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Phase 88.6-14 task 2 — the INCOMPLETE-ENVELOPE arms (R9 / SPEC Edge Coverage
 // rows `empty / R9` and `encoding / R9`).
 //

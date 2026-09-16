@@ -585,9 +585,16 @@ describe('Req 11b — error is checked BEFORE empty (T-88.1-27)', () => {
     renderHome();
 
     const dialog = await openCalendarSheet(user);
+    // `getAllByText`, not `getByText` — plan 88.6-36 made `FetchErrorBanner`'s compact branch
+    // EMPTY-FIRST, so the notice now renders TWICE by design: once in the always-mounted
+    // `sr-only` polite `StatusRegion` that announces it, and once in the visible span. The
+    // duplication is the cost of announcing at all (a region created by the event it announces
+    // announces nothing — `StatusRegion.tsx:9-12`) and matches the idiom this component already
+    // shipped for "Retrying…". Both copies are asserted, so this arm still reds if EITHER the
+    // announcement or the visible copy disappears.
     expect(
-      within(dialog).getByText(/some personal controls are unavailable/i)
-    ).toBeInTheDocument();
+      within(dialog).getAllByText(/some personal controls are unavailable/i)
+    ).toHaveLength(2);
     // Same T-88.1-27 widening as the guard above — see its comment.
     expect(within(dialog).queryByText(/^no (upcoming )?events$/i)).toBeNull();
     // The identity branch is checked FIRST, so the events copy is not also shown.
@@ -922,9 +929,16 @@ describe('Phase 88.5 — the "Next game night" hero in the sheet', () => {
     renderHome();
 
     const dialog = await openCalendarSheet(user);
+    // `getAllByText`, not `getByText` — plan 88.6-36 made `FetchErrorBanner`'s compact branch
+    // EMPTY-FIRST, so the notice now renders TWICE by design: once in the always-mounted
+    // `sr-only` polite `StatusRegion` that announces it, and once in the visible span. The
+    // duplication is the cost of announcing at all (a region created by the event it announces
+    // announces nothing — `StatusRegion.tsx:9-12`) and matches the idiom this component already
+    // shipped for "Retrying…". Both copies are asserted, so this arm still reds if EITHER the
+    // announcement or the visible copy disappears.
     expect(
-      within(dialog).getByText(/some personal controls are unavailable/i)
-    ).toBeInTheDocument();
+      within(dialog).getAllByText(/some personal controls are unavailable/i)
+    ).toHaveLength(2);
     expect(within(dialog).queryByText('Next game night')).toBeNull();
   });
 

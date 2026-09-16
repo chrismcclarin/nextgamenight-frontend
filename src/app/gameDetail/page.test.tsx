@@ -1055,7 +1055,19 @@ describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-
     expect(chip.className).toContain('text-content-status-success');
     // EXACTLY ONE live region in the settled subtree: the always-mounted sr-only
     // StatusRegion. `88.6-UI-SPEC.md:571-573`.
-    const regions = document.querySelectorAll('[aria-live]');
+    //
+    // SCOPE CORRECTED by plan 88.6-36 task 3 (2026-09-16): this queried `document`, i.e. the
+    // WHOLE PAGE, while its own comment says "in the settled subtree" — the two disagreed and
+    // nothing surfaced it until a second legitimate region appeared elsewhere on the page.
+    // `FetchErrorBanner`'s compact branch is now EMPTY-FIRST, so its `sr-only` polite region is
+    // mounted on this page unconditionally (gameDetail is one of the six call sites that fix
+    // closes), and a page-wide count of 1 became a count of 2. The ASSERTION'S INTENT is
+    // unchanged and is now actually enforced where it claims to be: the GuestInvite region is
+    // this chip's own sibling (`gameDetail/page.js:294-306` returns the two inside one
+    // fragment), so scoping to the chip's parent is the subtree the comment always meant. A
+    // page-wide count here would also have gone red for any unrelated surface adding a region,
+    // which is the wrong gate to hand the next executor.
+    const regions = chip.parentElement!.querySelectorAll('[aria-live]');
     expect(regions).toHaveLength(1);
     expect(regions[0].className).toContain('sr-only');
   });

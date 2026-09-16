@@ -2551,12 +2551,14 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       'FLOORED at 5, not pending. Four are the armed-state 600s on this file\'s two-tap destructive gates (see ARMED_STATE_600_ROSTER) and the fifth is the invisible armed-label sizer span in the collection Remove control, whose 600 is a width MEASUREMENT of the armed label rather than emphasis — see the `DECISION Phase 88.6-17` marker at that site. The other 30 were converted by plan 88.6-17: emphasis sites to 400 plus a colour token, form labels and matrix header cells to the Label rung\'s 400, the theme toggles\' 600 deleted as dead on a `.btn`, and the TCPA disclosure dispositioned span by span.',
     owner: { kind: 'decision', marker: 'DECISION Phase 88.6-17' },
   },
-  'components/ui/Banner.tsx': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-11, 88.6-13, 88.6-15, 88.6-19, 88.6-20, 88.6-32, 88.6-34, 88.6-36.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-36 task 3 (wave 7, 2026-09-16): `components/ui/Banner.tsx` carried
+  // `sites: 1` — the `font-semibold` on the optional title span. Resolved to §4.5's HIERARCHY
+  // outcome (600 -> 700) and NOT to the emphasis one, because the title is the only thing
+  // distinguishing itself from the message directly beneath it: same ink, same rung, same box,
+  // so 400 would erase the distinction rather than re-carry it with a colour. This was the last
+  // 600 in the primitive. The file's `text-sm` cva BASE is untouched — the banner-family body
+  // rung is a separate ruled question (plans 17/19/26/34 all left it) and is not this sweep's to
+  // answer. Entry DELETED, not zeroed; the roster is exact in both directions.
   // DELETED by plan 88.6-36 task 2 (wave 7, 2026-09-16): `components/ui/ErrorFallback.tsx`
   // carried `sites: 2` — the `font-medium` on the Try-again and Reload-page affordances. Both
   // are now 400 and both KEEP `text-sm`, the §4.1 control-label rung.
@@ -2573,12 +2575,16 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // already covers it — no new V-number minted. Converging these onto `Button` remains D-20's
   // recorded rejected cleanup and this sweep did not reopen it.
   // Entry DELETED rather than zeroed; the roster is exact in both directions.
-  'components/ui/FetchErrorBanner.tsx': {
-    sites: 3,
-    why:
-      '3 off-scale weight sites (3 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-11, 88.6-13, 88.6-15, 88.6-19, 88.6-20, 88.6-34, 88.6-36.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-36 task 3 (wave 7, 2026-09-16): `components/ui/FetchErrorBanner.tsx`
+  // carried `sites: 3` — the three link-buttons (the compact branch's `Retry`, and the full
+  // branch's `Try again` and `Report this`). All three are §4.5's EMPHASIS case, named by that
+  // section EXPLICITLY and by file: each already carried `text-content-link underline`, both of
+  // which stay, so the 500 deleted with no look delta. The entry's outcome lead was CORRECT here
+  // (unlike `ErrorFallback.tsx`'s, corrected above) and is recorded as confirmed rather than
+  // assumed. The COMPUTED rendered weight was NOT measured and no assertion claims it was: this
+  // suite and the component's own are jsdom, which performs no layout and loads no stylesheet, so
+  // a before/after `getComputedStyle().fontWeight` reads the UA default both times (the D28 rule).
+  // The pins are class-level, in `useFetchErrorState.test.tsx`. Entry DELETED, not zeroed.
   'components/ui/UserChip.tsx': {
     sites: 1,
     why:

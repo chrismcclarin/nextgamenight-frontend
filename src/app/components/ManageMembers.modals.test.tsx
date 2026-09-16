@@ -265,6 +265,31 @@ describe('ManageMembers + FriendInvitePanel stacked open (BLK-88-12-01)', () => 
     expect(panel).not.toHaveAttribute('aria-hidden', 'true');
 
     // ...and the parent is inerted rather than competing for focus.
-    await waitFor(() => expect(parent).toHaveAttribute('aria-hidden', 'true'));
+    //
+    // ASSERTION RESHAPED by plan 88.6-36 task 3 (2026-09-16), because the attribute it used to
+    // read moved for a GOOD reason and the property it exists to protect did not.
+    // WAS: `expect(parent).toHaveAttribute('aria-hidden', 'true')`.
+    // WHY IT MOVED: this modal renders a `compact` `FetchErrorBanner`, whose live region plan
+    // 88.6-36 made EMPTY-FIRST — so the parent subtree now always contains an `aria-live` node.
+    // The `aria-hidden` package Radix uses deliberately does NOT hide an ancestor of a live
+    // region (hiding it would silence announcements the user still needs); instead it descends
+    // and hides every sibling subtree that does not contain one. Measured in this very run: the
+    // parent dialog carries no `aria-hidden`, while its header, its button row and every other
+    // child of its body carry `aria-hidden="true"` / `data-aria-hidden="true"`.
+    // WHAT IS ASSERTED NOW: the thing the comment above always meant — not one focusable control
+    // in the parent is still exposed to the a11y tree. That is STRICTLY STRONGER than the
+    // attribute check (which would have passed over an exposed control inside a hidden ancestor's
+    // sibling) and it survives the library changing where it puts the attribute. The Radix panel
+    // is PORTALLED to `document.body`, so it is not a descendant of `parent` and its own Send
+    // button is not swept up here — the `findByRole` above already proved the panel stays live.
+    await waitFor(() => {
+      const stillExposed = Array.from(
+        parent.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea')
+      ).filter((el) => el.closest('[aria-hidden="true"]') === null);
+      expect(
+        stillExposed.map((el) => el.outerHTML.slice(0, 120)),
+        'every focusable control in the parent modal must be inerted while the panel is open'
+      ).toEqual([]);
+    });
   });
 });
