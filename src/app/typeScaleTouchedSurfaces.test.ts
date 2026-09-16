@@ -1541,16 +1541,22 @@ const ARBITRARY_SIZE_ROSTER: ExemptionRoster = {
       '2 arbitrary size values (text-[10px]@40, text-[10px]@63), 2 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
   },
-  'app/gameDetail/page.js': {
-    sites: 10,
-    why:
-      '10 arbitrary size values (text-[10px]@51, text-[10px]@58, text-[10px]@109, text-[10px]@112, text-[10px]@116, text-[10px]@1914, text-[10px]@1926, text-[10px]@1931, text-[10px]@1934, text-[10px]@1944), 10 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
-  },
+  // `app/gameDetail/page.js` CLOSED by plan 88.6-18 task 3 (wave 7, 2026-09-16): all TEN
+  // `text-[10px]` sites folded UP to `text-xs` (12), D-01's own fold target. Every one of them
+  // is a badge or pill label — an ENUMERATED caption role in §4.2 — so 12 is their destination
+  // and not a way-station. Entry DELETED rather than zeroed; the roster is exact in both
+  // directions. Reflow at 375px was MEASURED rather than assumed — see 88.6-18-SUMMARY.md.
 };
 
-/** The sub-12px SUBSET — D-01's actual fold target, asserted so it shrinks visibly. */
-const EXPECTED_SUB_FLOOR_SITES = 30;
+/**
+ * The sub-12px SUBSET — D-01's actual fold target, asserted so it shrinks visibly.
+ *
+ * 30 -> 20, plan 88.6-18 task 3 (wave 7, 2026-09-16): `app/gameDetail/page.js`'s TEN
+ * `text-[10px]` badge and pill labels folded up onto the caption rung in one commit, and its
+ * roster entry was deleted with them. This is an EXACT equality, not a floor, so the shrink is
+ * a deliberate edit in the same commit as the fold — which is the point.
+ */
+const EXPECTED_SUB_FLOOR_SITES = 20;
 
 /** Negative control for the strip on THIS file-level scan. */
 const FIXTURE_ARBITRARY_COMMENTS = `
@@ -2096,14 +2102,17 @@ const WEIGHT_ROSTER: ExemptionRoster = {
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
   'app/gameDetail/page.js': {
-    // 48 -> 45, plan 88.6-18 task 2 (2026-09-16): the three weights that left are the
-    // `font-semibold` on the migrated headings (700 now comes from the `Heading` base) and the
-    // `font-semibold`/`font-medium` that were DEAD on the migrated `.btn` controls. Task 3 of
-    // the same plan drives the remainder down; this is the measured value at the end of task 2,
-    // not a projection.
-    sites: 45,
+    // 48 -> 45 (task 2) -> 1 (task 3), plan 88.6-18, wave 7, 2026-09-16. The ONE survivor is
+    // the ARMED-STATE 600 on the two-tap Remove control, which UI-SPEC §4.5 rules STAYS:
+    // "Armed-state 600 on two-tap buttons — STAYS, Button-owned". It is the same carve-out
+    // plan 88.6-17 kept five of on `userProfile/page.js`, and it is a named exception rather
+    // than a licence for 600 anywhere else in this file. Everything else resolved to 700
+    // (hierarchy) or 400 (emphasis + a colour token, or dead on a `.btn`) — every call is
+    // enumerated in `88.6-18-SUMMARY.md`, including the two breadcrumb current-page spans that
+    // KEPT 700 and GAINED `aria-current="page"` under R2 #171 (T-88.6-138).
+    sites: 1,
     why:
-      '45 off-scale weight sites. UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; emphasis (400 + a colour token); dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-05, 88.6-09, 88.6-12, 88.6-13, 88.6-16, 88.6-18, 88.6-29, 88.6-30, 88.6-33, 88.6-43, 88.6-45, 88.6-46.',
+      '1 off-scale weight site: the armed-state 600 on the two-tap participant Remove. UI-SPEC §4.5 rules this family Button-owned and it STAYS. Owning plans: 88.6-18 (swept), 88.6-46 (closeout).',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
   'app/groupHomePage/page.js': {

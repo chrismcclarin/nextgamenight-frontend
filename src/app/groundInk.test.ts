@@ -195,11 +195,17 @@ const OFFENDERS: ExemptionRoster = {
     why: 'text-content-link (3.9909) at :748, the known-live pairing tokenContrast.test.ts test 49 names in its REACH prose. D-16 census site. Closed by plan 19, which must decrement this entry in the same commit.',
     owner: D16,
   },
-  'app/gameDetail/page.js': {
-    sites: 5,
-    why: 'Five distinct ink sites on a muted ground: :1330 and :2753 are the two D-16 census sites (text-content-link, 3.9909); :51 is the D-15 same-chunk "No reply" badge (text-content-muted, 4.3725); :1311 and :1345 are NEWLY MEASURED by this scan (text-content-muted under the certain participation-chip ground at :1308) and are in no census. All five are owned by plan 18, which must shrink this entry as it closes them.',
-    owner: D16,
-  },
+  // `app/gameDetail/page.js` CLOSED by plan 88.6-18 task 3 (wave 7, 2026-09-16). All FIVE
+  // closed in one commit:
+  //   - the two D-16 census BADGES ("New Player", "You") took `text-content-accent` (4.7121),
+  //     not `text-content-secondary` — D-16 distinguishes badges from its four other sites on
+  //     exactly that basis;
+  //   - the D-15 "No reply" badge and the two sites this scan NEWLY MEASURED (the "(Guest)"
+  //     suffix and the `#placement` counter, both `text-content-muted` under the
+  //     participation-chip ground) took `text-content-secondary` (6.9620).
+  // The two newly-measured sites were in NO census — they existed only because this walk
+  // reported them, which is the whole argument for a measuring gate over a prose list.
+  // Entry DELETED rather than zeroed; the roster is exact in both directions.
   // `app/userProfile/page.js` CLOSED by plan 88.6-17 task 3 (wave 7, 2026-09-16): the
   // import-progress banner's `text-content-link` on `bg-surface-muted` (3.9909, below AA) is now
   // `text-content-secondary` (6.9620). It was never a link — zero of the 61 `text-content-link`
@@ -351,18 +357,21 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // opposite of what this assertion is for. The title is now written in terms of the OPEN set
     // so it does not go stale again with the next closure. The count is held below rather than
     // in prose, so shrinking the list is a visible, deliberate edit.
+    // AMENDED AGAIN Phase 88.6-18 (2026-09-16): 4 -> 2. Both `app/gameDetail/page.js` rows left
+    // with their fix — the two badges now carry `text-content-accent`. The entries are keyed by
+    // `file:line` and that file moved several hundred lines in the same plan, which is a second
+    // reason a fixed row must LEAVE rather than be re-numbered.
     const byName: [string, string][] = [
       ['app/friends/page.js:748', 'text-content-link'],
-      ['app/gameDetail/page.js:1330', 'text-content-link'],
-      ['app/gameDetail/page.js:2753', 'text-content-link'],
       ['app/components/CalendarMonthView.js:788', 'text-content-link'],
     ];
     expect(
       byName.length,
-      'the open D-16 by-name set: 5 at plan 88.6-09, 4 since plan 88.6-17 closed userProfile. ' +
+      'the open D-16 by-name set: 5 at plan 88.6-09, 4 since plan 88.6-17 closed userProfile, ' +
+        '2 since plan 88.6-18 closed both gameDetail badges. ' +
         'Shrink this number in the SAME commit that closes a site, and never grow it without a ' +
         'roster entry to match',
-    ).toBe(4);
+    ).toBe(2);
     const missing = byName.filter(
       ([site, ink]) => !FORBIDDEN_ON_MUTED.some((r) => siteOf(r) === site && r.inkToken === ink),
     );
@@ -427,8 +436,7 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     const debt = new Set([
       ...REAL.map(siteOf),
       'app/friends/page.js:748',
-      'app/gameDetail/page.js:1330',
-      'app/gameDetail/page.js:2753',
+      // The two `app/gameDetail/page.js` rows left this set with their fix (plan 88.6-18).
       'app/components/CalendarMonthView.js:788',
       'app/components/SuggestionCard.js:92',
       'app/components/SuggestionCard.js:116',

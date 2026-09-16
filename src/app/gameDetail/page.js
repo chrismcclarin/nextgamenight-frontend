@@ -46,18 +46,26 @@ function RsvpStatusPill({ status }) {
     const map = {
         yes: { label: 'Going', cls: 'bg-status-success-subtle text-content-status-success' },
         maybe: { label: 'Maybe', cls: 'bg-status-warning-subtle text-content-status-warning' },
-        no: { label: 'No', cls: 'bg-surface-muted text-content-muted' },
+        // D-15 (88.6-18): `text-content-muted` on `bg-surface-muted` measures 4.3725, below AA.
+        // `text-content-secondary` measures 6.9620 on the same ground.
+        no: { label: 'No', cls: 'bg-surface-muted text-content-secondary' },
     };
+    /* `whitespace-nowrap` below is a D-01 FOLD MITIGATION, not decoration. MEASURED in Chromium
+       at 375px over the compiled stylesheet: at 10px "NO REPLY" fitted one line inside the
+       width-capped chip; folded up to 12px it wrapped mid-phrase and took the chip from 27.33px
+       to 46px tall. D-01 names a 375px screenshot check as a GATE on this fold, and this is what
+       that gate found. The two-word badges — this one and "New Player" — are the only ones that
+       can wrap; every other badge on this surface is a single word. */
     if (!status) {
         return (
-            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-sm bg-surface-muted text-content-muted">
+            <span className="text-xs whitespace-nowrap uppercase tracking-wide px-1.5 py-0.5 rounded-sm bg-surface-muted text-content-secondary">
                 No reply
             </span>
         );
     }
     const m = map[status] || map.no;
     return (
-        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-sm ${m.cls}`}>
+        <span className={`text-xs uppercase tracking-wide px-1.5 py-0.5 rounded-sm ${m.cls}`}>
             {m.label}
         </span>
     );
@@ -98,8 +106,8 @@ function canInviteGuest(participant, viewerRole) {
 function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScope, canInvite, groupId }) {
     const isCustom = !!participant.is_custom;
     return (
-        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line bg-surface-card text-xs max-w-full">
-            <span className="font-medium text-content-primary truncate">
+        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line bg-surface-card text-sm max-w-full">
+            <span className="text-content-primary truncate">
                 {isCustom ? (
                     <>{participant.username || 'Guest'}<span className="text-content-muted ml-1">(Guest)</span></>
                 ) : (
@@ -108,14 +116,14 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
             </span>
             <RsvpStatusPill status={rsvpStatus} />
             {role === 'owner' && (
-                <span className="text-[10px] uppercase tracking-wide bg-purple-100 text-purple-700 px-1 rounded-sm font-semibold">Owner</span>
+                <span className="text-xs uppercase tracking-wide bg-purple-100 text-purple-700 px-1 rounded-sm font-bold">Owner</span>
             )}
             {role === 'admin' && (
-                <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 px-1 rounded-sm font-semibold">Admin</span>
+                <span className="text-xs uppercase tracking-wide bg-blue-100 text-blue-700 px-1 rounded-sm font-bold">Admin</span>
             )}
             {participant.is_guest && viewerScope === 'group-member' && (
                 <span
-                    className="text-[10px] uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50 px-1 py-0.5"
+                    className="text-xs uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50 px-1 py-0.5"
                     title="Joined via game-invite QR (not a group member)"
                 >
                     Guest
@@ -288,7 +296,7 @@ function GuestInviteButton({ groupId, userId }) {
             <>
             <StatusRegion className="sr-only" message={outcomeMessage} />
             <span
-                className={`inline-flex min-h-11 items-center text-xs px-2 py-1 rounded-sm border border-line transition-colors ${branchInk}`}
+                className={`inline-flex min-h-11 items-center text-sm px-2 py-1 rounded-sm border border-line transition-colors ${branchInk}`}
                 title={title}
             >
                 {status === 'sent' && 'Invite sent!'}
@@ -1349,7 +1357,7 @@ export default function GameDetailPage() {
                                 <div className="flex items-start justify-between gap-4 mb-2">
                                     <div className="flex-1">
                                         <div className="flex items-center gap-3 mb-2">
-                                            <p className="font-semibold text-content-primary">
+                                            <p className="font-bold text-content-primary">
                                                 {formatDate(event.start_date, timezone)}
                                             </p>
                                             {event.duration_minutes && (
@@ -1358,13 +1366,17 @@ export default function GameDetailPage() {
                                                 </span>
                                             )}
                                         </div>
+                                        {/* D-03 / R2 #171: the Group-Win line below goes 600 -> 400.
+                                            The weight was not the differentiator here — the ✓ glyph
+                                            is a NON-COLOUR cue and it stays, beside the success
+                                            colour token. */}
                                         {event.is_group_win ? (
-                                            <p className="text-sm text-content-status-success font-semibold mb-1">
+                                            <p className="text-sm text-content-status-success mb-1">
                                                 ✓ Group Win
                                             </p>
                                         ) : event.Winner && (
                                             <p className="text-sm text-content-secondary mb-1">
-                                                Winner: <span className="font-semibold text-content-link">
+                                                Winner: <span className="text-content-link">
                                                     {event.Winner.is_custom ? (
                                                         <>{event.Winner.username || event.Winner.name || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
                                                     ) : (
@@ -1444,14 +1456,14 @@ export default function GameDetailPage() {
                                 </div>
                                 {event.EventParticipations && event.EventParticipations.length > 0 && (
                                     <div className="text-sm mt-3 pt-2 border-t border-line">
-                                        <p className="font-semibold mb-2 text-content-primary">Participants:</p>
+                                        <p className="font-bold mb-2 text-content-primary">Participants:</p>
                                         <div className="space-y-2">
                                             {event.EventParticipations.map((participation, idx) => (
                                                 <div key={idx} className="flex items-center gap-2 flex-wrap">
                                                     <span className="bg-surface-muted text-content-primary px-3 py-1 rounded-sm border border-line inline-flex items-center gap-2">
-                                                        <span className="font-medium">
+                                                        <span>
                                                             {participation.is_custom ? (
-                                                                <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
+                                                                <>{participation.User?.username || participation.username || 'Unknown'}<span className="text-xs text-content-secondary ml-1">(Guest)</span></>
                                                             ) : (
                                                                 // Phase 87.3-06: SANCTIONED flat read. Past-events participation
                                                                 // rows come through formatEventWithCustomParticipants (events.js),
@@ -1465,12 +1477,17 @@ export default function GameDetailPage() {
                                                             )}
                                                         </span>
                                                         {participation.is_guest && (
-                                                            <span className="text-xs bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded-full font-medium">
+                                                            <span className="text-xs bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded-full font-bold">
                                                                 Guest
                                                             </span>
                                                         )}
+                                                        {/* D-16 (88.6-18): `text-content-link` on `bg-surface-muted`
+                                                            measures 3.9909, below AA. As a BADGE the "New Player" chip
+                                                            below takes `text-content-accent` (4.7121) rather than
+                                                            `text-content-secondary` — D-16 distinguishes the two badges
+                                                            from its four other sites on exactly that basis. */}
                                                         {participation.is_new_player && (
-                                                            <span className="text-xs bg-surface-muted text-content-link px-1.5 py-0.5 rounded-sm font-semibold">
+                                                            <span className="text-xs whitespace-nowrap bg-surface-muted text-content-accent px-1.5 py-0.5 rounded-sm font-bold">
                                                                 New Player
                                                             </span>
                                                         )}
@@ -1480,12 +1497,12 @@ export default function GameDetailPage() {
                                                             </span>
                                                         )}
                                                         {participation.score !== null && (
-                                                            <span className="text-xs font-semibold text-content-secondary">
+                                                            <span className="text-xs text-content-secondary">
                                                                 Score: {participation.score}
                                                             </span>
                                                         )}
                                                         {participation.placement && (
-                                                            <span className="text-xs text-content-muted">
+                                                            <span className="text-xs text-content-secondary">
                                                                 #{participation.placement}
                                                             </span>
                                                         )}
@@ -1579,7 +1596,7 @@ export default function GameDetailPage() {
                actually renders, so it is the one the padding-budget e2e loads. */
             <div className="p-3 md:p-6 max-w-6xl mx-auto">
                 <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
-                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
+                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors">Home</Link>
                     {effectiveGroupId && singleEvent?.Group?.name && (
                         /* Phase 71.1-02 Blocker 2 fix: only render the group
                            segment when we actually have a group name. The
@@ -1593,7 +1610,7 @@ export default function GameDetailPage() {
                         <>
                             <span className="text-content-muted mx-2">{'>'}</span>
                             {(userScope === 'group-member' || userScope === 'pending') ? (
-                                <Link href={`/groupHomePage?id=${effectiveGroupId}`} className="text-content-link hover:text-content-link-hover transition-colors font-medium">
+                                <Link href={`/groupHomePage?id=${effectiveGroupId}`} className="text-content-link hover:text-content-link-hover transition-colors">
                                     {singleEvent.Group.name}
                                 </Link>
                             ) : (
@@ -1602,14 +1619,18 @@ export default function GameDetailPage() {
                                    name is shown as context but is not a link — they
                                    can't navigate to a group page they don't belong
                                    to." */
-                                <span className="text-content-secondary font-medium">
+                                <span className="text-content-secondary">
                                     Game night with {singleEvent.Group.name}
                                 </span>
                             )}
                         </>
                     )}
                     <span className="text-content-muted mx-2">{'>'}</span>
-                    <span className="text-content-primary font-semibold">{singleEvent.title || 'Game Night'}</span>
+                    {/* D-03 / R2 #171 (T-88.6-138, same shape as plan 17's breadcrumb): the
+                        weight was the ONLY thing marking the current page, so 700 is KEPT as the
+                        hierarchy outcome AND the distinction gains a PROGRAMMATIC cue. Without
+                        `aria-current` this would have been a visual-weight-only signal. */}
+                    <span aria-current="page" className="text-content-primary font-bold">{singleEvent.title || 'Game Night'}</span>
                 </nav>
 
                 {/* Phase 62-02: nudge banner so users without a profile TZ
@@ -1864,7 +1885,7 @@ export default function GameDetailPage() {
                             <button
                                 type="button"
                                 onClick={() => setShowAllParticipants(true)}
-                                className="mt-3 text-sm text-content-link hover:text-content-link-hover font-medium"
+                                className="mt-3 text-sm text-content-link hover:text-content-link-hover"
                             >
                                 See all ({participants.length}) →
                             </button>
@@ -2067,7 +2088,7 @@ export default function GameDetailPage() {
                                         name like text; the name wraps IN FULL — display never
                                         truncates a person's name (fork 2's agreed direction). */}
                                     <div className="min-w-0 flex-1 basis-48 space-x-1.5 break-words">
-                                        <span className="font-medium text-content-primary">
+                                        <span className="text-content-primary">
                                             {p.is_custom ? (
                                                 <>{p.username || 'Guest'}<span className="text-xs text-content-muted ml-1">(Guest)</span></>
                                             ) : isSelfRow ? (
@@ -2099,7 +2120,7 @@ export default function GameDetailPage() {
                                             // (Owner=purple, Admin=blue) while staying distinguishable from
                                             // Owner's purple. Self is a viewer-perspective indicator, not a
                                             // role, but the visual family is the closest existing pattern.
-                                            <span className="align-middle text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-semibold">
+                                            <span className="align-middle text-xs uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-bold">
                                                 You
                                             </span>
                                         )}
@@ -2111,15 +2132,15 @@ export default function GameDetailPage() {
                                             // through ClickableMemberName above. Emerald color echoes the
                                             // text-status-success used by that mobile inline indicator for
                                             // visual continuity across viewports.
-                                            <span className="hidden md:inline-flex items-center align-middle text-[10px] uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-semibold">
+                                            <span className="hidden md:inline-flex items-center align-middle text-xs uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-bold">
                                                 Friend
                                             </span>
                                         )}
                                         {role === 'owner' && (
-                                            <span className="align-middle text-[10px] uppercase tracking-wide bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm font-semibold">Owner</span>
+                                            <span className="align-middle text-xs uppercase tracking-wide bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm font-bold">Owner</span>
                                         )}
                                         {role === 'admin' && (
-                                            <span className="align-middle text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-semibold">Admin</span>
+                                            <span className="align-middle text-xs uppercase tracking-wide bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-bold">Admin</span>
                                         )}
                                         {/* Phase 71.1 GAMP-12: render Guest badge for is_guest=true rows
                                             when viewer is a full group member. Skips render for game-only
@@ -2129,7 +2150,7 @@ export default function GameDetailPage() {
                                             can decide who to onboard via admin-initiated invite. */}
                                         {p.is_guest && userScope === 'group-member' && (
                                             <span
-                                                className="inline-flex items-center align-middle px-1.5 py-0.5 text-[10px] uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
+                                                className="inline-flex items-center align-middle px-1.5 py-0.5 text-xs uppercase tracking-wide rounded-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50"
                                                 title="Joined via game-invite QR (not a group member)"
                                             >
                                                 Guest
@@ -2362,7 +2383,7 @@ export default function GameDetailPage() {
         <div className="p-3 md:p-6 max-w-6xl mx-auto">
             {/* Breadcrumbs */}
             <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
-                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
+                <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors">Home</Link>
                 {group_id && (
                     <>
                         <span className="text-content-muted mx-2">{'>'}</span>
@@ -2371,7 +2392,7 @@ export default function GameDetailPage() {
                                see the link with the group name (or generic "Group"
                                while loading — graceful, not load-bearing for the
                                game-only flow). */
-                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors font-medium">
+                            <Link href={`/groupHomePage?id=${group_id}`} className="text-content-link hover:text-content-link-hover transition-colors">
                                 {singleEvent?.Group?.name || 'Group'}
                             </Link>
                         ) : singleEvent?.Group?.name ? (
@@ -2379,14 +2400,17 @@ export default function GameDetailPage() {
                                static-text breadcrumb only when we have an actual
                                group name. Suppress the literal "group" word
                                fallback to avoid "Game night with group" UI. */
-                            <span className="text-content-secondary font-medium">
+                            <span className="text-content-secondary">
                                 Game night with {singleEvent.Group.name}
                             </span>
                         ) : null}
                     </>
                 )}
                 <span className="text-content-muted mx-2">{'>'}</span>
-                <span className="text-content-primary font-semibold">{game.name}</span>
+                {/* D-03 / R2 #171 (T-88.6-138): the current-page twin of the single-event
+                    breadcrumb above — 700 kept as hierarchy, `aria-current` added so the
+                    distinction is not weight-only. */}
+                <span aria-current="page" className="text-content-primary font-bold">{game.name}</span>
             </nav>
 
             {/* Game Details */}
@@ -2449,7 +2473,7 @@ export default function GameDetailPage() {
                                 }}
                                 aria-expanded={false}
                                 aria-controls="game-title"
-                                className="md:hidden sr-only focus-visible:not-sr-only text-sm text-content-link font-medium"
+                                className="md:hidden sr-only focus-visible:not-sr-only text-sm text-content-link"
                             >
                                 Show full title
                             </button>
@@ -2518,7 +2542,7 @@ export default function GameDetailPage() {
                                     }}
                                     aria-expanded={false}
                                     aria-controls="game-title"
-                                    className="md:hidden sr-only focus-visible:not-sr-only text-sm text-content-link font-medium"
+                                    className="md:hidden sr-only focus-visible:not-sr-only text-sm text-content-link"
                                 >
                                     Show full title
                                 </button>
@@ -2557,7 +2581,7 @@ export default function GameDetailPage() {
                                             onClick={() => setDescExpanded((v) => !v)}
                                             aria-expanded={descExpanded}
                                             aria-controls="game-description"
-                                            className="md:hidden mt-1 text-sm text-content-link hover:text-content-link-hover font-medium"
+                                            className="md:hidden mt-1 text-sm text-content-link hover:text-content-link-hover"
                                         >
                                             {descExpanded ? 'Show Less' : 'Show More'}
                                         </button>
@@ -2700,7 +2724,7 @@ export default function GameDetailPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {/* Date Range */}
                         <div>
-                            <label htmlFor="session-filter-date-from" className="block text-xs font-medium text-content-secondary mb-1">From Date</label>
+                            <label htmlFor="session-filter-date-from" className="block text-sm text-content-secondary mb-1">From Date</label>
                             <Input
                                 id="session-filter-date-from"
                                 type="date"
@@ -2709,7 +2733,7 @@ export default function GameDetailPage() {
                             />
                         </div>
                         <div>
-                            <label htmlFor="session-filter-date-to" className="block text-xs font-medium text-content-secondary mb-1">To Date</label>
+                            <label htmlFor="session-filter-date-to" className="block text-sm text-content-secondary mb-1">To Date</label>
                             <Input
                                 id="session-filter-date-to"
                                 type="date"
@@ -2720,7 +2744,7 @@ export default function GameDetailPage() {
 
                         {/* Player Filters */}
                         <div>
-                            <label htmlFor="session-filter-player-won" className="block text-xs font-medium text-content-secondary mb-1">Player Won</label>
+                            <label htmlFor="session-filter-player-won" className="block text-sm text-content-secondary mb-1">Player Won</label>
                             <Input
                                 id="session-filter-player-won"
                                 type="text"
@@ -2730,7 +2754,7 @@ export default function GameDetailPage() {
                             />
                         </div>
                         <div>
-                            <label htmlFor="session-filter-player-picked" className="block text-xs font-medium text-content-secondary mb-1">Player Picked</label>
+                            <label htmlFor="session-filter-player-picked" className="block text-sm text-content-secondary mb-1">Player Picked</label>
                             <Input
                                 id="session-filter-player-picked"
                                 type="text"
@@ -2740,7 +2764,7 @@ export default function GameDetailPage() {
                             />
                         </div>
                         <div>
-                            <label htmlFor="session-filter-player-participated" className="block text-xs font-medium text-content-secondary mb-1">Player Participated</label>
+                            <label htmlFor="session-filter-player-participated" className="block text-sm text-content-secondary mb-1">Player Participated</label>
                             <Input
                                 id="session-filter-player-participated"
                                 type="text"
@@ -2752,7 +2776,7 @@ export default function GameDetailPage() {
 
                         {/* Duration Filters */}
                         <div>
-                            <label htmlFor="session-filter-min-duration" className="block text-xs font-medium text-content-secondary mb-1">Min Duration (min)</label>
+                            <label htmlFor="session-filter-min-duration" className="block text-sm text-content-secondary mb-1">Min Duration (min)</label>
                             <Input
                                 id="session-filter-min-duration"
                                 type="number"
@@ -2762,7 +2786,7 @@ export default function GameDetailPage() {
                             />
                         </div>
                         <div>
-                            <label htmlFor="session-filter-max-duration" className="block text-xs font-medium text-content-secondary mb-1">Max Duration (min)</label>
+                            <label htmlFor="session-filter-max-duration" className="block text-sm text-content-secondary mb-1">Max Duration (min)</label>
                             <Input
                                 id="session-filter-max-duration"
                                 type="number"
@@ -2774,7 +2798,7 @@ export default function GameDetailPage() {
 
                         {/* Player Count */}
                         <div>
-                            <label htmlFor="session-filter-min-players" className="block text-xs font-medium text-content-secondary mb-1">Min Players</label>
+                            <label htmlFor="session-filter-min-players" className="block text-sm text-content-secondary mb-1">Min Players</label>
                             <Input
                                 id="session-filter-min-players"
                                 type="number"
@@ -2786,7 +2810,7 @@ export default function GameDetailPage() {
 
                         {/* Max Score */}
                         <div>
-                            <label htmlFor="session-filter-min-score" className="block text-xs font-medium text-content-secondary mb-1">Min Score</label>
+                            <label htmlFor="session-filter-min-score" className="block text-sm text-content-secondary mb-1">Min Score</label>
                             <Input
                                 id="session-filter-min-score"
                                 type="number"
@@ -2799,7 +2823,7 @@ export default function GameDetailPage() {
 
                         {/* Sort By */}
                         <div>
-                            <label htmlFor="session-filter-sort-by" className="block text-xs font-medium text-content-secondary mb-1">Sort By</label>
+                            <label htmlFor="session-filter-sort-by" className="block text-sm text-content-secondary mb-1">Sort By</label>
                             <SelectControl
                                 id="session-filter-sort-by"
                                 value={filters.sortBy}
@@ -2922,7 +2946,7 @@ export default function GameDetailPage() {
                     <div className="border-l-4 border-btn-primary pl-4 py-2 mb-4 relative">
                         <div className="flex justify-between items-start mb-2">
                             <div>
-                                <p className="font-semibold text-content-primary">
+                                <p className="font-bold text-content-primary">
                                     {userReview.User?.id ? (
                                         <ClickableMemberName userId={userReview.User.id} username={userReview.User.username || 'You'} />
                                     ) : (
@@ -2938,7 +2962,7 @@ export default function GameDetailPage() {
                                     {renderStars(userReview.rating)}
                                 </p>
                                 {userReview.is_recommended && (
-                                    <p className="text-sm text-content-status-success font-semibold">✓ Recommended</p>
+                                    <p className="text-sm text-content-status-success">✓ Recommended</p>
                                 )}
                                 <button
                                     onClick={() => setShowReviewForm(true)}
@@ -2970,7 +2994,7 @@ export default function GameDetailPage() {
                                         <div className="flex justify-between items-start mb-2">
                                             <div>
                                                 <div className="flex items-center gap-2">
-                                                    <p className="font-semibold text-content-primary">
+                                                    <p className="font-bold text-content-primary">
                                                         {review.User?.id ? (
                                                             <ClickableMemberName userId={review.User.id} username={review.User.username || 'Unknown'} />
                                                         ) : (
@@ -2978,7 +3002,7 @@ export default function GameDetailPage() {
                                                         )}
                                                     </p>
                                                     {isUserReview && (
-                                                        <span className="text-xs bg-surface-muted text-content-link px-2 py-1 rounded-sm">
+                                                        <span className="text-xs bg-surface-muted text-content-accent px-2 py-1 rounded-sm">
                                                             You
                                                         </span>
                                                     )}
@@ -2992,7 +3016,7 @@ export default function GameDetailPage() {
                                                     {renderStars(review.rating)}
                                                 </p>
                                                 {review.is_recommended && (
-                                                    <p className="text-sm text-content-status-success font-semibold">✓ Recommended</p>
+                                                    <p className="text-sm text-content-status-success">✓ Recommended</p>
                                                 )}
                                             </div>
                                         </div>
@@ -3044,7 +3068,7 @@ export default function GameDetailPage() {
                                 missing. Left as a <label> it is an orphan that axe reports and
                                 that a reader "fixes" by wiring it to the wrong element.
                                 Turning this back into a <label> is a decision, not a cleanup. */}
-                            <span className="block text-sm font-medium text-content-primary mb-1">
+                            <span className="block text-sm text-content-primary mb-1">
                                 Rating
                             </span>
                             <StarRatingPicker
@@ -3054,7 +3078,7 @@ export default function GameDetailPage() {
                             />
                         </div>
                         <div>
-                            <label htmlFor="review_text" className="block text-sm font-medium text-content-primary mb-1">
+                            <label htmlFor="review_text" className="block text-sm text-content-primary mb-1">
                                 Review
                             </label>
                             <Textarea
