@@ -12,10 +12,6 @@ import { StatusRegion } from '@/components/ui/StatusRegion';
  * on narrow viewports. Trigger style + dropdown chrome match the gameDetail
  * event-actions kebab (Phase 65-02) for visual consistency.
  *
- * Items API:
- *   { label: string, onClick: () => void, danger?: bool, twoTap?: bool,
- *     disabled?: bool, keepOpen?: bool, ariaDisabled?: bool }
- *
  * twoTap items follow the Phase 65-02 destructive-confirm pattern:
  *   - First tap: label flips to "Tap again to confirm" (or item.confirmLabel),
  *     3s revert timer arms, item highlights red.
@@ -25,17 +21,41 @@ import { StatusRegion } from '@/components/ui/StatusRegion';
  * Outside-click closes the menu (mousedown listener on a container ref,
  * mirroring NotificationBell.js). A `focusout` whose relatedTarget is non-null
  * and outside the container is the KEYBOARD half beside it.
- *
- * @param {string} ariaLabel - Accessible label for the trigger button.
- * @param {Array<Object>} items - Action items (see shape above).
- * @param {string} [confirmLabel] - Default label for armed twoTap items.
- *                                  Each item can override via item.confirmLabel.
  */
 
 /* The sr-only copy emitted when an armed twoTap item reverts. It is NOT emitted
    on a successful commit — see the close-resets effect below. */
 const REVERT_ANNOUNCEMENT = 'Confirmation cancelled.';
 
+/**
+ * The Items API. This enumerated list IS the contract — there is deliberately no
+ * `id` field (`DECISION Phase 88.6-16` at the item map explains why), and it is
+ * where explicit identity would be added if a future render site ever needs one.
+ *
+ * `disabled` and `ariaDisabled` are a SPLIT, not duplicates — see the
+ * `DECISION Phase 88.6-16` marker at the item button.
+ *
+ * @typedef {Object} KebabMenuItem
+ * @property {string} label - The resting visible label.
+ * @property {() => void} onClick - Invoked on activation (twoTap: on the SECOND tap).
+ * @property {boolean} [danger] - Destructive ink.
+ * @property {boolean} [twoTap] - Phase 65-02 destructive-confirm tier.
+ * @property {string} [confirmLabel] - Armed label for this item, overriding the menu default.
+ * @property {boolean} [disabled] - Native `disabled`. For a control NOBODY is standing on.
+ * @property {boolean} [ariaDisabled] - `aria-disabled` + a handler refusal, never the native
+ *   attribute. For the control being ACTED ON, whose label must stay readable and which must
+ *   stay in the focus order.
+ * @property {boolean} [keepOpen] - Suppress the close on the SINGLE-TAP path only. Inert on a
+ *   twoTap item.
+ */
+
+/**
+ * @param {Object} props
+ * @param {string} [props.ariaLabel] - Accessible label for the trigger button.
+ * @param {KebabMenuItem[]} [props.items] - Action items. An EMPTY array renders no trigger.
+ * @param {string} [props.confirmLabel] - Default label for armed twoTap items.
+ *                                        Each item can override via item.confirmLabel.
+ */
 export default function KebabMenu({
   ariaLabel = 'Actions',
   items = [],
@@ -264,19 +284,27 @@ export default function KebabMenu({
      nobody "fixes" it. `FeedbackButton.js:39-43` records the house preference for
      not stacking document-level Escape listeners.
 
-     THE ONE COMPOSITION WHERE THIS CONTRACT DOES NOT HOLD, verified 2026-09-14 and
-     recorded rather than assumed. The bubble-phase claim holds at the FOUR
-     non-dialog render sites. At the other two — `ManageMembers.js:571` and `:595`,
-     which render inside the shipped `Modal` at `ManageMembers.js:378` — Radix's
-     `Dialog` (`Modal.tsx:149-150`) binds Escape on `document` in the CAPTURE phase
-     (`@radix-ui/react-use-escape-keydown`), which runs BEFORE any container
-     handler: the dialog dismisses, this handler never runs, and where focus lands
-     is the dialog's own close-focus behaviour, not this component's. ACCEPTED, not
-     fixed — the alternative is threading `onEscapeKeyDown` into `DialogContent`
-     while a descendant kebab is open, i.e. editing a shared dialog primitive and
-     its call sites, which is a bigger decision than this component.
-     Do NOT restate this as "the innermost open layer claims the press": that
-     sentence is FALSE at 2 of the 6 render sites. */
+     THE ONE COMPOSITION WHERE THIS CONTRACT DOES NOT HOLD, and the plan text for it
+     was WRONG — corrected here from a live measurement (2026-09-15,
+     `keyboardOperability.test.tsx` KM-7), not from the plan. At two of the six
+     render sites — `ManageMembers.js:571` and `:595`, which render inside the
+     shipped `Modal` at `ManageMembers.js:378` — Radix's `Dialog`
+     (`Modal.tsx:149-150`) binds Escape on `document` in the CAPTURE phase
+     (`@radix-ui/react-use-escape-keydown`), which runs BEFORE any container handler
+     and dismisses the dialog.
+     What the plan said: "this component's Escape never runs there." MEASURED: it
+     DOES run. Radix `preventDefault`s but does not `stopPropagation`, so the event
+     still reaches the React tree in the bubble phase and this handler claims it —
+     proved by an in-dialog ancestor `onKeyDown` spy that never fires.
+     What is ACTUALLY true, and is the thing to carry forward: the OUTCOME. The whole
+     dialog closes and takes the menu with it, and this handler's focus restore is a
+     NO-OP because the trigger unmounts with the dialog — so where focus lands is the
+     dialog's own close-focus behaviour, not this component's.
+     ACCEPTED, not fixed — the alternative is threading `onEscapeKeyDown` into
+     `DialogContent` while a descendant kebab is open, i.e. editing a shared dialog
+     primitive and its call sites, which is a bigger decision than this component.
+     Do NOT restate this as "the innermost open layer claims the press": at those two
+     sites the OUTER layer dismisses, whichever handler ran. */
   const handleKeyDown = (event) => {
     if (event.key !== 'Escape' || !open) return;
     event.preventDefault();

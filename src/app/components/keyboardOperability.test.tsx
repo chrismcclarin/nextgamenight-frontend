@@ -34,12 +34,19 @@ import path from 'node:path';
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, within, act } from '@testing-library/react';
+// 88.6-16: `userEvent` is imported ALONGSIDE `fireEvent`, for exactly one thing — `user.tab()`,
+// the only way to prove NATIVE tab order in jsdom. Every other arm stays on this file's existing
+// `fireEvent` idiom, including the explicit `.focus()`-before-the-synthetic-event shape, because a
+// synthetic click does not move focus in jsdom.
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import PromptScheduleSection from './PromptScheduleSection';
 import ClickableMemberName from './ClickableMemberName';
 import MemberChipStack from './MemberChipStack';
+import KebabMenu from './KebabMenu';
+import { Modal } from './Modal';
 import { FriendshipContext } from './FriendshipStatusProvider';
 
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -344,5 +351,713 @@ describe('MemberChipStack descendants are keyboard-operable inside the card (88.
       onCardActivate,
       'the card handler cannot fire at all — every not.toHaveBeenCalled() above is vacuous',
     ).toHaveBeenCalledTimes(1);
+  });
+});
+
+/* ============================================================================================
+ * Phase 88.6-16 (D-12 / D24, SPEC AC-5, UI-SPEC §7.3) — `KebabMenu`'s CHOSEN contract.
+ *
+ * WHY THESE ASSERT THE CONTRACT THAT WAS CHOSEN, NOT THE ONE THAT WAS REJECTED
+ * ---------------------------------------------------------------------------
+ * D-12 dropped the ARIA menu pattern rather than implementing it. So an arrow-key-navigation
+ * assertion here would be asserting the REJECTED design and would red correctly. Every arm below
+ * is about honest disclosure: the menu semantics are gone (negative assertions), real LIST
+ * semantics are there in their place (the positive twin), Tab walks the items natively, and the
+ * armed destructive state is finally announceable.
+ *
+ * THE POSITIVE TWIN IS NOT DECORATION. `KebabMenu.test.tsx`'s axe audit cannot see it — axe does
+ * not model the Safari/VoiceOver behaviour that makes the explicit `role="list"` necessary
+ * (Tailwind's preflight sets `list-style: none` on every `ul`, which strips the IMPLICIT list
+ * role). The list/listitem arm below is the ONLY gate on the compensation D-12 trades for.
+ *
+ * `userEvent` IS IMPORTED HERE, ALONGSIDE `fireEvent`, FOR EXACTLY ONE THING: `user.tab()`, which
+ * is the only way to prove NATIVE tab order in jsdom. Everything else stays on this file's
+ * existing `fireEvent` idiom, including the explicit `.focus()`-before-the-synthetic-event shape
+ * tests 4b/4c already use — a synthetic click does not move focus in jsdom, which is precisely
+ * what makes an unfocused focus assertion pass for the wrong reason.
+ * ========================================================================================== */
+
+const KEBAB_LABEL = 'Row actions';
+
+function kebabTrigger(name: string = KEBAB_LABEL) {
+  return screen.getByRole('button', { name });
+}
+
+/** The OPEN item list, resolved the way a consumer must resolve it: through the trigger's own
+ *  `aria-controls`. Resolving it this way is itself part of the contract under test. */
+function openList(trigger: HTMLElement): HTMLElement {
+  const id = trigger.getAttribute('aria-controls');
+  expect(id, 'the trigger exposes aria-controls while its menu is open').toBeTruthy();
+  const list = document.getElementById(id as string);
+  expect(list, 'aria-controls names an element that is in the document').not.toBeNull();
+  return list as HTMLElement;
+}
+
+function openKebab(name: string = KEBAB_LABEL) {
+  const trigger = kebabTrigger(name);
+  fireEvent.click(trigger);
+  return { trigger, list: openList(trigger) };
+}
+
+const SINGLE_TAP_ITEMS = () => [
+  { label: 'Edit', onClick: vi.fn() },
+  { label: 'Pause', onClick: vi.fn() },
+];
+
+describe('KebabMenu exposes the CHOSEN contract, not the menu pattern (88.6-16 D-12)', () => {
+  it('KM-1. the trigger reflects open state, names its open list, and claims no popup role', () => {
+    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={SINGLE_TAP_ITEMS()} />);
+    const trigger = kebabTrigger();
+
+    // The accessible name is the shipped `ariaLabel`.
+    expect(trigger).toHaveAccessibleName(KEBAB_LABEL);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    // Absence OUTRIGHT, not "not equal to menu": ARIA maps the value "true" to the menu role, so
+    // a `!== 'menu'` assertion would pass for markup that re-asserts exactly what D-12 removed.
+    expect(trigger).not.toHaveAttribute('aria-haspopup');
+
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    const list = openList(trigger);
+    expect(trigger.getAttribute('aria-controls')).toBe(list.id);
+  });
+
+  it('KM-2. CLOSED state: the trigger exposes NO aria-controls at all (the dangling-reference half)', () => {
+    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={SINGLE_TAP_ITEMS()} />);
+    const trigger = kebabTrigger();
+
+    // Its own assertion, because the OPEN-state check above cannot see a dangling reference — a
+    // permanently-present `aria-controls` names an element that is not in the document for most
+    // of this component's life, and that is the failure the open-only rule exists to prevent.
+    expect(trigger).not.toHaveAttribute('aria-controls');
+
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-controls');
+    fireEvent.click(trigger);
+    expect(trigger).not.toHaveAttribute('aria-controls');
+  });
+
+  it('KM-3. the open dropdown exposes NO menu or menuitem role (the mechanical half of "honest")', () => {
+    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={SINGLE_TAP_ITEMS()} />);
+    openKebab();
+    expect(screen.queryAllByRole('menu')).toHaveLength(0);
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+  });
+
+  it('KM-4. the POSITIVE twin: exactly one list role, one listitem per authored item', () => {
+    const items = SINGLE_TAP_ITEMS();
+    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={items} />);
+    const { list } = openKebab();
+
+    const lists = screen.getAllByRole('list');
+    expect(lists, 'the open dropdown is exactly ONE list').toHaveLength(1);
+    expect(lists[0]).toBe(list);
+    expect(within(list).getAllByRole('listitem')).toHaveLength(items.length);
+    // The compensation is set-AND-count: one item per listitem, each a plain button.
+    expect(within(list).getAllByRole('button')).toHaveLength(items.length);
+  });
+
+  it('KM-5. Tab walks the items NATIVELY from the trigger, with no roving tabindex', async () => {
+    const user = userEvent.setup();
+    const items = SINGLE_TAP_ITEMS();
+    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={items} />);
+    const { trigger, list } = openKebab();
+
+    const buttons = within(list).getAllByRole('button');
+    for (const b of buttons) {
+      // A roving tabindex would put -1 on every item but one. Plain buttons carry no tabindex
+      // at all, which is the whole reason dropping the menu pattern buys native traversal.
+      expect(b).not.toHaveAttribute('tabindex');
+      b.focus();
+      expect(b).toHaveFocus();
+    }
+
+    trigger.focus();
+    await user.tab();
+    expect(document.activeElement, 'Tab from the trigger lands on the FIRST item').toBe(buttons[0]);
+    await user.tab();
+    expect(document.activeElement, 'and then on the second, in DOM order').toBe(buttons[1]);
+  });
+});
+
+describe('KebabMenu Escape — the STANDALONE composition (four of the six render sites)', () => {
+  // Scoped deliberately. The next describe measures the dialog-hosted composition, where this
+  // contract does NOT hold, and the two must not be read as one claim.
+  it('KM-6. Escape from an item closes the dropdown AND returns focus to the trigger', () => {
+    const ancestorKeyDown = vi.fn();
+    render(
+      <div onKeyDown={ancestorKeyDown}>
+        <KebabMenu ariaLabel={KEBAB_LABEL} items={SINGLE_TAP_ITEMS()} />
+      </div>,
+    );
+    const { trigger, list } = openKebab();
+    const first = within(list).getAllByRole('button')[0];
+    first.focus();
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
+
+    // BOTH halves. Closing without restoring focus drops the user to <body>, which is the defect
+    // class this phase fixes elsewhere (W44, W45).
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    // The handler CLAIMED the key: an ancestor listener does not also see it. That claim is what
+    // stops one Escape from both closing this menu and collapsing gameDetail's expanded
+    // description (`gameDetail/page.js:384-402`, which bails only on `event.defaultPrevented`).
+    expect(ancestorKeyDown).not.toHaveBeenCalled();
+  });
+
+  it('KM-6b. ANTI-VACUITY: the ancestor listener DOES see an Escape the menu does not claim', () => {
+    // Without this, KM-6's `not.toHaveBeenCalled()` also passes for a wrapper that was never
+    // wired and for an event that never reached anything. Same wrapper, same key, menu CLOSED.
+    const ancestorKeyDown = vi.fn();
+    render(
+      <div onKeyDown={ancestorKeyDown}>
+        <KebabMenu ariaLabel={KEBAB_LABEL} items={SINGLE_TAP_ITEMS()} />
+      </div>,
+    );
+    const trigger = kebabTrigger();
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'Escape' });
+    expect(ancestorKeyDown).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('KebabMenu Escape INSIDE the shipped Modal — the two ManageMembers sites, MEASURED', () => {
+  /* 2 of the 6 render sites are the `ManageMembers` menus inside a dialog (`:571`, `:595` under
+     the `Modal` at `:378`), and that is the destructive row-action path D-40 makes the sole phone
+     entry point. The standalone arm above cannot see this composition, so it is measured here
+     rather than assumed.
+
+     MEASURED 2026-09-15, and it CORRECTS the plan text and the first draft of the code marker:
+     Radix's capture-phase document Escape (`Modal.tsx:149-150` ->
+     `@radix-ui/react-use-escape-keydown`) does run FIRST and dismisses the dialog — but it does
+     NOT stop propagation, so the event still reaches this component's container handler in the
+     bubble phase and that handler DOES run. What is true is the OUTCOME the user gets: the whole
+     dialog closes and takes the menu with it, and this component's focus restore is a no-op
+     because its trigger unmounts with the dialog, so where focus lands is the dialog's own
+     close-focus behaviour. Recorded, not fixed — see the KebabMenu Escape marker. */
+  function DialogHostedKebab({
+    onDismiss,
+    onAncestorKeyDown,
+  }: {
+    onDismiss: () => void;
+    onAncestorKeyDown: (e: React.KeyboardEvent) => void;
+  }) {
+    const [open, setOpen] = React.useState(true);
+    return (
+      <Modal
+        open={open}
+        onClose={() => {
+          onDismiss();
+          setOpen(false);
+        }}
+      >
+        <Modal.Header>Manage Group Members</Modal.Header>
+        <Modal.Body>
+          {/* the same ancestor-spy discriminator KM-6 uses, so "did this component's handler
+              run?" is MEASURED here rather than asserted from the standalone arm */}
+          <div onKeyDown={onAncestorKeyDown}>
+            <KebabMenu ariaLabel={KEBAB_LABEL} items={[{ label: 'Edit', onClick: vi.fn() }]} />
+          </div>
+        </Modal.Body>
+      </Modal>
+    );
+  }
+
+  it('KM-7. the DIALOG dismisses and the kebab goes with it; the kebab trigger never receives focus', async () => {
+    const onDismiss = vi.fn();
+    const onAncestorKeyDown = vi.fn();
+    render(<DialogHostedKebab onDismiss={onDismiss} onAncestorKeyDown={onAncestorKeyDown} />);
+    await screen.findByRole('dialog');
+
+    const { trigger, list } = openKebab();
+    const first = within(list).getAllByRole('button')[0];
+    first.focus();
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(onDismiss, 'the ancestor dialog claimed the dismissal').toHaveBeenCalledTimes(1);
+    // The trigger left the document with the dialog, so the guarded restore is a no-op — the
+    // honest statement of what this component's contract does at these two sites.
+    expect(trigger.isConnected).toBe(false);
+    expect(document.activeElement).not.toBe(trigger);
+    // THE MEASUREMENT that corrects the plan text: the kebab's own container handler still RAN
+    // (Radix preventDefaults but does not stopPropagation, so the event reaches the React tree in
+    // the bubble phase) and claimed the key, so the in-dialog ancestor spy never fires. What the
+    // dialog composition actually costs is the OUTCOME, not the handler: the dialog closes and
+    // the focus restore has no trigger left to restore to.
+    expect(
+      onAncestorKeyDown,
+      'measured: the kebab handler still claims the key inside a dialog — see the KebabMenu Escape marker',
+    ).not.toHaveBeenCalled();
+  });
+});
+
+describe('KebabMenu focusout — the keyboard half beside the shipped mousedown close', () => {
+  const TWO_TAP_ITEMS = (onRemove = vi.fn()) => [
+    { label: 'Make admin', onClick: vi.fn() },
+    {
+      label: 'Remove',
+      danger: true,
+      twoTap: true,
+      confirmLabel: 'Tap again to remove',
+      onClick: onRemove,
+    },
+  ];
+
+  it('KM-8 (i). a focusout with an OUTSIDE relatedTarget closes the menu', () => {
+    render(
+      <>
+        <KebabMenu ariaLabel={KEBAB_LABEL} items={SINGLE_TAP_ITEMS()} />
+        <button type="button">outside</button>
+      </>,
+    );
+    const { list } = openKebab();
+    const outside = screen.getByRole('button', { name: 'outside' });
+    fireEvent.focusOut(within(list).getAllByRole('button')[0], { relatedTarget: outside });
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+  });
+
+  it('KM-8 (ii). a focusout with relatedTarget NULL does NOT close it', () => {
+    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={SINGLE_TAP_ITEMS()} />);
+    const { list } = openKebab();
+    fireEvent.focusOut(within(list).getAllByRole('button')[0], { relatedTarget: null });
+    expect(screen.getByRole('list')).toBeInTheDocument();
+  });
+
+  it('KM-8 (iii). and an ARMED twoTap item is still armed after that null focusout', () => {
+    // The case the null rule exists for: a pointer press over the list's own non-focusable
+    // chrome, or over a disabled item, produces a null relatedTarget. Closing on it would
+    // silently disarm a live two-tap gate (`ManageMembers.js:620`, `OpenPollsList.js:282`).
+    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={TWO_TAP_ITEMS()} />);
+    const { list } = openKebab();
+    fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+    const armed = within(list).getByRole('button', { name: 'Tap again to remove' });
+
+    fireEvent.focusOut(armed, { relatedTarget: null });
+
+    // Asserted on the RENDERED confirm label, never on internal state.
+    expect(within(list).getByRole('button', { name: 'Tap again to remove' })).toBeInTheDocument();
+  });
+
+  it('KM-8 (iv). a first tap on a real item ARMS rather than closing (the shipped 65-02 pattern)', () => {
+    const onRemove = vi.fn();
+    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={TWO_TAP_ITEMS(onRemove)} />);
+    const { list } = openKebab();
+    fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+    expect(screen.getByRole('list')).toBeInTheDocument();
+    expect(onRemove).not.toHaveBeenCalled();
+  });
+
+  it('KM-9. the two-tap item still requires TWO activations to fire its action', () => {
+    const onRemove = vi.fn();
+    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={TWO_TAP_ITEMS(onRemove)} />);
+    const { list } = openKebab();
+    const remove = within(list).getByRole('button', { name: 'Remove' });
+    fireEvent.click(remove);
+    expect(onRemove).not.toHaveBeenCalled();
+    fireEvent.click(remove);
+    expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it('KM-10. activation returns focus to the trigger on the single-tap AND the two-tap commit path', () => {
+    const onRemove = vi.fn();
+    const { unmount } = render(
+      <KebabMenu ariaLabel={KEBAB_LABEL} items={TWO_TAP_ITEMS(onRemove)} />,
+    );
+    // single-tap
+    let opened = openKebab();
+    let item = within(opened.list).getByRole('button', { name: 'Make admin' });
+    item.focus();
+    fireEvent.click(item);
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    expect(opened.trigger).toHaveFocus();
+    unmount();
+
+    // two-tap COMMIT — `handleItemClick` unmounts the focused button on this path too
+    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={TWO_TAP_ITEMS(onRemove)} />);
+    opened = openKebab();
+    item = within(opened.list).getByRole('button', { name: 'Remove' });
+    item.focus();
+    fireEvent.click(item);
+    fireEvent.click(within(opened.list).getByRole('button', { name: 'Tap again to remove' }));
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    expect(opened.trigger).toHaveFocus();
+  });
+});
+
+describe('KebabMenu aria-pressed — present only while armed (legal only once the item role is gone)', () => {
+  it('KM-11. armed exposes aria-pressed=true; at rest the attribute is ABSENT on both item kinds', () => {
+    render(
+      <KebabMenu
+        ariaLabel={KEBAB_LABEL}
+        items={[
+          // a twoTap item, unarmed
+          { label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: vi.fn() },
+          // a NON-toggle action: `aria-pressed="false"` here would announce a plain action as an
+          // unpressed toggle, which is the inverse of the house idiom (`gameDetail/page.js:1274`).
+          { label: 'Delete', danger: true, twoTap: false, onClick: vi.fn() },
+        ]}
+      />,
+    );
+    const { list } = openKebab();
+    const remove = within(list).getByRole('button', { name: 'Remove' });
+    const del = within(list).getByRole('button', { name: 'Delete' });
+
+    expect(remove).not.toHaveAttribute('aria-pressed');
+    expect(del).not.toHaveAttribute('aria-pressed');
+
+    fireEvent.click(remove);
+    expect(within(list).getByRole('button', { name: 'Tap again to remove' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(del, 'the untouched non-toggle stays attribute-free').not.toHaveAttribute('aria-pressed');
+  });
+});
+
+describe('KebabMenu StatusRegion — mounted at PROP time, never on arm', () => {
+  const announcingItems = () => [
+    { label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: vi.fn() },
+  ];
+
+  it('KM-12. the region is in the DOM BEFORE any arming, and its content changes on arm', () => {
+    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={announcingItems()} />);
+
+    // Its OWN expectation: a region that appears at the moment of the announcement does not
+    // announce, which is the entire reason for the idiom.
+    const region = screen.getByRole('status');
+    expect(region).toHaveTextContent('');
+
+    const { list } = openKebab();
+    fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Press again to confirm: Remove');
+  });
+
+  it('KM-13. the PROP-TIME gate: an instance that can never announce carries no region', () => {
+    // The shipped example is the desktop owner-only transfer kebab (`ManageMembers.js:571`),
+    // whose single item has no twoTap (`:573-583`).
+    //
+    // LABELLED, because it matters when reading the red-then-green record: this arm is one of the
+    // three in this section that ALSO pass against the pre-88.6-16 component — trivially, because
+    // no instance had a region at all then. It is the NEGATIVE half of the prop-time gate and only
+    // means anything paired with KM-12 and KM-14, which are both red pre-fix.
+    render(
+      <KebabMenu
+        ariaLabel="Transfer actions"
+        items={[{ label: 'Transfer ownership to this member', danger: true, onClick: vi.fn() }]}
+      />,
+    );
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('KM-14. the per-surface region COUNT is the gate\'s measured yield, asserted not summarised', () => {
+    // Shaped like the surface the gate was argued from: N member-row kebabs that each carry a
+    // twoTap item (`ManageMembers.js:595`) plus one that carries none (`:571`). The predicate is
+    // TRUE for every row, so the region IS per row — that is the accepted design, and it is
+    // exactly what makes the item-label announcement below sound.
+    const N = 3;
+    render(
+      <div>
+        {Array.from({ length: N }, (_, i) => (
+          <KebabMenu
+            key={`row-${i}`}
+            ariaLabel={`Member actions ${i}`}
+            items={[
+              { label: 'Make admin', onClick: vi.fn() },
+              { label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: vi.fn() },
+            ]}
+          />
+        ))}
+        <KebabMenu
+          ariaLabel="Transfer actions"
+          items={[{ label: 'Transfer ownership to this member', danger: true, onClick: vi.fn() }]}
+        />
+      </div>,
+    );
+    expect(screen.getAllByRole('status')).toHaveLength(N);
+  });
+
+  it('KM-15. the armed message NAMES THE ITEM, so arming a different item changes the text', () => {
+    render(
+      <KebabMenu
+        ariaLabel={KEBAB_LABEL}
+        items={[
+          { label: 'End check-in', danger: true, twoTap: true, confirmLabel: 'Tap again to end', onClick: vi.fn() },
+          { label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: vi.fn() },
+        ]}
+      />,
+    );
+    const { list } = openKebab();
+    fireEvent.click(within(list).getByRole('button', { name: 'End check-in' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Press again to confirm: End check-in');
+
+    fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Press again to confirm: Remove');
+  });
+
+  it('KM-16. committing an armed item emits NO revert message', () => {
+    // `armedIndex -> null` has three producers and one of them is a SUCCESSFUL commit.
+    // Announcing the revert there would tell a screen-reader user the destructive action was
+    // cancelled at the exact moment it fired.
+    const onRemove = vi.fn();
+    render(
+      <KebabMenu
+        ariaLabel={KEBAB_LABEL}
+        items={[{ label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: onRemove }]}
+      />,
+    );
+    const { list } = openKebab();
+    const remove = within(list).getByRole('button', { name: 'Remove' });
+    fireEvent.click(remove);
+    fireEvent.click(within(list).getByRole('button', { name: 'Tap again to remove' }));
+
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('status')).toHaveTextContent('');
+  });
+
+  it('KM-17. Escape while ARMED DOES emit the revert copy (the discriminator, from the other side)', () => {
+    // KM-16 alone passes for a component that never emits a revert at all. This is the paired
+    // control that makes the commit-path silence mean something.
+    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={announcingItems()} />);
+    const { list } = openKebab();
+    fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+    fireEvent.keyDown(within(list).getByRole('button', { name: 'Tap again to remove' }), {
+      key: 'Escape',
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('Confirmation cancelled.');
+  });
+});
+
+describe('KebabMenu keepOpen — RULED D24 (c), and inert until asked for', () => {
+  it('KM-18 (i). INERTNESS: with no item passing the flag, a single-tap activation still closes', () => {
+    // This is what makes all 6 shipped render sites unaffected by the flag existing.
+    const onEdit = vi.fn();
+    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={[{ label: 'Edit', onClick: onEdit }]} />);
+    const { list } = openKebab();
+    fireEvent.click(within(list).getByRole('button', { name: 'Edit' }));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+  });
+
+  it('KM-18 (ii). the twoTap path is UNCHANGED with the flag in the module: arm, timeout-revert, commit', () => {
+    vi.useFakeTimers();
+    try {
+      const onRemove = vi.fn();
+      render(
+        <KebabMenu
+          ariaLabel={KEBAB_LABEL}
+          items={[
+            { label: 'Remove', danger: true, twoTap: true, confirmLabel: 'Tap again to remove', onClick: onRemove },
+          ]}
+        />,
+      );
+      const { list } = openKebab();
+      fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+      expect(within(list).getByRole('button', { name: 'Tap again to remove' })).toBeInTheDocument();
+
+      // the 3s revert timer still reverts, and still announces for itself
+      act(() => {
+        vi.advanceTimersByTime(3100);
+      });
+      expect(within(list).getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('Confirmation cancelled.');
+      expect(onRemove).not.toHaveBeenCalled();
+
+      // and the commit path still commits AND closes — a twoTap item never consults the flag
+      fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+      fireEvent.click(within(list).getByRole('button', { name: 'Tap again to remove' }));
+      expect(onRemove).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('KM-18 (iii). a flagged item stays open AND re-renders from the parent\'s NEW props', () => {
+    // Asserting "the menu did not close" is not enough: the point of the flag is that an
+    // in-flight label such as "Cancelling…" becomes VISIBLE on the item the user just activated,
+    // which only happens if the parent's next props reach the still-mounted item.
+    const onCancel = vi.fn();
+    const items = (label: string) => [{ label, onClick: onCancel, keepOpen: true, danger: true }];
+    const { rerender } = render(<KebabMenu ariaLabel={KEBAB_LABEL} items={items('Cancel event')} />);
+    const { list } = openKebab();
+    fireEvent.click(within(list).getByRole('button', { name: 'Cancel event' }));
+
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('list'), 'the flagged item suppressed the close').toBeInTheDocument();
+
+    rerender(<KebabMenu ariaLabel={KEBAB_LABEL} items={items('Cancelling…')} />);
+    expect(within(list).getByRole('button', { name: 'Cancelling…' })).toBeInTheDocument();
+  });
+
+  it('KM-19. a menu left open by the flag is still dismissible by Escape and by an outside focusout', () => {
+    // The flag opts an item out of one close TRIGGER, never out of dismissal.
+    const items = [{ label: 'Cancel event', onClick: vi.fn(), keepOpen: true, ariaDisabled: false }];
+    const { unmount } = render(
+      <>
+        <KebabMenu ariaLabel={KEBAB_LABEL} items={items} />
+        <button type="button">outside</button>
+      </>,
+    );
+    let opened = openKebab();
+    fireEvent.click(within(opened.list).getByRole('button', { name: 'Cancel event' }));
+    fireEvent.keyDown(within(opened.list).getByRole('button', { name: 'Cancel event' }), {
+      key: 'Escape',
+    });
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    expect(opened.trigger).toHaveFocus();
+    unmount();
+
+    render(
+      <>
+        <KebabMenu ariaLabel={KEBAB_LABEL} items={[{ label: 'Cancel event', onClick: vi.fn(), keepOpen: true, ariaDisabled: true }]} />
+        <button type="button">outside</button>
+      </>,
+    );
+    opened = openKebab();
+    fireEvent.focusOut(within(opened.list).getByRole('button', { name: 'Cancel event' }), {
+      relatedTarget: screen.getByRole('button', { name: 'outside' }),
+    });
+    expect(
+      screen.queryByRole('list'),
+      'dismissal must work while the item is in its in-flight aria-disabled state too',
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe('KebabMenu ariaDisabled — the flag that makes keepOpen\'s focus promise true', () => {
+  const inFlightItems = (label: string, busy: boolean, onClick = vi.fn()) => [
+    { label, onClick, danger: true, keepOpen: true, ariaDisabled: busy },
+  ];
+
+  it('KM-20 (i). the flag renders aria-disabled="true" and NEVER the native disabled attribute', () => {
+    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems('Cancelling…', true)} />);
+    const { list } = openKebab();
+    const item = within(list).getByRole('button', { name: 'Cancelling…' });
+    expect(item).toHaveAttribute('aria-disabled', 'true');
+    expect(item, 'a natively disabled element leaves the focus order').not.toHaveAttribute('disabled');
+    expect((item as HTMLButtonElement).disabled).toBe(false);
+    // and the press is refused in the HANDLER
+    const onClick = vi.fn();
+    cleanup();
+    render(<KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems('Cancelling…', true, onClick)} />);
+    const reopened = openKebab();
+    fireEvent.click(within(reopened.list).getByRole('button', { name: 'Cancelling…' }));
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('KM-20 (ii). focus stays on the SAME item node across the parent\'s in-flight label swap', () => {
+    const onCancel = vi.fn();
+    const { rerender } = render(
+      <KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems('Cancel event', false, onCancel)} />,
+    );
+    const { list } = openKebab();
+    const item = within(list).getByRole('button', { name: 'Cancel event' });
+
+    // (a) focus is established EXPLICITLY — a synthetic click does not move focus in jsdom, so
+    // without this the assertions below would pass with focus on <body>.
+    item.focus();
+    // (b) its own expectation, BEFORE the re-render
+    expect(item, 'focus is on the item before the parent re-renders').toHaveFocus();
+
+    fireEvent.click(item);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+
+    // (c) the parent flips the label to the in-flight string and gates the item — what plan 18
+    // actually does, and the only way the remount hazard is reachable.
+    rerender(<KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems('Cancelling…', true, onCancel)} />);
+
+    // (d) BOTH halves. Node identity alone passes with focus on <body>, and a focus assertion
+    // alone passes against an item that never re-rendered — so neither is sufficient on its own.
+    expect(document.activeElement, 'the SAME node, not a remounted twin').toBe(item);
+    expect(item).toHaveTextContent('Cancelling…');
+  });
+
+  it('KM-20 (iii). Escape from that state closes the menu and restores focus to the trigger', () => {
+    const { rerender } = render(
+      <KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems('Cancel event', false)} />,
+    );
+    const { trigger, list } = openKebab();
+    const item = within(list).getByRole('button', { name: 'Cancel event' });
+    item.focus();
+    fireEvent.click(item);
+    rerender(<KebabMenu ariaLabel={KEBAB_LABEL} items={inFlightItems('Cancelling…', true)} />);
+
+    // Delivered at document.activeElement, NEVER at a node fetched by query: a keydown dispatched
+    // at the item bubbles to the container regardless of where focus actually is, so a queried
+    // target would make this pass with focus on <body> — the exact state the flag exists to
+    // prevent.
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('KM-20 (iv). ANTI-VACUITY CONTROL — the same-node + focus pair FAILS for a label-derived key', () => {
+    /* A NAMED guard, so the file's jsdom-downgrade precedent (the titles at tests 4b and 4c) has
+       to DELETE something rather than quietly weaken KM-20 (ii). This replica maps its items with
+       the label-derived key `KebabMenu` used to carry; everything else is the same shape. If the
+       component ever regains a label-derived key, KM-20 (ii) reds and this control still passes —
+       which is what tells the two apart. */
+    function LabelKeyedList({ labels }: { labels: string[] }) {
+      return (
+        <ul>
+          {labels.map((label, index) => (
+            <li key={`${label}-${index}`}>
+              <button type="button">{label}</button>
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    const { rerender } = render(<LabelKeyedList labels={['Cancel event']} />);
+    const item = screen.getByRole('button', { name: 'Cancel event' });
+    item.focus();
+    expect(item).toHaveFocus();
+
+    rerender(<LabelKeyedList labels={['Cancelling…']} />);
+
+    const after = screen.getByRole('button', { name: 'Cancelling…' });
+    expect(after, 'a label-derived key produces a FRESH element at the same position').not.toBe(item);
+    expect(document.activeElement, 'and focus lands on <body>').not.toBe(after);
+  });
+});
+
+describe('KebabMenu edge coverage — SPEC E6 empty / zero-one-many (R5)', () => {
+  it('KM-21. ZERO items renders no trigger at all', () => {
+    const { container } = render(<KebabMenu ariaLabel="Empty actions" items={[]} />);
+    expect(screen.queryByRole('button', { name: 'Empty actions' })).not.toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('KM-22. ONE item still honours the full contract: Tab, Escape, focusout', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <KebabMenu ariaLabel={KEBAB_LABEL} items={[{ label: 'Group settings', onClick: vi.fn() }]} />
+        <button type="button">outside</button>
+      </>,
+    );
+    const { trigger, list } = openKebab();
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+
+    trigger.focus();
+    await user.tab();
+    const only = within(list).getByRole('button', { name: 'Group settings' });
+    expect(document.activeElement).toBe(only);
+
+    // focusout, outside relatedTarget
+    fireEvent.focusOut(only, { relatedTarget: screen.getByRole('button', { name: 'outside' }) });
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+
+    // and Escape, from a fresh open
+    fireEvent.click(trigger);
+    const reopened = openList(trigger);
+    within(reopened).getByRole('button', { name: 'Group settings' }).focus();
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 });
