@@ -1743,6 +1743,140 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     }
   });
 
+  /* Phase 88.6-29 (W44/FLOOR, UI-SPEC §1.2 row V-19) — THE SECOND HOME OF THE PROHIBITION.
+     The hero arm directly above calls itself "THE MECHANICAL FORM OF A PROHIBITION" and names
+     `RsvpSection`'s own `px-3 py-2` pairing as the regression it exists to catch — but it
+     measures the HERO. Until this arm, no gate in the phase could see a 44px breach on the
+     surface where that pairing actually lived. After it, the prohibition is measured where it
+     lives.
+
+     THE SOURCE HALF IS NOT A SUBSTITUTE, and neither is this one: `RsvpSection.statusOnly.test.tsx`
+     pins `min-h-11` on the rendered class list and catches a SOURCE revert, which is all jsdom
+     can do because it performs no layout (the division `88.6-12-PLAN.md:97` already states for
+     its own surface). This arm catches a RENDERED breach — a cascade collision, an inherited
+     `line-height`, a parent that collapses the row. Both are required.
+
+     TWO HALVES, the shape this file already ships for gameDetail surfaces (see the E10 arm
+     above and its reasoning): the PLANTED replica is unconditional and carries the anti-vacuity
+     floor, because the trio renders only for a NON-PAST event with the viewer's RSVP resolvable
+     and the backend's `scripts/e2e-fixtures.js` is not known to guarantee that shape on the
+     seeded detail event. The SHIPPED half runs when the fixture renders it and its count is
+     REPORTED either way, so a reader always knows which halves ran — a fixture gap is surfaced
+     here, never silently skipped, and never allowed to red the whole phone lane on a fixture
+     fact rather than a layout fact.
+
+     This plan is a scoped later-wave co-declarer of plan 12's spec (wave 5), in the shape plan
+     16 already ships (`88.6-16-PLAN.md:16`, `:18`): it adds THIS arm and edits no helper, no
+     existing arm and no describe structure in this file. */
+  test('R4 (88.6-29 / V-19): the RsvpSection status trio clears the 44px floor', async ({
+    page,
+  }, testInfo) => {
+    await page.goto(E2E_EVENT_DETAIL_PATH);
+    await assertDarkTheme(page);
+
+    // --- half 1: the planted replica, unconditional --------------------------------------
+    const planted = await page.evaluate(() => {
+      const host = document.createElement('div');
+      // 375px from an INLINE style, never a Tailwind class: `e2e/` is outside the `@source`
+      // globs (globals.css:10, :86-88), so a width class this file invents is never emitted.
+      host.setAttribute('style', 'width: 375px; padding: 0; margin: 0;');
+
+      const group = document.createElement('div');
+      // The shipped group container, `RsvpSection.js`'s button-group wrapper.
+      group.className = 'flex rounded-card border border-line overflow-hidden';
+
+      // The shipped RESTING button class string, minus the weight utility: `font-*` is not
+      // geometry-bearing here (the floor is `min-h-11`, the line box is `text-sm`), so leaving
+      // it out keeps this replica from needing a re-derive every time the type sweep settles a
+      // weight. Everything that DOES decide the box is present and byte-matched.
+      const buttonClass =
+        'flex-1 min-h-11 px-3 text-sm active:opacity-75 transition-colors ' +
+        'first:rounded-l-[inherit] last:rounded-r-[inherit] ' +
+        'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ' +
+        'bg-surface-card text-content-secondary';
+
+      const heights: number[] = [];
+      for (const text of ['Going', 'Maybe', "Can't"]) {
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = buttonClass;
+        el.textContent = text;
+        group.appendChild(el);
+      }
+      host.appendChild(group);
+      document.body.appendChild(host);
+
+      const hostWidth = host.getBoundingClientRect().width;
+      for (const child of Array.from(group.children)) {
+        heights.push(child.getBoundingClientRect().height);
+      }
+      host.remove();
+      return { hostWidth, heights };
+    });
+
+    expect(
+      planted.hostWidth,
+      '88.6-29 V-19: the planted container did not measure 375px, so every measurement below is against the wrong width. The width comes from an inline style on purpose — a Tailwind width class would not be emitted for e2e/ (globals.css:10, :86-88)',
+    ).toBeCloseTo(375, 0);
+    expect(
+      planted.heights,
+      '88.6-29 V-19: the planted trio did not render three buttons — every assertion below would be vacuous',
+    ).toHaveLength(3);
+    for (const [idx, height] of planted.heights.entries()) {
+      expect(
+        height,
+        `88.6-29 V-19 (planted): status button ${idx + 1} measures ${height}px tall at 375px — expected >= 44 from the min-h-11 ported from NextGameNightCard.tsx. Restoring the px-3 py-2 pairing this replaced computes to about 36px (text-sm's 20px line plus 16px of vertical padding), which is exactly the prohibition D-07 constraint (i) records and the hero arm above names`,
+      ).toBeGreaterThanOrEqual(44);
+    }
+
+    // --- half 2: the shipped trio, when the fixture renders it ----------------------------
+    // Located by ACCESSIBLE NAME, never a class (this file's selector policy). The group's own
+    // name is the `RSVP for <when>` label this plan added.
+    const group = page.getByRole('group', { name: /^RSVP for / });
+    const shippedGroups = await group.count();
+    expect(
+      shippedGroups,
+      '88.6-29 V-19: negative count from the shipped-trio locator — impossible; the locator itself is broken',
+    ).toBeGreaterThanOrEqual(0);
+
+    const shippedHeights: number[] = [];
+    if (shippedGroups > 0) {
+      const buttons = group.first().getByRole('button');
+      const count = await buttons.count();
+      expect(
+        count,
+        `88.6-29 V-19 (shipped): the RSVP group rendered ${count} buttons, expected 3 — the group is the yes/maybe/no trio`,
+      ).toBe(3);
+      for (let i = 0; i < count; i += 1) {
+        const control = buttons.nth(i);
+        await settleOpenAnimation(page, control, `the RsvpSection status control ${i + 1}`);
+        const geometry = await readEffectiveGeometry(control);
+        shippedHeights.push(geometry.effectiveHeight);
+        expect(
+          geometry.effectiveHeight,
+          `88.6-29 V-19 (shipped): RsvpSection status control ${i + 1} measures ${geometry.effectiveHeight}px tall (own box ${geometry.ownHeight}px, extended by ${geometry.extendedBy}) — expected >= 44 from min-h-11 at RsvpSection.js's trio className. This is a real <button>, so it must reach the floor on its OWN box: the D-13 invisible-extension technique is for inline glyphs, not for the primary control of the primary flow`,
+        ).toBeGreaterThanOrEqual(44);
+        expect(
+          geometry.effectiveHeight,
+          `88.6-29 V-19 (shipped): RsvpSection status control ${i + 1} needs a hit extension (${geometry.extendedBy}) to reach ${geometry.effectiveHeight}px from an own box of ${geometry.ownHeight}px — a pseudo-element started carrying the difference the min-h-11 is supposed to deliver`,
+        ).toBeCloseTo(geometry.ownHeight, 1);
+      }
+    }
+
+    // --- which halves ran, on the record --------------------------------------------------
+    // Reported, not asserted against a threshold: the planted half above is the gate, and this
+    // line is what stops the conditional half from being a silent skip. A zero here is a
+    // FIXTURE finding for `periodictabletopbackend_v2/Sonnet/scripts/e2e-fixtures.js` — the
+    // seeded detail event must be in the FUTURE with the viewer able to answer — and it is
+    // surfaced rather than swallowed.
+    await attachDiagnostics(testInfo, 'rsvp-trio-touch-floor', {
+      plantedHeights: planted.heights,
+      shippedGroupsFound: shippedGroups,
+      shippedHeights,
+      detailPath: E2E_EVENT_DETAIL_PATH,
+    });
+  });
+
   test('R4 (SPEC Req 5): the COLLAPSED member-chip stack is one target and clears 44x44', async ({
     page,
   }) => {

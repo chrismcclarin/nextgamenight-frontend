@@ -440,11 +440,22 @@ const BTN_EXEMPT: ExemptionRoster = {
   // supplies it at every viewport (88.6-06 D-09), `mb-4` KEPT because `.btn` declares no margin.
   // Deleted rather than zeroed: the count is exact in both directions, which is exactly the
   // property the tracer set out to prove before ~20 expansion sweeps depend on it.
-  'app/components/RsvpSection.js': {
-    sites: 1,
-    why: 'plan 88.6-29 sweeps the RSVP cluster and closes its four recorded residuals',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-29 task 1 (wave 7, 2026-09-16): `app/components/RsvpSection.js`
+  // carried `sites: 1` — the SAVE-NOTE button, `btn btn-primary text-sm px-3 py-1`, the file's
+  // ONLY `btn` line (`grep -n "btn" src/app/components/RsvpSection.js` returned exactly that one
+  // line, re-measured at execution). It is now `<Button variant="primary">`: all THREE size
+  // utilities GO, because `text-*`/`px-*`/`py-*` are dead on a `.btn` element (Button.tsx's own
+  // "No size utility of any kind on a size rung" rule), and no margin utility was present to
+  // keep. The native `disabled` went with them — the control now takes the `aria-disabled` +
+  // handler-latch split (`NextGameNightCard.tsx:466-479`; UI-SPEC D52).
+  //
+  // THE SITE THIS DECREMENT IS SIGNED OFF ON IS NAMED ON PURPOSE. The status TRIO in this same
+  // file (`yes`/`maybe`/`no`) is NOT a census site and must never be counted as one: it is a
+  // bare `<button>` by a recorded DECISION, because `.btn`'s unlayered `border-radius: 8px` /
+  // `font-weight: 600` / `font-size: 0.875rem` (globals.css:1955-1967) would destroy the corner
+  // inheritance an owner UAT fix of 2026-09-01 put there. A criterion signed off on an unnamed
+  // site is exactly how that trio would get migrated by accident.
+  // Entry DELETED rather than zeroed — the count is exact in both directions.
   'app/components/tutorial/TutorialOverlay.js': {
     sites: 1,
     why: 'plan 88.6-35 sweeps the marketing, legal and tutorial surfaces, TutorialOverlay.js included',
