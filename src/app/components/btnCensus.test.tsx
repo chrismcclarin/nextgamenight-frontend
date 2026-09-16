@@ -423,3 +423,175 @@ describe('D-07 / AC-2: the `.btn` element census', () => {
     expect('components/ui/Button.tsx' in BTN_EXEMPT).toBe(false);
   });
 });
+
+// =====================================================================================
+// D-07 / D-11 — the RAW-PALETTE BUTTON-CONTROL rule: the second half of "zero remaining".
+// =====================================================================================
+//
+// THE PREDICATE IS TWO TAGS — `<button>` AND `<Button>` — AND THAT IS DELIBERATE.
+//
+// REJECTED ARM: `<button>`-only. It reads like the natural narrowing (scan the element, the
+// component is the fix), and a future reader will be tempted to "tighten" it back. It is wrong
+// for a structural reason, not a stylistic one: the defect this rule exists to stop is A CONTROL
+// WEARING A RAW PALETTE FILL, and after plans 15-39 that control is a `<Button>` carrying the
+// same className it carried as a `<button>` — every sweep converts the tag and brings the class
+// list along. So a `<button>`-only predicate measures EXACTLY THE POPULATION THIS PHASE DRAINS
+// and would go green BY THE MIGRATION SUCCEEDING, while the identical defect on the identical
+// control became invisible to it. Widening the tag set is what makes the rule survive its own
+// phase. Narrowing it back is a decision, not a cleanup.
+//
+// The component-name EXCLUSIONS are unchanged and still deliberate: `<Link>`, `<a>` and every
+// other tag are out of scope here because they are not buttons. A `<div className="bg-indigo-600">`
+// is a surface, not a control, and the negative control below pins that.
+//
+// WHY THIS RULE EXISTS SEPARATELY FROM `rawColorValues.test.ts`. That suite scans hex literals
+// and inline `boxShadow` properties only (`rawColorValues.test.ts:1-44`), which is precisely why
+// `bg-indigo-600` survived it — a Tailwind palette step is neither a hex nor a boxShadow.
+//
+// REJECTED ARM: an any-`bg-*` rule. Measured: 28 semantic-token false positives. `bg-surface-*`,
+// `bg-status-*` and `bg-btn-*` are the theme working as intended and are NOT flagged.
+//
+// REJECTED ARM: an element-level census of all ~118 non-`.btn` `<button>`s. 81 of them are
+// legitimate non-Buttons and inventorying them is Phase 92's work, not an 88.6 gate.
+//
+// THE REPO'S OWN PALETTE NAMES COLLIDE WITH TAILWIND'S, and this is the non-obvious call here.
+// `globals.css` mints `--purple-*`, `--warm-*` and `--amber-*` custom properties, and its
+// `@theme` block exposes only a subset as utilities (`globals.css:256-260` exposes
+// `--color-purple-100/300/700/800/900`). So `bg-purple-900` on a button is ambiguous BY NAME
+// ALONE — it may resolve to the repo's token or to Tailwind's default step. It is treated as a
+// RAW palette fill either way, the way D-17 resolves the same ambiguity: whichever it resolves
+// to, a button should be wearing a `btn-*` variant or a semantic token, not a palette STEP.
+// Flagging it is therefore correct under both readings, and the entry it lands in names the plan
+// that decides which token it becomes.
+
+/**
+ * Tailwind's default palette hue names, PINNED AS DATA exactly like `HEX_EXEMPT`
+ * (`rawColorValues.test.ts:65`) rather than spelled as an inline regex alternation. Adding a hue
+ * is then an explicit, reviewable edit to a list, not a silent widening buried in a pattern.
+ */
+const TAILWIND_HUES = [
+  'slate', 'gray', 'zinc', 'neutral', 'stone',
+  'red', 'orange', 'amber', 'yellow', 'lime',
+  'green', 'emerald', 'teal', 'cyan', 'sky',
+  'blue', 'indigo', 'violet', 'purple', 'fuchsia',
+  'pink', 'rose',
+];
+
+/**
+ * A raw palette FILL, tested against a class token whose variant prefixes are already stripped
+ * (so `dark:bg-white/10` and `hover:bg-indigo-700` are both seen). Three shapes:
+ *   - `bg-<hue>-<number>` drawn from the pinned list above;
+ *   - `bg-white` / `bg-black`, WITH OR WITHOUT an opacity suffix — `bg-white/10` must match, and
+ *     the fixture harness pins that the suffix does not evade the rule;
+ *   - `bg-[#...]` arbitrary hex.
+ */
+const PALETTE_FILL = new RegExp(
+  `^bg-(?:(?:${TAILWIND_HUES.join('|')})-\\d{2,3}|white|black)(?:\\/.+)?$|^bg-\\[#`,
+);
+
+/** `<button>` the element and `<Button>` the primitive. Nothing else — see the docblock above. */
+const BUTTON_CONTROL = /^(?:button|Button)$/;
+
+/** Every button-control opening tag in the tree, from the SAME module-scope walk task 1 built. */
+const BUTTON_CONTROLS = TAGS.filter((t) => BUTTON_CONTROL.test(t.name));
+
+/** Button controls carrying at least one raw palette fill. */
+const PALETTE_BUTTONS = BUTTON_CONTROLS.filter((t) => t.classes.some((c) => PALETTE_FILL.test(c)));
+
+const PALETTE_COUNTS = countByFile(PALETTE_BUTTONS);
+
+// THE MEASURED HEAD SPLIT, taken with THIS suite's own scanner on 2026-09-15 (not relayed):
+//   `<button>` element tags ............ 213
+//     of those, wearing a `btn*` class ...  95
+//   `<Button>` component tags ........... 21
+//   COMBINED button-control tags ....... 234
+// It is recorded here so a future reader can tell a SCANNER FAILURE apart from the migration's
+// own effect: as plans 15-39 land, the first number falls and the third rises while the fourth
+// holds. Two figures were available at plan time and are deliberately NOT transcribed as
+// measured-by-this-suite — a plain `grep -rno` over non-test `src/` (239 `<button`, 20 `<Button`)
+// and round 2's relayed scanner figures (218 tags / 130 wearing `btn`), neither of which was
+// re-run. The 95-vs-130 gap is the reason relayed counts are not trusted here.
+
+// ---------------------------------------------------------------------------------------
+// THE ROSTER. Seeded from the LIVE scan at execution, 2026-09-15: EIGHT raw-palette button
+// sites across FOUR files — the same eight verified on 2026-09-14, re-derived rather than
+// restated. Eight is a measurement, not a quota: a ninth would be rostered with a named owner
+// and reported, because a raw-palette button with NO owner is the exact defect this rule exists
+// to surface.
+//
+// No SECOND roster is introduced for the arbitrary-value or inline-`style` shapes. Measured on
+// real button opening tags there are zero non-hex arbitrary-value fills, and the one inline-
+// `style` fill (`groupHomePage/page.js:914`, the amber Create-Event CTA) is already owned under
+// D-09 by plan 88.6-21, which deletes the inline `style` when it converts the control. A roster
+// with no population is a gate that cannot red.
+// ---------------------------------------------------------------------------------------
+const PALETTE_BUTTON_EXEMPT: ExemptionRoster = {
+  // Five sites: three `bg-indigo-600` buttons in the `sms_enabled`-gated phone block
+  // (`:1631`, `:1650`, `:1675`) and the two theme toggles (`:1857` `bg-amber-50`,
+  // `:1871` `bg-purple-900`).
+  'app/userProfile/page.js': {
+    sites: 5,
+    why: 'D-11 -> plan 88.6-17: the three bg-indigo-600 phone-block buttons become `Button variant="primary"` with the Resend link as `variant="ghost"`; the two theme toggles become `Button` with the variant chosen from their current fill semantics',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-07 / D-11' },
+  },
+  // One site, `AvailabilityGrid.js:621` — the paint-mode toggle, carrying `bg-green-100` and
+  // `bg-yellow-100` across its two arms. One ELEMENT, so one site.
+  'app/components/AvailabilityGrid.js': {
+    sites: 1,
+    why: 'D-11 -> plan 88.6-25 re-derives: either `Button`, or a semantic token fill plus an exemption carrying its own provenance if the planner finds it is grid chrome rather than a control',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-07 / D-11' },
+  },
+  // One site, `ThemeToggle.js:49` — `bg-white/10`, icon chrome in the header.
+  'app/components/ThemeToggle.js': {
+    sites: 1,
+    why: 'D-11 -> plan 88.6-34 re-derives: this is icon chrome rather than a primary action, so either `Button` or a semantic token fill with provenance, settled with the rest of D-11 there',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-07 / D-11' },
+  },
+  // THE EIGHTH SITE, and the one entry here whose `why` records a SURVIVING fill rather than a
+  // fix. `groupHomePage/page.js:872` (`<button`, the Manage Members header CTA) carries
+  // `bg-white/80` at `:876`, which this rule's `bg-white`-with-opacity clause matches. The
+  // 80% white wash plus 1px ring is an OWNER RULING — `DECISION Phase 88.3-16` at
+  // `groupHomePage/page.js:795`, ruling 2 of 2026-08-27 — re-affirmed 2026-09-14 as surviving
+  // this phase. Plan 88.6-21 HOLDS it; it does not close it, and this entry must NOT be
+  // rewritten as a pending fill change nor deleted when 21 lands.
+  //
+  // Note this same element ALSO wears `btn` (`:875`) and is therefore counted in task 1's `.btn`
+  // census too. The two rules see one element for different reasons and neither subsumes the
+  // other: the `.btn` there CLOSES under plan 21, the wash SURVIVES it.
+  //
+  // This is also the site that breaks round 2's framing of the census as "7 of the 88 buttons
+  // that do NOT wear `btn`" — it wears both, so that framing structurally could not see it, and
+  // it is why the palette rule runs over EVERY button control rather than only the non-`btn` ones.
+  'app/groupHomePage/page.js': {
+    sites: 1,
+    why: 'SURVIVING, not pending: the 80% white wash plus 1px ring is owner ruling 2 of 2026-08-27, recorded as `DECISION Phase 88.3-16` at groupHomePage/page.js:795 and re-affirmed 2026-09-14; plan 88.6-21 HOLDS this exemption rather than closing it, and the element also wears `btn` at :875 so it appears in the .btn census too',
+    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-07 / 88.3-16' },
+  },
+};
+
+describe('D-07 / D-11: no button control on a raw palette fill', () => {
+  // MIGRATION-INVARIANT FLOOR 1 — enumerated source files. The same quantity task 1 floors on,
+  // stable across the phase because the sweeps REWRITE files rather than remove them.
+  it('enumerated the source tree', () => {
+    expect(FILES.length).toBeGreaterThanOrEqual(150);
+  });
+
+  // MIGRATION-INVARIANT FLOOR 2 — the COMBINED `<button>` + `<Button>` tag count.
+  //
+  // A floor on the `<button>` population ALONE would be a floor on a quantity this phase exists
+  // to CONSUME: it falls as the phase succeeds and eventually reds inside some later plan's
+  // `npm test`, in a file that plan does not own, looking exactly like a scanner failure. The
+  // SUM is invariant under the migration, because every conversion moves one tag from the first
+  // population into the second; only an outright deletion can lower it. Floor 150, measured 234.
+  it('found button controls to check, on a floor the migration cannot lower', () => {
+    expect(BUTTON_CONTROLS.length).toBeGreaterThanOrEqual(150);
+  });
+
+  it('has a well-formed roster (every entry counted, reasoned and owned)', () => {
+    expect(assertRosterShape(PALETTE_BUTTON_EXEMPT)).toEqual([]);
+  });
+
+  it('has zero raw-palette button controls outside the roster, at exactly the rostered counts', () => {
+    expect(assertExactCounts(PALETTE_BUTTON_EXEMPT, PALETTE_COUNTS)).toEqual([]);
+  });
+});
