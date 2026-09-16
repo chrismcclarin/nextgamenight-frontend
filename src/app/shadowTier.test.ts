@@ -344,11 +344,22 @@ const ALIAS_ROSTER: ExemptionRoster = {
   // `hover:shadow-md` is now `hover:shadow-theme-md` — plain `hover:`, because the site is a card
   // `div` and not a `.btn`. Entry DELETED rather than zeroed; the roster is exact in both
   // directions, so a zeroed entry would red as a fossil permission.
-  'components/ui/BottomSheet.tsx': {
-    sites: 1,
-    why: '`shadow-lg` on the bottom-sheet panel (:199). Plan 37 snaps it to `shadow-theme-lg`; non-button surface.',
-    owner: D49B,
-  },
+  // `components/ui/BottomSheet.tsx` CLOSED by plan 88.6-37 task 3 (wave 7, 2026-09-16): the
+  // sheet panel's `shadow-lg` is now `shadow-theme-lg` — plain, NO `enabled-hover:` and no
+  // UI-SPEC §3.4 rule-2 hover pin, because the site is a sheet SURFACE and not a `.btn`, and
+  // it carries no hover shadow today (adding one would be a new interaction, not a snap).
+  // CITE CORRECTED in passing, recorded rather than silently fixed: this entry's `why` said
+  // the occurrence was at `:199`. MEASURED at execution it was at `:213` — the file's ONE
+  // `shadow-` occurrence, confirmed before the edit (`grep -n 'shadow-'` returned exactly
+  // that line; it now returns the snapped line plus four hits inside the new DECISION marker,
+  // which this scanner strips). The both-theme hue change (warm tint in light; purple hairline
+  // plus glow in dark) is a VALUE change, not a rename — Tailwind v4 inlines its built-in
+  // scale's literals into the built-in utilities (`DECISION Phase 87.7`,
+  // `globals.css:1141-1155`) — and is disclosed in `88.6-37-SUMMARY.md` for `/gsd-ui-review`
+  // as a PHONE-PRIMARY surface. The RENDERED hue was NOT measured and nothing here claims it
+  // was: Playwright cannot run locally (no `.auth/`, real Auth0) and this suite is a source
+  // scanner. The pin against a revert is this roster's own exactness in both directions — a
+  // re-introduced alias would surface as an unrostered site. Entry DELETED, not zeroed.
   // `app/gameDetail/page.js` CLOSED by plan 88.6-18 task 2 (wave 7, 2026-09-16), with
   // `why` = REMOVED WITH THE HAND-ROLLED MENU. Its one alias site was the dropdown panel of
   // the second, hand-rolled kebab; that element no longer exists, and the converged

@@ -59,9 +59,20 @@ import { cn } from '@/lib/cn';
 
 export type BottomSheetHeight = 'content' | 'full';
 
-/* DECISION Phase 88.1 (D-06 / C13): `dvh` chosen OVER `vh`, which is the dialog family's
-   existing unit — `Modal.tsx:186` caps at `max-h-[90vh]` and is the known-divergent sibling.
-   This is the repo's FIRST `dvh` (`grep -rn 'dvh' src/` returned 0 hits at authoring time).
+/* DECISION Phase 88.1 (D-06 / C13): `dvh` chosen OVER `vh`, which WAS the dialog family's
+   existing unit — `Modal.tsx:186` capped at `max-h-[90vh]` and was the known-divergent
+   sibling. This is the repo's FIRST `dvh` (`grep -rn 'dvh' src/` returned 0 hits at
+   authoring time).
+
+   AMENDED IN PLACE Phase 88.6-37 (W34): THE DIVERGENCE IS CLOSED, and the sentence above is
+   kept in the past tense rather than rewritten because the measurement it records was true
+   when taken. THE PRESENT-TENSE FACT: `Modal.tsx:228` now caps at `max-h-[90dvh]` — plan
+   88.6-08 (D-30 / W34) converged it ONTO this unit, and its own `DECISION Phase 88.6-08`
+   marker at `Modal.tsx:187-227` names THIS marker's stale sentence and routes the amendment
+   to plan 37 at paragraph (e). The pairing is therefore recorded from both sides. The
+   consequence for a future reader is unchanged in direction and stronger in force:
+   "simplifying" EITHER side back to `vh` now re-opens D-06 and W34 together, and there is no
+   longer a divergent sibling to point at as precedent for doing so.
 
    WHY `dvh` WINS HERE: a sheet is pinned to the BOTTOM edge, which is precisely the edge iOS
    Safari's dynamic toolbar occupies. `vh` resolves against the LARGEST viewport, so a
@@ -210,7 +221,21 @@ const BottomSheet = React.forwardRef<
           className={cn(
             // Bottom-anchored, full width, 12px top corners. `border-t` only —
             // the other three edges are flush with the viewport.
-            'fixed inset-x-0 bottom-0 z-50 flex w-full flex-col overflow-hidden rounded-t-[12px] border-t border-line bg-surface-card shadow-lg',
+            /* DECISION Phase 88.6-37 (D49-b, owner ruling 2026-09-09 option i): the sheet
+               panel's alias-spelled `shadow-lg` is snapped to `shadow-theme-lg`. This is a
+               VALUE change, not a rename: Tailwind v4 INLINES its built-in shadow scale's
+               literal values into the built-in utilities instead of reading the theme
+               property (`DECISION Phase 87.7`, `globals.css:1141-1155`), so `.shadow-lg`
+               renders Tailwind's cold black default while `.shadow-theme-lg` resolves
+               through the project's re-tinted light value and its dark-mode `none`. The hue
+               changes in BOTH themes and is disclosed in `88.6-37-SUMMARY.md` for
+               `/gsd-ui-review` — `BottomSheet` is a PHONE-PRIMARY surface, so this is the
+               shadow change most likely to be seen on the device the app is actually used
+               on. NO UI-SPEC §3.4 rule-2 hover pin and no `enabled-hover:`: this is a sheet
+               SURFACE, not a `.btn`, and it carries no hover shadow today — adding one
+               would be a new interaction, not a snap. Measured before editing: ONE
+               `shadow-` occurrence in this file. Reverting to the alias is a decision. */
+            'fixed inset-x-0 bottom-0 z-50 flex w-full flex-col overflow-hidden rounded-t-[12px] border-t border-line bg-surface-card shadow-theme-lg',
             // `duration-200` / `ease-out` feed tw-animate-css's --tw-duration
             // and --tw-ease, which is what its enter/exit keyframes read.
             'duration-200 ease-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0',
