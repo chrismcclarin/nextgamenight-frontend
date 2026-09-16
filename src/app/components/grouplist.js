@@ -23,6 +23,7 @@ import { useFetchErrorState } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
 
 const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated, refreshTrigger }) => {
   const router = useRouter();
@@ -356,17 +357,38 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
             const profilePic = group.profile_picture_url;
 
             return (
+              /* DECISION Phase 88.6-21 (W42/W62b, SPEC A11y mandate): the KEYBOARD target is the
+                 TITLE BLOCK below, not this card. The card keeps a pointer-only `onClick`;
+                 `role="button"` / `tabIndex` / `onKeyDown` moved onto the title `<div>` (NO
+                 aria-label — see the note there). This is `EventDayModal.js:280-359`'s H1 remedy
+                 applied VERBATIM, not a second similar-looking fix.
+
+                 WHAT WAS MEASURED HERE BEFORE THE FIX (2026-09-16, at FE `5a648e4`), because the
+                 88.5 marker below says there is no axe pin on this list to catch either half:
+                   - the card was `role="button" tabIndex={0}` with an Enter/Space `onKeyDown`, and
+                     it CONTAINED four interactive descendants — `MemberChipStack`'s stack trigger,
+                     its per-member `ClickableMemberName` triggers and `Show less`, the native
+                     "Invite Member" `<button>` and the native settings cog `<button>`;
+                   - all four were FOCUSABLE, but Enter or Space on the two native buttons ALSO
+                     fired this card's `onKeyDown` and navigated away: their `onClick` handlers
+                     call `stopPropagation`, which stops the synthetic CLICK, and nothing stopped
+                     the KEYDOWN that bubbled here first. Invite and the cog were keyboard-
+                     UNREACHABLE in effect — you could focus them and not use them;
+                   - and `role="button"` is children-presentational, so assistive technology never
+                     exposed any of the four at all (WCAG 4.1.2).
+
+                 REJECTED: converting this card to a real `<button>` — it contains interactive
+                 descendants, so that is invalid HTML and a different defect.
+                 REJECTED: a `target !== currentTarget` guard on the card's own `onKeyDown` — it
+                 fixes the hijack and leaves every descendant hidden from AT, which is the half
+                 88.9's chip-adoption widening is blocked on.
+                 The markers at `:491-510` below describe the pre-fix shape as deliberate; what
+                 changed is this phase's A11y mandate plus 88.9's blocked dependency, named here
+                 rather than overridden silently. A decision, not a cleanup. */
               <div
                 key={group.id}
-                className={`rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover active:opacity-75 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card hover:bg-surface-hover'}`}
+                className={`rounded-card p-3 pl-4 md:p-6 md:pl-7 shadow-theme-sm cursor-pointer transition-all duration-200 border border-line border-l-4 border-l-accent relative hover:-translate-y-0.5 hover:shadow-theme-md hover:border-l-accent-hover active:opacity-75 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card hover:bg-surface-hover'}`}
                 onClick={(e) => handleGroupClick(group, e)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    handleGroupClick(group, e);
-                  }
-                }}
                 style={{
                   ...(tinted && {
                     '--group-ground': ground,
@@ -452,11 +474,55 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                           is gone for the same reason it was always redundant here
                           — the no-colour half of the fork already resolves to
                           `var(--color-content-primary)`. */}
-                      <h3
-                        className="text-[1.1rem] font-semibold flex-1 min-w-0 wrap-break-word max-md:text-base [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        /* NO aria-label, deliberately — the EventDayModal remedy this applies
+                           carries the same rejection verbatim (`EventDayModal.js:343-347`, "NO
+                           aria-label ... 88.3 code-adversarial-review run 4, 2026-08-28"): on a
+                           role="button" an explicit label REPLACES the name computed from the
+                           subtree, and the subtree here IS the group name. Computing it means a
+                           quote-bearing name like `Bob's "Board" Crew` arrives intact with no
+                           escaping question to get wrong. Pinned by keyboardOperability.test.tsx
+                           (role plus name, never an attribute read). */
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleGroupClick(group, e);
+                          }
+                        }}
+                        className="flex-1 min-w-0 rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                       >
-                        {group.name}
-                      </h3>
+                        {/* DECISION Phase 88.6-21 (W42, D-04): this heading sits INSIDE the
+                            `role="button"` block above, and that costs a real property rather than
+                            nothing. ARIA's children-presentational rule applies to `role="button"`,
+                            so the subtree is flattened and this heading is NOT exposed as a heading
+                            to assistive technology — group names are not reachable by heading
+                            navigation on the home surface. `typeScaleTouchedSurfaces.test.ts`'s
+                            `EXPECTED_LEVELS` pin for this file is therefore a SOURCE-TAG pin: green
+                            says the tag and its level survived the migration, never that the
+                            heading is announced.
+
+                            CONSIDERED AND REJECTED HERE: inverting the nesting so the HEADING
+                            WRAPS the control (`<Heading level={3}><div role="button">…`), which
+                            WOULD expose it — the button's name still computes from its subtree, so
+                            nothing else changes. Rejected for THIS plan because the SPEC's
+                            instruction is to apply the EventDayModal H1 remedy verbatim and that
+                            remedy nests the title inside the control; inverting it here alone would
+                            fork one interaction idiom into two across a family Phase 88.9 widens
+                            (EventDayModal's twin is plan 27's, CalendarListView's EventRow a third).
+                            It is worth doing for the WHOLE family at once, and it is registered as
+                            an owner-facing residual in `.planning/deferred/phase-88.6.md` rather
+                            than left implied. Inverting it here is a decision, not a cleanup. */}
+                        <Heading
+                          level={3}
+                          size="heading"
+                          className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
+                        >
+                          {group.name}
+                        </Heading>
+                      </div>
                     </div>
                     {/* DECISION Phase 88-22 (D-28): the players pill does NOT take
                         the group's text style, unlike its three siblings in this
@@ -512,6 +578,34 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                  * the home group list today to catch either. The span is chosen for IDIOM
                  * CONSISTENCY with the shipped pattern, and the rule violation is the
                  * pre-existing, 88.6-owned condition named above.
+                 *
+                 * ——— AMENDED Phase 88.6-21 (W42), everything above KEPT AS HISTORY ———
+                 *
+                 * THE 88.6-OWNED CONDITION THIS MARKER PARKS IS NOW CLOSED, and two of its
+                 * sentences are consequently no longer true of the tree. Recorded rather than
+                 * rewritten, because the reasoning above is the record of why the floor was the
+                 * right interim answer.
+                 *
+                 *   - "This card is itself a `role="button"` with its own Enter/Space handler
+                 *     (`:359-370`)" — IT IS NOT, as of this plan. The keyboard target moved onto
+                 *     the TITLE BLOCK (the `role="button"` div wrapping the group-name `Heading`
+                 *     above); the card keeps a pointer-only `onClick`. That is the STRUCTURAL
+                 *     remedy this marker says was "deliberately NOT attempted here" — it is
+                 *     EventDayModal's H1 remedy applied verbatim, and Phase 88.9's chip-adoption
+                 *     widening was explicitly blocked on it.
+                 *   - "there is no axe pin on the home group list today to catch either" — THERE
+                 *     IS ONE NOW. `keyboardOperability.test.tsx` audits the fully-mounted card
+                 *     (active `userRole`, `canEdit` true, so Invite, the cog and this stack are
+                 *     all present) with `nested-interactive` and `aria-allowed-role` explicitly in
+                 *     the ruleset. That pin is what stops a future edit from re-nesting.
+                 *
+                 * WHAT SURVIVES UNCHANGED, and must: every descendant still guards its OWN
+                 * activation with `stopPropagation` on BOTH `onClick` and `onKeyDown` (plus
+                 * `preventDefault` on Space). The card no longer has a key handler to steal from,
+                 * so the guards look redundant — they are not. They are what keeps the card's
+                 * pointer `onClick` from firing on a descendant click, and `keyboardOperability`
+                 * tests 8-11 and `MemberChipStack.test.tsx` 22-25 / 35-36 still fail without them.
+                 * Removing them is a decision, not a cleanup.
                  *
                  * `tinted` is gated on `!hasBgImage`, and that gate is LOAD-BEARING (verified
                  * 2026-09-01, `colorUtils.js:739`). The tinted chip arm paints `bg-white/85` and
@@ -680,8 +774,9 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         admin-gated via `canEdit`. */}
                     {userRole && userRole !== 'pending' && (
                       /* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census — per-card primary CTA on the walked home surface. Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` floor (rejected, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `flex-1` full-row width.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */
-                      <button
-                        className="btn btn-primary text-sm flex-1 shadow-md hover:shadow-lg transition-all min-h-11"
+                      <Button
+                        variant="primary"
+                        className="flex-1 shadow-theme-md enabled-hover:shadow-theme-lg"
                         onClick={(e) => {
                           e.stopPropagation();
                           if (onGroupSelect) {
@@ -691,7 +786,7 @@ const GroupList = ({ onGroupSelect, onCreateGroup, user, onGroupSettingsUpdated,
                         aria-label="Invite member to group"
                       >
                         Invite Member
-                      </button>
+                      </Button>
                     )}
                     {canEdit && (
                       /* DECISION Phase 88.3-16 (owner ruling 2, research-checked 2026-08-27):

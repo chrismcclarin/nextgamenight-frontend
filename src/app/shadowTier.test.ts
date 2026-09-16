@@ -268,11 +268,6 @@ const ALIAS_ROSTER: ExemptionRoster = {
     why: '`hover:shadow-md` on a list-row surface (:1057) — non-button, so plain `hover:shadow-theme-md`. Plan 27 snaps it in the same calendar pass as EventDayModal.',
     owner: D49B,
   },
-  'app/components/grouplist.js': {
-    sites: 2,
-    why: 'Two occurrences on one element (:683): `shadow-md` plus `hover:shadow-lg`. Plan 21 snaps both; the group card is a non-button surface, so the hover half keeps the plain `hover:` spelling.',
-    owner: D49B,
-  },
   'app/components/FeedbackButton.js': {
     sites: 1,
     why: '`shadow-lg` on the floating feedback FAB (:258), which IS a `.btn` element — so if plan 31 adds a hover pin it must use `enabled-hover:`, never bare `hover:`.',
@@ -283,6 +278,15 @@ const ALIAS_ROSTER: ExemptionRoster = {
     why: '`shadow-md` on the simulated prompt card (:84). Plan 35 snaps it to `shadow-theme-md`; hue change in both themes, and this is a TUTORIAL surface so the change is user-visible in the walkthrough.',
     owner: D49B,
   },
+  // `app/components/grouplist.js` CLOSED by plan 88.6-21 task 1 (wave 7, 2026-09-16): the
+  // per-card "Invite Member" CTA's `shadow-md hover:shadow-lg` is now
+  // `shadow-theme-md enabled-hover:shadow-theme-lg`. TWO corrections to this entry's own text,
+  // recorded rather than absorbed: the element is at `:684`, not `:683` (`:683` is its opening
+  // `<button` tag and `:684` was the className), and it IS a `.btn` element — it wears
+  // `btn btn-primary` — so the hover half takes plan 05's `enabled-hover:` variant, NOT the
+  // "plain `hover:` spelling" this entry prescribed. A bare `hover:` pin here would re-lift a
+  // gated control and would not de-dupe against the primitive's `enabled-hover:` base token.
+  // Entry DELETED rather than zeroed; the roster is exact in both directions.
   // `app/components/KebabMenu.js` CLOSED by plan 88.6-16 (wave 6, 2026-09-15): the dropdown
   // panel's `shadow-lg` is now `shadow-theme-lg`. Entry DELETED rather than zeroed — the roster
   // is exact in both directions, so a zeroed entry would red as a fossil permission.

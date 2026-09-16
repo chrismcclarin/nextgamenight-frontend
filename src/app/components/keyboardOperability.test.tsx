@@ -42,17 +42,70 @@ import { render, screen, fireEvent, cleanup, waitFor, within, act } from '@testi
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import { axe } from 'vitest-axe';
+
 import PromptScheduleSection from './PromptScheduleSection';
 import ClickableMemberName from './ClickableMemberName';
 import MemberChipStack from './MemberChipStack';
 import KebabMenu from './KebabMenu';
+import GroupList from './grouplist';
 import { Modal } from './Modal';
 import { FriendshipContext } from './FriendshipStatusProvider';
+
+// 88.6-21 (W42): the whole `grouplist.js` card is rendered here, so the module graph this file
+// mounts now reaches the router, the Auth0 session hook, the timezone provider and the groups
+// endpoint. Every one of these is a LEAF stub — none of the pre-existing describes above imports
+// any of them (measured 2026-09-16: only `FriendshipStatusProvider` touches `@auth0/nextjs-auth0`,
+// and every arm in this file supplies `FriendshipContext` directly rather than mounting the
+// provider), so adding them cannot change what those arms exercise.
+const gl = vi.hoisted(() => ({
+  push: vi.fn(),
+  getUserGroups: vi.fn(async () => [] as unknown[]),
+}));
+
+const GL_SELF = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: gl.push }),
+}));
+
+vi.mock('@auth0/nextjs-auth0/client', () => ({
+  useUser: () => ({ user: { sub: 'auth0|self' }, isLoading: false }),
+}));
+
+vi.mock('@/app/components/TimezoneProvider', () => ({
+  useTimezone: () => ({ timezone: 'America/New_York', setTimezone: vi.fn() }),
+}));
+
+vi.mock('@/lib/hooks/useSelfIdentity', () => ({
+  SELF_IDENTITY_KEY: ['users', 'self'],
+  useSelfIdentity: () => ({
+    selfUuid: GL_SELF,
+    self: { id: GL_SELF, user_id: 'auth0|self' },
+    query: { isError: false, error: null, refetch: vi.fn() },
+    isPending: false,
+  }),
+}));
+
+// Rendered rather than nulled: activating the cog is otherwise unobservable, and
+// `expect(push).not.toHaveBeenCalled()` alone is the vacuous shape this file's own test 12
+// exists to forbid. The stub gives the cog arm a POSITIVE signal to settle on.
+vi.mock('@/app/components/GroupSettings', () => ({
+  default: ({ group }: { group?: { name?: string } }) => (
+    <div data-testid="group-settings-open">{group?.name}</div>
+  ),
+}));
+
+vi.mock('@/app/components/SafeImage', () => ({ default: () => null }));
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>();
   return {
     ...actual,
+    groupsAPI: {
+      ...actual.groupsAPI,
+      getUserGroups: gl.getUserGroups,
+    },
     promptSettingsAPI: {
       ...actual.promptSettingsAPI,
       getGroupPromptSettings: vi.fn(async () => ({ schedules: [], settings: {} })),
@@ -1059,5 +1112,180 @@ describe('KebabMenu edge coverage — SPEC E6 empty / zero-one-many (R5)', () =>
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+  });
+});
+
+/* ============================================================================================
+ * Phase 88.6-21 (W42/W62b) — the group CARD itself, not just its descendants.
+ *
+ * WHAT THE DESCRIBES ABOVE COULD NOT SEE. Tests 4-12 mount a SYNTHETIC `role="button"` wrapper
+ * around one descendant at a time. That harness is the right shape for the per-descendant
+ * stopPropagation floor 88.5 committed to, and it is structurally unable to see the two defects
+ * this block closes, because the wrapper is hand-written here rather than read from
+ * `grouplist.js`:
+ *
+ *   1. the card's OWN `onKeyDown` stealing Enter/Space from the two NATIVE `<button>`
+ *      descendants — "Invite Member" and the settings cog. Both call `stopPropagation` in their
+ *      `onClick`, which stops the synthetic CLICK; the KEYDOWN bubbles first and nothing stopped
+ *      it, so Enter on Invite NAVIGATED to the group instead of opening the invite panel;
+ *   2. children-presentational. `role="button"` flattens its accessible subtree, so none of the
+ *      four descendants was exposed to assistive technology at all (WCAG 4.1.2).
+ *
+ * So these arms mount the REAL `<GroupList>` at the render where every descendant is present —
+ * `userRole` active AND `canEdit` true — because a render that omits them cannot show a nesting
+ * violation. The axe pin is the independent half: the 88.5 marker at `grouplist.js` recorded
+ * that "there is no axe pin on the home group list today to catch either", which is precisely
+ * why a hand-written suite by the executor who wrote the fix is not sufficient on its own.
+ * ========================================================================================== */
+
+// Two explicit `runOnly` passes would also work; axe-core's rule selector takes an ARRAY, so the
+// two rules run as one pass here. Both are named rather than implied: `nested-interactive` is the
+// focusable-descendant half and `aria-allowed-role` is the "is this role legal on this element"
+// half, and a ruleset of `wcag412` alone runs neither.
+const NESTED_INTERACTIVE = {
+  runOnly: { type: 'rule' as const, values: ['nested-interactive', 'aria-allowed-role'] },
+};
+
+const GL_GROUP = {
+  id: 'g1',
+  name: 'Alpha Crew',
+  Users: [
+    { id: GL_SELF, username: 'me', UserGroup: { role: 'owner' } },
+    { id: 'u1', username: 'ada', UserGroup: { role: 'member' } },
+  ],
+  Events: [],
+};
+
+async function renderGroupCard(overrides?: Record<string, unknown>) {
+  gl.getUserGroups.mockResolvedValue([{ ...GL_GROUP, ...overrides }]);
+  const onGroupSelect = vi.fn();
+  const utils = render(
+    <FriendshipContext.Provider value={friendshipValue as never}>
+      {/* GroupList is untyped JS; a typed-any bag keeps JSX from demanding unrelated props —
+          the same shape `grouplist.identity.test.tsx:87` uses. */}
+      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+      <GroupList {...({ user: { sub: 'auth0|self' }, onGroupSelect } as any)} />
+    </FriendshipContext.Provider>,
+  );
+  // Settle on a BRANCH-SPECIFIC element, never on chrome: the "Your Groups" header renders above
+  // every branch including the loading one (88.6-15's recipe, trap 1).
+  await screen.findByRole('button', { name: 'Invite member to group' });
+  return { ...utils, onGroupSelect };
+}
+
+const glTitleBlock = () => screen.getByRole('button', { name: GL_GROUP.name });
+const glInvite = () => screen.getByRole('button', { name: 'Invite member to group' });
+const glCog = () => screen.getByRole('button', { name: 'Customize group' });
+const glChipStack = () =>
+  screen.getByRole('button', { name: 'Members: ada. Show all members.' });
+
+describe('grouplist row — the card and every control inside it are independently operable (88.6-21 W42)', () => {
+  beforeEach(() => {
+    gl.push.mockClear();
+    gl.getUserGroups.mockReset();
+  });
+
+  it('GL-1. Enter on "Invite Member" opens the invite panel and does NOT navigate to the group', async () => {
+    const user = userEvent.setup();
+    const { onGroupSelect } = await renderGroupCard();
+
+    glInvite().focus();
+    await user.keyboard('{Enter}');
+
+    // POSITIVE first — the descendant's own action really fired ...
+    expect(onGroupSelect).toHaveBeenCalledTimes(1);
+    // ... and only then the absence, which is meaningless without it.
+    expect(gl.push, 'Enter on Invite must not navigate to the group page').not.toHaveBeenCalled();
+  });
+
+  it('GL-2. Space on "Invite Member" behaves the same way', async () => {
+    const user = userEvent.setup();
+    const { onGroupSelect } = await renderGroupCard();
+
+    glInvite().focus();
+    await user.keyboard('[Space]');
+
+    expect(onGroupSelect).toHaveBeenCalledTimes(1);
+    expect(gl.push).not.toHaveBeenCalled();
+  });
+
+  it('GL-3. Enter on the settings cog opens GroupSettings and does NOT navigate', async () => {
+    const user = userEvent.setup();
+    await renderGroupCard();
+
+    glCog().focus();
+    await user.keyboard('{Enter}');
+
+    expect(await screen.findByTestId('group-settings-open')).toHaveTextContent(GL_GROUP.name);
+    expect(gl.push).not.toHaveBeenCalled();
+  });
+
+  it('GL-4. Enter on the chip stack EXPANDS it in the real card and does NOT navigate', async () => {
+    await renderGroupCard();
+
+    const trigger = glChipStack();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+
+    // the OUTCOME, not the attribute: `Show less` only exists in the expanded row
+    expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
+    expect(gl.push).not.toHaveBeenCalled();
+  });
+
+  it('GL-5. the ROW keeps its own keyboard path — Enter and Space on the title block navigate', async () => {
+    await renderGroupCard();
+
+    fireEvent.keyDown(glTitleBlock(), { key: 'Enter' });
+    expect(gl.push).toHaveBeenCalledWith('/groupHomePage?id=g1');
+
+    gl.push.mockClear();
+    const spaceEvent = fireEvent.keyDown(glTitleBlock(), { key: ' ' });
+    expect(gl.push).toHaveBeenCalledWith('/groupHomePage?id=g1');
+    // Space's default on a non-button is PAGE SCROLL; it must be suppressed.
+    expect(spaceEvent, 'Space must be preventDefault-ed on a role="button" element').toBe(false);
+  });
+
+  it('GL-6. focus is visible on the row AND on each descendant', async () => {
+    await renderGroupCard();
+
+    // §5.7's house ring, per element. The row's target is the TITLE BLOCK after the W42 remedy —
+    // the card itself is no longer focusable, so a ring on it would be dead.
+    for (const el of [glTitleBlock(), glInvite(), glCog(), glChipStack()]) {
+      expect(
+        el.className,
+        `${el.getAttribute('aria-label') ?? el.textContent} carries no focus-visible ring`,
+      ).toContain('focus-visible:ring-');
+    }
+  });
+
+  it('GL-7. every interactive descendant is reachable by ROLE and NAME on the fully-mounted card', async () => {
+    await renderGroupCard();
+
+    // The render the axe pin below audits: all four present at once. A render that omits any of
+    // them cannot show a nesting violation, so this is the precondition for GL-8 rather than an
+    // independent claim.
+    expect(glInvite()).toBeInTheDocument();
+    expect(glCog()).toBeInTheDocument();
+    expect(glChipStack()).toBeInTheDocument();
+    expect(glTitleBlock()).toBeInTheDocument();
+  });
+
+  it('GL-8. axe: no `nested-interactive` / `aria-allowed-role` violation on that same render', async () => {
+    const { container } = await renderGroupCard();
+    // Sanity: the audit subject really contains the four controls, so a green result is not
+    // green-by-emptiness.
+    expect(container.querySelectorAll('[role="button"], button').length).toBeGreaterThanOrEqual(4);
+    expect(await axe(container, NESTED_INTERACTIVE)).toHaveNoViolations();
+  });
+
+  it('GL-9. a QUOTE-BEARING group name is the card control\'s COMPUTED accessible name (AC-5)', async () => {
+    const quoted = 'Bob\'s "Board" Crew';
+    await renderGroupCard({ id: 'g2', name: quoted });
+
+    // By ROLE plus NAME, never by reading an attribute — the name is COMPUTED from the subtree
+    // and there is deliberately no `aria-label` to read (EventDayModal.js:343-347).
+    const block = screen.getByRole('button', { name: quoted });
+    expect(block).not.toHaveAttribute('aria-label');
+    expect(screen.getByRole('heading', { level: 3 })).toHaveTextContent(quoted);
   });
 });

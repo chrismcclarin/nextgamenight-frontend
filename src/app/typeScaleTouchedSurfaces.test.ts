@@ -574,7 +574,7 @@ const EXPECTED_PROP_SEAMS = 5;
  * `text-xl` -> `size="heading"`, likewise unchanged. `EXPECTED_LEVELS`' `{ 1: 4, 2: 1 }` entry
  * for that file is byte-unchanged (P4).
  */
-const EXPECTED_MIN_PRIMITIVES = 32;
+const EXPECTED_MIN_PRIMITIVES = 33;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -702,11 +702,6 @@ const RUNG_ROSTER: ExemptionRoster = {
   'app/components/UpcomingEventsCard.js': {
     sites: 1,
     why: '1 heading off the 4-size working set (h3:156 no size utility) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
-  'app/components/grouplist.js': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h3:455 max-md:text-base) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
   'app/components/tutorial/simulated/ProblemSlide.js': {
@@ -839,11 +834,6 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
     why: '1 heading carrying the prohibited 600 weight (h3:91) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/grouplist.js': {
-    sites: 1,
-    why: '1 heading carrying the prohibited 600 weight (h3:455) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
   'app/components/tutorial/simulated/ProblemSlide.js': {
     sites: 1,
     why: '1 heading carrying the prohibited 600 weight (h2:14) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
@@ -944,11 +934,6 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
     why: '1 raw heading not stating the 700 weight (h3:156 font-medium) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/grouplist.js': {
-    sites: 1,
-    why: '1 raw heading not stating the 700 weight (h3:455 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
   'app/components/tutorial/simulated/ProblemSlide.js': {
     sites: 1,
     why: '1 raw heading not stating the 700 weight (h2:14 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
@@ -977,11 +962,6 @@ const BREAKPOINT_ROSTER: ExemptionRoster = {
     sites: 1,
     why: 'Phase 88.9 W55 owns the landing hero block: 1 heading whose size changes at a breakpoint (h1:15 text-5xl md:text-6xl) — a heading that changes size at a breakpoint is a SECOND scale; pick ONE rung from the working set',
     owner: { kind: 'owner', date: '2026-09-08', ruling: 'Phase 88.9 W55 owns the landing hero block\'s sizes' },
-  },
-  'app/components/grouplist.js': {
-    sites: 1,
-    why: '1 heading whose size changes at a breakpoint (h3:455 max-md:text-base) — a heading that changes size at a breakpoint is a SECOND scale; pick ONE rung from the working set',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
   'app/groupPlanning/page.js': {
     sites: 1,
@@ -1518,12 +1498,6 @@ const ARBITRARY_SIZE_ROSTER: ExemptionRoster = {
       '1 arbitrary size value (text-[10px]@256), 1 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
   },
-  'app/components/grouplist.js': {
-    sites: 1,
-    why:
-      '1 arbitrary size value (text-[1.1rem]@456), 0 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
-  },
   'app/components/tutorial/simulated/AvailabilityPromptDemo.js': {
     sites: 1,
     why:
@@ -2055,9 +2029,12 @@ const WEIGHT_ROSTER: ExemptionRoster = {
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
   'app/components/grouplist.js': {
-    sites: 3,
+    // 3 -> 2, plan 88.6-21 task 1 (wave 7, 2026-09-16): the group-name h3's `font-semibold` left
+    // with the heading, which is now `<Heading level={3} size="heading">` and takes its 700 from
+    // the primitive's base. Task 3 settles the remaining two.
+    sites: 2,
     why:
-      '3 off-scale weight sites (0 font-medium, 3 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); dead on a .btn (delete); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-05, 88.6-07, 88.6-10, 88.6-11, 88.6-12, 88.6-13, 88.6-20, 88.6-21, 88.6-32, 88.6-34, 88.6-36, 88.6-40, 88.6-41, 88.6-43, 88.6-46.',
+      '2 off-scale weight sites (0 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); dead on a .btn (delete); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-05, 88.6-07, 88.6-10, 88.6-11, 88.6-12, 88.6-13, 88.6-20, 88.6-21, 88.6-32, 88.6-34, 88.6-36, 88.6-40, 88.6-41, 88.6-43, 88.6-46.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
   'app/components/heatmap/WeekGrid.tsx': {

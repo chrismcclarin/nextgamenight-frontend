@@ -262,7 +262,13 @@ const BTN_EXEMPT: ExemptionRoster = {
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
   'app/components/grouplist.js': {
-    sites: 3,
+    // 3 -> 2, plan 88.6-21 task 1 (wave 7, 2026-09-16). The departing site is the per-card
+    // "Invite Member" CTA, which migrated to `<Button variant="primary">` alongside the W42
+    // keyboard remedy because that remedy's own acceptance requires a visible focus indicator on
+    // every descendant and a bare `.btn` has none of its own. The two survivors are the twin
+    // "+ Create New Group" header CTAs (the live branch and the identity-error branch); task 3
+    // migrates both and DELETES this entry.
+    sites: 2,
     why: 'plan 88.6-21 sweeps grouplist.js alongside groupHomePage/page.js',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
