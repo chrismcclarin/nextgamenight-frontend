@@ -21,6 +21,7 @@ import * as React from 'react';
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { axe } from 'vitest-axe';
 
 const SELF_UUID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const FRIEND_UUID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
@@ -524,5 +525,131 @@ describe('FriendInvitePanel create-path context copy (Req 7 / §6.3)', () => {
     });
     expect(heading.querySelector('img')).toBeNull();
     expect(dialog.container.ownerDocument.querySelector('img')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6 plan 22 task 3 — R7 composed axe audit, surface #4 of the nine.
+//
+// ORDERING (UI-SPEC §7.5): this audit runs AFTER this surface's LAST migration
+// commit — i.e. after tasks 1 and 2 of plan 88.6-22. That is the difference
+// between auditing the migrated surface and auditing a half-migrated one, and it
+// is stated here rather than left to commit order.
+//
+// WHAT THIS AUDIT DOES NOT COVER, said plainly so a zero-violation result is not
+// over-read:
+//   - axe has NO rule for an unassociated error message. A clean run here is NOT
+//     evidence that task 1's `:477` association or task 2's three BallotSection
+//     associations landed; those are proven by their own behavioural arms above
+//     and in `BallotSection.test.tsx`.
+//   - It is not the catch for the `id` on the "Invite by Email" heading either.
+//     Task 1 owns that contract outright; a WCAG 4.1.2 violation surfacing here
+//     would mean task 1 had already shipped a regression this plan knew about.
+//
+// VIEWPORT (D65): jsdom performs no layout and has no viewport, so "run it at
+// phone width and at desktop" is not a thing this audit can do — claiming it would
+// be a vacuous assertion. The substitute §7.5 asks for is to audit each
+// MEDIA-QUERY FORK of the audited tree by stubbing `matchMedia`. Measured
+// 2026-09-16: `grep -rn matchMedia` over the whole audited tree —
+// `FriendInvitePanel.js`, `Modal.tsx`, `ui/dialog.tsx`, `ui/UserChip.tsx`,
+// `ui/Input.tsx`, `ui/Button.tsx`, `ui/Heading.tsx`, `ui/StatusRegion.tsx` —
+// returns ZERO hits. This surface has no media-query fork; its only responsive
+// behaviour is Tailwind `md:` classes, which jsdom neither applies nor branches
+// on. So ONE composed pass per rendered branch is the whole of what is
+// measurable here, and that is recorded rather than dressed up as a width run.
+// ---------------------------------------------------------------------------
+
+// WCAG 4.1.2 is a TAG; `heading-order` is a RULE carrying no wcag412 tag, so both
+// are needed. `as const` is applied to `type` ONLY — axe-core's `RunOnly.values`
+// is a mutable `string[]` and a fully-readonly literal fails `tsc --noEmit`.
+// (Same two constants as `PromptScheduleManager.test.tsx:129-130`, the phase's
+// first composed audit; deliberately not extracted into a shared helper, which
+// would be a third file for two object literals.)
+const WCAG_412 = { runOnly: { type: 'tag' as const, values: ['wcag412'] } };
+const HEADING_ORDER = { runOnly: { type: 'rule' as const, values: ['heading-order'] } };
+
+describe('FriendInvitePanel — R7 composed axe audit (UI-SPEC §7.5, surface #4)', () => {
+  it('1. the POPULATED surface passes WCAG 4.1.2 and heading-order', async () => {
+    renderPanel();
+    // Settle on a BRANCH-SPECIFIC element, never on the header. The header renders
+    // above every branch, so awaiting it returns while the friends section still
+    // says "Loading your friends..." and the audit would score a nearly-empty tree
+    // (the trap plan 15 recorded after hitting it).
+    await screen.findByText('Dana');
+    const dialog = screen.getByRole('dialog');
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('2. the ADMIN surface — the extra reset control — passes both rules', async () => {
+    renderPanel({ isAdmin: true });
+    await screen.findByRole('button', { name: 'Reset invite link' });
+    const dialog = screen.getByRole('dialog');
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('3. the EMPTY-friends and NO-GROUP branches are audited too', async () => {
+    // An audit of one branch is an audit of one branch. The empty branch swaps the
+    // list for a link, and the no-group branch drops the whole QR section — both
+    // change the named-control population, which is what 4.1.2 is about.
+    renderPanel({ friends: [] });
+    await screen.findByText('No friends yet.');
+    let dialog = screen.getByRole('dialog');
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+    cleanup();
+
+    renderPanel({ group: null });
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    dialog = screen.getByRole('dialog');
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('4. the ERRORED surface — the branch this plan added markup to — passes both rules', async () => {
+    const { invitesAPI } = await import('@/lib/api');
+    (invitesAPI.sendInvite as Mock).mockRejectedValueOnce(new Error('nope'));
+    renderPanel();
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Invite by Email' }), {
+      target: { value: 'newcomer@example.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() =>
+      expect(document.getElementById('invite-email-error')).not.toHaveTextContent('')
+    );
+    const dialog = screen.getByRole('dialog');
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
+  });
+
+  it('5. the ADD-FRIEND prompt branch passes both rules, and UserChip still gets no avatar', async () => {
+    // D-22 companion (plan 37): `FriendInvitePanel.js` is `UserChip`'s only importer
+    // and passes `user={{ name }}` with NO `avatarUrl` and NO `picture`, so
+    // UserChip's `<img>` branch never renders from this surface and plan 37's
+    // `referrerPolicy="no-referrer"` addition is unobservable here. Confirmed by
+    // asserting the absence of an `<img>` in the rendered prompt rather than by
+    // reading the call site.
+    const { friendshipsAPI: api, invitesAPI } = await import('@/lib/api');
+    (api.searchUserByEmail as Mock).mockResolvedValue({
+      id: FRIEND_UUID,
+      username: 'Dana',
+      email: 'dana@example.test',
+    });
+    (invitesAPI.sendInvite as Mock).mockResolvedValue({});
+    renderPanel({ friends: [] });
+    await screen.findByRole('heading', { name: 'Invite by Email' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Invite by Email' }), {
+      target: { value: 'dana@example.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    const add = await screen.findByRole('button', { name: 'Add Friend' });
+    expect(add).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.querySelector('img')).toBeNull();
+    expect(await axe(dialog, WCAG_412)).toHaveNoViolations();
+    expect(await axe(dialog, HEADING_ORDER)).toHaveNoViolations();
   });
 });
