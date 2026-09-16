@@ -1017,6 +1017,12 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
     await assertTheme(page, 'light');
     await assertStatusTextLanded(page, 'light');
   });
+
+  test('accent variant: the label clears 4.5:1 on its own amber fill (88.6 W23)', async ({ page }) => {
+    await page.goto('/');
+    await assertTheme(page, 'light');
+    await assertAccentLabelRatio(page, 'light');
+  });
 });
 
 test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
@@ -1192,6 +1198,12 @@ test.describe('Req 11 Gate C — rendered contrast, DARK', () => {
     await assertTheme(page, 'dark');
     await assertStatusTextLanded(page, 'dark');
   });
+
+  test('accent variant: the label clears 4.5:1 on its own amber fill in dark too (88.6 W23)', async ({ page }) => {
+    await page.goto('/');
+    await assertTheme(page, 'dark');
+    await assertAccentLabelRatio(page, 'dark');
+  });
 });
 
 /**
@@ -1253,6 +1265,84 @@ async function assertStatusTextLanded(page: Page, theme: 'light' | 'dark'): Prom
       `text-content-status-success utility emitted no rule. The ratio passing here proves nothing — ` +
       `this is the assertion that catches the 134-site rename shipping a dead class.`
   ).not.toBe(bodyColor);
+}
+
+/**
+ * Req 7 / 88.6 W23 — the `accent` variant's LABEL-ON-FILL ratio, rendered, in both themes.
+ *
+ * WHY THIS STEP EXISTS. `.btn-accent` shipped in 88.3-18 and Gate A test 45 pins its DECLARED
+ * tokens, but nothing measured the compiled rule in a browser. Phase 88.6-06 then made it a
+ * first-class `Button` rung (`variant="accent"` -> `btn-accent`), so every migrating call site
+ * now reaches it through the primitive. Expected: `--color-btn-accent-text` (#ffffff) on
+ * `--color-btn-accent-bg` (amber-700) = **5.0216:1**, IDENTICAL in light and dark because both
+ * properties carry the same value in both theme blocks (globals.css:1390/:1392 light,
+ * :1827/:1829 dark — cited from the `Button.tsx` accent marker, re-derived there 2026-09-15).
+ *
+ * PLANTED, not driven at a shipped site — and this is the one place in this file that plants.
+ * The two shipped `.btn-accent` controls are `EventDayModal.js:452` (inside a day modal that has
+ * to be opened from the month grid) and `gameDetail/page.js:1620`, whose render is gated on
+ * `userScope === 'group-member'` (`:1596`). Neither is a steady-state element of a page this
+ * spec already visits, and the alternative — a new fixture plus a modal-opening journey inside a
+ * CONTRAST gate — buys nothing this measurement needs: the quantity under test is a compiled CSS
+ * rule, not a layout or a data path. The same reasoning is already on the record one file over,
+ * at `touch-targets.spec.ts`'s D-36 block ("MEASURED, not assumed: those steppers are UNREACHABLE
+ * in CI ... Driving them would need a new backend fixture").
+ *
+ * The probe is located BY ROLE AND ACCESSIBLE NAME like every other anchor here — never by its
+ * class — and every class it wears is one `src/` already emits (the two shipped sites' own
+ * string), because `e2e/` is outside the `@source` globs (globals.css:10, :86-88) and a class
+ * only this file wears would render unstyled and measure nothing.
+ *
+ * PHONE PROJECT ONLY, and that is not a gap: this whole spec is file-level skipped to phone at
+ * `:96-99` under D-07, so a "then at desktop" half would be satisfied by an empty run. Plan
+ * 88.6-12's desktop coverage is its `journeys` arm in `e2e/touch-targets.spec.ts`.
+ */
+const ACCENT_PROBE_NAME = 'E2E accent contrast probe';
+
+async function assertAccentLabelRatio(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  await page.evaluate((name) => {
+    const el = document.createElement('button');
+    el.type = 'button';
+    // `EventDayModal.js:452`'s own class string, minus the layout-only `mt-2`. Every token is
+    // emitted because that shipped site wears it.
+    el.className =
+      'btn btn-accent font-semibold text-xs px-3 py-1.5 inline-flex items-center gap-1.5 ' +
+      'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
+    el.textContent = name;
+    el.setAttribute('data-e2e-accent-probe', '');
+    document.body.appendChild(el);
+  }, ACCENT_PROBE_NAME);
+
+  try {
+    const probe = page.getByRole('button', { name: ACCENT_PROBE_NAME });
+    await expect(
+      probe,
+      `W23 (${theme}): the planted \`.btn-accent\` probe is not visible. It is appended to <body> ` +
+        'directly, so a failure here is the plant itself, not a fixture or a route.'
+    ).toBeVisible({ timeout: 15_000 });
+
+    const m = await ratioAgainstGround(probe, `accent variant label on fill (W23, ${theme})`);
+
+    // The ground must be the BUTTON'S OWN amber fill, not something it inherited. `.btn-accent`
+    // paints its own background, so `compositeGround` terminates on the button itself — and if
+    // the rule ever stops emitting, the walk reaches the page instead and this catches it before
+    // the ratio does (white on the page ground would read as a pass in dark).
+    expect(
+      m.probe.opaqueAt,
+      `W23 (${theme}): the ground walk did not terminate on the button's OWN background ` +
+        `(opaqueAt ${m.probe.opaqueAt}) — \`.btn-accent\` is not painting a fill, so the ratio ` +
+        `below is measured against whatever ancestor happens to be opaque.\n${describeGround(
+          `accent probe (${theme})`,
+          m.resolution
+        )}`
+    ).toBe(0);
+
+    expectRatio(`accent variant label on fill (W23, ${theme})`, m, AA_TEXT);
+  } finally {
+    await page.evaluate(() => {
+      document.querySelectorAll('[data-e2e-accent-probe]').forEach((el) => el.remove());
+    });
+  }
 }
 
 /**

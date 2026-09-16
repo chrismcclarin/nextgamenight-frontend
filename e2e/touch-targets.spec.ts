@@ -824,14 +824,35 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
     await page.goto(`/groupHomePage?id=${E2E_GROUP_ID}`);
     await assertDarkTheme(page);
 
-    // The REAL call site: "Manage Members" is a bare `.btn` with NO per-CTA `min-h-11`
-    // (groupHomePage/page.js), so the ONLY thing that can hold it at 44px here is the D-36
-    // phone floor. "Plan Game Session" (asserted above) carries its own `min-h-11` and
-    // therefore proves nothing about the floor.
-    const manageMembers = page.getByRole('button', { name: /manage members/i });
-    await guardResolved(manageMembers, 'the "Manage Members" bare-.btn CTA (no per-CTA min-h-11)');
-    await assertMin44(manageMembers, '"Manage Members" (bare .btn, floored by D-36 only)');
-
+    /* The arm that used to stand here read, verbatim:
+     *
+     *   // The REAL call site: "Manage Members" is a bare `.btn` with NO per-CTA `min-h-11`
+     *   // (groupHomePage/page.js), so the ONLY thing that can hold it at 44px here is the D-36
+     *   // phone floor. "Plan Game Session" (asserted above) carries its own `min-h-11` and
+     *   // therefore proves nothing about the floor.
+     *   const manageMembers = page.getByRole('button', { name: /manage members/i });
+     *   await guardResolved(manageMembers, 'the "Manage Members" bare-.btn CTA (no per-CTA min-h-11)');
+     *   await assertMin44(manageMembers, '"Manage Members" (bare .btn, floored by D-36 only)');
+     *
+     * AMENDED Phase 88.6-12 (RESEARCH Pitfall 6): the original subject was a real call site,
+     * chosen because at the time a bare `.btn` was the only shape that could prove the media
+     * rule. Phase 88.6 migrated that control to `<Button>`, which carries `min-h-11` on its cva
+     * base at every width — so the assertion would have kept passing for a DIFFERENT reason and
+     * stopped measuring the media rule entirely. Re-pointed at a planted bare `.btn`, which no
+     * migration can take away.
+     *
+     * The probe is not a generic one: it wears the exact class string "Manage Members" ships
+     * with today (`groupHomePage/page.js:871-878`, re-derived 2026-09-15) minus nothing, so the
+     * cascade fact being measured is the same one — a `.btn` carrying a pile of padding and
+     * ring utilities and NO `min-h-*`, whose only 44px source is the `@media (width < 48rem)`
+     * rule. It is distinct from the `bare` probe below, which is the minimal `btn btn-secondary`
+     * shape; the two measure the floor under different utility loads and both must hold.
+     *
+     * If a real bare-`.btn` call site still exists after every sweep, prefer the planted probe
+     * anyway — an arm whose subject can be migrated away is an arm with an expiry date. (The two
+     * `BrowseMoreModal` steppers are not a candidate: they carry `.btn-compact`, which opts OUT
+     * of the floor by design.)
+     */
     const probes = await page.evaluate(() => {
       const make = (className: string) => {
         const el = document.createElement('button');
@@ -845,13 +866,24 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       // control for the floor. `w-8`/`h-8` are emitted because those steppers use them.
       const compact = make('btn btn-compact btn-secondary w-8 h-8');
       const bare = make('btn btn-secondary');
+      // The re-pointed real-call-site arm: "Manage Members"'s own shipped class string
+      // (groupHomePage/page.js:871-878). Every class here is emitted because that call site
+      // wears it today; `e2e/` is outside the `@source` globs (globals.css:10, :86-88), so a
+      // class no `src/` file wears would render nothing and measure nothing.
+      const shipped = make(
+        'btn px-4 py-2 md:px-6 md:py-3 font-semibold text-sm md:text-base whitespace-nowrap ' +
+          'text-content-primary bg-white/80 ring-1 ring-line-control dark:ring-0 ' +
+          'rounded-btn hover:bg-surface-hover transition-all shadow-theme-md ' +
+          'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2',
+      );
       const read = (el: HTMLElement) => {
         const r = el.getBoundingClientRect();
         return { width: r.width, height: r.height, minHeight: getComputedStyle(el).minHeight };
       };
-      const result = { compact: read(compact), bare: read(bare) };
+      const result = { compact: read(compact), bare: read(bare), shipped: read(shipped) };
       compact.remove();
       bare.remove();
+      shipped.remove();
       return result;
     });
 
@@ -870,6 +902,344 @@ test.describe('Phase 87.8 R4/R6 — touch-target geometry and press feedback (ph
       Math.abs(probes.compact.width - probes.compact.height),
       `.btn.btn-compact probe measured ${probes.compact.width}x${probes.compact.height} — the steppers are square BY DESIGN and a height-only assertion would not have caught a 32x44 deformation`,
     ).toBeLessThanOrEqual(1);
+
+    // (c) The RE-POINTED real-call-site arm (AMENDED Phase 88.6-12, see the block above): the
+    // same shape "Manage Members" ships with — `.btn` plus a pile of utilities, no `min-h-*` —
+    // still clears 44px from the media rule ALONE. Its `px-4 py-2` / `md:px-6 md:py-3` padding
+    // utilities are dead under unlayered `.btn` (globals.css:2666-2674), which is part of the
+    // fact being measured, not an accident of the probe.
+    expect(
+      probes.shipped.height,
+      `the shipped-class-string .btn probe measured ${probes.shipped.height}px (min-height: ${probes.shipped.minHeight}) — a bare .btn carrying no min-h-* utility is below the 44px floor at 375px. This is the D-36 @media (width < 48rem) rule and nothing else; look at globals.css's media block and its authoring order. This probe replaced a "Manage Members" locator in 88.6-12 precisely so that migrating that control to <Button> could not make this assertion pass for the wrong reason`,
+    ).toBeGreaterThanOrEqual(44);
+  });
+
+  /* UI-SPEC §9.3 **E10 · overflow** — two row-action controls side by side in ONE row at 375px
+     produce no horizontal overflow. Landed Phase 88.6-12 (wave 5), BEFORE plan 18 migrates the
+     two gameDetail controls onto `<Button>`; plan 18 re-runs this arm rather than authoring a
+     second one. If you are plan 18 and about to write an adjacency probe: this is it — extend it.
+
+     WHAT IT MEASURES AND IN WHAT ORDER:
+
+       1. A PLANTED replica of the shipped row, ALWAYS. The row is
+          `<div class="flex items-center gap-2 shrink-0 ml-auto">` (gameDetail/page.js:1956) with
+          `GuestInviteButton` (className at :198) and the two-tap Remove (className at :1978)
+          inside it, re-derived 2026-09-15. The replica carries the LONGEST label each control can
+          render — "Already a member" and "Remove Bartholomew" — because a row only overflows at
+          its widest state and a short-label probe would pass on a row that breaks in production.
+
+       2. The SHIPPED row, WHEN THE FIXTURE RENDERS IT. This half is CONDITIONAL, deliberately,
+          and the reasoning is the one already recorded a few tests above for the `.btn-compact`
+          steppers: both controls sit behind `canInviteGuest(p, userRole)` / `(owner|admin) &&
+          p.user_id && !isCurrentUser` (gameDetail/page.js:85-91, :1839-1844), i.e. they need a
+          GUEST participation row on the fixture event with the viewer as owner. The backend's
+          `scripts/e2e-fixtures.js` seeds `EventRsvp` rows for the RsvpSection surface and nothing
+          that is known to satisfy that gate. A hard `guardResolved` here would red the phase's
+          whole phone lane on a fixture fact rather than on a layout fact.
+          This is NOT a silent skip: the planted half above is unconditional and carries the
+          anti-vacuity floor, and the count of shipped rows found is asserted to be 0 or more with
+          the number reported, so a reader always knows which halves ran. When the fixture does
+          seed the pair, the shipped half asserts the same predicate on the real element.
+
+     The predicate, both halves: the row's `scrollWidth` fits its `clientWidth` (allow 1px), each
+     control's right edge stays within the row's, and the document induces no horizontal scroll
+     (the `group-settings-danger.spec.ts:194-206` idiom).
+
+     CI ONLY: e2e credentials are absent locally by design (`playwright.config.ts:22-24`) and CI
+     runs `--project=setup --project=journeys --project=phone` (`ci.yml:652`). A local skip is not
+     a pass. */
+  test('UI-SPEC §9.3 E10: a two-control row-action pair does not overflow its row at 375px', async ({
+    page,
+  }, testInfo) => {
+    await page.goto(E2E_EVENT_DETAIL_PATH);
+    await assertDarkTheme(page);
+
+    const viewportWidth = page.viewportSize()?.width ?? 375;
+
+    // --- half 1: the planted replica, unconditional -------------------------------------
+    const planted = await page.evaluate(() => {
+      const host = document.createElement('div');
+      // 375px from an INLINE style, never a Tailwind class: `e2e/` is outside the `@source`
+      // globs (globals.css:10, :86-88), so a width class this file invents is never emitted
+      // and the container would silently measure whatever the body gives it.
+      host.setAttribute('style', 'width: 375px; padding: 0; margin: 0;');
+
+      const row = document.createElement('div');
+      // The shipped row wrapper, gameDetail/page.js:1956.
+      row.className = 'flex items-center gap-2 shrink-0 ml-auto';
+
+      const make = (className: string, text: string) => {
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = className;
+        el.textContent = text;
+        row.appendChild(el);
+        return el;
+      };
+      // GuestInviteButton's resting className (gameDetail/page.js:198) with its widest label
+      // ("Already a member"), and the two-tap Remove's (gameDetail/page.js:1978) with a long
+      // participant name — `labelFor` renders `Remove {username}` in its armed state.
+      const invite = make(
+        'inline-flex min-h-11 items-center text-xs px-2 py-1 rounded-sm border border-line transition-colors hover:bg-surface-hover text-content-link',
+        'Already a member',
+      );
+      const remove = make(
+        'inline-flex min-h-11 items-center text-xs px-2 py-1 border rounded-sm transition-colors shrink-0 border-status-error text-content-status-error hover:bg-status-error-subtle',
+        'Remove Bartholomew',
+      );
+
+      host.appendChild(row);
+      document.body.appendChild(host);
+
+      const rowRect = row.getBoundingClientRect();
+      const result = {
+        hostWidth: host.getBoundingClientRect().width,
+        rowScrollWidth: row.scrollWidth,
+        rowClientWidth: row.clientWidth,
+        rowRight: rowRect.right,
+        inviteRight: invite.getBoundingClientRect().right,
+        removeRight: remove.getBoundingClientRect().right,
+        inviteHeight: invite.getBoundingClientRect().height,
+        removeHeight: remove.getBoundingClientRect().height,
+      };
+      host.remove();
+      return result;
+    });
+
+    // Anti-vacuity: the container really is 375px and both controls really rendered.
+    expect(
+      planted.hostWidth,
+      'UI-SPEC §9.3 E10: the planted container did not measure 375px, so every measurement below is against the wrong width. The width comes from an inline style on purpose — a Tailwind width class would not be emitted for e2e/ (globals.css:10, :86-88)',
+    ).toBeCloseTo(375, 0);
+    expect(
+      Math.min(planted.inviteHeight, planted.removeHeight),
+      'UI-SPEC §9.3 E10: one of the two planted row controls has zero height — it did not render, and the overflow assertions below would be vacuous. Check that every class in the replica is one `src/` still emits',
+    ).toBeGreaterThan(0);
+
+    expect(
+      planted.rowScrollWidth,
+      `UI-SPEC §9.3 E10: the planted two-control row scrolls to ${planted.rowScrollWidth}px inside a ${planted.rowClientWidth}px box at 375px — the pair overflows its row at its widest labels. Source companion: the per-control 44px floor is pinned at src/app/components/controlSizeFloor.test.tsx; this is the rendered half that source cannot see`,
+    ).toBeLessThanOrEqual(planted.rowClientWidth + 1);
+    for (const [label, right] of [
+      ['the invite control', planted.inviteRight],
+      ['the remove control', planted.removeRight],
+    ] as const) {
+      expect(
+        right,
+        `UI-SPEC §9.3 E10: ${label}'s right edge (${right}px) is past the row's (${planted.rowRight}px) at 375px`,
+      ).toBeLessThanOrEqual(planted.rowRight + 1);
+    }
+
+    // --- half 2: the shipped row, when the fixture renders it ----------------------------
+    // Located by ACCESSIBLE NAME, never a class (this file's selector policy).
+    const removeControl = page.getByRole('button', { name: /^remove /i });
+    const shippedRows = await removeControl.count();
+    expect(
+      shippedRows,
+      'UI-SPEC §9.3 E10: negative count from the shipped-row locator — impossible; the locator itself is broken',
+    ).toBeGreaterThanOrEqual(0);
+
+    if (shippedRows > 0) {
+      const row = removeControl.first().locator('xpath=..');
+      const shipped = await row.evaluate((node) => {
+        const el = node as HTMLElement;
+        const rect = el.getBoundingClientRect();
+        const kids = Array.from(el.children).map((c) => c.getBoundingClientRect().right);
+        return {
+          scrollWidth: el.scrollWidth,
+          clientWidth: el.clientWidth,
+          right: rect.right,
+          childCount: kids.length,
+          widestChildRight: kids.length > 0 ? Math.max(...kids) : rect.right,
+        };
+      });
+      expect(
+        shipped.scrollWidth,
+        `UI-SPEC §9.3 E10 (shipped row): the row action group scrolls to ${shipped.scrollWidth}px inside a ${shipped.clientWidth}px box at 375px`,
+      ).toBeLessThanOrEqual(shipped.clientWidth + 1);
+      expect(
+        shipped.widestChildRight,
+        `UI-SPEC §9.3 E10 (shipped row): a row control's right edge (${shipped.widestChildRight}px) is past the row's (${shipped.right}px) at 375px`,
+      ).toBeLessThanOrEqual(shipped.right + 1);
+    }
+
+    // --- which halves ran, on the record -------------------------------------------------
+    // Reported, not asserted against a threshold: the planted half above is the gate, and this
+    // line is what stops the conditional half from being a silent skip. `attachDiagnostics` is
+    // the file's own read-only reporting channel (e2e/support/diagnostics.ts).
+    //
+    // DELIBERATELY NOT ASSERTED HERE: a document-level `scrollWidth <= viewport` check on the
+    // event-detail page. E10's contract is about the two-control ROW, and a page-wide overflow
+    // assertion on a surface this plan does not own would red on unrelated pre-existing debt and
+    // be read as an E10 failure. The document-level idiom IS used, in the E1/E5 arm below, on the
+    // surface that arm plants into. Adding one here is a decision, not a cleanup.
+    await attachDiagnostics(testInfo, 'e10-row-overflow', {
+      plantedRowScrollWidth: planted.rowScrollWidth,
+      plantedRowClientWidth: planted.rowClientWidth,
+      viewportWidth,
+      shippedRowActionPairsFound: shippedRows,
+    });
+  });
+
+  /* UI-SPEC §9.3 **E1 · long-text** and **E5 · overflow** — the two 375px RENDERED backstops.
+     jsdom performs no layout, so the geometry half of each contract cannot be measured in a
+     vitest suite; this arm is its only home. The SOURCE halves stay where they are and are the
+     companions a red should be read against:
+       - E1: plan 06's `Button.test.tsx` pin that the cva base carries no `truncate`;
+       - E5: plan 03's `Heading.test.tsx` class-list pin that the cva base carries `wrap-anywhere`.
+
+     PLANTED, in ONE container whose 375px width comes from an INLINE `style` and never from a
+     Tailwind class: `e2e/` is outside the three `@source` globs (globals.css:10, :86-88), so a
+     class only this file wears is never emitted and a probe wearing it measures nothing. For the
+     same reason every class the probes wear is one `src/` already emits — `btn`/`btn-primary`
+     from the shipped CTAs, `min-h-11` from the `Button` cva base, and
+     `font-bold wrap-anywhere text-xl leading-tight` from `Heading.tsx`'s cva base + `heading`
+     rung (re-derived 2026-09-15 from the landed primitive, `Heading.tsx:60` and `:64`).
+
+     NO PROJECT GUARD OF ITS OWN: this is a 375px measurement and it belongs inside this file's
+     phone-only describe, which is exactly what that block is for. The `journeys` arm added by the
+     same plan is the opposite case and carries a mirror guard — do not "fix" this one to match it.
+
+     CI ONLY (`playwright.config.ts:22-24`, `ci.yml:652`). A local skip is not a pass. */
+  test('UI-SPEC §9.3 E1/E5: a long button label wraps without clipping, and an unbroken 60-char heading token stays inside its column at 375px', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await assertDarkTheme(page);
+
+    const viewportWidth = page.viewportSize()?.width ?? 375;
+
+    const probes = await page.evaluate(() => {
+      const host = document.createElement('div');
+      host.setAttribute('style', 'width: 375px; padding: 0; margin: 0;');
+
+      const addButton = (text: string) => {
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = 'btn btn-primary min-h-11';
+        el.textContent = text;
+        host.appendChild(el);
+        return el;
+      };
+
+      // E1. The SHORT label is one word. The LONG label is SYNTHETIC, and the reason is
+      // arithmetic rather than preference: `.btn` is `font-size: .875rem` / `font-weight: 600`
+      // with `padding: .5rem 1rem` (globals.css `.btn` rule), so a 375px column leaves 343px of
+      // text width, and the longest labels in the shipped census ("Switch to Manual Entry",
+      // "Add New Game Event") sit well inside that — a real label could not exercise the wrap
+      // this row asserts. The synthetic one is 66 characters.
+      // IT IS NOT ASSUMED TO WRAP: the assertion below is that the long probe is TALLER than
+      // its short sibling, which is precisely a runtime verification that it exceeded one line.
+      // If a future `.btn` type-scale change makes 66 characters fit, that assertion reds and
+      // the label is what needs lengthening — do not weaken the assertion instead.
+      const short = addButton('Save');
+      const long = addButton(
+        'Send the availability reminder to everyone in this group right now',
+      );
+
+      // E5. `Heading`'s base + `heading` rung on an <h2> carrying a 60-character unbroken
+      // token. `wrap-anywhere` is the load-bearing class: `break-words` does not count in
+      // min-content and so cannot stop a long token widening its column (plan 03).
+      const TOKEN = 'A'.repeat(60);
+      const heading = document.createElement('h2');
+      heading.className = 'font-bold wrap-anywhere text-xl leading-tight';
+      heading.textContent = TOKEN;
+      host.appendChild(heading);
+
+      // E5 negative control, paired the way the D-36 probes above are paired: the SAME token
+      // without the wrap utility MUST overflow. If it does not, the container is not
+      // constraining anything and the positive probe proves nothing.
+      const control = document.createElement('h2');
+      control.className = 'font-bold text-xl';
+      control.textContent = TOKEN;
+      host.appendChild(control);
+
+      document.body.appendChild(host);
+
+      const hostRect = host.getBoundingClientRect();
+      const box = (el: HTMLElement) => {
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        return {
+          width: r.width,
+          height: r.height,
+          right: r.right,
+          scrollWidth: el.scrollWidth,
+          textOverflow: cs.textOverflow,
+          overflow: cs.overflow,
+          lineHeight: cs.lineHeight,
+        };
+      };
+      const result = {
+        hostWidth: hostRect.width,
+        hostRight: hostRect.right,
+        hostClientWidth: host.clientWidth,
+        short: box(short),
+        long: box(long),
+        heading: box(heading),
+        control: box(control),
+      };
+      host.remove();
+      return result;
+    });
+
+    // --- anti-vacuity --------------------------------------------------------------------
+    expect(
+      probes.hostWidth,
+      'UI-SPEC §9.3 E1/E5: the planted container did not measure 375px, so nothing below is measured at phone width. The width is an inline style on purpose (globals.css:10, :86-88 — e2e/ is outside @source)',
+    ).toBeCloseTo(375, 0);
+    expect(
+      probes.short.height,
+      'UI-SPEC §9.3 E1: the SHORT-label probe has zero height — `btn btn-primary min-h-11` rendered nothing, so the wrap comparison below is vacuous. Every probe class must be one `src/` already emits',
+    ).toBeGreaterThan(0);
+    expect(
+      probes.control.scrollWidth,
+      `UI-SPEC §9.3 E5 (negative control): the wrap-less <h2> scrolls to only ${probes.control.scrollWidth}px inside a ${probes.hostClientWidth}px container — it was supposed to OVERFLOW. Its partner probe therefore proves nothing: either the 60-character token is no longer long enough at this width, or the container is not constraining its children`,
+    ).toBeGreaterThan(probes.hostClientWidth + 1);
+
+    // --- E1 · long-text ------------------------------------------------------------------
+    // WRAPPED, not merely ">= 44": the `@media (width < 48rem)` `.btn` floor guarantees 44px
+    // for BOTH probes, so a height-only floor would pass on a long label clipped to one line.
+    // Taller-than-its-short-sibling is the only assertion that can tell the two apart.
+    expect(
+      probes.long.height,
+      `UI-SPEC §9.3 E1: the long-label button measured ${probes.long.height}px tall, the same as or less than the short-label sibling (${probes.short.height}px) — the long label did NOT wrap onto a second line at 375px. Source companion: plan 06's Button.test.tsx pin that the cva base carries no \`truncate\`; if that pin is green and this is red, the clipping is coming from a call-site utility or from \`.btn\` itself, not from the primitive`,
+    ).toBeGreaterThan(probes.short.height);
+    expect(
+      probes.long.right,
+      `UI-SPEC §9.3 E1: the long-label button's right edge (${probes.long.right}px) is past its 375px container's (${probes.hostRight}px) — the label widened the column instead of wrapping inside it`,
+    ).toBeLessThanOrEqual(probes.hostRight + 1);
+    expect(
+      probes.long.scrollWidth,
+      `UI-SPEC §9.3 E1: the long-label button scrolls to ${probes.long.scrollWidth}px inside its 375px container (clientWidth ${probes.hostClientWidth}px). The comparison is against the PARENT, not the button's own box`,
+    ).toBeLessThanOrEqual(probes.hostClientWidth + 1);
+    expect(
+      probes.long.textOverflow,
+      `UI-SPEC §9.3 E1: the long-label button computes \`text-overflow: ${probes.long.textOverflow}\` — the label is being clipped with an ellipsis rather than wrapped. Source companion: plan 06's no-\`truncate\` pin on the cva base`,
+    ).not.toBe('ellipsis');
+    expect(
+      probes.long.overflow,
+      `UI-SPEC §9.3 E1: the long-label button computes \`overflow: ${probes.long.overflow}\` — a non-visible overflow clips the wrapped second line`,
+    ).toBe('visible');
+
+    // --- E5 · overflow -------------------------------------------------------------------
+    expect(
+      probes.heading.right,
+      `UI-SPEC §9.3 E5: the <h2> carrying a 60-character unbroken token has its right edge at ${probes.heading.right}px, past its 375px container's (${probes.hostRight}px). Source companion: plan 03's Heading.test.tsx class-list pin that the cva base carries \`wrap-anywhere\` — if that pin is green and this is red, the utility is emitted but not applying`,
+    ).toBeLessThanOrEqual(probes.hostRight + 1);
+    expect(
+      probes.heading.scrollWidth,
+      `UI-SPEC §9.3 E5: the <h2> scrolls to ${probes.heading.scrollWidth}px inside a ${probes.hostClientWidth}px container — \`wrap-anywhere\` is not breaking the 60-character token. \`break-words\` does NOT count in min-content and is not a substitute (plan 03)`,
+    ).toBeLessThanOrEqual(probes.hostClientWidth + 1);
+
+    const docWidths = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(
+      docWidths.scrollWidth,
+      `UI-SPEC §9.3 E5: document scrollWidth ${docWidths.scrollWidth}px exceeds the ${viewportWidth}px viewport (clientWidth ${docWidths.clientWidth}px) after the probes were removed — the page itself induces horizontal scroll at phone width`,
+    ).toBeLessThanOrEqual(viewportWidth);
   });
 
   test('R4: add-friend "+" carries a 44x32 ::after hit extension (owner-accepted asymmetric floor)', async ({ page }) => {
