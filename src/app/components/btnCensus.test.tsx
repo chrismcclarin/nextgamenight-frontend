@@ -349,10 +349,12 @@ const BTN_EXEMPT: ExemptionRoster = {
   // `py-3` was DEAD under unlayered `.btn` (globals.css:2201) and the per-CTA `min-h-11` dropped
   // in the SAME commit as the migration per its amended `DECISION Phase 87.8` marker (which is
   // byte-unchanged and still reports 8/6 in `decisionMarkers.test.ts`); `w-full` survives.
-  // The control ALSO moved off native `disabled` onto `aria-disabled` + a first-line ref latch,
-  // per the plans 17-24 in-flight standard — the call-site `opacity-60 cursor-not-allowed` pair
-  // went with it, superseded by `.btn-primary[aria-disabled]`'s DR-C token pair. Entry DELETED
-  // rather than zeroed; the roster is exact in both directions.
+  // The call-site `opacity-60 cursor-not-allowed` pair went too: `.btn:disabled` is UNLAYERED and
+  // sets both (globals.css:2250-2253), so the utilities were dead where they disagreed. The
+  // control KEEPS its native `disabled`; the plans 17-24 `aria-disabled` conversion was tried,
+  // measured against `tokenContrast.test.ts` test 53(b2) and ROUTED rather than forced — see the
+  // DECISION marker at the latch in AvailabilityForm.js. Entry DELETED rather than zeroed; the
+  // roster is exact in both directions.
   // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16): `app/components/BallotOptionsEditor.js`
   // carried `sites: 1` — the "+ Add game option" CTA, now `<Button size="default">`. Its `text-sm`
   // was DEAD under unlayered `.btn` (globals.css:2201) and is deleted rather than moved onto the
@@ -589,12 +591,34 @@ const PALETTE_BUTTON_EXEMPT: ExemptionRoster = {
     why: 'the two theme toggles, migrated to `Button variant="ghost"` by plan 88.6-17 with their fills kept verbatim under P6. Converging `bg-amber-50` / `bg-purple-900` onto semantic tokens is a LOOK change and is out of 88.6 contract; the site marker records the fill determination and the migrate-or-exclude outcome. Not pending work — this entry floors at 2.',
     owner: { kind: 'decision', marker: 'DECISION Phase 88.6-17' },
   },
-  // One site, `AvailabilityGrid.js:621` — the paint-mode toggle, carrying `bg-green-100` and
-  // `bg-yellow-100` across its two arms. One ELEMENT, so one site.
+  // RE-DERIVED AND SETTLED by plan 88.6-25 task 3 (wave 7, 2026-09-16). This entry is no longer
+  // pending work: D-11 asked whether the site is grid chrome or a control, and the answer is
+  // CONTROL — it is the `<button>` opener of the paint-mode toggle, `onClick={togglePaintMode}`,
+  // in the toolbar beside Clear All. It is now `<Button variant="ghost">`, and BOTH ternary arms
+  // KEEP their raw palette fills, which is why the entry SURVIVES at 1 rather than being deleted.
+  // ONE ELEMENT, so one site — and the count covers BOTH arms deliberately: retiring this receipt
+  // on the green arm alone would delete the only thing that catches a surviving yellow twin.
   'app/components/AvailabilityGrid.js': {
     sites: 1,
-    why: 'D-11 -> plan 88.6-25 re-derives: either `Button`, or a semantic token fill plus an exemption carrying its own provenance if the planner finds it is grid chrome rather than a control',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / D-07 / D-11' },
+    why:
+      'PALETTE assertion. The paint-mode toggle keeps `bg-green-100 border-green-400 ' +
+      'text-green-800` / `bg-yellow-100 border-yellow-400 text-yellow-800` across its two ' +
+      'arms because the fill ENCODES PAINT MODE: it is the same pair as the legend swatches ' +
+      'directly below the toolbar (`bg-green-300` Preferred, `bg-yellow-300` If Need Be), so ' +
+      'the fill tells the user which colour the next drag will paint. NO shipped status token ' +
+      'reproduces either arm at byte-equal value — measured 2026-09-16 against globals.css: ' +
+      'green-100 #dcfce7 vs --color-status-success-subtle #dcf1e4; green-400 #4ade80 vs ' +
+      '--color-status-success-border #166534; yellow-100 #fef9c3 vs ' +
+      '--color-status-warning-subtle #f9ebda; yellow-400 #facc15 vs ' +
+      '--color-status-warning-border #854d0e (only the two INK values match). The status ' +
+      'family also flips in dark mode while these raw steps do not, so adopting it would ' +
+      'change the dark look too. Minting a token for this pair is a LOOK decision and is ' +
+      "Phase 88.9's; P6 forbids it here. NOT pending work — this entry floors at 1 and its " +
+      'removal condition is a Phase 88.9 ruling on the pair, not a sweep. The call site pins ' +
+      '`enabled-hover:bg-*` per arm so the ghost variant cannot repaint the mode colour ' +
+      'neutral on hover (T-88.6-71); measured in Chromium at 375px, hovered background stays ' +
+      'rgb(220,252,231) with the pin and becomes rgb(250,248,245) without it.',
+    owner: { kind: 'decision', marker: 'DECISION Phase 88.6-25' },
   },
   // One site, `ThemeToggle.js:49` — `bg-white/10`, icon chrome in the header.
   'app/components/ThemeToggle.js': {

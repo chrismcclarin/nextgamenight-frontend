@@ -57,17 +57,28 @@ export default function AvailabilityForm({
 }) {
   const [submitError, setSubmitError] = useState(null);
 
-  /* DECISION Phase 88.6-25 (AC-2 sibling / plans 17-24 in-flight standard): the submit CTA is
-     gated with `aria-disabled` plus this synchronous ref latch, chosen OVER the native
-     `disabled` attribute it carried. A natively-disabled button is removed from the tab order
-     the instant it disables, so a keyboard user who pressed Enter on it is dropped to <body>
-     mid-submit with nothing announcing why. `aria-disabled` keeps the control focusable and
-     named; the latch — read and set on the FIRST line of `onSubmit`, released in `finally` —
-     is what actually refuses the second submit, because an aria attribute refuses nothing.
-     The gated LOOK is no longer the call site's `opacity-60`: `.btn-primary[aria-disabled]`
-     paints the shipped DR-C colour pair (globals.css:2328-2331) and `.btn[aria-disabled]`
-     supplies `cursor: not-allowed`, so both call-site utilities were deleted as superseded
-     rather than left to fight the token pair. Putting `disabled` back is a decision. */
+  /* DECISION Phase 88.6-25: the submit path carries a synchronous in-flight LATCH, and the
+     submit CTA deliberately KEEPS its native `disabled` attribute. Both halves are choices.
+
+     WHY THE LATCH EXISTS EVEN THOUGH THE BUTTON IS DISABLED: `disabled` stops a second CLICK on
+     the button and nothing else. Pressing Enter inside any field still fires the form's submit,
+     and `react-hook-form`'s `handleSubmit` does not refuse a concurrent run — so without this
+     ref a fast double-Enter posts the availability twice. It is a ref and not state on purpose:
+     `isSubmitting` is not readable synchronously at the top of the handler, which is where the
+     refusal has to happen. Released in `finally`, so a thrown submit does not wedge the form.
+
+     WHY `aria-disabled` WAS NOT TAKEN HERE, recorded so it does not read as an oversight. Plans
+     88.6-17 through -24 converged in-flight gates onto `aria-disabled` + a latch, because a
+     natively-disabled button leaves the tab order the instant it disables and drops a keyboard
+     user to <body> mid-submit. That reasoning applies to this control too, and it was
+     IMPLEMENTED and then REVERTED on a measurement: `tokenContrast.test.ts`'s 88.8 HIGH-A gate
+     (test 53(b2), owner-ruled) flags any bare `opacity-<n>` utility within 400 characters after
+     an `aria-disabled=` attribute, and the submitting spinner's two SVG arcs below carry
+     `opacity-25` / `opacity-75` — the ONLY bare opacity utilities left in `src/`. The gate's
+     own comment calls that window a heuristic that should red loudly, so the choice was between
+     re-spelling a shipped gate's subject and leaving the conversion for a plan that owns it.
+     ROUTED, not dropped: `.planning/deferred/phase-88.6.md` carries the entry, with the
+     spinner-arc collision named as the thing to solve first. Changing this is a decision. */
   const submitInFlightRef = useRef(false);
 
   // Phase 81 Plan 02 — shared pre-fill state (Plan 03 reuses both):
@@ -458,7 +469,7 @@ export default function AvailabilityForm({
         {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the availability-grid surface's primary CTA (~37px today: the `py-3` here is DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `w-full`.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */}
         <Button
           type="submit"
-          aria-disabled={isSubmitting || undefined}
+          disabled={isSubmitting}
           className="w-full"
         >
           {isSubmitting ? (
