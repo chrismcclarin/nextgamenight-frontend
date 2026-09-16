@@ -1852,12 +1852,19 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '3 off-scale weight sites (3 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-33.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/EventScheduler.tsx': {
-    sites: 3,
-    why:
-      '3 off-scale weight sites (2 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-09, 88.6-26, 88.6-39, 88.6-40, 88.6-43, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-26 task 2 (wave 7, 2026-09-16): 'app/components/EventScheduler.tsx'
+  // carried sites: 3, resolved TWO ways. The view label beside the Back/Today/Next row and the
+  // "Selected Time:" caption both took UI-SPEC §4.5's EMPHASIS outcome (utility deleted) — each
+  // already carries text-content-primary while everything it sits beside carries
+  // text-content-secondary or text-content-accent, so the pairing was colour-carried. The selected
+  // time VALUE took 600 -> 700 as part of its §4.3 non-heading-residue move to text-xl; it is named
+  // in that list and is NOT converted to a Heading (P4 forbids inventing a level).
+  //
+  // A FOURTH weight site in this file is outside this scanner's reach and stays: the count badge's
+  // INLINE `fontWeight`, which plan 88.6-26 moved 600 -> 700 as the third of the phase's three
+  // colour-vision-deficiency cues, with a DECISION marker at the site. An inline declaration is
+  // neither a class nor a token, so no roster can hold it — which is exactly why D-01 named that
+  // element separately. Entry DELETED, not zeroed.
   'app/components/FeedbackButton.js': {
     sites: 3,
     why:

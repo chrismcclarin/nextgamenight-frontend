@@ -67,6 +67,32 @@ vi.mock('@/lib/hooks/useSelfIdentity', () => ({
   }),
 }));
 
+// Plan 88.6-26 (D-18 / T-88.6-70): a PASS-THROUGH capture of WeekGrid, so the per-coordinate
+// payload can be asserted for REFERENTIAL STABILITY without prose standing in for the assertion.
+// The real component still renders — this wrapper records the `getCell` prop and forwards
+// everything untouched — so every other pin in this file is unaffected. `vi.hoisted` is required:
+// `vi.mock` is hoisted above the imports, so a plain module-scope `const` would be in its TDZ
+// when the factory runs.
+const capture = vi.hoisted(() => ({ getCells: [] as Array<(row: number, col: number) => unknown> }));
+
+vi.mock('./heatmap/WeekGrid', async (importOriginal) => {
+  const ReactRuntime = await import('react');
+  const mod = (await importOriginal()) as Record<string, unknown>;
+  // EventScheduler imports the NAMED export (`import { WeekGrid } …`), so wrapping only
+  // `default` captures nothing — the first attempt at this pin did exactly that and was caught
+  // by the arm failing, not by re-reading. Both exports are wrapped, and they stay the same
+  // component so an identity compare between them still holds.
+  const Real = mod.WeekGrid as ComponentType<Record<string, unknown>>;
+  const Wrapped = (props: Record<string, unknown>) => {
+    if (typeof props.getCell === 'function') {
+      capture.getCells.push(props.getCell as (row: number, col: number) => unknown);
+    }
+    return ReactRuntime.createElement(Real, props);
+  };
+  Wrapped.displayName = 'WeekGridReferentialCapture';
+  return { ...mod, WeekGrid: Wrapped, default: Wrapped };
+});
+
 import type { ComponentType } from 'react';
 import EventSchedulerDefault from './EventScheduler';
 
@@ -1494,5 +1520,57 @@ describe('EventScheduler — the per-slot conflict tooltip tells self from other
 
     expect(await screen.findByText(OTHER_LINE)).toBeInTheDocument();
     expect(screen.queryByText(SELF_LINE)).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Plan 88.6-26 task 2 — the memoization guard, made BEHAVIOURAL.
+//
+// The plan pins `getCell`'s machinery byte-for-byte, but this task's own two edits sit INSIDE
+// `compute`, i.e. inside the block being protected. A byte-comparison of the surrounding prose is
+// not a guard on a render path, so the guard has to be an assertion: the same coordinate read
+// twice must yield the SAME object, and a change to the memo's inputs must yield a new one.
+//
+// Why it matters (DECISION Phase 88.1-11, restated in one line): `tooltipContent`, `style` and
+// `children` are freshly constructed each call, so ReadCell's shallow `React.memo` sees three
+// changed props on every cell. Without the cache, one drag that crosses a cell boundary
+// re-renders ~196 cells — the smooth/janky boundary on a phone, not a micro-optimization.
+// ---------------------------------------------------------------------------
+describe('EventScheduler — the per-coordinate payload is REFERENTIALLY STABLE (D-18 / T-88.6-70)', () => {
+  it('returns the SAME object for a repeat read of one coordinate', () => {
+    capture.getCells.length = 0;
+    render(<EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} />);
+    const getCell = capture.getCells.at(-1)!;
+    expect(typeof getCell).toBe('function');
+    const first = getCell(4, 2);
+    expect(first).toBeTruthy();
+    expect(getCell(4, 2)).toBe(first);
+    // A DIFFERENT coordinate is a different payload — otherwise "stable" would be trivially
+    // satisfied by returning one shared object for the whole grid.
+    expect(getCell(5, 2)).not.toBe(first);
+  });
+
+  it('re-creates the payload when a memo INPUT changes, so the cache cannot go stale', () => {
+    capture.getCells.length = 0;
+    const { rerender } = render(<EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} />);
+    const before = capture.getCells.at(-1)!;
+    const beforePayload = before(4, 2);
+
+    // `selectedSlot` is one of the six dependencies; changing it must invalidate the cache, or a
+    // committed selection would never reach the cell that has to draw it.
+    rerender(
+      <EventScheduler
+        initialDate={WEEK_N}
+        heatmapData={heatmapFixture}
+        selectedSlot={{
+          start: new Date(2026, 6, 22, 19, 0, 0),
+          end: new Date(2026, 6, 22, 21, 30, 0),
+        }}
+      />
+    );
+    const after = capture.getCells.at(-1)!;
+    expect(after).not.toBe(before);
+    expect(after(4, 2)).not.toBe(beforePayload);
+    expect(after(4, 2)).toBe(after(4, 2));
   });
 });

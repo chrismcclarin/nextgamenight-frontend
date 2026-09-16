@@ -938,11 +938,18 @@ export default function EventScheduler({
                 // The count badge is the mandatory NON-COLOUR cue, not decoration — a wash-only
                 // encoding is unreadable to the ~8% of men with colour-vision deficiency.
                 <span
+                  // The badge's SIZE is a utility now, not an inline declaration. An inline
+                  // declaration is neither a class nor a token, so it is invisible to every
+                  // source-scan gate in this phase — which is why D-01 names this site separately
+                  // from the 30 class-based ones, and why moving it also closes a permanent blind
+                  // spot. It folds 10px -> 12px, the D-01 floor, like the other nine sites in this
+                  // cluster. MEASURED in Chromium at 375px before it landed: see the DECISION
+                  // marker on this element's weight below.
+                  className="text-xs"
                   style={{
                     position: 'absolute',
                     top: '2px',
                     right: '4px',
-                    fontSize: '10px',
                     // DECISION Phase 88.3 (Req 6 / OI-1): the ONE status text site in the app that
                     // is an INLINE STYLE reading the custom property directly rather than a
                     // `text-content-status-success` utility class. It is therefore invisible to the
@@ -953,7 +960,21 @@ export default function EventScheduler({
                     // border). Pointing this back at the shared `var(--color-status-success)` key,
                     // which now resolves to the BORDER value, is a decision, not a cleanup.
                     color: 'var(--color-status-success-text)',
-                    fontWeight: 600,
+                    // DECISION Phase 88.6-26 (D-03 / W35): weight 700, chosen OVER 400, because the
+                    // fill/ink pairing needs the weight. This badge is the mandatory NON-COLOUR cue
+                    // for the cell's translucent wash — see the comment on the element above — and
+                    // it is small ink on a coloured fill at FIXED geometry: absolutely positioned
+                    // at top 2px / right 4px inside a ~196-cell grid, so it cannot widen its cell,
+                    // it can only overlap it. 400 at this size on a tinted fill loses the
+                    // legibility the weight is carrying, and the cue is a colour-vision-deficiency
+                    // requirement (~8% of men), not decoration. UI-SPEC 4.5's table has no family
+                    // for it, so a mechanical read would send it to 400. Settled at 700 alongside
+                    // its two siblings, the per-cell count in EventHeatmapBackground.js and the
+                    // aggregate in SchedulerWeekStrip.tsx, so one cue does not end this phase at
+                    // three different weights. MEASURED over the wash in both themes 2026-09-16 —
+                    // the darkest step falls below 4.5:1 and that is PRE-EXISTING (a weight change
+                    // moves no ratio); it is routed to Phase 88.9 in .planning/deferred/phase-88.6.md.
+                    fontWeight: 700,
                     zIndex: 1,
                   }}
                 >
@@ -1114,7 +1135,7 @@ export default function EventScheduler({
             Next
           </button>
         </div>
-        <span className="text-sm font-medium text-content-primary">{viewLabel}</span>
+        <span className="text-sm text-content-primary">{viewLabel}</span>
         {/* D-04: no week/day toggle at phone. The strip IS the week view there, so a control
             offering to switch to it would be offering a state that does not exist. */}
         {!isPhoneViewport && (
@@ -1201,8 +1222,15 @@ export default function EventScheduler({
 
       {selectedSlot && (
         <div className="p-4 bg-surface-sunken rounded-card border border-line-accent">
-          <p className="text-sm font-medium text-content-primary mb-1">Selected Time:</p>
-          <p className="text-lg text-content-accent font-semibold">
+          {/* The label takes UI-SPEC 4.5's EMPHASIS outcome — text-content-primary against the
+              value's text-content-accent below it already carries the pairing, and the value is
+              about to be 20/700 against this 14/400, which is hierarchy enough for a two-line box.
+              The VALUE is one of UI-SPEC 4.3's enumerated non-heading text-lg residue sites and
+              resolves to text-xl / font-bold under R2's primary-string clause. It does NOT become
+              a Heading: it has no semantic level today and P4 forbids inventing one. Phase 92 owns
+              the outline review that would decide whether this box should have a real heading. */}
+          <p className="text-sm text-content-primary mb-1">Selected Time:</p>
+          <p className="text-xl text-content-accent font-bold">
             {format(selectedSlot.start, 'EEEE, MMMM d, h:mm a')}
             {' - '}
             {format(selectedSlot.end, 'h:mm a')}
@@ -1221,7 +1249,7 @@ export default function EventScheduler({
               naming a mouse gesture on a touch device is a phone-forward failure, not a wording
               nit. Both strings are kept — the desktop one is verbatim
               (`EventScheduler.js:582`) and is what the plan-01 pin locates. */}
-          <p className="text-sm text-content-secondary">
+          <p className="text-base text-content-secondary">
             {isPhoneViewport
               ? 'Tap and hold on a day to pick a time.'
               : 'Click and drag on the calendar to select a time slot for your event.'}
