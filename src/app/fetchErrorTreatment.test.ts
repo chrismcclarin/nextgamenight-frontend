@@ -584,23 +584,34 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
   // an announcing `StatusRegion`. Entry DELETED rather than zeroed — the roster is exact in
   // both directions, so a zeroed entry would red as a fossil permission. This file's
   // FAILED_COPY_EXEMPT entry (8, one more than this one) closed in the same commit.
-  'app/components/ResponseDashboard.js': {
-    sites: 2,
-    why:
-      'RAW-MESSAGE assertion. :49 and :99 — a load error and a reminder-send error, both ' +
-      '`setX(err.message || "Failed to …")`. Closed by plan 88.6-32 (wave 7), which ' +
-      'declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-32' },
-  },
-  'app/components/ScheduleForm.js': {
-    sites: 2,
-    why:
-      'RAW-MESSAGE assertion. :177 is the census site; :178 is a SECOND read the census ' +
-      "missed — `setError('root', { message: error.message })` puts the raw message into a " +
-      'react-hook-form root error, which renders. Closed by plan 88.6-32 (wave 7), which ' +
-      'declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-32' },
-  },
+  // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ResponseDashboard.js`
+  // carried `sites: 2` — `:49` and `:99` pre-edit — and the two took DIFFERENT correct
+  // treatments, which is the point worth recording here: "route it through the helper" is not
+  // one answer.
+  //   - `:49` is a LOAD arm. It does NOT call `getFetchErrorMessage` at all; the state now
+  //     stores the ERROR OBJECT and the component adopts the house synthetic-adapter contract
+  //     (`groupPlanning/page.js:172-196`), so `useFetchErrorState` derives the copy from
+  //     `ApiError.code`. Storing a flattened string there would have gone GREEN on this roster
+  //     while making every failure resolve to `unknown` — the silent-green this note exists to
+  //     warn the next reader about. The error branch renders `FetchErrorBanner` in the same
+  //     edit, because storing an Error and still rendering `<span>{error}</span>` throws.
+  //   - `:99` is a MUTATION arm (a remind button) and routes through
+  //     `toast.error(getFetchErrorMessage(err))`, no fallback. Its sibling `reminder_cooldown`
+  //     branch moved to the same toast sink so the one button does not surface its two failure
+  //     modes two different ways.
+  // Entry DELETED rather than zeroed. This file's FAILED_COPY_EXEMPT entry closed in the same
+  // commit.
+  // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ScheduleForm.js`
+  // carried `sites: 2` — `:177` (the census site) and `:178`, a SECOND read the census missed,
+  // `setError('root', { message: error.message })`, whose sink rendered one line below `:177`'s.
+  // BOTH sinks rendered, in byte-identical boxes, so feeding both from one
+  // `getFetchErrorMessage` call would have printed the same ratified sentence twice — once
+  // announced, once silent. The PAIR was collapsed instead: `serverError` survives (its `<p>`
+  // already carries `role="alert"` and it is already cleared at submit start), and the `root`
+  // write plus its role-less box are GONE. `:178` was NOT added to `CONTROL_FLOW_ALLOWED` —
+  // that list is for reads that are branched on and never displayed, and this one displayed.
+  // Entry DELETED rather than zeroed; this file's FAILED_COPY_EXEMPT entry closed in the same
+  // commit.
   // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16): `app/components/StartPollModal.js`
   // carried `sites: 1` — `:151` pre-edit, `const msg = (err && err.message) || …`, rendered raw
   // by the else arm at `:157`. The whole catch is re-keyed onto the HTTP STATUS through
@@ -752,21 +763,18 @@ const FAILED_COPY_EXEMPT: ExemptionRoster = {
   // on the UI-SPEC §6.3 ratified strings, so the file holds ZERO "Failed to X" sites and the
   // entry is deleted rather than zeroed (exact in both directions). Both rosters shrank in the
   // same commit, as this entry's `why` said they would.
-  'app/components/ResponseDashboard.js': {
-    sites: 2,
-    why:
-      '"FAILED TO X" assertion. :49 "Failed to load respondents" and :99 "Failed to send ' +
-      'reminder" — the fallback halves of the same two lines its raw-message entry covers. ' +
-      'Closed by plan 88.6-32 (wave 7).',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-32' },
-  },
-  'app/components/ScheduleForm.js': {
-    sites: 1,
-    why:
-      '"FAILED TO X" assertion. :177 only — :178 puts the raw message in a form root error ' +
-      'but authors no copy. Closed by plan 88.6-32 (wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-32' },
-  },
+  // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ResponseDashboard.js`
+  // carried `sites: 2` — ":49 Failed to load respondents" and ":99 Failed to send reminder",
+  // the authored halves of the same two lines its raw-message entry covered. NEITHER was
+  // reworded: `:49`'s copy is now derived by `useFetchErrorState` from `ApiError.code` and
+  // `:99` calls `getFetchErrorMessage(err)` with no fallback, so the ratified register answers
+  // at both and no copy was authored (P1). Entry DELETED, not zeroed.
+  // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ScheduleForm.js`
+  // carried `sites: 1` — ":177 Failed to save schedule. Please try again.". `:178` authored no
+  // copy, which is why this entry was 1 while its raw-message sibling was 2.
+  // `getFetchErrorMessage(error)` is called with no fallback, so that hand-rolled string is
+  // GONE rather than moved into a `fallback:` option, where it would still have counted here.
+  // Entry DELETED, not zeroed.
   'app/components/SuggestionCard.js': {
     sites: 2,
     why:

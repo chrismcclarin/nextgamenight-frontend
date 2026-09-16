@@ -10,6 +10,8 @@ import { Input, SelectControl } from '@/components/ui/Input';
 import MemberSelector from './MemberSelector';
 import GameComboInput from './GameComboInput';
 import { Modal } from './Modal';
+import { Button } from '../../components/ui/Button';
+import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 
 /**
  * ScheduleForm - Form component for creating/editing prompt schedules
@@ -67,7 +69,6 @@ export default function ScheduleForm({
     control,
     watch,
     setValue,
-    setError,
     reset,
     formState: { errors, isSubmitting },
   } = useAppForm(scheduleSchema, {
@@ -172,10 +173,30 @@ export default function ScheduleForm({
       }
       onSuccess?.();
     } catch (error) {
-      // Set inline submit-error UI, then RE-THROW so handleAppSubmit's catch
-      // logs it to logger.error -> Sentry (the reachable Sentry path, PRIM-06).
-      setServerError(error.message || 'Failed to save schedule. Please try again.');
-      setError('root', { message: error.message });
+      /* DECISION Phase 88.6-32 (R1 / T-88.6-89): this catch had TWO adjacent raw-message sinks
+         and now has ONE. `serverError` survives; the `setError('root', { message })` write and
+         the box that rendered it are GONE.
+
+         WHY A PAIR AT ALL WAS THE DEFECT: both sinks rendered, in byte-identical boxes, one
+         line apart — so deriving both from a single `getFetchErrorMessage` call would have
+         printed the same ratified sentence to the user TWICE, once announced and once silent.
+         The choice was which one to keep, not how to feed both.
+
+         WHY `serverError` AND NOT `root`: its `<p>` already carries `role="alert"`, so nothing
+         a11y-shaped had to be invented; it is already cleared at submit start (`onSubmit`'s
+         first line), whereas a react-hook-form `root` error persists until something clears it
+         explicitly; and the box being deleted had no role, no `aria-live` and no association.
+         REJECTED: keeping `root` as the survivor and adding `role="alert"` to its box.
+
+         NO `fallback:` OPTION — the shipped 'Failed to save schedule…' string was hand-rolled
+         copy (it is what this file's `FAILED_COPY` roster entry counted), and
+         `getFetchErrorMessage(error)` with no fallback already yields ratified copy, so none is
+         authored. Same §6.2 W16 precedent as `AvailabilityForm.js:142`.
+
+         The RE-THROW stays: `handleAppSubmit`'s catch is what routes this to
+         `logger.error` -> Sentry (the reachable Sentry path, PRIM-06), so this file needs no
+         capture of its own. */
+      setServerError(getFetchErrorMessage(error));
       throw error;
     }
   };
@@ -327,7 +348,10 @@ export default function ScheduleForm({
 
           {/* Game Selection */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-content-secondary mb-1">
+            {/* §4.5 emphasis outcome: 400 + a colour token. `font-medium` (500) is a
+                prohibition outside the `Button` label (§4.2); a field label beside its control
+                is emphasis, not hierarchy, and it already carries `text-content-secondary`. */}
+            <label className="block text-sm text-content-secondary mb-1">
               Game
             </label>
             <GameComboInput
@@ -417,35 +441,30 @@ export default function ScheduleForm({
             </div>
           )}
 
-          {/* Root Error (from setError) */}
-          {errors.root && (
-            <div className="mb-4 p-3 bg-status-error-subtle border border-status-error rounded-btn">
-              <p className="text-content-status-error text-sm">{errors.root.message}</p>
-            </div>
-          )}
+          {/* The second, silent copy of the same failure used to render here. See the DECISION
+              marker in `onSubmit` for why exactly ONE error node survives a failed submit and
+              why it is this one. */}
 
           {/* Action Buttons */}
           <div className="flex justify-end gap-3 pt-4 border-t border-line">
             {onCancel && (
-              <button
-                type="button"
-                onClick={onCancel}
-                className="btn btn-secondary"
-              >
+              <Button variant="secondary" size="default" onClick={onCancel}>
                 Cancel
-              </button>
+              </Button>
             )}
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-            >
+            {/* `disabled:opacity-50 disabled:cursor-not-allowed` are DELETED, not moved: unlayered
+                `.btn:disabled` already ships both, and an `@layer utilities` rule cannot beat it —
+                they had been dead since the day they were written. The native `disabled` gate
+                itself is unchanged; converting it to the `aria-disabled` + ref-latch idiom is not
+                this plan's, and `tokenContrast` test 53(b2) would flag a bare `opacity-*` beside
+                an `aria-disabled` anyway. */}
+            <Button variant="primary" size="default" type="submit" disabled={isSubmitting}>
               {isSubmitting
                 ? 'Saving...'
                 : isEditMode
                   ? 'Update Schedule'
                   : 'Create Schedule'}
-            </button>
+            </Button>
           </div>
         </form>
       </Modal.Body>

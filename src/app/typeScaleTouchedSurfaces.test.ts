@@ -616,8 +616,17 @@ const EXPECTED_PROP_SEAMS = 5;
  * so §4.4's size-less-headings row lands it on `size="body"` (16) — which is what it already
  * rendered at, so this migration moves the WEIGHT (500 -> 700, from the cva base) and NOT the
  * size. `EXPECTED_LEVELS`' `{ 3: 1 }` entry for that file is byte-unchanged (P4).
+ *
+ * RAISED 79 -> 81 by plan 88.6-32 task 2 (2026-09-16): TWO more — `ScheduleList.js:91`'s
+ * schedule-row title and `ResponseDashboard.js:154`'s response-count title, both
+ * `h3 text-lg font-semibold` and both landing on `<Heading level={3} size="heading">` (a
+ * disclosed 18 -> 20). `size` is passed explicitly at both, though level 3 would derive
+ * `heading` anyway — §4.4 requires every migrated call site to state it. Both files'
+ * `EXPECTED_LEVELS` entries (`{ 3: 1 }` each) are byte-unchanged (P4). This constant is `>=`,
+ * so leaving it unraised would have been SILENTLY green; it is raised in the same commit as
+ * the migration, per this docblock's own rule.
  */
-const EXPECTED_MIN_PRIMITIVES = 79;
+const EXPECTED_MIN_PRIMITIVES = 81;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -741,16 +750,14 @@ const RUNG_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-15 (2026-09-16): `app/components/PromptScheduleReadOnly.js` carried
   // `sites: 1` (h3:46 `text-lg`). Migrated onto `<Heading level={3} size="heading">`, so the
   // rung is the primitive's and the file leaves this population. Deleted, not zeroed.
-  'app/components/ResponseDashboard.js': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h3:154 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
-  'app/components/ScheduleList.js': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h3:91 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ResponseDashboard.js`
+  // carried `sites: 1` (h3:154 `text-lg`). It MIGRATED onto `<Heading level={3} size="heading">`
+  // (18 -> 20), so the rung is supplied by the primitive and the file leaves this raw-only
+  // population entirely rather than being re-keyed in place. Deleted, not zeroed.
+  // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ScheduleList.js`
+  // carried `sites: 1` (h3:91 `text-lg`) — the schedule-row title. MIGRATED onto
+  // `<Heading level={3} size="heading">` (18 -> 20), so it leaves this raw-only population.
+  // Deleted, not zeroed.
   // DELETED by plan 88.6-28 task 3 (wave 7, 2026-09-16): `app/components/UpcomingEventsCard.js`
   // carried `sites: 1` (h3:156, no size utility at all). It migrated onto
   // `<Heading level={3} size="body">` — §4.4's size-less-headings row, 16 — so it LEAVES this
@@ -861,21 +868,17 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-15 (2026-09-16): `app/components/PromptScheduleReadOnly.js` carried
   // `sites: 1` (h3:46 `font-semibold`). Migrated onto `<Heading>`, whose cva base is
   // `font-bold`, so the call site states no weight. Deleted, not zeroed.
-  'app/components/ResponseDashboard.js': {
-    sites: 1,
-    why: '1 heading carrying the prohibited 600 weight (h3:154) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ResponseDashboard.js`
+  // carried `sites: 1` (h3:154 `font-semibold`). Migrated onto `<Heading>`, whose cva base is
+  // `font-bold`, so the call site states no weight at all. Deleted, not zeroed.
   'app/components/RsvpSection.js': {
     sites: 1,
     why: '1 heading carrying the prohibited 600 weight (h3:162) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/ScheduleList.js': {
-    sites: 1,
-    why: '1 heading carrying the prohibited 600 weight (h3:91) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ScheduleList.js`
+  // carried `sites: 1` (h3:91 `font-semibold`). Migrated onto `<Heading>`; the 700 comes from
+  // the primitive's cva base. Deleted, not zeroed.
   'app/components/tutorial/simulated/ProblemSlide.js': {
     sites: 1,
     why: '1 heading carrying the prohibited 600 weight (h2:14) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
@@ -939,21 +942,17 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-15 (2026-09-16): `app/components/PromptScheduleReadOnly.js` carried
   // `sites: 1` (h3:46). RAW-ONLY supply rule; the heading is no longer a raw `<hN>` tag, so the
   // file leaves the population rather than decrementing. Deleted, not zeroed.
-  'app/components/ResponseDashboard.js': {
-    sites: 1,
-    why: '1 raw heading not stating the 700 weight (h3:154 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ResponseDashboard.js`
+  // carried `sites: 1` (h3:154). RAW-ONLY supply rule; the heading is no longer a raw `<hN>`
+  // tag, so the file leaves the population rather than decrementing. Deleted, not zeroed.
   'app/components/RsvpSection.js': {
     sites: 1,
     why: '1 raw heading not stating the 700 weight (h3:162 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/ScheduleList.js': {
-    sites: 1,
-    why: '1 raw heading not stating the 700 weight (h3:91 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ScheduleList.js`
+  // carried `sites: 1` (h3:91). RAW-ONLY supply rule; no longer a raw `<hN>` tag, so the file
+  // leaves the population rather than decrementing. Deleted, not zeroed.
   // DELETED by plan 88.6-28 task 3 (wave 7, 2026-09-16): `app/components/UpcomingEventsCard.js`
   // carried `sites: 1` (h3:156 `font-medium`) — the ONLY heading in the whole tree at weight
   // 500, and the single site that made this population's count read "N-1 font-semibold and 1
@@ -2057,12 +2056,10 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-33, 88.6-34, 88.6-43.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/ResponseDashboard.js': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-13, 88.6-32, 88.6-33, 88.6-43, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ResponseDashboard.js`
+  // carried `sites: 1` (0 font-medium, 1 font-semibold) — the h3 at `:154`, and the entry's
+  // stated outcome lead (hierarchy -> 700) is what it took: it migrated onto `<Heading>`, whose
+  // cva base supplies `font-bold`. Zero off-scale weight sites remain. Deleted, not zeroed.
   'app/components/RsvpCount.js': {
     sites: 3,
     why:
@@ -2075,18 +2072,26 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '7 off-scale weight sites (5 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-11, 88.6-22, 88.6-28, 88.6-29, 88.6-30, 88.6-43, 88.6-46.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/ScheduleForm.js': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-13, 88.6-15, 88.6-32, 88.6-33, 88.6-37, 88.6-39, 88.6-43, 88.6-44, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
-  'app/components/ScheduleList.js': {
-    sites: 8,
-    why:
-      '8 off-scale weight sites (7 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-16, 88.6-32.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ScheduleForm.js`
+  // carried `sites: 1` (1 font-medium, 0 font-semibold) — the field label at `:351`. §4.5's
+  // EMPHASIS outcome: 400 plus the `text-content-secondary` token it already carried, so
+  // `font-medium` is deleted rather than promoted. Deleted, not zeroed.
+  // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ScheduleList.js`
+  // carried `sites: 8` (7 font-medium, 1 font-semibold) and ALL THREE of §4.5's outcomes
+  // applied — the entry's single stated lead ("hierarchy (700)") was right for three of the
+  // eight and wrong for the other five:
+  //   - HIERARCHY -> 700: the `font-semibold` h3 at `:91` (left the population by migrating
+  //     onto `<Heading>`), and the two status chips at `:94`/`:98` (`font-medium` ->
+  //     `font-bold`, §4.5's pill/chip-ink row — 400 is REJECTED for a filled chip because the
+  //     fill/ink pairing needs the weight). Marker at the chip pair.
+  //   - EMPHASIS -> 400 + a colour token: the four inline field labels ("When:", "Game:",
+  //     "Min players:", "Response window:"), which were `<span className="font-medium">` with
+  //     NO colour of their own inside a `text-content-secondary` block. They take
+  //     `text-content-primary` — the emphasis moves from weight to colour rather than being
+  //     dropped outright, which would have erased the distinction entirely.
+  //   - EMPHASIS -> 400, token already present: the delete-confirm prose at `:192`, which
+  //     already carried `text-content-status-error`, so `font-medium` simply deletes.
+  // Zero off-scale weight sites remain. Deleted, not zeroed.
   // DELETED by plan 88.6-26 task 1 (wave 7, 2026-09-16): 'app/components/SchedulerWeekStrip.tsx'
   // carried sites: 2, both settled at 700 with a DECISION marker apiece. :189's weekday letter is
   // the byte-identical twin of EventHeatmapBackground.js's (copied verbatim from it) and took the

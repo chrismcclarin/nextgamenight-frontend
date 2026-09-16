@@ -8,7 +8,13 @@ import userEvent from '@testing-library/user-event';
 vi.mock('@/lib/logger', () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
-vi.mock('../../lib/api', () => ({
+// Plan 88.6-32: `importOriginal` + spread, NOT the full-replacement factory this used to be.
+// `onSubmit` now derives its copy through `getFetchErrorMessage`, and `deriveCode` resolves the
+// code with `error instanceof ApiError` (`useFetchErrorState.ts:116`). A full replacement
+// DELETES `ApiError` from this module, and `x instanceof undefined` is a TypeError — so the
+// old factory would have turned a correct migration into a crash inside the catch.
+vi.mock('../../lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/api')>()),
   promptSettingsAPI: {
     createSchedule: vi.fn().mockRejectedValue(new Error('Server boom')),
     updateSchedule: vi.fn(),
@@ -47,6 +53,15 @@ afterEach(cleanup);
 describe('ScheduleForm submit-error path', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  // Plan 88.6-32 (R1 / T-88.6-89) REWROTE this arm's copy expectation and added the
+  // one-node half. It used to accept `/server boom|failed to save/i` — the `server boom`
+  // alternative is precisely the raw upstream leak this phase closes, and `failed to save` is
+  // the hand-rolled copy the register replaced, so BOTH alternatives are now defects rather
+  // than acceptable outcomes. The rejection here carries no `ApiError` code, so the register
+  // resolves `unknown`; that string is asserted as a literal because `MESSAGE_BY_CODE` is
+  // module-private by design and must not be exported to make an assertion importable.
+  const UNKNOWN_COPY = 'Something went wrong. Refresh the page to try again.';
+
   it('on a failed save renders the inline error (role=alert) AND logs via logger.error', async () => {
     const user = userEvent.setup();
     render(<ScheduleForm groupId="g1" />);
@@ -54,9 +69,26 @@ describe('ScheduleForm submit-error path', () => {
     await user.click(screen.getByRole('button', { name: /create schedule/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent(/server boom|failed to save/i);
+      expect(screen.getByRole('alert')).toHaveTextContent(UNKNOWN_COPY);
     });
+    expect(screen.queryByText(/server boom/i)).toBeNull();
     expect(logger.error).toHaveBeenCalledWith('form submit failed', expect.any(Error));
+  });
+
+  it('leaves EXACTLY ONE error node in the DOM after a failed submit', async () => {
+    // This catch used to write BOTH `setServerError` and `setError('root', …)`, rendered in
+    // byte-identical boxes one line apart — so deriving both from one `getFetchErrorMessage`
+    // call would have printed the same ratified sentence twice, once announced and once
+    // silent. The pair is collapsed; `serverError` is the survivor and it is the one that
+    // already carried `role="alert"`.
+    const user = userEvent.setup();
+    render(<ScheduleForm groupId="g1" />);
+
+    await user.click(screen.getByRole('button', { name: /create schedule/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+
+    expect(screen.getAllByText(UNKNOWN_COPY)).toHaveLength(1);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
   });
 });
 

@@ -279,11 +279,13 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'plan 88.6-31 sweeps the feedback and notification cluster, NotificationBell.js included',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
-  'app/components/ScheduleList.js': {
-    sites: 4,
-    why: 'plan 88.6-32 sweeps the group-library and scheduling cluster, ScheduleList.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ScheduleList.js`
+  // carried `sites: 4` — the desktop Edit (`btn btn-primary`) and Delete (`btn btn-danger`) row
+  // actions and the in-row delete confirm's Confirm/Cancel pair. All four are
+  // `<Button size="default">`. Dead utilities deleted (`px-3 py-1.5`, `text-sm` — unlayered
+  // `.btn` declares padding at globals.css:2202 and font-size at :2201). The `:142` Pause/Resume
+  // toggle is NOT a `.btn` site and was never in this count — it carries raw status-token
+  // utilities and is untouched. Entry DELETED rather than zeroed.
   // `app/invite/accept/page.js` CLOSED by plan 88.6-23 task 2 (wave 7, 2026-09-16): all FOUR
   // `.btn` elements are anchors on the `asChild` form — three `<Link>` (Go to Group, and two
   // Go Home) and the `/api/auth/login?returnTo=…` sign-in `<a>`, which stays an `<a>`. The
@@ -351,11 +353,13 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'plan 88.6-33 sweeps eight small modal-and-card components, QRCodeModal.js included',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
-  'app/components/ScheduleForm.js': {
-    sites: 2,
-    why: 'plan 88.6-32 sweeps the group-library and scheduling cluster, ScheduleForm.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ScheduleForm.js`
+  // carried `sites: 2` — the modal footer's Cancel (`btn btn-secondary`) and the submit
+  // (`btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed`). Both are
+  // `<Button size="default">`; the submit keeps its NATIVE `disabled={isSubmitting}` gate and
+  // its two `disabled:*` utilities are DELETED as dead — unlayered `.btn:disabled` already
+  // ships opacity and cursor. The other two `btn` greps in this file (`:415`, `:422` pre-edit)
+  // were `rounded-btn` TOKENS, never `.btn` sites. Entry DELETED rather than zeroed.
   // `app/invite/group/[token]/page.js` CLOSED by plan 88.6-23 task 1 (wave 7, 2026-09-16): BOTH
   // `.btn` elements are anchors and took the `asChild` form — the `/api/auth/login?returnTo=…`
   // sign-in `<a>` (stays an `<a>`) and the `<Link href="/">` Go-Home CTA. Same dead/alive split

@@ -236,10 +236,42 @@ describe('Req 6 status text sweep — every status text site reads the text-safe
     //     The PROPERTY is intact: no LIVE `border-status-*` call site was edited, and a loose
     //     `s/status-error/content-status-error/` still drags ~44 sites through this assertion.
     //     Lowering it again without naming the site that left is the thing this note forbids.
-    expect(totalAcrossSrc(files, BORDER)).toBeGreaterThanOrEqual(44);
+    //
+    //     LOWERED 44 -> 41 by plan 88.6-32 task 2 (2026-09-16), and per the note above every one
+    //     of the THREE departing sites is NAMED. Measured against the pre-edit file at HEAD, all
+    //     three are whole error BOXES that were deleted, never a token that was renamed:
+    //       1. `ResponseDashboard.js:137` — the hand-rolled load-error branch
+    //          (`bg-surface-card rounded-card border border-status-error p-4`) wrapping a raw
+    //          `<span>{error}</span>`. It is replaced by `FetchErrorBanner`, which paints its
+    //          own `Banner tone="warning"` chrome and names no `border-status-error` of its own.
+    //       2. `ResponseDashboard.js:160` — the inline `{reminderError && …}` block. Both of the
+    //          remind button's failure modes now go through `toast.error`, so the block and its
+    //          `setReminderError` state are gone.
+    //       3. `ScheduleForm.js:422` — the SECOND of two byte-identical error boxes rendering the
+    //          same failure one line apart. `ScheduleForm.js:415` (the `role="alert"` survivor) is
+    //          BYTE-UNCHANGED and still counted here.
+    //     The PROPERTY is intact: no surviving `border-status-*` call site was edited, and a loose
+    //     `s/status-error/content-status-error/` still drags ~41 sites through this assertion.
+    expect(totalAcrossSrc(files, BORDER)).toBeGreaterThanOrEqual(41);
 
     // (b) MEASURED 71 (plus 5 `-subtle-hover`, which `base()` does not fold in).
-    expect(totalAcrossSrc(files, SUBTLE)).toBeGreaterThanOrEqual(68);
+    //
+    //     LOWERED 68 -> 67 by plan 88.6-32 task 2 (2026-09-16), with both departing sites NAMED
+    //     per (a)'s rule. They are the same two deleted error BOXES, counted here for their
+    //     backgrounds rather than their borders:
+    //       1. `ResponseDashboard.js:160` — the inline `{reminderError && …}` block
+    //          (`bg-status-error-subtle`). Its sibling at `:167`, the blind-voting notice
+    //          (`bg-status-warning-subtle`), is byte-unchanged and still counted.
+    //       2. `ScheduleForm.js:422` — the second of two byte-identical error boxes
+    //          (`bg-status-error-subtle`). The `role="alert"` survivor at `:415` is
+    //          byte-unchanged and still counted.
+    //     No surviving `bg-status-*-subtle` call site was edited.
+    //
+    //     CORRECTION, recorded rather than quietly absorbed: the "MEASURED 71" above is STALE.
+    //     The comment-stripped tree stood at **69** immediately before this plan, not 71 — some
+    //     earlier wave-7 sweep took two without lowering the floor, which was legitimate (69 is
+    //     still >= 68) but leaves the stated measurement wrong for the next reader. 69 - 2 = 67.
+    expect(totalAcrossSrc(files, SUBTLE)).toBeGreaterThanOrEqual(67);
 
     // (c) The four SOLID `bg-status-*` glyph fills, pinned by file so the floor cannot be met by
     //     one cluster. A substring detector would read the 71 `-subtle` tokens as solids and make
