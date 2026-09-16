@@ -225,7 +225,18 @@ describe('Req 6 status text sweep — every status text site reads the text-safe
 
     // (a) MEASURED 47 across 20 files. This is the assertion that catches a loose rename like
     //     `s/status-error/content-status-error/`, which would drag every one of them.
-    expect(totalAcrossSrc(files, BORDER)).toBeGreaterThanOrEqual(45);
+    //
+    //     LOWERED 45 -> 44 by plan 88.6-15 (2026-09-16), and this is a DECREMENT WITH A NAMED
+    //     SITE, not a floor loosened to absorb a change. Exactly ONE `border-status-error` left
+    //     the tree: `PromptScheduleManager.js`'s `{error && …}` block, whose `<div className="…
+    //     border border-status-error …">` was UNREACHABLE — its `setError` had one occurrence in
+    //     the file, its own `useState` declaration — so the block could never render and the
+    //     border it named was never painted. The tree stood at 45 (comment-stripped) before that
+    //     deletion, i.e. exactly on this floor, which is why removing one dead site red-lined it.
+    //     The PROPERTY is intact: no LIVE `border-status-*` call site was edited, and a loose
+    //     `s/status-error/content-status-error/` still drags ~44 sites through this assertion.
+    //     Lowering it again without naming the site that left is the thing this note forbids.
+    expect(totalAcrossSrc(files, BORDER)).toBeGreaterThanOrEqual(44);
 
     // (b) MEASURED 71 (plus 5 `-subtle-hover`, which `base()` does not fold in).
     expect(totalAcrossSrc(files, SUBTLE)).toBeGreaterThanOrEqual(68);

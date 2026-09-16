@@ -39,6 +39,13 @@ vi.mock('@/lib/api', async (importOriginal) => {
     ...actual,
     groupsAPI: { ...actual.groupsAPI, getGroupLibrary: vi.fn() },
     promptAPI: { ...actual.promptAPI, getOpenPrompts: vi.fn() },
+    // 88.6-15: the admin-role Section arms drive the SETTINGS query too, and the shipped
+    // mock covered only `getOpenPrompts` / `getGroupLibrary`. EXTENDED rather than reached
+    // around — a second `vi.mock('@/lib/api')` in one file silently replaces the first.
+    promptSettingsAPI: {
+      ...actual.promptSettingsAPI,
+      getGroupPromptSettings: vi.fn(),
+    },
   };
 });
 
@@ -46,7 +53,10 @@ import ScheduleList from './ScheduleList';
 import UpcomingEventsCard from './UpcomingEventsCard';
 import GroupLibrary from './GroupLibrary';
 import OpenPollsList from './OpenPollsList';
-import { groupsAPI, promptAPI } from '@/lib/api';
+import PromptScheduleReadOnly from './PromptScheduleReadOnly';
+import PromptScheduleSection from './PromptScheduleSection';
+import { groupsAPI, promptAPI, promptSettingsAPI } from '@/lib/api';
+import { promptKeys } from '@/lib/queryKeys/promptKeys';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -250,5 +260,230 @@ describe('OpenPollsList empty vs failed (§9.2 / T-88-18-01)', () => {
     expect(
       screen.getByRole('button', { name: '+ Start a check-in' })
     ).toBeInTheDocument();
+  });
+});
+
+// =====================================================================================
+// 88.6-15 (D-31 / T-88.6-36) — the prompt trio's [M] false-empty defect, PER COMPONENT.
+//
+// The two components share the defect's NAME and not its SHAPE, so they get two different
+// fixes and two different sets of arms. The earlier premise that both paint "No schedules
+// configured." on a fetch failure is FALSE for Section: that string has exactly ONE
+// occurrence in src/, at PromptScheduleReadOnly.js. Section renders no schedules empty copy
+// at all; its false-empty is the "No open polls" HEADER BADGE on the open-polls key.
+//
+// WHAT THE SECTION ARMS PROVE AND WHAT THEY DO NOT. They prove EXACTLY ONE live region per
+// failure. They do NOT prove ANNOUNCEMENT — StatusRegion is empty-first by contract while
+// FetchErrorBanner returns null until it errors, so the region and its text enter the DOM
+// together. That gap is plan 13's to route (88.6-13-PLAN.md:518-520); it is not re-opened
+// here, and no assertion below may be read as covering it.
+// =====================================================================================
+
+function neverResolves() {
+  return new Promise(() => {});
+}
+
+describe('PromptScheduleReadOnly error vs empty vs soft-failed drift (88.6-15 / D-31)', () => {
+  const props = { groupId: 'g1', groupPageUrl: '/groupHomePage?id=g1' };
+
+  it('renders the error surface and NOT the empty copy when the settings fetch rejects', async () => {
+    (promptSettingsAPI.getGroupPromptSettings as unknown as Mock).mockRejectedValue(
+      new Error('boom')
+    );
+    render(withQueryClient(<PromptScheduleReadOnly {...anyProps(props)} />));
+
+    expect(
+      await screen.findByText("We couldn't load your schedules")
+    ).toBeInTheDocument();
+    expect(screen.queryByText('No schedules configured.')).toBeNull();
+  });
+
+  it('OMITS the parenthesised count from the heading in the error branch', async () => {
+    (promptSettingsAPI.getGroupPromptSettings as unknown as Mock).mockRejectedValue(
+      new Error('boom')
+    );
+    render(withQueryClient(<PromptScheduleReadOnly {...anyProps(props)} />));
+
+    // r3 #11: activeCount derives from `data?.schedules || []`, so reordering the BRANCHES
+    // alone still paints "Recurring Check-ins (0)" beside the failure banner — the same false
+    // claim about server state, one element higher.
+    expect(
+      await screen.findByRole('heading', { name: 'Recurring Check-ins' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Recurring Check-ins (0)' })
+    ).toBeNull();
+  });
+
+  it('renders the empty copy — and the TRUE zero count — when the fetch succeeds with none', async () => {
+    (promptSettingsAPI.getGroupPromptSettings as unknown as Mock).mockResolvedValue({
+      id: null,
+      schedules: [],
+      games: [],
+      members: [],
+    });
+    render(withQueryClient(<PromptScheduleReadOnly {...anyProps(props)} />));
+
+    expect(
+      await screen.findByText('No schedules configured.')
+    ).toBeInTheDocument();
+    // The count comes BACK for every data branch, a true zero included.
+    expect(
+      screen.getByRole('heading', { name: 'Recurring Check-ins (0)' })
+    ).toBeInTheDocument();
+    expect(screen.queryByText("We couldn't load your schedules")).toBeNull();
+  });
+
+  it('SOFT-FAILS a schema drift to the empty shape, not to the error surface', async () => {
+    // The negative control. D-31 keeps softFailPromptQueryFn's ZodError behaviour: a benign
+    // backend drift must still DEGRADE to the empty shape rather than showing a person an
+    // error. A top-level-invalid body is the only thing safeParse rejects.
+    (promptSettingsAPI.getGroupPromptSettings as unknown as Mock).mockResolvedValue(null);
+    render(withQueryClient(<PromptScheduleReadOnly {...anyProps(props)} />));
+
+    expect(
+      await screen.findByText('No schedules configured.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText("We couldn't load your schedules")).toBeNull();
+  });
+
+  it('shows NO empty copy while the initial fetch is pending (UI-SPEC 9.3 E4 backstop)', async () => {
+    (promptSettingsAPI.getGroupPromptSettings as unknown as Mock).mockImplementation(
+      neverResolves
+    );
+    render(withQueryClient(<PromptScheduleReadOnly {...anyProps(props)} />));
+
+    expect(await screen.findByText('Loading schedules...')).toBeInTheDocument();
+    // The empty copy must not FLASH before the first response lands.
+    expect(screen.queryByText('No schedules configured.')).toBeNull();
+    expect(screen.queryByText("We couldn't load your schedules")).toBeNull();
+  });
+});
+
+describe('PromptScheduleSection badge omits on error and mints no second region (88.6-15 / D-31)', () => {
+  function makeClient() {
+    return new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+  }
+
+  function renderSection(extra: Record<string, unknown>, client: QueryClient) {
+    return render(
+      <QueryClientProvider client={client}>
+        <PromptScheduleSection
+          {...anyProps({ groupId: 'g1', group: { id: 'g1', games: [] }, ...extra })}
+        />
+      </QueryClientProvider>
+    );
+  }
+
+  it('(a) renders NO badge — and no region of its own — when the open-polls query rejects', async () => {
+    // A non-admin role suffices: the settings query is admin-gated, so this arm isolates the
+    // open-polls key, which is what feeds the badge.
+    (promptAPI.getOpenPrompts as unknown as Mock).mockRejectedValue(new Error('boom'));
+    renderSection({ userRole: 'member', defaultExpanded: true }, makeClient());
+
+    // SETTLE ON A POSITIVE SIGNAL FIRST. This line is what makes the two ABSENCE assertions
+    // below non-vacuous, and it is here because the obvious form was measured going green
+    // against the UNFIXED component: `await waitFor(() => expect(queryByText('No open
+    // polls')).toBeNull())` satisfies itself on the very first tick, while the badge still
+    // reads "Loading...", and never observes the settled error state at all. OpenPollsList's
+    // banner is the failure's one real surface, so waiting on it proves the query has landed.
+    expect(
+      await screen.findByText("We couldn't load the check-ins")
+    ).toBeInTheDocument();
+
+    expect(screen.queryByText('No open polls')).toBeNull();
+    // Not new copy either — the badge renders NOTHING, it does not reword.
+    expect(screen.queryByText(/open polls?$/)).toBeNull();
+    // OpenPollsList owns the ONE region for this key. Section adds none, so the count is 1.
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
+  // BOTH (b) LEGS SETTLE ON A POSITIVE SIGNAL BEFORE ASSERTING PERSISTENCE, and that is the
+  // load-bearing part of their shape rather than a style choice. These are "assert something
+  // STAYS" tests, so the naive form — refetch, then `waitFor(() => expect(getByText(…))
+  // .toBeInTheDocument())` — is satisfied by the very first tick, BEFORE the failed refetch has
+  // re-rendered anything, and goes green against a wrong fix. Measured: with the retention
+  // branch keyed on `openPollCount === 0` (r3 #14's wrong fix, planted deliberately) the naive
+  // (b2) PASSED. Expanding the panel gives the failure a positive surface — OpenPollsList's
+  // banner on the SAME open-polls key — so awaiting it proves the error state has landed, and
+  // only then is the badge's survival a real claim.
+  it('(b1) keeps a POPULATED cache count across a failed refetch', async () => {
+    const client = makeClient();
+    (promptAPI.getOpenPrompts as unknown as Mock).mockResolvedValueOnce({
+      prompts: [{ id: 'p1' }, { id: 'p2' }],
+    });
+    renderSection({ userRole: 'member', defaultExpanded: true }, client);
+
+    expect(await screen.findByText('2 open polls')).toBeInTheDocument();
+
+    (promptAPI.getOpenPrompts as unknown as Mock).mockRejectedValue(new Error('boom'));
+    await client.refetchQueries({ queryKey: promptKeys.openPolls('g1') });
+
+    expect(
+      await screen.findByText("We couldn't load the check-ins")
+    ).toBeInTheDocument();
+    // TanStack retains `data` across a refetch error, so a number the user can still trust
+    // must not be replaced with nothing.
+    expect(screen.getByText('2 open polls')).toBeInTheDocument();
+  });
+
+  it('(b2) keeps a SUCCESSFUL-EMPTY cache badge across a failed refetch — the count-keyed leg', async () => {
+    // r3 #14. `openPollCount` is 0 for a TRUE zero AND for no data at all, so a retention
+    // branch keyed on "the count is non-zero" silently blanks a legitimate "No open polls"
+    // here — and (b1) alone would never catch it, because it only exercises the populated
+    // case. The discriminator is DATA PRESENCE.
+    const client = makeClient();
+    (promptAPI.getOpenPrompts as unknown as Mock).mockResolvedValueOnce({ prompts: [] });
+    renderSection({ userRole: 'member', defaultExpanded: true }, client);
+
+    expect(await screen.findByText('No open polls')).toBeInTheDocument();
+
+    (promptAPI.getOpenPrompts as unknown as Mock).mockRejectedValue(new Error('boom'));
+    await client.refetchQueries({ queryKey: promptKeys.openPolls('g1') });
+
+    expect(
+      await screen.findByText("We couldn't load the check-ins")
+    ).toBeInTheDocument();
+    expect(screen.getByText('No open polls')).toBeInTheDocument();
+  });
+
+  it('(c1) COLLAPSED with a failed settings query: zero regions and zero Try again are reachable', async () => {
+    // Arm C removes the collapsed panel from the a11y tree and the tab order, so the banner
+    // the nested Manager renders for this failure is not reachable while collapsed. This leg
+    // proves AC-7 landed; (c2) proves the single-live-region rule still holds when it is open.
+    (promptSettingsAPI.getGroupPromptSettings as unknown as Mock).mockRejectedValue(
+      new Error('boom')
+    );
+    (promptAPI.getOpenPrompts as unknown as Mock).mockResolvedValue({ prompts: [] });
+    renderSection({ userRole: 'admin', defaultExpanded: false }, makeClient());
+
+    await screen.findByRole('button', { name: /check-ins/i });
+    await waitFor(() => expect(screen.queryAllByRole('alert')).toHaveLength(0));
+    expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
+  });
+
+  it('(c2) EXPANDED with a failed settings query: exactly ONE region and ONE Try again', async () => {
+    // The open-polls query must RESOLVE here, or this arm stops measuring the property it
+    // exists to measure.
+    (promptSettingsAPI.getGroupPromptSettings as unknown as Mock).mockRejectedValue(
+      new Error('boom')
+    );
+    (promptAPI.getOpenPrompts as unknown as Mock).mockResolvedValue({ prompts: [] });
+    renderSection({ userRole: 'admin', defaultExpanded: true }, makeClient());
+
+    await waitFor(() => expect(screen.getAllByRole('alert')).toHaveLength(1));
+    expect(screen.getAllByRole('button', { name: /try again/i })).toHaveLength(1);
+    // Section itself contributes nothing: the one region is the nested Manager's, on the SAME
+    // promptKeys.settings key under the SAME admin gate.
+    expect(screen.getByText("We couldn't load your schedules")).toBeInTheDocument();
+  });
+
+  it('(d) a schema drift on open-polls soft-fails to the empty shape, so the zero badge is legitimate', async () => {
+    (promptAPI.getOpenPrompts as unknown as Mock).mockResolvedValue(null);
+    renderSection({ userRole: 'member', defaultExpanded: true }, makeClient());
+
+    expect(await screen.findByText('No open polls')).toBeInTheDocument();
   });
 });

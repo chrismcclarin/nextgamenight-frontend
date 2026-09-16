@@ -547,12 +547,14 @@ const EXPECTED_PROP_SEAMS = 5;
  * the whole point of flooring it separately from the five immovable seams, which would
  * otherwise satisfy a combined non-raw floor forever.
  *
- * RAISED 0 -> 1 by plan 88.6-15 task 1 (2026-09-16): `PromptScheduleManager.js:213`'s h3 is the
- * FIRST `<Heading>` call site in the tree. 88.6-11-SUMMARY "Downstream plan corrections" #2
- * recorded that NO sweep plan's text instructs this raise — the tracer does it anyway, and says
- * so here, so the ~20 expansion sweeps inherit the habit rather than the omission.
+ * RAISED 0 -> 1 by plan 88.6-15 task 1 and 1 -> 2 by its task 2 (2026-09-16):
+ * `PromptScheduleManager.js`'s h3 is the FIRST `<Heading>` call site in the tree and
+ * `PromptScheduleReadOnly.js`'s is the second. 88.6-11-SUMMARY "Downstream plan corrections" #2
+ * recorded that NO sweep plan's text instructs this raise — the tracer does it anyway, once per
+ * migrating commit, and says so here so the ~20 expansion sweeps inherit the habit rather than
+ * the omission.
  */
-const EXPECTED_MIN_PRIMITIVES = 1;
+const EXPECTED_MIN_PRIMITIVES = 2;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -665,11 +667,9 @@ const RUNG_ROSTER: ExemptionRoster = {
   // size="heading">`, so the rung is supplied by the primitive and the file leaves this
   // population entirely rather than decrementing (88.6-11-SUMMARY "Downstream plan
   // corrections" #1). Deleted, not zeroed — the count is exact in both directions.
-  'app/components/PromptScheduleReadOnly.js': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h3:46 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-15 (2026-09-16): `app/components/PromptScheduleReadOnly.js` carried
+  // `sites: 1` (h3:46 `text-lg`). Migrated onto `<Heading level={3} size="heading">`, so the
+  // rung is the primitive's and the file leaves this population. Deleted, not zeroed.
   'app/components/ResponseDashboard.js': {
     sites: 1,
     why: '1 heading off the 4-size working set (h3:154 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
@@ -803,11 +803,9 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
   // `sites: 1` (h3:213 `font-semibold`). The heading migrated onto `<Heading>`, whose cva base
   // is `font-bold`, so the call site states no weight at all and the file leaves this
   // population. Deleted, not zeroed.
-  'app/components/PromptScheduleReadOnly.js': {
-    sites: 1,
-    why: '1 heading carrying the prohibited 600 weight (h3:46) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-15 (2026-09-16): `app/components/PromptScheduleReadOnly.js` carried
+  // `sites: 1` (h3:46 `font-semibold`). Migrated onto `<Heading>`, whose cva base is
+  // `font-bold`, so the call site states no weight. Deleted, not zeroed.
   'app/components/ResponseDashboard.js': {
     sites: 1,
     why: '1 heading carrying the prohibited 600 weight (h3:154) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
@@ -906,11 +904,9 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
   // `sites: 1` (h3:213). This roster is a RAW-ONLY supply rule; the heading is no longer a raw
   // `<hN>` tag, so the file leaves the population rather than decrementing. The 700 is now
   // supplied by `Heading`'s cva base and pinned in `Heading.test.tsx`. Deleted, not zeroed.
-  'app/components/PromptScheduleReadOnly.js': {
-    sites: 1,
-    why: '1 raw heading not stating the 700 weight (h3:46 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-15 (2026-09-16): `app/components/PromptScheduleReadOnly.js` carried
+  // `sites: 1` (h3:46). RAW-ONLY supply rule; the heading is no longer a raw `<hN>` tag, so the
+  // file leaves the population rather than decrementing. Deleted, not zeroed.
   'app/components/ResponseDashboard.js': {
     sites: 1,
     why: '1 raw heading not stating the 700 weight (h3:154 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
@@ -1933,18 +1929,18 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // that is what landed — not as a `font-bold` utility at the call site, but by migrating the
   // h3 onto `<Heading>`, whose cva base is `font-bold`. Zero off-scale weight sites remain in
   // the file, so the entry is deleted rather than zeroed.
-  'app/components/PromptScheduleReadOnly.js': {
-    sites: 2,
-    why:
-      '2 off-scale weight sites (1 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-15, 88.6-43, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
-  'app/components/PromptScheduleSection.js': {
-    sites: 3,
-    why:
-      '3 off-scale weight sites (3 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-15, 88.6-43, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-15 (2026-09-16), both entries, both outcomes CONFIRMED per site
+  // against UI-SPEC §4.5 rather than taken from the lead:
+  //   `app/components/PromptScheduleReadOnly.js` (was `sites: 2`) — h3:46 `font-semibold` was
+  //   HIERARCHY and landed as 700 by migrating onto `<Heading>` (cva base `font-bold`); the
+  //   `:72` link's `font-medium` was EMPHASIS and DELETED with no look delta, because the anchor
+  //   already carries `text-content-link` (§4.5's stated emphasis outcome: 400 + a colour token,
+  //   and the colour token was already there).
+  //   `app/components/PromptScheduleSection.js` (was `sites: 3`) — the `Check-ins` title span
+  //   (`font-medium` -> `font-bold`, HIERARCHY: it is the section title) and the TWO header
+  //   chips (`font-medium` -> `font-bold`, §4.5's pill/chip row: 400 is rejected for a filled
+  //   chip because the fill/ink pairing needs the weight). Markers at both sites.
+  // Zero off-scale weight sites remain in either file, so both entries are deleted, not zeroed.
   'app/components/QRCodeModal.js': {
     sites: 1,
     why:
