@@ -393,11 +393,13 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'plan 88.6-33 sweeps eight small modal-and-card components, BringGamePicker.js included',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
-  'app/components/ClickableMemberName.js': {
-    sites: 1,
-    why: 'plan 88.6-34 sweeps nine small shared components, ClickableMemberName.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-34 task 3 (wave 7, 2026-09-16): `app/components/ClickableMemberName.js`
+  // carried `sites: 1` — the popover's "Add friend" CTA, `btn btn-primary text-sm px-3 py-1`
+  // pre-edit. It is a `<Button variant="primary">` now. The three utilities that rode with the
+  // class were DELETED AS DEAD, not as unwanted: `.btn` declares `font-size` and `padding`
+  // unlayered, so none of `text-sm px-3 py-1` has ever rendered. No `min-h-11` was present, so
+  // none was dropped. NOTE this entry's own count was ONE, not the TWO this plan's text predicted
+  // — the file has exactly one `.btn` element, measured 2026-09-16. Entry DELETED, not zeroed.
   'app/components/createGroup.js': {
     sites: 1,
     why: 'plan 88.6-33 sweeps eight small modal-and-card components and routes createGroup.js raw error read',

@@ -15,6 +15,8 @@ import {
   FloatingFocusManager,
 } from '@floating-ui/react';
 import { FriendshipContext } from './FriendshipStatusProvider';
+import { Button } from '../../components/ui/Button';
+import { logger, errCtx } from '@/lib/logger';
 
 /**
  * ClickableMemberName - Wraps a member name with a hover-to-open tooltip
@@ -99,6 +101,10 @@ export default function ClickableMemberName({ userId, username, children, showIn
       setIsOpen(open);
       if (!open) setOpenedByKeyboard(false);
     },
+    // NOT SWEPT — owner: Phase 88.9. The "Add friend popover floats over the next row" item is a
+    // `[D]` routed in `.planning/deferred/phase-88.6.md`; it needs a design answer, not a sweep.
+    // Plan 88.6-34 swept this file's type, weight and `.btn` layers and left this config
+    // byte-unchanged on purpose. Changing the placement or the offset is 88.9's decision.
     placement: 'bottom-start',
     middleware: [offset(6), flip(), shift({ padding: 8 })],
     whileElementsMounted: autoUpdate,
@@ -149,7 +155,29 @@ export default function ClickableMemberName({ userId, username, children, showIn
       // No-op on mobile (popover never opened); preserved for desktop parity.
       setTimeout(() => setIsOpen(false), 1500);
     } catch (err) {
-      console.error('Failed to send friend request:', err);
+      // DECISION Phase 88.6-34 (AC-2 WIDENED 2026-09-09, level AMENDED 2026-09-13):
+      // `logger.info`, chosen OVER `logger.error` and OVER `logger.warn`. `logger.error` is
+      // `captureException` with no throttle, dedupe or level gate, and `replaysOnErrorSampleRate`
+      // (1.0) against `replaysSessionSampleRate` (0.1) means most sessions are BUFFERING — so the
+      // first captured event flushes the Session Replay buffer and converts that session to
+      // continuous recording and upload. That arm bit hardest EXACTLY HERE: it would have egressed
+      // a masked replay of the member-identity surface on a failed friend request. `logger.warn` is
+      // not cheaper (`captureMessage` is an event too); only `logger.info` is event-free. What
+      // changed is the CHANNEL and the lint gate, NOT the egress — this was a breadcrumb before and
+      // is a breadcrumb now, so no new Sentry event and no new replay recording is created.
+      //
+      // T-84-01 BITES HARDEST HERE and the demotion does NOT soften it: a breadcrumb rides along
+      // with whatever event the session later files, so whatever is passed still leaves the
+      // browser. `errCtx` carries the error's NAME and MESSAGE and nothing else — no member name,
+      // no display name, no email, no friend-request identity, no user record. This component's
+      // entire job is rendering member identities and none of them belongs in a Sentry payload, so
+      // do NOT enrich this call while converting it. `errCtx` is also used rather than a
+      // hand-written `{ name, message }` literal because the literal spells `message:` on the call
+      // line and would red the R1 scanner, a gate a correct conversion never touched. Never pass
+      // the raw `Error` as the ctx: the signature is `Record<string, unknown>` and a `.js` call
+      // site gets no typecheck. Converts IN PLACE — a catch inside an async handler, not a render
+      // body or a per-item loop.
+      logger.info('Failed to send friend request:', errCtx(err));
       setSendError(true);
     }
   };
@@ -163,10 +191,28 @@ export default function ClickableMemberName({ userId, username, children, showIn
   // Mobile inline indicators vary per status (handled in renderMobileIndicator).
 
   const renderTooltipContent = () => {
+    // DECISION Phase 88.6-34 (D-01 / D-03, UI-SPEC §4.2 + §4.5): both pills below move
+    // `text-[10px]` -> `text-xs` and `font-semibold` -> `font-bold`.
+    //
+    // SIZE: 10px is under the app's 12px floor, so D-01 folds it UP. 12 (Caption) is the pills'
+    // RATIFIED rung, not a compromise — §4.2's closed role list names "chip / pill / badge labels"
+    // first, and these have a fill, a radius and padding, so they are squarely on it.
+    //
+    // WEIGHT: 600 -> 700 is §4.5's PILL/CHIP row, and 400 is the RECORDED REJECTED ARM — a
+    // 10%-saturation fill needs the weight to hold its ink apart from the surface, which is the
+    // same reason the row cites for `UpcomingCountPill` and `MemberChipStack`.
+    //
+    // MEASURED in Chromium at 375px with the app's own Plus Jakarta Sans latin subset (the phone
+    // e2e lane cannot run locally — no `.auth/`, real Auth0 — so this is the offline recipe):
+    // the popover grows 60.83 -> 65.61px wide for "You" and 75.41 -> 83.02px for "Friend", +1px
+    // tall each, against a 375px viewport. No overflow, and `shift({ padding: 8 })` keeps it in
+    // view regardless. The 600 -> 700 step contributes only ~0.2px of that; the growth is the size
+    // fold. Container box model reconstructed from the class values, not from compiled CSS.
+    //
     // Self → blue "You" pill. Informational only, no action.
     if (status === 'self') {
       return (
-        <span className="text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-semibold">
+        <span className="text-xs uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200 px-1.5 py-0.5 rounded-sm font-bold">
           You
         </span>
       );
@@ -175,7 +221,7 @@ export default function ClickableMemberName({ userId, username, children, showIn
     // Accepted → green "Friend" pill. Informational only, no action.
     if (status === 'accepted') {
       return (
-        <span className="text-[10px] uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-semibold">
+        <span className="text-xs uppercase tracking-wide bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 px-1.5 py-0.5 rounded-sm font-bold">
           Friend
         </span>
       );
@@ -189,9 +235,15 @@ export default function ClickableMemberName({ userId, username, children, showIn
     // announced role=status/alert is the same idiom the mobile pending span
     // defends at its own marker. Focus survival is FloatingFocusManager's
     // restoreFocus (render site below).
+    // `font-medium` DELETED (Phase 88.6-34, §4.5 EMPHASIS): the row already carries
+    // `text-content-status-success`, so the colour token is doing the work and 400 is the
+    // outcome. HIERARCHY (700) was the wrong arm — this is a transient confirmation line, not a
+    // heading. `text-sm` STAYS: Label 14 is the rung for a status line, and it must match the
+    // `sendError` twin below, which renders in the SAME popover slot — splitting the pair across
+    // two rungs would resize the popover the moment a send fails.
     if (sent) {
       return (
-        <div role="status" className="flex items-center gap-1.5 text-sm text-content-status-success font-medium">
+        <div role="status" className="flex items-center gap-1.5 text-sm text-content-status-success">
           <span>&#10003;</span>
           <span>Request sent</span>
         </div>
@@ -219,16 +271,33 @@ export default function ClickableMemberName({ userId, username, children, showIn
     }
 
     // status === 'none' — can add friend
+    // Phase 88.6-34 (R2): `.btn btn-primary` -> `<Button variant="primary">`. The three utilities
+    // that rode with it — `text-sm px-3 py-1` — are DELETED because they were DEAD, not because
+    // they were unwanted: `.btn` declares `font-size` and `padding` UNLAYERED in globals.css, and
+    // an unlayered author rule beats every `@layer utilities` rule, so none of the three has ever
+    // rendered. No `min-h-11` was carried here, so none is dropped.
     return (
-      <button
-        onClick={handleSendRequest}
-        className="btn btn-primary text-sm px-3 py-1"
-      >
+      <Button variant="primary" onClick={handleSendRequest}>
         Add friend
-      </button>
+      </Button>
     );
   };
 
+  // DECISION Phase 88.6-34 (D-01 / UI-SPEC §4.2): the three `text-xs` inline indicators below
+  // STAY at Caption 12 — chosen OVER promoting them to Label 14 as §4.3's "status words" row would
+  // otherwise indicate.
+  //
+  // WHY. They are the MOBILE TWINS of the desktop popover's "You" / "Friend" pills above, which
+  // this same commit folds UP to Caption 12 as their ratified §4.2 rung. Promoting these to 14
+  // would print ONE status vocabulary at TWO rungs depending on which surface you are on — the
+  // same split-family defect plan 88.6-26 refused for the Banner family and plan 88.6-29 refused
+  // for its mutually-exclusive `:179`/`:183` pair. They are also subordinate annotations riding
+  // INSIDE an inline run beside the member name (`ml-1`, same baseline), which is the case
+  // `UpcomingEventsCard.js:265-281` records an explicit counter-argument against promoting; at 14
+  // an annotation could render as large as the name it annotates, at nine different call sites
+  // with nine different container sizes. 12 is the app's FLOOR, not below it, so nothing here is
+  // illegible. Promoting them is a decision, not a cleanup.
+  //
   // Mobile inline indicator. md:hidden so desktop visuals stay untouched.
   const renderMobileIndicator = () => {
     // Self has no mobile inline indicator — informational only, surfaced

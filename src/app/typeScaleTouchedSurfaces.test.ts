@@ -1524,12 +1524,16 @@ const ARBITRARY_SIZE_ROSTER: ExemptionRoster = {
   // COMPACT month tile. It folded UP to `text-xs`, the Caption rung, which is on §4.2's closed
   // role list for a counter. `EXPECTED_SUB_FLOOR_SITES` drops 11 -> 10 in the same commit.
   // Entry DELETED, not zeroed.
-  'app/components/ClickableMemberName.js': {
-    sites: 2,
-    why:
-      '2 arbitrary size values (text-[10px]@169, text-[10px]@178), 2 of them below the 12px floor — D-01 folds the sub-12px sites up onto the caption rung; an arbitrary value is off the rung set by definition',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / D-01' },
-  },
+  // DELETED by plan 88.6-34 task 3 (wave 7, 2026-09-16): `app/components/ClickableMemberName.js`
+  // carried `sites: 2` (`text-[10px]`@169, `text-[10px]`@178, both cites EXACT at HEAD) — the
+  // popover's "You" and "Friend" status pills. Both folded UP to `text-xs`, the Caption rung,
+  // which §4.2's closed role list names FIRST for "chip / pill / badge labels" and which these
+  // are squarely on (fill, radius, padding). Their `font-semibold` went 600 -> 700 in the same
+  // commit under §4.5's pill/chip row, with 400 as the recorded rejected arm. MEASURED in Chromium
+  // at 375px with the app's own Plus Jakarta Sans latin subset rather than assumed: the popover
+  // grows 60.83 -> 65.61px for "You" and 75.41 -> 83.02px for "Friend", +1px tall, no overflow at
+  // 375 — and the weight step contributes only ~0.2px of that. `EXPECTED_SUB_FLOOR_SITES` drops
+  // 9 -> 7 in the same commit. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-26 task 1 (wave 7, 2026-09-16): 'app/components/EventHeatmapBackground.js'
   // carried sites: 7 (text-[10px]@224, text-[10px]@240, text-[11px]@280, text-[9px]@291,
   // text-[9px]@298, text-[10px]@306, text-[11px]@316) and 'app/components/SchedulerWeekStrip.tsx'
@@ -1595,7 +1599,11 @@ const ARBITRARY_SIZE_ROSTER: ExemptionRoster = {
 // fold, so a missed site cannot hide behind a `>=`.
 // 10 -> 9, plan 88.6-28 task 3 (wave 7, 2026-09-16): `UpcomingEventsCard.js`'s Guest pill
 // folded `text-[10px]` -> `text-xs`. Same EXACT-equality contract as the fold above.
-const EXPECTED_SUB_FLOOR_SITES = 9;
+// 9 -> 7, plan 88.6-34 task 3 (wave 7, 2026-09-16): `ClickableMemberName.js`'s TWO popover status
+// pills folded `text-[10px]` -> `text-xs` together. Same EXACT-equality contract; the reflow was
+// measured in Chromium at 375px per site (see the deleted ARBITRARY_SIZE_ROSTER entry above) and
+// not assumed, because these render inside a floating popover over stacked rows.
+const EXPECTED_SUB_FLOOR_SITES = 7;
 
 /** Negative control for the strip on THIS file-level scan. */
 const FIXTURE_ARBITRARY_COMMENTS = `
@@ -1792,12 +1800,14 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     `text-content-status-warning` — so 400 would have erased the lead-in distinction rather
   //     than re-carrying it. Recorded at the site as a decision with 400 named as rejected.
   // Entry DELETED, not zeroed.
-  'app/components/AutoPromptBehaviorBanner.js': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plan: 88.6-34.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-34 task 3 (wave 7, 2026-09-16): `app/components/AutoPromptBehaviorBanner.js`
+  // carried `sites: 1` (1 font-medium, 0 font-semibold) — the "Got it" dismiss label. The entry's
+  // own outcome LEAD was right: EMPHASIS, utility DELETED, the colour token doing the work. It is
+  // §4.5's own named precedent shape — a link-styled button already carrying
+  // `text-content-link underline`, exactly like `FetchErrorBanner.tsx:82,108,116` — so the weight
+  // was a third redundant signal beside the colour and the underline. Its `text-sm` STAYS and is
+  // LIVE (a bare `<button>`, not a `.btn`, so the size utility is not dead), and its `min-h-11`
+  // per-CTA floor is untouched. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-25 task 2 (wave 7, 2026-09-16): `app/components/AvailabilityForm.js`
   // carried `sites: 6` (5 font-medium, 1 font-semibold), split across TWO §4.5 outcomes — the
   // "dead on a .btn" lead the entry named turned out to apply to NONE of them (the file's one
@@ -1883,12 +1893,17 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     (which declares its own weight) and the emoji fallback (where weight is meaningless).
   // Every `text-xs` in this file STAYS at 12 — a month tile is a dense-grid cell and Caption 12
   // is its ratified role (§4.2), so none of these were swept to 14. Entry DELETED, not zeroed.
-  'app/components/ClickableMemberName.js': {
-    sites: 3,
-    why:
-      '3 off-scale weight sites (1 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-10, 88.6-33, 88.6-34, 88.6-43.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-34 task 3 (wave 7, 2026-09-16): `app/components/ClickableMemberName.js`
+  // carried `sites: 3` (1 font-medium, 2 font-semibold), and the entry's "outcome set by the
+  // owning sweep" lead resolved TWO DIFFERENT WAYS — which is why it could not close on one lead:
+  //   HIERARCHY (700): the two `font-semibold` status PILLS ("You", "Friend"). §4.5's pill/chip
+  //     row, with 400 named as the rejected arm — a 10%-saturation fill needs the weight to hold
+  //     its ink apart from the surface.
+  //   EMPHASIS (utility DELETED, the colour token doing the work): the one `font-medium`, on the
+  //     "Request sent" confirmation line, which already carries `text-content-status-success`.
+  //     700 was the wrong arm there — a transient confirmation is not a heading.
+  // The file's `font-bold` at the mobile "+" glyph button is NOT in this population (700 is
+  // on-scale) and is byte-unchanged; that control is marker-protected. Entry DELETED, not zeroed.
   'app/components/DangerZoneDeleteAccount.tsx': {
     sites: 5,
     why:
@@ -1984,12 +1999,13 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '4 off-scale weight sites (0 font-medium, 4 font-semibold). UI-SPEC §4.5 outcome lead: hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-08, 88.6-10, 88.6-13, 88.6-15, 88.6-19, 88.6-20, 88.6-21, 88.6-25, 88.6-30, 88.6-43, 88.6-45, 88.6-46.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/HeatmapTooltip.js': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-26, 88.6-34.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-34 task 3 (wave 7, 2026-09-16): `app/components/HeatmapTooltip.js`
+  // carried `sites: 1` (1 font-medium, 0 font-semibold) — the `tone="mobile"` tooltip body.
+  // Resolved as EMPHASIS (utility DELETED) rather than HIERARCHY (700): 700 would bold an entire
+  // tooltip BODY, and the row already carries `text-content-primary`, the strongest ink there is.
+  // The mobile tone keeps everything else that distinguishes it — more padding, `ring-1 ring-line`
+  // and the wider `max-w`. Both tones' `text-base` is Body 16 and already on the scale. Visible
+  // delta 500 -> 400, covered by V-6. Entry DELETED, not zeroed.
   'app/components/KebabMenu.js': {
     sites: 1,
     why:
