@@ -211,8 +211,21 @@ describe('Phase 88.3 Gate B — the hover/sunken surface sweep (Req 1 / D-02, D-
     // Floor set BELOW the measured 38 on purpose: this pins that the sweep happened, not
     // the exact roster, so adding a hoverable surface is never a test edit. Removing
     // several IS.
+    //
+    // 36 -> 35, plan 88.6-18 (wave 7, 2026-09-16), WITH THE DEPARTING SITE NAMED, which is
+    // the only form in which this number may be lowered. `gameDetail/page.js`'s
+    // GuestInviteButton idle branch carried a BARE `hover:bg-surface-hover`; migrating that
+    // control to `<Button variant="ghost">` deleted it because the ghost variant already
+    // supplies the byte-equal wash as `enabled-hover:bg-surface-hover`
+    // (`Button.tsx:209`). THE WASH IS NOT LOST — it changed SPELLING, and this scanner
+    // deliberately counts only the bare `hover:` token, so the primitive's gated form is
+    // invisible to it by construction. The bare form could not be kept: under the D8
+    // amendment that control is `aria-disabled` while sending, and a bare `hover:` re-lights
+    // a gated control (`Button.tsx`'s `DECISION Phase 88.6-06 (D10)`).
+    // Every remaining `.btn` migration in this phase will cross this floor the same way. A
+    // future lowering must likewise name the site that left; lowering it bare is forbidden.
     const sites = sitesOf(files, `${HOVER_PREFIX}${NEW_HOVER}`);
-    expect(sites.length, `adopted at: ${sites.join(', ')}`).toBeGreaterThanOrEqual(36);
+    expect(sites.length, `adopted at: ${sites.join(', ')}`).toBeGreaterThanOrEqual(35);
   });
 
   it('4b. the three dark-chrome menu rows are on the HEADER family, not the card one', () => {

@@ -21,6 +21,7 @@ import ClickableMemberName from '../components/ClickableMemberName';
 import { useFriendshipStatus } from '../components/FriendshipStatusProvider';
 import StarRatingPicker from '../components/StarRatingPicker';
 import { useSelfIdentity } from '../../lib/hooks/useSelfIdentity';
+import { logger, errCtx } from '../../lib/logger';
 import { useFetchErrorState, getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 import { FetchErrorBanner } from '../../components/ui/FetchErrorBanner';
 import { Button } from '../../components/ui/Button';
@@ -132,8 +133,37 @@ function ParticipantChip({ participant, rsvpStatus, role, isBringing, viewerScop
 function GuestInviteButton({ groupId, userId }) {
     // null | 'sending' | 'sent' | 'pending' | 'member' | 'already' | 'error'
     const [status, setStatus] = useState(null);
+    const settled = status === 'sent' || status === 'pending' || status === 'member' || status === 'already';
+
+    /* DECISION Phase 88.6-18 (T-88.6-50): a synchronous ref latch, declared PER INSTANCE and
+       checked ALONGSIDE the state predicate — never instead of it, and never at module scope.
+
+       WHY A REF AND NOT THE STATE. The second activation runs the PREVIOUS render's closure,
+       where `status` is still null, so a state-only guard here is byte-equivalent to the gating
+       prop on the control it is meant to back up. The house states the rule in prose at
+       `src/components/ui/useConfirmAction.ts:210-212` — "Refs mirror the state the event handlers
+       must read SYNCHRONOUSLY. Two clicks inside one tick see stale state but never a stale ref."
+       Keeping the state term beside it matches the recorded belt-and-braces at
+       `src/app/restore/group/[token]/page.tsx:343` / `:346-347`.
+
+       WHY PER INSTANCE. This component renders once per participant (three render sites:
+       `:126`, `:1351`, `:1964`), so a module-scope or page-level flag would let one guest's
+       in-flight invite silently swallow every other row's press.
+
+       PLACEMENT IS THE WHOLE RULE — the ref MIRRORS the gate state. It is set immediately before
+       `setStatus('sending')` and cleared beside the ONE setter that re-enables the control, the
+       `error` branch. Never in a `finally`, never above an early `return`: the four settled
+       outcomes are terminal and deliberately never re-enable, so the latch is deliberately not
+       released on them.
+
+       IT IS LOAD-BEARING FOR THE GATE, not merely for the double-send. Under the owner's
+       2026-09-14 amendment the in-flight gate is `aria-disabled`, which does not stop the browser
+       firing this handler. The attribute without this latch is a re-sendable invite button. */
+    const sendingRef = useRef(false);
 
     const handleInvite = async () => {
+        if (sendingRef.current || status === 'sending' || settled) return;
+        sendingRef.current = true;
         setStatus('sending');
         try {
             // Invite by participant user_id — the guest's email is resolved
@@ -165,11 +195,12 @@ function GuestInviteButton({ groupId, userId }) {
                 // 409 with no recognisable code — terminal either way, so never "Retry".
                 setStatus('already');
             } else {
+                // The ONE branch that re-enables the control, so the ONE place the latch clears.
+                sendingRef.current = false;
                 setStatus('error');
             }
         }
     };
-    const settled = status === 'sent' || status === 'pending' || status === 'member' || status === 'already';
 
     /* Wave-12 review MED #19: the outcome label swaps on a control that just
        became disabled — silent to screen readers. Announce the settled outcome
@@ -182,48 +213,123 @@ function GuestInviteButton({ groupId, userId }) {
         : status === 'error' ? 'Something went wrong sending the invite. Use the Retry button to try again.'
         : '';
 
+    const title =
+        status === 'sent'
+            ? 'Invite sent!'
+            : status === 'pending'
+                ? 'They already have an invite waiting — nothing more to send'
+                : status === 'member'
+                    ? 'They are already in this group'
+                    : status === 'already'
+                        ? 'This guest is already invited or a member'
+                        : 'Invite this guest to join the group';
+
+    /* DECISION Phase 88-27 (D-32 buckets A/B/C): base keeps the neutral, branches override
+       it — same call, same measured cascade fact, as the marker at ParticipantRow.js:204.
+       `.border-status-*` is emitted after `.border-line` in the built stylesheet, and there
+       is no tailwind-merge on this template literal.
+       (88.6-18: still true of the SETTLED chip below, which is a `<span>` carrying the whole
+       string. On the live `<Button>` states `cn()` DOES tailwind-merge, which is why the two
+       branches below spell their overrides separately.) */
+    const branchInk =
+        status === 'sent'
+            ? 'bg-status-success-subtle border-status-success text-content-status-success'
+            : status === 'pending' || status === 'member' || status === 'already'
+                ? 'text-content-muted border-line bg-surface-page'
+                : status === 'error'
+                    ? 'bg-status-error-subtle border-status-error enabled-hover:bg-status-error-subtle-hover text-content-status-error'
+                    : 'text-content-link';
+
+    /* DECISION Phase 88.6-18 (D8): in the four SETTLED states (`sent`, `pending`, `member`,
+       `already`) this control renders a NON-INTERACTIVE status chip — a plain `<span>`, no
+       `role`, no `aria-live`, not focusable, no handler. Owner ruling 2026-09-09, arm B.
+
+       WHY: `globals.css`'s unlayered `.btn:disabled { opacity: 0.5 }` can be undone by no
+       utility, and these four labels are colour-coded OUTCOMES the user must READ. A terminal
+       control that never re-enables and whose label is an outcome is a STATUS, not a button.
+
+       REJECTED, same date — arm C: keep it a natively `disabled` `<Button>` and disclose the
+       50% wash on a colour-coded outcome as a UI-SPEC §1.2 V-row. REJECTED, same date — arm A:
+       an `aria-disabled` button with `aria-disabled:`-modifier twin utilities, i.e. an
+       inert-but-focusable control plus twin classes a future reader would dedupe.
+
+       THREE THINGS ABOUT THE CHIP ARE DECIDED HERE because the obvious reading of each is wrong:
+        - NO `role="status"`. "Status element" points straight at it, and it would be a SECOND
+          live region: the sr-only `StatusRegion` above is mounted UNCONDITIONALLY and already
+          announces every outcome. `88.6-UI-SPEC.md:571-573` — "exactly one live region per
+          failure … Do not add a second region".
+        - IT KEEPS ITS BRANCH `title`. Those four strings are the only fuller explanation each
+          settled state has ("They already have an invite waiting — nothing more to send" says
+          what "Invite pending" cannot). On a `<span>` a `title` is the accessible DESCRIPTION,
+          so the information survives arm B rather than being silently dropped.
+        - IT KEEPS ITS GEOMETRY. `inline-flex items-center text-xs px-2 py-1 rounded-sm border`
+          are dead only against the UNLAYERED `.btn`; on a `<span>` nothing supplies them.
+          Stripping them because the migration strips them from the `<Button>` states would be a
+          silent-green regression — no suite in this plan measures a settled chip's box.
+
+       DECISION Phase 88.6-18 (D8) — AMENDMENT, owner 2026-09-14 (accept §3, #21+#145). The
+       in-flight `sending` gate below is `aria-disabled` with the re-press refused in
+       `handleInvite`'s synchronous latch — over the NATIVE `disabled` attribute, which is how D8
+       first read on 2026-09-09 and which drops focus to `<body>` mid-submit on the control the
+       user just activated (`src/app/components/NextGameNightCard.tsx:377-391`;
+       `src/app/components/EmailAddressSection.tsx:1572-1598` states the split outright — the
+       control being ACTED ON gets `aria-disabled`, a control nobody is standing on may be
+       natively disabled). COST, disclosed: the `.btn:disabled` wash no longer renders while
+       sending, taken as UI-SPEC §1.2 row V-17. The in-flight cue it leaves behind is the shipped
+       "Sending..." label swap plus the house `aria-disabled` treatment already in globals.css
+       (`cursor: not-allowed`) and on ghost (`aria-disabled:text-content-muted`, which beats this
+       call site's `text-content-link` on specificity). Do NOT add a `disabled:opacity-*` utility
+       here: it keys on the native attribute this control no longer carries and is dead on a
+       `.btn` besides. Both halves land or neither — the attribute without the latch is a
+       re-sendable button. */
+    if (settled) {
+        return (
+            <>
+            <StatusRegion className="sr-only" message={outcomeMessage} />
+            <span
+                className={`inline-flex min-h-11 items-center text-xs px-2 py-1 rounded-sm border border-line transition-colors ${branchInk}`}
+                title={title}
+            >
+                {status === 'sent' && 'Invite sent!'}
+                {status === 'pending' && 'Invite pending'}
+                {status === 'member' && 'Already a member'}
+                {status === 'already' && 'Already invited'}
+            </span>
+            </>
+        );
+    }
+
     return (
         <>
         <StatusRegion className="sr-only" message={outcomeMessage} />
-        <button
+        <Button
+            size="sm"
+            variant="ghost"
             onClick={handleInvite}
-            disabled={status === 'sending' || settled}
-            /* DECISION Phase 88-27 (D-32 buckets A/B/C): base keeps the neutral, branches override
-               it — same call, same measured cascade fact, as the marker at ParticipantRow.js:204.
-               `.border-status-*` is emitted after `.border-line` in the built stylesheet, and there
-               is no tailwind-merge on this template literal. */
-            /* Wave-12 review MED #18: inline-flex min-h-11 — the 44px floor this
-               plan imposed on the sibling row controls (ParticipantRow Remove,
-               the min-h-11 sweep in this file); this control sat at ~22px. */
-            className={`inline-flex min-h-11 items-center text-xs px-2 py-1 rounded-sm border border-line transition-colors ${
-                status === 'sent'
-                    ? 'bg-status-success-subtle border-status-success text-content-status-success'
-                    : status === 'pending' || status === 'member' || status === 'already'
-                        ? 'text-content-muted border-line bg-surface-page'
-                        : status === 'error'
-                            ? 'bg-status-error-subtle border-status-error hover:bg-status-error-subtle-hover text-content-status-error'
-                            : 'hover:bg-surface-hover text-content-link'
-            }`}
-            title={
-                status === 'sent'
-                    ? 'Invite sent!'
-                    : status === 'pending'
-                        ? 'They already have an invite waiting — nothing more to send'
-                        : status === 'member'
-                            ? 'They are already in this group'
-                            : status === 'already'
-                                ? 'This guest is already invited or a member'
-                                : 'Invite this guest to join the group'
-            }
+            {...(status === 'sending' ? { 'aria-disabled': true } : {})}
+            /* `border border-line` is KEPT and is ALIVE: plan 05's W19 move put `.btn`'s
+               `border: none` reset inside `@layer components`, so a `border-*` utility on a
+               `.btn` element now wins. This control and the two-tap Remove below are the only
+               two elements in the tree whose visible border depends on that move.
+               DELETED as dead against the unlayered `.btn`: `text-xs` (label is now 14px —
+               UI-SPEC §1.2 delta V-8), `px-2 py-1` (`.btn-sm` reproduces the shipped 8px
+               horizontal exactly), `rounded-sm` (radius becomes `.btn`'s 8px — also V-8),
+               `inline-flex items-center`, `transition-colors`, and `min-h-11` (now on the cva
+               base at every viewport, 88.6-06 D-09).
+               The idle branch's `hover:bg-surface-hover` is DELETED rather than carried: the
+               ghost variant already supplies the byte-equal `enabled-hover:bg-surface-hover`,
+               and a BARE `hover:` would re-light the control while it is `aria-disabled`
+               mid-send, which is the exact failure `enabled-hover` exists to prevent
+               (`Button.tsx`'s D10 marker). The `error` branch's hover is spelled
+               `enabled-hover:` for the same reason, and so `tailwind-merge` sees it as
+               conflicting with the base token instead of stacking a second background. */
+            className={`border border-line ${branchInk}`}
+            title={title}
         >
             {status === 'sending' && 'Sending...'}
-            {status === 'sent' && 'Invite sent!'}
-            {status === 'pending' && 'Invite pending'}
-            {status === 'member' && 'Already a member'}
-            {status === 'already' && 'Already invited'}
             {status === 'error' && 'Retry'}
             {!status && 'Invite to group'}
-        </button>
+        </Button>
         </>
     );
 }
@@ -610,7 +716,7 @@ export default function GameDetailPage() {
                 await refreshBringersSet(event_id);
             }
         } catch (error) {
-            console.error('Error fetching event:', error);
+            logger.info('Error fetching event:', errCtx(error));
         } finally {
             loadedEntityKeyRef.current = entityKey;
             setLoading(false);
@@ -644,7 +750,7 @@ export default function GameDetailPage() {
             await eventsAPI.deleteEvent(singleEvent.id);
             router.push(`/groupHomePage?id=${group_id}`);
         } catch (err) {
-            console.error('Error cancelling event:', err);
+            logger.info('Error cancelling event:', errCtx(err));
             /* DECISION Phase 88-25 (Req 14 / T-88-25-01): failure copy is DERIVED from
                `ApiError.code` via getFetchErrorMessage, chosen OVER the `err.message || '…'`
                idiom every toast on this page used. `ApiError.message` is whatever the backend
@@ -682,7 +788,7 @@ export default function GameDetailPage() {
 
         const myDbUser = (groupMembers || []).find(m => m.id === selfUuid);
         if (!myDbUser?.id) {
-            console.error('[handleLeaveEvent] Caller row missing from groupMembers — backend contract violation. Plan 71.1-01 should always inject caller-self row for game-only scope.', {
+            logger.info('[handleLeaveEvent] Caller row missing from groupMembers — backend contract violation. Plan 71.1-01 should always inject caller-self row for game-only scope.', {
                 callerUuid: selfUuid,
                 groupMembersLength: (groupMembers || []).length,
             });
@@ -696,7 +802,7 @@ export default function GameDetailPage() {
             // Redirect to home — the event is gone from their UpcomingEvents anyway.
             router.push('/');
         } catch (err) {
-            console.error('[handleLeaveEvent] DELETE failed:', err);
+            logger.info('[handleLeaveEvent] DELETE failed:', errCtx(err));
             toast.error(
                 getFetchErrorMessage(err, {
                     fallback: "We couldn't take you off this event. Please try again.",
@@ -717,7 +823,7 @@ export default function GameDetailPage() {
             setGameInviteUrl(data.invite_url);
             setShowGameQR(true);
         } catch (err) {
-            console.error('Failed to get game invite token:', err);
+            logger.info('Failed to get game invite token:', errCtx(err));
             toast.error(
                 getFetchErrorMessage(err, {
                     fallback: "We couldn't build the share code. Please try again.",
@@ -753,7 +859,7 @@ export default function GameDetailPage() {
             // Optimistically drop the row. No toast (per CONTEXT decision).
             setParticipants(prev => prev.filter(p => p.user_id !== targetUserDbId));
         } catch (err) {
-            console.error('Failed to remove participant:', err);
+            logger.info('Failed to remove participant:', errCtx(err));
             toast.error(
                 getFetchErrorMessage(err, {
                     fallback: "We couldn't remove them from this event. Please try again.",
@@ -794,13 +900,24 @@ export default function GameDetailPage() {
                 try {
                     eventsData = await eventsAPI.getGroupEvents(group_id);
                 } catch (error) {
-                    console.error('Error fetching events:', error);
+                    logger.info('Error fetching events:', errCtx(error));
                     eventsData = [];
                 }
 
                 // Ensure eventsData is an array before filtering
                 if (!Array.isArray(eventsData)) {
-                    console.warn('Events data is not an array:', eventsData);
+                    /* DECISION Phase 88.6-18 (AC-2, T-84-01): this conversion carries a SHAPE
+                       DESCRIPTOR of the received value, never the value — chosen OVER passing
+                       `eventsData` through as `logger.info`'s ctx the way the other ten
+                       conversions pass `errCtx(err)`. There is no caught error here; the second
+                       argument WAS the response payload, which is exactly the shape
+                       `logger.ts`'s T-84-01 rule forbids reaching the Sentry payload. Re-adding
+                       the payload "so the log is useful" is a decision, not a fix.
+                       Level is `logger.info` and NOT `logger.warn` for the reason AC-2's owner
+                       amendment of 2026-09-13 records: `logger.warn` is `Sentry.captureMessage`,
+                       an EVENT, and under `replaysOnErrorSampleRate: 1.0` an event flushes the
+                       Session Replay buffer. The severity lives in the message, not the channel. */
+                    logger.info('Events data is not an array:', { received: eventsData === null ? 'null' : typeof eventsData });
                     eventsData = [];
                 }
 
@@ -885,7 +1002,7 @@ export default function GameDetailPage() {
                 }
             }
         } catch (error) {
-            console.error('Error fetching game data:', error);
+            logger.info('Error fetching game data:', errCtx(error));
             /* DECISION Phase 88-25 (Req 14 / T-88-25-02): a failed load is TRACKED and rendered as
                the shared fetch-error treatment, chosen OVER the silent `console.error` this
                shipped with. `game` stays null after a swallowed failure, so the render fell
@@ -927,7 +1044,7 @@ export default function GameDetailPage() {
             // Refresh events after deletion
             fetchGameData();
         } catch (error) {
-            console.error('Error deleting event:', error);
+            logger.info('Error deleting event:', errCtx(error));
             // The shipped copy stated the owner/admin rule unconditionally, so a network blip
             // was reported as a permissions problem. It is now the `forbidden` branch only.
             toast.error(
@@ -1031,7 +1148,7 @@ export default function GameDetailPage() {
             // Refresh reviews
             fetchGameData();
         } catch (error) {
-            console.error('Error submitting review:', error);
+            logger.info('Error submitting review:', errCtx(error));
             toast.error(
                 getFetchErrorMessage(error, {
                     fallback: "We couldn't save your review. Please try again.",
@@ -1970,20 +2087,48 @@ export default function GameDetailPage() {
                                                destructive resting prominence (status-error
                                                box, was muted border-line). The accessible
                                                name names the TARGET, not a bare 'Remove'. */
-                                            <button
+                                            /* DECISION Phase 88.6-18 (D-09): this control and the
+                                               GuestInviteButton above are the phase's ONLY two
+                                               `size="sm"` consumers (UI-SPEC §3.3 caps the rung
+                                               at exactly these two); a third is a decision, not a
+                                               cleanup.
+                                               CHANGED: size rung (`size="sm"`), label size
+                                               (12 -> 14, forced by `.btn`'s unlayered
+                                               `font-size: .875rem`) and radius (`rounded-sm` ->
+                                               `.btn`'s 8px). Both are UI-SPEC §1.2 delta V-8 and
+                                               are sanctioned by the SPEC amendment "size and
+                                               label size; interaction and order unchanged".
+                                               UNCHANGED: the Phase 65-02 EVT-08 two-tap
+                                               interaction and its `useConfirmAction` wiring, the
+                                               invite-before-remove ORDER above, the height
+                                               (`min-h-11` moved to the cva base, same 44px) and
+                                               the horizontal padding (`px-2` -> `.btn-sm`'s 8px,
+                                               byte-identical).
+                                               `border border-status-error` is KEPT and is ALIVE
+                                               only because plan 05's W19 move layered `.btn`'s
+                                               `border: none` reset. `variant="ghost"` because
+                                               this control carries no fill today and a bare
+                                               `.btn` NEVER maps to `variant="primary"`
+                                               (UI-SPEC §3.2). The armed branch's hover is spelled
+                                               `enabled-hover:` so `tailwind-merge` sees it as
+                                               conflicting with ghost's base token rather than
+                                               stacking a second background. */
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
                                                 {...removeParticipantGate.triggerProps(
                                                     p.user_id,
                                                     p.username || 'this participant',
                                                     `Remove ${p.username || 'this participant'} from this event`
                                                 )}
-                                                className={`inline-flex min-h-11 items-center text-xs px-2 py-1 border rounded-sm transition-colors shrink-0 ${
+                                                className={`border shrink-0 ${
                                                     isConfirming
                                                         ? 'bg-status-error-subtle border-status-error text-content-status-error font-semibold'
-                                                        : 'border-status-error text-content-status-error hover:bg-status-error-subtle'
+                                                        : 'border-status-error text-content-status-error enabled-hover:bg-status-error-subtle'
                                                 }`}
                                             >
                                                 {removeParticipantGate.labelFor(p.user_id, 'Remove')}
-                                            </button>
+                                            </Button>
                                         )}
                                     </div>
                                     )}

@@ -847,7 +847,11 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
     // The email is resolved server-side (83-06 PII default-deny), so the client
     // must send the UUID and nothing else.
     expect(invitesAPI.sendParticipantInvite).toHaveBeenCalledWith(GROUP_ID, 'guest-uuid');
-    expect(await screen.findByRole('button', { name: 'Invite sent!' })).toBeInTheDocument();
+    // 88.6-18 (D8 arm B, owner 2026-09-09): the four SETTLED outcomes render a
+    // non-interactive status chip, not a button — so these are text queries. The
+    // `Retry` queries below stay role-based, because `error` is still a Button.
+    expect(await screen.findByText('Invite sent!')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Invite sent!' })).toBeNull();
   });
 
   it('falls back to the shipped 409 -> "Already invited" copy for an UNCODED conflict', async () => {
@@ -857,7 +861,8 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
 
     await user.click(await screen.findByRole('button', { name: INVITE }));
     // 409 is "already a member or already invited" — not a failure to retry.
-    expect(await screen.findByRole('button', { name: 'Already invited' })).toBeInTheDocument();
+    expect(await screen.findByText('Already invited')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Already invited' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
@@ -873,7 +878,8 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
     renderEventDetail({ role: 'owner', participants: [GUEST_WITH_ACCOUNT] });
 
     await user.click(await screen.findByRole('button', { name: INVITE }));
-    expect(await screen.findByRole('button', { name: 'Invite pending' })).toBeInTheDocument();
+    expect(await screen.findByText('Invite pending')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Invite pending' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
@@ -885,7 +891,8 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
     renderEventDetail({ role: 'owner', participants: [GUEST_WITH_ACCOUNT] });
 
     await user.click(await screen.findByRole('button', { name: INVITE }));
-    expect(await screen.findByRole('button', { name: 'Already a member' })).toBeInTheDocument();
+    expect(await screen.findByText('Already a member')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Already a member' })).toBeNull();
   });
 
   // The "CODE-LESS 409 (production, pre-88-34)" test that lived here was
@@ -894,6 +901,228 @@ describe('gameDetail guest invite from the event view (Req 15)', () => {
   // (owner-ruled removal condition — see the amended DECISION in page.js's
   // GuestInviteButton). The bare-409 safety net stays pinned by the
   // "UNCODED conflict" test above.
+});
+
+// ---------------------------------------------------------------------------
+// Plan 88.6-18 — the GuestInvite control after the D8 arm-B ruling and its
+// 2026-09-14 `sending` amendment.
+//
+// jsdom performs NO layout and loads NO stylesheet, so nothing below rests on
+// `getComputedStyle` of a stylesheet-driven property. The `.btn:disabled` wash
+// whose loss V-17 discloses is a BROWSER-only measurement and is deliberately
+// not asserted here (review D28). What jsdom can prove is asserted: attributes,
+// class lists, roles, `document.activeElement` and call counts.
+// ---------------------------------------------------------------------------
+
+describe('gameDetail GuestInvite in-flight gate (88.6-18, D8 amendment + T-88.6-50)', () => {
+  const GUEST = participantRow({
+    user_id: 'guest-uuid',
+    username: 'Visiting Pat',
+    is_guest: true,
+  });
+
+  /** An invite mock that stays IN FLIGHT until the returned `settle` is called. */
+  function deferredInvite() {
+    let settle: (value?: unknown) => void = () => {};
+    let fail: (reason?: unknown) => void = () => {};
+    (invitesAPI.sendParticipantInvite as Mock).mockImplementation(
+      () =>
+        new Promise((resolve, reject) => {
+          settle = resolve;
+          fail = reject;
+        })
+    );
+    return {
+      settle: (v?: unknown) => settle(v),
+      fail: (r?: unknown) => fail(r),
+    };
+  }
+
+  it('sends ONCE for two activations dispatched with NO render flush between them', async () => {
+    deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    // THE NO-FLUSH SHAPE IS LOAD-BEARING. Both activations are dispatched inside
+    // ONE `act()`, so React has not re-rendered between them and the previous
+    // render's closure still reads `status === null`. After a flush the state
+    // term alone satisfies this assertion and it passes with no latch in the
+    // code — which is the vacuity this shape exists to avoid. Under the
+    // 2026-09-14 amendment the latch is the ONLY thing refusing the second
+    // press: an `aria-disabled` control still fires its handler.
+    await act(async () => {
+      invite.click();
+      invite.click();
+    });
+
+    expect(invitesAPI.sendParticipantInvite).toHaveBeenCalledTimes(1);
+  });
+
+  it('exposes aria-disabled and NO native disabled attribute while sending', async () => {
+    deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    await act(async () => {
+      invite.click();
+    });
+
+    const sending = screen.getByRole('button', { name: 'Sending...' });
+    expect(sending).toHaveAttribute('aria-disabled', 'true');
+    expect(sending.hasAttribute('disabled')).toBe(false);
+    // The visible in-flight cue that replaces the `.btn:disabled` wash (V-17).
+    expect(sending).toHaveTextContent('Sending...');
+    // No `disabled:opacity-*` utility was added at the call site — it keys on
+    // the native attribute this control no longer carries.
+    expect(sending.className).not.toMatch(/(^|[\s:])disabled:opacity-/);
+  });
+
+  it('keeps focus ON the control while sending, and does not move it when the outcome settles', async () => {
+    const user = userEvent.setup();
+    const invite$ = deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    await user.click(invite);
+    // The whole point of the 2026-09-14 amendment: a natively-disabled element
+    // leaves the focus order and focus drops to <body> mid-submit.
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Sending...' }));
+
+    await act(async () => {
+      invite$.settle({});
+    });
+    await screen.findByText('Invite sent!');
+    // RECORDED, not asserted as a landing target: focus is NOT moved. Under arm B
+    // the button is replaced by a non-focusable status chip, so the user lands
+    // wherever its removal leaves them — `<body>`. This is a DOM fact and belongs
+    // in the jsdom half; it is disclosed in 88.6-18-SUMMARY.md rather than
+    // silently absorbed.
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('re-enables and re-sends after a failure — the latch clears in the error branch only', async () => {
+    const first = deferredInvite();
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    await act(async () => {
+      invite.click();
+    });
+    await act(async () => {
+      first.fail(new Error('network'));
+    });
+
+    const retry = await screen.findByRole('button', { name: 'Retry' });
+    expect(retry.hasAttribute('disabled')).toBe(false);
+    expect(retry).not.toHaveAttribute('aria-disabled');
+
+    (invitesAPI.sendParticipantInvite as Mock).mockResolvedValue({});
+    await act(async () => {
+      retry.click();
+    });
+    // TWICE, not once: a latch that never released would make the retry dead.
+    expect(invitesAPI.sendParticipantInvite).toHaveBeenCalledTimes(2);
+  });
+
+  it('renders each settled outcome as a non-interactive chip carrying its fuller explanation', async () => {
+    (invitesAPI.sendParticipantInvite as Mock).mockResolvedValue({});
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    await act(async () => {
+      invite.click();
+    });
+
+    const chip = await screen.findByText('Invite sent!');
+    expect(chip.tagName).toBe('SPAN');
+    expect(chip).not.toHaveAttribute('role');
+    expect(chip).not.toHaveAttribute('aria-live');
+    expect(chip).not.toHaveAttribute('tabindex');
+    // The branch `title` is the only fuller explanation each settled state has.
+    expect(chip).toHaveAttribute('title', 'Invite sent!');
+    // Geometry survives: on a <span> nothing supplies what `.btn` supplied.
+    expect(chip.className).toContain('min-h-11');
+    expect(chip.className).toContain('rounded-sm');
+    expect(chip.className).toContain('border');
+    // The shipped colour pair is preserved verbatim, which is why the SETTLED
+    // states take no UI-SPEC §1.2 V-row.
+    expect(chip.className).toContain('bg-status-success-subtle');
+    expect(chip.className).toContain('text-content-status-success');
+    // EXACTLY ONE live region in the settled subtree: the always-mounted sr-only
+    // StatusRegion. `88.6-UI-SPEC.md:571-573`.
+    const regions = document.querySelectorAll('[aria-live]');
+    expect(regions).toHaveLength(1);
+    expect(regions[0].className).toContain('sr-only');
+  });
+
+  it('puts the live invite states on the `sm` Button rung with the W19 border intact', async () => {
+    renderEventDetail({ role: 'owner', participants: [GUEST] });
+    const invite = await screen.findByRole('button', { name: INVITE });
+
+    expect(invite.className).toContain('btn');
+    expect(invite.className).toContain('btn-sm');
+    // The border survives migration ONLY because plan 05 layered `.btn`'s reset.
+    expect(invite.className).toContain('border-line');
+    // Dead-on-`.btn` utilities are gone from the states that became a Button.
+    for (const dead of ['text-xs', 'px-2', 'py-1', 'rounded-sm']) {
+      expect(invite.className.split(/\s+/)).not.toContain(dead);
+    }
+    // `min-h-11` is still present — from the cva base, not the call site.
+    expect(invite.className).toContain('min-h-11');
+  });
+});
+
+// UI-SPEC §9.3 E10-long-text / SPEC AC-5 — the quote-bearing-name backstop.
+// The two-tap Remove interpolates a user-supplied display name into its
+// accessible name; a name carrying a double quote and an apostrophe must render
+// intact inside it rather than truncating or escaping the label.
+describe('gameDetail row actions: quote-bearing names (§9.3 E10-long-text)', () => {
+  const AWKWARD = 'Pat "The Wall" O\'Brien-Smith';
+
+  it('renders a quote-and-apostrophe name intact inside the Remove accessible name', async () => {
+    const user = userEvent.setup();
+    const rows = Array.from({ length: 6 }, (_, i) =>
+      participantRow({ user_id: `p-${i}`, username: i === 0 ? AWKWARD : `Player ${i}` })
+    );
+    renderEventDetail({ role: 'owner', participants: rows });
+
+    const dialog = await openParticipantsModal(user);
+    expect(
+      within(dialog).getByRole('button', { name: `Remove ${AWKWARD} from this event` })
+    ).toBeInTheDocument();
+  });
+});
+
+// Req 15 ORDERING. `page.js` records "the invite sits BEFORE Remove, not after"
+// as a source comment and this plan's prohibition names an ordering TEST that
+// must stay green — measured 2026-09-16, NO such test existed. It is written
+// here rather than assumed, so the prohibition is checkable.
+describe('gameDetail row actions: invite before remove (Req 15)', () => {
+  it('renders the guest invite BEFORE the two-tap Remove in document order', async () => {
+    const user = userEvent.setup();
+    const guest = participantRow({
+      user_id: 'guest-uuid',
+      username: 'Visiting Pat',
+      is_guest: true,
+    });
+    const rows = [
+      guest,
+      ...Array.from({ length: 5 }, (_, i) =>
+        participantRow({ user_id: `p-${i}`, username: `Player ${i}` })
+      ),
+    ];
+    renderEventDetail({ role: 'owner', participants: rows });
+
+    const dialog = await openParticipantsModal(user);
+    const invite = within(dialog).getByRole('button', { name: INVITE });
+    const remove = within(dialog).getByRole('button', {
+      name: 'Remove Visiting Pat from this event',
+    });
+    expect(
+      invite.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING,
+      'the constructive action must come first — swapping them puts "Remove" under the thumb that was reaching for "Invite"'
+    ).toBeTruthy();
+  });
 });
 
 // ---------------------------------------------------------------------------
