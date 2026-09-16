@@ -26,6 +26,18 @@ vi.mock('@/app/components/TimezoneProvider', () => ({
   useTimezone: () => ({ timezone: 'America/New_York', setTimezone: vi.fn() }),
 }));
 
+// Phase 88.6-27 (W16): the two channels the QR failure now uses. Spied rather than stubbed
+// away, because WHICH channel carries what is the assertion.
+const toastSpies = vi.hoisted(() => ({ error: vi.fn() }));
+const loggerSpies = vi.hoisted(() => ({ info: vi.fn() }));
+vi.mock('sonner', () => ({ toast: { error: toastSpies.error } }));
+vi.mock('@/lib/logger', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/logger')>();
+  // `errCtx` is the REAL one: the ctx shape assertion below is about what the call site
+  // passes, and stubbing the helper would assert the stub instead.
+  return { ...actual, logger: { ...actual.logger, info: loggerSpies.info } };
+});
+
 vi.mock('@/app/components/QRCodeModal', () => ({ default: () => null }));
 vi.mock('@/app/components/TimezoneNudgeBanner', () => ({ default: () => null }));
 
@@ -97,5 +109,83 @@ describe('EventDayModal — nested Share Game QR button vs the keyboard-operable
     const row = screen.getByRole('button', { name: rowName });
     const share = screen.getByRole('button', { name: /share game qr/i });
     expect(row.contains(share)).toBe(false);
+  });
+});
+
+// Phase 88.6-27 — W16 (D-31, UI-SPEC §12 A-4): the silent QR failure now SPEAKS, and the
+// speaking is cancelled-generation guarded.
+//
+// Before this plan `handleShowGameQR` failed with `console.error` only: a user tapped
+// "Share Game QR", nothing happened, and nothing told them why. Two halves are pinned here,
+// and the second is the one with a trap in it.
+describe('EventDayModal — W16: the QR failure speaks, and stops speaking after unmount', () => {
+  beforeEach(() => {
+    h.getEventInviteToken.mockReset();
+    toastSpies.error.mockClear();
+    loggerSpies.info.mockClear();
+  });
+  afterEach(cleanup);
+
+  it('a failed token fetch fires a ratified toast AND reports through the house logger', async () => {
+    h.getEventInviteToken.mockRejectedValue(new Error('boom'));
+    render(<EventDayModal selectedDay={selectedDay} onClose={vi.fn()} onEventClick={vi.fn()} />);
+    const user = userEvent.setup();
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: /share game qr/i }));
+    });
+
+    expect(toastSpies.error).toHaveBeenCalledTimes(1);
+    // The RATIFIED `unknown` string, from `getFetchErrorMessage` with no fallback — no new copy
+    // is authored at this site. Asserted as non-empty prose rather than as a literal, so the
+    // ratified wording can be re-ruled without reding a test that is about the CHANNEL.
+    const [message] = toastSpies.error.mock.calls[0];
+    expect(typeof message).toBe('string');
+    expect((message as string).length).toBeGreaterThan(0);
+
+    // The developer half: `logger.info` (a breadcrumb — the level the owner amended AC-2 to on
+    // 2026-09-13), with the error's NAME and MESSAGE in the ctx object and the raw `Error`
+    // never passed. `checkJs: false` means typecheck cannot catch that mistake in a `.js`
+    // file, which is why it is asserted here.
+    expect(loggerSpies.info).toHaveBeenCalledTimes(1);
+    const [msg, ctx] = loggerSpies.info.mock.calls[0];
+    expect(msg).toBe('Failed to get game invite token');
+    expect(ctx).toEqual({ name: 'Error', message: 'boom' });
+    expect(ctx).not.toBeInstanceOf(Error);
+  });
+
+  it('a rejection that settles AFTER the modal is gone fires NO toast', async () => {
+    // THE MECHANISM THIS PINS, stated because the intuitive guard does not work: the component
+    // IS unmounted by its host (`EventCalendar.js:242`), and the toast lands anyway because
+    // `toast.error` is a module-level imperative call reached from the SURVIVING promise
+    // continuation. A comparison against `selectedDay` or any component state is unreachable
+    // post-unmount. Only the unmount-invalidated ref stops it.
+    let rejectIt: (err: unknown) => void = () => {};
+    h.getEventInviteToken.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectIt = reject;
+      })
+    );
+    const { unmount } = render(
+      <EventDayModal selectedDay={selectedDay} onClose={vi.fn()} onEventClick={vi.fn()} />
+    );
+    const user = userEvent.setup();
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: /share game qr/i }));
+    });
+    expect(h.getEventInviteToken).toHaveBeenCalledTimes(1);
+
+    unmount();
+    await act(async () => {
+      rejectIt(new Error('late'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(toastSpies.error).not.toHaveBeenCalled();
+    // ...and the developer log STILL fires: a breadcrumb is not context, so it is deliberately
+    // outside the guard. Asserting it is what stops a future "fix" from moving the whole catch
+    // inside the ref check and silently losing the report.
+    expect(loggerSpies.info).toHaveBeenCalledTimes(1);
   });
 });

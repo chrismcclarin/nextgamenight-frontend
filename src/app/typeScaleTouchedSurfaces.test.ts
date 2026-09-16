@@ -611,7 +611,7 @@ const EXPECTED_PROP_SEAMS = 5;
  * on `size="heading"` with no size change. `EXPECTED_LEVELS`' `{ 1: 3 }` entry for that file is
  * byte-unchanged (P4).
  */
-const EXPECTED_MIN_PRIMITIVES = 73;
+const EXPECTED_MIN_PRIMITIVES = 74;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -698,11 +698,14 @@ const RUNG_ROSTER: ExemptionRoster = {
     why: '2 headings off the 4-size working set (h2:171 text-2xl; h2:192 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/EventDayModal.js': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h4:360 no size utility) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-27 task 2 (wave 7, 2026-09-16): `app/components/EventDayModal.js`
+  // carried `sites: 1` and the cite was EXACT. The event-row title `<h4>` had NO size utility at
+  // all — it rendered at body size by inheritance — and is now `<Heading level={4} size="body">`
+  // (16), which STATES that rather than inheriting it. Level PRESERVED, so `EXPECTED_LEVELS`'
+  // `{4: 1}` entry is byte-unchanged. It is NOT a class-less element: six arbitrary-value
+  // themed-ink classes (a light/dark pair each for colour, text-shadow and -webkit-text-stroke)
+  // and `style={rowTitleVars}` pass through byte-identical — they are what keeps the title
+  // readable over a group background photo. Entry DELETED, not zeroed.
   'app/components/GroupGamesList.js': {
     sites: 3,
     why: '3 headings off the 4-size working set (h3:39 text-lg; h2:271 text-2xl; h2:335 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
@@ -820,11 +823,9 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
     why: '1 heading carrying the prohibited 600 weight (h3:193) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/EventDayModal.js': {
-    sites: 1,
-    why: '1 heading carrying the prohibited 600 weight (h4:360) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-27 task 2 (wave 7, 2026-09-16): the same heading as the rung roster
+  // above. Its 700 comes from `Heading`'s `font-bold` base now, so a MIGRATED heading leaves
+  // this RAW-only population. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-22 task 1 (wave 7, 2026-09-16): `app/components/FriendInvitePanel.js`
   // carried `sites: 3` (h3:315, h3:445, h3:521). All three are `<Heading level={3} size="label">`
   // now, so they leave this RAW-only population entirely rather than moving to 700 in place.
@@ -902,11 +903,9 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
     why: '1 raw heading not stating the 700 weight (h3:193 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/EventDayModal.js': {
-    sites: 1,
-    why: '1 raw heading not stating the 700 weight (h4:360 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-27 task 2 (wave 7, 2026-09-16): same heading as the heading-semibold
+  // roster above; the 700 now comes from the primitive's base rather than a stated utility.
+  // Entry DELETED, not zeroed.
   // DELETED by plan 88.6-22 task 1 (wave 7, 2026-09-16): same three headings as the
   // heading-semibold roster above. The 700 now comes from the primitive's `font-bold` base
   // (Heading.tsx:60) rather than from a stated utility, and a migrated heading leaves this
@@ -1841,12 +1840,14 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '5 off-scale weight sites (4 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-05, 88.6-08, 88.6-10, 88.6-29, 88.6-30, 88.6-42, 88.6-45.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/EventDayModal.js': {
-    sites: 2,
-    why:
-      '2 off-scale weight sites (0 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-01, 88.6-05, 88.6-10, 88.6-12, 88.6-18, 88.6-21, 88.6-27, 88.6-34, 88.6-39, 88.6-41, 88.6-42, 88.6-43, 88.6-44, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-27 task 2 (wave 7, 2026-09-16): `app/components/EventDayModal.js`
+  // carried `sites: 2` (0 font-medium, 2 font-semibold) and BOTH of this entry's own outcome
+  // leads were right, resolving OPPOSITE ways — which is why the entry could not close on one
+  // rule. The row-title `<h4>` took HIERARCHY by migrating onto `Heading`, whose `font-bold`
+  // base supplies the 700 (see the three heading rosters above). The Share Game QR button's was
+  // DEAD ON A `.btn` — `globals.css:2200` declares `font-weight: 600` unlayered — so it was
+  // deleted with the six other dead utilities in the same migration, not moved. Entry DELETED,
+  // not zeroed.
   // DELETED by plan 88.6-26 task 1 (wave 7, 2026-09-16): 'app/components/EventHeatmapBackground.js'
   // carried sites: 3, and the three resolved THREE different ways — which is why the entry could
   // not close on one rule. :221's weekday letter took HIERARCHY 700 (a DECISION marker at the site

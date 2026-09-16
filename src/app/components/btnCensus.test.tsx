@@ -308,11 +308,16 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'plan 88.6-27 sweeps the calendar cluster, CalendarMonthView.js included',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
-  'app/components/EventDayModal.js': {
-    sites: 2,
-    why: 'plan 88.6-27 sweeps the calendar cluster, EventDayModal.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-27 task 2 (wave 7, 2026-09-16): `app/components/EventDayModal.js`
+  // carried `sites: 2` and the count was EXACT. Both are now the primitive — the "+ New event on
+  // this day" CTA (`btn btn-primary w-full sm:w-auto`, where only the two WIDTH utilities
+  // survive; `.btn` declares no width) and the Share Game QR row action, which took
+  // `variant="accent"` and shed SEVEN classes dead under unlayered `.btn` (the 600 weight,
+  // `text-xs`, `px-3`, `py-1.5`, `inline-flex`, `items-center`, `gap-1.5` — `globals.css`
+  // declares font-weight, font-size, padding, display, align-items and gap there) while `mt-2`
+  // survived. Its per-site focus-ring string went in the SAME commit, which is what
+  // `tokenContrast.test.ts` test 47's primitive branch requires. The control KEEPS its native
+  // `disabled`. Entry DELETED rather than zeroed; the roster is exact in both directions.
   'app/components/FeedbackButton.js': {
     sites: 2,
     why: 'plan 88.6-31 sweeps the feedback and notification cluster, FeedbackButton.js included',

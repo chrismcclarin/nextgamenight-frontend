@@ -1,5 +1,6 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import {
   getSubtitleStyle,
   getTextStyle,
@@ -20,6 +21,10 @@ import SafeImage from './SafeImage';
 import QRCodeModal from './QRCodeModal';
 import TimezoneNudgeBanner from './TimezoneNudgeBanner';
 import { eventsAPI } from '../../lib/api';
+import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
+import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
+import { logger, errCtx } from '../../lib/logger';
 import { Modal } from './Modal';
 
 export default function EventDayModal({
@@ -34,6 +39,36 @@ export default function EventDayModal({
   const [gameQRLoading, setGameQRLoading] = useState(false);
   const [qrEventId, setQrEventId] = useState(null);
 
+  /* DECISION Phase 88.6-27 (W16 / D-31, UI-SPEC §12 A-4): the cancelled-generation guard for
+     the toast below, and the mechanism here is NOT the one it looks like it should be.
+
+     THIS COMPONENT IS UNMOUNTED BY ITS HOST. `EventCalendar.js:242` is `{selectedDay && (`
+     around `<EventDayModal` at `:243`, and `EventCalendar.js` is this component's ONLY
+     production caller. The toast still lands after the modal is gone, because `toast.error` is
+     a MODULE-LEVEL IMPERATIVE call reached from the SURVIVING promise continuation — React
+     unmounting a component cancels neither the in-flight `eventsAPI.getEventInviteToken` nor
+     its `catch`. So a future reader must not re-file this as "the component must be staying
+     mounted": it is not, and that is precisely why a state comparison cannot help.
+
+     REJECTED: comparing against `selectedDay`, or against any component state. Post-unmount
+     that closure is unreachable as a signal — the handler holds the render's values and
+     nothing re-runs to update them, so the guard would be a guard in name only.
+     REJECTED: `AbortController`, which `88.6-29-PLAN.md:29` rejects for this class by name.
+
+     CHOSEN: a ref invalidated in an unmount cleanup, checked before the toast fires — the same
+     cancelled-generation shape the phase defines once (shipped source:
+     `NextGameNightCard.tsx:197/204-205/209-211`). WHY THIS IS NOT BOOKKEEPING: W16's whole
+     ruled purpose is that "the user's context must not move", and a toast landing on the
+     calendar the user navigated back to, about a modal they already closed, moves context in
+     exactly the way the ruling forbids. */
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   if (!selectedDay) return null;
 
   const handleShowGameQR = async (e, event) => {
@@ -45,7 +80,24 @@ export default function EventDayModal({
       setGameInviteUrl(data.invite_url);
       setShowGameQR(true);
     } catch (err) {
-      console.error('Failed to get game invite token:', err);
+      /* W16 (D-31, UI-SPEC §12 A-4): the TOAST arm, not a banner. This is an action failure
+         inside an OPEN modal, so the user's context must not move, and a `FetchErrorBanner`
+         would reflow the day list under their thumb. NO fallback is passed, deliberately:
+         `getFetchErrorMessage` already yields the ratified `unknown` string, so no new copy is
+         authored here. Before this, the user tapped "Share Game QR", nothing happened, and
+         nothing told them why. */
+      if (mountedRef.current) toast.error(getFetchErrorMessage(err));
+      /* AC-2, at the level the owner amended it to on 2026-09-13: `logger.info`, REPLACING the
+         raw `console.error` rather than sitting beside it — the module's contract is that call
+         sites use `logger.*` instead of raw `console.*`. STATE THE COST HONESTLY: `logger.info`
+         is `Sentry.addBreadcrumb` (`logger.ts:34-36`), so this failure reaches Sentry only
+         ATTACHED TO a later event in the same session; it does not become independently visible
+         to an operator. Whether these paths deserve a Sentry EVENT is routed to the owner, not
+         decided here. `errCtx(err)` and never the raw `Error`: `logger.info(msg, ctx)`'s second
+         parameter is a plain object, and `checkJs: false` hides that mistake in a `.js` file.
+         The message is the literal; the ctx carries the error's name and message and nothing
+         else (T-84-01). Fires regardless of mount state — a developer log is not context. */
+      logger.info('Failed to get game invite token', errCtx(err));
     } finally {
       setGameQRLoading(false);
       setQrEventId(null);
@@ -81,13 +133,13 @@ export default function EventDayModal({
               affordance stays hidden. */}
           {onCreateEventOnDay && (
             <div className="mb-4">
-              <button
-                type="button"
+              <Button
+                variant="primary"
                 onClick={() => onCreateEventOnDay(selectedDay.date)}
-                className="btn btn-primary w-full sm:w-auto"
+                className="w-full sm:w-auto"
               >
                 + New event on this day
-              </button>
+              </Button>
             </div>
           )}
           {selectedDay.events.length === 0 ? (
@@ -279,7 +331,41 @@ export default function EventDayModal({
                   <div
                     key={event.id}
                     onClick={() => onEventClick(event)}
-                    className={`p-4 border border-line rounded-lg transition-all hover:shadow-md cursor-pointer ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
+                    /* DECISION Phase 88.6-27 (W30 + D49-b) — TWO findings on one className,
+                       decided independently and recorded together because they are one string.
+
+                       (a) D49-b (owner ruling 2026-09-09, option i): `hover:shadow-md` ->
+                       `hover:shadow-theme-md`. The alias spelling resolved to Tailwind v4's
+                       INLINED BLACK default instead of this app's warm theme tier
+                       (`DECISION Phase 87.7`, `globals.css:1141-1155`), so the hover HUE
+                       changes visibly and on purpose. PLAIN `hover:`, NOT `enabled-hover:` —
+                       this is a card `div`, not a `.btn`, and there is no gated control here
+                       to withhold the lift from.
+
+                       (b) W30, the BORDER, and BOTH ARMS move. The inline
+                       `borderColor: isPastEvent ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.2)'` is
+                       GONE — not half-tokenised — and the distinction it carried now rides
+                       this className, where a `dark:` fork can reach it. An inline declaration
+                       beats any class, which is why the key is deleted rather than overridden.
+                       CHOSEN by closest shipped VALUE (UI-SPEC §1.2): over the white card,
+                       `rgba(0,0,0,0.1)` composites to ~#e6e6e6 and `border-line-control`
+                       (warm-300 `#d6cbc0`) is the nearest shipped step; `rgba(0,0,0,0.2)`
+                       composites to ~#cccccc and `border-line` (warm-400 `#b8a898`) is the
+                       nearest — and `border-line` is also what this element's own `border`
+                       utility already declared, so the non-past arm simply stops being
+                       overridden. REJECTED: `border-line-strong` for the darker arm.
+                       `globals.css:1138-1155` retires the hairline-to-`border-strong`
+                       migration outright and reserves 3:1 for CONTROL boundaries; a resting
+                       card row is not one. NAMED TRADE-OFF, not an oversight:
+                       `border-line-control`'s NAME is about an input edge
+                       (`globals.css:467-473`) and it is used here for its VALUE as the one
+                       shipped step lighter than `border-line`. DISCLOSED CONSEQUENCE: in DARK
+                       mode `--color-border-control` is `transparent` (`globals.css:1851`), so
+                       a past row's edge disappears — it was already effectively invisible
+                       there (10% black over a dark card), while the NON-past row GAINS the
+                       theme border the hardcoded black had been suppressing. Re-introducing an
+                       inline colour here is a decision, not a cleanup. */
+                    className={`p-4 border ${isPastEvent ? 'border-line-control' : 'border-line'} rounded-lg transition-all hover:shadow-theme-md cursor-pointer ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
                     style={{
                       ...(tinted && {
                         '--group-ground': ground,
@@ -308,7 +394,9 @@ export default function EventDayModal({
                       backgroundPosition: 'center',
                       position: 'relative',
                       zIndex: 1,
-                      borderColor: isPastEvent ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.2)',
+                      /* W30: the `borderColor` key that used to sit here is GONE — both of its
+                         arms were raw inline colour values. See the marker on the className
+                         above for the tokens it became and why. */
                     }}
                   >
                     <div style={{
@@ -323,8 +411,32 @@ export default function EventDayModal({
                     <div className="flex justify-between items-start relative z-10">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
+                          {/* DECISION Phase 88.6-27 (D-14b, RESEARCH §C.2 Open Question 6):
+                                `shadow-xs` -> `shadow-theme-sm`. THIS ELEMENT HAD NO MARKER AT
+                                ALL, which is why D-14b never named it.
+
+                                THE EVIDENCE THAT DECIDED IT: this 40px group-avatar disc is a
+                                byte-identical TWIN of `CalendarListView.js`'s `EventRow` avatar
+                                — same `w-10 h-10 rounded-full bg-surface-card ... border-2
+                                border-line` — and that one already carries `shadow-theme-sm`.
+                                The two differed in exactly one class. One control, one
+                                treatment.
+
+                                `--shadow-xs` is UNDECLARED in `globals.css`, so the old class
+                                fell through to Tailwind's default black hairline — off-tier by
+                                the D-14b rule. `--shadow-sm` is `0 0 #0000` in BOTH themes
+                                (`globals.css:1361`, `:1765`), so this snap REMOVES that black
+                                hairline rather than recolouring it: a disclosed visible delta,
+                                and the disc keeps its `border-2 border-line` edge, which is
+                                what actually separates it from the card.
+
+                                REJECTED: deleting the shadow class outright. It reads the same
+                                today, but it would leave the twins textually divergent again
+                                and give a future sweep nothing to converge on. REJECTED:
+                                declaring a `--shadow-xs` token — that mints a fourth tier the
+                                D-14b rule exists to prevent. */}
                           {groupProfilePic && (
-                            <div className="w-10 h-10 rounded-full bg-surface-card flex items-center justify-center text-xl shrink-0 overflow-hidden border-2 border-line shadow-xs">
+                            <div className="w-10 h-10 rounded-full bg-surface-card flex items-center justify-center text-xl shrink-0 overflow-hidden border-2 border-line shadow-theme-sm">
                               {groupProfilePic.startsWith('http') || groupProfilePic.startsWith('/') ? (
                                 <SafeImage
                                   src={groupProfilePic}
@@ -357,12 +469,27 @@ export default function EventDayModal({
                             }}
                             className="rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                           >
-                            <h4
-                              className="font-semibold [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
+                            {/* D-04: this `<h4>` carries NO SIZE class, so it renders at body
+                                size — `<Heading level={4} size="body">` (16) states that rather
+                                than inheriting it, and the LEVEL is preserved. It is NOT
+                                class-less: the six arbitrary-value themed-ink classes below (a
+                                light/dark pair each for colour, text-shadow and
+                                -webkit-text-stroke, all reading `--t-*`) are what keep the event
+                                title readable over a group background PHOTO, and every one of
+                                them passes through byte-identical, as does `style={rowTitleVars}`.
+                                Dropping them because "it had no classes worth keeping" would
+                                make titles unreadable on photo-backed rows in one theme or both.
+                                `font-semibold` is the only class that GOES, and it goes because
+                                the primitive's `font-bold` base supersedes it (§4.5: headings
+                                are 700). */}
+                            <Heading
+                              level={4}
+                              size="body"
+                              className="[color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
                               style={rowTitleVars}
                             >
                               {event.Game?.name || 'Game Night'}
-                            </h4>
+                            </Heading>
                             <p
                               className="text-sm [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]"
                               style={rowSubtitleVars}
@@ -370,8 +497,24 @@ export default function EventDayModal({
                               {event.Group?.name || 'Unknown Group'} - {formatTime(event.start_date, timezone)}
                             </p>
                           </div>
+                          {/* DECISION Phase 88.6-27 (W31, SPEC Req 6): the last status chip in
+                               the app still on the RAW Tailwind palette, and the only one with
+                               no dark fork at all — `bg-green-100 text-green-800` painted a pale
+                               mint chip with dark-green ink on a DARK card. It takes the shipped
+                               Req 6 pair `bg-status-success-subtle text-content-status-success`,
+                               which is the same pair `PromptScheduleSection.js:192` already
+                               wears, and the dark arm arrives with the tokens rather than being
+                               authored here.
+                               MEASURED with `src/lib/wcag.ts`, both themes, so the move is not
+                               taken on faith: outgoing 6.4924 (one value, since it had no dark
+                               fork); incoming 6.0253 light (`#166534` on `#dcf1e4`) and 4.6561
+                               dark (`#22c55e` on `#234443`). Light loses 0.47 and both arms
+                               clear the 4.5 AA floor — a small, stated reduction bought in
+                               exchange for a chip that is actually legible in dark mode.
+                               `text-xs` STAYS: a chip label is Caption 12 by §4.2's closed role
+                               list. */}
                           {!isPastEvent && (
-                            <span className="px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded-sm ml-auto">
+                            <span className="px-2 py-0.5 bg-status-success-subtle text-content-status-success text-xs rounded-sm ml-auto">
                               Upcoming
                             </span>
                           )}
@@ -433,7 +576,8 @@ export default function EventDayModal({
                         </div>
                         {/* Share Game QR button - visible for upcoming events */}
                         {!isPastEvent && (
-                          <button
+                          <Button
+                            variant="accent"
                             onClick={(e) => handleShowGameQR(e, event)}
                             disabled={gameQRLoading && qrEventId === event.id}
                             /* DECISION Phase 88.3-18 (owner ruling on Req 12 UAT test 4 / 11c(c),
@@ -449,7 +593,28 @@ export default function EventDayModal({
                                change belonging to 88.6. A byte-identical TWIN of this button lives
                                at `gameDetail/page.js:1601` and moved in the same commit — one
                                control, one treatment. Full marker at the `.btn-accent` rule. */
-                            className="mt-2 btn btn-accent font-semibold text-xs px-3 py-1.5 inline-flex items-center gap-1.5 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                            /* Phase 88.6-27: the legacy accent class pair is retired onto the
+                               primitive's accent variant above (the class string is NOT quoted
+                               here — test 47 counts BOTH spellings file-wide, comments included,
+                               and expects exactly one accent-treated control per file). SEVEN classes were DEAD
+                               under unlayered `.btn` (`globals.css:2195-2205` declares
+                               `display: inline-flex`, `align-items: center`, `gap`,
+                               `font-weight: 600`, `font-size` and `padding`) and are deleted, not
+                               moved: the 600 weight, `text-xs`, `px-3`, `py-1.5`, `inline-flex`,
+                               `items-center` and `gap-1.5`. `mt-2` SURVIVES — `.btn` declares no
+                               margin, so it was never dead. The per-site focus-ring string goes in
+                               THIS SAME EDIT rather than as a later tidy: on the primitive
+                               spelling the ring comes from the primitive's own cva base
+                               (`Button.tsx:113`), and `tokenContrast.test.ts` test 47 reds a
+                               migrated site that keeps a per-site copy of it.
+                               NOTE FOR A FUTURE EDITOR OF THIS COMMENT: test 47 locates this
+                               control by walking BACK from the tooltip attribute below to the
+                               nearest preceding button open tag, and it counts that attribute to
+                               detect a ballooned slice. So neither that tag's literal text nor
+                               that attribute's literal spelling may appear in this marker — both
+                               are described rather than quoted, deliberately.
+                               The control KEEPS its native `disabled`. */
+                            className="mt-2"
                             title="Share Game QR"
                           >
                             {/* Decorative: the visible "Share Game QR" / "Loading..." label already
@@ -462,7 +627,7 @@ export default function EventDayModal({
                               <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75H16.5v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75H16.5v-.75z" />
                             </svg>
                             {gameQRLoading && qrEventId === event.id ? 'Loading...' : 'Share Game QR'}
-                          </button>
+                          </Button>
                         )}
                       </div>
                       <SafeImage

@@ -258,11 +258,13 @@ const ALIAS_ROSTER: ExemptionRoster = {
     why: 'Three occurrences: `shadow-sm` (:184), and `shadow-sm` + `hover:shadow-lg` on one element (:228). Plan 33 snaps all three. The `shadow-sm` pair is the visible-consequence case — `--shadow-sm` paints nothing, so the snap REMOVES a black xs shadow.',
     owner: D49B,
   },
-  'app/components/EventDayModal.js': {
-    sites: 1,
-    why: '`hover:shadow-md` on a non-button surface (:279), so it keeps the plain `hover:` spelling and becomes `hover:shadow-theme-md`. Plan 27 snaps it. Kept distinct from this file\'s OFF-TIER entry, which is a different class on a different element.',
-    owner: D49B,
-  },
+  // `app/components/EventDayModal.js` CLOSED by plan 88.6-27 task 2 (wave 7, 2026-09-16): the
+  // event row's `hover:shadow-md` is now `hover:shadow-theme-md` — plain `hover:`, because the
+  // site is a card `div` and not a `.btn`. The cite `:279` is this scanner's OPENING-TAG line;
+  // the className carrying the class was at `:282`. Its OFF-TIER sibling entry (a different
+  // class on a different element, the 40px avatar disc) closed in the same commit but for a
+  // different reason, which is why the two rosters were kept apart. Entry DELETED rather than
+  // zeroed; the roster is exact in both directions.
   // `app/components/CalendarListView.js` CLOSED by plan 88.6-27 task 1 (wave 7, 2026-09-16):
   // the `EventRow` card's `hover:shadow-md` is now `hover:shadow-theme-md` — plain `hover:`,
   // because the site is a card `div` and not a `.btn`. ONE correction to this entry's own text,
@@ -324,11 +326,17 @@ const OFF_TIER_ROSTER: ExemptionRoster = {
   // Game Session" CTA's `hover:shadow-xl` is now `enabled-hover:shadow-theme-lg`, which closes
   // the off-tier half and the bare-`hover:`-pin half in one edit. Entry DELETED rather than
   // zeroed; the roster is exact in both directions. Test 2's floor drops 3 -> 2 with it.
-  'app/components/EventDayModal.js': {
-    sites: 1,
-    why: '`shadow-xs` on a 40px group-avatar disc (:327). UNNAMED BY D-14b and MARKERLESS — RESEARCH §C.2 Open Question 6. It may well be a deliberate hairline on a small round avatar rather than an oversight, and it is NOT pre-decided here: plan 27 decides it at the site under the tier rule and records the outcome with a DECISION marker either way. This gate\'s job is to make it visible.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 D-14b / RESEARCH Open Question 6' },
-  },
+  // `app/components/EventDayModal.js` CLOSED by plan 88.6-27 task 2 (wave 7, 2026-09-16), and
+  // this gate did exactly the job its entry claimed: it made a MARKERLESS element visible.
+  // The `shadow-xs` on the 40px group-avatar disc (:327) is now `shadow-theme-sm`, decided at
+  // the site under the tier rule and recorded there with a `DECISION Phase 88.6-27 (D-14b)`
+  // marker — the first that element has ever carried.
+  // WHAT DECIDED IT, so the ruling is re-derivable rather than asserted: the disc is a
+  // byte-identical TWIN of `CalendarListView.js`'s `EventRow` avatar, which already wore
+  // `shadow-theme-sm`; the two differed in exactly one class. `--shadow-sm` is `0 0 #0000` in
+  // both themes, so the snap REMOVES the Tailwind-default black hairline rather than
+  // recolouring it, and the disc keeps its `border-2 border-line` edge. Entry DELETED rather
+  // than zeroed; the roster is exact in both directions.
 };
 
 /**
@@ -414,12 +422,19 @@ describe('D-14b / D49-b: the three-tier shadow rule', () => {
     // Session" CTA carried `hover:shadow-xl` and now carries `enabled-hover:shadow-theme-lg`.
     // Its OFF_TIER_ROSTER entry is deleted in this same commit. The two survivors are
     // `LandingPage.js:23` (plan 35) and `EventDayModal.js:327` (plan 27).
+    //
+    // 2 -> 1, plan 88.6-27 task 2 (wave 7, 2026-09-16), same form and same rule: the DEPARTING
+    // SITE is `EventDayModal.js:327`'s 40px avatar disc, whose `shadow-xs` is now
+    // `shadow-theme-sm` and whose OFF_TIER_ROSTER entry is deleted in this same commit. The one
+    // survivor is `LandingPage.js:23` (plan 35). When plan 35 closes it this floor reaches ZERO
+    // and the rule becomes vacuous — at that point the anti-vacuity duty passes to a FIXTURE,
+    // the shape test 11 already uses, not to deleting this assertion.
     expect(
       offTierSites.map((s) => `${s.rel}:${s.line} ${s.token}`),
-      'the off-tier scan located fewer than 2 sites. Either both known live subjects were ' +
-        'closed (in which case delete their roster entries and lower this floor in the same ' +
-        'commit, recording why) or the token match broke.',
-    ).toHaveLength(2);
+      'the off-tier scan located fewer than 1 site. If the last known live subject was ' +
+        'closed, delete its roster entry and lower this floor in the same commit, recording ' +
+        'why — otherwise the token match broke.',
+    ).toHaveLength(1);
     expect(aliasSites.length, 'the alias scan located nothing').toBeGreaterThan(0);
   });
 
