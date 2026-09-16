@@ -184,11 +184,11 @@ const BTN_COUNTS = countByFile(BTN_SITES);
 // from the roster to the work.
 // ---------------------------------------------------------------------------------------
 const BTN_EXEMPT: ExemptionRoster = {
-  'app/userProfile/page.js': {
-    sites: 13,
-    why: 'the userProfile sweep migrates all 13 to `Button`; plan 88.6-17 owns the file end-to-end',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // `app/userProfile/page.js` CLOSED by plan 88.6-17 task 2 (wave 7, 2026-09-16): all 13 `.btn`
+  // elements are `<Button>` with their dead classes deleted. Entry DELETED rather than zeroed —
+  // the roster is exact in both directions, so a zeroed entry would red as a fossil permission.
+  // NOTE this file still carries an entry in PALETTE_BUTTON_EXEMPT below, at 2 and FLOORED: the
+  // two rules see different populations and closing one does not close the other.
   'app/components/GroupSettings.js': {
     sites: 8,
     why: 'plan 88.6-20 sweeps GroupSettings.js and lands the swatch a11y items alongside the Button migration',

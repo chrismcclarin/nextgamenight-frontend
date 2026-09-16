@@ -553,8 +553,13 @@ const EXPECTED_PROP_SEAMS = 5;
  * recorded that NO sweep plan's text instructs this raise — the tracer does it anyway, once per
  * migrating commit, and says so here so the ~20 expansion sweeps inherit the habit rather than
  * the omission.
+ *
+ * RAISED 2 -> 16 by plan 88.6-17 task 2 (2026-09-16): `app/userProfile/page.js`'s FOURTEEN
+ * headings all migrated in one commit — the largest single heading cluster in the phase. The
+ * raise is +14, the measured number landed, not a round figure: this floor is `>=`, so a raise
+ * that undershoots is silently green and buys nothing.
  */
-const EXPECTED_MIN_PRIMITIVES = 2;
+const EXPECTED_MIN_PRIMITIVES = 16;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;

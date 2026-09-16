@@ -87,7 +87,20 @@ const REMINDER_WINDOWS = [
 
    `text-lg` (18) and `text-2xl` (24) both appeared on this surface and are gone
    deliberately — they are not in the working set. So are the `md:`-prefixed
-   heading sizes: a heading that grows at a breakpoint is a second scale. */
+   heading sizes: a heading that grows at a breakpoint is a second scale.
+
+   ——— AMENDED Phase 88.6-17, 2026-09-16 (D-04 / D-05) ———
+   All FOURTEEN headings on this surface now render through the `Heading` primitive,
+   so the three roles above are supplied by `size` — `display` (30), `heading` (20),
+   `body` (16) — and the 700 by the primitive's own cva base, instead of by class
+   strings at each site. Nothing about the ROLES changed and every LEVEL is preserved
+   (P4); only where they come from did. Two consequences worth stating, because a
+   reader who greps this file for `text-xl` or `font-bold` on a heading will now find
+   nothing: the weight is no longer overridable at a call site (which is the point —
+   §4.2 states 700/400 as a prohibition on 600), and the three heading tags that
+   appear in COMMENT PROSE further down are prose, not markup, and were deliberately
+   left alone. The h4-at-16 pair is `size="body"`: D-04's table has no h4@16 row, and
+   16 is a rung, so "stays" is the mechanical read — recorded rather than assumed. */
 
 /**
  * The status a notification ROW shows, derived from its two per-channel slots
@@ -1497,7 +1510,7 @@ function Profile(){
                         </p>
                         {/* DECISION Phase 88.6-17 (A10 / T-88.6-43 + R3 finding 144): this dismiss stays a
                             RAW `<button>` and is floored to 44x44 IN PLACE — chosen OVER migrating it
-                            to `<Button variant="ghost" size="icon">`. `.btn`'s unlayered
+                            to the primitive as an icon-sized ghost. `.btn`'s unlayered
                             `font-size: .875rem` would shrink the `×` glyph, and `.btn`'s padding would
                             widen a control that has to sit flush in a `flex items-start` banner row.
                             `inline-flex` + `min-h-11 min-w-11` + `items-center justify-center` supply the
@@ -1576,31 +1589,53 @@ function Profile(){
                                             autoFocus
                                         />
                                         <div className="flex gap-2">
-                                            <button
+                                            <Button
+                                                variant="primary"
                                                 onClick={handleSaveUsername}
                                                 disabled={savingUsername || !username.trim()}
-                                                className="btn btn-primary px-4 py-2 text-sm whitespace-nowrap disabled:opacity-50"
+                                                className="whitespace-nowrap"
                                             >
                                                 {savingUsername ? 'Saving...' : 'Save'}
-                                            </button>
-                                            <button
+                                            </Button>
+                                            <Button
+                                                variant="secondary"
                                                 onClick={() => {
                                                     setEditingUsername(false);
                                                     setUsername(userData?.username || user.name || user.email?.split('@')[0] || '');
                                                 }}
                                                 disabled={savingUsername}
-                                                className="btn btn-secondary px-4 py-2 text-sm whitespace-nowrap disabled:opacity-50"
+                                                className="whitespace-nowrap"
                                             >
                                                 Cancel
-                                            </button>
+                                            </Button>
                                         </div>
                                         <p className="text-xs text-content-muted">{username.length}/50</p>
                                     </div>
                                 ) : (
                                     <div className="flex items-center gap-2">
-                                        <h1 className="text-3xl font-bold text-content-primary truncate">
+                                        {/* DECISION Phase 88.6-17 (A-1): the page title's `truncate` is
+                                            DROPPED, chosen OVER keeping a single-line clip. `Heading`'s
+                                            cva base carries `wrap-anywhere`, so a call-site `truncate`
+                                            is a clip policy fighting a wrap policy, and only one of them
+                                            can be the shipped behaviour.
+
+                                            Dropping it is safe even though this flex parent carries no
+                                            `min-w-0`: `wrap-anywhere` is `overflow-wrap: anywhere`,
+                                            which DOES count in min-content, so a long unbroken username
+                                            breaks itself rather than widening the column and inducing
+                                            horizontal scroll at 375px. That is the exact case the
+                                            `truncate` existed for, and the primitive handles it without
+                                            hiding the rest of the name.
+
+                                            The phone reading is what settles it: at 375px a clip shows
+                                            the first few characters of a long username and no way to see
+                                            the rest; wrapping shows all of it and costs one line.
+                                            Re-adding `truncate` here is a decision, not a cleanup —
+                                            `Heading.tsx`'s own docblock names this site as an owner of
+                                            that call. */}
+                                        <Heading level={1} size="display" className="text-content-primary">
                                             {userData?.username || user.name}
-                                        </h1>
+                                        </Heading>
                                         {/* §7.3: an icon-only control needs a real accessible
                                             name; the pencil glyph is the whole content, so
                                             without this the name announced was the emoji, and
@@ -1958,7 +1993,7 @@ function Profile(){
                                     so an h3 skipped a level (axe heading-order). The type role is
                                     carried by the classes, which are unchanged — the tag moved,
                                     the look did not. */}
-                                <h2 className="text-xl font-bold text-content-primary mb-1">Google Calendar Integration</h2>
+                                <Heading level={2} size="heading" className="text-content-primary mb-1">Google Calendar Integration</Heading>
                                 <p className="text-xs text-content-secondary">
                                     {googleCalendarConnected 
                                         ? 'Connected - Future game events will be automatically added to your calendar'
@@ -1973,16 +2008,18 @@ function Profile(){
                             ) : checkingCalendarStatus ? (
                                 <div className="text-sm text-content-muted">Checking your calendar...</div>
                             ) : googleCalendarConnected ? (
-                                <button
+                                <Button
+                                    variant="danger"
                                     onClick={handleDisconnectGoogleCalendar}
-                                    className="btn btn-danger px-4 py-2 text-sm whitespace-nowrap"
+                                    className="whitespace-nowrap"
                                 >
                                     Disconnect Calendar
-                                </button>
+                                </Button>
                             ) : (
-                                <button
+                                <Button
+                                    variant="primary"
                                     onClick={handleConnectGoogleCalendar}
-                                    className="btn btn-primary px-4 py-2 text-sm whitespace-nowrap flex items-center gap-2"
+                                    className="whitespace-nowrap"
                                 >
                                     {/* DECISION Phase 88-22 (Req 2), re-affirmed 88-19: Google
                                         LOGO ART — the four brand fills stay raw in every
@@ -2007,7 +2044,7 @@ function Profile(){
                                         <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>{/* TODO(88-29): brand-art hex, exempt — see marker above */}
                                     </svg>
                                     Connect Google Calendar
-                                </button>
+                                </Button>
                             )}
                         </div>
                     </div>
@@ -2026,7 +2063,7 @@ function Profile(){
 
                 {/* Theme Setting */}
                 <div className="card p-3 md:p-6 mb-6">
-                    <h2 className="text-xl font-bold text-content-primary mb-1">Theme</h2>
+                    <Heading level={2} size="heading" className="text-content-primary mb-1">Theme</Heading>
                     <p className="text-sm text-content-muted mb-3">Choose your preferred appearance</p>
                     {/* DECISION Phase 88-10 (Req 5 / F-357): the two theme buttons carry
                         `aria-pressed`, chosen OVER converting them to the `Switch`
@@ -2124,7 +2161,7 @@ function Profile(){
 
                 {/* Timezone Setting */}
                 <div className="card p-3 md:p-6 mb-6">
-                    <h2 className="text-xl font-bold text-content-primary mb-1">Timezone</h2>
+                    <Heading level={2} size="heading" className="text-content-primary mb-1">Timezone</Heading>
                     <p className="text-sm text-content-secondary mb-3">All event times and schedules use this timezone</p>
                     {/* F-359: the picker is the `Combobox` primitive (88-08). Keyboard
                         operation, Esc AND click-outside close, and focus restore all come
@@ -2160,7 +2197,7 @@ function Profile(){
                 {/* Notification Preferences Section */}
                 {preferences && (
                 <div className="card p-3 md:p-6 mb-6">
-                    <h2 className="text-xl font-bold text-content-primary mb-1">Notification Preferences</h2>
+                    <Heading level={2} size="heading" className="text-content-primary mb-1">Notification Preferences</Heading>
                     <p className="text-sm text-content-secondary mb-4">Choose how you receive notifications</p>
 
                     {/* 88-CODE-REVIEW MED#15: always-mounted sr-only outcome regions —
@@ -2386,7 +2423,7 @@ function Profile(){
                     tutorial handoff (ONBD-04, Phase 73). Read by the
                     ?section=availability useEffect above. */}
                 <div id="availability-settings" className="card p-3 md:p-6 mb-6">
-                    <h2 className="text-xl font-bold text-content-primary mb-4">Availability Settings</h2>
+                    <Heading level={2} size="heading" className="text-content-primary mb-4">Availability Settings</Heading>
                     <p className="text-sm text-content-secondary mb-4">
                         Set the times when you are <strong>available</strong> (free) to help groups find the best time to schedule game sessions. 
                         {googleCalendarConnected && ' Your Google Calendar busy times will be automatically excluded from your availability.'}
@@ -2412,20 +2449,20 @@ function Profile(){
                         <div>
                             <div className="flex justify-between items-center mb-4">
                                 <div>
-                                    <h3 className="text-base font-bold text-content-primary">Availability Schedules</h3>
+                                    <Heading level={3} size="body" className="text-content-primary">Availability Schedules</Heading>
                                     <p className="text-xs text-content-secondary mt-1">Set your recurring availability schedule</p>
                                 </div>
-                                <button
+                                <Button
+                                    variant="primary"
                                     onClick={() => setShowRecurringForm(!showRecurringForm)}
-                                    className="btn btn-primary px-4 py-2 text-sm"
                                 >
                                     {showRecurringForm ? 'Cancel' : '+ Add Schedule'}
-                                </button>
+                                </Button>
                             </div>
 
                             {showRecurringForm && (
                                 <div className="mb-6 p-4 border border-line rounded-lg bg-surface-page">
-                                    <h4 className="text-base font-bold mb-3 text-content-primary">New Schedule</h4>
+                                    <Heading level={4} size="body" className="mb-3 text-content-primary">New Schedule</Heading>
                                     <div className="space-y-3">
                                         <div>
                                             {/* Not a <label>: this names a GROUP of toggle
@@ -2511,13 +2548,14 @@ function Profile(){
                                                 />
                                             </div>
                                         </div>
-                                        <button
+                                        <Button
+                                            variant="primary"
                                             onClick={handleCreateRecurringPattern}
                                             disabled={savingPattern}
-                                            className="btn btn-primary w-full px-4 py-2 disabled:opacity-50"
+                                            className="w-full"
                                         >
                                             {savingPattern ? 'Saving...' : 'Save Schedule'}
-                                        </button>
+                                        </Button>
                                     </div>
                                 </div>
                             )}
@@ -2581,20 +2619,20 @@ function Profile(){
                         <div>
                             <div className="flex justify-between items-center mb-4">
                                 <div>
-                                    <h3 className="text-base font-bold text-content-primary">Specific Date Overrides</h3>
+                                    <Heading level={3} size="body" className="text-content-primary">Specific Date Overrides</Heading>
                                     <p className="text-xs text-content-secondary mt-1">Override your schedules for specific dates</p>
                                 </div>
-                                <button
+                                <Button
+                                    variant="primary"
                                     onClick={() => setShowSpecificForm(!showSpecificForm)}
-                                    className="btn btn-primary px-4 py-2 text-sm"
                                 >
                                     {showSpecificForm ? 'Cancel' : '+ Add Override'}
-                                </button>
+                                </Button>
                             </div>
 
                             {showSpecificForm && (
                                 <div className="mb-6 p-4 border border-line rounded-lg bg-surface-page">
-                                    <h4 className="text-base font-bold mb-3 text-content-primary">New Specific Override</h4>
+                                    <Heading level={4} size="body" className="mb-3 text-content-primary">New Specific Override</Heading>
                                     <div className="space-y-3">
                                         <div>
                                             <label htmlFor="specific-date" className="block text-sm font-medium text-content-secondary mb-1">Date</label>
@@ -2648,13 +2686,14 @@ function Profile(){
                                                 <span className="text-sm text-content-secondary">Mark as available (uncheck to mark as busy)</span>
                                             </label>
                                         </div>
-                                        <button
+                                        <Button
+                                            variant="primary"
                                             onClick={handleCreateSpecificOverride}
                                             disabled={savingPattern}
-                                            className="btn btn-primary w-full px-4 py-2 disabled:opacity-50"
+                                            className="w-full"
                                         >
                                             {savingPattern ? 'Saving...' : 'Save Override'}
-                                        </button>
+                                        </Button>
                                     </div>
                                 </div>
                             )}
@@ -2716,17 +2755,17 @@ function Profile(){
 
                 {/* Tutorial Section */}
                 <div className="card p-3 md:p-6 mb-6">
-                    <h2 className="text-xl font-bold text-content-primary mb-2">Tutorial</h2>
+                    <Heading level={2} size="heading" className="text-content-primary mb-2">Tutorial</Heading>
                     <p className="text-sm text-content-secondary mb-4">
                         Need a refresher on how to use Next Game Night? Replay the onboarding tutorial to walk through the key features.
                     </p>
-                    <button
+                    <Button
+                        variant="primary"
                         onClick={handleReplayTutorial}
                         disabled={replayingTutorial}
-                        className="btn btn-primary px-4 py-2 text-sm disabled:opacity-50"
                     >
                         {replayingTutorial ? 'Starting...' : 'Replay Tutorial'}
-                    </button>
+                    </Button>
                 </div>
 
                 {/* Owned Games Section */}
@@ -2735,22 +2774,23 @@ function Profile(){
                         {/* 88-33 Task 7 step 2 (UAT row 272): the count renders only after the
                             owned-games fetch resolves — "(0)" mid-fetch is an empty-vs-loading
                             conflation on the count itself; an em-dash holds the slot meanwhile. */}
-                        <h2 className="text-xl font-bold text-content-primary">
+                        <Heading level={2} size="heading" className="text-content-primary">
                             My Game Collection ({loadingGames ? '—' : ownedGames.length})
-                        </h2>
+                        </Heading>
                         <div className="flex gap-2">
-                            <button
+                            <Button
+                                variant="primary"
                                 onClick={() => setShowBggSearch(!showBggSearch)}
-                                className="btn btn-primary px-4 py-2 text-sm whitespace-nowrap"
+                                className="whitespace-nowrap"
                             >
                                 {showBggSearch ? 'Hide Search' : '+ Add from BGG'}
-                            </button>
+                            </Button>
                         </div>
                     </div>
 
                     {/* BGG Collection Import */}
                     <div className="mb-6 p-3 md:p-4 border border-line rounded-lg bg-surface-page">
-                        <h3 className="text-base font-bold mb-2 text-content-primary">Import Your Entire BGG Collection</h3>
+                        <Heading level={3} size="body" className="mb-2 text-content-primary">Import Your Entire BGG Collection</Heading>
                         <p className="text-xs md:text-sm text-content-secondary mb-3">
                             Enter your BoardGameGeek username to import all games from your BGG collection at once.
                         </p>
@@ -2773,13 +2813,14 @@ function Profile(){
                                 className="flex-1"
                                 disabled={importingCollection}
                             />
-                            <button
+                            <Button
+                                variant="primary"
                                 onClick={handleImportCollectionClick}
                                 disabled={importingCollection || !bggUsername.trim()}
-                                className="btn btn-primary px-4 md:px-6 py-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base whitespace-nowrap"
+                                className="whitespace-nowrap"
                             >
                                 {importingCollection ? 'Importing...' : 'Import Collection'}
-                            </button>
+                            </Button>
                         </div>
                         {importProgress && (
                             <div className={`mt-3 p-3 rounded-btn ${
@@ -2811,13 +2852,14 @@ function Profile(){
                                     placeholder="Search BoardGameGeek..."
                                     className="flex-1"
                                 />
-                                <button
+                                <Button
+                                    variant="primary"
                                     onClick={searchBGG}
                                     disabled={bggSearching || !bggSearchQuery.trim()}
-                                    className="btn btn-primary px-4 py-2 disabled:opacity-50 text-sm md:text-base whitespace-nowrap"
+                                    className="whitespace-nowrap"
                                 >
                                     {bggSearching ? 'Searching...' : 'Search'}
-                                </button>
+                                </Button>
                             </div>
                             
                             {bggSearchResults.length > 0 && (
@@ -2829,14 +2871,15 @@ function Profile(){
                                                 <span className="text-sm text-content-primary wrap-break-word flex-1 min-w-0">
                                                     {result.name} {result.year_published ? `(${result.year_published})` : ''}
                                                 </span>
-                                                <button
+                                                <Button
+                                                    variant="primary"
                                                     type="button"
                                                     onClick={() => addGameToCollection(result.bgg_id)}
                                                     disabled={isAlreadyOwned}
-                                                    className="btn btn-primary text-xs px-3 py-1 disabled:opacity-50 whitespace-nowrap shrink-0"
+                                                    className="whitespace-nowrap shrink-0"
                                                 >
                                                     {isAlreadyOwned ? 'Already Owned' : 'Add to Collection'}
-                                                </button>
+                                                </Button>
                                             </div>
                                         );
                                     })}
@@ -2865,7 +2908,7 @@ function Profile(){
                                 <div key={game.id} className="border border-line rounded-lg p-4 hover:shadow-theme-md transition-shadow">
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="flex-1">
-                                            <h3 className="text-base font-bold text-content-primary">{game.name}</h3>
+                                            <Heading level={3} size="body" className="text-content-primary">{game.name}</Heading>
                                             {game.year_published && (
                                                 <p className="text-sm text-content-secondary">({game.year_published})</p>
                                             )}

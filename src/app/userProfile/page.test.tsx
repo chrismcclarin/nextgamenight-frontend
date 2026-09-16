@@ -1100,36 +1100,124 @@ describe('userProfile type scale (Req 2)', () => {
     expect(h1s[0].className).toMatch(/\bfont-bold\b/);
   });
 
-  // §4.2 states 600 as a PROHIBITION, not a preference, and D-01 gives it
-  // exactly one home — the Button primitive. No heading on this surface may
-  // carry it at any size.
-  it('pairs no heading with font-semibold at any size', async () => {
+  // AMENDED Phase 88.6-17 (D-04 / D-05). The three pins below used to read RAW
+  // `<hN className="…">` opening tags. All fourteen headings on this surface now
+  // render through `<Heading>`, so a raw-tag scan matches ZERO — every one of them
+  // would have gone green while asserting nothing about a single heading, which is
+  // the "gate that stops measuring" failure this phase keeps finding. They are
+  // RE-AIMED at the primitive rather than deleted: the tree-wide rule lives in
+  // `typeScaleTouchedSurfaces.test.ts`, but this file is the per-surface guard and
+  // a surface with no guard is how a fifth size creeps back into one page.
+  //
+  // The FOUND-COUNT floor is the anti-vacuity half and is load-bearing: without it
+  // a scanner that matched nothing would satisfy every `for` loop below.
+  const headingTags = (source: string) =>
+    [...source.matchAll(/<Heading\s([^>]*)>/g)].map((m) => m[1]);
+
+  it('renders every heading through the primitive, none raw', async () => {
     const source = await pageSource();
-    const offenders = [...source.matchAll(/<h[1-6]\s[^>]*className="([^"]*)"/g)]
-      .map((m) => m[1])
-      .filter((cls) => /\bfont-semibold\b/.test(cls));
-    expect(offenders).toEqual([]);
+    // Raw heading TAGS survive only inside comment prose (the `DECISION Phase 88-19`
+    // block and the inline-editor marker), which is why the count is taken on tags
+    // that carry a className — prose does not.
+    const raw = [...source.matchAll(/<h[1-6]\s[^>]*className="([^"]*)"/g)];
+    expect(raw.map((m) => m[0])).toEqual([]);
+    expect(headingTags(source).length).toBe(14);
   });
 
-  // The whole point of a 4-size working set is that a fifth size cannot creep
-  // back in. `text-lg` (18) and `text-2xl` (24) were both on this surface.
-  it('keeps every heading inside the 4-size working set', async () => {
+  // §4.2 states 600 as a PROHIBITION, not a preference, and D-01 gives it exactly
+  // one home — the Button primitive. On the primitive the weight comes from the cva
+  // base, so the way 600 could come back is a caller OVERRIDE.
+  it('pairs no heading with an off-scale weight override', async () => {
     const source = await pageSource();
-    const offenders = [...source.matchAll(/<h[1-6]\s[^>]*className="([^"]*)"/g)]
-      .map((m) => m[1])
-      .filter((cls) => /\b(?:[a-z]+:)?text-(lg|2xl|4xl|5xl)\b/.test(cls));
-    expect(offenders).toEqual([]);
-  });
-
-  it('gives every heading an explicit size and the 700 weight', async () => {
-    const source = await pageSource();
-    const headings = [...source.matchAll(/<h[1-6]\s[^>]*className="([^"]*)"/g)].map(
-      (m) => m[1]
+    const offenders = headingTags(source).filter((attrs) =>
+      /\bfont-(?:medium|semibold|normal)\b/.test(attrs)
     );
-    expect(headings.length).toBeGreaterThanOrEqual(13);
-    for (const cls of headings) {
-      expect(cls).toMatch(/\btext-(base|xl|3xl)\b/);
-      expect(cls).toMatch(/\bfont-bold\b/);
+    expect(offenders).toEqual([]);
+  });
+
+  // The whole point of a 4-size working set is that a fifth size cannot creep back
+  // in. `text-lg` (18) and `text-2xl` (24) were both on this surface.
+  it('keeps every heading inside the working set', async () => {
+    const source = await pageSource();
+    const tags = headingTags(source);
+    expect(tags.length).toBe(14);
+    const offenders = tags.filter((attrs) =>
+      /\b(?:[a-z]+:)?text-(?:lg|2xl|4xl|5xl)\b/.test(attrs)
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it('gives every heading an explicit size and an explicit level', async () => {
+    const source = await pageSource();
+    const tags = headingTags(source);
+    expect(tags.length).toBe(14);
+    for (const attrs of tags) {
+      // UI-SPEC §4.4: every migrated call site records its rung rather than
+      // inheriting one from the level.
+      expect(attrs, attrs).toMatch(/\bsize="(?:display|heading|body|label)"/);
+      expect(attrs, attrs).toMatch(/\blevel=\{[1-6]\}/);
+    }
+  });
+
+  // P4. The level distribution is the thing the migration must not move, and it is
+  // asserted HERE per surface as well as tree-wide in `typeScaleTouchedSurfaces`.
+  it('preserves the level distribution across the migration', async () => {
+    const source = await pageSource();
+    const counts: Record<string, number> = {};
+    for (const attrs of headingTags(source)) {
+      const lvl = /\blevel=\{([1-6])\}/.exec(attrs)?.[1] as string;
+      counts[lvl] = (counts[lvl] ?? 0) + 1;
+    }
+    expect(counts).toEqual({ '1': 1, '2': 7, '3': 4, '4': 2 });
+  });
+
+  // The two h4s at 16 are the one judgement D-04's table does not make for us.
+  it('renders the two h4 sub-headings on the body rung', async () => {
+    const source = await pageSource();
+    const h4s = headingTags(source).filter((a) => /\blevel=\{4\}/.test(a));
+    expect(h4s).toHaveLength(2);
+    for (const attrs of h4s) expect(attrs).toMatch(/\bsize="body"/);
+  });
+
+  // A-1: the page title WRAPS. `Heading`'s base is `wrap-anywhere`, and a call-site
+  // `truncate` would be a clip policy fighting it.
+  it('leaves no clip utility on the page title', async () => {
+    const source = await pageSource();
+    const h1 = headingTags(source).filter((a) => /\blevel=\{1\}/.test(a));
+    expect(h1).toHaveLength(1);
+    expect(h1[0]).not.toMatch(/\b(?:truncate|line-clamp-\d|text-ellipsis|whitespace-nowrap)\b/);
+  });
+
+  // Plan 08 re-pointed `ModalAction` at `Button` internally and left the call-site
+  // API untouched, so a sweep that "helpfully" converted these to `<Button>` would
+  // break the contract that plan preserved. Pinned so the non-change is visible.
+  it('leaves the two `Modal.Action` call sites on their own API', async () => {
+    const source = await pageSource();
+    // Matched to end-of-line, not to the first `>`: an arrow function in the handler
+    // carries a `>` of its own, and a `[^>]*` form truncates there and pins a prefix.
+    const actions = [...source.matchAll(/<Modal\.Action\s.*$/gm)].map((m) => m[0]);
+    expect(actions).toEqual([
+      '<Modal.Action variant="secondary" onClick={() => setBggImportPromptOpen(false)}>',
+      '<Modal.Action variant="primary" onClick={importBGGCollection}>',
+    ]);
+  });
+
+  // §3.4 rule 3 / AC-3: on a `.btn` element `text-*`, `p*-`, `font-*`, `rounded-*`
+  // and `gap-*` are DEAD, so carrying one is a lie about what paints.
+  it('leaves no dead class on any `Button` in this file', async () => {
+    const source = await pageSource();
+    const buttons = [...source.matchAll(/<Button\n((?:\s+[^\n]*\n)*?)\s*>/g)].map((m) => m[1]);
+    expect(buttons.length).toBeGreaterThanOrEqual(13);
+    for (const attrs of buttons) {
+      const cls = /className="([^"]*)"/.exec(attrs)?.[1] ?? '';
+      for (const token of cls.split(/\s+/).filter(Boolean)) {
+        expect(
+          /^(?:[a-z0-9]+:)?(?:text-(?:xs|sm|base|lg|xl|2xl|3xl)|p[xytrbl]?-[\w.]+|font-(?:medium|semibold|bold)|rounded(?:-[\w.]+)?|gap-[\w.]+)$/.test(
+            token
+          ),
+          `${token} is dead on a .btn element`
+        ).toBe(false);
+      }
     }
   });
 
