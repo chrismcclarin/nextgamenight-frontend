@@ -217,6 +217,15 @@ vi.mock('@auth0/nextjs-auth0/client', () => ({
   useUser: () => ({ user: { sub: 'auth0|self' }, isLoading: false }),
 }));
 
+// Phase 88.6-27 (W17 / A8 / AC-2): the house logger, spied rather than stubbed away — WHICH
+// channel the `getUserEvents` rejection uses, and WHAT it passes, are the assertions.
+const loggerSpies = vi.hoisted(() => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() }));
+vi.mock('@/lib/logger', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/logger')>();
+  // `errCtx` is the REAL one: the ctx-shape assertion below is about what the CALL SITE passes.
+  return { ...actual, logger: { ...actual.logger, ...loggerSpies } };
+});
+
 vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
   // A STABLE push across renders — a fresh vi.fn() per call (the sibling phone
@@ -435,6 +444,9 @@ beforeEach(async () => {
   rsvp.getEventRsvps.mockResolvedValue({ rsvps: [], summary: { yes: 0, maybe: 0, no: 0 } });
   rsvp.submitRsvp.mockClear();
   rsvp.submitRsvp.mockResolvedValue({ id: 'rsvp-mock', status: 'yes', note: null });
+  loggerSpies.info.mockClear();
+  loggerSpies.error.mockClear();
+  loggerSpies.warn.mockClear();
 });
 
 afterEach(() => {
@@ -531,6 +543,39 @@ describe('Req 11b — error is checked BEFORE empty (T-88.1-27)', () => {
     // "No upcoming events", so a guard looking only for the desktop "No events" line would
     // still pass while no longer catching the flipped branch it exists for.
     expect(within(dialog).queryByText(/^no (upcoming )?events$/i)).toBeNull();
+  });
+
+  it('...and the SAME rejection reaches the house logger, without disturbing the error state', async () => {
+    // W17/A8 (plan 88.6-27): the TELEMETRY half. The user-facing half above shipped in 88-18 and
+    // is byte-unchanged; this asserts the two are TRUE TOGETHER, which is the thing a conversion
+    // is most likely to break — a catch rewritten around the logger that quietly drops the
+    // `setUpcomingError` call would keep every existing pin green and lose the banner.
+    await mockEvents(new Error('boom'));
+    const user = userEvent.setup();
+    renderHome();
+    const dialog = await openCalendarSheet(user);
+    await within(dialog).findByText("We couldn't load your calendar");
+
+    // THE LEVEL IS `info`, not `error`. Owner ruling 2026-09-13 (D2): `logger.error` is
+    // `Sentry.captureException`, an EVENT; `logger.info` is a breadcrumb. Both other levels are
+    // asserted UNUSED so a future "promote it while we're here" edit reds rather than shipping.
+    expect(loggerSpies.info).toHaveBeenCalledTimes(1);
+    expect(loggerSpies.error).not.toHaveBeenCalled();
+    expect(loggerSpies.warn).not.toHaveBeenCalled();
+
+    const [msg, ctx] = loggerSpies.info.mock.calls[0];
+    expect(msg).toBe('[UserHomePage] The upcoming-events request did not complete:');
+    // `errCtx`'s shape EXACTLY — name and message and nothing else (T-84-01). The raw `Error` is
+    // not passed; `checkJs: false` means typecheck cannot see that mistake at a `.js` call site,
+    // so it is asserted here.
+    expect(ctx).toEqual({ name: 'Error', message: 'boom' });
+    expect(ctx).not.toBeInstanceOf(Error);
+    // FORBIDDEN PAYLOAD, asserted rather than implied: no response body, no event or group
+    // title, no attendee name or email in EITHER argument.
+    const serialised = JSON.stringify([msg, ctx]);
+    for (const leak of ['Catan', 'Alpha', 'Gloomhaven', '@', 'invite_url']) {
+      expect(serialised).not.toContain(leak);
+    }
   });
 
   it('terminal identity failure degrades to the compact notice, never the empty state', async () => {

@@ -30,8 +30,6 @@
         "src/app/components/BringGamePicker.js",
         "src/app/components/BringSummary.js",
         "src/app/components/ClickableMemberName.js",
-        "src/app/components/EventCalendar.js",
-        "src/app/components/EventDayModal.js",
         "src/app/components/FeedbackButton.js",
         "src/app/components/FeedbackForm.js",
         "src/app/components/FriendInvitePanel.js",
@@ -61,7 +59,6 @@
         "src/app/invite/accept/page.js",
         "src/app/page.js",
         "src/app/rsvp/\\[token\\]/page.js",
-        "src/app/userHome/UserHomePage.js",
         "src/app/userProfile/page.js",
         "src/lib/api.ts"
       ],

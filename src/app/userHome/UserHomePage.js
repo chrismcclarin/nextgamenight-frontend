@@ -21,6 +21,7 @@ import { BottomSheet } from '../../components/ui/BottomSheet';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
 import { eventsAPI } from '../../lib/api';
+import { logger, errCtx } from '../../lib/logger';
 // The ONE definition of "upcoming" (88.1-05, extended 88.5): the count the button
 // shows and the rows the sheet lists come from this selector, so they cannot disagree.
 import {
@@ -59,7 +60,10 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
        `upcomingEvents` at [], so UpcomingEventsCard rendered its empty state — telling someone
        their calendar was clear when the request had failed. This is NOT the same as
        `selfIdentityErrorState` a few lines up (ML-17), which covers the case where the fetch never
-       fires at all; both are needed and they are checked in that order at the render site. */
+       fires at all; both are needed and they are checked in that order at the render site.
+       Phase 88.6-27 (W17/A8) landed the TELEMETRY half this marker's first sentence refers to:
+       the `console.error` it describes is now `logger.info` + `errCtx`, while the user-facing
+       error state below — which is what THIS decision is about — is byte-unchanged. */
     const [upcomingError, setUpcomingError] = useState(null);
     const [upcomingRetryKey, setUpcomingRetryKey] = useState(0);
     // Req 11b: the phone calendar sheet's open state, owned here for the same
@@ -92,7 +96,33 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
             // UpcomingEventsCard does its own filter+sort; pass the raw list.
             setUpcomingEvents(list);
         }).catch(err => {
-            console.error('[UserHomePage] The upcoming-events request did not complete:', err);
+            /* W17 / AC-2 (R1, A8), at the level the owner amended it to on 2026-09-13: the raw
+               `console.error` is REPLACED by the house logger at `logger.info`, not kept beside
+               it — `logger.ts`'s module contract is that call sites use `logger.*` instead of
+               raw `console.*`. The MESSAGE is verbatim; `errCtx(err)` carries the caught error's
+               name and message and NOTHING else (T-84-01), and the raw `Error` is never passed
+               (`logger.info(msg, ctx)`'s second parameter is a plain object, and `checkJs:
+               false` hides that mistake in a `.js` file).
+
+               STATE THE COST, because the obvious reading of "it now reaches Sentry" is too
+               strong: `logger.info` is `Sentry.addBreadcrumb` (`logger.ts:34-36`), so this
+               failure surfaces only ATTACHED TO some later event filed in the same session. It
+               does not become independently visible to an operator. Whether these paths deserve
+               a Sentry EVENT is routed to the owner in `.planning/deferred/phase-88.6.md`, not
+               decided here.
+
+               REJECTED, and it was this plan's own earlier specification: `logger.error`.
+               That is `Sentry.captureException`, an EVENT — and `logger.warn` is no cheaper,
+               being `captureMessage`. Owner ruling 2026-09-13 (D2).
+
+               EXECUTION SITE CONFIRMED before converting, per the phase-wide convert-on-touch
+               rule: this is a `.catch` on a promise, not a render body and not a per-item loop,
+               so it converts IN PLACE and needs no guarded-effect or latch form. The latch rule
+               survives the level amendment for a SECOND reason — Sentry's breadcrumb buffer is
+               finite (`DEFAULT_BREADCRUMBS = 100`, nothing sets `maxBreadcrumbs`), so an
+               unlatched render-body `logger.info` would evict every other breadcrumb in the
+               session. */
+            logger.info('[UserHomePage] The upcoming-events request did not complete:', errCtx(err));
             if (cancelled) return;
             // Keep the ERROR object: useFetchErrorState reads `ApiError.code` off
             // it to pick the right user-facing copy.
@@ -437,7 +467,28 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                 {/* Hide calendar on mobile (smaller than md breakpoint).
                     Phase 71.1 GAMP-07: UpcomingEventsCard mounts below the
                     calendar in the right column with viewerDbUserId so
-                    game-only events render with a dashed border + Guest pill. */}
+                    game-only events render with a dashed border + Guest pill.
+
+                    DECISION Phase 88.6-27 (W72) — APPENDED; every sentence above stands and the
+                    gate on the next line is byte-identical.
+
+                    PHASE 88.6 MUST NOT RE-PLAN PHONE EVENT DISCOVERY. It already has an answer,
+                    shipped and owner-ruled: the Calendar button and its bottom sheet below
+                    (Req 11b), which is why this column is not shown on a phone. Treating the
+                    hidden column as a gap and building a second phone surface for the same job
+                    would re-open a decision, not fill a hole. Changing this is a decision, not a
+                    cleanup.
+
+                    SCOPED TO THE LAYOUT GATE, EXPLICITLY, or this note overclaims. `hidden
+                    md:flex` is CSS ONLY. `<EventCalendar />` on the line after it MOUNTS AT
+                    EVERY VIEWPORT, phone included, and therefore issues its own `getUserEvents`
+                    on a phone where none of it is rendered. What is deliberate and untouched is
+                    the LAYOUT decision — the column is not SHOWN below `md`. The MOUNT, and with
+                    it that second fetch, is unaffected by `hidden` and is NOT what this marker
+                    blesses: nobody has measured it, and whether it should fire on a phone at all
+                    is not this plan's to change. The marker's job is to stop the layout decision
+                    being re-litigated AND to stop "deliberate and untouched" being read as
+                    "measured". */}
                 <div className="hidden md:flex md:flex-col md:flex-1 md:min-w-0 md:gap-4">
                     <EventCalendar refreshKey={refreshKey} />
                     {/* ML-17: the upcoming-events fetch gates on selfUuid, so on
