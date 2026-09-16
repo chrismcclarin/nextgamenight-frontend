@@ -47,6 +47,10 @@
 export interface UpcomingEventLike {
   start_date: string | number | Date;
   status?: string | null;
+  /* Added by Phase 88.6-27 for the run-window predicates below. OPTIONAL, so every existing
+     caller is unchanged and `isLiveUpcoming` / `selectUpcomingWithin7Days` /
+     `selectNextUpcoming` are byte-identical: none of them reads it. */
+  duration_minutes?: number | null;
 }
 
 /**
@@ -115,6 +119,123 @@ export const isLiveUpcoming = (event: UpcomingEventLike, nowMs: number): boolean
   // comparisons being false would silently include it in an "everything except" filter.
   if (Number.isNaN(startMs)) return false;
   return startMs > nowMs;
+};
+
+/*
+ * DECISION Phase 88.6-27 (D47, owner ruling 2026-09-09, option a): the DEFAULT RUN WINDOW
+ * behind "still running" is EIGHT HOURS.
+ *
+ * CHOSEN: `duration_minutes` when the event carries a usable one, else this named 480-minute
+ * constant. REJECTED, each a real outcome rather than a style preference:
+ *
+ *   (a) A 4-HOUR DEFAULT. It would drop a 7 PM game night out of "Happening now" by 11 PM
+ *       while people are still playing — the exact row W59 exists to keep visible.
+ *   (b) REQUIRING a `duration_minutes` before a row may cross midnight. DEAD: nothing in the
+ *       FE or the BE ever writes `in_progress`, `routes/events.js:594` derives status once at
+ *       creation and `:934-946` only on reschedule, and no job sweeps `scheduled` ->
+ *       `completed`. So most rows carry no duration and the rule would fix nothing real while
+ *       leaving every un-edited past event `scheduled` forever.
+ *   (c) TRUSTING THE STORED `duration_minutes` AS-IS. A stored `0` (or a string, or `NaN`)
+ *       yields a window that closed at the start instant, so a LIVE event classifies as
+ *       not-running and is pushed into the sheet's Past list — the W59 harm this predicate
+ *       exists to close, re-entering through the bound added to close it. Hence the coercion
+ *       in `runWindowMs` below: anything not a finite positive number FALLS BACK to this
+ *       constant, never to a zero-length window. Deleting that fallback as a redundant check
+ *       is a decision, not a cleanup.
+ *
+ * The unit is MINUTES because that is the unit the column and this module already speak.
+ * Changing this number is a PRODUCT decision, not a cleanup.
+ */
+export const DEFAULT_RUN_WINDOW_MINUTES = 480; // 8 hours
+
+/*
+ * DECISION Phase 88.6-27 (D47, bound): the recency floor for "started but no longer running".
+ *
+ * `UserHomePage` needs a set of rows that HAVE STARTED and are NOT running, to route them out
+ * of the sheet's "Later" section and into its Past list (W58). Unbounded, that set spans ALL
+ * HISTORY — because nothing ever sets `in_progress`/`completed` after creation, every
+ * un-edited past event is `scheduled` forever — so it must be bounded at the producer.
+ *
+ * CHOSEN: a 48-hour recency floor, expressed here and applied through `hasStartedRecently`.
+ * REJECTED: deriving the sheet's own today-or-future DATE KEY inside `UserHomePage`. That is
+ * the better-sounding bound and it is the wrong one: the page has no timezone of its own and
+ * `UserHomePage.js:183-185` records, as a decision, that there is deliberately NO date-key or
+ * future-range derivation there — a second, possibly timezone-divergent derivation of the same
+ * boundary is threat T-88.5-25 one level up. 48h is a deliberate SUPERSET of that date-key
+ * slice in every timezone (the earliest instant of "today" is at most ~36h behind `now` at the
+ * UTC-12 extreme), so it can never EXCLUDE a row the sheet would have shown, and the exact
+ * intersection is taken at the consumer: `CalendarListView` appends only from `futureGroups`.
+ * Widening this to all history, or narrowing it below the date-key slice, is a decision.
+ */
+export const RECENT_START_LOOKBACK_MINUTES = 48 * 60; // 48 hours
+
+/** The run window in ms, with D47's coercion rule applied. Not exported: the predicates own it. */
+const runWindowMs = (event: UpcomingEventLike): number => {
+  const stored = event.duration_minutes;
+  const minutes =
+    typeof stored === 'number' && Number.isFinite(stored) && stored > 0
+      ? stored
+      : DEFAULT_RUN_WINDOW_MINUTES;
+  return minutes * 60 * 1000;
+};
+
+/*
+ * DECISION Phase 88.6-27 (W58): `hasStarted` deliberately does NOT gate on `hasLiveStatus`.
+ *
+ * REJECTED, and it is the reading a future editor will reach for: mirroring the sibling
+ * `isLiveUpcoming` above, which opens `if (!hasLiveStatus(event)) return false;`. That is the
+ * right shape for "live and upcoming" and the WRONG shape here. A CANCELLED or COMPLETED row
+ * that started earlier today must test STARTED = true — that is the entire W58 half, the one
+ * that moves a dead row out of the sheet's "Later" section. Adding a status gate here would
+ * silently restore the defect while every existing test stayed green. The two predicates below
+ * are ASYMMETRIC ON STATUS on purpose: `isStillRunning` gates on it, `hasStarted` does not.
+ */
+
+/**
+ * Has this event's start instant passed?
+ *
+ * Status-blind by design (see the marker above). An unparseable `start_date` is dropped
+ * EXPLICITLY, the same OWNER RULING O1a rule `isLiveUpcoming` applies.
+ *
+ * @param event - the event to test
+ * @param nowMs - the instant to measure against, in epoch ms (callers share a clock)
+ * @returns true iff the start is at or before `nowMs`
+ */
+export const hasStarted = (event: UpcomingEventLike, nowMs: number): boolean => {
+  const startMs = new Date(event.start_date).getTime();
+  if (Number.isNaN(startMs)) return false;
+  return startMs <= nowMs;
+};
+
+/**
+ * Has this event started within the recency floor — i.e. started, but not long ago?
+ *
+ * Expressed as two `hasStarted` reads against two clocks rather than as a fresh comparison,
+ * so there is exactly one place in the app that decides what "has started" means.
+ *
+ * @param event - the event to test
+ * @param nowMs - the instant to measure against, in epoch ms
+ * @returns true iff the start is at or before `nowMs` AND after the recency floor
+ */
+export const hasStartedRecently = (event: UpcomingEventLike, nowMs: number): boolean =>
+  hasStarted(event, nowMs) &&
+  !hasStarted(event, nowMs - RECENT_START_LOOKBACK_MINUTES * 60 * 1000);
+
+/**
+ * Is this event live AND inside its run window — i.e. happening right now?
+ *
+ * Gates on `hasLiveStatus` (unlike `hasStarted` — see the asymmetry marker above), because a
+ * cancelled or completed game is not "happening now" however recently it started.
+ *
+ * @param event - the event to test
+ * @param nowMs - the instant to measure against, in epoch ms (callers share a clock)
+ * @returns true iff the status is live, the start has passed, and the run window has not closed
+ */
+export const isStillRunning = (event: UpcomingEventLike, nowMs: number): boolean => {
+  if (!hasLiveStatus(event)) return false;
+  if (!hasStarted(event, nowMs)) return false;
+  const startMs = new Date(event.start_date).getTime();
+  return nowMs < startMs + runWindowMs(event);
 };
 
 /**

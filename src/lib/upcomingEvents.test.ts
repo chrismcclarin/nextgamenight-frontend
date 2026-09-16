@@ -18,8 +18,12 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  DEFAULT_RUN_WINDOW_MINUTES,
   hasLiveStatus,
+  hasStarted,
+  hasStartedRecently,
   isLiveUpcoming,
+  isStillRunning,
   selectNextUpcoming,
   selectUpcomingWithin7Days,
 } from './upcomingEvents';
@@ -302,5 +306,76 @@ describe('the two selectors and the predicate cannot disagree (SPEC Req 3)', () 
     const beyond = [ev('far', '2026-09-05T19:00:00.000Z'), ev('bad-date', 'not a date')];
     expect(selectUpcomingWithin7Days(beyond, NOW)).toEqual([]);
     expect(selectNextUpcoming(beyond, NOW)?.id).toBe('far');
+  });
+});
+
+// Phase 88.6-27 (W58 + W59 / D47, owner ruling 2026-09-09 option a) — the run-window
+// predicates and their deliberate ASYMMETRY on status.
+//
+// These are the boundary the phone sheet reads to decide whether a row is Happening now, in
+// This week / Later, or in the collapsed Past disclosure. The two mistakes they exist to catch
+// are both silent: gating `hasStarted` on status (which drops the whole W58 half — a cancelled
+// game that started this morning would keep sitting under "Later"), and trusting a stored
+// `duration_minutes` as-is (a `0` yields a zero-length window, so a LIVE row classifies as
+// not-running and is pushed into Past — the W59 harm, re-entering through the bound added to
+// close it).
+describe('Phase 88.6-27 — hasStarted / isStillRunning / hasStartedRecently', () => {
+  const MIN = 60 * 1000;
+  const HOUR = 60 * MIN;
+  const DAY = 24 * HOUR;
+  const iso = (offsetMs: number) => new Date(NOW_MS + offsetMs).toISOString();
+
+  // --- the run window (three cases) -------------------------------------------------------
+  it('a live event that started 2h ago and carries a duration is STILL RUNNING', () => {
+    const e = { ...ev('running', iso(-2 * HOUR), 'scheduled'), duration_minutes: 240 };
+    expect(isStillRunning(e, NOW_MS)).toBe(true);
+  });
+
+  it('a `scheduled` row three days old with a NULL duration is NOT running', () => {
+    // The default window is 8h, so three days is far outside it. Without the bound this row
+    // would be "happening now" forever, because nothing ever moves it off `scheduled`.
+    const e = { ...ev('stale', iso(-3 * DAY), 'scheduled'), duration_minutes: null };
+    expect(hasStarted(e, NOW_MS)).toBe(true);
+    expect(isStillRunning(e, NOW_MS)).toBe(false);
+  });
+
+  it('a COMPLETED row is not running even inside the window', () => {
+    const e = { ...ev('done', iso(-1 * HOUR), 'completed'), duration_minutes: 240 };
+    expect(isStillRunning(e, NOW_MS)).toBe(false);
+  });
+
+  // --- the asymmetry (two cases) -----------------------------------------------------------
+  it('a CANCELLED row that started 2h ago tests STARTED true and RUNNING false', () => {
+    // This is the case that fails against a status-gated `hasStarted`, and it is the whole
+    // W58 half: a dead row that started earlier today must leave "Later".
+    const e = ev('cancelled-started', iso(-2 * HOUR), 'cancelled');
+    expect(hasStarted(e, NOW_MS)).toBe(true);
+    expect(isStillRunning(e, NOW_MS)).toBe(false);
+  });
+
+  it('a FUTURE-DATED cancelled row tests STARTED false', () => {
+    const e = ev('cancelled-future', iso(2 * DAY), 'cancelled');
+    expect(hasStarted(e, NOW_MS)).toBe(false);
+    expect(isStillRunning(e, NOW_MS)).toBe(false);
+  });
+
+  // --- the coercion (one case) -------------------------------------------------------------
+  it('a `duration_minutes` of 0 falls back to the named default rather than closing the window', () => {
+    const e = { ...ev('zero-duration', iso(-2 * HOUR), 'scheduled'), duration_minutes: 0 };
+    expect(DEFAULT_RUN_WINDOW_MINUTES).toBe(480);
+    expect(isStillRunning(e, NOW_MS)).toBe(true);
+  });
+
+  // --- the recency floor (the producer-side bound) -----------------------------------------
+  it('the recency floor bounds "has started" so the set cannot span all history', () => {
+    const today = ev('today', iso(-2 * HOUR), 'cancelled');
+    const ancient = ev('ancient', iso(-30 * DAY), 'scheduled');
+    // Both have STARTED — that is the unbounded set. Only one is recent.
+    expect(hasStarted(today, NOW_MS)).toBe(true);
+    expect(hasStarted(ancient, NOW_MS)).toBe(true);
+    expect(hasStartedRecently(today, NOW_MS)).toBe(true);
+    expect(hasStartedRecently(ancient, NOW_MS)).toBe(false);
+    // ...and an unparseable date is dropped, the same O1a rule the sibling applies.
+    expect(hasStartedRecently(ev('bad', 'not a date'), NOW_MS)).toBe(false);
   });
 });

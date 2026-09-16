@@ -24,7 +24,8 @@ import { eventsAPI } from '../../lib/api';
 // The ONE definition of "upcoming" (88.1-05, extended 88.5): the count the button
 // shows and the rows the sheet lists come from this selector, so they cannot disagree.
 import {
-    hasLiveStatus,
+    hasStartedRecently,
+    isStillRunning,
     selectNextUpcoming,
     selectUpcomingWithin7Days,
 } from '../../lib/upcomingEvents';
@@ -155,7 +156,16 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
        code is in git history, the record is in `88.5-07-SUMMARY.md`): the window is
        measured at RENDER time and is not timer-refreshed, so an event crossing the
        7-day boundary between this render and the sheet opening can lag by one row. A
-       timer here would re-render the whole page on a clock nobody is watching. */
+       timer here would re-render the whole page on a clock nobody is watching.
+
+       EXTENDED Phase 88.6-27 (D47) — every sentence above stands; this adds the OTHER
+       boundary the lag now has. Until this plan the only render-time boundary was the 7-day
+       OPENING one, so the lag could only ever ADD a row late. The run window introduced below
+       adds a CLOSING boundary: a game that ended at 11 PM stays inside "Happening now" — and,
+       by `CalendarListView`'s removal rule, OUT of the sheet's Past list — until the next
+       render. That lag is BOUNDED in practice rather than indefinite, because opening the
+       sheet re-renders this page, and the sheet is the only surface that reads these sets. The
+       ticking timer is STILL REJECTED, for exactly the reason already recorded above. */
     const now = new Date();
     const upcomingWithin7Days = selectUpcomingWithin7Days(upcomingEvents, now);
 
@@ -195,17 +205,62 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
        NOT MEMOIZED, and that is deliberate rather than an oversight: `now` is a fresh `Date` on
        every render (it has to be — see the ONE CLOCK note above), so any `useMemo` keyed on it
        would miss on every render and buy nothing but indirection. A user's upcoming-event list
-       is a handful of rows; two passes over it per render is not a cost worth obscuring. */
+       is a handful of rows; two passes over it per render is not a cost worth obscuring.
+
+       ═══ AMENDED Phase 88.6-27 (W58 + W59 / D47, owner ruling 2026-09-09 option a) ═══
+       Every sentence above stands. The NOT-MEMOIZED decision is unchanged and is not being
+       re-litigated. Four things are added or corrected, in the order they matter:
+
+       (1) THE RUN WINDOW. "Happening now" is no longer "live AND started"; it is
+       `isStillRunning`, which additionally requires the event to be INSIDE its run window —
+       the event's own `duration_minutes` when it carries a usable one, else the ruled default
+       of EIGHT HOURS (`upcomingEvents.ts`'s `DEFAULT_RUN_WINDOW_MINUTES`, 480). The bound is
+       unavoidable rather than a nicety: nothing in the FE or the BE ever writes `in_progress`
+       after creation (`routes/events.js:594` derives status once, `:934-946` only on
+       reschedule, no job sweeps `scheduled` -> `completed`), so every un-edited past event is
+       `scheduled` forever. The moment the sheet's `futureGroups` containment stops holding the
+       set — which is exactly what (2) below does — an unbounded "has started" set would lift
+       the whole of history into "Happening now".
+
+       (2) THE SECOND SET. `startedNotLiveIds` is new: rows that have STARTED and are NOT
+       running. It exists so a dead row that started earlier today leaves the sheet's "Later"
+       section for its Past list (W58), while a LIVE row that started before local midnight
+       leaves the Past list for "Happening now" (W59). Both are the same boundary seen from
+       two sides, and it is decided ONCE, in `upcomingEvents.ts`, never here and never in the
+       view. It is BOUNDED by that module's recency floor (`hasStartedRecently`) so it cannot
+       span all history by construction.
+
+       SCOPE: this governs the SHEET arm only. The desktop calendar arms pass no id sets
+       (`EventCalendar.js:233-239`) and keep their date-key split, so >= 768px is
+       pixel-unchanged.
+
+       (3) THE STATUS TEST MOVED. The sentence above reading "`hasLiveStatus` is the NAMED
+       import from the shared module and is the ONLY status test in this file" recorded a true
+       fact about the shipped code; it is superseded here rather than deleted. `hasLiveStatus`
+       is no longer imported: its job now happens INSIDE `isStillRunning`. The point it was
+       making survives intact and is if anything stronger — there is still no inline status
+       comparison anywhere in this file, and now there is no status test here at all.
+
+       (4) THE COST PREMISE WAS FALSE AND IS CORRECTED HERE. "A user's upcoming-event list is a
+       handful of rows" describes `upcomingWithin7Days`; it does NOT describe `upcomingEvents`,
+       which is the RAW `getUserEvents` payload (`:88`, and `:91`'s "pass the raw list"), i.e.
+       the user's whole event history with no date filter applied at the backend. This step
+       adds a THIRD pass over that unbounded list. The decision not to memoize is unchanged —
+       fresh `Date`, fresh Sets, a memo could not hit — but the reason is "a memo cannot help
+       here", not "it is only a handful of rows". */
     const nowMs = now.getTime();
     const thisWeekIds = new Set(upcomingWithin7Days.map((event) => event.id));
+    const allEventsForClassification = Array.isArray(upcomingEvents) ? upcomingEvents : [];
     const happeningNowIds = new Set(
-        (Array.isArray(upcomingEvents) ? upcomingEvents : [])
-            .filter((event) => {
-                if (!hasLiveStatus(event)) return false;
-                const startMs = new Date(event.start_date).getTime();
-                if (Number.isNaN(startMs)) return false;
-                return startMs <= nowMs;
-            })
+        allEventsForClassification
+            .filter((event) => isStillRunning(event, nowMs))
+            .map((event) => event.id)
+    );
+    /* DISJOINT from `happeningNowIds` by construction (the `!has` below), so the sheet's
+       three-way partition and its past list can never claim the same row twice. */
+    const startedNotLiveIds = new Set(
+        allEventsForClassification
+            .filter((event) => hasStartedRecently(event, nowMs) && !happeningNowIds.has(event.id))
             .map((event) => event.id)
     );
 
@@ -545,9 +600,11 @@ function UserHome({ GroupList: propGroupList, getGroupList, onCreateGroup, group
                             onEventClick={handleCalendarSheetEventClick}
                             loading={upcomingPending}
                             variant="sheet"
-                            /* The two id sets and the one count — see the OWNER RULING 2a
-                               marker above. The sheet partitions by membership only. */
+                            /* The id sets and the one count — see the OWNER RULING 2a marker
+                               above (AMENDED 88.6-27, which added the third set). The sheet
+                               partitions by membership only. */
                             happeningNowIds={happeningNowIds}
+                            startedNotLiveIds={startedNotLiveIds}
                             thisWeekIds={thisWeekIds}
                             upcomingCount={upcomingCount}
                         />

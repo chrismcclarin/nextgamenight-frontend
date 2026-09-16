@@ -164,6 +164,7 @@ const NAMED_SURFACES = [
  *
  * DO NOT ADD `xs` HERE. These assertions are HEADING-scoped, and admitting `text-xs`
  * would legalize the two live `text-xs` `<h4>`s at `app/components/CalendarListView.js:609`
+ * (both retired by plan 88.6-27 — they are `<Heading level={4} size="label">` at 14 now)
  * and `:646` — the exact sites UI-SPEC §1.2 row V-5 (`88.6-UI-SPEC.md:111`, "h4 12px →
  * 14px") exists to move UP. 12px is the tree-wide FLOOR (task 2's sub-12px arbitrary-value
  * fold enforces it) and the `caption` rung lives on NON-heading elements only — UI-SPEC
@@ -260,7 +261,7 @@ const PRIMITIVE_OPEN = /<Heading(?=[\s/>])/g;
  * A LITERAL heading-level prop on a component call site. `=` must follow the prop name
  * with NO whitespace, which is what tells a JSX attribute (`headingLevel="h5"`) apart
  * from a destructured DEFAULT (`headingLevel = 'h4'` at
- * `app/components/CalendarListView.js:849`). A default is not a call site and counting it
+ * `app/components/CalendarListView.js:1044`). A default is not a call site and counting it
  * would double-count every `DateGroup` the file renders.
  */
 const PROP_SEAM_LITERAL =
@@ -273,9 +274,9 @@ const PROP_SEAM_LITERAL =
  * First, `EXPECTED_LEVELS` is a per-file per-LEVEL record, so an expression has no
  * representable value: "count it" has nowhere to be written.
  *
- * Second, resolving it produces a WRONG number. `app/components/CalendarListView.js:866`
+ * Second, resolving it produces a WRONG number. `app/components/CalendarListView.js:1064`
  * is `headingLevel={rowHeadingLevel}`; resolving it from `EventRow`'s own `'h5'` default
- * (`:889`) would record an h5 while BOTH real call sites pass `rowHeadingLevel="h6"`
+ * (`:1087`) would record an h5 while BOTH real call sites pass `rowHeadingLevel="h6"`
  * (`:632`, `:657`) — a level the DOM never renders, double-counted onto a chain whose two
  * ends are already counted.
  *
@@ -610,7 +611,7 @@ const EXPECTED_PROP_SEAMS = 5;
  * on `size="heading"` with no size change. `EXPECTED_LEVELS`' `{ 1: 3 }` entry for that file is
  * byte-unchanged (P4).
  */
-const EXPECTED_MIN_PRIMITIVES = 69;
+const EXPECTED_MIN_PRIMITIVES = 73;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -679,11 +680,14 @@ const RUNG_ROSTER: ExemptionRoster = {
     why: '1 heading off the 4-size working set (h3:97 no size utility) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/CalendarListView.js': {
-    sites: 4,
-    why: '4 headings off the 4-size working set (h3:478 text-lg; h3:505 text-lg; h4:607 text-xs; h4:646 text-xs) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-27 task 1 (wave 7, 2026-09-16): `app/components/CalendarListView.js`
+  // carried `sites: 4` and all four cites were EXACT at HEAD. Both `text-lg` h3s ("Upcoming
+  // events", once in the loading skeleton at :478 and once in the render body at :505) are
+  // `<Heading level={3} size="heading">` (20) and both `text-xs` h4s (the This-week subheader at
+  // :607 and Later at :646) are `<Heading level={4} size="label">` (14) — D-04's table, levels
+  // PRESERVED, so `EXPECTED_LEVELS`' `{3:2, 4:2, 5:2, 6:2}` entry is byte-unchanged. The two
+  // sub-section headers therefore move 12 -> 14, a disclosed visible delta. Entry DELETED rather
+  // than zeroed; the roster is exact in both directions.
   'app/components/DangerZoneDeleteAccount.tsx': {
     sites: 1,
     why: '1 heading off the 4-size working set (h2:259 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
@@ -807,11 +811,10 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
     why: '1 heading carrying the prohibited 600 weight (h3:97) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/CalendarListView.js': {
-    sites: 4,
-    why: '4 headings carrying the prohibited 600 weight (h3:478, h3:505, h4:607, h4:646) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-27 task 1 (wave 7, 2026-09-16): the same four headings as the rung
+  // roster above. Their 700 now comes from `Heading`'s `font-bold` base rather than a stated
+  // utility, so a MIGRATED heading leaves this RAW-only population entirely. Entry DELETED,
+  // not zeroed.
   'app/components/CalendarMonthView.js': {
     sites: 1,
     why: '1 heading carrying the prohibited 600 weight (h3:193) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
@@ -891,11 +894,9 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
     why: '1 raw heading not stating the 700 weight (h3:97 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/CalendarListView.js': {
-    sites: 4,
-    why: '4 raw headings not stating the 700 weight (h3:478 font-semibold; h3:505 font-semibold; h4:607 font-semibold; h4:646 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-27 task 1 (wave 7, 2026-09-16): same four headings as the
+  // heading-semibold roster above. Their 700 comes from the primitive's `font-bold` base now,
+  // and a migrated heading leaves this RAW-only population. Entry DELETED, not zeroed.
   'app/components/CalendarMonthView.js': {
     sites: 1,
     why: '1 raw heading not stating the 700 weight (h3:193 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
@@ -1063,7 +1064,11 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
       SKIPPED_LEVELS.map((s) => `${s.surface}:${s.line}`),
       'a NEW unresolvable level expression must be seen, not absorbed. See PROP_SEAM_EXPRESSION ' +
         'for why resolving them is the wrong answer rather than the harder one.',
-    ).toEqual(['app/components/CalendarListView.js:866']);
+      // Re-pointed by plan 88.6-27 task 1 (wave 7, 2026-09-16): `:866` -> `:1064`. The seam
+      // itself is BYTE-UNCHANGED — `headingLevel={rowHeadingLevel}` is the same expression on
+      // the same `EventRow` call site. What moved it is this plan's marker appends higher up
+      // the file, not an edit to the seam.
+    ).toEqual(['app/components/CalendarListView.js:1064']);
   });
 
   it('counts class-less headings and ignores heading tags in comments (defects 1 + 4, coupled)', () => {
@@ -1303,7 +1308,9 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
  *    (`components/ui/EmptyState.tsx:96`, `DECISION Phase 88-18 (DEF-88-09-01)`), relied on
  *    by NINE of its ten call sites — only `app/not-found.tsx:36` passes the prop, so nine
  *    real `<h3>`s in the DOM are counted as zero; `CalendarListView`'s `DateGroup` `'h4'`
- *    default (`:849`) and `EventRow` `'h5'` default (`:889`).
+ *    default (`:1044`) and `EventRow` `'h5'` default (`:1087`).
+ *    (All `CalendarListView.js` line cites in this docblock were re-derived by CONTENT and
+ *    re-pointed by plan 88.6-27; every seam they name is byte-unchanged.)
  *
  *    REJECTED: teaching the scanner an in-file `{ component -> default level }` map, with
  *    a fixture asserting a bare `<EmptyState>` counts as one h3. It would close the gap,
@@ -1311,7 +1318,7 @@ describe('Req 2 (CD-006) / SPEC-88.6 R3: the heading type scale across all of `s
  *    Declaring the gap is the cheaper option and this plan takes it.
  *
  * 2. NON-LITERAL level expressions, which the scanner SKIPS by rule.
- *    `app/components/CalendarListView.js:866` (`headingLevel={rowHeadingLevel}`) is the one
+ *    `app/components/CalendarListView.js:1064` (`headingLevel={rowHeadingLevel}`) is the one
  *    live instance. It is uncounted ON PURPOSE: resolving it from `EventRow`'s `'h5'`
  *    default would record an h5 the DOM never renders, while both real call sites pass
  *    `rowHeadingLevel="h6"`. The number would be wrong in this map's own units. Nothing is
@@ -1807,12 +1814,15 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '4 off-scale weight sites (4 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome leads: dead on a .btn (delete); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-04, 88.6-05, 88.6-06, 88.6-10, 88.6-13, 88.6-32, 88.6-33, 88.6-39, 88.6-46.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/CalendarListView.js': {
-    sites: 8,
-    why:
-      '8 off-scale weight sites (0 font-medium, 8 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-03, 88.6-05, 88.6-11, 88.6-12, 88.6-17, 88.6-18, 88.6-22, 88.6-27, 88.6-28, 88.6-29, 88.6-36, 88.6-39, 88.6-41, 88.6-43.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-27 task 1 (wave 7, 2026-09-16): `app/components/CalendarListView.js`
+  // carried `sites: 8` (0 font-medium, 8 font-semibold) and the count was EXACT. FOUR were the
+  // headings, which left this population by migrating onto `Heading` (see the three heading
+  // rosters above). The other FOUR all resolved as HIERARCHY -> 700 and are named here so no
+  // later reader has to re-derive them: the TodayDivider's eyebrow chip (`text-xs` KEPT — 12px
+  // is the ratified Eyebrow rung, only the weight moved), `DateGroup`'s polymorphic day header
+  // (`<DayHeading>`, which is why the raw-heading scanners never saw it), and `EventRow`'s row
+  // title in BOTH of its arms (the sheet's `line-clamp-2` arm and the desktop `truncate` arm are
+  // two branches of one ternary, counted as two sites). Entry DELETED rather than zeroed.
   'app/components/CalendarMonthView.js': {
     sites: 7,
     why:

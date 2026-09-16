@@ -263,11 +263,13 @@ const ALIAS_ROSTER: ExemptionRoster = {
     why: '`hover:shadow-md` on a non-button surface (:279), so it keeps the plain `hover:` spelling and becomes `hover:shadow-theme-md`. Plan 27 snaps it. Kept distinct from this file\'s OFF-TIER entry, which is a different class on a different element.',
     owner: D49B,
   },
-  'app/components/CalendarListView.js': {
-    sites: 1,
-    why: '`hover:shadow-md` on a list-row surface (:1057) — non-button, so plain `hover:shadow-theme-md`. Plan 27 snaps it in the same calendar pass as EventDayModal.',
-    owner: D49B,
-  },
+  // `app/components/CalendarListView.js` CLOSED by plan 88.6-27 task 1 (wave 7, 2026-09-16):
+  // the `EventRow` card's `hover:shadow-md` is now `hover:shadow-theme-md` — plain `hover:`,
+  // because the site is a card `div` and not a `.btn`. ONE correction to this entry's own text,
+  // recorded rather than absorbed: the element's opening `<div` is at `:1057` but the className
+  // carrying the class was at `:1068`, and this scanner reports the OPENING TAG line, which is
+  // why the pre-fix red named `:1057`. Entry DELETED rather than zeroed; the roster is exact in
+  // both directions, so a zeroed entry would red as a fossil permission.
   'app/components/FeedbackButton.js': {
     sites: 1,
     why: '`shadow-lg` on the floating feedback FAB (:258), which IS a `.btn` element — so if plan 31 adds a hover pin it must use `enabled-hover:`, never bare `hover:`.',

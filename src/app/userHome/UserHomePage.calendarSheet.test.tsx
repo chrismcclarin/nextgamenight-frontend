@@ -166,6 +166,31 @@ const CANCELLED_SOON = {
   EventParticipations: [],
 };
 
+/**
+ * Phase 88.6-27: jsdom implements NO `IntersectionObserver`, and until this plan no test in
+ * this file ever reached the one `CalendarListView` constructs — its effect early-returns on
+ * `allMorePastLoaded`, which is true for every fixture list shorter than `PAST_PAGE_SIZE` (30).
+ * The `> PAST_PAGE_SIZE` case below is the first that does not, so the global has to exist or
+ * the component throws on mount. A NO-OP is the right stub, not a firing one: the assertion is
+ * about how many rows MOUNT at the initial window, and an observer that reported an
+ * intersection would page more in and destroy exactly that.
+ */
+if (typeof globalThis.IntersectionObserver === 'undefined') {
+  class NoopIntersectionObserver implements IntersectionObserver {
+    readonly root: Element | Document | null = null;
+    readonly rootMargin: string = '';
+    readonly thresholds: ReadonlyArray<number> = [];
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+    takeRecords(): IntersectionObserverEntry[] {
+      return [];
+    }
+  }
+  globalThis.IntersectionObserver =
+    NoopIntersectionObserver as unknown as typeof IntersectionObserver;
+}
+
 // Mutable identity, mirroring UserHomePage.identity.test.tsx's harness.
 const h = vi.hoisted(() => ({
   selfUuid: undefined as string | undefined,
@@ -901,5 +926,280 @@ describe('Phase 88.5 — the "Next game night" hero in the sheet', () => {
     // The unanswered copy must not flash in as the resolved state — "not read yet" and "no
     // answer" are different states (the card's UNKNOWN rule).
     expect(within(reopened).queryByText('RSVP to this event')).toBeNull();
+  });
+});
+
+// Plan 88.6-27 — W58 + W59 (WR-01), the sheet's ONE time boundary.
+//
+// These are two faces of a single defect. The sheet's Past/Upcoming split is a DATE-KEY split
+// (`CalendarListView.js`'s `k >= todayKey`) while the id sets handed down from this page are
+// TIME-based, so the two disagree over exactly one day's worth of rows: a LIVE game that started
+// before local midnight landed inside the collapsed Past disclosure (W59 — a game night in
+// progress, buried, at this app's stated primary moment) and a DEAD game that started earlier
+// today sat under "Later" (W58).
+//
+// EVERY FIXTURE BELOW IS DISCRIMINATING, and each says what it separates. The clock is moved past
+// local midnight per test rather than at import — `FIXED_NOW` is 2:00 PM and the module-level
+// fixtures are evaluated before any `beforeEach` installs a clock, so a midnight-crossing case
+// cannot be expressed against it.
+describe('Phase 88.6-27 — W58 + W59: the sheet has ONE time boundary', () => {
+  /** Sat 5 Sep, 1:00 AM America/New_York. Just past local midnight, which is the whole point. */
+  const LATE_NIGHT_NOW = new Date('2026-09-05T05:00:00.000Z');
+  /** Sat 5 Sep, 4:00 AM ET — past the 8h default run window of a game that began at 7:00 PM. */
+  const RUN_WINDOW_CLOSED = new Date('2026-09-05T08:00:00.000Z');
+
+  /**
+   * LIVE, began Fri 7:00 PM ET, so at 1:00 AM it is six hours in and still inside the ruled 8h
+   * default window — while its DATE KEY is YESTERDAY's. It is therefore in `pastEvents`, not in
+   * `futureGroups`. This one row separates "Happening now is drawn from the future bucket" from
+   * "Happening now is drawn from both buckets", and it is W59 itself.
+   */
+  const MIDNIGHT_CROSSER = {
+    id: 'e-crosser',
+    group_id: 'g8',
+    game_id: 'game-dune',
+    start_date: '2026-09-04T23:00:00.000Z',
+    status: 'in_progress',
+    Game: { name: 'Dune' },
+    Group: { name: 'Theta' },
+    EventParticipations: [],
+  };
+
+  /**
+   * `scheduled` — i.e. LIVE status — three days old with a NULL duration. Nothing in the app ever
+   * moves a row off `scheduled`, so this is the shape most of history actually has. It separates
+   * the RUN WINDOW from a bare "has started": without the window it would be "happening now", and
+   * so would every game the user ever played.
+   */
+  const STALE_SCHEDULED = {
+    id: 'e-stale',
+    group_id: 'g9',
+    game_id: 'game-scythe',
+    start_date: '2026-09-01T23:00:00.000Z',
+    status: 'scheduled',
+    duration_minutes: null,
+    Game: { name: 'Scythe' },
+    Group: { name: 'Iota' },
+    EventParticipations: [],
+  };
+
+  /** Cancelled, began 12:30 AM ET — TODAY's date key, so shipped code files it under "Later". W58. */
+  const STARTED_TODAY_CANCELLED = {
+    id: 'e-scrubbed',
+    group_id: 'g10',
+    game_id: 'game-everdell',
+    start_date: '2026-09-05T04:30:00.000Z',
+    status: 'cancelled',
+    Game: { name: 'Everdell' },
+    Group: { name: 'Kappa' },
+    EventParticipations: [],
+  };
+
+  /**
+   * A SECOND started-today non-live row, and it is not redundant: with only one, the corrected
+   * count `(past - happening) + appended` coincides numerically with the shipped
+   * `pastEvents.length`, so the count assertion would pass against unfixed code.
+   */
+  const STARTED_TODAY_COMPLETED = {
+    id: 'e-finished',
+    group_id: 'g11',
+    game_id: 'game-ttr',
+    start_date: '2026-09-05T04:15:00.000Z',
+    status: 'completed',
+    Game: { name: 'Ticket to Ride' },
+    Group: { name: 'Lambda' },
+    EventParticipations: [],
+  };
+
+  /** A genuinely upcoming row, so "This week" exists and the hero has something to select. */
+  const TOMORROW_NIGHT = {
+    id: 'e-tomorrow',
+    group_id: 'g12',
+    game_id: 'game-cascadia',
+    start_date: '2026-09-06T23:00:00.000Z',
+    status: 'scheduled',
+    Game: { name: 'Cascadia' },
+    Group: { name: 'Mu' },
+    EventParticipations: [],
+  };
+
+  const NIGHT_SET = [
+    STALE_SCHEDULED,
+    MIDNIGHT_CROSSER,
+    STARTED_TODAY_CANCELLED,
+    STARTED_TODAY_COMPLETED,
+    TOMORROW_NIGHT,
+  ];
+
+  /** Rows inside the expanded past panel, top to bottom. */
+  function pastPanelRows(dialog: HTMLElement): string[] {
+    const toggle = pastToggle(dialog);
+    const panel = document.getElementById(toggle.getAttribute('aria-controls') as string);
+    expect(panel, 'the past disclosure resolves to no panel').not.toBeNull();
+    return rowOrder(panel as HTMLElement);
+  }
+
+  /** Open the sheet at a given instant. The clock is set BEFORE the first render. */
+  async function openAt(now: Date, events: unknown[]) {
+    vi.setSystemTime(now);
+    return openSheetWith(events);
+  }
+
+  it('W59: a LIVE row that began before local midnight is in Happening now, and a stale `scheduled` row is not', async () => {
+    const { dialog } = await openAt(LATE_NIGHT_NOW, NIGHT_SET);
+    await within(dialog).findByText('Dune');
+
+    // Happening now is the unlabelled group ABOVE This week — the OWNER RULING 2a shape.
+    const thisWeek = within(dialog).getByRole('heading', { level: 4, name: /^This week\b/ });
+    const duneRow = within(dialog).getByRole('button', { name: /Dune/ });
+    expect(precedes(duneRow, thisWeek)).toBe(true);
+
+    // ...and the row is NOT inside the past disclosure, which is where shipped code put it.
+    expect(within(subSection(dialog, 'This week')).queryByText('Dune')).toBeNull();
+
+    // THE NEGATIVE HALF, asserted against the ruled 8h constant rather than implied by it: a
+    // `scheduled` row three days old with a null duration must NOT be lifted into Happening now.
+    // Without the run window every un-edited past event in the account would surface here.
+    expect(within(dialog).queryByText('Scythe')).toBeNull();
+  });
+
+  it('W58: a row that started today and is no longer running leaves Later for the past disclosure', async () => {
+    const { user, dialog } = await openAt(LATE_NIGHT_NOW, NIGHT_SET);
+    await within(dialog).findByText('Dune');
+
+    // It is in NEITHER upcoming sub-section. (Later renders no heading at all here, because
+    // both of its would-be rows were routed out — that IS the fix.)
+    expect(
+      within(dialog).queryByRole('heading', { level: 4, name: /^Later\b/ })
+    ).toBeNull();
+    expect(within(subSection(dialog, 'This week')).queryByText('Everdell')).toBeNull();
+
+    await user.click(pastToggle(dialog));
+
+    // ORDER IS EXPLICIT, not implied by the arithmetic: most-recent-first, so today's two
+    // routed rows head the panel (00:30 before 00:15) and the three-day-old row trails. A
+    // reversed concat in the new source composition reds right here.
+    expect(pastPanelRows(dialog)).toEqual(['Everdell', 'Ticket to Ride', 'Scythe']);
+  });
+
+  it('NO DUPLICATE: the midnight-crossing row appears exactly ONCE across the whole sheet', async () => {
+    const { user, dialog } = await openAt(LATE_NIGHT_NOW, NIGHT_SET);
+
+    // (a) it is in the upcoming section, ahead of This week
+    const thisWeek = await within(dialog).findByRole('heading', { level: 4, name: /^This week\b/ });
+    expect(precedes(within(dialog).getByRole('button', { name: /Dune/ }), thisWeek)).toBe(true);
+
+    // (b) EXPAND FIRST, and confirm it is open. Without this the assertion below is VACUOUS:
+    // the collapsed region gates its children on `pastExpanded`, so it mounts no rows at all and
+    // "appears once" is green against unfixed code — which is the false-green this case exists
+    // to close.
+    const toggle = pastToggle(dialog);
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const panel = document.getElementById(toggle.getAttribute('aria-controls') as string);
+    expect(panel).not.toHaveAttribute('hidden');
+    expect(pastPanelRows(dialog).length).toBeGreaterThan(0); // the panel really did mount rows
+
+    // (c) absent from the panel, and present EXACTLY ONCE across the open sheet
+    expect(within(panel as HTMLElement).queryByText('Dune')).toBeNull();
+    expect(within(dialog).getAllByText('Dune')).toHaveLength(1);
+  });
+
+  it('the past COUNT is the all-history total with the corrected membership, not `pastEvents.length`', async () => {
+    const { dialog } = await openAt(LATE_NIGHT_NOW, NIGHT_SET);
+    await within(dialog).findByText('Dune');
+
+    // (past 2 - happening 1) + the 2 routed started-today rows = 3.
+    const toggle = pastToggle(dialog);
+    expect(toggle).toHaveAccessibleName(/past events \(3\)/i);
+
+    // NON-VACUITY, stated as what the number must NOT be. (2) is `pastEvents.length`, i.e. the
+    // shipped count with no membership correction — the two coincide with only ONE routed row,
+    // which is why there are two. (5) is the whole list, (0) is counted nothing.
+    const name = (toggle.textContent ?? '').trim();
+    expect(name).not.toMatch(/\((?:0|2|5)\)/);
+  });
+
+  it('the count stays ALL-HISTORY above PAST_PAGE_SIZE, while only one window of rows MOUNTS', async () => {
+    // 35 past rows, i.e. more than `PAST_PAGE_SIZE` (30). The shipped count pin says in its own
+    // comment that it cannot discriminate at 2 rows; this is the case that can.
+    const bulk = Array.from({ length: 35 }, (_, i) => ({
+      id: `e-bulk-${i}`,
+      group_id: 'g13',
+      game_id: `game-bulk-${i}`,
+      // 2 Sep back through early August, one per day, all well outside the 48h recency floor.
+      start_date: new Date(Date.parse('2026-09-02T23:00:00.000Z') - i * 24 * HOUR).toISOString(),
+      status: 'completed',
+      Game: { name: `Bulk ${i}` },
+      Group: { name: 'Nu' },
+      EventParticipations: [],
+    }));
+    const { user, dialog } = await openAt(LATE_NIGHT_NOW, [
+      ...bulk,
+      STARTED_TODAY_CANCELLED,
+      STARTED_TODAY_COMPLETED,
+      TOMORROW_NIGHT,
+    ]);
+    await within(dialog).findByText('Cascadia');
+
+    const toggle = pastToggle(dialog);
+    // 35 all-history past rows + the 2 routed started-today rows. A window-derived count reads
+    // (30) or (32) here — this is the case that separates them.
+    expect(toggle).toHaveAccessibleName(/past events \(37\)/i);
+
+    await user.click(toggle);
+    // ...while only ONE window mounts: at most PAST_PAGE_SIZE past rows plus the routed rows.
+    // Without this, re-pointing the panel at the all-history `pastEvents` instead of the
+    // windowed `visiblePast` would satisfy every other assertion in this describe.
+    const mounted = pastPanelRows(dialog);
+    expect(mounted.length).toBeLessThanOrEqual(30 + 2);
+    expect(mounted.length).toBeGreaterThan(0);
+    // and the rolling sentinel is still there, so paging still works.
+    expect((dialog.querySelector('[aria-hidden="true"].h-1'))).not.toBeNull();
+  });
+
+  it('a LATER CLOCK moves the row back to Past without a refetch — the frozen-composition case', async () => {
+    // THE ONLY CASE THAT SEPARATES a correct composition from one frozen by a stale dependency
+    // array. Expanding the disclosure changes no identity the old `sheetPastGroups` memo read,
+    // so the expand-and-count case above is green against BOTH wrong dep arrays. This one is
+    // not: the clock moves past the run window's close, the row leaves `happeningNowIds`, and
+    // `events` / `pastEvents` / `visiblePast` keep their identities throughout (the mock returns
+    // the SAME array object and no effect dep changes, so no refetch fires).
+    vi.setSystemTime(LATE_NIGHT_NOW);
+    await mockEvents(NIGHT_SET);
+    const user = userEvent.setup();
+    const view = renderHome();
+    const dialog = await openCalendarSheet(user);
+    await within(dialog).findByText('Dune');
+
+    const toggle = pastToggle(dialog);
+    await user.click(toggle);
+    expect(within(dialog).getAllByText('Dune')).toHaveLength(1);
+    expect(pastPanelRows(dialog)).not.toContain('Dune');
+
+    const eventsFn = await getEventsMock();
+    const callsBefore = eventsFn.mock.calls.length;
+
+    vi.setSystemTime(RUN_WINDOW_CLOSED);
+    view.rerender(
+      <UserHome
+        GroupList={null}
+        getGroupList={vi.fn()}
+        onCreateGroup={vi.fn()}
+        groupListRefreshKey={0}
+        onMemberAdded={vi.fn()}
+      />
+    );
+
+    // No refetch: the fetch effect's deps are unchanged, so the list identity is untouched.
+    expect(eventsFn.mock.calls.length).toBe(callsBefore);
+    // The disclosure is still open (same component instance, `pastExpanded` survives).
+    expect(pastToggle(dialog)).toHaveAttribute('aria-expanded', 'true');
+
+    // The row has left Happening now and REJOINED the past panel — exactly once.
+    expect(pastPanelRows(dialog)).toContain('Dune');
+    expect(within(dialog).getAllByText('Dune')).toHaveLength(1);
+    // and the count followed it: nothing is being removed from the past bucket any more.
+    expect(pastToggle(dialog)).toHaveAccessibleName(/past events \(4\)/i);
   });
 });

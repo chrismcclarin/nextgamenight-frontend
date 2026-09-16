@@ -1,6 +1,7 @@
 'use client';
 import { forwardRef, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
 import { Icon } from '../../components/ui/Icon';
 import {
   getSubtitleStyle,
@@ -154,8 +155,21 @@ export default function CalendarListView({
      three-way split below, and they are computed ONCE in `UserHomePage` against ONE shared
      `now` clock (see its `DECISION Phase 88.5 (OWNER RULING 2a)` marker). This file performs
      NO date or status comparison of its own to decide membership — a second derivation here
-     is precisely the disagreement threat T-88.5-25 names. */
+     is precisely the disagreement threat T-88.5-25 names.
+
+     EXTENDED Phase 88.6-27 (W58 + W59 / D47, owner ruling 2026-09-09 option a) — the sentences
+     above stand and now cover a THIRD set. `happeningNowIds` is additionally bounded by the
+     event's run window (`duration_minutes` else the ruled 8h default), and `startedNotLiveIds`
+     names rows that have started and are NOT running. Together they correct the ONE boundary
+     this sheet had wrong in two directions at once: its Past/Upcoming split is a DATE-KEY split
+     (`k >= todayKey` below) while these sets are TIME-based, so a live game that started before
+     local midnight used to land in the collapsed Past disclosure (W59) and a dead game that
+     started earlier today used to sit under "Later" (W58). The boundary is still decided
+     entirely in `upcomingEvents.ts` and still travels here as membership only — there is no new
+     time or status comparison in this file. SHEET ARM ONLY: the desktop arms pass none of these
+     props (`EventCalendar.js:233-239`) and are pixel-unchanged. */
   happeningNowIds = EMPTY_ID_SET,
+  startedNotLiveIds = EMPTY_ID_SET,
   thisWeekIds = EMPTY_ID_SET,
   /* The number the Calendar button already shows, handed down so the twin pill is the SAME
      value rather than a second count. `null` means "no claim is being made" (pending/error);
@@ -281,16 +295,6 @@ export default function CalendarListView({
     [todayAndFutureEvents, timezone] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  /* Req 12, sheet arm only: the SAME window (`visiblePast`) grouped in DESCENDING date order.
-     `visiblePast` is memoized and shared with the desktop arms, so this reverses a COPY and
-     never mutates it. `groupByDate` preserves insertion order, so reversing the flat list
-     yields both descending GROUPS and descending rows inside each group — which is what
-     "most recent first" means once a day holds more than one event. */
-  const sheetPastGroups = useMemo(
-    () => (isSheet ? groupByDate([...visiblePast].reverse()) : []),
-    [isSheet, visiblePast, timezone] // eslint-disable-line react-hooks/exhaustive-deps
-  );
-
   /* SPEC Req 2 / D-04 / OWNER RULING 2a, sheet arm only — the three-way partition of the
      upcoming section.
 
@@ -306,34 +310,136 @@ export default function CalendarListView({
      everything left over by elimination, which is why a cancelled or completed future event
      lands there without this file ever reading `.status`.
 
+     EXTENDED Phase 88.6-27 (W58): still pure set lookup, still no `.status` read here, and
+     `futureGroups` is still the untouched date-key split. One row type LEAVES Later: a
+     cancelled or completed event that has already STARTED (necessarily today, since it is in
+     `futureGroups`) is now routed to the sheet's Past list instead. A FUTURE-DATED cancelled or
+     completed event is unaffected and still lands in Later by elimination — the two are
+     separated by the shared `hasStarted` predicate, never by anything in this file.
+
      PLAIN COMPUTE, deliberately NOT a useMemo: the only caller that passes the id-set props
      (`UserHomePage`) builds them as fresh `new Set(...)` identities on every render — its own
      documented "NOT MEMOIZED" stance — so a memo keyed on them could never hit and only
      obscured the cost (adversarial review 2026-09-01, ML8). Two passes over a handful of
-     rows per render is the same cost profile UserHomePage already accepts on its side. */
-  const { happeningNowGroups, thisWeekGroups, laterGroups } = (() => {
+     rows per render is the same cost profile UserHomePage already accepts on its side.
+
+     ═══ AMENDED Phase 88.6-27 (W58 + W59 / D47) ═══ Every sentence above stands and the
+     PLAIN-COMPUTE decision is unchanged — `UserHomePage` still hands down fresh Set identities
+     every render, so a memo still could not hit. Two things are added and one cost sentence is
+     corrected.
+
+     ADDED (1): `sheetPastGroups` MOVED IN HERE from its own `useMemo`. It had to move, and
+     BOTH ways of leaving it a memo were silent. Adding the Set props to its dep array can never
+     hit (fresh identities every render, by `UserHomePage.js`'s documented design), so it would
+     recompute every render and buy nothing. OMITTING them computes ONCE for the session,
+     because `todayKey` is keyed on `[timezone]`, `pastEvents` on `[events, todayKey, timezone]`
+     and `visiblePast` on `[pastEvents, pastVisibleCount]` — all stable absent a refetch — so the
+     sheet's Past list would freeze at the first clock it ever saw. The memo's dependency lint
+     was DISABLED on its own line, which is what made both mistakes invisible. Computing it in
+     this block is consistent with the ML8 rationale above and is honest about the cost.
+
+     ADDED (2): the buckets are now sourced differently, and this is the W58/W59 fix.
+     "Happening now" draws from `pastEvents` UNION `todayAndFutureEvents` in ONE ascending pass,
+     because a LIVE row that started before local midnight sits on YESTERDAY's date key and is
+     therefore in `pastEvents`, not in `futureGroups` — that row is W59. And the sheet's past
+     list additionally receives the `futureGroups` rows in `startedNotLiveIds` — a dead game that
+     started earlier today — which is W58. The removal half is not optional: a happening-now row
+     is REMOVED from the past source, or the midnight-crossing row renders TWICE.
+
+     CORRECTED: "two passes over a handful of rows" no longer describes what this block does.
+     The happening-now source is `pastEvents` ∪ `todayAndFutureEvents` and the past COUNT is a
+     full-history pass, and `pastEvents` derives from the RAW, unfiltered `getUserEvents` payload
+     (`UserHomePage.js:88`/`:91`) — the user's whole history, with no backend date filter. The
+     decision stands; the premise behind it is restated here rather than left pointing at a cost
+     profile this block no longer has. */
+  const {
+    happeningNowGroups,
+    thisWeekGroups,
+    laterGroups,
+    sheetPastGroups,
+    sheetPastTotal,
+  } = (() => {
     if (!isSheet) {
-      return { happeningNowGroups: [], thisWeekGroups: [], laterGroups: [] };
+      return {
+        happeningNowGroups: [],
+        thisWeekGroups: [],
+        laterGroups: [],
+        sheetPastGroups: [],
+        sheetPastTotal: 0,
+      };
     }
-    const happening = [];
+
+    /* 1. HAPPENING NOW — one ASCENDING pass over both buckets. `pastEvents` and
+       `todayAndFutureEvents` are each ascending and the first is entirely before the second by
+       date key, so the concatenation is ascending and date order is preserved. NOT
+       live-first-then-the-rest: these rows keep their place in the day. */
+    const happeningRows = [];
+    for (const ev of pastEvents) if (happeningNowIds.has(ev.id)) happeningRows.push(ev);
+    for (const ev of todayAndFutureEvents) if (happeningNowIds.has(ev.id)) happeningRows.push(ev);
+    const happening = groupByDate(happeningRows);
+
+    /* 2/3. THIS WEEK and LATER, over `futureGroups` as before. Two exclusions are new: a
+       happening-now row has already been taken above, and a started-not-live row is routed to
+       the past list below. Later remains everything left over BY ELIMINATION. */
     const week = [];
     const later = [];
+    const startedNotLiveFromFuture = [];
     for (const group of futureGroups) {
-      const happeningItems = [];
       const weekItems = [];
       const laterItems = [];
       for (const ev of group.items) {
-        if (happeningNowIds.has(ev.id)) happeningItems.push(ev);
-        else if (thisWeekIds.has(ev.id)) weekItems.push(ev);
+        if (happeningNowIds.has(ev.id)) continue;
+        if (startedNotLiveIds.has(ev.id)) {
+          startedNotLiveFromFuture.push(ev);
+          continue;
+        }
+        if (thisWeekIds.has(ev.id)) weekItems.push(ev);
         else laterItems.push(ev);
       }
       // Each bucket keeps the group's own key/sample, so `formatDayHeader`, ordering and
       // timezone handling are byte-identical to the undivided render.
-      if (happeningItems.length > 0) happening.push({ ...group, items: happeningItems });
       if (weekItems.length > 0) week.push({ ...group, items: weekItems });
       if (laterItems.length > 0) later.push({ ...group, items: laterItems });
     }
-    return { happeningNowGroups: happening, thisWeekGroups: week, laterGroups: later };
+
+    /* 4. THE SHEET'S PAST LIST. Source = the rendered window `visiblePast`, minus every
+       happening-now member, plus the `futureGroups` rows in `startedNotLiveIds`, de-duplicated
+       by id.
+
+       THE APPENDED ROWS COME FROM `futureGroups`, NEVER FROM THE RAW SET. `startedNotLiveIds`
+       is built in `UserHomePage` off the whole event list; unioning it with `visiblePast`
+       directly would duplicate past rows. (It is bounded at the producer too — see its marker
+       there — so this is the second of two guards on that one mistake, which is the correct
+       number for it.)
+
+       ORDER IS EXPLICIT, not implied by the arithmetic: the source is built ASCENDING (window
+       first, then today's started-not-live rows, which are the most recent), and the existing
+       `[...].reverse()` turns that into most-recent-first — so the started-today rows head the
+       panel. A reversed concat here would ship silently green without a pin, and there is one. */
+    const keptWindow = visiblePast.filter((ev) => !happeningNowIds.has(ev.id));
+    const seen = new Set(keptWindow.map((ev) => ev.id));
+    const appended = [];
+    for (const ev of startedNotLiveFromFuture) {
+      if (seen.has(ev.id)) continue;
+      seen.add(ev.id);
+      appended.push(ev);
+    }
+    const pastSource = [...keptWindow, ...appended];
+
+    /* THE COUNT IS A SEPARATE NUMBER AND STAYS ALL-HISTORY — see the amended comment on the
+       disclosure below. `pastEvents` (all history) minus its happening-now members, plus the
+       `futureGroups` started-not-live rows. Never the rendered window. */
+    const pastTotal =
+      pastEvents.reduce((n, ev) => (happeningNowIds.has(ev.id) ? n : n + 1), 0) +
+      startedNotLiveFromFuture.length;
+
+    return {
+      happeningNowGroups: happening,
+      thisWeekGroups: week,
+      laterGroups: later,
+      sheetPastGroups: groupByDate([...pastSource].reverse()),
+      sheetPastTotal: pastTotal,
+    };
   })();
 
   const hasAnyEvents = pastGroups.length > 0 || futureGroups.length > 0;
@@ -475,7 +581,7 @@ export default function CalendarListView({
     return (
       <div className={shellClassName}>
         <div className="flex items-baseline justify-between">
-          <h3 className="text-lg font-semibold text-content-primary">Upcoming events</h3>
+          <Heading level={3} size="heading" className="text-content-primary">Upcoming events</Heading>
         </div>
         <div
           className={scrollRegionClassName}
@@ -502,12 +608,14 @@ export default function CalendarListView({
             a second "Upcoming events" heading inside the Calendar dialog is exactly the
             strict-mode collision the 11a sheet already has to disambiguate. `undefined` on the
             desktop arms emits no attribute, so their DOM is unchanged. */}
-        <h3
+        <Heading
+          level={3}
+          size="heading"
           id={isSheet ? upcomingHeadingId : undefined}
-          className="text-lg font-semibold text-content-primary"
+          className="text-content-primary"
         >
           Upcoming events
-        </h3>
+        </Heading>
         {tzAbbr && (
           <span className="text-xs text-content-muted">
             Times shown in {tzAbbr}
@@ -543,6 +651,20 @@ export default function CalendarListView({
               Collapsing these two sections back into one chronological feed re-opens the owner's
               walkthrough finding. It is a decision, not a cleanup.
 
+              AMENDED Phase 88.6-27 (W58 + W59, owner ruling 2026-09-09 D47 option a) —
+              everything above is unchanged: two sections, past collapsed by default, no
+              TodayDivider here, desktop arms untouched. What this adds is that the LINE between
+              the two sections is no longer purely the `k >= todayKey` date key. A LIVE game that
+              started before local midnight moves UP out of the collapsed Past disclosure into
+              Happening now (W59 — a game night in progress, buried, at this app's stated primary
+              moment), and a game that started earlier today and is no longer running moves DOWN
+              out of the upcoming section into the Past disclosure (W58). The bound is the run
+              window: the event's `duration_minutes` when it carries one, else the ruled default
+              of EIGHT HOURS. It is decided ONCE in `upcomingEvents.ts` and arrives here as set
+              membership — this file still performs no time comparison of its own. SHEET ARM
+              ONLY: the desktop arms pass no id sets (`EventCalendar.js:233-239`) and are
+              pixel-unchanged.
+
               AMENDED Phase 88.5 (D-04, OWNER RULING 2a) — section 1 now SUBDIVIDES; everything
               above is unchanged. The two-section upcoming-versus-past structure, the collapsed
               past disclosure, the absent TodayDivider and the untouched desktop arms all stand
@@ -561,6 +683,18 @@ export default function CalendarListView({
                    That is no worse than shipped (they had no treatment under the single header
                    either); building one is out of scope here and is registered against Phase 88.6
                    in `.planning/deferred/phase-88.6.md`.
+
+                   AMENDED Phase 88.6-27 (W58, owner ruling 2026-09-09 D47 option a): the bullet
+                   above stands for FUTURE-DATED cancelled and completed rows, which still land
+                   here. What changed is the row that has ALREADY STARTED: a cancelled or
+                   completed game that began earlier today leaves Later for the Past disclosure
+                   below, because "Later" promising a game that is already over is the defect
+                   W58 names. The boundary is the run window — the event's `duration_minutes`
+                   when it has one, else the ruled default of EIGHT HOURS — decided once in
+                   `upcomingEvents.ts` and delivered here as set membership. SHEET ARM ONLY: the
+                   desktop arms pass no id sets and are pixel-unchanged. The VISUAL half of W58
+                   (what a cancelled or completed row LOOKS like) is still unbuilt and is still
+                   Phase 88.9's.
 
               REJECTED, each a real defect avoided:
                 (a) WORDING-ONLY SCOPING of the single existing section — retitle it and leave one
@@ -604,9 +738,11 @@ export default function CalendarListView({
                 {/* 2. THIS WEEK — the only sub-section that carries the pill. */}
                 {thisWeekGroups.length > 0 && (
                   <div className="space-y-3">
-                    <h4
+                    <Heading
+                      level={4}
+                      size="label"
                       id={thisWeekId}
-                      className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-content-secondary"
+                      className="flex items-center gap-2 uppercase tracking-[0.08em] text-content-secondary"
                     >
                       This week
                       <UpcomingCountPill count={upcomingCount} />
@@ -618,7 +754,7 @@ export default function CalendarListView({
                       {upcomingCount !== null && upcomingCount > 0 && (
                         <span className="sr-only">, {upcomingCount} upcoming this week</span>
                       )}
-                    </h4>
+                    </Heading>
                     <section aria-labelledby={thisWeekId} className="space-y-6">
                       {thisWeekGroups.map((group) => (
                         <DateGroup
@@ -643,7 +779,7 @@ export default function CalendarListView({
                         literal `>Later<`, and a heading split across lines to satisfy a
                         formatter reads as absent to it. Single-text-child JSX on one line is
                         the shipped idiom in this file anyway. */}
-                    <h4 id={laterId} className="text-xs font-semibold uppercase tracking-[0.08em] text-content-secondary">Later</h4>
+                    <Heading level={4} size="label" id={laterId} className="uppercase tracking-[0.08em] text-content-secondary">Later</Heading>
                     <section aria-labelledby={laterId} className="space-y-6">
                       {laterGroups.map((group) => (
                         <DateGroup
@@ -670,13 +806,32 @@ export default function CalendarListView({
                   thisWeekGroups.length === 0 &&
                   laterGroups.length === 0 && (
                     <div className="flex items-center justify-center pt-4">
-                      <p className="text-content-secondary text-sm">No upcoming events</p>
+                      {/* DECISION Phase 88.6-27 (W18 / D2): this SECTION-level empty takes D2's
+                          recorded section MINI-FORMULA — one line of prose at
+                          `text-content-muted text-sm` — and the string is byte-unchanged (P1).
+
+                          REJECTED: `<EmptyState>`. Its own `DECISION Phase 88-18 (D2)` marker
+                          (EmptyState.tsx:18-28, owner ruling 2026-08-15, `88-UAT.md:222-236`)
+                          makes the full icon+heading+body formula PAGE-LEVEL ONLY and says in
+                          terms not to upgrade section empties as a cleanup. It is also
+                          unsatisfiable here: the component REQUIRES `icon`, `heading` and `body`
+                          while this site is a single `<p>`, and it would introduce an `h3` that
+                          this file's `EXPECTED_LEVELS` entry does not carry.
+
+                          GROUND: the sheet is `bg-surface-card` (`BottomSheet.tsx:213`), and
+                          `tokenContrast.test.ts` pins `--color-text-muted` on `--color-bg-card`
+                          at >= 4.5 in BOTH themes. Upgrading this to the full formula is a
+                          decision, not a cleanup. */}
+                      <p className="text-content-muted text-sm">No upcoming events</p>
                     </div>
                   )}
               </section>
 
-              {/* Section 2 — the past disclosure. Renders only when there IS history. */}
-              {pastEvents.length > 0 && (
+              {/* Section 2 — the past disclosure. Renders only when there IS history.
+                  Phase 88.6-27: gated on `sheetPastTotal`, the sheet's own all-history total,
+                  not on `pastEvents.length` — a row that is happening NOW has left this bucket
+                  and a row that started earlier today has joined it. */}
+              {sheetPastTotal > 0 && (
                 <div className="space-y-4">
                   {/* A real <button> via the shipped Button primitive, carrying the
                       aria-expanded / aria-controls pair (the idiom at `gameDetail/page.js`'s
@@ -695,7 +850,19 @@ export default function CalendarListView({
                       property of this control rather than of a global rule.
 
                       The count is `pastEvents.length` (ALL history), not the rendered window —
-                      it is telling the user how much there is, not how much is mounted. */}
+                      it is telling the user how much there is, not how much is mounted.
+
+                      AMENDED Phase 88.6-27 (W58 + W59): the ALL-HISTORY stance above is
+                      PRESERVED exactly; only the BUCKET MEMBERSHIP changed. The number is now
+                      `sheetPastTotal` — all of `pastEvents` minus its happening-now members,
+                      plus the `futureGroups` rows that started today and are no longer running
+                      — which is still every past row that exists, not the rendered window. Two
+                      consequences, both reasons NOT to "simplify" this onto the window list:
+                      a window-derived count would read "Past events (30)" on any group with
+                      more than `PAST_PAGE_SIZE` past rows, and gating the disclosure on a
+                      FILTERED window would unmount the rolling sentinel and its observer
+                      whenever every windowed row happened to be filtered out, making further
+                      paging impossible. */}
                   <Button
                     variant="ghost"
                     onClick={() => setPastExpanded((v) => !v)}
@@ -704,7 +871,7 @@ export default function CalendarListView({
                     className="w-full min-h-11"
                   >
                     <span className="flex w-full items-center justify-between gap-2">
-                      <span>Past events ({pastEvents.length})</span>
+                      <span>Past events ({sheetPastTotal})</span>
                       <Icon
                         name="ChevronDown"
                         size={18}
@@ -785,7 +952,22 @@ export default function CalendarListView({
                   divider still renders above; this just labels the empty card. */}
               {!hasAnyEvents && (
                 <div className="flex items-center justify-center pt-4">
-                  <p className="text-content-secondary text-sm">No events</p>
+                  {/* DECISION Phase 88.6-27 (W18 / D2): the desktop twin of the sheet's
+                      section empty above, on the same recorded MINI-FORMULA
+                      (`text-content-muted text-sm`), string byte-unchanged (P1).
+
+                      REJECTED: `<EmptyState>` — same reasoning as the sheet site; see the
+                      marker there rather than a second copy of it here.
+
+                      GROUND, VERIFIED rather than assumed: both desktop hosts wrap this
+                      component in `.card` (`EventCalendar.js:190`), whose `@utility card` rule
+                      is `background-color: var(--color-bg-card)` — the same ground
+                      `bg-surface-card` paints. `tokenContrast.test.ts` pins
+                      `--color-text-muted` on `--color-bg-card` at >= 4.5 in BOTH themes, so the
+                      muted rung is safe here too. It is NOT on a hover or sunken ground; if a
+                      future host changes that, this site goes back to
+                      `text-content-secondary`. */}
+                  <p className="text-content-muted text-sm">No events</p>
                 </div>
               )}
             </>
@@ -820,7 +1002,11 @@ const TodayDivider = forwardRef(function TodayDivider({ label }, ref) {
           its lexer fires on a BARE border token, so `border-t-2` with no colour was invisible to
           it, and 88-31 deletes that shim. Removing the colour re-opens both. */}
       <div className="absolute inset-x-0 top-1/2 border-t-2 border-line" aria-hidden="true" />
-      <span className="relative z-10 inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-content-link text-white shadow-theme-sm">
+      {/* UI-SPEC §4.5, the ratified EYEBROW role (Caption 12 / 700 / uppercase / tracking):
+          `text-xs` STAYS — 12px is this role's rung, not a miss — and only the WEIGHT moves,
+          600 -> 700. It remains a `<span>`: an eyebrow is not a heading, and making it one
+          would put a level into an outline that deliberately has none here. */}
+      <span className="relative z-10 inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-content-link text-white shadow-theme-sm">
         {label}
       </span>
     </div>
@@ -839,6 +1025,15 @@ const TodayDivider = forwardRef(function TodayDivider({ label }, ref) {
  * sheet's This-week/Later groups, which now nest one level below an `<h4>` sub-section
  * heading, demote to `h5`/`h6` so no two structurally-nested headings share a level.
  * Hard-coding either level back is a decision, not a cleanup: it flattens the outline.
+ *
+ * Phase 88.6-27 (D-05) — a note, not an amendment: every sentence above stands and the four
+ * `headingLevel="h5"` / `rowHeadingLevel="h6"` call sites are unchanged by this plan's sweep.
+ * Recorded because the sweep could easily look as if it had merely SURVIVED this decision by
+ * luck: the `Heading` primitive (`components/ui/Heading.tsx`) takes `level: 1..6` rather than
+ * the 1-4 an obvious reading of the heading contract would give it, and it does so SPECIFICALLY
+ * so this seam keeps working — its own `DECISION Phase 88.6-03 (D-05)` marker names this file
+ * and these line seams as the reason, and says a 1-4 primitive would bulldoze them. The
+ * decision was honoured deliberately.
  */
 function DateGroup({
   group,
@@ -853,7 +1048,10 @@ function DateGroup({
   const DayHeading = headingLevel;
   return (
     <section key={group.key} className="space-y-2">
-      <DayHeading className="text-sm font-semibold text-content-secondary uppercase tracking-wide pb-1 border-b border-line">
+      {/* UI-SPEC §4.5: HIERARCHY, so 600 -> 700. The 14px rung is unchanged — this is the
+          Label rung and it is on the scale already. The element stays the `headingLevel` seam
+          (see the DR2-7b marker above); only the weight utility moves. */}
+      <DayHeading className="text-sm font-bold text-content-secondary uppercase tracking-wide pb-1 border-b border-line">
         {formatDayHeader(group.sample)}
       </DayHeading>
       <div className="space-y-2">
@@ -1065,7 +1263,15 @@ const EventRow = forwardRef(function EventRow(
       }}
       role="button"
       tabIndex={0}
-      className={`p-3 sm:p-4 border border-line rounded-lg transition-all hover:shadow-md cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
+      /* DECISION Phase 88.6-27 (D49-b, owner ruling 2026-09-09 option i): `hover:shadow-md` ->
+         `hover:shadow-theme-md`. The alias spelling resolved to Tailwind v4's INLINED BLACK
+         default rather than this app's warm theme tier (`DECISION Phase 87.7`,
+         `globals.css:1141-1155`), so the hover hue changes visibly and deliberately.
+         PLAIN `hover:`, NOT `enabled-hover:`: this is a card `div`, not a `.btn` — the
+         enabled-hover variant exists to withhold the lift from a GATED CONTROL, and there is no
+         control here to gate. REJECTED: leaving the alias in place for visual continuity.
+         Re-spelling it back to `shadow-md` is a decision, not a cleanup. */
+      className={`p-3 sm:p-4 border border-line rounded-lg transition-all hover:shadow-theme-md cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${tinted ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
       style={{
         ...(tinted && {
           '--group-ground': ground,
@@ -1146,8 +1352,8 @@ const EventRow = forwardRef(function EventRow(
             <TitleHeading
               className={`${
                 isSheet
-                  ? 'font-semibold text-base min-w-0 line-clamp-2'
-                  : 'font-semibold text-base truncate'
+                  ? 'font-bold text-base min-w-0 line-clamp-2'
+                  : 'font-bold text-base truncate'
               } [color:var(--t-color-l)] dark:[color:var(--t-color)] [text-shadow:var(--t-shadow-l)] dark:[text-shadow:var(--t-shadow)] [-webkit-text-stroke:var(--t-stroke-l)] dark:[-webkit-text-stroke:var(--t-stroke)]`}
               style={titleVars}
             >
