@@ -136,3 +136,40 @@ describe('name cap + long-name layout (WI-F6)', () => {
     expect(screen.getByRole('button', { name: 'Remove' }).className).toContain('min-h-11');
   });
 });
+
+// Phase 88.6-29 task 3 — the R2 / §4.5 sweep outcomes for this row, pinned so a later
+// "consistency" pass cannot quietly put them back.
+describe('Phase 88.6-29 — the type/weight sweep outcomes', () => {
+  it("the read-only participant NAME is the row's ONE primary string at Body 16", () => {
+    renderRow({
+      participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true },
+    });
+    const container = screen.getByText('Alice', { exact: false }).closest('div')!;
+    // §4.3's primary-string clause, and the convergence argument: the EDITABLE twin is the
+    // `Input` primitive, which authors no size utility and therefore already renders at body
+    // size, so a member row and a custom row printed the same name at two sizes before this.
+    expect(container.className).toContain('text-base');
+    expect(container.className).not.toContain('text-sm');
+  });
+
+  it('the Guest chip carries the 700 pill/chip ink on BOTH branches, at Caption 12', () => {
+    renderRow({
+      participant: { user_id: 'uuid-alice', username: 'Alice', isFromGroup: true, is_guest: true },
+    });
+    const memberPill = screen.getByText('Guest');
+    // §4.5's pill/chip row: 400 is REJECTED for a filled chip (the fill/ink pairing needs the
+    // weight); 12px stays, because badge labels are an enumerated Caption role.
+    expect(memberPill.className).toContain('font-bold');
+    expect(memberPill.className).not.toContain('font-medium');
+    expect(memberPill.className).toContain('text-xs');
+    cleanup();
+
+    renderRow({
+      participant: { user_id: '', username: 'Casey', isFromGroup: false, is_guest: true },
+    });
+    const customPill = screen.getByText('Guest');
+    expect(customPill.className).toContain('font-bold');
+    expect(customPill.className).not.toContain('font-medium');
+    expect(customPill.className).toContain('text-xs');
+  });
+});

@@ -632,8 +632,18 @@ const EXPECTED_PROP_SEAMS = 5;
  * `size="heading"`, a disclosed 24 -> 20). The three CONVERGE on one rung from opposite
  * directions, which is what a 4-size working set is for. `EXPECTED_LEVELS`' `{ 2: 2, 3: 1 }`
  * entry for that file is byte-unchanged (P4) — the levels did not move, only the sizes.
+ *
+ * RAISED 84 -> 85 by plan 88.6-29 task 3 (2026-09-16): ONE more — `RsvpSection.js:162`'s RSVP card
+ * title, `h3 text-sm font-semibold` -> `<Heading level={3} size="label">`. NO size movement: §4.4's
+ * table rules `h3 @ 14` STAYS and names this very site, so `label` (14) is the rung it already
+ * rendered at; this migration moves the WEIGHT (600 -> 700, from the cva base) and nothing else.
+ * `size` is passed explicitly even though level 3 would derive `heading` — §4.4 requires the call
+ * site to state it, and here the derived value would have been WRONG. This file's `EXPECTED_LEVELS`
+ * entry (`{ 3: 1 }`) is byte-unchanged (P4). This constant is `>=`, so leaving it unraised would
+ * have been SILENTLY green; it is raised in the same commit as the migration, per this docblock's
+ * own rule.
  */
-const EXPECTED_MIN_PRIMITIVES = 84;
+const EXPECTED_MIN_PRIMITIVES = 85;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -877,11 +887,13 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ResponseDashboard.js`
   // carried `sites: 1` (h3:154 `font-semibold`). Migrated onto `<Heading>`, whose cva base is
   // `font-bold`, so the call site states no weight at all. Deleted, not zeroed.
-  'app/components/RsvpSection.js': {
-    sites: 1,
-    why: '1 heading carrying the prohibited 600 weight (h3:162) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-29 task 3 (wave 7, 2026-09-16): `app/components/RsvpSection.js`
+  // carried `sites: 1` (h3:162 pre-edit, `font-semibold text-content-primary text-sm`). It is
+  // `<Heading level={3} size="label" className="text-content-primary">` now — the LEVEL is
+  // preserved (P4) and the RUNG does not move, because §4.4's table rules `h3 @ 14` STAYS and
+  // names this exact site. Only the weight moved, and it moved by leaving the call site: the 700
+  // comes from the primitive's `font-bold` cva base, so `font-semibold` is deleted rather than
+  // promoted. Deleted, not zeroed.
   // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ScheduleList.js`
   // carried `sites: 1` (h3:91 `font-semibold`). Migrated onto `<Heading>`; the 700 comes from
   // the primitive's cva base. Deleted, not zeroed.
@@ -949,11 +961,10 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ResponseDashboard.js`
   // carried `sites: 1` (h3:154). RAW-ONLY supply rule; the heading is no longer a raw `<hN>`
   // tag, so the file leaves the population rather than decrementing. Deleted, not zeroed.
-  'app/components/RsvpSection.js': {
-    sites: 1,
-    why: '1 raw heading not stating the 700 weight (h3:162 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-29 task 3 (wave 7, 2026-09-16): `app/components/RsvpSection.js`
+  // carried `sites: 1` (h3:162 pre-edit). RAW-ONLY supply rule; it is no longer a raw `<hN>` tag,
+  // so the file leaves this population rather than decrementing, and its 700 is now supplied by
+  // `Heading`'s cva base and pinned in `Heading.test.tsx`. Deleted, not zeroed.
   // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ScheduleList.js`
   // carried `sites: 1` (h3:91). RAW-ONLY supply rule; no longer a raw `<hN>` tag, so the file
   // leaves the population rather than decrementing. Deleted, not zeroed.
@@ -2041,12 +2052,12 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // and not an `<hN>`, so it never entered the heading rosters and the A1 heading-`truncate`
   // ruling does not reach it — `truncate` is byte-unchanged. This file's ERROR HANDLING is the
   // phase's R1 reference implementation and is byte-unchanged by that plan. Deleted, not zeroed.
-  'app/components/ParticipantRow.js': {
-    sites: 2,
-    why:
-      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-29.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-29 task 3 (wave 7, 2026-09-16): `app/components/ParticipantRow.js`
+  // carried `sites: 2` (2 font-medium, 0 font-semibold) — the two Guest chips, one per branch
+  // (member row and custom row). BOTH took §4.5's PILL/CHIP-INK outcome, `font-medium` ->
+  // `font-bold`, with 400 REJECTED because a filled chip's fill/ink pairing needs the weight;
+  // 12px stays, since badge labels are an enumerated Caption role. Confirmed per site rather than
+  // taken from the entry's lead. Zero off-scale weight sites remain. Deleted, not zeroed.
   // DELETED by plan 88.6-15 (2026-09-16): `app/components/PromptScheduleManager.js` carried
   // `sites: 1` (0 font-medium, 1 font-semibold). The §4.5 outcome lead was HIERARCHY (700) and
   // that is what landed — not as a `font-bold` utility at the call site, but by migrating the
@@ -2074,18 +2085,30 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // carried `sites: 1` (0 font-medium, 1 font-semibold) — the h3 at `:154`, and the entry's
   // stated outcome lead (hierarchy -> 700) is what it took: it migrated onto `<Heading>`, whose
   // cva base supplies `font-bold`. Zero off-scale weight sites remain. Deleted, not zeroed.
-  'app/components/RsvpCount.js': {
-    sites: 3,
-    why:
-      '3 off-scale weight sites (3 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-29.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
-  'app/components/RsvpSection.js': {
-    sites: 7,
-    why:
-      '7 off-scale weight sites (5 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-11, 88.6-22, 88.6-28, 88.6-29, 88.6-30, 88.6-43, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-29 task 3 (wave 7, 2026-09-16): `app/components/RsvpCount.js` carried
+  // `sites: 3` (3 font-medium, 0 font-semibold) — the going/maybe/can't spans of the FULL variant.
+  // All three took §4.5's EMPHASIS outcome (400 plus a colour token) and the utility was DELETED
+  // with no colour delta, because each span already carried its own `text-content-status-*` token.
+  // Same call, same commit, as the count banner in `RsvpSection.js`, which renders the same three
+  // numbers. The COMPACT variant authors no weight and no size at all and is byte-unchanged — it
+  // inherits from the month tile plan 88.6-27 folded to the 12px floor. Deleted, not zeroed.
+  // DELETED by plan 88.6-29 task 3 (wave 7, 2026-09-16): `app/components/RsvpSection.js` carried
+  // `sites: 7` (5 font-medium, 2 font-semibold) and ALL THREE of §4.5's outcomes applied, so the
+  // entry's single stated lead ("hierarchy (700)") was right for two of the seven and wrong for
+  // five. Confirmed PER SITE:
+  //   - HIERARCHY -> 700: the `font-semibold` h3 at `:162` (left the population by migrating onto
+  //     `<Heading>`, whose cva base is `font-bold`), and the section EYEBROW at `:285`, which
+  //     §4.5's Eyebrow row names by file:line and rules Caption 12 / 700 / uppercase / tracking —
+  //     `font-semibold` -> `font-bold`, WEIGHT ONLY. Its `tracking-wider` is deliberately NOT
+  //     converged onto the reference site's `tracking-wide`; marker at the site.
+  //   - EMPHASIS -> 400 + a colour token: the answered-status sentence (`:179` pre-edit, which
+  //     already carried `statusConfig[...].textColor`) and the three count-banner spans
+  //     (`:259`/`:265`/`:271` pre-edit, each already carrying its `text-content-status-*` token).
+  //     All four deleted the utility with no colour delta.
+  //   - The status TRIO's `font-medium` (`:200` pre-edit) also took 400: the buttons already carry
+  //     `text-content-primary` when selected and `text-content-secondary` when not, and the trio
+  //     is a bare `<button>` (never a `.btn`), so no Button-owned 600 applies to it.
+  // Zero off-scale weight sites remain in the file. Deleted, not zeroed.
   // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ScheduleForm.js`
   // carried `sites: 1` (1 font-medium, 0 font-semibold) — the field label at `:351`. §4.5's
   // EMPHASIS outcome: 400 plus the `text-content-secondary` token it already carried, so

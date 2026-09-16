@@ -9,6 +9,7 @@ import { statusConfig } from './rsvpStatusConfig';
 import { Textarea } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { StatusRegion } from '../../components/ui/StatusRegion';
+import { Heading } from '../../components/ui/Heading';
 import { formatDateTime } from '../../lib/datetime';
 import { logger, errCtx } from '@/lib/logger';
 
@@ -308,7 +309,18 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
           visible (count banner + grouped list below render
           unconditionally). */}
       <div className="bg-surface-elevated px-4 py-3 border-b border-line">
-        <h3 className="font-semibold text-content-primary text-sm">
+        {/* D-03 / W36 / UI-SPEC §4.4: the LEVEL is preserved (P4) and the SIZE is stated
+            explicitly even though level 3 would derive `heading` — §4.4 requires the call site to
+            record the choice. `label` (14) is what the table rules for `h3 @ 14`, which names
+            this very site: the rung does NOT move, only the weight does, and the 700 comes from
+            the primitive's `font-bold` base rather than a stated utility, so `font-semibold` is
+            deleted rather than promoted. The colour rides on `className`.
+
+            The `(closed)` qualifier below STAYS at Caption 12 / 400, and that is a call rather
+            than an oversight: it is a parenthetical status qualifier riding INSIDE the heading,
+            and folding it to 14 would render it at the same size as the heading it qualifies,
+            destroying the only hierarchy the pair has. */}
+        <Heading level={3} size="label" className="text-content-primary">
           {isPastEvent ? (
             <>
               Who came
@@ -317,7 +329,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
           ) : (
             'RSVP'
           )}
-        </h3>
+        </Heading>
       </div>
 
       <div className="p-4 space-y-4">
@@ -325,7 +337,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
         {!isPastEvent && (
           <div>
             {selectedStatus ? (
-              <p className={`text-sm font-medium ${statusConfig[selectedStatus].textColor}`}>
+              <p className={`text-sm ${statusConfig[selectedStatus].textColor}`}>
                 {statusConfig[selectedStatus].label}
               </p>
             ) : (
@@ -388,7 +400,7 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                   aria-disabled={isLoading || undefined}
                   onClick={() => handleStatusClick(status)}
                   disabled={otherInFlight}
-                  className={`flex-1 min-h-11 px-3 text-sm font-medium active:opacity-75 transition-colors first:rounded-l-[inherit] last:rounded-r-[inherit] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset
+                  className={`flex-1 min-h-11 px-3 text-sm active:opacity-75 transition-colors first:rounded-l-[inherit] last:rounded-r-[inherit] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset
                     ${idx > 0 ? 'border-l border-line' : ''}
                     ${isActive
                       ? `${config.activeBg} ${config.activeBorder} border-2 text-content-primary`
@@ -571,19 +583,19 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
         {totalResponses > 0 && (
           <div className="flex items-center gap-3 text-sm">
             {summary.yes > 0 && (
-              <span className="text-content-status-success font-medium">{summary.yes} Yes</span>
+              <span className="text-content-status-success">{summary.yes} Yes</span>
             )}
             {summary.yes > 0 && (summary.maybe > 0 || summary.no > 0) && (
               <span className="text-line-strong">|</span>
             )}
             {summary.maybe > 0 && (
-              <span className="text-content-status-warning font-medium">{summary.maybe} Maybe</span>
+              <span className="text-content-status-warning">{summary.maybe} Maybe</span>
             )}
             {summary.maybe > 0 && summary.no > 0 && (
               <span className="text-line-strong">|</span>
             )}
             {summary.no > 0 && (
-              <span className="text-content-muted font-medium">{summary.no} No</span>
+              <span className="text-content-muted">{summary.no} No</span>
             )}
           </div>
         )}
@@ -597,13 +609,40 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
               if (group.length === 0) return null;
               return (
                 <div key={status}>
-                  <p className={`text-xs font-semibold uppercase tracking-wider mb-1 ${config.textColor}`}>
+                  {/* DECISION Phase 88.6-29 (D-03/W36, UI-SPEC §4.5 Eyebrow row, which names THIS
+                      site): converges on the ratified EYEBROW role — Caption 12 / 700 / uppercase
+                      / tracking — by moving the WEIGHT ONLY, 600 -> 700. The ruling this matches
+                      is the one in `CalendarListView.js:1005-1008`'s own marker: "`text-xs` STAYS
+                      — 12px is this role's rung, not a miss — and only the WEIGHT moves". All of
+                      it holds here: 12px stays, uppercase stays, the element stays a `<p>`, 700
+                      lands. This plan's text said to leave the site byte-identical IF it already
+                      matched the role; MEASURED, it did not — it was 600, and §4.5 rules 700.
+
+                      REJECTED — converging the TRACKING VALUE too (`tracking-wider`, 0.05em, to
+                      `CalendarListView.js:1009`'s `tracking-wide`, 0.025em). On the merits ONE
+                      tracking value across the role would be tidier, and that answer is stated
+                      rather than buried. The record outranks it for a CONSEQUENCE reason, not a
+                      bookkeeping one: the swap is a VISIBLE letter-spacing change at 375px and
+                      §1.2's sanctioned-delta list has no tracking row — V-6 sanctions "weights
+                      500/600 -> 400 or 700" and nothing wider. Plan 28 made the identical call at
+                      `NextGameNightCard.tsx:389` and plan 22 at the site cited above; a third
+                      spelling of it here would be the drift. Re-spacing the eyebrow family is a
+                      look decision and belongs to a plan that opens a V-row for it. */}
+                  <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${config.textColor}`}>
                     {config.sectionTitle} ({group.length})
                   </p>
                   <div className="space-y-1">
                     {group.map((rsvp) => (
                       <div key={rsvp.id} className="flex flex-col">
-                        <span className="text-sm text-content-primary">
+                        {/* R2 / UI-SPEC §4.3: the respondent NAME is this row's ONE primary
+                            string and takes Body 16 (V-4). The counter-argument recorded at
+                            `UpcomingEventsCard.js:265-281` — do NOT promote one span inside an
+                            inline run, because a 16px word beside 14px words on one baseline is
+                            an unsanctioned visible delta — does NOT reach here: this row is a
+                            `flex flex-col` STACK of a name line over a note line, so the
+                            promotion produces the hierarchy §4.3 is written to produce instead
+                            of splitting a run. */}
+                        <span className="text-base text-content-primary">
                           {/* Phase 87.3-04: guard + key the friend-request
                               affordance on the nested User.id UUID, not the
                               sub-shaped nested-sub field — so PR-C dropping that
@@ -617,7 +656,11 @@ export default function RsvpSection({ eventId, self, eventDate, onRsvpChange }) 
                           )}
                         </span>
                         {rsvp.note && (
-                          <span className="text-xs text-content-muted ml-0 mt-0.5">{rsvp.note}</span>
+                          /* UI-SPEC §4.2: a member's note is BODY COPY, and Caption's closed role
+                             list forbids body copy in as many words. §4.2's stated landing rung
+                             for 12px misuse is 14, not 16 — it is this row's metadata line under
+                             the name above it, not running prose. Folds 12 -> 14. */
+                          <span className="text-sm text-content-muted ml-0 mt-0.5">{rsvp.note}</span>
                         )}
                       </div>
                     ))}
