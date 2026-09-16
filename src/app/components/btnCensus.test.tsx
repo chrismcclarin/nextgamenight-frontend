@@ -415,11 +415,24 @@ const BTN_EXEMPT: ExemptionRoster = {
   // per-site ring string), now `<Button variant="secondary">`. `text-sm` was DEAD under
   // unlayered `.btn` (`globals.css:2201`) and is deleted rather than moved; the ring retired to
   // the primitive's base. Entry DELETED, not zeroed.
-  'app/components/LandingPage.js': {
-    sites: 1,
-    why: 'plan 88.6-35 sweeps the marketing, legal and tutorial surfaces, LandingPage.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-35 task 1 (wave 7, 2026-09-16): `app/components/LandingPage.js`
+  // carried `sites: 1` and the count was EXACT — `grep -n '\bbtn\b'` over the file returned
+  // exactly one className, the logged-out hero "Get Started" CTA (element `:23`, className
+  // `:25` pre-edit). It is now `<Button asChild variant="primary">` wrapping the SAME `<a
+  // href="/api/auth/login">`: the child element kind is unchanged, because a client-router
+  // `<Link>` navigation to an Auth0 handoff route is a behaviour change, not a cleanup
+  // (UI-SPEC §3.2 asChild row). `px-8 py-4 text-lg font-bold text-center transition-all` all
+  // GO as dead under unlayered `.btn`; `shadow-theme-lg` and `w-full sm:w-auto` STAY, and
+  // `hover:shadow-xl` is replaced by `enabled-hover:shadow-theme-lg` rather than carried.
+  //
+  // THE SITE THIS DELETION IS NOT SIGNED OFF ON IS NAMED ON PURPOSE. The Google sign-in CTA
+  // in the same flex row (`:55-74` pre-edit) is NOT a census site and must never be counted
+  // as one: its className carries `rounded-btn` and never `btn`. `88.6-CONTEXT.md` D-02 and
+  // `88.6-UI-SPEC.md` §4.3 `:328` both used to say it was a second `.btn` element; the file
+  // said otherwise and §4.3 was amended on 2026-09-09. Its `text-lg px-8 py-4` are ALIVE, it
+  // is guarded by two DECISION markers, and migrating it would land `ring-offset-2` beside
+  // its `ring-inset` — a 2px white band inside the OI-7 amber ring that no contrast measure
+  // can see. Entry DELETED rather than zeroed; the count is exact in both directions.
   // DELETED by plan 88.6-32 task 3 (wave 7, 2026-09-16): `app/components/OpenPollsList.js`
   // carried `sites: 1` — the header "+ Start a check-in" CTA, `btn btn-primary mb-4 min-h-11`.
   // It is now `<Button variant="primary" className="mb-4">`: `min-h-11` GOES (the cva base

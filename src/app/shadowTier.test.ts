@@ -174,40 +174,64 @@ interface Element {
  * AC-11: the ONE enumeration. 194 non-test files / 3298 readable opening tags, measured
  * 2026-09-15.
  */
-const ELEMENTS: Element[] = (() => {
+//
+// EXTRACTED by plan 88.6-35 task 1 (2026-09-16) from the IIFE that used to inline this loop.
+// The reason is not tidiness: plan 35 closed the tree's LAST live off-tier site, so tests 2
+// and 3 now scan a population of zero and would pass forever on a broken lexer. The fixture
+// positive control in test 2 needs to run THIS EXACT tokenizer over synthetic source — and
+// writing the loop a second time for the fixture would mean the fixture could agree with a
+// lexer the real scan no longer uses. One function, two callers.
+function elementsFrom(rel: string, raw: string): Element[] {
   const out: Element[] = [];
-  for (const file of sourceFiles(SRC)) {
-    const raw = fs.readFileSync(file, 'utf8');
-    const scannable = withoutComments(raw);
-    const rel = path.relative(SRC, file);
-    // Both DOM tags and components: `<Button`, `<Link`, `<Modal.Action` all matter here.
-    const opener = /<[A-Za-z][A-Za-z0-9.]*(?=[\s/>])/g;
-    let match: RegExpExecArray | null;
-    while ((match = opener.exec(scannable)) !== null) {
-      const tag = readOpeningTag(scannable, match.index);
-      if (!tag) continue;
-      const tokens = tag
-        .split(/[\s"'`{}()]+/)
-        .filter(Boolean)
-        .map((rawToken) => ({ raw: rawToken, base: rawToken.replace(STRIP_VARIANTS, '') }));
-      out.push({ rel, line: raw.slice(0, match.index).split('\n').length, tag, tokens });
-    }
+  const scannable = withoutComments(raw);
+  // Both DOM tags and components: `<Button`, `<Link`, `<Modal.Action` all matter here.
+  const opener = /<[A-Za-z][A-Za-z0-9.]*(?=[\s/>])/g;
+  let match: RegExpExecArray | null;
+  while ((match = opener.exec(scannable)) !== null) {
+    const tag = readOpeningTag(scannable, match.index);
+    if (!tag) continue;
+    const tokens = tag
+      .split(/[\s"'`{}()]+/)
+      .filter(Boolean)
+      .map((rawToken) => ({ raw: rawToken, base: rawToken.replace(STRIP_VARIANTS, '') }));
+    out.push({ rel, line: raw.slice(0, match.index).split('\n').length, tag, tokens });
   }
   return out;
-})();
+}
+
+const ELEMENTS: Element[] = sourceFiles(SRC).flatMap((file) =>
+  elementsFrom(path.relative(SRC, file), fs.readFileSync(file, 'utf8')),
+);
 
 const FILE_COUNT = new Set(ELEMENTS.map((e) => e.rel)).size;
 
 /** Every element whose opening tag carries a token matching `family`. */
-function sitesMatching(family: RegExp): { rel: string; line: number; token: string }[] {
+function sitesMatching(
+  family: RegExp,
+  elements: readonly Element[] = ELEMENTS,
+): { rel: string; line: number; token: string }[] {
   const out: { rel: string; line: number; token: string }[] = [];
-  for (const element of ELEMENTS) {
+  for (const element of elements) {
     for (const { raw, base } of element.tokens) {
       if (family.test(base)) out.push({ rel: element.rel, line: element.line, token: raw });
     }
   }
   return out;
 }
+
+//
+// The fixture the off-tier rule's anti-vacuity duty passed to when its live population
+// reached zero. It carries one site per off-tier spelling INCLUDING a variant-prefixed one
+// (`enabled-hover:shadow-2xl`), because `STRIP_VARIANTS` is the half of the match a broken
+// edit is most likely to take out, plus a `shadow-theme-lg` that must NOT be flagged.
+const FIXTURE_OFF_TIER_SOURCE = `
+  export const F = () => (
+    <div className="shadow-xl">
+      <span className="enabled-hover:shadow-2xl" />
+      <button className="shadow-theme-lg">safe</button>
+    </div>
+  );
+`;
 
 /** Per-file occurrence counts, keyed the way `ExemptionRoster` is keyed. */
 function countByFile(sites: { rel: string }[]): Record<string, number> {
@@ -324,11 +348,16 @@ const ALIAS_ROSTER: ExemptionRoster = {
  * would make one file's two independent debts share a single count.
  */
 const OFF_TIER_ROSTER: ExemptionRoster = {
-  'app/components/LandingPage.js': {
-    sites: 1,
-    why: '`hover:shadow-xl` on the logged-out hero CTA (:23, className at :25) — named by D-14b. `--shadow-xl` is undeclared, so this falls through to Tailwind\'s default. Plan 35 closes it; the element is a `.btn`, so its replacement hover pin takes `enabled-hover:`.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 D-14b / UI-SPEC §3.4 rule 1' },
-  },
+  // `app/components/LandingPage.js` CLOSED by plan 88.6-35 task 1 (wave 7, 2026-09-16): the
+  // logged-out hero CTA's `hover:shadow-xl` is now `enabled-hover:shadow-theme-lg`, which
+  // closes the off-tier half and this file's HOVER_PIN_ROSTER half in ONE class. The premise
+  // was RE-MEASURED at this commit rather than inherited: `grep -c -- '--shadow-xl'
+  // src/app/globals.css` returns 0, so the class really did fall through to Tailwind's
+  // inlined black default rather than the re-tinted project ladder. THIS WAS THE LAST LIVE
+  // OFF-TIER SITE IN THE TREE — test 2's off-tier floor drops 1 -> 0 in this same commit, and
+  // the anti-vacuity duty it was carrying moves to the FIXTURE positive control added there,
+  // exactly as its own comment instructed. Entry DELETED rather than zeroed; the roster is
+  // exact in both directions.
   // `app/groupHomePage/page.js` CLOSED by plan 88.6-21 task 2 (wave 7, 2026-09-16): the "Plan
   // Game Session" CTA's `hover:shadow-xl` is now `enabled-hover:shadow-theme-lg`, which closes
   // the off-tier half and the bare-`hover:`-pin half in one edit. Entry DELETED rather than
@@ -360,11 +389,12 @@ const OFF_TIER_ROSTER: ExemptionRoster = {
  * `enabled-hover:` one, so BOTH would survive the merge and the control would still shrink.
  */
 const HOVER_PIN_ROSTER: ExemptionRoster = {
-  'app/components/LandingPage.js': {
-    sites: 1,
-    why: 'The hero CTA (:23) carries `shadow-theme-lg` with `hover:shadow-xl` — a bare `hover:` pin AND an off-tier value, so it fails this rule on both counts. Plan 35 replaces it with `enabled-hover:shadow-theme-lg` in the same edit that closes the off-tier entry.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 / UI-SPEC §3.4 rule 2' },
-  },
+  // `app/components/LandingPage.js` CLOSED by plan 88.6-35 task 1 (wave 7, 2026-09-16): the
+  // hero CTA is now `<Button asChild variant="primary">` carrying
+  // `shadow-theme-lg enabled-hover:shadow-theme-lg` — ONE custom variant on both sides, so
+  // twMerge sees the pin and the base's `enabled-hover:shadow-theme-md` as a conflicting pair
+  // and dedupes. Without the pin the base would have SHRUNK this control's resting `lg` on
+  // hover. Entry DELETED rather than zeroed; the roster is exact in both directions.
   // `app/groupHomePage/page.js` CLOSED by plan 88.6-21 task 2 (wave 7, 2026-09-16): both
   // subjects — "Plan Game Session" and the Add-New-Game-Event CTA, now `<Button asChild
   // variant="primary">` and `<Button variant="accent">` — carry
@@ -436,13 +466,39 @@ describe('D-14b / D49-b: the three-tier shadow rule', () => {
     // survivor is `LandingPage.js:23` (plan 35). When plan 35 closes it this floor reaches ZERO
     // and the rule becomes vacuous — at that point the anti-vacuity duty passes to a FIXTURE,
     // the shape test 11 already uses, not to deleting this assertion.
+    //
+    // 1 -> 0, plan 88.6-35 task 1 (wave 7, 2026-09-16), same form and same rule, and this is
+    // the terminal step the comment above predicted: the DEPARTING SITE is `LandingPage.js`'s
+    // logged-out hero CTA, whose `hover:shadow-xl` is now `enabled-hover:shadow-theme-lg` and
+    // whose OFF_TIER_ROSTER entry is deleted in this same commit. ZERO live off-tier sites
+    // remain in the tree, so this half of the floor is now an EXACT-ZERO assertion — a NEW
+    // off-tier site appearing anywhere reds it, which is the direction that matters from here.
+    // The anti-vacuity duty it used to carry is discharged by the fixture positive control
+    // below, which runs the REAL tokenizer over synthetic source; without it, a lexer that
+    // stopped matching would leave tests 2 and 3 green forever.
     expect(
       offTierSites.map((s) => `${s.rel}:${s.line} ${s.token}`),
-      'the off-tier scan located fewer than 1 site. If the last known live subject was ' +
-        'closed, delete its roster entry and lower this floor in the same commit, recording ' +
-        'why — otherwise the token match broke.',
-    ).toHaveLength(1);
+      'an off-tier `shadow-(xs|xl|2xl|inner)` site appeared in the tree. Every known one was ' +
+        'closed by plan 88.6-35; a new one needs a roster entry with an owner, or the class ' +
+        'snapped to the ladder.',
+    ).toHaveLength(0);
     expect(aliasSites.length, 'the alias scan located nothing').toBeGreaterThan(0);
+
+    // FIXTURE POSITIVE CONTROL (the anti-vacuity duty, inherited from the live population).
+    // Runs `elementsFrom` — the SAME tokenizer the real scan uses — over synthetic source, so
+    // a broken opener regex, a broken `readOpeningTag` bound or a broken `STRIP_VARIANTS`
+    // reds here even though no real file carries an off-tier class any more.
+    const fixture = elementsFrom('fixture/offTier.tsx', FIXTURE_OFF_TIER_SOURCE);
+    expect(
+      sitesMatching(OFF_TIER, fixture).map((s) => s.token),
+      'the off-tier scan no longer locates its own fixture — the token match or the element ' +
+        'lexer broke. The live population is ZERO, so this fixture is the only thing standing ' +
+        'between a broken scanner and a permanently green rule.',
+    ).toEqual(['shadow-xl', 'enabled-hover:shadow-2xl']);
+    expect(
+      sitesMatching(ALIAS, fixture),
+      'the fixture`s `shadow-theme-lg` is the CORRECT spelling and must not be flagged',
+    ).toEqual([]);
   });
 
   it('3. flags `shadow-(xs|xl|2xl|inner)` in every variant form (family (a), unconditional rule)', () => {

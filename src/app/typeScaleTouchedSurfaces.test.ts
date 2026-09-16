@@ -642,8 +642,17 @@ const EXPECTED_PROP_SEAMS = 5;
  * entry (`{ 3: 1 }`) is byte-unchanged (P4). This constant is `>=`, so leaving it unraised would
  * have been SILENTLY green; it is raised in the same commit as the migration, per this docblock's
  * own rule.
+ *
+ * RAISED 85 -> 88 by plan 88.6-35 task 1 (2026-09-16): THREE more — `LandingPage.js`'s three
+ * feature-card titles (`h3 text-xl font-bold` -> `<Heading level={3} size="heading">`). NO size
+ * movement: `text-xl` IS Heading 20, so the rung they already rendered at is the one the
+ * primitive supplies; the migration moves the WEIGHT's SOURCE (a stated `font-bold` -> the cva
+ * base) and nothing else. The file's `EXPECTED_LEVELS` entry (`{ 1: 1, 2: 1, 3: 3 }`) is
+ * byte-unchanged (P4). The file's OTHER two headings — the hero h1 at `:15` and the section h2
+ * at `:82` — are deliberately NOT migrated and are NOT counted here: both are Phase 88.9 W55
+ * exemptions with site comments and roster provenance.
  */
-const EXPECTED_MIN_PRIMITIVES = 85;
+const EXPECTED_MIN_PRIMITIVES = 88;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -751,6 +760,24 @@ const RUNG_ROSTER: ExemptionRoster = {
     why: '4 headings off the 4-size working set (h3:610 text-lg; h3:697 text-lg; h3:1019 text-lg; h3:1091 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
+  // THE THREE W55 SITES IN `LandingPage.js`, ENUMERATED ONCE HERE by plan 88.6-35 task 1
+  // (wave 7, 2026-09-16), because only two of them are COUNTABLE by any roster in this file
+  // and a reader who finds one needs to be able to find the other two:
+  //   :15  the hero h1, `text-5xl md:text-6xl` — countable TWICE, by this entry (off the
+  //        working set) and by BREAKPOINT_ROSTER (a heading whose size changes at a
+  //        breakpoint). Unswept; site comment at the element.
+  //   :82  the section h2, `text-3xl` — NOT COUNTABLE BY ANYTHING. 30 is §4.1's Display rung,
+  //        so it is not a rung violation; these rules check rung MEMBERSHIP, not role fit.
+  //        RESEARCH §C.4 found that D-04's heading table has no "h2 @ 30" row at all, which
+  //        makes its destination a LOOK call rather than a rung snap. Plan 11 measured this
+  //        (its plan text said seed `sites: 2`; the measurement said 1) and plan 35 confirms
+  //        it. The site comment in `LandingPage.js` is the ONLY thing holding it.
+  //   :57  the Google sign-in CTA's live `text-lg` and `font-semibold` — the weight half is
+  //        countable in WEIGHT_ROSTER (see that entry, whose `why` and `owner` plan 35
+  //        corrected: it read "dead on a .btn (delete)" and the element wears `rounded-btn`,
+  //        never `btn`, so its sizing is ALIVE). The SIZE half is not countable here: this
+  //        file's rules are heading-scoped and `:57` is an `<a>`.
+  // All three are the SAME owner ruling of 2026-09-08 and all three carry a site comment.
   'app/components/LandingPage.js': {
     sites: 1,
     why: 'Phase 88.9 W55 owns the landing hero block: 1 heading off the 4-size working set (h1:15 text-5xl md:text-6xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
@@ -2012,11 +2039,26 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. 1 of these is a PERMANENT armed-state 600 (see ARMED_STATE_600_ROSTER), so this entry floors at 1 rather than at zero. Owning plans: 88.6-11, 88.6-12, 88.6-16, 88.6-17, 88.6-18, 88.6-31.',
     owner: { kind: 'decision', marker: 'DECISION Phase 65-02 EVT-08' },
   },
+  // OUTCOME LEAD CORRECTED, NOT ABSORBED, by plan 88.6-35 task 1 (wave 7, 2026-09-16). This
+  // entry's `why` read "dead on a .btn (delete)". THE ONE SITE IS NOT ON A `.btn` AND ITS
+  // WEIGHT IS ALIVE: the `font-semibold` belongs to the Google sign-in CTA, whose className
+  // carries `rounded-btn` and never `btn` (the file's ONE real `.btn` element was the hero
+  // "Get Started" CTA, whose `font-bold` was on-scale and therefore never in this roster at
+  // all, and which is now a `<Button>`). Followed literally, the old lead would have deleted a
+  // live 600 off a marker-protected control — silently, since no gate measures rendered
+  // weight. The COUNT was right and only the lead was wrong, which is exactly why the roster
+  // requires the owning sweep to confirm the outcome per site rather than apply the lead.
+  //
+  // The site is not swept: it is the THIRD Phase 88.9 W55 exemption site in this file (see the
+  // enumeration above RUNG_ROSTER's entry for it), under the same owner ruling of 2026-09-08,
+  // so the `owner` moves from `spec` to that `owner` provenance. The entry floors at 1 rather
+  // than at zero for as long as W55 owns the element, and a SECOND off-scale weight appearing
+  // in this file still reds.
   'app/components/LandingPage.js': {
     sites: 1,
     why:
-      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-01, 88.6-04, 88.6-10, 88.6-11, 88.6-12, 88.6-21, 88.6-34, 88.6-35, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+      '1 off-scale weight site (0 font-medium, 1 font-semibold), the LIVE 600 on the Google sign-in CTA (`:57` pre-plan-35, className carries `rounded-btn` and never `btn`). UI-SPEC §4.5 outcome: EXEMPT — Phase 88.9 W55 owns this element\'s size AND its look, and it is guarded by the Phase 88.3 OI-7 marker and the Phase 88-22 Google-brand-fill marker. Floors at 1, not at zero. Owning plans: 88.6-01, 88.6-04, 88.6-10, 88.6-11, 88.6-12, 88.6-21, 88.6-34, 88.6-35, 88.6-46.',
+    owner: { kind: 'owner', date: '2026-09-08', ruling: 'Phase 88.9 W55 owns the landing hero block\'s sizes' },
   },
   // DELETED by plan 88.6-19 task 2 (wave 7, 2026-09-16): `app/components/ManageMembers.js`
   // carried `sites: 11` (2 font-medium, 9 font-semibold). ZERO remain, so the entry is deleted
