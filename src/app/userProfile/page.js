@@ -460,7 +460,10 @@ function Profile(){
                 // sections the hand-rolled panel drew by hand.
                 group: slashIndex > -1 ? tz.value.substring(0, slashIndex) : 'Other',
                 label: (
-                    <span className={tz.value === timezone ? 'font-medium text-content-link' : undefined}>
+                    <span
+                        aria-current={tz.value === timezone ? 'true' : undefined}
+                        className={tz.value === timezone ? 'text-content-link' : undefined}
+                    >
                         {tz.value.replace(/_/g, ' ')}
                         {tz.abbr && <span className="text-content-muted ml-1">({tz.abbr}, {tz.offset})</span>}
                     </span>
@@ -1537,7 +1540,7 @@ function Profile(){
                     navigation landmark beside the page's others. This plan owns one of the five;
                     plans 18 and 21 own the other four. */}
                 <nav aria-label="Breadcrumb" className="mb-4 text-sm bg-surface-elevated px-3 py-2 rounded-lg inline-block">
-                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors font-medium">Home</Link>
+                    <Link href="/" className="text-content-link hover:text-content-link-hover transition-colors">Home</Link>
                     <span className="text-content-muted mx-2">{'>'}</span>
                     {/* DECISION Phase 88.6-17 (D-03 emphasis / T-88.6-138): the current-page span
                         takes 400 plus a colour token, and gains `aria-current="page"` in the SAME
@@ -1642,7 +1645,7 @@ function Profile(){
                                             a `title` does not count. */}
                                         <button
                                             onClick={() => setEditingUsername(true)}
-                                            className="text-content-link hover:text-content-link-hover text-sm md:text-base"
+                                            className="text-content-link hover:text-content-link-hover text-base"
                                             aria-label="Edit username"
                                             title="Edit username"
                                         >
@@ -1696,14 +1699,14 @@ function Profile(){
                                     section below correctly said "No email address on
                                     file". Same shape as the section's own guard,
                                     `currentAddress && !currentIsSynthetic`. */}
-                                <p className="text-sm md:text-base text-content-secondary truncate">
+                                <p className="text-base text-content-secondary truncate">
                                     {(() => {
                                         const addr = self?.email ?? user.email;
                                         return addr && !isSyntheticAddress(addr) ? addr : NO_ADDRESS_ON_FILE;
                                     })()}
                                 </p>
                                 {userData?.username && userData.username !== user.name && (
-                                    <p className="text-xs text-content-muted mt-1">
+                                    <p className="text-sm text-content-muted mt-1">
                                         Display name: {userData.username} (from Google: {user.name})
                                     </p>
                                 )}
@@ -1832,7 +1835,7 @@ function Profile(){
                                     {phoneState === 'verifying' && (
                                         <div>
                                             <p className="text-sm text-content-secondary mb-2">
-                                                Code sent to <span className="font-medium">{phoneValidation.formatted || phoneInput}</span>
+                                                Code sent to <span className="text-content-primary">{phoneValidation.formatted || phoneInput}</span>
                                             </p>
                                             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                                                 <Input
@@ -1903,7 +1906,7 @@ function Profile(){
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                                 </svg>
                                             </span>
-                                            <span className="text-sm text-content-status-success font-medium">Phone verified</span>
+                                            <span className="text-sm text-content-status-success">Phone verified</span>
                                             {/* A10: floored in place — see the Remove marker below. */}
                                             <button
                                                 onClick={handleChangeNumber}
@@ -1994,7 +1997,7 @@ function Profile(){
                                     carried by the classes, which are unchanged — the tag moved,
                                     the look did not. */}
                                 <Heading level={2} size="heading" className="text-content-primary mb-1">Google Calendar Integration</Heading>
-                                <p className="text-xs text-content-secondary">
+                                <p className="text-sm text-content-secondary">
                                     {googleCalendarConnected 
                                         ? 'Connected - Future game events will be automatically added to your calendar'
                                         : 'Connect your Google Calendar to automatically add future game events'}
@@ -2262,7 +2265,7 @@ function Profile(){
                                 <button
                                     type="button"
                                     onClick={handleVerifyPhoneCta}
-                                    className="text-content-link hover:text-content-link-hover font-medium underline"
+                                    className="text-content-link hover:text-content-link-hover underline"
                                 >
                                     Verify
                                 </button>
@@ -2270,13 +2273,13 @@ function Profile(){
                         )}
                         {/* Header row */}
                         <div className="flex items-center py-2 border-b border-line">
-                            <div className="flex-1 text-sm font-medium text-content-muted">Notification Type</div>
-                            <div className="w-16 text-center text-sm font-medium text-content-muted">Email</div>
+                            <div className="flex-1 text-sm text-content-muted">Notification Type</div>
+                            <div className="w-16 text-center text-sm text-content-muted">Email</div>
                             {/* SMS column — only rendered for entitled users (sms_enabled=true).
                                 Non-entitled users see an Email-only matrix and never know
                                 SMS is a feature of the app. */}
                             {userData?.sms_enabled && (
-                                <div className="w-16 text-center text-sm font-medium text-content-muted">SMS</div>
+                                <div className="w-16 text-center text-sm text-content-muted">SMS</div>
                             )}
                             <div className="w-20"></div>
                         </div>
@@ -2285,7 +2288,7 @@ function Profile(){
                             <div key={type.key} className="py-3 border-b border-line last:border-b-0">
                                 <div className="flex items-center">
                                     <div className="flex-1">
-                                        <p className="text-sm font-medium text-content-primary">{type.label}</p>
+                                        <p className="text-base text-content-primary">{type.label}</p>
                                         <p className="text-xs text-content-muted">{type.description}</p>
                                     </div>
 
@@ -2424,7 +2427,7 @@ function Profile(){
                     ?section=availability useEffect above. */}
                 <div id="availability-settings" className="card p-3 md:p-6 mb-6">
                     <Heading level={2} size="heading" className="text-content-primary mb-4">Availability Settings</Heading>
-                    <p className="text-sm text-content-secondary mb-4">
+                    <p className="text-base text-content-secondary mb-4">
                         Set the times when you are <strong>available</strong> (free) to help groups find the best time to schedule game sessions. 
                         {googleCalendarConnected && ' Your Google Calendar busy times will be automatically excluded from your availability.'}
                     </p>
@@ -2450,7 +2453,7 @@ function Profile(){
                             <div className="flex justify-between items-center mb-4">
                                 <div>
                                     <Heading level={3} size="body" className="text-content-primary">Availability Schedules</Heading>
-                                    <p className="text-xs text-content-secondary mt-1">Set your recurring availability schedule</p>
+                                    <p className="text-sm text-content-secondary mt-1">Set your recurring availability schedule</p>
                                 </div>
                                 <Button
                                     variant="primary"
@@ -2468,7 +2471,7 @@ function Profile(){
                                             {/* Not a <label>: this names a GROUP of toggle
                                                 buttons, not a single form control, and a label
                                                 with no control is a label pointing at nothing. */}
-                                            <span id="days-of-week-label" className="block text-sm font-medium text-content-secondary mb-1">Days of Week</span>
+                                            <span id="days-of-week-label" className="block text-sm text-content-secondary mb-1">Days of Week</span>
                                             <div role="group" aria-labelledby="days-of-week-label" className="flex flex-wrap gap-2 mt-1">
                                                 {[0, 1, 2, 3, 4, 5, 6].map(day => (
                                                     <button
@@ -2483,7 +2486,7 @@ function Profile(){
                                                                     : [...days, day].sort((a, b) => a - b)
                                                             });
                                                         }}
-                                                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                                                        className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
                                                             recurringForm.daysOfWeek.includes(day)
                                                                 ? 'bg-btn-primary text-btn-primary-text border-btn-primary'
                                                                 : 'bg-surface-card text-content-secondary border-line hover:border-line-accent'
@@ -2500,7 +2503,7 @@ function Profile(){
                                                             daysOfWeek: recurringForm.daysOfWeek.length === 7 ? [] : [0, 1, 2, 3, 4, 5, 6]
                                                         });
                                                     }}
-                                                    className="px-3 py-1.5 rounded-btn text-sm font-medium border border-line text-content-secondary hover:border-line-accent transition-colors"
+                                                    className="px-3 py-1.5 rounded-btn text-sm border border-line text-content-secondary hover:border-line-accent transition-colors"
                                                 >
                                                     {recurringForm.daysOfWeek.length === 7 ? 'Clear' : 'All'}
                                                 </button>
@@ -2508,7 +2511,7 @@ function Profile(){
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <label htmlFor="recurring-start-time" className="block text-sm font-medium text-content-secondary mb-1">Available From (Start Time)</label>
+                                                <label htmlFor="recurring-start-time" className="block text-sm text-content-secondary mb-1">Available From (Start Time)</label>
                                                 <Input
                                                     id="recurring-start-time"
                                                     type="time"
@@ -2518,7 +2521,7 @@ function Profile(){
                                                 <p className="text-xs text-content-muted mt-1">When you become available</p>
                                             </div>
                                             <div>
-                                                <label htmlFor="recurring-end-time" className="block text-sm font-medium text-content-secondary mb-1">Available Until (End Time)</label>
+                                                <label htmlFor="recurring-end-time" className="block text-sm text-content-secondary mb-1">Available Until (End Time)</label>
                                                 <Input
                                                     id="recurring-end-time"
                                                     type="time"
@@ -2530,7 +2533,7 @@ function Profile(){
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <label htmlFor="recurring-start-date" className="block text-sm font-medium text-content-secondary mb-1">Start Date</label>
+                                                <label htmlFor="recurring-start-date" className="block text-sm text-content-secondary mb-1">Start Date</label>
                                                 <Input
                                                     id="recurring-start-date"
                                                     type="date"
@@ -2539,7 +2542,7 @@ function Profile(){
                                                 />
                                             </div>
                                             <div>
-                                                <label htmlFor="recurring-end-date" className="block text-sm font-medium text-content-secondary mb-1">End Date (Optional)</label>
+                                                <label htmlFor="recurring-end-date" className="block text-sm text-content-secondary mb-1">End Date (Optional)</label>
                                                 <Input
                                                     id="recurring-end-date"
                                                     type="date"
@@ -2576,7 +2579,7 @@ function Profile(){
                                         .map(pattern => (
                                             <div key={pattern.id} className="p-3 border border-line rounded-lg flex justify-between items-center">
                                                 <div>
-                                                    <p className="font-medium text-content-primary">
+                                                    <p className="text-content-primary">
                                                         {getDayName(pattern.pattern_data.dayOfWeek)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
                                                     </p>
                                                     <p className="text-sm text-content-secondary">
@@ -2620,7 +2623,7 @@ function Profile(){
                             <div className="flex justify-between items-center mb-4">
                                 <div>
                                     <Heading level={3} size="body" className="text-content-primary">Specific Date Overrides</Heading>
-                                    <p className="text-xs text-content-secondary mt-1">Override your schedules for specific dates</p>
+                                    <p className="text-sm text-content-secondary mt-1">Override your schedules for specific dates</p>
                                 </div>
                                 <Button
                                     variant="primary"
@@ -2635,7 +2638,7 @@ function Profile(){
                                     <Heading level={4} size="body" className="mb-3 text-content-primary">New Specific Override</Heading>
                                     <div className="space-y-3">
                                         <div>
-                                            <label htmlFor="specific-date" className="block text-sm font-medium text-content-secondary mb-1">Date</label>
+                                            <label htmlFor="specific-date" className="block text-sm text-content-secondary mb-1">Date</label>
                                             <Input
                                                 id="specific-date"
                                                 type="date"
@@ -2645,7 +2648,7 @@ function Profile(){
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <label htmlFor="specific-start-time" className="block text-sm font-medium text-content-secondary mb-1">Available From (Start Time)</label>
+                                                <label htmlFor="specific-start-time" className="block text-sm text-content-secondary mb-1">Available From (Start Time)</label>
                                                 <Input
                                                     id="specific-start-time"
                                                     type="time"
@@ -2655,7 +2658,7 @@ function Profile(){
                                                 <p className="text-xs text-content-muted mt-1">When you become available</p>
                                             </div>
                                             <div>
-                                                <label htmlFor="specific-end-time" className="block text-sm font-medium text-content-secondary mb-1">Available Until (End Time)</label>
+                                                <label htmlFor="specific-end-time" className="block text-sm text-content-secondary mb-1">Available Until (End Time)</label>
                                                 <Input
                                                     id="specific-end-time"
                                                     type="time"
@@ -2714,7 +2717,7 @@ function Profile(){
                                         .map(pattern => (
                                             <div key={pattern.id} className="p-3 border border-line rounded-lg flex justify-between items-center">
                                                 <div>
-                                                    <p className="font-medium text-content-primary">
+                                                    <p className="text-content-primary">
                                                         {formatDate(pattern.pattern_data.date)}: {formatTime(pattern.pattern_data.startTime)} - {formatTime(pattern.pattern_data.endTime)}
                                                     </p>
                                                     <p className="text-sm text-content-secondary">
@@ -2756,7 +2759,7 @@ function Profile(){
                 {/* Tutorial Section */}
                 <div className="card p-3 md:p-6 mb-6">
                     <Heading level={2} size="heading" className="text-content-primary mb-2">Tutorial</Heading>
-                    <p className="text-sm text-content-secondary mb-4">
+                    <p className="text-base text-content-secondary mb-4">
                         Need a refresher on how to use Next Game Night? Replay the onboarding tutorial to walk through the key features.
                     </p>
                     <Button
@@ -2791,7 +2794,7 @@ function Profile(){
                     {/* BGG Collection Import */}
                     <div className="mb-6 p-3 md:p-4 border border-line rounded-lg bg-surface-page">
                         <Heading level={3} size="body" className="mb-2 text-content-primary">Import Your Entire BGG Collection</Heading>
-                        <p className="text-xs md:text-sm text-content-secondary mb-3">
+                        <p className="text-sm text-content-secondary mb-3">
                             Enter your BoardGameGeek username to import all games from your BGG collection at once.
                         </p>
                         <div className="flex flex-col sm:flex-row gap-2">
@@ -2826,9 +2829,9 @@ function Profile(){
                             <div className={`mt-3 p-3 rounded-btn ${
                                 importProgress.status === 'error' ? 'bg-status-error-subtle text-content-status-error' :
                                 importProgress.status === 'complete' ? 'bg-status-success-subtle text-content-status-success' :
-                                'bg-surface-muted text-content-link'
+                                'bg-surface-muted text-content-secondary'
                             }`}>
-                                <p className="font-medium">{importProgress.message}</p>
+                                <p className="text-content-primary">{importProgress.message}</p>
                                 {importProgress.details && (
                                     <p className="text-sm mt-1">
                                         Imported: {importProgress.details.imported} | 
@@ -2868,7 +2871,7 @@ function Profile(){
                                         const isAlreadyOwned = ownedGames.some(g => g.bgg_id === result.bgg_id);
                                         return (
                                             <div key={result.bgg_id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-surface-card border border-line rounded-btn">
-                                                <span className="text-sm text-content-primary wrap-break-word flex-1 min-w-0">
+                                                <span className="text-base text-content-primary wrap-break-word flex-1 min-w-0">
                                                     {result.name} {result.year_published ? `(${result.year_published})` : ''}
                                                 </span>
                                                 <Button
@@ -2938,6 +2941,25 @@ function Profile(){
                                                     : 'border-status-error hover:bg-status-error-subtle'
                                             }`}
                                         >
+                                            {/* DECISION Phase 88.6-17 (D-03 / T-88.6-41): this sizer's
+                                                `font-semibold` STAYS, and it is deliberately NOT one of
+                                                the 600s the weight sweep converted. It is not emphasis —
+                                                it is a MEASUREMENT. The span reserves the width of the
+                                                ARMED label at rest, so it has to be set in the same
+                                                weight the armed label renders at (the 600 on the line
+                                                above). Drop it to 400 and the reservation under-measures,
+                                                arming reflows the game title beside it, and walk row
+                                                573's squeeze class comes back — silently, because no gate
+                                                measures text advance width.
+
+                                                `typeScaleTouchedSurfaces`'s ARMED_STATE_600_ROSTER cannot
+                                                carry this one: its predicate reads the surrounding source
+                                                for `isArmed`, and 160 characters back from here lands
+                                                inside the className template rather than on the
+                                                `removeGameGate.isArmed(...)` call four lines up. It is
+                                                therefore carried in WEIGHT_ROSTER instead, which is why
+                                                that entry floors at FIVE and not at the armed roster's
+                                                four. Converting it is a decision, not a cleanup. */}
                                             <span aria-hidden="true" className="invisible col-start-1 row-start-1 font-semibold">
                                                 Remove
                                             </span>
@@ -2988,7 +3010,7 @@ function Profile(){
                     <Modal.Body>
                         <p className="text-base text-content-secondary">
                             This imports every game from your BoardGameGeek collection (username:{' '}
-                            <span className="font-semibold text-content-primary">{bggUsername}</span>
+                            <span className="text-content-primary">{bggUsername}</span>
                             ). It may take a few minutes.
                         </p>
                     </Modal.Body>

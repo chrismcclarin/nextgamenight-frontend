@@ -2138,15 +2138,24 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '2 off-scale weight sites (0 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome lead: hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-14, 88.6-24, 88.6-42.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  // 35 -> 28 in plan 88.6-17 task 1 (2026-09-16). Seven closed: the breadcrumb current-page span
-  // (emphasis -> 400 + a colour token, plus `aria-current`), the two theme toggles' `font-semibold`
-  // (dead once they migrated to `Button`), and four inside the TCPA disclosure (label -> 700, brand
-  // span -> 700, STOP and HELP -> 400 with `font-mono` intact). Task 3 takes it to its floor.
+  // AT ITS FLOOR — 35 -> 28 (task 1) -> 5 (task 3) in plan 88.6-17, 2026-09-16. This entry is NOT
+  // on a path to zero and must not be read as pending work: all five survivors are PERMANENT.
+  //
+  // FOUR are the armed-state 600s carried in ARMED_STATE_600_ROSTER below. The FIFTH is the
+  // invisible sizer span inside the collection's two-tap Remove control, which reserves the ARMED
+  // label's width at rest so arming does not reflow the game title beside it. That one is a
+  // MEASUREMENT, not emphasis: it has to be set in the weight the armed label renders at, and
+  // dropping it to 400 under-measures with nothing red, because no gate measures text advance
+  // width. It cannot join the armed roster — `isArmedStateSite` reads 160 characters of
+  // surrounding source and that window lands inside the className template rather than on the
+  // `removeGameGate.isArmed(...)` call four lines above it — so it is counted HERE, which is why
+  // this entry floors at FIVE and the armed roster at FOUR. The site carries its own
+  // `DECISION Phase 88.6-17` marker stating all of the above.
   'app/userProfile/page.js': {
-    sites: 28,
+    sites: 5,
     why:
-      '28 off-scale weight sites remaining (22 font-medium, 6 font-semibold) after plan 88.6-17 task 1 closed seven. UI-SPEC §4.5 outcome leads: emphasis (400 + a colour token); outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. 4 of these are PERMANENT armed-state 600s (see ARMED_STATE_600_ROSTER), so this entry floors at 4 rather than at zero. Owning plans: 88.6-02, 88.6-08, 88.6-09, 88.6-10, 88.6-11, 88.6-14, 88.6-17, 88.6-28, 88.6-37, 88.6-42, 88.6-43, 88.6-44.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
+      'FLOORED at 5, not pending. Four are the armed-state 600s on this file\'s two-tap destructive gates (see ARMED_STATE_600_ROSTER) and the fifth is the invisible armed-label sizer span in the collection Remove control, whose 600 is a width MEASUREMENT of the armed label rather than emphasis — see the `DECISION Phase 88.6-17` marker at that site. The other 30 were converted by plan 88.6-17: emphasis sites to 400 plus a colour token, form labels and matrix header cells to the Label rung\'s 400, the theme toggles\' 600 deleted as dead on a `.btn`, and the TCPA disclosure dispositioned span by span.',
+    owner: { kind: 'decision', marker: 'DECISION Phase 88.6-17' },
   },
   'components/ui/Banner.tsx': {
     sites: 1,
@@ -2187,11 +2196,28 @@ const WEIGHT_ROSTER: ExemptionRoster = {
  * widening.
  */
 const ARMED_STATE_600_ROSTER: ExemptionRoster = {
+  // CITE CORRECTED by plan 88.6-17 (2026-09-16), and the description with it. Two errors, both
+  // bookkeeping rather than gate failures, both recorded rather than silently fixed:
+  //
+  //  (1) `DECISION Phase 65-02 EVT-08` does NOT live in this file. It is at
+  //      `gameDetail/page.js` and `src/components/ui/useConfirmAction.ts`. The marker that
+  //      actually sits at an armed site here is `DECISION Phase 88-27 (D-32 bucket D)`, on the
+  //      two `deletePatternGate` triggers; the Remove-phone control now also carries its own
+  //      `DECISION Phase 88.6-17`. Plan 04's schema only requires the token `DECISION`, so the
+  //      wrong cite passed — which is exactly why a cite that cannot be found is worth fixing.
+  //  (2) These are NOT all "Button-owned emphasis inside useConfirmAction". The Remove-phone
+  //      two-tap is HAND-ROLLED (D-PHONE-01, mirroring `KebabMenu.js`) and is owned by no
+  //      primitive. What they have in common is the property worth protecting: each is the ARMED
+  //      cue of a two-tap DESTRUCTIVE GATE, and the Remove-phone one gates the sole path to
+  //      removing a verified phone number.
+  //
+  // The line numbers move with every sweep and are deliberately not restated here; the predicate
+  // finds them and the failure message prints them.
   'app/userProfile/page.js': {
     sites: 4,
     why:
-      'four armed-state 600s inside useConfirmAction gates (:1719 removeArmed, :2312 and :2449 deletePatternGate.isArmed, :2639 removeGameGate.isArmed) — Button-owned emphasis in the shipped Phase 65-02 two-tap destructive-confirm pattern, not §4.5 debt',
-    owner: { kind: 'decision', marker: 'DECISION Phase 65-02 EVT-08' },
+      'four armed-state 600s, each the ARMED cue of a two-tap DESTRUCTIVE gate: the hand-rolled D-PHONE-01 Remove-phone control (not a useConfirmAction consumer — it is owned by no primitive), the two deletePatternGate triggers, and the collection removeGameGate trigger. Legitimate 600 under D-03, not §4.5 debt. A FIFTH permanent 600 in this file — the invisible armed-label sizer span — is outside this predicate\'s reach and is carried in WEIGHT_ROSTER instead.',
+    owner: { kind: 'decision', marker: 'DECISION Phase 88-27 (D-32 bucket D)' },
   },
   'app/components/KebabMenu.js': {
     sites: 1,

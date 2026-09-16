@@ -200,11 +200,11 @@ const OFFENDERS: ExemptionRoster = {
     why: 'Five distinct ink sites on a muted ground: :1330 and :2753 are the two D-16 census sites (text-content-link, 3.9909); :51 is the D-15 same-chunk "No reply" badge (text-content-muted, 4.3725); :1311 and :1345 are NEWLY MEASURED by this scan (text-content-muted under the certain participation-chip ground at :1308) and are in no census. All five are owned by plan 18, which must shrink this entry as it closes them.',
     owner: D16,
   },
-  'app/userProfile/page.js': {
-    sites: 1,
-    why: 'text-content-link (3.9909) at :2829 (was :2539 before the plan 88.6-17 sweep shifted the file) under a muted ground in the same chunk. D-16 census site. Closed by plan 17 task 3, which must delete this entry in the same commit.',
-    owner: D16,
-  },
+  // `app/userProfile/page.js` CLOSED by plan 88.6-17 task 3 (wave 7, 2026-09-16): the
+  // import-progress banner's `text-content-link` on `bg-surface-muted` (3.9909, below AA) is now
+  // `text-content-secondary` (6.9620). It was never a link — zero of the 61 `text-content-link`
+  // sites on this ground is — so the TOKEN was wrong, not the ground. Entry DELETED rather than
+  // zeroed; the roster is exact in both directions.
 };
 
 /**
@@ -341,16 +341,28 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     expect(resolved.size, `only ${resolved.size} ink sites resolved a ground`).toBeGreaterThanOrEqual(40);
   });
 
-  it('3. the by-name roster: all FIVE resolvable D-16 sites are actually visible to the walk', () => {
+  it('3. the by-name roster: every OPEN resolvable D-16 site is actually visible to the walk', () => {
     // Fails INDEPENDENTLY of test 1. Test 1 goes green when the sites are fixed; this one goes
     // red if the walk stops SEEING a site that still exists — the failure a count cannot catch.
+    //
+    // AMENDED Phase 88.6-17 (2026-09-16): the title said FIVE and the list now holds FOUR,
+    // because `app/userProfile/page.js` was fixed and its row left with it. A fixed site MUST
+    // leave this list — leaving it behind would red the moment the fix lands, which is the
+    // opposite of what this assertion is for. The title is now written in terms of the OPEN set
+    // so it does not go stale again with the next closure. The count is held below rather than
+    // in prose, so shrinking the list is a visible, deliberate edit.
     const byName: [string, string][] = [
       ['app/friends/page.js:748', 'text-content-link'],
       ['app/gameDetail/page.js:1330', 'text-content-link'],
       ['app/gameDetail/page.js:2753', 'text-content-link'],
-      ['app/userProfile/page.js:2829', 'text-content-link'],
       ['app/components/CalendarMonthView.js:788', 'text-content-link'],
     ];
+    expect(
+      byName.length,
+      'the open D-16 by-name set: 5 at plan 88.6-09, 4 since plan 88.6-17 closed userProfile. ' +
+        'Shrink this number in the SAME commit that closes a site, and never grow it without a ' +
+        'roster entry to match',
+    ).toBe(4);
     const missing = byName.filter(
       ([site, ink]) => !FORBIDDEN_ON_MUTED.some((r) => siteOf(r) === site && r.inkToken === ink),
     );
@@ -417,7 +429,6 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
       'app/friends/page.js:748',
       'app/gameDetail/page.js:1330',
       'app/gameDetail/page.js:2753',
-      'app/userProfile/page.js:2829',
       'app/components/CalendarMonthView.js:788',
       'app/components/SuggestionCard.js:92',
       'app/components/SuggestionCard.js:116',

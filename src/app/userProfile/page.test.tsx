@@ -1784,6 +1784,115 @@ describe('userProfile theme toggles + landmark + legal text (plan 88.6-17)', () 
   });
 });
 
+// ===========================================================================
+// Plan 88.6-17 task 3 — the type/weight sweep and the muted-ground re-ink
+// ===========================================================================
+
+describe('userProfile type + weight sweep (plan 88.6-17)', () => {
+  // D-16 / T-88.6-42's sibling: `text-content-link` on `bg-surface-muted` measures 3.9909,
+  // below AA. It was never a LINK — zero of the 61 `text-content-link` sites on this ground
+  // is — so the token was wrong, not the ground.
+  it('re-inks the import-progress banner off the failing muted pairing', async () => {
+    const { userGamesAPI } = await import('@/lib/api');
+    let release: (value?: unknown) => void = () => {};
+    (userGamesAPI.importBGGCollection as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => { release = resolve; })
+    );
+
+    renderProfile();
+    const field = await screen.findByRole('textbox', { name: 'BoardGameGeek username' });
+    fireEvent.change(field, { target: { value: 'someone' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Import Collection' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+
+    const banner = (await screen.findByText('Fetching your BGG collection...')).parentElement as HTMLElement;
+    const classes = banner.className.split(/\s+/);
+    expect(classes).toContain('bg-surface-muted');
+    expect(classes).toContain('text-content-secondary');
+    expect(classes).not.toContain('text-content-link');
+    release({ imported: 0 });
+  });
+
+  // D-03's floor for this file, held as an ENUMERATION rather than a count: the five 600s that
+  // survive are named, so a sixth is a decision and not a rebase.
+  it('leaves exactly five 600 weights, all of them armed-state or the armed-label sizer', async () => {
+    const source = await pageSource();
+    const stripped = source
+      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+      .replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
+    const sites = [...stripped.matchAll(/\bfont-(?:medium|semibold)\b/g)];
+    expect(sites).toHaveLength(5);
+    expect(sites.every((m) => m[0] === 'font-semibold')).toBe(true);
+
+    // Each survivor sits within reach of the thing that justifies it.
+    const windows = sites.map((m) => stripped.slice(Math.max(0, m.index! - 400), m.index! + 60));
+    const armed = windows.filter((w) => /isArmed|removeArmed/.test(w));
+    const sizer = windows.filter((w) => /aria-hidden="true"[^>]*invisible/.test(w));
+    expect(armed.length + sizer.length).toBe(5);
+    expect(sizer).toHaveLength(1);
+  });
+
+  // P1 / 88-UI-SPEC §6.2 OI-5 / D-12: the existing toasts are OUT OF CONTRACT by decision and
+  // must survive the sweep untouched. Pinned as the exact SET, not as a count, because a count
+  // survives a reworded string.
+  it('leaves every existing toast string byte-unchanged', async () => {
+    const source = await pageSource();
+    // The quote class is `(?!\1)[^\\]` and not `[^'"]`: the Google Calendar error toast is a
+    // DOUBLE-quoted string containing an apostrophe, and a naive class drops it silently — an
+    // out-of-contract string escaping the pin that exists to protect it.
+    const strings = [
+      ...source.matchAll(/toast(?:\.(?:success|error))?\(\s*(['"])((?:\\.|(?!\1)[^\\])*)\1/g),
+    ].map((m) => m[2]);
+    expect(strings).toEqual([
+      'Still loading your account — please try again in a moment.',
+      'Please enter a username',
+      'Username must be 50 characters or less',
+      'Still loading your account — please try again in a moment.',
+      'Username updated',
+      "We couldn't connect Google Calendar. Please try again.",
+      'Google Calendar disconnected',
+      'Still loading your account — please try again in a moment.',
+      'No games found. Try a different search term.',
+      'Still loading your account — please try again in a moment.',
+      'Game added',
+      'Still loading your account — please try again in a moment.',
+      'Game removed',
+      'Please select at least one day.',
+      'Start time must be before end time.',
+      'Schedules created',
+      'Start time must be before end time.',
+      'Override created',
+      'Pattern deleted',
+      'Please enter your BGG username',
+      'Still loading your account — please try again in a moment.',
+    ]);
+    // And none of them drifted into the chattier register OI-5 closed.
+    for (const value of strings) expect(value).not.toMatch(/successfully/i);
+  });
+
+  // §4.3: a glyph-only control is ICON sizing. It leaves the type scale and is never converged.
+  it('leaves the glyph-only dismiss on its icon size', async () => {
+    const source = await pageSource();
+    const dismiss = /className="(-m-2 inline-flex[^"]*)"/.exec(source)?.[1] ?? '';
+    expect(dismiss.split(/\s+/)).toContain('text-lg');
+  });
+
+  // T-88.6-138's general half (R2 #171): the breadcrumb is the one site in this file where the
+  // weight was carrying INFORMATION, and it gained a programmatic cue in the same edit. The
+  // timezone picker's current-row highlight is the second; it is pinned here so the sweep cannot
+  // net to a colour-only "this is your timezone".
+  it('exposes the current timezone programmatically, not by colour alone', async () => {
+    renderProfile();
+    const tz = await screen.findByRole('combobox', { name: 'Timezone' });
+    fireEvent.focus(tz);
+    await waitFor(() => expect(tz).toHaveAttribute('aria-expanded', 'true'));
+    const current = await screen.findByText('America/New York');
+    expect(current).toHaveAttribute('aria-current', 'true');
+    expect(current.className).not.toMatch(/\bfont-medium\b/);
+    expect(current.className).toMatch(/\btext-content-link\b/);
+  });
+});
+
 describe('phone verification — wrong code shows error, never verifies (H1)', () => {
   async function reachArmedVerify() {
     renderProfile({ sms_enabled: true, phone_verified: false });
