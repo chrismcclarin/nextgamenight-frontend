@@ -591,8 +591,14 @@ const EXPECTED_PROP_SEAMS = 5;
  * group page -> `size="display"`, 30); the other SEVEN were already `text-xl` and land on
  * `size="heading"` with NO size change, per D-04's "h1 @ 20 stays 20" row. Both files'
  * `EXPECTED_LEVELS` entries (`{ 1: 6 }` and `{ 1: 4 }`) are byte-unchanged (P4).
+ *
+ * RAISED 56 -> 63 by plan 88.6-23 task 2 (2026-09-16): SEVEN more —
+ * `restore/group/[token]/page.tsx`'s FOUR h1s and `invite/accept/page.js`'s THREE. ONE moves
+ * size (restore's `text-2xl` group-name page title -> `size="display"`, 30); the other SIX were
+ * already `text-xl` and land on `size="heading"` with NO size change. Both files'
+ * `EXPECTED_LEVELS` entries (`{ 1: 4 }` and `{ 1: 3 }`) are byte-unchanged (P4).
  */
-const EXPECTED_MIN_PRIMITIVES = 56;
+const EXPECTED_MIN_PRIMITIVES = 63;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -755,11 +761,10 @@ const RUNG_ROSTER: ExemptionRoster = {
     why: '1 heading off the 4-size working set (h1:8 text-4xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/restore/group/[token]/page.tsx': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h1:455 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-23 task 2 (wave 7, 2026-09-16): `app/restore/group/[token]/page.tsx`
+  // carried `sites: 1` (h1:455 `text-2xl`), the group-name page title, now
+  // `<Heading level={1} size="display">` (30). Its THREE other h1s were already `text-xl` and
+  // stay at 20 as `size="heading"` (D-04 row 2). Entry DELETED, not zeroed.
   'app/rsvp/[token]/page.js': {
     sites: 1,
     why: '1 heading off the 4-size working set (h1:149 text-2xl) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
@@ -2139,12 +2144,12 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '4 off-scale weight sites (2 font-medium, 2 font-semibold). UI-SPEC §4.5 outcome leads: emphasis (400 + a colour token); outcome set by the owning sweep; hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-15, 88.6-21, 88.6-32, 88.6-39, 88.6-41, 88.6-43, 88.6-46.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/invite/accept/page.js': {
-    sites: 3,
-    why:
-      '3 off-scale weight sites (3 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-13, 88.6-23, 88.6-43.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-23 task 2 (wave 7, 2026-09-16): `app/invite/accept/page.js` carried
+  // `sites: 3`, all three §4.5 EMPHASIS (500 -> 400, colour token kept): the "Accepting your
+  // invite..." status label (already `text-content-primary`) and the inviter-name and
+  // group-name spans inside the invite sentence, whose distinction from the surrounding
+  // paragraph is carried by `text-content-primary` against `text-content-secondary` — the
+  // weight was never the only cue at either. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-23 task 1 (wave 7, 2026-09-16): `app/invite/game/[token]/page.js`
   // carried `sites: 3` and `app/invite/group/[token]/page.js` carried `sites: 1`. Resolved per
   // site against UI-SPEC §4.5:
@@ -2157,12 +2162,9 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     summary block — §4.5 HIERARCHY: 600 -> 700 (`font-bold`). Each IS the subject of its
   //     block, with the event date at 14/muted directly beneath it.
   // Entries DELETED, not zeroed; the roster is exact in both directions.
-  'app/restore/group/[token]/page.tsx': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-18, 88.6-23.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-23 task 2 (wave 7, 2026-09-16): `app/restore/group/[token]/page.tsx`
+  // carried `sites: 1` — the "Bringing back {group}..." status label, §4.5 EMPHASIS, 500 -> 400
+  // with its `text-content-primary` colour token kept. Entry DELETED, not zeroed.
   'app/rsvp/[token]/page.js': {
     sites: 2,
     why:

@@ -41,6 +41,8 @@ import { useUser } from '@auth0/nextjs-auth0/client';
 import Link from 'next/link';
 import { groupsAPI, ApiError, type RestorePreview } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Heading } from '@/components/ui/Heading';
 import { formatLongDate } from '@/lib/datetime';
 
 type Status =
@@ -452,9 +454,18 @@ function RestoreGroupPage() {
             </div>
 
             <p className="text-sm text-content-muted mb-1">Bring this group back</p>
-            <h1 className="text-2xl font-bold text-content-primary mb-3 wrap-break-word">
+            {/* DECISION Phase 88.6-23: the call-site `wrap-break-word` is DELETED rather than
+                carried onto the primitive, at this heading and at the restored one below.
+                `Heading`'s cva base already carries `wrap-anywhere` (`Heading.tsx:60`), and
+                the two are the same tailwind-merge conflict group — so keeping the call-site
+                utility would make it WIN and silently DOWNGRADE this group name from
+                `overflow-wrap: anywhere` to `break-word`. The primitive's own docblock records
+                why that is worse: `break-word` does not count in min-content, so inside a flex
+                parent without `min-w-0` it cannot stop a long unbroken group name inducing
+                horizontal scroll at 375px. Re-adding it here is a decision, not a cleanup. */}
+            <Heading level={1} size="display" className="text-content-primary mb-3">
               {preview.group_name}
-            </h1>
+            </Heading>
 
             {deadline && (
               <p className="text-content-secondary mb-6">
@@ -466,21 +477,23 @@ function RestoreGroupPage() {
             {user ? (
               // M-3 (owner, 2026-07-27): explicit consent. The tap, not the
               // page load, is what transfers ownership.
-              <button
-                type="button"
+              <Button
+                variant="primary"
+                size="default"
                 onClick={handleTakeOver}
-                className="btn btn-primary flex items-center justify-center w-full min-h-11 text-center"
+                className="w-full text-center"
               >
                 Take over this group
-              </button>
+              </Button>
             ) : (
               <>
-                <a
-                  href={returnTo}
-                  className="btn btn-primary flex items-center justify-center w-full min-h-11 text-center"
-                >
-                  Sign in to bring it back
-                </a>
+                {/* §3.2 `asChild`: stays an `<a>` — `returnTo` is the Auth0 handoff URL built
+                    at the top of the render and must survive byte-identical. */}
+                <Button asChild variant="primary" size="default" className="w-full text-center">
+                  <a href={returnTo}>
+                    Sign in to bring it back
+                  </a>
+                </Button>
 
                 <p className="text-xs text-content-muted mt-4">
                   You&apos;ll be brought straight back here after signing in.
@@ -498,7 +511,7 @@ function RestoreGroupPage() {
               aria-label="Loading"
               className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4"
             />
-            <p className="text-content-primary font-medium">Bringing back {groupName}...</p>
+            <p className="text-content-primary">Bringing back {groupName}...</p>
           </div>
         )}
 
@@ -510,9 +523,11 @@ function RestoreGroupPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold text-content-primary mb-2 wrap-break-word">
+            {/* h1 @ 20 STAYS at 20 (D-04 row 2): a mutually-exclusive status branch, not the
+                page title. `wrap-break-word` deleted for the reason marked at the title h1. */}
+            <Heading level={1} size="heading" className="text-content-primary mb-2">
               {groupName} is back
-            </h1>
+            </Heading>
             <p className="text-content-secondary">
               You&apos;re the owner now. Taking you to the group...
             </p>
@@ -528,9 +543,9 @@ function RestoreGroupPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold text-content-primary mb-2">
+            <Heading level={1} size="heading" className="text-content-primary mb-2">
               Someone else already brought this group back
-            </h1>
+            </Heading>
             <p className="text-content-secondary mb-6">
               Nothing to do -- {groupName} is up and running again.
             </p>
@@ -539,12 +554,11 @@ function RestoreGroupPage() {
               handoff === 'link-only' ? (
                 // L-3: no destination id ever arrived, so no redirect was
                 // scheduled -- offer the way forward instead of implying one.
-                <Link
-                  href="/"
-                  className="btn btn-primary flex items-center justify-center w-full min-h-11 text-center"
-                >
-                  Open your groups
-                </Link>
+                <Button asChild variant="primary" size="default" className="w-full text-center">
+                  <Link href="/">
+                    Open your groups
+                  </Link>
+                </Button>
               ) : (
                 // R-7: while the membership probe is still in flight (handoff
                 // null), promise nothing — the copy otherwise says "Taking you
@@ -559,12 +573,11 @@ function RestoreGroupPage() {
               )
             ) : (
               <>
-                <a
-                  href={returnTo}
-                  className="btn btn-primary flex items-center justify-center w-full min-h-11 text-center"
-                >
-                  Sign in to open it
-                </a>
+                <Button asChild variant="primary" size="default" className="w-full text-center">
+                  <a href={returnTo}>
+                    Sign in to open it
+                  </a>
+                </Button>
                 <p className="text-xs text-content-muted mt-4">
                   You&apos;ll be brought straight back here after signing in.
                 </p>
@@ -581,36 +594,43 @@ function RestoreGroupPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold text-content-primary mb-2">
+            <Heading level={1} size="heading" className="text-content-primary mb-2">
               Unable to restore this group
-            </h1>
+            </Heading>
             <p className="text-content-secondary mb-6">{error}</p>
             {(recovery === 'preview-retry' || recovery === 'accept-retry') && (
               // M-6 / R-3: a retryable failure gets a way back, not a dead end.
-              <button
-                type="button"
+              <Button
+                variant="primary"
+                size="default"
                 onClick={recovery === 'preview-retry' ? retryPreview : retryAccept}
-                className="btn btn-primary flex items-center justify-center w-full min-h-11 text-center mb-3"
+                className="w-full text-center mb-3"
               >
                 Try again
-              </button>
+              </Button>
             )}
             {recovery === 'sign-in' && (
               // R-4: the expired-session 401 — the remedy is the login
               // round-trip, which lands right back on this page.
-              <a
-                href={returnTo}
-                className="btn btn-primary flex items-center justify-center w-full min-h-11 text-center mb-3"
-              >
-                Sign in to try again
-              </a>
+              <Button asChild variant="primary" size="default" className="w-full text-center mb-3">
+                <a href={returnTo}>
+                  Sign in to try again
+                </a>
+              </Button>
             )}
-            <Link
-              href="/"
-              className={`btn ${recovery ? 'btn-secondary' : 'btn-primary'} flex items-center justify-center w-full min-h-11 text-center`}
+            {/* The one variant that is COMPUTED: the template literal
+                `` `btn ${recovery ? 'btn-secondary' : 'btn-primary'}` `` becomes the
+                `variant` prop. Same two outcomes, expressed once. */}
+            <Button
+              asChild
+              variant={recovery ? 'secondary' : 'primary'}
+              size="default"
+              className="w-full text-center"
             >
-              Go Home
-            </Link>
+              <Link href="/">
+                Go Home
+              </Link>
+            </Button>
           </div>
         )}
 

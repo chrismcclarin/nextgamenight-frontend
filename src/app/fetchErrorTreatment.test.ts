@@ -626,13 +626,17 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
       '(wave 7), which declares this file.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-33' },
   },
-  'app/invite/accept/page.js': {
-    sites: 1,
-    why:
-      'RAW-MESSAGE assertion. :59 `const msg = err.message || "Something went wrong"`, then ' +
-      'displayed. Closed by plan 88.6-23 (wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-23' },
-  },
+  // DELETED by plan 88.6-23 task 2 (wave 7, 2026-09-16): `app/invite/accept/page.js` carried
+  // `sites: 1` (:59 `const msg = err.message || "Something went wrong"`, then displayed). The
+  // read is gone and the three outcomes it fed are keyed on `err.code` instead — `not_found`,
+  // a GATED `forbidden`, and `getFetchErrorMessage(err)` for everything else. The gate matters:
+  // TWO sources put a code-less 403 on this call (the backend's wrong-email refusal at
+  // `routes/invites.js:757-758` and the BFF proxy's CSRF rejection), so the override is
+  // discriminated on a structural `csrf_rejected` marker rather than on `code` alone.
+  // This file's OTHER `.message` read — the `console.error` at :83, now
+  // `logger.info('Failed to fetch invite info:', errCtx(err))` — was never a roster site: it is
+  // developer-log exempt, and after the conversion `errCtx` keeps the `message:` key off the
+  // call line entirely. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-23 task 1 (wave 7, 2026-09-16). `app/invite/game/[token]/page.js`
   // carried `sites: 2` (:90 and :143, both `setError(err.message || …)`) and
   // `app/invite/group/[token]/page.js` carried `sites: 1` (:109). All three now read

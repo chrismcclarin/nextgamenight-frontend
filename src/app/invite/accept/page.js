@@ -4,6 +4,41 @@ import { useSearchParams } from 'next/navigation';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import Link from 'next/link';
 import { invitesAPI } from '../../../lib/api';
+import { Button } from '@/components/ui/Button';
+import { Heading } from '@/components/ui/Heading';
+import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
+import { logger, errCtx } from '@/lib/logger';
+
+/* DECISION Phase 88.6-23 (D-46 / T-88.6-149): the wrong-email arm is GATED on the 403 NOT being
+   the BFF proxy's CSRF rejection — chosen OVER keying it on `err.code === 'forbidden'` alone,
+   which is the obvious shape and is WRONG, because TWO sources put a code-less 403 on this call:
+
+     (i)  the BACKEND's wrong-email refusal — `user.email.toLowerCase() !==
+          invite.invited_email.toLowerCase()` at `routes/invites.js:757-758`, the ONLY 403
+          emitted inside that handler (verified live 2026-09-14); and
+     (ii) the SAME-ORIGIN BFF PROXY this call traverses on its way there —
+          `acceptInviteByToken` -> `apiFetch` -> `BFF_BASE = '/api'` ->
+          `src/app/api/[...path]/route.ts`, whose CSRF gate returns 403 BEFORE any backend
+          forward and is the only 403 that file emits.
+
+   `mapErrorToCode` resolves both to `statusToCode(403)` = `'forbidden'`, so an UNGATED override
+   tells a CSRF-rejected visitor their invite was sent to a different email address.
+
+   THE DISCRIMINATOR IS STRUCTURAL, NOT PROSE: the proxy stamps `csrf_rejected: true` into its
+   body (see the marker at that gate) and `ApiError.details` carries the whole body, so this
+   survives plan 88.6-42's `body.error` alias drop in wave 8. Matching
+   `'Cross-origin request rejected'` instead would not, and reading `err.details.error` would
+   trip `errorEnvelopeReads.test.ts`'s `X.error` scanner at an unrostered site.
+
+   IT FAILS TOWARD THE PROXY, DELIBERATELY: only the proxy's own marked body is excluded, so the
+   arm fires for the backend refusal and for nothing the proxy produced. Both 403 shapes carry
+   their own arm in `page.test.tsx` — an arm for the backend 403 alone passes on the ungated
+   version and proves nothing. */
+function isWrongEmailRefusal(err) {
+  if (err?.code !== 'forbidden' || err?.status !== 403) return false;
+  const body = err?.details;
+  return !(body && typeof body === 'object' && body.csrf_rejected === true);
+}
 
 function InviteAcceptPage() {
   const searchParams = useSearchParams();
@@ -12,7 +47,15 @@ function InviteAcceptPage() {
 
   const [status, setStatus] = useState('loading'); // loading | accepting | accepted | error | not-logged-in
   const [groupId, setGroupId] = useState(null);
-  const [groupName, setGroupName] = useState(null);
+  /* DECISION Phase 88.6-23: the `groupName` state and the `result.group_name ||
+     result.groupName` read that fed it are DELETED — chosen OVER keeping the read "in case the
+     backend starts sending it", which is the obvious defensive shape and is what shipped.
+     MEASURED 2026-09-14: `POST /invites/accept-by-token` has exactly ONE success return,
+     `res.json({ success: true, group_id: invite.group_id })` (`routes/invites.js:779`) — no
+     `group_name`, no `groupName`. So the read always stored `null` and the heading below always
+     rendered "You've joined the group!". Deleting it changes NO rendered string (P1); it just
+     stops a dead read pretending the copy is dynamic. The BE half — adding `group_name` to that
+     200 body — is deliberately NOT owned here and has no owner invented for it. */
   const [error, setError] = useState(null);
   const [inviteInfo, setInviteInfo] = useState(null);
 
@@ -35,56 +78,113 @@ function InviteAcceptPage() {
       return;
     }
 
+    // AC-13: the sibling magic-link pages' cancellation idiom, copied verbatim from
+    // `invite/game/[token]/page.js:69,74,77,100`. The per-effect-run form is correct here
+    // because this effect carries no single-shot latch to deadlock against.
+    let cancelled = false;
+
     // User is logged in -- accept the invite
     async function acceptInvite() {
       setStatus('accepting');
 
-      // Check localStorage for a pending token (backup for post-login redirect)
-      let tokenToUse = token;
-      if (typeof window !== 'undefined') {
-        const storedToken = localStorage.getItem('pendingInviteToken');
-        if (storedToken) {
-          tokenToUse = storedToken;
-          localStorage.removeItem('pendingInviteToken');
-        }
-      }
+      /* DECISION Phase 88.6-23 (T-88.6-148): the URL TOKEN WINS. The stored
+         `pendingInviteToken` is no longer read here at all — chosen OVER the STORED-TOKEN-WINS
+         ordering that shipped (`let tokenToUse = token` then an UNCONDITIONAL override from
+         `localStorage`), which is the obvious shape and the one a future reader would restore.
+
+         WHY IT HAD TO GO: an invite token is a bearer credential for group membership. A
+         visitor who opened invite A logged out (the write is in the `!user` branch above) and
+         later opened invite B logged in JOINED GROUP A. The code re-key below would have made
+         that read worse, not better — the stale token's 404 now renders "already accepted or
+         expired" while the invite actually clicked is valid.
+
+         WHY NO `token || localStorage.getItem(…)` FALLBACK ARM, which is what an earlier
+         revision of the owning plan asked for: the effect returns above without a URL token, so
+         inside this function `token` is always a non-empty string and that arm is UNREACHABLE.
+         Writing provably-dead code beside a security fix is worse than not writing it. Safe
+         because the login anchor at the bottom of this file already round-trips the token
+         through `returnTo` (`/invite/accept?token=…`), so the stored copy was a belt, never the
+         post-login carrier.
+
+         The stored copy is cleared in the `finally` below — on the ERROR path too, which the
+         shipped `removeItem` could not reach (it sat inside the override branch). */
+      const tokenToUse = token;
 
       try {
         const result = await invitesAPI.acceptInviteByToken(tokenToUse);
+        if (cancelled) return;
         setStatus('accepted');
         setGroupId(result.group_id || result.groupId || null);
-        setGroupName(result.group_name || result.groupName || null);
       } catch (err) {
+        if (cancelled) return;
         setStatus('error');
-        const msg = err.message || 'Something went wrong';
-        if (msg.includes('not found') || msg.includes('already')) {
+        /* R1 + D-46: the three outcomes are keyed on `err.code`, chosen OVER the shipped
+           `err.message` prose match (`'not found'` / `'already'` / `'not for you'` /
+           `'different email'`). Plan 88.6-42 drops the `body.error` alias in wave 8, after
+           which every one of those strings becomes `HTTP error! status: N` and no arm matches.
+
+           `POST /invites/accept-by-token` emits NO envelope `code` (`routes/invites.js:731-784`
+           — verified 2026-09-14), so `mapErrorToCode` falls back to `statusToCode` and the codes
+           reaching this page are status-derived: `not_found` (404), `forbidden` (403), `gone`
+           (410), `validation` (400), `internal` (500). `already_member` / `invite_pending` are
+           `/send`-only and are wrong on this page.
+
+           The two overrides are REQUIRED, not stylistic: no string in `MESSAGE_BY_CODE`
+           contains "already accepted" or "different email address", so deleting the read alone
+           would collapse both specific screens into the generic line. */
+        if (err?.code === 'not_found') {
           setError('This invite may have already been accepted or expired.');
-        } else if (msg.includes('not for you') || msg.includes('different email')) {
+        } else if (isWrongEmailRefusal(err)) {
           setError('This invite was sent to a different email address.');
         } else {
-          setError(msg);
+          setError(getFetchErrorMessage(err));
+        }
+      } finally {
+        // Clear the stored credential on EVERY exit path — success, failure and cancellation.
+        // The shipped `removeItem` was reachable only when a stored token had already been
+        // promoted over the URL one, so on the error path the credential persisted forever.
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('pendingInviteToken');
         }
       }
     }
 
     acceptInvite();
+    return () => {
+      cancelled = true;
+    };
   }, [user, authLoading, token]);
 
   // Fetch invite info for not-logged-in users (public endpoint)
   useEffect(() => {
     if (status !== 'not-logged-in' || !token) return;
 
+    // AC-13: same idiom as the accept effect above.
+    let cancelled = false;
+
     async function fetchInviteInfo() {
       try {
         const info = await invitesAPI.getInviteInfo(token);
+        if (cancelled) return;
         setInviteInfo(info);
       } catch (err) {
-        // Fall back to generic message if fetch fails
-        console.error('Failed to fetch invite info:', err.message);
+        // Fall back to generic message if fetch fails.
+        // AC-2 (owner ruling 2026-09-09, level AMENDED 2026-09-13): the raw `console.error` is
+        // retired onto the house logger at `info` — `Sentry.addBreadcrumb` (`logger.ts:34-36`),
+        // NOT an event. The message string is verbatim, and the caught error rides in the CONTEXT
+        // OBJECT via the shared `errCtx(err)` helper rather than being passed as an object:
+        // `logger.info(msg, ctx)`'s second parameter is `ctx?: Record<string, unknown>`
+        // (`logger.ts:24`) and `checkJs: false` means no typecheck catches that at a `.js` site.
+        // `errCtx` also keeps the `message:` key OFF this line, which is what stops a correct
+        // conversion redding `fetchErrorTreatment`'s R1 gate (see the helper's own marker).
+        logger.info('Failed to fetch invite info:', errCtx(err));
       }
     }
 
     fetchInviteInfo();
+    return () => {
+      cancelled = true;
+    };
   }, [status, token]);
 
   // Loading state while Auth0 resolves
@@ -107,7 +207,7 @@ function InviteAcceptPage() {
         {status === 'accepting' && (
           <div className="text-center">
             <div className="inline-block w-8 h-8 border-4 border-line border-t-accent rounded-full animate-spin mb-4" />
-            <p className="text-content-primary font-medium">Accepting your invite...</p>
+            <p className="text-content-primary">Accepting your invite...</p>
           </div>
         )}
 
@@ -120,27 +220,28 @@ function InviteAcceptPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold text-content-primary mb-2">
-              You&apos;ve joined {groupName || 'the group'}!
-            </h1>
+            {/* The copy is the string this heading ALREADY rendered on every code path: the
+                `groupName` interpolation was provably dead (see the marker on the deleted
+                state above), so this is a P1 no-op, not a copy change. */}
+            <Heading level={1} size="heading" className="text-content-primary mb-2">
+              You&apos;ve joined the group!
+            </Heading>
             <p className="text-content-secondary mb-6">
               You can now see events, suggest games, and coordinate with your group.
             </p>
             <div className="flex flex-col gap-3">
               {groupId && (
-                <Link
-                  href={`/groupHomePage?id=${groupId}`}
-                  className="btn btn-primary block w-full text-center"
-                >
-                  Go to Group
-                </Link>
+                <Button asChild variant="primary" size="default" className="w-full text-center">
+                  <Link href={`/groupHomePage?id=${groupId}`}>
+                    Go to Group
+                  </Link>
+                </Button>
               )}
-              <Link
-                href="/"
-                className="btn btn-secondary block w-full text-center"
-              >
-                Go Home
-              </Link>
+              <Button asChild variant="secondary" size="default" className="w-full text-center">
+                <Link href="/">
+                  Go Home
+                </Link>
+              </Button>
             </div>
           </div>
         )}
@@ -154,16 +255,15 @@ function InviteAcceptPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold text-content-primary mb-2">
+            <Heading level={1} size="heading" className="text-content-primary mb-2">
               Unable to accept invite
-            </h1>
+            </Heading>
             <p className="text-content-secondary mb-6">{error}</p>
-            <Link
-              href="/"
-              className="btn btn-primary block w-full text-center"
-            >
-              Go Home
-            </Link>
+            <Button asChild variant="primary" size="default" className="w-full text-center">
+              <Link href="/">
+                Go Home
+              </Link>
+            </Button>
           </div>
         )}
 
@@ -185,14 +285,17 @@ function InviteAcceptPage() {
               </svg>
             </div>
 
-            <h1 className="text-xl font-bold text-content-primary mb-2">
+            <Heading level={1} size="heading" className="text-content-primary mb-2">
               You&apos;re invited!
-            </h1>
+            </Heading>
 
             {inviteInfo ? (
               <p className="text-content-secondary mb-6">
-                <span className="font-medium text-content-primary">{inviteInfo.inviter_name || 'Someone'}</span> invited you to join{' '}
-                <span className="font-medium text-content-primary">{inviteInfo.group_name || 'a group'}</span> on Next Game Night.
+                {/* §4.5 emphasis: 500 -> 400, and the distinction is carried by the colour
+                    token each span already had (`text-content-primary` against the
+                    paragraph's `text-content-secondary`), not by the weight. */}
+                <span className="text-content-primary">{inviteInfo.inviter_name || 'Someone'}</span> invited you to join{' '}
+                <span className="text-content-primary">{inviteInfo.group_name || 'a group'}</span> on Next Game Night.
                 {inviteInfo.member_count && (
                   <span className="block text-sm text-content-muted mt-1">
                     The group has {inviteInfo.member_count} member{inviteInfo.member_count !== 1 ? 's' : ''}.
@@ -205,12 +308,16 @@ function InviteAcceptPage() {
               </p>
             )}
 
-            <a
-              href={`/api/auth/login?returnTo=${encodeURIComponent(`/invite/accept?token=${token}`)}`}
-              className="btn btn-primary block w-full text-center"
-            >
-              Sign in to accept
-            </a>
+            {/* §3.2 `asChild`: stays an `<a>`, `href` byte-identical. This anchor is also what
+                makes the stored-token fallback unnecessary — it round-trips the URL token
+                through `returnTo`, so the accept effect always has one. */}
+            <Button asChild variant="primary" size="default" className="w-full text-center">
+              <a
+                href={`/api/auth/login?returnTo=${encodeURIComponent(`/invite/accept?token=${token}`)}`}
+              >
+                Sign in to accept
+              </a>
+            </Button>
 
             <p className="text-xs text-content-muted mt-4">
               Don&apos;t have an account? Signing in will create one automatically.

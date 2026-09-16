@@ -211,11 +211,19 @@ const BTN_EXEMPT: ExemptionRoster = {
   // A-2 arm A. Entry DELETED rather than zeroed; the roster is exact in both directions, so
   // a zeroed entry would red as a fossil permission. The TYPED_BUTTON_EXEMPT entry for this
   // same file is closed by the same commit — the two rules see different populations.
-  'app/restore/group/[token]/page.tsx': {
-    sites: 7,
-    why: 'plan 88.6-23 sweeps the five token-and-invite entry pages, this file among them',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // `app/restore/group/[token]/page.tsx` CLOSED by plan 88.6-23 task 2 (wave 7, 2026-09-16): all
+  // SEVEN `.btn` elements are `<Button size="default">`. FIVE are anchors on the `asChild` form —
+  // three `<a href={returnTo}>` sign-in CTAs (the `/api/auth/login?returnTo=…` URL built once at
+  // the top of the render; they stay `<a>`) and two `<Link href="/">`. The last of those carried
+  // a COMPUTED variant as a template literal (`btn ${recovery ? 'btn-secondary' :
+  // 'btn-primary'}`), which becomes `variant={recovery ? 'secondary' : 'primary'}`. Every site
+  // also carried `flex items-center justify-center` — DEAD under unlayered `.btn`'s own
+  // `display: inline-flex; align-items: center; justify-content: center`
+  // (globals.css:2195-2198) — and an explicit `min-h-11`, which GOES because the cva base
+  // supplies the 44px floor at every viewport (88.6-06 D-09). `w-full`, `text-center` and `mb-3`
+  // survive onto the `Button` className. The page's four shipped link assertions
+  // (`page.test.tsx:169`, `:302`, `:444`, `:581`) are byte-unchanged and stayed green. Entry
+  // DELETED rather than zeroed.
   // `app/components/ManageMembers.js` CLOSED by plan 88.6-19 task 2 (wave 7, 2026-09-16): all
   // SIX `.btn` elements are `<Button>` at `size="default"`, with their dead `text-sm px-4 py-2`
   // utilities deleted (unlayered `.btn` already declares font-size and padding, so they were
@@ -259,11 +267,11 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'plan 88.6-32 sweeps the group-library and scheduling cluster, ScheduleList.js included',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
-  'app/invite/accept/page.js': {
-    sites: 4,
-    why: 'plan 88.6-23 sweeps the invite and restore token entry pages, this file among them',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // `app/invite/accept/page.js` CLOSED by plan 88.6-23 task 2 (wave 7, 2026-09-16): all FOUR
+  // `.btn` elements are anchors on the `asChild` form — three `<Link>` (Go to Group, and two
+  // Go Home) and the `/api/auth/login?returnTo=…` sign-in `<a>`, which stays an `<a>`. The
+  // secondary Go Home keeps `variant="secondary"`. `block` was dead; `w-full` and `text-center`
+  // moved onto the `Button` className. Entry DELETED rather than zeroed.
   'app/components/createEvent.js': {
     sites: 3,
     why: 'plan 88.6-25 sweeps the event-creation and availability cluster (markup and classes only)',
