@@ -1,10 +1,48 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { ballotAPI } from '../../lib/api';
+import { Heading } from '../../components/ui/Heading';
+import { StatusRegion } from '../../components/ui/StatusRegion';
+import { logger, errCtx } from '@/lib/logger';
 
 /**
  * BallotSection - Game voting ballot for an event
  */
+
+/* DECISION Phase 88.6-22 (R3 #146): the three action-failure messages announce through the
+   shared `StatusRegion` primitive, mounted UNCONDITIONALLY and fed an empty string when there is
+   no error — chosen OVER the bare conditional `<p>`s that shipped, and OVER a hand-rolled
+   `role="status"` div.
+
+   WHY ALWAYS-MOUNTED: a screen reader announces a CHANGE to a live region, not the conditional
+   mount of a new one. `{error && <StatusRegion …>}` would pass a presence check and announce
+   nothing.
+
+   WHY THE PRIMITIVE and not a div: `88.6-UI-SPEC.md:165` (§2's StatusRegion row) and §14 A-29
+   ratify "No new hand-rolled `role=\"status\"` / `aria-live` markup in 88.6" — the three ad-hoc
+   sites that survive (`ThresholdSlider.js:57`, `StarRatingPicker.js:95`, `ErrorFallback.tsx:73`)
+   are a CLOSED residual. A hand-rolled div also silently drops `aria-atomic="true"`
+   (StatusRegion.tsx:42).
+
+   NO `aria-invalid` ANYWHERE HERE, and the reason is NOT an attribute-support limit. These
+   controls are native `<button type="button">` elements and `aria-invalid` is a GLOBAL ARIA
+   attribute permitted on every role, so there is no support objection to inherit. It is omitted
+   because all three report an ACTION failure over a group of choice buttons — a tie-break that
+   would not save, a fallback pick that would not save, a vote that would not save — rather than
+   field validation. `FriendInvitePanel.js`'s email error IS field validation and DOES take
+   `aria-invalid`, assertively; these stay polite. Adding it here is a decision, not a cleanup.
+
+   THE DESCRIPTION LANDS ON THE FOCUSABLE CONTROL. `aria-describedby` on the role-less
+   `<div className="space-y-2">` wrapper that holds the choice buttons would never be surfaced by
+   assistive technology — an attribute string with zero AT-observable effect. Chosen arm: each
+   choice `<button>` carries the error's id directly. REJECTED — `role="group"` on the wrapper
+   with a name drawn from the prompt copy: it works, but it mints a container role on a plain
+   list of buttons to carry one description, where the buttons can carry it themselves.
+
+   VISIBLE-SPACE RULE: `mb-2`/`mb-3` apply ONLY when the region is filled, so the empty region
+   adds no space. At the open-ballot branch the region was additionally hoisted OUT of the
+   `space-y-3` container, because an always-mounted first child would have given the block below
+   it a 12px `margin-top` it does not have today. */
 export default function BallotSection({ eventId, eventDate, userRole, userRsvpStatus }) {
   const [ballot, setBallot] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -52,9 +90,17 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
       await ballotAPI.toggleVote(eventId, optionId);
       await fetchBallot();
     } catch (err) {
-      console.error('Error toggling vote:', err);
-      setError('Could not save your vote. Please try again.');
+      logger.info('Error toggling vote:', errCtx(err));
+      /* FIXED Phase 88.6-22 (deviation, Rule 1): the `setError` and the rollback refetch were
+         in the OPPOSITE order, so this message never reached the user. `fetchBallot` opens with
+         `setError(null)` (see it above), which wiped the failure on the very next line — the
+         optimistic vote rolled back and the surface reported nothing at all. Found by writing
+         the announcement assertion this plan commissions, not by re-reading: the message the
+         plan asks to associate and announce was unreachable.
+         Restoring the old order is a decision, not a cleanup — the rollback must still happen,
+         and it must happen BEFORE the message is set, not after. */
       await fetchBallot();
+      setError('Could not save your vote. Please try again.');
     } finally {
       setVotingOptionId(null);
     }
@@ -67,7 +113,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
       await ballotAPI.resolveTie(eventId, optionId);
       await fetchBallot();
     } catch (err) {
-      console.error('Error resolving tie:', err);
+      logger.info('Error resolving tie:', errCtx(err));
       setError('Could not set the winner. Please try again.');
     }
   };
@@ -106,14 +152,18 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
       return (
         <div className="mt-4 border border-line rounded-card overflow-hidden">
           <div className="bg-surface-elevated px-4 py-3 border-b border-line">
-            <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
+            <Heading level={3} size="label" className="text-content-primary">Game Vote</Heading>
           </div>
           <div className="p-4">
             <div className="bg-status-success-subtle border border-status-success rounded-card p-4 mb-3">
               <div className="flex items-center gap-2">
-                <span className="text-lg font-bold text-content-status-success">Winner</span>
+                {/* UI-SPEC §4.3: non-heading `text-lg` residue. Resolves to `text-xl` (20) under rule
+                    R2's primary-string clause. NOT a `<Heading>` — P4 forbids inventing a semantic
+                    level for an element that never had one, and Phase 92 owns the outline review. */}
+                <span className="text-xl font-bold text-content-status-success">Winner</span>
               </div>
-              <p className="text-lg font-semibold text-content-primary mt-1">{winner.game_name}</p>
+              {/* Same §4.3 residue pair as the "Winner" label above; 600 -> 700 with it. */}
+              <p className="text-xl font-bold text-content-primary mt-1">{winner.game_name}</p>
             </div>
             {options && options.filter(o => o.game_id !== winner.game_id || o.game_name !== winner.game_name).length > 0 && (
               <div className="space-y-1">
@@ -144,20 +194,27 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
            siblings' `bg-surface-elevated`, which is where the state difference belongs. */
         <div className="mt-4 border border-status-warning rounded-card overflow-hidden">
           <div className="bg-status-warning-subtle px-4 py-3 border-b border-line">
-            <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
+            <Heading level={3} size="label" className="text-content-primary">Game Vote</Heading>
           </div>
           <div className="p-4">
-            <p className="text-sm font-medium text-content-status-warning mb-3">
+            {/* UI-SPEC §4.5 EMPHASIS outcome: `font-medium` deleted, the emphasis carried by
+                the status colour token this copy already had. */}
+            <p className="text-sm text-content-status-warning mb-3">
               Voting ended in a tie! Pick the winning game:
             </p>
-            {error && <p className="text-sm text-content-status-error mb-2">{error}</p>}
+            <StatusRegion
+              id="ballot-tiebreak-error"
+              message={error ?? ''}
+              className={`text-content-status-error${error ? ' mb-2' : ''}`}
+            />
             <div className="space-y-2">
               {(tied_options || []).map(opt => (
                 <button
                   key={opt.id}
                   type="button"
                   onClick={() => handleResolveTie(opt.id)}
-                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm font-medium text-content-primary cursor-pointer"
+                  aria-describedby={error ? 'ballot-tiebreak-error' : undefined}
+                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                 >
                   {opt.game_name}
                 </button>
@@ -172,7 +229,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
       return (
         <div className="mt-4 border border-line rounded-card overflow-hidden">
           <div className="bg-surface-elevated px-4 py-3 border-b border-line">
-            <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
+            <Heading level={3} size="label" className="text-content-primary">Game Vote</Heading>
           </div>
           <div className="p-4">
             <p className="text-sm text-content-secondary">
@@ -189,20 +246,26 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
            same reasons as the tie-break branch ~50 lines above — see that marker. */
         <div className="mt-4 border border-status-warning rounded-card overflow-hidden">
           <div className="bg-status-warning-subtle px-4 py-3 border-b border-line">
-            <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
+            <Heading level={3} size="label" className="text-content-primary">Game Vote</Heading>
           </div>
           <div className="p-4">
-            <p className="text-sm font-medium text-content-status-warning mb-3">
+            {/* UI-SPEC §4.5 EMPHASIS outcome, same call as the tie-break branch above. */}
+            <p className="text-sm text-content-status-warning mb-3">
               No votes were cast. Pick a game for this event:
             </p>
-            {error && <p className="text-sm text-content-status-error mb-2">{error}</p>}
+            <StatusRegion
+              id="ballot-fallback-error"
+              message={error ?? ''}
+              className={`text-content-status-error${error ? ' mb-2' : ''}`}
+            />
             <div className="space-y-2">
               {(options || []).map(opt => (
                 <button
                   key={opt.id}
                   type="button"
                   onClick={() => handleResolveTie(opt.id)}
-                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm font-medium text-content-primary cursor-pointer"
+                  aria-describedby={error ? 'ballot-fallback-error' : undefined}
+                  className="w-full text-left px-4 py-3 rounded-card border-2 border-status-warning bg-status-warning-subtle hover:bg-status-warning-subtle-hover transition-colors text-sm text-content-primary cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                 >
                   {opt.game_name}
                 </button>
@@ -217,7 +280,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
       return (
         <div className="mt-4 border border-line rounded-card overflow-hidden">
           <div className="bg-surface-elevated px-4 py-3 border-b border-line">
-            <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
+            <Heading level={3} size="label" className="text-content-primary">Game Vote</Heading>
           </div>
           <div className="p-4">
             <p className="text-sm text-content-secondary">
@@ -235,13 +298,21 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
   return (
     <div id="vote" className="mt-4 border border-line rounded-card overflow-hidden">
       <div className="bg-surface-elevated px-4 py-3 border-b border-line">
-        <h3 className="font-semibold text-content-primary text-sm">Game Vote</h3>
+        <Heading level={3} size="label" className="text-content-primary">Game Vote</Heading>
         <p className="text-xs text-content-muted mt-0.5">Tap games you'd enjoy playing</p>
       </div>
 
-      <div className="p-4 space-y-3">
-        {error && <p className="text-sm text-content-status-error">{error}</p>}
-
+      <div className="p-4">
+        {/* HOISTED OUT of the `space-y-3` container below. An always-mounted first child inside
+            it would have given the voting block a 12px `margin-top` it does not have today —
+            the empty region must cost no visible space. The `mb-3` it takes when FILLED is the
+            same 12px the `space-y-3` gap used to supply. */}
+        <StatusRegion
+          id="ballot-vote-error"
+          message={error ?? ''}
+          className={`text-content-status-error${error ? ' mb-3' : ''}`}
+        />
+        <div className="space-y-3">
         {canVote ? (
           <div className="space-y-2">
             {(options || []).map(opt => {
@@ -252,8 +323,21 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   key={opt.id}
                   type="button"
                   onClick={() => handleToggleVote(opt.id)}
-                  disabled={!!votingOptionId}
-                  className={`w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm font-medium cursor-pointer
+                  /* DECISION Phase 88.6-22 (the rule of POSITION, stated in full at
+                     FriendInvitePanel.js's latch marker): while a vote is in flight the PRESSED
+                     option exposes `aria-disabled` and keeps its place in the focus order, while
+                     its SIBLINGS — which nobody is standing on — keep native `disabled`. A
+                     natively disabled element leaves the focus order, so gating the pressed
+                     option natively strands a keyboard or switch user mid-vote (DR-C).
+                     Both halves of the rule are already paid for here: `handleToggleVote` refuses
+                     the re-press SYNCHRONOUSLY at its first line (`if (votingOptionId || !canVote)
+                     return;`), and the in-flight and gated cues are call-site utilities on a
+                     non-`.btn` element, so no `.btn:disabled` wash is involved and the visual
+                     result is unchanged. Collapsing this back to one `disabled` is a decision. */
+                  disabled={!!votingOptionId && !isToggling}
+                  aria-disabled={isToggling ? 'true' : undefined}
+                  aria-describedby={error ? 'ballot-vote-error' : undefined}
+                  className={`w-full text-left px-4 py-3 rounded-card border-2 transition-colors text-sm cursor-pointer focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2
                     ${isVoted
                       ? 'border-accent bg-surface-accent-subtle text-content-primary'
                       : 'border-line bg-surface-card text-content-primary hover:bg-surface-hover hover:border-line-strong'
@@ -265,7 +349,10 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
                   <div className="flex items-center justify-between">
                     <span>{opt.game_name}</span>
                     {isVoted && (
-                      <span className="text-content-accent text-xs font-semibold">Voted</span>
+                      /* UI-SPEC §4.5, the badge/ink case: 600 -> 700. 400 was REJECTED — this
+                         is a 12px state badge whose whole job is to read as a distinct marker
+                         beside the option label, and at 400 it stops registering as one. */
+                      <span className="text-content-accent text-xs font-bold">Voted</span>
                     )}
                   </div>
                 </button>
@@ -299,6 +386,7 @@ export default function BallotSection({ eventId, eventDate, userRole, userRsvpSt
             Voting closes {getRelativeTime(rsvp_deadline)}
           </p>
         )}
+        </div>
       </div>
     </div>
   );

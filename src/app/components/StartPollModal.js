@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { apiFetch } from '../../lib/api';
 import { Modal } from './Modal';
 import { Input, Textarea, SelectControl } from '@/components/ui/Input';
+import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 
 /**
  * StartPollModal — Phase 71.2 (POLL-01 / D-UI-01)
@@ -145,17 +146,45 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
       });
       onSuccess?.(result?.prompt || result);
     } catch (err) {
-      // apiFetch throws Error(message) on non-2xx; map common backend messages
-      // to friendlier copy. The 409 string is the backend's canonical message
-      // (D-ADAPT-02 — keep frontend mirror in sync if backend copy ever changes).
-      const msg = (err && err.message) || 'Something went wrong. Try again.';
-      if (/already has an open poll/i.test(msg)) {
-        setError('This group already has an open poll. Close it before starting another.');
-      } else if (/active group member/i.test(msg)) {
-        setError('You must be an active group member to start a poll.');
-      } else {
-        setError(msg);
-      }
+      /* DECISION Phase 88.6-22 (C1a — X1/D16/D54/D15): this catch keys on the HTTP STATUS, not
+         on the backend's PROSE. Chosen OVER the two `/already has an open poll/i` and
+         `/active group member/i` regexes it shipped with, and over rendering `err.message` raw.
+
+         WHAT WAS REJECTED AND WHY. The regexes couple this modal to backend copy: the
+         D-ADAPT-02 comment that stood here said "keep frontend mirror in sync if backend copy
+         ever changes", which is a maintenance contract nobody can enforce across two repos. The
+         raw `setError(msg)` else arm was worse — `ApiError.message` is
+         `body.message ?? body.error ?? 'HTTP error! status: N'` (api.ts:308-310), so an
+         unhandled 500 painted a raw status string at the user (T-88-25-01).
+
+         THE PRECONDITION THE CODE ARMS REST ON, confirmed by reading the handler rather than
+         assumed: `POST /prompts` emits EXACTLY ONE 403
+         (`availabilityPrompt.js:446`, the not-an-active-member gate) and EXACTLY ONE 409
+         (`:480`, the one-open-manual-poll partial unique index) across its whole body
+         (`:396-539`). `statusToCode` already maps 403 -> `forbidden` and 409 -> `conflict`
+         (api.ts:278, :285), so the two overrides below are unambiguous. STATUS IS THE CONTRACT;
+         the prose is not. This is FE-only — no backend edit, and none is needed.
+
+         NO `fallback` IS PASSED, deliberately. `getFetchErrorMessage` applies `fallback` only
+         when the derived code is `unknown` (useFetchErrorState.ts:171), so a fallback here would
+         keep an authored string alive on the very surface this sweep converges. A code-less
+         failure resolves to the register's `unknown` line instead.
+
+         THIS IS ALSO WHAT KEEPS THE MODAL CORRECT AFTER PLAN 42 drops api.ts:309's `body?.error`
+         alias: `POST /prompts` returns raw `{ error }` bodies, so `ApiError.message` becomes
+         `HTTP error! status: N` — which the old regexes would miss and the old else arm would
+         have painted at the user verbatim.
+
+         The two override strings are this modal's OWN shipped copy moved across, not new copy.
+         Going back to prose matching is a decision, not a cleanup. */
+      setError(
+        getFetchErrorMessage(err, {
+          byCode: {
+            conflict: 'This group already has an open poll. Close it before starting another.',
+            forbidden: 'You must be an active group member to start a poll.',
+          },
+        })
+      );
     } finally {
       setSubmitting(false);
     }
@@ -171,6 +200,11 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
     <Modal open={isOpen} onClose={onClose} dismissable={false} initialFocusRef={deadlineInputRef}>
       <Modal.Header>Start a check-in</Modal.Header>
       <Modal.Body>
+        {/* UI-SPEC §4.5: the four `<label>`s below moved 500 -> 400, matching the shipped
+            field primitive byte-for-byte — `FormField.tsx:98` renders
+            `block text-sm font-normal text-content-primary mb-1`. Chosen OVER 700 (these are
+            field labels, not hierarchy) and OVER simply deleting the utility (the explicit
+            `font-normal` is what makes the convergence onto FormField's spelling visible). */}
         <p className="text-sm text-content-secondary mb-4">
           Send a check-in to your group asking when they&apos;re free — they tap, paint their availability, you find the night.
         </p>
@@ -183,7 +217,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
 
         <form id="start-poll-form" onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-content-primary mb-1" htmlFor="poll-deadline">
+            <label className="block text-sm font-normal text-content-primary mb-1" htmlFor="poll-deadline">
               Deadline
             </label>
             <Input
@@ -201,7 +235,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-content-primary mb-1" htmlFor="poll-week">
+            <label className="block text-sm font-normal text-content-primary mb-1" htmlFor="poll-week">
               Week
             </label>
             {/* DECISION Phase 88-21 (Req 1): adopts `Input` but KEEPS the read-only skin as an
@@ -228,7 +262,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
 
           {availableGames.length > 0 && (
             <div>
-              <label className="block text-sm font-medium text-content-primary mb-1" htmlFor="poll-game">
+              <label className="block text-sm font-normal text-content-primary mb-1" htmlFor="poll-game">
                 Game (optional)
               </label>
               <SelectControl
@@ -248,7 +282,7 @@ export default function StartPollModal({ groupId, group, isOpen, onClose, onSucc
           )}
 
           <div>
-            <label className="block text-sm font-medium text-content-primary mb-1" htmlFor="poll-message">
+            <label className="block text-sm font-normal text-content-primary mb-1" htmlFor="poll-message">
               Custom message (optional)
             </label>
             <Textarea

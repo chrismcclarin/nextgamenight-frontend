@@ -330,11 +330,12 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'plan 88.6-25 sweeps the event-creation and availability cluster, AvailabilityForm.js included',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
-  'app/components/BallotOptionsEditor.js': {
-    sites: 1,
-    why: 'plan 88.6-22 sweeps the invite-and-ballot cluster, BallotOptionsEditor.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16): `app/components/BallotOptionsEditor.js`
+  // carried `sites: 1` — the "+ Add game option" CTA, now `<Button size="default">`. Its `text-sm`
+  // was DEAD under unlayered `.btn` (globals.css:2201) and is deleted rather than moved onto the
+  // className; `mt-2` survives (`.btn` declares no margin). The file's OTHER button — the
+  // remove-option `×` at :33 — was never a `.btn` and is therefore not in this census at all; it
+  // took the D-13 declared-at-the-site 44x44 floor in the same commit. Entry DELETED, not zeroed.
   'app/components/BringGamePicker.js': {
     sites: 1,
     why: 'plan 88.6-33 sweeps eight small modal-and-card components, BringGamePicker.js included',

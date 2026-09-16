@@ -588,15 +588,13 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
       'declares this file.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-32' },
   },
-  'app/components/StartPollModal.js': {
-    sites: 1,
-    why:
-      'RAW-MESSAGE assertion. C1a: :151 binds the raw message and the else arm at :157 ' +
-      'renders it through `setError(msg)`. The RESEARCH §B.5 hand census does not contain ' +
-      'this file at all — it is the proof that a hand census cannot be the seed. Closed by ' +
-      'plan 88.6-22 (wave 7), which declares this file and decrements this entry to 0.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-22' },
-  },
+  // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16): `app/components/StartPollModal.js`
+  // carried `sites: 1` — `:151` pre-edit, `const msg = (err && err.message) || …`, rendered raw
+  // by the else arm at `:157`. The whole catch is re-keyed onto the HTTP STATUS through
+  // `getFetchErrorMessage(err, { byCode: { conflict, forbidden } })` with no fallback; both prose
+  // regexes are gone and a `DECISION Phase 88.6-22` marker sits where the D-ADAPT-02
+  // keep-in-sync comment was. This entry was the proof that a hand census cannot be the seed —
+  // RESEARCH §B.5 does not contain this file at all. Entry DELETED rather than zeroed.
   'app/components/SuggestionCard.js': {
     sites: 1,
     why:

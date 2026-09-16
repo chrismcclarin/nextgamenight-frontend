@@ -574,13 +574,18 @@ const EXPECTED_PROP_SEAMS = 5;
  * `text-xl` -> `size="heading"`, likewise unchanged. `EXPECTED_LEVELS`' `{ 1: 4, 2: 1 }` entry
  * for that file is byte-unchanged (P4).
  *
+ * RAISED 39 -> 46 by plan 88.6-22 task 2 (2026-09-16): SEVEN more — `BallotSection.js`'s six
+ * "Game Vote" h3s (one per branch, all `text-sm` -> `size="label"`, no size change) and
+ * `BallotOptionsEditor.js`'s single h3 (likewise). Both files' `EXPECTED_LEVELS` entries
+ * (`{ 3: 6 }` and `{ 3: 1 }`) are byte-unchanged (P4).
+ *
  * RAISED 36 -> 39 by plan 88.6-22 task 1 (2026-09-16): `app/components/FriendInvitePanel.js`'s
  * THREE h3s, all `text-sm` (14) -> `size="label"` (14), the h3@14 "stays" row of D-04's table —
  * no size change at any of them. `EXPECTED_LEVELS`' `{ 3: 3 }` entry for that file is
  * byte-unchanged (P4). The `id="invite-by-email-heading"` on the middle one is carried through:
  * it is the email field's only accessible name via `aria-labelledby`.
  */
-const EXPECTED_MIN_PRIMITIVES = 39;
+const EXPECTED_MIN_PRIMITIVES = 46;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -769,16 +774,11 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
     why: '2 headings carrying the prohibited 600 weight (h1:182, h1:206) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/BallotOptionsEditor.js': {
-    sites: 1,
-    why: '1 heading carrying the prohibited 600 weight (h3:9) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
-  'app/components/BallotSection.js': {
-    sites: 6,
-    why: '6 headings carrying the prohibited 600 weight (h3:109, h3:147, h3:175, h3:192, h3:220, h3:238) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16): `BallotOptionsEditor.js` carried
+  // `sites: 1` (h3:9) and `BallotSection.js` carried `sites: 6` (h3:109, :147, :175, :192, :220,
+  // :238 — six copies of the same "Game Vote" header across six mutually-exclusive branches).
+  // All seven are `<Heading level={3} size="label">` now and leave this RAW-only population.
+  // h3@14 STAYS at 14 per D-04's table; `size="label"` is `text-sm`. Entries DELETED, not zeroed.
   'app/components/BringSummary.js': {
     sites: 1,
     why: '1 heading carrying the prohibited 600 weight (h3:97) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
@@ -863,16 +863,9 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
     why: '2 raw headings not stating the 700 weight (h1:182 font-semibold; h1:206 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
   },
-  'app/components/BallotOptionsEditor.js': {
-    sites: 1,
-    why: '1 raw heading not stating the 700 weight (h3:9 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
-  'app/components/BallotSection.js': {
-    sites: 6,
-    why: '6 raw headings not stating the 700 weight (h3:109 font-semibold; h3:147 font-semibold; h3:175 font-semibold; h3:192 font-semibold; h3:220 font-semibold; h3:238 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16): the same seven headings as the
+  // heading-semibold roster above. Their 700 now comes from the primitive's `font-bold` base
+  // (Heading.tsx:60) rather than a stated utility. Entries DELETED, not zeroed.
   'app/components/BringSummary.js': {
     sites: 1,
     why: '1 raw heading not stating the 700 weight (h3:97 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
@@ -1745,18 +1738,16 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '6 off-scale weight sites (6 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-22, 88.6-25.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/BallotOptionsEditor.js': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (0 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: hierarchy (700) — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-22, 88.6-37.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
-  'app/components/BallotSection.js': {
-    sites: 13,
-    why:
-      '13 off-scale weight sites (5 font-medium, 8 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-22, 88.6-43.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16), both files, every site resolved per
+  // UI-SPEC §4.5 rather than swept to one outcome:
+  //   `BallotOptionsEditor.js` (1) — h3:9's font-semibold left with the `Heading` migration.
+  //   `BallotSection.js` (13) — 6 font-semibold on the h3s left with the `Heading` migration;
+  //     :116's pseudo-heading went 600 -> 700 with its §4.3 `text-lg` -> `text-xl` pair; :268's
+  //     "Voted" badge ink went 600 -> 700 (the badge case, 400 rejected at the site); and the 5
+  //     font-medium sites (:150, :160, :195, :205, :256 — two prompt paragraphs and three choice
+  //     buttons) took the EMPHASIS outcome, i.e. the utility deleted with the colour token each
+  //     already carried doing the work.
+  // Entries DELETED, not zeroed.
   'app/components/BringGamePicker.js': {
     sites: 1,
     why:
@@ -1991,12 +1982,12 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '2 off-scale weight sites (1 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-26, 88.6-40.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/StartPollModal.js': {
-    sites: 4,
-    why:
-      '4 off-scale weight sites (4 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-08, 88.6-13, 88.6-22, 88.6-42.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16): `app/components/StartPollModal.js`
+  // carried `sites: 4` — its four form `<label>`s (:186, :204, :231, :251), all
+  // `block text-sm font-medium text-content-primary mb-1`. All four now read `font-normal`,
+  // which is the shipped field primitive's own spelling (`FormField.tsx:98`), so the modal
+  // converges onto the label treatment the rest of the app already uses rather than onto a
+  // deletion. Entry DELETED, not zeroed.
   'app/components/SuggestionCard.js': {
     sites: 3,
     why:
