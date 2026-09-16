@@ -190,11 +190,13 @@ const OFFENDERS: ExemptionRoster = {
     why: 'text-content-muted (4.3725) at :141, the disabled Create-Event button, a SAME-CHUNK ground+ink pairing inside one JSX opening tag. This is the D-15 site, deliberately NOT folded into the UNRESOLVABLE entry below: the walk resolves it. Closed by plan 42.',
     owner: D15,
   },
-  'app/friends/page.js': {
-    sites: 1,
-    why: 'text-content-link (3.9909) at :748, the known-live pairing tokenContrast.test.ts test 49 names in its REACH prose. D-16 census site. Closed by plan 19, which must decrement this entry in the same commit.',
-    owner: D16,
-  },
+  // `app/friends/page.js` CLOSED by plan 88.6-19 task 3 (wave 7, 2026-09-16): the tab-count pill
+  // at :748 pre-edit carried `text-content-link` (3.9909) on `bg-surface-muted`. It took
+  // `text-content-secondary` (6.9620) — it is a COUNT in a pill, not a link, and zero of the 61
+  // `text-content-link` sites on this ground is one, so the TOKEN was wrong rather than the
+  // ground. This was `tokenContrast.test.ts` test 49's named hand-verified example; that test's
+  // REACH prose is appended to in the same commit. The by-name roster in test 3 shrank 2 -> 1 in
+  // this same commit, as this entry's `why` required. Entry DELETED rather than zeroed.
   // `app/gameDetail/page.js` CLOSED by plan 88.6-18 task 3 (wave 7, 2026-09-16). All FIVE
   // closed in one commit:
   //   - the two D-16 census BADGES ("New Player", "You") took `text-content-accent` (4.7121),
@@ -361,17 +363,21 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // with their fix — the two badges now carry `text-content-accent`. The entries are keyed by
     // `file:line` and that file moved several hundred lines in the same plan, which is a second
     // reason a fixed row must LEAVE rather than be re-numbered.
+    // AMENDED AGAIN Phase 88.6-19 (2026-09-16): 2 -> 1. `app/friends/page.js:748` was fixed (the
+    // tab-count pill took `text-content-secondary`) and its row left with the fix, in the same
+    // commit that deleted its class-rule roster entry — a partial update reds, which is what
+    // keeps the two halves together.
     const byName: [string, string][] = [
-      ['app/friends/page.js:748', 'text-content-link'],
       ['app/components/CalendarMonthView.js:788', 'text-content-link'],
     ];
     expect(
       byName.length,
       'the open D-16 by-name set: 5 at plan 88.6-09, 4 since plan 88.6-17 closed userProfile, ' +
-        '2 since plan 88.6-18 closed both gameDetail badges. ' +
+        '2 since plan 88.6-18 closed both gameDetail badges, ' +
+        '1 since plan 88.6-19 closed the friends tab-count pill. ' +
         'Shrink this number in the SAME commit that closes a site, and never grow it without a ' +
         'roster entry to match',
-    ).toBe(2);
+    ).toBe(1);
     const missing = byName.filter(
       ([site, ink]) => !FORBIDDEN_ON_MUTED.some((r) => siteOf(r) === site && r.inkToken === ink),
     );
@@ -435,8 +441,9 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     //     false-positive list becoming a place to hide debt: an entry cannot be both.
     const debt = new Set([
       ...REAL.map(siteOf),
-      'app/friends/page.js:748',
-      // The two `app/gameDetail/page.js` rows left this set with their fix (plan 88.6-18).
+      // The two `app/gameDetail/page.js` rows left this set with their fix (plan 88.6-18), and
+      // `app/friends/page.js:748` left it with its fix (plan 88.6-19). A fixed site must LEAVE
+      // this set: it is no longer debt, and the disjointness check below is about what IS.
       'app/components/CalendarMonthView.js:788',
       'app/components/SuggestionCard.js:92',
       'app/components/SuggestionCard.js:116',

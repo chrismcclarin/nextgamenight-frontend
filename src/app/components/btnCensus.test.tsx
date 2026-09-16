@@ -223,11 +223,14 @@ const BTN_EXEMPT: ExemptionRoster = {
   // `text-content-status-error` ink — moved onto the `Button`'s own `className`, where
   // tailwind-merge keeps it. Entry DELETED rather than zeroed; the roster is exact in both
   // directions, so a zeroed entry would red as a fossil permission.
-  'app/friends/page.js': {
-    sites: 6,
-    why: 'plan 88.6-19 sweeps friends/page.js together with ManageMembers.js',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // `app/friends/page.js` CLOSED by plan 88.6-19 task 3 (wave 7, 2026-09-16): all SIX `.btn`
+  // elements are `<Button size="default">`. Five were `<button>`s; the sixth is the logged-out
+  // branch's `/api/auth/login` ANCHOR, migrated as `<Button asChild><a …/></Button>` per
+  // UI-SPEC §3.2 — the element stays an `<a>`, never a `<Link>`, because Auth0's handler needs
+  // a hard navigation. Every utility at all six was DEAD under unlayered `.btn` (`px-*`/`py-*`
+  // vs `globals.css:2202`, `text-sm` vs `:2201`, `font-medium` vs `:2200`, `inline-block` and
+  // `flex items-center gap-2` vs `:2195-2198`, the `disabled:` pair vs `:2250-2253`), so all of
+  // them are deleted and NONE moved onto a `Button className`. Entry DELETED rather than zeroed.
   'app/invite/game/[token]/page.js': {
     sites: 6,
     why: 'plan 88.6-23 sweeps the invite and restore token entry pages, this file among them',

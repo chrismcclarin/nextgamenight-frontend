@@ -567,8 +567,14 @@ const EXPECTED_PROP_SEAMS = 5;
  * RAISED 25 -> 27 by plan 88.6-19 task 2 (2026-09-16): `app/components/ManageMembers.js`'s TWO
  * h3s, both `text-lg` (18) -> `size="heading"` (20) on D-04's closed tie. `EXPECTED_LEVELS`'
  * `{ 3: 2 }` entry for that file is byte-unchanged (P4).
+ *
+ * RAISED 27 -> 32 by plan 88.6-19 task 3 (2026-09-16): `app/friends/page.js`'s FIVE headings —
+ * four h1s in mutually-exclusive early-return branches plus one h2. All four h1s were ALREADY
+ * `text-3xl`, so they land at `size="display"` with NO size change; the h2 was already
+ * `text-xl` -> `size="heading"`, likewise unchanged. `EXPECTED_LEVELS`' `{ 1: 4, 2: 1 }` entry
+ * for that file is byte-unchanged (P4).
  */
-const EXPECTED_MIN_PRIMITIVES = 27;
+const EXPECTED_MIN_PRIMITIVES = 32;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -2103,9 +2109,20 @@ const WEIGHT_ROSTER: ExemptionRoster = {
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
   'app/friends/page.js': {
-    sites: 12,
+    // 12 -> 1, plan 88.6-19 task 3, wave 7, 2026-09-16. The ONE survivor is the ARMED-STATE 600
+    // on the two-tap remove-friend control, which UI-SPEC §4.5 rules STAYS ("Armed-state 600 on
+    // two-tap buttons — Button-owned"). It is the same named carve-out plan 88.6-17 kept five of
+    // and plan 88.6-18 kept one of, and it is NOT a licence for 600 anywhere else in this file.
+    // Everything else resolved, each call enumerated in `88.6-19-SUMMARY.md`: four row primary
+    // strings and the Sent-tab "Pending" pill took 700; the remove control's RESTING weight, the
+    // "Request sent" confirmation, the invite-to-group `<label>` and the bulk-invite result box
+    // took 400 (each keeps a colour token and, for two of them, a glyph); the tab labels took 400
+    // because `font-medium` sat on BOTH the active and inactive arms and carried no distinction
+    // at all — the active tab GAINED `aria-current` instead, which is the cue it never had; and
+    // the bulk-invite CTA's `font-medium` was dead on a `.btn` and deleted with the migration.
+    sites: 1,
     why:
-      '12 off-scale weight sites (6 font-medium, 6 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-09, 88.6-13, 88.6-19, 88.6-42, 88.6-43.',
+      '1 off-scale weight site: the armed-state 600 on the two-tap remove-friend control. UI-SPEC §4.5 rules this family Button-owned and it STAYS. Owning plans: 88.6-19 (swept), 88.6-46 (closeout).',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
   'app/gameDetail/page.js': {

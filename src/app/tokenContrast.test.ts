@@ -1459,6 +1459,19 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // half. Do not delete either: a measurement with no gate goes stale, and a gate with no
     // measurement cannot say why it exists.
     //
+    // AMENDED Phase 88.6-19 (D-16), 2026-09-16 — APPENDED, and the two sentences above are left
+    // exactly as they stand because they are the record of what was true when they were written.
+    // `friends/page.js:748` — the site BOTH paragraphs above name as this row's hand-verified
+    // live example — IS NOW FIXED. It was the tab-count pill's ACTIVE arm, a `<span>` carrying
+    // `text-content-link` on `bg-surface-muted`; it took `text-content-secondary` (6.9620),
+    // which its own INACTIVE arm already used. It was never a link, so the example this row
+    // reached for was, on inspection, an instance of the token being applied to the wrong kind
+    // of thing rather than of a link failing on a ground. Its `groundInk.test.ts` entries — the
+    // class-rule roster AND the test-3 by-name row — were both closed in the same commit.
+    // THIS ROW IS UNCHANGED AND STAYS RED-BY-DESIGN: the RATIO it measures is a property of the
+    // TOKEN PAIR, not of any consumer, and it is exactly as far below 4.5 as it was. Do not read
+    // "the example is fixed" as "the row can go".
+    //
     // THE TOKEN IS NOT THE FIX, and this is recorded so it is not re-proposed a third time.
     // `--color-text-link` keeps its dL* 7.03 step to `--color-text-link-hover`, and MEASURED:
     // no point on the purple-650 -> purple-700 ramp clears 4.5 on the muted fill while holding

@@ -66,17 +66,40 @@ vi.mock('@auth0/nextjs-auth0/client', () => ({
 // Received requests live in the shared provider (POLL-02), not in page state.
 // `refreshFriendships` is hoisted so tests can assert the unfriend mutation
 // refreshes the provider (88-33 Task 9, UAT row 553).
-const providerCtx = vi.hoisted(() => ({ refreshFriendships: vi.fn() }));
+// Phase 88.6-19: `receivedRequests` and the two mutators joined this holder so the
+// Requests tab can actually be rendered and its accept/decline catches driven. They
+// were inline literals, which made the two catches this plan registers as a no-sink
+// residual unreachable from any test — the reason they had no coverage at all.
+const providerCtx = vi.hoisted(() => ({
+  refreshFriendships: vi.fn(),
+  receivedRequests: [] as Array<Record<string, unknown>>,
+  acceptRequest: vi.fn(),
+  declineRequest: vi.fn(),
+}));
 vi.mock('@/app/components/FriendshipStatusProvider', () => ({
   useFriendshipStatus: () => ({
-    receivedRequests: [],
-    acceptRequest: vi.fn().mockResolvedValue({}),
-    declineRequest: vi.fn().mockResolvedValue({}),
+    receivedRequests: providerCtx.receivedRequests,
+    acceptRequest: providerCtx.acceptRequest,
+    declineRequest: providerCtx.declineRequest,
     loading: false,
     getStatus: () => 'none',
     refreshFriendships: providerCtx.refreshFriendships,
   }),
 }));
+
+// Phase 88.6-19 (AC-2). The house log channel and the page's ONE Sentry escalation
+// path, both replaced so the arms below can count calls rather than infer them.
+// `errCtx` stays REAL (importOriginal) — the property under test is that the raw
+// `Error` never reaches `logger.info`'s `ctx` parameter, which a mocked helper
+// could not show.
+vi.mock('@/lib/logger', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/logger')>();
+  return { ...actual, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } };
+});
+vi.mock('@/lib/queryClient', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/queryClient')>();
+  return { ...actual, queryCacheOnError: vi.fn() };
+});
 
 // Only the network surfaces are replaced; the `importOriginal` spread keeps
 // ApiError intact for the REAL useFetchErrorState and makes a removed export
@@ -109,6 +132,8 @@ import FriendsPage from './page';
 // ApiError survives the partial mock above (the `importOriginal` spread), so the
 // error pins exercise the REAL code-to-copy derivation in useFetchErrorState.
 import { ApiError, friendshipsAPI } from '@/lib/api';
+import { logger } from '@/lib/logger';
+import { queryCacheOnError } from '@/lib/queryClient';
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -160,6 +185,11 @@ export function renderFriends(options: RenderFriendsOptions = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   h.selfUuid = undefined;
+  // `clearAllMocks` clears CALLS, not IMPLEMENTATIONS, so a rejection set by one arm
+  // would leak into every later one in file order. Restore the defaults explicitly.
+  providerCtx.receivedRequests = [];
+  providerCtx.acceptRequest.mockResolvedValue({});
+  providerCtx.declineRequest.mockResolvedValue({});
 });
 
 afterEach(() => {
@@ -174,6 +204,34 @@ describe('friends render harness', () => {
     expect(await screen.findByRole('heading', { name: 'Friends' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Add Friend' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument();
+  });
+
+  it('the logged-out branch keeps a real ANCHOR to the Auth0 handler', async () => {
+    /* Phase 88.6-19 task 3. Neither friends test file exercised `!user` before this, so the
+       logged-out branch — the one surface a signed-out visitor can reach — had no coverage at
+       all, and its `.btn` migration could have silently changed the element KIND with nothing to
+       catch it. What this pins, and why each half matters:
+         - `role: 'link'` (not `button`): `<Button asChild>` slots onto the child, so the child
+           must still be an `<a>`. If a future edit drops `asChild`, or swaps the child for a
+           `<Link>`, this role query is what notices.
+         - the EXACT href: a client-router navigation to Auth0's handoff route is a behaviour
+           change, not a cleanup (UI-SPEC §3.2's asChild row says so in terms).
+       `auth.user` is restored in the `finally` so no later test inherits a signed-out page. */
+    const saved = auth.user;
+    auth.user = null as unknown as typeof auth.user;
+    try {
+      render(<FriendsPage />);
+      const login = await screen.findByRole('link', { name: 'Log In' });
+      expect(login).toHaveAttribute('href', '/api/auth/login');
+      expect(login.tagName).toBe('A');
+      // The primitive's own classes reached the slotted child (the `Slot` contract).
+      expect(login.className).toContain('btn');
+      expect(login.className).toContain('min-h-11');
+      // `type` is meaningless on an anchor and `Button` omits it when slotted.
+      expect(login).not.toHaveAttribute('type');
+    } finally {
+      auth.user = saved;
+    }
   });
 
   it('renders nothing but the identity gate while selfUuid is unresolved', async () => {
@@ -450,5 +508,128 @@ describe('friends request-tab empties (D2 mini-formula riders)', () => {
     const sentEmpty = await screen.findByText('No sent friend requests.');
     expect(sentEmpty.className).toContain('text-content-muted');
     expect(sentEmpty.className).toContain('text-sm');
+  });
+});
+
+/* Phase 88.6-19 task 3 (AC-2). Everything below is NEW.
+ *
+ * WHY THESE ARE BEHAVIORAL AND NOT A SOURCE GREP: the acceptance this file answers is not
+ * "no `console.` string remains" — that is a call-site scan and it lives in the summary's
+ * receipt. It is that the six converted catches still reach a channel, that the THREE LOAD
+ * catches did not acquire a SECOND Sentry capture for one failure, and that nothing was
+ * escalated past the level the owner ruled on 2026-09-13. Only a call count can say those. */
+describe('friends AC-2 — the converted channel, and what it did NOT become', () => {
+  const boom = () => new Error('HTTP error! status: 500');
+
+  it('a failed friends LOAD files exactly ONE Sentry capture and one breadcrumb', async () => {
+    renderFriends({ loadError: boom() });
+    await screen.findByText("Couldn't load your friends");
+
+    // The pre-existing `queryCacheOnError` forward is the SOLE Sentry EVENT for this
+    // failure and is byte-unchanged. The converted line adds a breadcrumb beside it,
+    // never a second capture — which is the whole reason the load catches could be
+    // converted IN PLACE rather than dropped.
+    const captures = (queryCacheOnError as Mock).mock.calls.filter(
+      ([, meta]) => (meta as { queryKey?: string[] })?.queryKey?.[1] === 'accepted'
+    );
+    expect(captures).toHaveLength(1);
+
+    const breadcrumbs = (logger.info as Mock).mock.calls.filter(
+      ([msg]) => msg === 'Error fetching friends:'
+    );
+    expect(breadcrumbs).toHaveLength(1);
+    expect(breadcrumbs[0][1]).toEqual({ name: 'Error', message: 'HTTP error! status: 500' });
+    expect(breadcrumbs[0][1]).not.toBeInstanceOf(Error);
+  });
+
+  it('nothing on this page is escalated — no converted call files an EVENT of its own', async () => {
+    // `logger.error` is `Sentry.captureException` and `logger.warn` is
+    // `Sentry.captureMessage`; both are events and both are the arms the owner rejected
+    // when AC-2's level was amended to `info` on 2026-09-13. Promoting a site here is a
+    // decision that needs a recorded ruling, not a cleanup.
+    renderFriends({ loadError: boom() });
+    await screen.findByText("Couldn't load your friends");
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['accept', 'Accept', 'acceptRequest', 'Error accepting request:'],
+    ['decline', 'Decline', 'declineRequest', 'Error declining request:'],
+  ] as const)(
+    'a failed %s reaches the log channel AND shows the user nothing — the registered residual',
+    async (_label, button, mutator, message) => {
+      // These two are the sites this plan registers as an owner-facing residual in
+      // `.planning/deferred/phase-88.6.md`: after the conversion the failure is silent to
+      // the user AND silent in the browser console, surviving only as a breadcrumb. BOTH
+      // halves are asserted here, so the residual is pinned as a FACT rather than as a
+      // sentence in a summary that nothing re-checks. If a later plan gives either path a
+      // toast or a banner, the second half reds and the register entry must be amended.
+      providerCtx.receivedRequests = [
+        { id: 'req-1', Requester: { id: FRIEND_2_UUID, username: 'Sam' } },
+      ];
+      providerCtx[mutator].mockRejectedValue(boom());
+      renderFriends();
+      await screen.findByText('Dana');
+      fireEvent.click(screen.getByRole('button', { name: /^Requests/ }));
+
+      fireEvent.click(await screen.findByRole('button', { name: button }));
+
+      await waitFor(() =>
+        expect((logger.info as Mock).mock.calls.some(([m]) => m === message)).toBe(true)
+      );
+      const call = (logger.info as Mock).mock.calls.find(([m]) => m === message);
+      expect(call?.[1]).toEqual({ name: 'Error', message: 'HTTP error! status: 500' });
+      expect(call?.[1]).not.toBeInstanceOf(Error);
+
+      // The silent half. Settled on a POSITIVE signal first (the breadcrumb above), so
+      // this absence claim is observed AFTER the failure landed rather than on tick one.
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.queryByText(/couldn't|went wrong|Something/i)).not.toBeInTheDocument();
+      // ...and the row is still sitting there, indistinguishable from an unattempted one.
+      expect(screen.getByText('Sam')).toBeInTheDocument();
+    }
+  );
+
+  it('a failed REMOVE keeps its sink — which is why it is EXCLUDED from that residual', async () => {
+    (friendshipsAPI.removeFriend as Mock).mockRejectedValue(boom());
+    renderFriends();
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Dana' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Tap again to confirm' }));
+
+    await waitFor(() =>
+      expect((logger.info as Mock).mock.calls.some(([m]) => m === 'Error removing friend:')).toBe(
+        true
+      )
+    );
+    expect(
+      await screen.findByText("We couldn't remove that friend. Please try again.")
+    ).toBeInTheDocument();
+  });
+});
+
+describe('friends D-16 / R2 #171 — the tab strip', () => {
+  it('the count pill is off the below-AA link ink', async () => {
+    renderFriends();
+    await screen.findByText('Dana');
+    const pill = screen.getByText('1');
+    expect(pill.className).toContain('bg-surface-muted');
+    expect(pill.className).toContain('text-content-secondary');
+    // 3.9909 on this ground — the token was wrong, not the ground (zero of the 61
+    // `text-content-link` sites on it is a link).
+    expect(pill.className).not.toContain('text-content-link');
+  });
+
+  it('the ACTIVE tab is announced, not only coloured', async () => {
+    renderFriends();
+    await screen.findByText('Dana');
+    const friendsTab = screen.getByRole('button', { name: /^Friends/ });
+    const sentTab = screen.getByRole('button', { name: /^Sent/ });
+    expect(friendsTab).toHaveAttribute('aria-current', 'true');
+    expect(sentTab).not.toHaveAttribute('aria-current');
+
+    fireEvent.click(sentTab);
+    await waitFor(() => expect(sentTab).toHaveAttribute('aria-current', 'true'));
+    expect(screen.getByRole('button', { name: /^Friends/ })).not.toHaveAttribute('aria-current');
   });
 });

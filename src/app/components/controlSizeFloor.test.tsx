@@ -55,7 +55,7 @@ import {
   assertRosterShape,
   type ExemptionRoster,
 } from '../../test-utils/exemption';
-import { readOpeningTag, sourceFiles } from '../../test-utils/sourceScan';
+import { readOpeningTag, sourceFiles, withoutComments } from '../../test-utils/sourceScan';
 
 const SRC = path.resolve(__dirname, '../..');
 
@@ -73,32 +73,30 @@ const AT_LEAST_16 = /(?<![\w:-])text-(base|lg|xl)(?![\w-])/;
 /** A breakpoint-prefixed size is never a fix: `md:` is the range phones sit BELOW. */
 const BREAKPOINT_SIZE = /\b(sm|md|lg|xl|2xl):text-(base|lg|xl)/;
 
-/** Blank out comments and string bodies, preserving byte offsets so lines stay right. */
-function stripComments(text: string): string {
-  const out = text.split('');
-  let i = 0;
-  while (i < text.length) {
-    const c = text[i];
-    if (c === '"' || c === "'" || c === '`') {
-      i += 1;
-      while (i < text.length && text[i] !== c) {
-        if (text[i] === '\\') i += 1;
-        i += 1;
-      }
-      i += 1;
-    } else if (text.startsWith('//', i)) {
-      while (i < text.length && text[i] !== '\n') out[i++] = ' ';
-    } else if (text.startsWith('/*', i)) {
-      const end = text.indexOf('*/', i + 2);
-      const stop = end === -1 ? text.length : end + 2;
-      for (let k = i; k < stop; k += 1) if (out[k] !== '\n') out[k] = ' ';
-      i = stop;
-    } else {
-      i += 1;
-    }
-  }
-  return out.join('');
-}
+/* DECISION Phase 88.6-19 (Rule 1 fix): the comment stripper is the SHARED `withoutComments`
+   from `src/test-utils/sourceScan.ts`, chosen OVER this file's private `stripComments` copy,
+   which is DELETED. This is the same convergence the `sourceFiles` marker below already made
+   for the directory walker, and for the same stated reason.
+
+   THE DEFECT THE PRIVATE COPY HAD, measured rather than reasoned: it treated a bare `'`
+   ANYWHERE — including in JSX TEXT — as opening a string literal, and scanned forward to the
+   next `'` with no newline bound. One apostrophe in prose (`ManageMembers.js:484`,
+   "You're viewing the member list.") therefore swallowed everything up to the next apostrophe
+   fifteen lines later (inside `title="Couldn't load members"`), and every `/*` in that span
+   went unrecognised. The visible symptom was a FALSE POSITIVE: the literal text `<select>`
+   inside the 88-12 a11y marker at `:600` was reported as an unsized control. The far worse
+   symptom is the one nobody would have seen — a REAL unsized control sitting inside such a
+   span is silently skipped, and this suite goes quiet exactly where it matters.
+
+   `withoutComments` already carries the bound (`sourceScan.ts:164-166`: "An unterminated
+   single/double quote (an apostrophe in prose) must not swallow the rest of the file: stop at
+   the newline"). Both strippers blank comments in place and preserve every other byte and
+   offset, so reported line numbers are unchanged by this swap.
+
+   MEASURED BEHAVIOUR-EQUIVALENCE, not assumed: the control set was computed with BOTH
+   strippers across all 194 non-test files under `src/`. The two agree on 193 of them; the
+   single difference is the false positive above disappearing. Re-inlining a private copy here
+   is a decision, not a cleanup. */
 
 // `readOpeningTag` was RELOCATED to `src/test-utils/sourceScan.ts` by Phase 88.6-09 and is
 // imported above. It is the same brace-balanced reader this file has always used, plus a
@@ -145,7 +143,7 @@ function stripComments(text: string): string {
 const SOURCES: { rel: string; raw: string; scannable: string }[] = sourceFiles(SRC).map(
   (file) => {
     const raw = fs.readFileSync(file, 'utf8');
-    return { rel: path.relative(SRC, file), raw, scannable: stripComments(raw) };
+    return { rel: path.relative(SRC, file), raw, scannable: withoutComments(raw) };
   },
 );
 
