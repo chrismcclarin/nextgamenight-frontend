@@ -280,11 +280,18 @@ const BTN_EXEMPT: ExemptionRoster = {
   // `text-content-status-error` are NOT dead (`.btn` declares no width, margin, flex-shrink or
   // colour) and moved onto the `Button` className. Entry DELETED rather than zeroed — the roster
   // is exact in both directions, so a zeroed entry would red as a fossil permission.
-  'app/components/NotificationBell.js': {
-    sites: 4,
-    why: 'plan 88.6-31 sweeps the feedback and notification cluster, NotificationBell.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-31 task 3 (wave 7, 2026-09-16): `app/components/NotificationBell.js`
+  // carried `sites: 4` and the count was EXACT — the invite Accept/Decline pair and the
+  // friend-request Accept/Decline pair, all four inside the dropdown panel. All four are
+  // `<Button variant={primary|secondary} size="default">` now, and the two PAIRS migrate
+  // TOGETHER, which is the matched-control rule. DEAD CLASSES DELETED AND ONLY THOSE:
+  // `text-xs` (unlayered `.btn` declares `font-size`) and `px-3 py-1.5` (it declares `padding`)
+  // go at all four; `flex-1` STAYS at all four — `.btn` declares no `flex`, so it was never dead
+  // and it is what makes the pair split the row. The two disclosure TRIGGERS are NOT census
+  // sites and never were (neither wears `.btn`); they are edited in the same commit for the
+  // named two-attribute ARIA exception only. V-1 applies to all four: they gain the cva base's
+  // 44px floor at desktop widths as well, which is a disclosed phase-level delta.
+  // Entry DELETED rather than zeroed; the roster is exact in both directions.
   // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ScheduleList.js`
   // carried `sites: 4` — the desktop Edit (`btn btn-primary`) and Delete (`btn btn-danger`) row
   // actions and the in-row delete confirm's Confirm/Cancel pair. All four are

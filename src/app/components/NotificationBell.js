@@ -1,11 +1,37 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useId } from 'react';
 import { invitesAPI } from '../../lib/api';
+import { logger } from '@/lib/logger';
+import { Button } from '../../components/ui/Button';
+import { Heading } from '../../components/ui/Heading';
 import { useFriendshipStatus } from './FriendshipStatusProvider';
 import { useUnreadNotificationCount } from './UnreadNotificationProvider';
 
 function NotificationBell({ user, variant = 'icon', label }) {
   const [isOpen, setIsOpen] = useState(false);
+  /* DECISION Phase 88.6-31 (ACCEPT §9 / #164, owner ruling 2026-09-14, option 1): both disclosure
+     triggers gain `aria-expanded={isOpen}` and an `aria-controls` pointing at this id on the
+     dropdown panel. This is the SINGLE two-attribute exception to plan 31's record-don't-fix a11y
+     scope split, and nothing else in this file inherits it.
+
+     REJECTED ARM: keep it ROUTED with the rest of the disclosure semantics (no Escape handler, no
+     role on the panel, the `mousedown`-only outside-click) — those three ARE routed, to
+     `.planning/deferred/phase-88.6.md` with a proposed owning phase.
+
+     WHY THIS ONE WAS TAKEN. It is WCAG 4.1.2 (Name, Role, Value), Level A, on a trigger whose
+     whole job is to announce a state it never exposed: before this commit the file carried
+     exactly THREE `aria-` attributes in 409 lines (`grep -n 'aria-'`, measured 2026-09-16), and
+     both triggers were `onClick={() => setIsOpen(!isOpen)}` with an `aria-label` and nothing
+     else. BOTH, not one: the ROW variant is rendered inside the phone hamburger
+     (`src/app/Header.js:287`), the phone-primary surface, which is why it was taken in scope at
+     all. The change is ATTRIBUTE-ONLY — no handler change, no markup restructuring, no role added
+     to the panel, no visible behaviour — and that smallness is the argument that won the
+     exception. The boundary it is an exception TO is a real CONSEQUENCE constraint, stated here
+     so it survives the next reader: a wave-7 sweep plan that starts fixing a11y defects loses its
+     boundary. Neither trigger's prior-decision comment (the `surfaceHoverSweep` hover pin on the
+     row, the Phase 88.3 focus-ring treatment on the icon) constrains ARIA attributes — confirmed
+     at both sites before editing, not assumed. */
+  const panelId = `${useId()}-notification-panel`;
   const [actionLoading, setActionLoading] = useState(null);
   // { text, tone: 'success' | 'muted' } — muted is the L-8 "no longer
   // available" notice, which must not render in success-green.
@@ -50,6 +76,63 @@ function NotificationBell({ user, variant = 'icon', label }) {
     return () => clearTimeout(timer);
   }, [confirmation]);
 
+  /* DECISION Phase 88.6-31 (AC-16 option (a) + AC-2 WIDENED, owner rulings 2026-09-09): all four
+     accept/decline failure paths below were raw `console.error` calls forwarding `err.message`,
+     with no toast,
+     no inline message and NO Sentry capture — a failed Accept left the row in place and the user
+     reasonably concluded it worked. They are now `logger.error('<msg>', err)`, the message string
+     kept VERBATIM, and THAT CALL IS THE ESCALATION the ruling asked for: `logger.error` routes to
+     `Sentry.captureException` (`logger.ts:28-30`), so a failed accept/decline now files a real
+     Sentry EVENT where before it was at most a console breadcrumb (there is no
+     `captureConsoleIntegration` in `sentry.client.config.js`, and `QueryCache.onError` covers only
+     query-cache errors). A console-only diagnostic is no longer an acceptable end state here.
+     No hand-rolled `Sentry.captureException` goes in beside these — one escalation per failure
+     path. Unlike the two feedback writers (this plan's tasks 1 and 2), these four carry no TAG
+     requirement, which is exactly what makes `logger.error` — a call with no tags channel — the
+     right mechanism HERE and the wrong one THERE.
+
+     THE SECOND ARGUMENT IS THE ERROR OBJECT, not the bare `err.message` string these sites used
+     to forward. `logger.error` synthesizes `new Error(msg)` only when `err` is OMITTED, so passing
+     the object is what `logger.ts`'s T-84-01 contract describes — the caller message plus the
+     error itself — and is strictly more useful in Sentry than a stringified message. What T-84-01
+     forbids is unchanged and is honoured: no request-body field, no member/user record, no email,
+     no token, no URL. (The inverse instruction in this phase's other converting plans — name and
+     message in a ctx object, never the raw Error — follows from `logger.info(msg, ctx)`'s
+     signature and does NOT apply here, because these four are `logger.error`.)
+
+     LEVEL: these four stay at `logger.error` rather than taking AC-2's 2026-09-13 amended default
+     of `logger.info`. The ruling's five-name enumeration is BOOKKEEPING — violating it costs one
+     line in `RULINGS.md`, and that amendment is written (round-6 amendment section, note A);
+     AC-16 (a)'s DELIVERY is CONSEQUENCE. `logger.info` is `Sentry.addBreadcrumb` and files nothing
+     on its own, so demoting them would un-deliver the ruling and leave `T-88.6-84` (severity high)
+     asserting a mitigation it no longer has.
+
+     IN PLACE, and that word is load-bearing. `handleAccept`'s and `handleDecline`'s calls sit
+     inside the **`else`** of an `if (err?.status === 410)` guard, and the 410 arm is a DESIGNED
+     OUTCOME, not a failure — the group was soft-deleted under the invite, the row is dropped and a
+     muted notice shown (accept) or nothing is said (decline, because removal is what the user
+     asked for). Hoisting a converted call to the top of either catch would file a Sentry event on
+     every soft-deleted invite, escalating an outcome the user sees as success. The other two are
+     bare catches with no branch. CONVERT-ON-TOUCH EXECUTION CHECK, run before converting rather
+     than after: all four sites are `catch` arms of async handlers, so all four convert IN PLACE
+     and NONE needed moving into a guarded effect or behind a latch — no render body, no per-item
+     loop, so neither the event-volume argument nor the finite-breadcrumb-buffer argument binds.
+
+     DISCLOSED BEHAVIOUR DELTA, not a discovered one: each of these four now produces a Sentry
+     event, and because `sentry.client.config.js` sets a non-zero `replaysOnErrorSampleRate` the
+     first such event in a buffering session can flush the Session Replay buffer and convert that
+     session to continuous recording and upload for its remainder. That cost is BOUNDED by plan
+     13's D2 sampling gate, which landed in wave 3 ahead of this plan.
+
+     RECORDED SUPERSEDED ARM, kept rather than deleted: round 3 specified a hand-rolled CLASS-ONLY
+     `Sentry.captureException` at each of the four, in `FeedbackForm.js`'s shape. AC-2 WIDENED
+     replaced the MECHANISM, not the outcome; AC-16's word "class-only" was amended to "a Sentry
+     capture" (owner, 2026-09-13, D7 arm A). A literal class-only wrapper was rejected because it
+     would produce an almost content-free event here — worse diagnostics than the ruling existed to
+     restore — and because the class-only shape exists for a body carrying a reporter's address and
+     prose, which an accept/decline does not have. RESIDUAL, accepted by the owner 2026-09-13:
+     non-pattern upstream prose (group names, provider prose) reaching Sentry from these paths;
+     pattern PII is redacted by `sentry.scrub.js`'s `beforeSend`. */
   async function handleAccept(invite) {
     setActionLoading(invite.id);
     try {
@@ -75,7 +158,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
         const groupName = invite.Group?.name || invite.group_name || 'This group';
         setConfirmation({ text: `${groupName} is no longer available.`, tone: 'muted' });
       } else {
-        console.error('Failed to accept invite:', err.message);
+        logger.error('Failed to accept invite:', err);
       }
     } finally {
       setActionLoading(null);
@@ -93,7 +176,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
       if (err?.status === 410) {
         ctxSetInvites((prev) => prev.filter((i) => i.id !== invite.id));
       } else {
-        console.error('Failed to decline invite:', err.message);
+        logger.error('Failed to decline invite:', err);
       }
     } finally {
       setActionLoading(null);
@@ -110,7 +193,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
       await ctxAcceptFriend(request.id);
       setConfirmation({ text: 'Accepted friend request!', tone: 'success' });
     } catch (err) {
-      console.error('Failed to accept friend request:', err.message);
+      logger.error('Failed to accept friend request:', err);
     } finally {
       setActionLoading(null);
     }
@@ -121,7 +204,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
     try {
       await ctxDeclineFriend(request.id);
     } catch (err) {
-      console.error('Failed to decline friend request:', err.message);
+      logger.error('Failed to decline friend request:', err);
     } finally {
       setActionLoading(null);
     }
@@ -196,6 +279,9 @@ function NotificationBell({ user, variant = 'icon', label }) {
           onClick={() => setIsOpen(!isOpen)}
           className="w-full text-left flex items-center gap-3 px-4 py-3 text-white text-sm hover:bg-surface-header-hover active:opacity-75 transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
           aria-label={label ? `${label} notifications` : 'Notifications'}
+          // Phase 88.6-31, the named two-attribute exception — see the marker at `panelId`.
+          aria-expanded={isOpen}
+          aria-controls={panelId}
         >
           {bellIcon}
           {/* DECISION Phase 88.3 (Req 8 / UI-SPEC §5.9.2): this label DROPS
@@ -244,6 +330,9 @@ function NotificationBell({ user, variant = 'icon', label }) {
           // subtree at `Header.js`'s container. See the DECISION marker on the row label below.
           className="relative text-white hover:text-amber-400 transition-colors p-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
           aria-label="Notifications"
+          // Phase 88.6-31, the named two-attribute exception — see the marker at `panelId`.
+          aria-expanded={isOpen}
+          aria-controls={panelId}
         >
           {bellIcon}
 
@@ -261,14 +350,24 @@ function NotificationBell({ user, variant = 'icon', label }) {
             within the menu naturally (no fixed/absolute escape from flow).
           - icon variant (desktop nav): fixed/absolute overlay near the bell. */}
       {isOpen && (
-        <div className={
-          variant === 'row'
-            ? "bg-surface-card border-t border-line-header"
-            : "fixed right-2 left-2 sm:left-auto sm:absolute sm:right-0 mt-2 sm:w-80 bg-surface-card rounded-lg shadow-theme-lg border border-line z-50"
-        }>
+        <div
+          id={panelId}
+          className={
+            variant === 'row'
+              ? "bg-surface-card border-t border-line-header"
+              : "fixed right-2 left-2 sm:left-auto sm:absolute sm:right-0 mt-2 sm:w-80 bg-surface-card rounded-lg shadow-theme-lg border border-line z-50"
+          }
+        >
           {/* Header */}
           <div className="px-4 py-3 border-b border-line">
-            <h3 className="text-sm font-bold text-content-primary">Notifications</h3>
+            {/* §4.4: an h3 at 14 STAYS at 14 (its table's "h3 @ 14 and h3 @ 16 -> stay" row), so
+                `size="label"` STATES the rung rather than inheriting the primitive's level-derived
+                default. LEVEL PRESERVED (P4) — `typeScaleTouchedSurfaces`' EXPECTED_LEVELS entry
+                for this file (`{ 3: 1 }`) is byte-unchanged; only the SOURCE of the rung and the
+                weight moves, and `font-bold` was already what this site shipped. */}
+            <Heading level={3} size="label" className="text-content-primary">
+              Notifications
+            </Heading>
           </div>
 
           {/* Confirmation banner — success-green for completed actions, muted
@@ -277,8 +376,21 @@ function NotificationBell({ user, variant = 'icon', label }) {
             <div className={`px-4 py-2 border-b border-line ${
               confirmation.tone === 'success' ? 'bg-status-success-subtle' : 'bg-surface-muted'
             }`}>
-              <p className={`text-sm font-medium ${
-                confirmation.tone === 'success' ? 'text-content-status-success' : 'text-content-muted'
+              {/* DECISION Phase 88.6-31 (D-16, owner ruling ARM A, 2026-09-16): the MUTED arm's
+                  ink moves `text-content-muted` (4.3725) -> `text-content-secondary` (6.9620),
+                  chosen OVER leaving it and OVER changing the GROUND. This is a measured sub-AA
+                  pairing, not a scan artefact: both arms key on the SAME condition
+                  (`confirmation.tone === 'success'`), so the muted ink and the muted
+                  `bg-surface-muted` ground directly above are genuinely co-live. The token was
+                  wrong for this ground, not the ground — this is a NOTICE, and `secondary` is the
+                  shape plan 27 chose for the same class of site. The SUCCESS arm is
+                  byte-unchanged. Its `groundInk.test.ts` OFFENDERS entry is deleted in this same
+                  commit, as that roster's exactness requires.
+                  §4.5: `font-medium` takes the EMPHASIS outcome — DELETED, with the distinction
+                  carried by the colour token each arm already has (dropped-utility spelling, the
+                  same one this plan's tasks 1 and 2 used). */}
+              <p className={`text-sm ${
+                confirmation.tone === 'success' ? 'text-content-status-success' : 'text-content-secondary'
               }`}>{confirmation.text}</p>
             </div>
           )}
@@ -298,7 +410,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
                 {/* Group Invites section */}
                 {invites.length > 0 && (
                   <>
-                    <p className="text-xs font-semibold text-content-muted uppercase tracking-wider px-4 pt-3 pb-1">
+                    <p className="text-xs font-bold text-content-muted uppercase tracking-wider px-4 pt-3 pb-1">
                       Group Invites
                     </p>
                     <ul>
@@ -313,7 +425,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
                             key={invite.id}
                             className="px-4 py-3 border-b border-line last:border-b-0"
                           >
-                            <p className="text-sm font-semibold text-content-primary">{groupName}</p>
+                            <p className="text-sm font-bold text-content-primary">{groupName}</p>
                             <p className="text-xs text-content-muted mt-0.5">
                               {inviterName} invited you
                             </p>
@@ -324,24 +436,26 @@ function NotificationBell({ user, variant = 'icon', label }) {
                             )}
 
                             <div className="flex gap-2 mt-2">
-                              <button
+                              <Button
+                                variant="primary"
                                 onClick={() => handleAccept(invite)}
                                 disabled={isLoading}
-                                className="flex-1 btn btn-primary text-xs px-3 py-1.5"
+                                className="flex-1"
                               >
                                 {isLoading ? (
                                   <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                 ) : (
                                   'Accept'
                                 )}
-                              </button>
-                              <button
+                              </Button>
+                              <Button
+                                variant="secondary"
                                 onClick={() => handleDecline(invite)}
                                 disabled={isLoading}
-                                className="flex-1 btn btn-secondary text-xs px-3 py-1.5"
+                                className="flex-1"
                               >
                                 Decline
-                              </button>
+                              </Button>
                             </div>
                           </li>
                         );
@@ -353,7 +467,7 @@ function NotificationBell({ user, variant = 'icon', label }) {
                 {/* Friend Requests section */}
                 {friendRequests.length > 0 && (
                   <>
-                    <p className="text-xs font-semibold text-content-muted uppercase tracking-wider px-4 pt-3 pb-1">
+                    <p className="text-xs font-bold text-content-muted uppercase tracking-wider px-4 pt-3 pb-1">
                       Friend Requests
                     </p>
                     <ul>
@@ -366,30 +480,32 @@ function NotificationBell({ user, variant = 'icon', label }) {
                             key={request.id}
                             className="px-4 py-3 border-b border-line last:border-b-0"
                           >
-                            <p className="text-sm font-semibold text-content-primary">{requesterName}</p>
+                            <p className="text-sm font-bold text-content-primary">{requesterName}</p>
                             <p className="text-xs text-content-muted mt-0.5">
                               wants to be your friend
                             </p>
 
                             <div className="flex gap-2 mt-2">
-                              <button
+                              <Button
+                                variant="primary"
                                 onClick={() => handleAcceptFriend(request)}
                                 disabled={isLoading}
-                                className="flex-1 btn btn-primary text-xs px-3 py-1.5"
+                                className="flex-1"
                               >
                                 {isLoading ? (
                                   <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                 ) : (
                                   'Accept'
                                 )}
-                              </button>
-                              <button
+                              </Button>
+                              <Button
+                                variant="secondary"
                                 onClick={() => handleDeclineFriend(request)}
                                 disabled={isLoading}
-                                className="flex-1 btn btn-secondary text-xs px-3 py-1.5"
+                                className="flex-1"
                               >
                                 Decline
-                              </button>
+                              </Button>
                             </div>
                           </li>
                         );

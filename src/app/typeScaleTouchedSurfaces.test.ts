@@ -734,7 +734,13 @@ const EXPECTED_PROP_SEAMS = 5;
 // landed. Raised in the SAME commit as the migration, per this file's own docblock rule — the
 // assertion is `>=`, so leaving the number unchanged after a sweep is silently green and is a RED
 // by that rule rather than by the arithmetic.
-const EXPECTED_MIN_PRIMITIVES = 126;
+// 126 -> 127, plan 88.6-31 task 3 (wave 7, 2026-09-16): `NotificationBell.js`'s dropdown-panel
+// `<h3 className="text-sm font-bold">` migrated onto `<Heading level={3} size="label">`, so
+// exactly ONE new `<Heading>` call site landed. LEVEL PRESERVED (P4) and RUNG PRESERVED — §4.4's
+// "h3 @ 14 and h3 @ 16 -> stay" row — so `EXPECTED_LEVELS`' `{ 3: 1 }` entry for this file is
+// byte-unchanged and only the SOURCE of the rung moved. Raised in the SAME commit as the
+// migration, per the docblock rule above.
+const EXPECTED_MIN_PRIMITIVES = 127;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -2260,12 +2266,27 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-11, 88.6-13, 88.6-16, 88.6-17, 88.6-18, 88.6-22, 88.6-27, 88.6-28, 88.6-29, 88.6-30, 88.6-32, 88.6-43, 88.6-46.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/NotificationBell.js': {
-    sites: 5,
-    why:
-      '5 off-scale weight sites (1 font-medium, 4 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-10, 88.6-31, 88.6-34, 88.6-43, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-31 task 3 (wave 7, 2026-09-16): `app/components/NotificationBell.js`
+  // carried `sites: 5` and the count was EXACT (1 `font-medium`, 4 `font-semibold`), resolving
+  // THREE ways, which is why the entry could not close on one rule:
+  //   - the two SECTION EYEBROWS ("Group Invites", "Friend Requests") took §4.5's EYEBROW
+  //     outcome — Caption 12 / 700 / uppercase / tracking, so `font-semibold` -> `font-bold`
+  //     while `text-xs` and `tracking-wider` STAY. That is the `CalendarListView.js` shape, and
+  //     the tracking is this site's own recorded call, kept rather than converged.
+  //   - the two ROW PRIMARY STRINGS (the group name, the requester name) took HIERARCHY 700.
+  //     Each is the one string that identifies its row; 400 would leave it reading as prose
+  //     beside its own metadata. Both stay `<p>` — P4 forbids inventing a heading level.
+  //   - the CONFIRMATION SENTENCE's `font-medium` took EMPHASIS: the utility is DELETED and the
+  //     distinction rides the colour token each of its two arms already carries. Dropped-utility
+  //     spelling, matching this plan's other two tasks.
+  // RUNGS ARE UNCHANGED AND THAT IS A RECORDED CALL, not an omission: this file has no rung
+  // roster entry in either direction, and the two row primary strings stay at `text-sm` rather
+  // than folding to §4.3's Body 16. That §4.3-vs-shipped-fleet tension (compact list-row names
+  // at 14) is an OPEN item with no owner, already on plan 46's amendment list; resolving it for
+  // one component inside a sweep would be an unowned look change on the phone-primary surface.
+  // The two unread-count BADGES are Caption 12 counters (§4.2's closed role list) and were
+  // already `text-xs font-bold` — correct in both halves, never in this count, byte-unchanged.
+  // Entry DELETED, not zeroed — the roster is exact in both directions.
   // DELETED by plan 88.6-32 task 3 (wave 7, 2026-09-16): `app/components/OpenPollsList.js`
   // carried `sites: 1` — the poll-row title at `:261` pre-edit, `font-semibold` on a `<p>`.
   // §4.5's HIERARCHY outcome: it is the row's one primary string, so 600 -> 700. It is a `<p>`

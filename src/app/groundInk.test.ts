@@ -206,11 +206,21 @@ const OFFENDERS: ExemptionRoster = {
   // declared BOTH `GroupSettings.js` and this roster. Recorded in `.planning/WINDOWS.md`.
   // The `BringGamePicker.js` and `NotificationBell.js` entries are NOT touched (plans 33, 31).
   // Entry DELETED, not zeroed — the roster is exact in both directions.
-  'app/components/NotificationBell.js': {
-    sites: 1,
-    why: 'text-content-muted (4.3725) at :281 under the muted confirmation-banner ground at :278. The two arms share the SAME condition (confirmation.tone === "success"), so the pairing is genuinely co-live even though the scan can only classify it "possible". NEWLY MEASURED — not a D-16 census site and no sweep plan owns it with this roster. Routed to the owner in 88.6-09-SUMMARY.md.',
-    owner: D16,
-  },
+  // DELETED by plan 88.6-31 task 3 (wave 7, 2026-09-16) under the owner's D-16 ARM A ruling:
+  // `app/components/NotificationBell.js` carried `sites: 1` — `text-content-muted` (4.3725) on
+  // the muted confirmation-banner ground, re-derived BY CONTENT at execution (the entry's `:281`
+  // / `:278` cites still resolved) rather than by the stale line pins. The two arms share the
+  // SAME condition (`confirmation.tone === 'success'`), so the pairing was genuinely co-live and
+  // the "possible" classification understated it. The ink took `text-content-secondary` (6.9620)
+  // — plan 27's D-16 shape for a NOTICE, and the TOKEN was what was wrong for this ground, not
+  // the ground: it is not muted metadata, it is a notice sentence. The success arm is
+  // byte-unchanged. `DECISION Phase 88.6-31 (D-16)` marker at the site.
+  //
+  // THIS FILE IS NOT IN PLAN 88.6-31's DECLARED `files_modified` FOR THIS ROSTER — the edit is an
+  // OWNER-AUTHORIZED undeclared-gate edit (ruling 2026-09-16, ARM A, which named both halves and
+  // required them in ONE commit because this roster is exact in both directions). Disclosed in
+  // `88.6-31-SUMMARY.md` and in `.planning/WINDOWS.md`. The `SuggestionCard.js` and
+  // `CalendarMonthView.js` entries are NOT touched (plans 42 / 40). Entry DELETED, not zeroed.
   'app/components/SuggestionCard.js': {
     sites: 1,
     why: 'text-content-muted (4.3725) at :141, the disabled Create-Event button, a SAME-CHUNK ground+ink pairing inside one JSX opening tag. This is the D-15 site, deliberately NOT folded into the UNRESOLVABLE entry below: the walk resolves it. Closed by plan 42.',
