@@ -1041,7 +1041,9 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
               duration={newEvent.duration_minutes}
               onSelectGame={handleSuggestionSelect}
               eventId={editingEvent?.id}
-              userRole={userRole}
+              /* `userRole` was DROPPED here by plan 88.6-39: the owner's D4 ruling removed
+                 QuickSuggestions' role gate, so the component no longer reads it. Left as a
+                 removal rather than a dead prop — it is not a contract. */
             />
           </div>
 

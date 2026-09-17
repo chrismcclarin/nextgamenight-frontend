@@ -24,19 +24,34 @@
  * a call-site size that duplicates a primitive's own is the dead-class case in a different
  * costume. This is a hand-rolled div, so the utility below is the only thing sizing it.
  *
- * PLAN 39 (W52 / D-18) OWNS THIS BANNER'S HEIGHT BEHAVIOUR DURING A PAINT GESTURE. It unmounts
- * late, when `isProfileTimezoneSet` resolves, which is why plan 39 folds it into the same
- * finger-up hold as QuickSuggestions. Plan 88.6-26 changed classes only and deliberately touched
- * no mount or unmount condition here.
+ * DECISION Phase 88.6-39 (W52 / D-18): this banner's LATE UNMOUNT is held until finger-up, and
+ * the hold lives HERE rather than at the `createEvent.js` mount site. It is a second uncontrolled
+ * height source above the scheduler grid — it disappears when `isProfileTimezoneSet` resolves,
+ * which can land mid-gesture and move every row under the user's finger.
+ *
+ * WHY INSIDE THE BANNER. It self-gates internally (the `return null` below) and takes NO props,
+ * so holding its unmount FROM `createEvent` would mean gating that JSX — which forces
+ * `createEvent` to subscribe and therefore to re-render at gesture ENGAGE, reconciling the ~196
+ * memoized scheduler cells, because `EventScheduler` is rendered inline and unmemoized there.
+ * That is the exact jank the signal exists to avoid causing.
+ *
+ * IMPORT-SAFE BY CONSTRUCTION. This banner has THREE mount sites and only one has a scheduler
+ * (`createEvent.js`; the other two are `EventDayModal.js` and `gameDetail/page.js`). The store is
+ * a LEAF MODULE with an INACTIVE default and no imports from the component tree, so those two
+ * mounts render exactly as they did and pull no create-event code into their bundles.
  */
 
 import Link from 'next/link';
+import { usePaintGestureHold } from './heatmap/paintGestureActiveStore';
 import { useTimezone } from './TimezoneProvider';
 
 export default function TimezoneNudgeBanner() {
   const { isProfileTimezoneSet, browserTimezone } = useTimezone();
+  // Held only while a paint gesture is ACTIVE; inert everywhere else, which is what keeps the two
+  // non-scheduler mounts byte-identical in behaviour.
+  const heldIsProfileTimezoneSet = usePaintGestureHold(isProfileTimezoneSet);
 
-  if (isProfileTimezoneSet) return null;
+  if (heldIsProfileTimezoneSet) return null;
 
   // Friendly form of the browser TZ identifier ("America/Denver" → "America/Denver";
   // we leave the IANA string verbatim — users seeing it usually recognize it,

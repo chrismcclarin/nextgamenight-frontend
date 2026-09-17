@@ -1134,6 +1134,123 @@ test.describe('Phase 88.1 Req 5 — visual scheduler touch model (phone project)
       `the "Selected Time:" panel came back as "${roundTripped.text}" after a visual -> manual -> visual round-trip, was "${visual.text}" — the scheduler is not a pure projection of the parent's canonical fields (Phase 66-01)`,
     ).toBe(visual.text);
   });
+
+  /**
+   * PLAN 88.6-39 (W52 / D-18) — THE GRID DOES NOT MOVE UNDER THE FINGER.
+   *
+   * TWO SAMPLES INSIDE ONE LIVE GESTURE. The finger goes down and stays down; the first
+   * `probeSchedulerGeometry` is taken immediately after engage, the second after a window that
+   * comfortably covers `QuickSuggestions`' 500ms debounce plus its fetch, and the grid's own
+   * scroll-box top must be IDENTICAL across the two. Anything that grows or collapses above the
+   * grid mid-gesture moves that number, and every row with it — which is the whole defect: the
+   * user paints an hour they did not choose and is never told.
+   *
+   * WHY THE SCROLLER'S TOP IS THE ASSERTION. `probeSchedulerGeometry` reports the rect of the
+   * grid's own scroll box (its immediate parent) and not a separate `grid.getBoundingClientRect()`
+   * — content growing ABOVE the grid moves exactly that rect, which is the motion this test
+   * exists to catch. `contentOffsetTopInClip` is kept as ATTACHMENT-ONLY explanation: it tells a
+   * reader WHETHER a delta was growth above the grid or the modal body scrolling. It does not
+   * DETECT a delta, so it is not the assertion.
+   *
+   * AND THE USER-VISIBLE CONSEQUENCE, asserted beside it: the committed row must be the target
+   * row. A zero delta with the wrong row committed would mean the gesture broke some other way.
+   *
+   * ALSO MEASURED HERE (round-3 #179, UI-SPEC 3.5): the rendered heights of the two
+   * `QuickSuggestions` controls at 375px. A pass at 1280px is not a pass for a phone floor, and
+   * the vitest layer can only see the authored class — jsdom has no layout.
+   */
+  test('(8) the grid top does not move across the QuickSuggestions settle inside one live gesture', async ({ page }, testInfo) => {
+    await openVisualScheduler(page);
+    await settleSchedulerGeometry(page);
+    await resetColumnScroll(page);
+    const geo = must(await gridGeometry(page), "the scheduler grid's geometry");
+    const corridor = corridorCells(geo);
+    expect(corridor.length, 'no cell in the drag corridor for the grid-stability case').toBeGreaterThanOrEqual(3);
+    const anchor = corridor[0];
+    const target = corridor[2];
+
+    const cdp = await page.context().newCDPSession(page);
+    await longPress(cdp, page, { x: anchor.cx, y: anchor.cy });
+
+    // SAMPLE 1 — the finger is down and the gesture is engaged.
+    const before = must(await probeSchedulerGeometry(page), 'the scheduler geometry at gesture engage');
+
+    // The settle window: 500ms debounce + the fetch + a margin. The finger never lifts.
+    await page.waitForTimeout(2000);
+
+    // SAMPLE 2 — same gesture, still live.
+    const after = must(await probeSchedulerGeometry(page), 'the scheduler geometry after the settle');
+
+    await attachDiagnostics(testInfo, 'case8-grid-stability', {
+      beforeScrollerTop: before.scroller.top,
+      afterScrollerTop: after.scroller.top,
+      delta: after.scroller.top - before.scroller.top,
+      // EXPLANATION ONLY, never the assertion: a non-null change here says the delta was content
+      // GROWTH above the grid; an unchanged value with a moved rect says the modal body scrolled.
+      beforeContentOffsetTopInClip: before.contentOffsetTopInClip,
+      afterContentOffsetTopInClip: after.contentOffsetTopInClip,
+      anchor: { coord: anchor.coord, row: anchor.row },
+      target: { coord: target.coord, row: target.row },
+    });
+
+    expect(
+      after.scroller.top - before.scroller.top,
+      `the scheduler grid's top moved ${after.scroller.top - before.scroller.top}px between two samples inside ONE live gesture (${before.scroller.top} -> ${after.scroller.top}). Every row moved with it, so the user painted an hour they did not choose. Look at what renders ABOVE the grid in createEvent: QuickSuggestions' slot (which must be a constant height for every role) and TimezoneNudgeBanner's late unmount (which must be held until finger-up). contentOffsetTopInClip went ${before.contentOffsetTopInClip} -> ${after.contentOffsetTopInClip}: a change there means something GREW above the grid, an unchanged value means the modal body scrolled.`,
+    ).toBe(0);
+
+    await steppedMovesToCell(cdp, page, { x: anchor.cx, y: anchor.cy }, target.coord);
+    await touchEnd(cdp);
+
+    const sel = await readSelection(page);
+    expect(
+      sel.endRow,
+      `the gesture committed rows ${sel.startRow}-${sel.endRow} ("${sel.text}") but the finger ended on row ${target.row} — the user-visible half of a grid that moved`,
+    ).toBe(target.row);
+    expect(sel.startRow, `the anchor row moved during the gesture ("${sel.text}")`).toBe(anchor.row);
+  });
+
+  /**
+   * PLAN 88.6-39 (round-3 #179) — the two `QuickSuggestions` controls at 375px.
+   *
+   * Both were UNDECLARED in UI-SPEC 3.5's per-class floor table and both sat under it: the
+   * suggestion chip at 34px (24px thumbnail + 8px `py-1` + 2px border) and "Browse more" at 20px
+   * (`text-sm`'s 1.25rem line box, with no padding-block and no `min-h` — re-measured 2026-09-16;
+   * the plan's 16px predated plan 88.6-26's `text-xs` -> `text-sm` retype). "Browse more" at 20px
+   * FAILED WCAG 2.2 SC 2.5.8, whose binding minimum is 24px — the "inline" exception does not
+   * apply, because it is a standalone sibling of the chip strip, not part of a sentence.
+   *
+   * SKIPS ITSELF when the group has no suggestions to render — the chips are data-dependent and a
+   * seeded-empty fixture would otherwise fail on absence rather than on size.
+   */
+  test('(9) the QuickSuggestions chip and "Browse more" clear 44px at 375px', async ({ page }) => {
+    await openVisualScheduler(page);
+    await settleSchedulerGeometry(page);
+
+    const slot = dialog(page).getByTestId('quick-suggestions-slot');
+    await expect(slot, 'the QuickSuggestions slot is absent — the D4 one-slot design renders it for EVERY member, in every outcome').toHaveCount(1);
+
+    const browse = slot.getByRole('button', { name: 'Browse more' });
+    if ((await browse.count()) === 0) {
+      test.skip(true, 'this fixture group has no suggestions, so neither control renders — size is unmeasurable, not failing');
+    }
+
+    const browseBox = must(await browse.boundingBox(), 'the "Browse more" control box');
+    expect(
+      browseBox.height,
+      `"Browse more" renders ${browseBox.height}px tall at 375px. It was 20px, which fails WCAG 2.2 SC 2.5.8's 24px minimum; the house floor is 44.`,
+    ).toBeGreaterThanOrEqual(44);
+
+    const chips = slot.getByRole('button').filter({ hasNotText: 'Browse more' });
+    const chipCount = await chips.count();
+    expect(chipCount, 'the chips outcome rendered "Browse more" but no chip — the strip is empty').toBeGreaterThan(0);
+    for (let i = 0; i < chipCount; i++) {
+      const box = must(await chips.nth(i).boundingBox(), `suggestion chip ${i}'s box`);
+      expect(
+        box.height,
+        `suggestion chip ${i} renders ${box.height}px tall at 375px. The chips are this surface's PRIMARY action and the phone tenet's 44px floor applies to primary CTAs.`,
+      ).toBeGreaterThanOrEqual(44);
+    }
+  });
 });
 
 // =============================================================================
