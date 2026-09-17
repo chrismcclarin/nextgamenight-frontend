@@ -716,8 +716,20 @@ const EXPECTED_PROP_SEAMS = 5;
  * rule, so it never enters the `heading-primitive` bucket this floor counts. It is enumerated in
  * the skipped-levels assertion instead, with its own comment. Raising this to 119 would have RED
  * the floor; "fixing" that by resolving the expression is what `PROP_SEAM_EXPRESSION` forbids.
+ *
+ * RAISED 118 -> 121 by plan 88.6-38 task 1 (wave 7, 2026-09-17): THREE —
+ * `app/components/EmailAddressSection.tsx`'s section titles at the unavailable, unresolved and
+ * default render arms, all `h2 text-xl font-bold` -> `<Heading level={2} size="heading">`. NO
+ * rung movement: 20 is what all three already rendered at, so D-04's table is not consulted and
+ * the file's `EXPECTED_LEVELS` entry (`{ 2: 3 }`) is byte-unchanged (P4); only `kind` moved,
+ * `raw` -> `heading-primitive` x3. The raise was MEASURED, not assumed: the floor was first set
+ * to 122 and RED with "expected 121 to be greater than or equal to 122", which is the count
+ * itself. All three carry an `id` that the enclosing `<section>`'s `aria-labelledby` resolves —
+ * a migration hazard this scanner cannot see at all, pinned instead by three region-name tests
+ * in `EmailAddressSection.test.tsx` that resolve the reference rather than walking up from the
+ * heading.
  */
-const EXPECTED_MIN_PRIMITIVES = 118;
+const EXPECTED_MIN_PRIMITIVES = 121;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;

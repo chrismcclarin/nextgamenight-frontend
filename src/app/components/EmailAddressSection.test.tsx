@@ -1775,3 +1775,94 @@ describe('EmailAddressSection — composition and accessibility', () => {
     expect(within(status).queryByRole('button')).not.toBeInTheDocument();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 88.6-38 — the heading migration (R3 / UI-SPEC §4.4) and the two
+// coverage items the 88.8 round-7 residual routed here for this surface.
+// ---------------------------------------------------------------------------
+
+describe('EmailAddressSection — 88.6-38: headings on the primitive, with the idref intact', () => {
+  // THE POINT OF THESE THREE: they RESOLVE the `aria-labelledby` reference rather than
+  // walking up from the heading the way the shipped test at :211 does. A walk-up
+  // (`getByRole('heading').closest('section')`) passes with the `id` DELETED, because the
+  // heading is still inside the section either way — so it cannot see the one regression
+  // the migration can cause. `getByRole('region', { name })` is the resolving form: a
+  // `<section>` only exposes the `region` role once it HAS an accessible name, so a
+  // dangling idref makes the query find nothing.
+  it('the UNAVAILABLE arm resolves its region name through the heading id', () => {
+    mockSelf.mockReturnValue(selfState(undefined, true));
+    renderSection();
+    expect(screen.getByRole('region', { name: 'Email' })).toBeInTheDocument();
+  });
+
+  it('the UNRESOLVED arm resolves its region name through the heading id', () => {
+    mockSelf.mockReturnValue(selfState(undefined));
+    renderSection();
+    expect(screen.getByRole('region', { name: 'Email' })).toBeInTheDocument();
+  });
+
+  it('the DEFAULT arm resolves its region name through the heading id', () => {
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    expect(screen.getByRole('region', { name: 'Email' })).toBeInTheDocument();
+  });
+
+  it('renders an h2 through the Heading primitive at the `heading` rung, level PRESERVED', () => {
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    const heading = screen.getByRole('heading', { name: 'Email' });
+    // P4: the LEVEL is preserved. `EXPECTED_LEVELS`' `{ 2: 3 }` entry for this file is
+    // byte-unchanged, and this is the behavioural half of that.
+    expect(heading.tagName).toBe('H2');
+    /* THE CLASS-LIST DELTA, RECORDED RATHER THAN CLAIMED AWAY. The plan text said this
+       migration is "byte-identical"; it is NOT, and the difference is stated here so nobody
+       re-derives it. Raw was `text-xl font-bold text-content-primary mb-1`. The primitive
+       ADDS `wrap-anywhere` (cva base) and `leading-tight` (the `heading` rung) — both are
+       the rung contract of UI-SPEC §4.1 ("`text-xl leading-tight` … 1.25"), which the raw
+       heading was NOT honouring. `wrap-anywhere` is inert on a one-word title that never
+       wraps; `leading-tight` is a real ~3px line-box change on that one line. */
+    expect(heading.className.split(/\s+/).sort()).toEqual(
+      ['font-bold', 'leading-tight', 'mb-1', 'text-content-primary', 'text-xl', 'wrap-anywhere'].sort()
+    );
+  });
+});
+
+describe('EmailAddressSection — 88.6-38: the VERIFIED-state Change control (D-11)', () => {
+  /* COMPOSITION, NOT GEOMETRY, AND THE DOWNGRADE IS EXPLAINED RATHER THAN ASSUMED.
+     `Change` is the one control on this surface that also renders in the `verified`
+     state, and NEITHER lane measures it there: jsdom performs no layout and loads no
+     stylesheet, so a height read here is always 0; and `e2e/touch-targets.spec.ts`'s
+     five-control census runs in the IDLE state, which is where that suite can put the
+     section without completing a real 30-minute code round trip. So the strongest
+     available evidence is that the control IS the house `Button` — which supplies
+     `max-md:min-h-11` at phone width by construction — plus the explicit phone-floor
+     class the site authors.
+
+     ONE CORRECTION TO THE INHERITED PREMISE, recorded because it changes what this test
+     can claim: the deferred entry says the verified state is "unreachable in CI". That was
+     true of the RETIRED userProfile notification-email section. On THIS surface `usersAPI`
+     is module-mocked, so `verified` is reachable in vitest — it is reached below. What
+     remains unmeasurable is the GEOMETRY, not the state. */
+  it('is the house Button carrying the phone floor — composition, because geometry is unmeasurable in BOTH lanes', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    api.verifyEmailChange.mockResolvedValue(
+      body({ outcome: 'verified', email: NEW, pending_email_change: null })
+    );
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'ABCD2345');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    // A POSITIVE settle signal for the verified state before asserting anything about it:
+    // the code panel is gone and the toast receipt fired.
+    await waitFor(() =>
+      expect(screen.queryByLabelText(/code from the email/i)).not.toBeInTheDocument()
+    );
+
+    const change = screen.getByRole('button', { name: 'Change' });
+    expect(change.tagName).toBe('BUTTON');
+    expect(change.className).toContain('btn');
+    expect(change.className).toContain('max-md:min-h-11');
+    expect(change).not.toHaveAttribute('disabled');
+  });
+});

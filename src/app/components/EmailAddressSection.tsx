@@ -67,6 +67,7 @@ import { toast } from 'sonner';
 import { FormField } from './form/FormField';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
+import { Heading } from '@/components/ui/Heading';
 import { Icon } from '@/components/ui/Icon';
 import { Input } from '@/components/ui/Input';
 import { StatusRegion } from '@/components/ui/StatusRegion';
@@ -1149,9 +1150,24 @@ export function EmailAddressSection() {
   if (showUnavailable) {
     return (
       <section className="card p-3 md:p-6 mb-6" aria-labelledby={`${reactId}-title`}>
-        <h2 id={`${reactId}-title`} className="text-xl font-bold text-content-primary mb-1">
+        {/* DECISION Phase 88.6-38 (R3 / UI-SPEC §4.4): all THREE of this section's headings are
+            `<Heading level={2} size="heading">` carrying the `id` — the level is PRESERVED (P4)
+            and the rung is the one they already rendered at (`text-xl`, 20). The `id` is
+            LOAD-BEARING, not decoration: it is the target of the enclosing `<section>`'s
+            `aria-labelledby` in all three arms, so dropping it on migration would silently strip
+            each region's accessible name — the one hazard `Heading.tsx`'s own docblock names
+            ("It is NOT a safe `aria-labelledby` idref target unless the caller guarantees
+            non-empty content"). That guarantee HOLDS here and is why the idref is safe: the child
+            is the module constant `SECTION_TITLE` (`:95`), never a prop, never interpolated, never
+            empty — so `Heading`'s AC-3 empty-children early return is unreachable at these three
+            sites. Chosen OVER leaving them raw `<h2>`s (the file would be the phase's only
+            un-migrated heading surface) and OVER giving the `<section>` an `aria-label` instead
+            (two spellings of one fixed string, the drift this file's own copy rules forbid).
+            Pinned by the region-name tests, which RESOLVE the reference rather than walking up
+            from the heading — a walk-up passes with the `id` deleted. */}
+        <Heading level={2} size="heading" id={`${reactId}-title`} className="text-content-primary mb-1">
           {SECTION_TITLE}
-        </h2>
+        </Heading>
         {/* NO fallback to the Auth0 session address here. The profile page's own
             terminal arm does exactly that at page.js:809-821 — for the USERNAME,
             where a wrong display name is cosmetic. For the ADDRESS it is the
@@ -1169,7 +1185,12 @@ export function EmailAddressSection() {
             the effect above runs, which is the price of the empty-first contract — a
             region that mounts WITH its content announces nothing, and this arm can be the
             section's FIRST render when the self query is already settled-errored. */}
-        <StatusRegion className="text-sm text-content-secondary">{announcement}</StatusRegion>
+        {/* Phase 88.6-38 (R2 / UI-SPEC §4.3): the authored `text-sm` was DEAD and is deleted —
+            `StatusRegion`'s own base already supplies it (`StatusRegion.tsx:44`, `cn('text-sm',
+            className)`), so this was the size utility restating what the primitive gives, the
+            §4.3 "dead size utility → delete it" shape. Zero look delta by construction. The ink
+            token STAYS: that is a real choice, not a restatement. */}
+        <StatusRegion className="text-content-secondary">{announcement}</StatusRegion>
       </section>
     );
   }
@@ -1177,9 +1198,9 @@ export function EmailAddressSection() {
   if (showUnresolved) {
     return (
       <section className="card p-3 md:p-6 mb-6" aria-labelledby={`${reactId}-title`} aria-busy="true">
-        <h2 id={`${reactId}-title`} className="text-xl font-bold text-content-primary mb-1">
+        <Heading level={2} size="heading" id={`${reactId}-title`} className="text-content-primary mb-1">
           {SECTION_TITLE}
-        </h2>
+        </Heading>
         {/* Same read order as the arm above: the region follows the heading. It is empty
             in this state — nothing announces while loading — so this is consistency, not
             a fix; the arm it hands over to is where the sentence lands. */}
@@ -1215,13 +1236,18 @@ export function EmailAddressSection() {
 
   return (
     <section className="card p-3 md:p-6 mb-6" aria-labelledby={`${reactId}-title`}>
-      <h2 id={`${reactId}-title`} className="text-xl font-bold text-content-primary mb-1">
+      <Heading level={2} size="heading" id={`${reactId}-title`} className="text-content-primary mb-1">
         {SECTION_TITLE}
-      </h2>
+      </Heading>
       {/* The helper line must NOT, in the synthetic arm, claim that mail reaches
           that address — a second module-level constant rather than an
           interpolation of the normal one. */}
-      <p className="text-sm text-content-muted mb-3">
+      {/* Phase 88.6-38 (R2 / UI-SPEC §4.3 row 1, change-table V-4 "Body prose 14px → 16px"):
+          14 → 16. This is the section's standing explanatory PARAGRAPH — two full sentences of
+          running prose under the heading — not a control's helper line. The §4.2 caption role
+          "helper and error text" that keeps this file's four 12px lines at 12 does NOT reach it:
+          those sit against a specific control, this one describes the section. */}
+      <p className="text-base text-content-muted mb-3">
         {currentIsSynthetic ? SYNTHETIC_HELPER : SECTION_HELPER}
       </p>
 
@@ -1233,7 +1259,13 @@ export function EmailAddressSection() {
 
       {/* ── The current address ───────────────────────────────────────────── */}
       <div className="mb-3">
-        <p className="text-xs text-content-muted">{CURRENT_ADDRESS_LABEL}</p>
+        {/* Phase 88.6-38 (R2 / UI-SPEC §4.3): 12 → 14. This `<p>` and its twin over the pending
+            address are FIELD LABELS in everything but the tag — the code review that added the
+            second one says so ("LABELLED, not a bare paragraph… naming what it IS"). §4.3 puts a
+            label on Label 14, §4.2's caption role list is closed and does NOT contain "field
+            label", and this file's REAL labels (`FormField`'s, `FormField.tsx:97`) already render
+            at 14 — so 12 here was the file disagreeing with itself. */}
+        <p className="text-sm text-content-muted">{CURRENT_ADDRESS_LABEL}</p>
         <p className="text-base text-content-primary break-words">
           {/* THE IDLE STATE MUST NOT PRINT A SENTINEL AS AN ADDRESS. The backend
               stores `<sub>@auth0.local` in `Users.email` as a SENTINEL, not a
@@ -1429,7 +1461,10 @@ export function EmailAddressSection() {
               two blocks up has "The address we use now" over it; this one had
               nothing tying it to the "Not verified yet" state above or naming what
               it IS, so a screen-reader user met an unexplained address. */}
-          <p className="text-xs text-content-muted">{PENDING_ADDRESS_LABEL}</p>
+          {/* Phase 88.6-38 (R2 / UI-SPEC §4.3): 12 → 14, the twin of the current-address label
+              above and for the same reason. The two must move together or the panel prints one
+              address label at 12 and the other at 14. */}
+          <p className="text-sm text-content-muted">{PENDING_ADDRESS_LABEL}</p>
           <p className="text-base text-content-primary break-words mb-2">
             {pendingAddress ?? ''}
           </p>
