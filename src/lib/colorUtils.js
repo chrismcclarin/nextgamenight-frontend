@@ -486,7 +486,11 @@ export function storedGroupColour(group) {
  * Changing this is a decision, not a cleanup.
  *
  * @param {string|null|undefined} stored - the STORED value (`storedGroupColour`)
- * @returns {{preset: string|null, dark: string, light: string, inkDark: string|null, inkLight: string|null}|null}
+ * @returns {{preset: string|null, dark: string, light: string, inkDark: string|null, inkLight: string|null, mutedDark: string|null, mutedLight: string|null}|null}
+ *   WIDENED Phase 88.6-41 (W51 item A) with `mutedDark`/`mutedLight`. Both arms
+ *   carry both fields — the preset arm from the table, the legacy-hex arm as
+ *   `null` — so the shape is uniform and `groupInkVars` never re-looks the
+ *   preset up.
  */
 /**
  * Distinct unrecognised stored values already reported by THIS MODULE INSTANCE
@@ -541,6 +545,23 @@ export function resolveGroupGround(stored) {
       light: preset.light,
       inkDark: preset.inkDark,
       inkLight: preset.inkLight,
+      /*
+       * AMENDED Phase 88.6-41 (W51 item A): the two MUTED rungs are carried
+       * here. They used to be dropped, which forced `groupInkVars`'s card arm
+       * to call `presetByName(ground.preset)` a SECOND time purely to recover
+       * them.
+       *
+       * STATE THE COST HONESTLY — it is ASYMMETRIC, not a uniform win.
+       * `presetByName` is a `Map.get` (`groupColourPresets.ts:245-247`), so
+       * this removes one map lookup on the CARD arm only, and ADDS two property
+       * writes to EVERY call of this resolver — including `CalendarMonthView`'s
+       * per-tile path, which takes the TILE arm and never wanted the muted
+       * rungs. Net-positive on cards, net-neutral-to-marginally-negative per
+       * tile, negligible on both. This is a TIDINESS fix, not a measured
+       * saving; do not re-describe it as "removes a redundant round trip".
+       */
+      mutedDark: preset.mutedDark,
+      mutedLight: preset.mutedLight,
     };
   }
 
@@ -612,7 +633,12 @@ export function resolveGroupGround(stored) {
    * this return type exists to make impossible.
    */
   const dark = `#${stored.trim().replace(/^#/, '').toLowerCase()}`;
-  return { preset: null, dark, light, inkDark: null, inkLight: null };
+  // W51 item A: the legacy arm carries the muted rungs as NULL, in the same
+  // "both or neither" spirit as the ink pair — a legacy hex has no preset table
+  // row, so it has no muted rungs either, and the field being PRESENT-and-null
+  // is what lets `groupInkVars` express "resolved to a known preset at all"
+  // against the carried fields instead of re-looking the preset up.
+  return { preset: null, dark, light, inkDark: null, inkLight: null, mutedDark: null, mutedLight: null };
 }
 
 /**
@@ -700,8 +726,10 @@ export function themedTextStyleVars(dark, light) {
  *
  * Changing this is a decision, not a cleanup.
  *
- * @param {{preset: string|null, dark: string, light: string, inkDark: string|null, inkLight: string|null}|null} ground
- *        a `resolveGroupGround` result
+ * @param {{preset: string|null, dark: string, light: string, inkDark: string|null, inkLight: string|null, mutedDark: string|null, mutedLight: string|null}|null} ground
+ *        a `resolveGroupGround` result. WIDENED Phase 88.6-41 (W51 item A): the
+ *        card arm now READS `mutedDark`/`mutedLight` off this object instead of
+ *        calling `presetByName(ground.preset)` a second time.
  * @param {{surface: 'card'|'tile', hasBackgroundImage: boolean}} options
  *        `surface` picks the ink family; `hasBackgroundImage` is REQUIRED of
  *        every caller — see the image arm below
@@ -754,7 +782,6 @@ export function groupInkVars(ground, options) {
   }
 
   if (surface === 'card') {
-    const preset = ground.preset ? presetByName(ground.preset) : undefined;
     /*
      * The legacy / custom-hex arm (AMENDMENT 3): return `{}`, do NOT re-derive.
      * `grouplist.js:311-314` and `groupHomePage/page.js:409-415` have already
@@ -765,14 +792,39 @@ export function groupInkVars(ground, options) {
      * window — BE PR-2 merges last, so until the remap runs every production
      * group is a legacy hex. It is not an edge case.
      */
-    if (!preset || !ground.inkDark || !ground.inkLight) return {};
+    /*
+     * AMENDED Phase 88.6-41 (W51 item A): the guard keeps ALL THREE of its
+     * original conditions, now expressed against the CARRIED fields instead of
+     * against a second `presetByName` lookup. The first term is the one most
+     * easily lost, and losing it is silent:
+     *   1. "this ground resolved to a KNOWN PRESET at all" — was `!preset`, the
+     *      lookup's own result; it is now `!ground.preset` PLUS the two muted
+     *      rungs, which only the resolver's preset arm ever carries;
+     *   2/3. the two ink rungs, unchanged.
+     * REJECTED: reducing this to a truthiness check on `mutedDark`/`mutedLight`.
+     * It reads like the same test and is not — it drops term 1, and the `{}` this
+     * guard protects is the LIVE path for the entire FE-deployed window (see the
+     * legacy-arm note above: until the remap runs, every production group is a
+     * legacy hex, and that is not an edge case).
+     */
+    if (
+      !ground.preset ||
+      !ground.mutedDark ||
+      !ground.mutedLight ||
+      !ground.inkDark ||
+      !ground.inkLight
+    ) {
+      return {};
+    }
 
     return {
       '--group-ink': ground.inkDark,
       '--group-ink-l': ground.inkLight,
-      // READ from the table, never recomputed (M24) — see the marker above.
-      '--group-ink-muted': preset.mutedDark,
-      '--group-ink-muted-l': preset.mutedLight,
+      // READ from the table, never recomputed (M24) — see the marker above. As
+      // of 88.6-41 they arrive already carried on the resolver's return object,
+      // so the table read happens ONCE, in `resolveGroupGround`.
+      '--group-ink-muted': ground.mutedDark,
+      '--group-ink-muted-l': ground.mutedLight,
     };
   }
 

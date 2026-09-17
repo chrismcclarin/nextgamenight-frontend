@@ -424,13 +424,20 @@ describe('resolveGroupGround — Phase 88.3.1 SPEC Req 4 / D-04', () => {
     vi.restoreAllMocks();
   });
 
-  it('resolves a preset id to its dark band, light surface and BOTH inks', () => {
+  // WIDENED Phase 88.6-41 (W51 item A) — deliberately still `toEqual`, i.e. still
+  // EXACT-SHAPE. The two muted rungs are now CARRIED by the resolver so
+  // `groupInkVars`'s card arm stops calling `presetByName` a second time, and the
+  // exactness is the point: loosening this to `toMatchObject` would let a future
+  // field appear (or the ink pair silently disappear) with nothing noticing.
+  it('resolves a preset id to its dark band, light surface, BOTH inks and BOTH muted rungs', () => {
     expect(resolveGroupGround('blue')).toEqual({
       preset: 'blue',
       dark: '#00274d',
       light: '#c4e1ff',
       inkDark: '#8ac2fb',
       inkLight: '#033f6f',
+      mutedDark: '#75abe1',
+      mutedLight: '#205785',
     });
   });
 
@@ -451,13 +458,18 @@ describe('resolveGroupGround — Phase 88.3.1 SPEC Req 4 / D-04', () => {
     expect(ground!.light).toBe('#ffffff');
   });
 
-  it('falls a non-preset hex back to the t = 0.70 tint, with NO ink', () => {
+  it('falls a non-preset hex back to the t = 0.70 tint, with NO ink and NO muted rungs', () => {
+    // W51 item A: the muted pair is PRESENT-and-null on this arm, not absent.
+    // That uniform shape is what lets `groupInkVars` express "resolved to a known
+    // preset at all" against the carried fields rather than re-looking it up.
     expect(resolveGroupGround('#123456')).toEqual({
       preset: null,
       dark: '#123456',
       light: '#b8c2cc',
       inkDark: null,
       inkLight: null,
+      mutedDark: null,
+      mutedLight: null,
     });
     expect(resolveGroupGround('#123456')!.light).toBe(lightTintGroupBackgroundColor('#123456', 0.70));
   });

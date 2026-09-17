@@ -571,6 +571,52 @@ export default function CalendarMonthView({
                         // at the `groupInkVars` argument below — see the marker there;
                         // same expression, different site, different consequence.
                         const tileHasBgImage = variant === 'compact' ? false : hasValidBgImage;
+                        /*
+                         * DECISION Phase 88.6-41 (W51 item B) — TWO repeated
+                         * per-tile costs, ACCEPTED with their magnitude recorded,
+                         * in ONE note so they can never later read as two
+                         * different measurements of the same loop.
+                         *
+                         * THE UNIT is the shipped marker's: this loop is bounded
+                         * at 84 TILES per render (up to two event tiles across the
+                         * ~42 day cells of a month), stated at the module-level
+                         * `DECISION Phase 88.3-16` marker. The W51 register says
+                         * "~42 tiles per month"; that is the SAME loop counted per
+                         * DAY CELL rather than per tile. Any per-render total below
+                         * is ARITHMETIC from the tile bound, never a measurement.
+                         *
+                         * (1) `getEventTileTextColor` is computed on the dark ground
+                         *     and on the light tint TWICE — once in `tileTextVars`
+                         *     below, once again inside `groupInkVars`'s tile arm.
+                         *     Magnitude: 2 extra brightness computations per
+                         *     COLOURED tile.
+                         * (2) `safeBgImageStyle(groupBgImage)` above runs `new URL()`
+                         *     twice per successful call (`safeBgImageStyle.ts:43-44`,
+                         *     one ternary arm, and again at `:71`). Its INPUT is
+                         *     per-GROUP (`event.Group?.background_image_url`) while it
+                         *     is RECOMPUTED per-EVENT on this loop — that asymmetry
+                         *     is the whole shape of the cost.
+                         *
+                         * ACTING ON EITHER IS OUT OF SCOPE THIS PHASE, and recording a
+                         * magnitude is not licence to act on it.
+                         * REJECTED for (1): stopping the tile emitters being called at
+                         * all. `groupColourRendering.test.ts` test 9 requires ground and
+                         * ink to turn on and off together, and `surface: 'tile'` must
+                         * keep a real production caller; deleting one is what the
+                         * `calls >= 6` floors exist to catch (T-88.6-123).
+                         * REJECTED for (1): a cache or an optional precomputed-ink
+                         * parameter — a mechanism with no problem behind it, to save
+                         * three arithmetic operations.
+                         * REJECTED for (2): hoisting or caching the validation. Test 29
+                         * pins the literal `const F = !!X` / `const X =
+                         * safeBgImageStyle(…)` derivation chain, so either reds it.
+                         * REJECTED for both: `useMemo`/`useCallback`/`React.memo`, twice
+                         * ruled on already — the module-level `DECISION Phase 88.3-16`
+                         * marker and its `AMENDED Phase 88.3.1 (plan 09, M26)`
+                         * restatement, which stand unamended: `days` and `activeEvents`
+                         * change identity on every parent render, so a `useMemo` would
+                         * recompute every time and cost strictly more than it saves.
+                         */
                         // The R2-6 past-date theme-fork reasoning now lives with
                         // `tileTextTreatment` at module level (plan 88.3-16).
                         /*
