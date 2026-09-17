@@ -379,6 +379,51 @@ export default function CalendarMonthView({
                           },
                         }
                       : {})}
+                    /* DECISION Phase 88.6-40 (W41): `aria-current="date"` rides THIS element,
+                       UNCONDITIONALLY on `cellClickable`, driven by the SAME `isCurrentDay`
+                       boolean as the cell tint above and the `text-content-accent` ink below.
+
+                       REJECTED — on the CELL wrapper. The cell `<div>` is role-less and has no
+                       accessible name, and ARIA has no ancestor-to-descendant state propagation:
+                       a screen reader in focus mode announces the FOCUSED node's role, name and
+                       states, so `aria-current` on the wrapper would never be conveyed when the
+                       inner day target takes focus — the user would hear the name and "button"
+                       and never "current date". The shipped sibling `SchedulerWeekStrip.tsx`
+                       puts the attribute on the NAMED `role="tab"` control (`aria-current={today
+                       ? 'date' : undefined}`) and tints an INNER span, with `EventScheduler`'s
+                       own suite asserting that pair by CONTAINMENT. The month grid INVERTS the
+                       nesting direction — attribute inner, tint outer — because here the named
+                       control IS the inner element; the RELATION (containment, on one boolean)
+                       is identical, and it is the shipped house idiom rather than a second one.
+
+                       REJECTED — gating `aria-current` on `cellClickable`: it would strip the
+                       semantic from exactly the cells that most need it (an empty TODAY cell on
+                       a calendar with no create hint). ACCEPTED CONSEQUENCE (owner ruling
+                       2026-09-14, #52): on every cell that exposes no keyboard target the
+                       attribute therefore sits on a ROLE-LESS generic. Role-less but NOT
+                       unnamed — its content is `{date.getDate()}`, the date itself — and WCAG
+                       4.1.2 applies to components WITH a role, so no SC is failed and the result
+                       is strictly better than the tint-only status quo. NOT READ: no AT was run;
+                       "exposed by most AT" is the ARIA mapping for `aria-current` on a named
+                       generic, not an observed announcement.
+
+                       NEITHER HALF IS GATED ON `isCurrentMonth`, and that is FORBIDDEN rather
+                       than merely unchosen. `isCurrentDay` is computed from the date ALONE, the
+                       cell's ground ternary awards the today treatment BEFORE the adjacent branch
+                       is reached (`isAdjacent` only prefixes `opacity-60`), and `getDaysInMonth`
+                       returns 42 cells including adjacent-month days — so a grid whose OVERFLOW
+                       contains today ALREADY renders that overflow cell tinted as today. The
+                       invariant is therefore per rendered GRID, not per month: exactly ONE
+                       `aria-current="date"` per grid, INSIDE the tinted cell. The tint must not
+                       be gated because P6 pins the visual treatment unchanged, and desyncing the
+                       pair is the failure this rule exists to prevent.
+
+                       NO `sr-only` NODE is added: the date text already serves as this element's
+                       accessible name, and a screen-reader-only text node would be this file's
+                       first (counted live: zero). No "Today" segment is added to the
+                       `aria-label` above either — the state now sits on the focused node and a
+                       name segment would double-announce. This is a decision, not a cleanup. */
+                    aria-current={isCurrentDay ? 'date' : undefined}
                     className={`${variant === 'compact' ? 'text-xs' : 'text-sm'} mb-1 ${
                       dayTargetActive
                         ? 'rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset '

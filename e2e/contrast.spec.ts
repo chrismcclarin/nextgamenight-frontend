@@ -829,6 +829,18 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
       // tech rather than by tint alone" — so the month grid exposing today by TINT ONLY is a real
       // inconsistency with a shipped sibling. But it changes rendered component semantics, which is
       // outside ruling 1c's scope; it is persisted to `.planning/deferred/phase-88.6.md`.
+      //
+      // RESOLVED Phase 88.6-40 (W41), paragraph above KEPT AS HISTORY. The routing landed: the
+      // month grid now exposes today SEMANTICALLY, and the locator below is keyed on that
+      // attribute. ONE CORRECTION TO THE DEFERRED ENTRY'S WORDING, stated rather than buried:
+      // that entry says "the month CELL's today branch, mirroring the week strip", and those two
+      // halves contradict each other — the week strip puts the attribute on the NAMED CONTROL,
+      // not on a wrapper. The "cell" wording was written while the cell was pointer-only with
+      // nothing interactive inside it and the attribute's purpose here was a PROBE HOOK; plan
+      // 88.6-40's inner-target redesign changed that premise. So the attribute is on the DAY
+      // NUMBER (the element that actually takes focus), which honours the entry's stated intent.
+      // That wording is BOOKKEEPING and is amended in place. This gate's exactly-one-match guard,
+      // its measured ΔL*, and this file's SELECTOR POLICY are CONSEQUENCE and are unchanged.
       await page.keyboard.press('Escape');
 
       // The month view may be persisted OFF: `EventCalendar.js:39-41` defaults `viewMode` to
@@ -855,31 +867,50 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
           'list view). This is a LOCATOR failure, not a contrast failure.'
       ).not.toBeNull();
 
-      // Today's cell is `bg-surface-muted border-line-accent` (`CalendarMonthView.js:225`; that
-      // class was `bg-surface-card-hover` until 88.6-02 (D-15), value byte-equal) and
-      // carries NO `aria-current` and NO `data-testid` (verified 2026-08-28) — hence the class
-      // handle. It is scoped INSIDE the cells grid on purpose: the bare `border-line-accent` token
-      // appears at 9 sites FE-wide (`PendingMemberBanner.js:22`, `ManageMembers.js:499`,
-      // `GroupGamesList.js:372`, `PromptScheduleManager.js:198`, `EventScheduler.tsx:1203`,
-      // `Header.js:249`, `Tabs.tsx:80` ...), several of which can render on this page. The
-      // clickable-cell class is `hover:border-line-accent`, a DIFFERENT class token, so it cannot
+      // Today's cell is still tinted `bg-surface-muted border-line-accent` (P6: plan 88.6-40
+      // changed no visual treatment here). WHAT CHANGED IS THE HANDLE.
+      //
+      // CORRECTED Phase 88.6-40: the old comment here said today's cell "carries NO
+      // `aria-current` and NO `data-testid` (verified 2026-08-28) — hence the class handle".
+      // That is now FALSE: `CalendarMonthView.js` puts `aria-current="date"` on today's DAY
+      // NUMBER, the element that takes focus. The locator is keyed on the attribute directly.
+      // That is not cosmetic — a class-keyed locator silently stops matching when the class
+      // changes, and this phase renames class tokens across the whole tree — and it is what this
+      // file's own SELECTOR POLICY (top of file, "Role, label, text and ARIA STATE only — never a
+      // Tailwind class") nominates BY NAME. Keeping the class handle was not an option.
+      //
+      // NO `:has()` WRAPPER, deliberately: there is zero `:has(` precedent in `e2e/`, and the
+      // premise that would motivate one (that the attribute might not match) is false.
+      //
+      // THE MEASUREMENT IS UNCHANGED, and that is the load-bearing claim: `probeElement` walks
+      // `parentElement` to the first opaque ancestor and `compositeGround` skips every alpha-0
+      // rung, while the day-number element carries no background of its own (one colour token
+      // plus type utilities) and is a DIRECT child of the cell (the `{date && (<>` wrapper is a
+      // fragment and emits no DOM node). So it composites to the cell's ground — byte-identical
+      // to probing the cell, and this gate reads GROUND only.
+      //
+      // Still scoped INSIDE the cells grid, and for a sharper reason than before: the phone week
+      // strip on other surfaces also uses `[aria-current="date"]`, so an unscoped locator could
       // collide. Exactly ONE match is required — 0 or >1 fails as a LOCATOR error, never as a
-      // contrast pass (the same idiom `todayStripCell`'s guard uses).
-      const todayMonthCell = (cellsGrid as Locator).locator('.border-line-accent');
+      // contrast pass (the same idiom `todayStripCell`'s guard uses). The invariant the component
+      // guarantees is per rendered GRID, not per month: an adjacent-month overflow cell holding
+      // today carries the attribute too, and the tint with it.
+      const todayMonthCell = (cellsGrid as Locator).locator('[aria-current="date"]');
       const matches = await todayMonthCell.count();
       expect(
         matches,
-        `ruling 1c: expected EXACTLY ONE \`.border-line-accent\` inside the month cells grid ` +
-          `(today's cell), found ${matches}. 0 means today is not in the rendered month or the ` +
-          `class moved; >1 means the locator caught a sibling surface. Either way this is a ` +
-          `LOCATOR failure, not a contrast failure — do not relax it into a contrast pass.`
+        `ruling 1c: expected EXACTLY ONE \`[aria-current="date"]\` inside the month cells grid ` +
+          `(today's day number), found ${matches}. 0 means today is not in the rendered 42-cell ` +
+          `window or the attribute moved; >1 means the locator caught a sibling surface. Either ` +
+          `way this is a LOCATOR failure, not a contrast failure — do not relax it into a ` +
+          `contrast pass.`
       ).toBe(1);
 
       const todayProbe = await probeElement(todayMonthCell, []);
       const todayGround = compositeGround(todayProbe);
       const bodyProbe = await probeElement(page.locator('body'), []);
       const pageGround = compositeGround(bodyProbe);
-      expect(todayGround, describeGround("month grid — today's cell", groundResolutionOf(todayProbe))).not.toBeNull();
+      expect(todayGround, describeGround("month grid — today's day number (composites to the today CELL's ground)", groundResolutionOf(todayProbe))).not.toBeNull();
       expect(pageGround, describeGround('groupHomePage page', groundResolutionOf(bodyProbe))).not.toBeNull();
 
       const delta = deltaLStar(todayGround, pageGround);
@@ -894,6 +925,49 @@ test.describe('Req 11 Gate C — rendered contrast, LIGHT', () => {
           delta as number
         )
       ).toBeGreaterThanOrEqual(PAGE_CARD_DELTA);
+
+      // ADDED Phase 88.6-40 (W39 / T-88.6-116), and it lives HERE because this step has already
+      // paid for the month grid: the cells grid is located above and this route
+      // (`/groupHomePage?id=${E2E_GROUP_ID}`) is the one that passes `onEmptyDayClick`, which is
+      // what arms `showEmptyDayHint`. Adding a second navigation for one opacity read would cost
+      // a page load to assert something one line can assert here.
+      //
+      // WHY THIS CANNOT BE A jsdom ARM: `group-focus-within:opacity-40` is a CSS variant, and the
+      // unit suite applies no stylesheet — it can pin the class pair and the focus target and
+      // nothing more. WHY IT CAN GO RED ON `phone` WHERE A `hover:` PIN COULD NOT: v4 wraps every
+      // `hover:` utility in `@media (hover: hover)`, false on the iPhone SE preset, so a hover
+      // assertion here would be inert by construction. `focus-within` carries no such media
+      // wrapper.
+      await test.step('surface 15b — W39: the empty-day "+" hint follows FOCUS on a phone', async () => {
+        const addDay = (cellsGrid as Locator).getByRole('button', {
+          name: /Add an event on this day\.$/,
+        });
+        const hintTargets = await addDay.count();
+        expect(
+          hintTargets,
+          'W39: no empty-day keyboard target was found in the month cells grid. This route passes ' +
+            '`onEmptyDayClick`, which arms `showEmptyDayHint`, so at least one empty day should ' +
+            'expose one. This is a LOCATOR failure, not a reveal failure.'
+        ).toBeGreaterThan(0);
+
+        const target = addDay.first();
+        // The "+" hint is inside the SAME cell as the focused target. Located by its TEXT, per
+        // this file's selector policy — never by the `group-focus-within:` class it is under test
+        // for, which would make the assertion circular.
+        const cell = target.locator('xpath=..');
+        const plus = cell.getByText('+', { exact: true });
+        const hint = plus.locator('xpath=..');
+
+        const before = await hint.evaluate((el) => window.getComputedStyle(el).opacity);
+        await target.focus();
+        const after = await hint.evaluate((el) => window.getComputedStyle(el).opacity);
+        expect(
+          Number(after),
+          `W39: focusing the empty day's keyboard target must reveal the "+" hint. Computed ` +
+            `opacity was ${before} before focus and ${after} after. A keyboard user who lands on ` +
+            'an empty cell with the hint still at 0 sees a cell that looks like nothing.'
+        ).toBeGreaterThan(0);
+      });
     });
   });
 

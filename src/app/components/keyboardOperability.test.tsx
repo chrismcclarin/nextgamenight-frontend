@@ -1518,4 +1518,24 @@ describe('Phase 88.6-40 AC-5 / R5 (W39): the calendar day cell has a keyboard pa
     expect(await axe(container, NESTED_INTERACTIVE)).toHaveNoViolations();
   });
 
+  it('DC-12. (W41) a TODAY cell with no events and no hint carries aria-current on a ROLE-LESS day number', () => {
+    // #52, owner ruling 2026-09-14 (ACCEPT), EXERCISED rather than asserted away. `aria-current`
+    // is UNCONDITIONAL on `cellClickable`, so on a cell that exposes no keyboard target it sits
+    // on a role-less generic. Role-less but NOT unnamed — its content is the date itself — and
+    // WCAG 4.1.2 applies to components WITH a role, so no SC is failed and the result is
+    // strictly better than the tint-only status quo. REJECTED ARM: gating `aria-current` on
+    // `cellClickable`, which would strip the semantic from exactly the cells that need it most
+    // (an empty TODAY cell on a calendar with no create hint — this fixture).
+    // NOT READ: no AT was run.
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    renderMonth({ date: today, events: [], showEmptyDayHint: false });
+    const dayNumber = screen.getByText(String(today.getDate()));
+    expect(dayNumber).toHaveAttribute('aria-current', 'date');
+    expect(dayNumber).not.toHaveAttribute('role');
+    expect(dayNumber).not.toHaveAttribute('tabindex');
+    expect(screen.queryByRole('button', { name: /Open this day/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Add an event/ })).toBeNull();
+  });
+
 });
