@@ -79,22 +79,30 @@ import { cn } from '@/lib/cn';
    date control keeps its INTRINSIC width and `w-full` cannot shrink it. The fix belongs
    here and not at the page (SPEC R6) — a page fix leaves every other date input broken.
 
-   WHY GATED. `controlClass` is shared geometry: `grep -rnE "<(Input|Textarea|SelectControl)\b" src`
-   = 86 usages, 69 outside test files, across 24 files (measured 2026-09-14). The
-   dangerous half is the appearance reset, not the shrink: this class declares NO
-   `background-image`, so an UNCONDITIONAL `appearance-none` would strip the UA dropdown
-   indicator from all 19 `<SelectControl>` sites with nothing replacing it — and NOTHING
-   in this repo could see it (jsdom performs no layout, `touch-targets.spec.ts` measures
-   named CTA locators, and the W53 phone spec measures the date control only). Gated, the
-   other ~85 usages are untouched BY CONSTRUCTION, which is stronger than any assertion.
+   WHY GATED. `controlClass` is shared geometry. RE-MEASURED 2026-09-17 at this commit:
+   `grep -rnE "<(Input|Textarea|SelectControl)\b" src` = 104 usages, 75 outside test files,
+   across 23 files. (The plan carried 86/69/24 from 2026-09-14; the population moved during
+   waves 8-9. The number that did NOT move is the one the danger turns on: `<SelectControl`
+   is 19 non-test sites, exactly as measured then.) The dangerous half is the appearance
+   reset, not the shrink: this class declares NO `background-image`, so an UNCONDITIONAL
+   `appearance-none` would strip the UA dropdown indicator from all 19 of those sites with
+   nothing replacing it — and NOTHING in this repo could see it (jsdom performs no layout,
+   `touch-targets.spec.ts` measures named CTA locators, and the W53 phone spec measures the
+   date control only). Gated, the other ~73 usages are untouched BY CONSTRUCTION, which is
+   stronger than any assertion.
 
    WHY THE WHOLE date/time FAMILY and not `type=date` alone: the siblings share the iOS
-   intrinsic-sizing root cause, and one `type="time"` PAIR (`userProfile/page.js:2228`,
-   `:2238`) sits directly above that file's own `type="date"` pair (`:2250`, `:2259`) on
-   one screen. 15 date/time-family controls in non-test source (6 `date`, 9
-   `time`/`datetime-local`, measured 2026-09-14). No non-test control usage carries those
-   types, so widening the list costs the by-construction guarantee nothing. Their iOS
-   behaviour is UNPROVEN-broken, not measured — no engine on this project reproduces it.
+   intrinsic-sizing root cause, and a `type="time"` PAIR sits DIRECTLY ABOVE a `type="date"`
+   pair on one screen of the profile's recurring-availability section —
+   `userProfile/page.js:2517`/`:2527` (time) immediately above `:2539`/`:2548` (date), with a
+   second time pair at `:2654`/`:2664` beside the date at `:2644`. CITES RE-DERIVED
+   2026-09-17: the plan's `:2228`/`:2238`/`:2250`/`:2259` are stale by ~290 lines and none of
+   them lands on a control any more. Family census, re-measured the same day and excluding
+   prose hits: 13 date/time controls in non-test source — 5 `date` (`userProfile` x3,
+   `gameDetail` x2) and 8 `time`/`datetime-local` — not the plan's 15. No non-test control
+   usage OUTSIDE that family carries those types, so widening the list costs the
+   by-construction guarantee nothing. Their iOS behaviour is UNPROVEN-broken, not measured —
+   no engine on this project reproduces it.
 
    THE SET IS MINIMAL, AND WAS MINIMISED BY TESTING. A third member — start-aligning the
    value pseudo-element — was REJECTED on evidence, not taste: Tailwind's own preflight
