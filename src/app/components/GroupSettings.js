@@ -1025,14 +1025,68 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                  * selection stopped riding the border in the same commit — see the A10
                  * marker below. The 2.1787 delta is NOT relied on to convey selection.
                  */
+                /* DECISION Phase 88.6-20 (W76): THE CAPTION IS INSIDE ITS OWN TAP TARGET.
+                   The `<button>` is now the flex-column CONTAINER holding the colour chip and
+                   its caption, and an inner `<span aria-hidden>` is the chip.
+
+                   WHY. The caption used to be a SIBLING of the button, so tapping the visible
+                   word did nothing — a 44px control with a label beside it that was not part
+                   of it. On a phone that label is the easiest thing to hit and the only thing
+                   that names the colour (AMENDMENT G2), which is why it had to move.
+
+                   THE WRAPPER `<div>` IS REPLACED, NOT RETAINED. It carried
+                   `flex w-full max-w-16 flex-col items-center gap-1`; the button now does that
+                   element's job, so `key={preset.name}` and `flex flex-col items-center gap-1`
+                   moved onto the button and `w-full max-w-16` — the 64px sizing pair, carried
+                   by BOTH elements before — is owned by the button ALONE afterwards.
+                   REJECTED: keeping the `<div>` as an outer sizing wrapper with the button
+                   nested inside. That nests a flex column in a flex column, duplicates the
+                   sizing pair onto two elements and produces a different 375px geometry. It is
+                   pinned here rather than left to inference precisely because "make the button
+                   the container", read literally against a SELF-CLOSING button that WAS the
+                   chip, paints the caption on the coloured fill and shrinks the square to its
+                   content.
+                   REJECTED: a `span onClick` shim on the caption. It would create a second
+                   activation path with no accessible name and no keyboard handler.
+
+                   MEASURED in Chromium at 375px over this project's compiled stylesheet, as
+                   two SEPARATE numbers because they are not the same number and diverge in
+                   exactly the failure above — BEFORE: tap target 64.00 x 64.00, visible square
+                   64.00 x 64.00 (the same element, which IS the defect). AFTER: see the
+                   summary; the square holds at 64.00 x 64.00 and the tap target grows to
+                   include the caption. `min-w-11 min-h-11` stays as the floor it always was.
+
+                   `rounded-lg` is on BOTH: the chip needs it to look like a chip, and the
+                   button needs it so the offset focus ring keeps its rounded shape now that it
+                   traces a taller box. That is preservation, not a new look.
+
+                   The caption keeps `aria-hidden="true"` and the button keeps its single
+                   `aria-label`, so the name is still announced EXACTLY ONCE (round-3 #30).
+                   `aria-pressed` is unchanged. A decision, not a cleanup. */
                 return (
-                  <div key={preset.name} className="flex w-full max-w-16 flex-col items-center gap-1">
-                    <button
-                      onClick={() => handleSelectDefaultColor(preset.name)}
+                  <button
+                    key={preset.name}
+                    onClick={() => handleSelectDefaultColor(preset.name)}
+                    className="group flex w-full max-w-16 min-w-11 min-h-11 flex-col items-center gap-1 rounded-lg focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                    // aria-label ONLY — a title alongside it becomes the accessible
+                    // description and gets read as a second "Red" (round-3 #30, the
+                    // "announced exactly ONCE" acceptance item). Sighted users have
+                    // the visible caption below; do not re-add a tooltip.
+                    aria-label={preset.label}
+                    aria-pressed={isSelected}
+                  >
+                    <span
+                      aria-hidden="true"
                       /* Hover is a BORDER treatment, not whole-element opacity: opacity dims
                          the very border whose 3:1 resting contrast the marker above measured
                          passing by 0.036 at its worst (round-3 #32, WCAG 1.4.11). The hover
-                         colour is the selected state's own border, minus the ring. */
+                         colour is the selected state's own border, minus the ring.
+                         MOVED Phase 88.6-20 (W76): it is `group-hover:` now, not `hover:`,
+                         because the pointer is over the BUTTON and the border lives on this
+                         span. `grep -rn 'hover:border-content-primary' src e2e` returned
+                         exactly ONE hit (this line), so nothing else would have caught its
+                         loss — `GroupSettings.test.tsx` now asserts that the element carrying
+                         the border also carries the hover rule. */
                       /* DECISION Phase 88.6-20 (A10 + ACCEPT §4 / #152): the SELECTED cue is a
                          flush INSET band plus a forced-colors-only outline, chosen OVER the
                          outer `ring-2 ring-content-primary` it replaces and OVER relying on the
@@ -1063,7 +1117,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
 
                          NOT MEASURED: the `forced-colors: active` box-shadow/border behaviour
                          is asserted from the CSS specification, not from a Windows machine. */
-                      className={`w-full max-w-16 aspect-square min-w-11 min-h-11 border-2 rounded-lg hover:border-content-primary transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+                      className={`w-full aspect-square border-2 rounded-lg group-hover:border-content-primary transition-colors ${
                         isSelected
                           ? 'border-content-primary inset-ring-2 inset-ring-content-primary forced-colors:outline forced-colors:outline-2 forced-colors:outline-[Highlight]'
                           : 'border-line-strong dark:border-content-muted'
@@ -1074,17 +1128,11 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                           '--group-ground-light': swatchGround.light,
                         }),
                       }}
-                      // aria-label ONLY — a title alongside it becomes the accessible
-                      // description and gets read as a second "Red" (round-3 #30, the
-                      // "announced exactly ONCE" acceptance item). Sighted users have
-                      // the visible caption below; do not re-add a tooltip.
-                      aria-label={preset.label}
-                      aria-pressed={isSelected}
                     />
                     <span aria-hidden="true" className="text-xs text-content-secondary">
                       {preset.label}
                     </span>
-                  </div>
+                  </button>
                 );
               })}
             </div>

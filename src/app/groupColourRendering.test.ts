@@ -1730,6 +1730,68 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     expect(scanned, 'the five-file scan must see a real population').toBeGreaterThanOrEqual(23);
   });
 
+  it('22b. Gate B — the group-colour SWATCH carries the project focus ring, and its selection cue is in a different slot', () => {
+    /*
+     * NEW Phase 88.6-20 (D-20 (iv)). `RING_SCAN_FILES` omitted `GroupSettings.js` entirely, so
+     * CR-14's selection/focus split — the decision that a SELECTED swatch and a FOCUSED swatch
+     * must read as two different affordances — had NO source pin anywhere in this repo. Recorded
+     * in `.planning/deferred/phase-88.6.md` (item 4 of the D-20 block).
+     *
+     * ANCHORED ON `handleSelectDefaultColor`, the one handler only the eight swatches call, so
+     * this survives the file's line numbers moving (this phase rewrites most of them).
+     *
+     * IT ASSERTS THE SPLIT, not just the presence of a ring — which is the whole point of the
+     * finding. Before plan 88.6-20 both cues wrote the SINGLE `--tw-ring-shadow` property on the
+     * SAME element, so a focused selected swatch showed only the focus ring and CR-14's flush
+     * frame was repainted away. The two must now live on different elements AND in different
+     * CSS slots.
+     */
+    const src = code('app/components/GroupSettings.js');
+
+    // The focusable control, located by its handler — via this file's own `openTags`, so the
+    // whole opening tag is read rather than a character window (the 88.6-21 lesson).
+    const tags = openTags(src);
+    const controlTag = tags.find(
+      (t) => t.tag === 'button' && t.attrs.includes('handleSelectDefaultColor(preset.name)'),
+    );
+    expect(
+      controlTag,
+      'no <button> calls handleSelectDefaultColor — the swatch moved or stopped being a button',
+    ).toBeDefined();
+    const control = (controlTag as { attrs: string }).attrs;
+
+    // FOCUS: the project string, byte-identical to the group-page header CTAs and both
+    // calendar tiles.
+    expect(control, 'the swatch lost the project focus ring').toContain('focus-visible:ring-focus-ring');
+    expect(control).toContain('focus-visible:ring-2');
+    expect(control).toContain('focus-visible:ring-offset-2');
+    // …and the accessible name and toggle state stay on this element, not on the chip.
+    expect(control).toContain('aria-label={preset.label}');
+    expect(control).toContain('aria-pressed={isSelected}');
+
+    // SELECTION: not on this element at all — it rides the inner chip, in the inset slot.
+    expect(
+      control,
+      'the selected cue is back on the focusable itself, in the slot the focus ring writes',
+    ).not.toContain('isSelected ?');
+    // The CHIP: the element that actually carries the border-2 ternary. Located by
+    // `aspect-square`, which only the swatch chip states (the profile-picture buttons carry
+    // `border-2 rounded-lg` too, so that pair is NOT a safe anchor — measured, not assumed).
+    const chip = tags.find((t) => t.attrs.includes('aspect-square'));
+    expect(chip, 'no element states `aspect-square` — the chip moved').toBeDefined();
+    const chipTag = (chip as { attrs: string }).attrs;
+    expect(chipTag, 'the chip does not carry the selected/resting ternary').toContain('isSelected');
+    expect(chipTag, 'the selected cue is not in the inset slot').toContain('inset-ring-content-primary');
+    expect(
+      chipTag.split(/[\s'`]+/).some((c) => /^ring-\d/.test(c)),
+      'the chip carries a bare `ring-*` utility — that is the slot the focus ring repaints',
+    ).toBe(false);
+    // The hover treatment survived the W76 move as a `group-hover:` rule on this same chip.
+    expect(chipTag, 'the hover border treatment was lost in the W76 move').toContain(
+      'group-hover:border-content-primary',
+    );
+  });
+
   it('23. no clickable bare <div> in the month view is unfocusable, except the day cell owner ruling B accepted', () => {
     const src = code('app/components/CalendarMonthView.js');
     const offenders: string[] = [];

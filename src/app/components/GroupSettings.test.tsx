@@ -495,6 +495,64 @@ describe('Phase 88.3.1 D-06 / D-01 — the eight-preset picker', () => {
     }
   });
 
+  it('W76: the caption is INSIDE its own tap target, and clicking the caption selects the swatch', async () => {
+    /*
+     * NEW Phase 88.6-20 (W76). The caption used to be a SIBLING of the button, so tapping the
+     * visible word — the easiest thing to hit on a phone, and the only thing that NAMES the
+     * colour (AMENDMENT G2) — did nothing at all.
+     *
+     * The BEHAVIOURAL half is the click: it fires on the caption, not on the chip, and the
+     * swatch must become pressed. A containment assertion alone would pass on a `span onClick`
+     * shim, which is the arm this plan REJECTS.
+     */
+    renderSettings();
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    const teal = within(group).getByRole('button', { name: 'Teal' });
+    const caption = within(group).getByText('Teal', { selector: 'span' });
+
+    // containment — the caption is a descendant of the control, not a sibling of it
+    expect(teal.contains(caption)).toBe(true);
+    expect(caption).toHaveAttribute('aria-hidden', 'true');
+    // …and there is still exactly ONE accessible name on the control
+    expect(teal).toHaveAttribute('aria-label', 'Teal');
+    expect(teal).not.toHaveAttribute('title');
+
+    // behaviour — a click on the CAPTION activates the swatch
+    expect(teal).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(caption);
+    expect(teal).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('W76: the hover treatment survives on the element that carries the border, as a group-hover rule', async () => {
+    /*
+     * NEW Phase 88.6-20 (W76). `hover:border-content-primary` had a DECISION comment
+     * (hover is a BORDER treatment, not whole-element opacity — round-3 #32, WCAG 1.4.11) and
+     * exactly ONE grep hit across `src` and `e2e`: its own source line. Nothing pinned it, so
+     * losing it during the flex-column move would have been completely silent.
+     *
+     * It must be `group-hover:` and it must be on the BORDER-CARRYING element, because after
+     * the move the pointer is over the button while the border is on the inner chip. The chip
+     * is located by its `border-2`, not by a tag name.
+     */
+    renderSettings();
+    const group = await screen.findByRole('group', { name: 'Choose a default color:' });
+    const teal = within(group).getByRole('button', { name: 'Teal' });
+
+    const chip = [...teal.querySelectorAll('span')].find((s) => s.className.includes('border-2'));
+    expect(chip, 'no element inside the swatch carries border-2').toBeDefined();
+    // the hover rule rides the same element as the border…
+    expect(chip!.className).toContain('group-hover:border-content-primary');
+    // …and the `group` marker that arms it is on the button. Without this the rule is inert,
+    // which is the silent-loss shape the DECISION comment warns about.
+    expect(teal.className.split(/\s+/)).toContain('group');
+    // the plain `hover:` form is gone — it would target an element the pointer is never over
+    expect(chip!.className).not.toMatch(/(^|\s)hover:border-content-primary/);
+
+    // the focus ring stays on the FOCUSABLE, not on the chip (CR-14's two affordances)
+    expect(teal.className).toContain('focus-visible:ring-focus-ring');
+    expect(chip!.className).not.toContain('focus-visible:ring-');
+  });
+
   it('D-06: tapping the SELECTED swatch de-selects it and the preview falls back', async () => {
     renderSettings();
     const group = await screen.findByRole('group', { name: 'Choose a default color:' });
