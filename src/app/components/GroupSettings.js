@@ -530,7 +530,7 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
          it `getFetchErrorMessage(err)`. That satisfies "the raw read is gone" while announcing
          NOTHING — a bare conditional `<p>` is never read out, so a screen-reader user who
          confirms Leave Group and hits a failure gets a section that stays open and no reason at
-         all, on the one path here that cannot be undone.
+         all, on the one path here that has no undo.
          REJECTED: moving this to a `toast.error`. The section STAYS OPEN on failure and this
          line is its only failure surface.
 
