@@ -297,3 +297,56 @@ describe('Phase 88.6-25 — prefill failure vs empty success, and no upstream te
     });
   }
 });
+
+describe('AvailabilityForm submit CTA — D-8 aria-disabled + latch (88.6-42)', () => {
+  beforeEach(() => vi.clearAllMocks());
+  // Added by plan 88.6-42 (owner-authorized addition, 2026-09-16), converting the one control
+  // plan 25 deliberately left on native `disabled` because `tokenContrast` test 53(b2) flagged
+  // the spinner arcs beside it. Plan 42 re-spelled those arcs as SVG presentation attributes
+  // FIRST, then converted — so the gate's subject is gone rather than its rule bent.
+  it('gates with aria-disabled and KEEPS the control focusable mid-submit', async () => {
+    const user = userEvent.setup();
+    let release: () => void = () => {};
+    (availabilityFormAPI.submitResponse as Mock).mockImplementation(
+      () => new Promise<void>((resolve) => {
+        release = () => resolve();
+      })
+    );
+    render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
+    await user.click(screen.getByRole("button", { name: /unavailable this week/i }));
+
+    const cta = screen.getByRole('button', { name: /submit availability/i });
+    await user.click(cta);
+
+    await waitFor(() => expect(cta).toHaveAttribute('aria-disabled', 'true'));
+    // THE POINT OF THE CONVERSION: a natively-disabled button leaves the tab order the instant
+    // it disables and drops a keyboard user to <body> mid-submit. This one does not.
+    expect(cta).not.toBeDisabled();
+    expect(cta).not.toHaveAttribute('disabled');
+
+    release();
+  });
+
+  it('the spinner arcs carry SVG `opacity` attributes, never the bare utility', async () => {
+    // The blocker this conversion had to clear, pinned so re-introducing the utility spelling
+    // reds HERE as well as in tokenContrast test 53(b2) — two independent layers, because the
+    // gate's 400-character window is a heuristic and this one is exact.
+    const user = userEvent.setup();
+    (availabilityFormAPI.submitResponse as Mock).mockImplementation(
+      () => new Promise(() => {})
+    );
+    const { container } = render(<AvailabilityForm magicToken="tok" userName="Sam" promptId="p1" />);
+    await user.click(screen.getByRole("button", { name: /unavailable this week/i }));
+    await user.click(screen.getByRole("button", { name: /submit availability/i }));
+
+    const spinner = await waitFor(() => {
+      const found = container.querySelector('svg.animate-spin');
+      expect(found).not.toBeNull();
+      return found as SVGElement;
+    });
+    expect(spinner.querySelector('circle')?.getAttribute('opacity')).toBe('0.25');
+    expect(spinner.querySelector('path')?.getAttribute('opacity')).toBe('0.75');
+    expect(spinner.innerHTML).not.toContain('opacity-25');
+    expect(spinner.innerHTML).not.toContain('opacity-75');
+  });
+});

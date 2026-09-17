@@ -67,7 +67,16 @@ export default function AvailabilityForm({
      `isSubmitting` is not readable synchronously at the top of the handler, which is where the
      refusal has to happen. Released in `finally`, so a thrown submit does not wedge the form.
 
-     WHY `aria-disabled` WAS NOT TAKEN HERE, recorded so it does not read as an oversight. Plans
+     WHY `aria-disabled` WAS NOT TAKEN BY PLAN 25, and what changed. AMENDED Phase 88.6-42
+     (owner-authorized 2026-09-16): the conversion IS TAKEN now, and the CTA below carries
+     `aria-disabled` + this latch. Plan 25's reasoning was correct and is KEPT verbatim below
+     because it is the record of WHY it waited: the blocker was a shipped gate's subject, not
+     the design. Plan 42 cleared the blocker first — the spinner arcs are SVG `opacity`
+     presentation attributes now, so test 53(b2)'s window contains no bare opacity utility —
+     and only then converted. Reverting the CTA to native `disabled` is a decision, not a
+     cleanup. The original record follows.
+
+     Plans
      88.6-17 through -24 converged in-flight gates onto `aria-disabled` + a latch, because a
      natively-disabled button leaves the tab order the instant it disables and drops a keyboard
      user to <body> mid-submit. That reasoning applies to this control too, and it was
@@ -467,16 +476,41 @@ export default function AvailabilityForm({
       {/* Submit Button */}
       <div className="pt-4 border-t border-line">
         {/* DECISION Phase 87.8 (D-13/D-14/AF-2): SPEC R4 re-census names this the availability-grid surface's primary CTA (~37px today: the `py-3` here is DEAD — unlayered `.btn` padding beats layered utilities). Per-CTA `min-h-11` (44px) chosen OVER a global `.btn` min-height floor (rejected — would distort ~15 compact/icon `.btn` sites, AF-2); 44px OVER Material's 48dp (declined, D-14). Global `.btn` sizing is Phase 88's (DEF-1). No `min-w-11`: `w-full`.  ——— AMENDED Phase 88-28 (D-36), original reasoning above KEPT AS HISTORY: the global-floor question this marker parks with Phase 88 (DEF-1) IS NOW ANSWERED, and the answer is a SPLIT, not a yes or a no. TAKEN: a PHONE-ONLY floor — unlayered `.btn { min-height: 2.75rem }` inside `@media (width < 48rem)` in globals.css, with an unlayered `.btn-compact` opt-out authored AFTER it (so it wins) and applied to the two `w-8 h-8` steppers in `BrowseMoreModal.js`. That opt-out is precisely what the "would distort ~15 compact/icon sites" objection above bought: the objection was correct, and it shaped the fix rather than blocking it. STILL REJECTED: the ALL-VIEWPORT floor, for that same reason. CONSEQUENCE, and the reason this line must not be tidied away: desktop `.btn` still renders ~37px and will until the Button-primitive migration reaches it (residual census, plan 88-31). So this per-CTA `min-h-11` is NOT made redundant by the global rule — below `md` the two agree, at `md`+ this is the ONLY thing holding the CTA at 44px. Deleting it because "there is a floor now" would silently shrink this control on desktop. That is a decision, not a cleanup.  ——— AMENDED Phase 88.6 (D-09), original reasoning above KEPT AS HISTORY: the desktop half is now ANSWERED, and again by a split. TAKEN: `min-h-11` on the `Button` primitive's cva base (`src/components/ui/Button.tsx`), which reaches every viewport width. STILL REJECTED: the ALL-VIEWPORT floor on the `.btn` CLASS — `globals.css`'s `@media (width < 48rem)` rule is unwidened (`globals.css:2677-2681`, reasoning at `:2647-2676`), because square-by-design controls wear `.btn` and a class-level floor would deform them. That is why both halves of this marker are still literally true: the rejection is about a rule on the CLASS; the new floor is on the PRIMITIVE, which only opted-in elements get. CONSEQUENCE: this per-CTA `min-h-11` becomes redundant ONLY once this element is a `<Button>`. Until this file's own migration sweep lands, deleting it still shrinks this control on desktop. When the sweep does land, dropping it is correct and is part of that commit — not a separate cleanup, and not something to do from here. */}
+        {/* DECISION Phase 88.6-42 (D-8, owner-authorized 2026-09-16): this CTA now carries
+            `aria-disabled` + the synchronous latch above, converging on the shape plans
+            88.6-17 through -24 shipped — chosen OVER the native `disabled` attribute it
+            carried through plan 25. A natively-disabled button leaves the tab order the
+            INSTANT it disables, dropping a keyboard user to <body> mid-submit; `aria-disabled`
+            keeps focus where the person put it and announces the state.
+
+            THE BLOCKER PLAN 25 ROUTED IS CLEARED FIRST, and that ordering is the whole point:
+            `tokenContrast.test.ts` test 53(b2) flags any bare `opacity-<n>` UTILITY within 400
+            characters after an `aria-disabled=` attribute, and this button's spinner arcs were
+            the only bare opacity utilities left in `src/`. They are now SVG `opacity`
+            PRESENTATION ATTRIBUTES (see the svg below), which is the correct spelling for an
+            SVG arc anyway — so the gate's subject is gone rather than its rule bent. Plan 25
+            was right to keep native `disabled` rather than work around the gate; this plan is
+            what owns the re-spell.
+
+            The REFUSAL is the latch, not the attribute: `aria-disabled` is advisory, so a
+            second click still enters `onSubmit`, where `submitInFlightRef` returns on the
+            first line and releases in `finally`. Removing either half is a decision. */}
         <Button
           type="submit"
-          disabled={isSubmitting}
+          aria-disabled={isSubmitting}
           className="w-full"
         >
           {isSubmitting ? (
             <span className="flex items-center justify-center gap-2">
               <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                {/* `opacity` as an SVG PRESENTATION ATTRIBUTE, not the Tailwind utility. Two
+                    reasons and the second is the load-bearing one: it is the correct spelling
+                    for an SVG arc, and it takes the last bare `opacity-<n>` utilities in
+                    `src/` out of `tokenContrast` test 53(b2)'s 400-character window after the
+                    `aria-disabled=` above. Re-introducing the utility spelling here would red
+                    that gate and silently re-block the conversion. */}
+                <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
               Submitting...
             </span>

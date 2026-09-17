@@ -258,14 +258,22 @@ export default function ResponseDashboard({
      `.planning/deferred/phase-88.6.md` (proposed owner: Phase 92). Today's raw
      `<span>{error}</span>` has no region at all, so the swap is an improvement either way.
 
-     NO `title` PROP: UI-SPEC §6.3's register holds no ratified string for this surface and an
-     executor never mints copy, so the banner takes its own ratified default. A site-specific
-     title is a §6.3 amendment, not an executor's call. */
+     THE `title` PROP, and why it exists now. AMENDED Phase 88.6-42 (owner ratification
+     2026-09-16): this block previously read "NO `title` PROP: UI-SPEC §6.3's register holds no
+     ratified string for this surface and an executor never mints copy, so the banner takes its
+     own ratified default. A site-specific title is a §6.3 amendment, not an executor's call."
+     That reasoning was RIGHT and is what produced the amendment rather than a workaround: the
+     owner ratified "We couldn't load the respondents." into §6.3, and plan 42 wrote the row.
+     The banner's own default ("Something went wrong") is generic chrome on a surface whose
+     whole subject is WHO HAS REPLIED, so the named string tells the reader which fetch failed
+     without painting anything upstream. Changing this string is a §6.3 amendment, not an
+     executor's call — that half of the original rule is unchanged. */
   if (errorState.showError) {
     return (
       <div className="bg-surface-card rounded-card border border-line p-4">
         <FetchErrorBanner
           state={errorState}
+          title="We couldn't load the respondents."
           reportContext="Availability poll — respondents fetch"
         />
       </div>

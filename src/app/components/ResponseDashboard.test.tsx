@@ -231,3 +231,21 @@ describe('ResponseDashboard — the reminder arm, one sink for both failure mode
     expect(toastCalls.error).not.toHaveBeenCalledWith(expect.stringMatching(/RAW UPSTREAM TEXT/));
   });
 });
+
+describe('ResponseDashboard — the §6.3 title on the respondents-fetch banner (88.6-42)', () => {
+  // Added by plan 88.6-42 (owner-authorized addition, 2026-09-16). The string is RATIFIED in
+  // UI-SPEC §6.3 in the same commit as this pin — the register was the blocker that made the
+  // shipped DECISION marker say "NO `title` PROP", and the amendment is what cleared it.
+  it('names WHICH fetch failed instead of falling back to the banner generic heading', async () => {
+    api.getRespondents.mockRejectedValue(await codedError('forbidden', 403));
+    render(<ResponseDashboard {...baseProps} />);
+
+    expect(await screen.findByText("We couldn't load the respondents.")).toBeInTheDocument();
+    // The banner's own ratified default must NOT also render — one heading, not two.
+    expect(screen.queryByText('Something went wrong')).toBeNull();
+    // …and the BODY copy is still code-derived, untouched by the title: a named heading must
+    // not become a second place upstream text could enter.
+    expect(screen.getByText(FORBIDDEN_COPY)).toBeInTheDocument();
+    expect(screen.queryByText(/RAW UPSTREAM TEXT/)).toBeNull();
+  });
+});
