@@ -406,11 +406,29 @@ const BTN_EXEMPT: ExemptionRoster = {
   // unlayered, so none of `text-sm px-3 py-1` has ever rendered. No `min-h-11` was present, so
   // none was dropped. NOTE this entry's own count was ONE, not the TWO this plan's text predicted
   // — the file has exactly one `.btn` element, measured 2026-09-16. Entry DELETED, not zeroed.
-  'app/components/createGroup.js': {
-    sites: 1,
-    why: 'plan 88.6-33 sweeps eight small modal-and-card components and routes createGroup.js raw error read',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-33 task 1 (wave 7, 2026-09-16): `app/components/createGroup.js`
+  // carried `sites: 1` — the create-group submit CTA, `btn btn-primary font-bold uppercase
+  // text-sm px-6 py-3 shadow-sm hover:shadow-lg min-h-11 disabled:opacity-50` pre-edit. It is a
+  // `<Button variant="primary">` now, and the count was EXACT.
+  //   DEAD, deleted: `font-bold`, `text-sm`, `px-6 py-3` (`.btn` is unlayered and declares
+  //     font-weight, font-size and padding at `globals.css:2200-2202`) and `disabled:opacity-50`
+  //     (`.btn:disabled { opacity: 0.5 }`, `:2250-2253` — byte-identical, so the utility never
+  //     changed anything).
+  //   ALIVE, kept: `uppercase` — `.btn` declares NO `text-transform`, so this one was never dead
+  //     and deleting it with the others would have been a look change.
+  //   REDUNDANT, dropped under D-30: the per-CTA `min-h-11`, now supplied by plan 06's cva base
+  //     (`Button.tsx:168`) at every viewport. Same disposition plan 88.6-32 gave
+  //     `GroupGamesList.js` in this wave; no `DECISION` marker cited it, so `decisionMarkers`
+  //     is unaffected.
+  //   RESPELLED, not deleted: `shadow-sm hover:shadow-lg` -> `shadow-theme-sm
+  //     enabled-hover:shadow-theme-lg`. Those were Tailwind v4 BUILT-IN utilities, not aliases,
+  //     so this is a disclosed look delta AND a §3.4 rule-2 hover pin — the base's
+  //     `enabled-hover:shadow-theme-md` is SMALLER than the shipped `lg`. See the `shadowTier`
+  //     deletion for the measured values.
+  //   CARRIED ACROSS BY HAND: `type="submit"`, `ref={submitButtonRef}` and `disabled={submitting}`.
+  //     `Button` defaults `type` to `'button'` (`Button.tsx:267`), so the first one is a silent
+  //     behaviour regression if forgotten; createGroup.test.tsx pins the SUBMIT, not the attribute.
+  // Entry DELETED rather than zeroed; the roster is exact in both directions.
   'app/components/DangerZoneDeleteAccount.tsx': {
     sites: 1,
     why: 'plan 88.6-30 hardens the deletion modal and sweeps DangerZoneDeleteAccount.tsx alongside it',

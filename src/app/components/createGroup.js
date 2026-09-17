@@ -5,6 +5,9 @@ import FriendInvitePanel from './FriendInvitePanel';
 import { Modal } from './Modal';
 import { Input } from '../../components/ui/Input';
 import { StatusRegion } from '../../components/ui/StatusRegion';
+import { Button } from '../../components/ui/Button';
+import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
+import { logger } from '@/lib/logger';
 
 function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
 
@@ -85,9 +88,40 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
             // Open the invite panel for the newly created group
             setCreatedGroup(data);
         } catch (error) {
-            console.error('Error creating group:', error);
-            // Show the actual error message from the API
-            const errorMsg = error.message || 'Failed to create group. Please try again.';
+            /* DECISION Phase 88.6-33 (AC-2 WIDENED x AC-16 a): ONE escalation for this failure
+               path — `logger.error` over `console.error` PLUS a hand-rolled
+               `Sentry.captureException`. `logger.error(msg, err)` IS the capture AC-16 (a)
+               (owner 2026-09-09, wording amended 2026-09-13 D7 arm A) asked for: it calls
+               `Sentry.captureException(err ?? new Error(msg), { extra: { msg } })`
+               (`src/lib/logger.ts:28-30`). Adding a second capture beside it is a decision,
+               not a cleanup.
+
+               `logger.error` and NOT this plan's `logger.info` default (owner ruling
+               2026-09-13, D2) — this is the plan's ONE carve-out, earned by AC-16 (a)'s
+               escalation requirement, and it is the ONLY new Sentry EVENT plan 33 creates.
+               Do not generalise it: the plan's other four conversions are breadcrumbs.
+
+               T-84-01 (`src/lib/logger.ts:8-13`) bounds what the CALLER adds — no group name,
+               no request-body field, no member list, no invite URL or token. It does NOT bound
+               the error's own `name`/`message`/stack, which `exceptionFromError` serialises
+               into `exception.values[0]`; on this path the backend echoes its own text
+               (`Sonnet/routes/groups.js:297`, `:332`). That residual is owner-accepted
+               (2026-09-13). */
+            logger.error('Error creating group:', error);
+            /* DECISION Phase 88.6-33 (R1 / DEF-88-25-01): the ratified register string over the
+               raw `error.message` this line used to read and over its hand-rolled
+               "Failed to create group. Please try again." fallback. `getFetchErrorMessage(error)`
+               with NO fallback: UI-SPEC §6.2.1 (§6.3) has no entry for this action, so the
+               register's own `unknown` line answers and no copy is authored (P1).
+
+               A VALUE change ONLY — this is UI-SPEC §14 A-30's NAMED §6.2 EXCEPTION, scoped to
+               this file alone. The modal-submit toast arm (§6.2 `:552`) is declined here because
+               §6.2's own announcement clause (`:555-557`) forbids a second live region, and this
+               surface already owns one WITH field association (`aria-invalid` / `aria-describedby`
+               on the name input, over the `role="alert"` node below under the
+               `DECISION Phase 88-29` marker). A toast would cost that association. Plans 31 and 32
+               classify sites against §6.2 too and MUST NOT inherit this. */
+            const errorMsg = getFetchErrorMessage(error);
             setErrorMessage(errorMsg);
         } finally {
             // Re-enable close on EVERY settle: success closes via modaltoggle above;
@@ -181,6 +215,29 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                     <form onSubmit={onSubmit} autoComplete="off" className="p-6" aria-busy={submitting || undefined}>
                         <div className="mb-3 pt-0">
                             <div className="relative">
+                                {/* DECISION Phase 88.6-33 (D49-b, owner ruling 2026-09-09
+                                    option i): the Input below carries `shadow-theme-sm`, chosen
+                                    OVER the Tailwind BUILT-IN elevation utility it shipped.
+                                    (The pre-snap spelling is deliberately NOT written here — this
+                                    plan's gate is a raw grep over this file, so quoting it would
+                                    make the gate self-fail on its own disclosure. It is recorded
+                                    in `88.6-33-SUMMARY.md` and in the `createGroup.js` deletion
+                                    note in `src/app/shadowTier.test.ts`, with both measured
+                                    values.)
+
+                                    WHY IT IS A LOOK CHANGE AND NOT A RESPELLING: Tailwind v4
+                                    INLINES its built-in scale's literal values into its built-in
+                                    utilities rather than reading the `--shadow-*` properties (see
+                                    the DECISION Phase 87.7 marker in globals.css), so the
+                                    project's own none-equivalent value reaches `shadow-theme-sm`
+                                    through `var()` and never reached the built-in one. The
+                                    shipped control therefore had a real black shadow, and this
+                                    snap REMOVES it. Disclosed for `/gsd-ui-review`.
+
+                                    NO hover pin: UI-SPEC §3.4 rule 2 governs button elevation
+                                    PAIRS, and this is a container/input with no hover half.
+                                    Going back to the built-in family is a decision, not a
+                                    cleanup. */}
                                 <Input
                                     ref={nameInputRef}
                                     id="name"
@@ -194,7 +251,7 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                                     autoComplete="off"
                                     aria-invalid={errorMessage ? 'true' : undefined}
                                     aria-describedby={errorMessage ? 'create-group-error' : undefined}
-                                    className="relative pr-16 shadow-sm"
+                                    className="relative pr-16 shadow-theme-sm"
                                 />
                                 <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-content-muted pointer-events-none">
                                     {newGroup.name.length}/40
@@ -225,14 +282,59 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
                             off-center look the owner reported. Converging this one dialog on
                             the fleet footer is a decision, not a cleanup. */}
                         <div className="flex justify-center pt-1">
-                            <button
+                            {/* DECISION Phase 88.6-33 (D49-b i / UI-SPEC §3.4 rule 2 / D-30): the
+                                submit CTA is a `<Button variant="primary">` carrying
+                                `shadow-theme-sm enabled-hover:shadow-theme-lg`.
+
+                                THE PIN IS LOAD-BEARING, and rule 2's own subject list could not
+                                see this site: the census scanned `shadow-theme-*` spellings, and
+                                this control spelled BOTH halves of its elevation with Tailwind
+                                v4's BUILT-IN elevation utilities. (The pre-snap spelling is
+                                deliberately NOT quoted here — this plan's gate is a raw grep over
+                                this file and quoting it would make the gate self-fail on its own
+                                disclosure. Both measured before/after values are in
+                                `88.6-33-SUMMARY.md` and in the `createGroup.js` deletion note in
+                                `src/app/shadowTier.test.ts`.)
+
+                                Those built-ins are NOT aliases of the theme tokens — v4 inlines
+                                its built-in scale's literals (DECISION Phase 87.7 in globals.css)
+                                — so TWO separate things were wrong here: (a) the resting shadow
+                                was a real off-tier black one, which makes removing it a DISCLOSED
+                                look delta rather than a no-op; and (b) `Button`'s cva base emits
+                                `enabled-hover:shadow-theme-md`, which is one tier SMALLER than
+                                the elevation this control shipped on hover, so migrating without
+                                a pin would have INVERTED its hover. `enabled-hover:` and never a
+                                bare `hover:` (D10) — a bare one does not dedupe against the base
+                                token, so both would paint, and it would re-lift this control
+                                while it is `disabled`.
+
+                                DELETED AS DEAD, not as unwanted — `.btn` is unlayered
+                                (globals.css:2194-2205) and declares font-weight (`font-bold`),
+                                font-size (`text-sm`) and padding (`px-6 py-3`); `.btn:disabled`
+                                declares `opacity: 0.5` (`:2250-2253`), which is byte-identical to
+                                the `disabled:opacity-50` that rode here. `uppercase` SURVIVES:
+                                `.btn` declares no `text-transform`, so it was never dead.
+                                `min-h-11` is dropped as REDUNDANT against plan 06's cva base
+                                (Button.tsx:168), the same disposition plan 32 gave
+                                `GroupGamesList.js` under D-30 in this wave.
+
+                                THE THREE CARRIED-ACROSS PROPS ARE NOT DECORATION. `Button`
+                                destructures `type` with a default of `'button'`
+                                (Button.tsx:267), so dropping `type="submit"` would silently turn
+                                the form's submit control inert and the modal would stop creating
+                                groups — a regression no type checker and no class census can see.
+                                `ref` feeds the failed-settle focus return (the wave-12 MED #20
+                                marker above) and `disabled` feeds the UAT row 447 double-submit
+                                guard. All three are pinned behaviourally in createGroup.test.tsx. */}
+                            <Button
                                 ref={submitButtonRef}
-                                className="btn btn-primary font-bold uppercase text-sm px-6 py-3 shadow-sm hover:shadow-lg min-h-11 disabled:opacity-50"
+                                variant="primary"
+                                className="uppercase shadow-theme-sm enabled-hover:shadow-theme-lg"
                                 type="submit"
                                 disabled={submitting}
                             >
                                 {submitting ? 'Creating...' : 'Create Group'}
-                            </button>
+                            </Button>
                         </div>
                         {/* The submit label swap alone is silent to screen readers — announce the
                             in-flight state via a live region (empty-first, StatusRegion contract). */}

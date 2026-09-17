@@ -291,11 +291,46 @@ const ALIAS_ROSTER: ExemptionRoster = {
   // The phase-level V-row is UI-SPEC §1.2's V-16, whose D49-b amendment already names all three
   // sites by file, so NO new V-number was minted. All three are SURFACES, not `.btn`s — no hover
   // pin was added and no `enabled-hover:` spelling is involved. Entries DELETED, not zeroed.
-  'app/components/createGroup.js': {
-    sites: 3,
-    why: 'Three occurrences: `shadow-sm` (:184), and `shadow-sm` + `hover:shadow-lg` on one element (:228). Plan 33 snaps all three. The `shadow-sm` pair is the visible-consequence case — `--shadow-sm` paints nothing, so the snap REMOVES a black xs shadow.',
-    owner: D49B,
-  },
+  // DELETED by plan 88.6-33 task 1 (wave 7, 2026-09-16), under the D49-b option (i) owner ruling
+  // of 2026-09-09. `app/components/createGroup.js` carried `sites: 3` and the count was EXACT:
+  // the name `<Input>`'s `shadow-sm` (this scanner's opening-tag line `:184`; the className
+  // carrying it was `:197`) plus the submit CTA's `shadow-sm` + `hover:shadow-lg` PAIR (opening
+  // tag `:228`, className `:230`). All three are on the tier now — `shadow-theme-sm` on the
+  // Input with NO hover pin (a container/input has no hover half for §3.4 rule 2 to act on), and
+  // `shadow-theme-sm enabled-hover:shadow-theme-lg` on the CTA, which is a `<Button>` now.
+  //
+  // THE HOVER HALF IS A RULE-2 PIN AND THE CENSUS COULD NOT SEE IT. RESEARCH's rule-2 subject
+  // list was derived from `shadow-theme-*` sites; this control spelled its elevation with
+  // Tailwind v4's BUILT-IN names, so it was invisible to that scan. `Button`'s cva base emits
+  // `enabled-hover:shadow-theme-md` (`Button.tsx:63`), which is SMALLER than the shipped `lg`,
+  // so migrating without the pin would have INVERTED the hover. `enabled-hover:` and never a
+  // bare `hover:` (D10) — a bare one does not dedupe against the base token and would re-lift a
+  // control that is `disabled` while submitting. The blind spot is CLOSED, not merely recorded:
+  // this scan's family-(b) rule now flags the alias family in every variant form.
+  //
+  // MEASURED before/after, re-derived from `globals.css` and `node_modules/tailwindcss/theme.css`
+  // at execution rather than inherited — the plan's own cites (`--shadow-sm: none` at `:1201` /
+  // `:1599`) had DRIFTED in BOTH the line and the value; live the keys are `globals.css:1361`
+  // (light) and `:1765` (dark) and the value is `0 0 #0000`, not the keyword `none`:
+  //   RESTING, `shadow-sm` -> `shadow-theme-sm`, both themes:
+  //     BEFORE: `0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)`
+  //             (`node_modules/tailwindcss/theme.css:408` — v4 INLINES its built-in scale's
+  //              literals rather than reading `--shadow-*`, per the DECISION Phase 87.7 marker,
+  //              which is why the project's value never reached this utility)
+  //     AFTER:  `0 0 #0000` — none-equivalent, in light AND dark
+  //     => a REAL visible delta: a black xs shadow is REMOVED. Not a respelling.
+  //   HOVER, `hover:shadow-lg` -> `enabled-hover:shadow-theme-lg`:
+  //     BEFORE: `0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)`
+  //             (`theme.css:410`)
+  //     AFTER, light (`globals.css:1363`): `0 10px 15px rgba(120, 80, 40, 0.10)` — warm, single
+  //             layer, no negative spread
+  //     AFTER, dark  (`globals.css:1767`): `0 0 0 1px var(--purple-600), 0 0 20px rgba(168, 85,
+  //             247, 0.05)` — a purple hairline plus a faint glow
+  //     => `shadow-lg` was NOT byte-equal to `shadow-theme-lg`; the hue changes too. Plus the
+  //        `enabled-hover:` gate means the control no longer lifts while it is `disabled`.
+  // Both deltas are disclosed for `/gsd-ui-review` in `88.6-33-SUMMARY.md`. Nothing about
+  // `createGroup.js` survives into plan 46's phase-close roster check.
+  // Entry DELETED rather than zeroed; the roster is exact in both directions.
   // `app/components/EventDayModal.js` CLOSED by plan 88.6-27 task 2 (wave 7, 2026-09-16): the
   // event row's `hover:shadow-md` is now `hover:shadow-theme-md` — plain `hover:`, because the
   // site is a card `div` and not a `.btn`. The cite `:279` is this scanner's OPENING-TAG line;

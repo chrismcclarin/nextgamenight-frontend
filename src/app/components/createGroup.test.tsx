@@ -65,8 +65,16 @@ vi.mock('./FriendInvitePanel', () => ({
 
 import CreateGroup from './createGroup';
 import { groupsAPI } from '../../lib/api';
+import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 
 type Mock = ReturnType<typeof vi.fn>;
+
+// 88.6-33 task 1 (R1 / DEF-88-25-01). The ratified line a code-less failure resolves
+// to, READ FROM THE MODULE rather than transcribed: a register edit must move this
+// test with it instead of leaving a stale literal that silently keeps passing. A plain
+// `Error` carries no `ApiError.code`, so `deriveCode` returns `unknown`
+// (`useFetchErrorState.ts:115-118`) and this is `MESSAGE_BY_CODE.unknown`.
+const UNKNOWN_FAILURE_COPY = getFetchErrorMessage(new Error('anything at all'));
 
 afterEach(cleanup);
 beforeEach(() => vi.clearAllMocks());
@@ -215,11 +223,127 @@ describe('createGroup create-path handoff (88-15 wiring survives the 88-16 shell
     await user.type(screen.getByPlaceholderText('Group Name'), 'Dupe');
     await user.click(screen.getByRole('button', { name: /create group/i }));
 
-    // The failure surfaces inline in the still-open dialog...
-    expect(await screen.findByText('Group name already taken')).toBeInTheDocument();
+    // The failure surfaces inline in the still-open dialog — as the RATIFIED
+    // register line, never the upstream `error.message` this used to render
+    // (88.6-33 task 1, R1 / DEF-88-25-01).
+    expect(await screen.findByText(UNKNOWN_FAILURE_COPY)).toBeInTheDocument();
+    expect(screen.queryByText('Group name already taken')).toBeNull();
     // ...and the celebratory invite hand-off must not fire for a group that
     // was never created.
     expect(screen.queryByTestId('invite-panel')).toBeNull();
+  });
+});
+
+// 88.6-33 task 1 (R1 / DEF-88-25-01 + UI-SPEC §14 A-30 + D49-b + D-30).
+//
+// THREE things this block pins, and the reason each needs a BEHAVIOURAL arm:
+//
+//  1. The SERVER-failure copy is the ratified register line AND it is reachable
+//     through the name input's `aria-describedby` association — i.e. announced by
+//     the region the field points at, NOT by a toast. Asserting the string alone
+//     would pass a version that routed it to Sonner and dropped the association,
+//     which is exactly what the §6.2 named exception exists to prevent.
+//  2. The CLIENT-SIDE validation copy at the `.trim()` guard is UNCHANGED and does
+//     NOT pass through `getFetchErrorMessage` — routing it would replace a specific
+//     instruction with the generic `unknown` line.
+//  3. Activating the migrated `<Button>` still SUBMITS the form. `Button` defaults
+//     `type` to `'button'` (`Button.tsx:267`), so a migration that forgot
+//     `type="submit"` would leave the control inert with no type error and no class
+//     census failure. An attribute-only check is NOT sufficient — it would pass a
+//     `<Button type="submit">` whose submit was broken some other way — so the arm
+//     below asserts the REQUEST, and the attribute is checked beside it as a hint
+//     for whoever reads the failure.
+//
+// `UNKNOWN_FAILURE_COPY` is declared beside the imports above, for the reason recorded there.
+describe('createGroup failure copy + submit wiring (88.6-33)', () => {
+  it('announces the RATIFIED server-failure line through the input’s own aria-describedby region — not a toast', async () => {
+    (groupsAPI.createGroup as unknown as Mock).mockRejectedValueOnce(
+      new Error('Group name already taken')
+    );
+    const user = userEvent.setup();
+    renderCreateGroup();
+
+    const input = screen.getByPlaceholderText('Group Name');
+    await user.type(input, 'Dupe');
+    await user.click(screen.getByRole('button', { name: /create group/i }));
+
+    // Positive settle signal FIRST (the sweep recipe's trap 2): wait for the region
+    // to actually carry the failure before asserting anything about the wiring.
+    const region = await screen.findByRole('alert');
+    expect(region).toHaveTextContent(UNKNOWN_FAILURE_COPY);
+    // The association is the load-bearing half of the §6.2 named exception.
+    expect(input).toHaveAttribute('aria-describedby', region.id);
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(region.id).toBe('create-group-error');
+    // The raw upstream text never reaches the person.
+    expect(screen.queryByText('Group name already taken')).toBeNull();
+    // The modal stays open on failure — the context does not move.
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('leaves the CLIENT-SIDE validation copy alone — it does not route through getFetchErrorMessage', async () => {
+    const user = userEvent.setup();
+    renderCreateGroup();
+
+    // Whitespace passes the input's `required`, which is what makes this guard reachable.
+    await user.type(screen.getByPlaceholderText('Group Name'), '   ');
+    await user.click(screen.getByRole('button', { name: /create group/i }));
+
+    const region = await screen.findByRole('alert');
+    expect(region).toHaveTextContent('Please enter a group name');
+    // Discriminating arm: if the guard were "standardised" onto the helper it would
+    // render the generic unknown line instead of the specific instruction.
+    expect(region).not.toHaveTextContent(UNKNOWN_FAILURE_COPY);
+    // ...and no request was ever attempted.
+    expect(groupsAPI.createGroup as unknown as Mock).not.toHaveBeenCalled();
+  });
+
+  it('still SUBMITS the form when the migrated <Button> is activated (type="submit" survived)', async () => {
+    const user = userEvent.setup();
+    renderCreateGroup();
+
+    await user.type(screen.getByPlaceholderText('Group Name'), 'Tuesday Night Crew');
+    const submit = screen.getByRole('button', { name: /create group/i });
+    // Hint for whoever reads a failure here — NOT the assertion that carries the test.
+    expect(submit).toHaveAttribute('type', 'submit');
+
+    await user.click(submit);
+
+    // THE assertion: the click reached the form's onSubmit and a create was attempted.
+    await waitFor(() =>
+      expect(groupsAPI.createGroup as unknown as Mock).toHaveBeenCalledWith({
+        name: 'Tuesday Night Crew',
+      })
+    );
+  });
+
+  it('carries its own elevation pair on the tier, with the enabled-hover variant (§3.4 rule 2 / D49-b)', async () => {
+    const user = userEvent.setup();
+    renderCreateGroup();
+    // Settle on the control itself, which only renders inside the open dialog.
+    const submit = await screen.findByRole('button', { name: /create group/i });
+
+    // The resting half and the PIN. The pin is what stops `Button`'s cva base
+    // (`enabled-hover:shadow-theme-md`) shrinking this control's shipped `lg` on hover.
+    expect(submit.className).toContain('shadow-theme-sm');
+    expect(submit.className).toContain('enabled-hover:shadow-theme-lg');
+    // The alias family is gone from this element entirely, and a BARE `hover:` pin is
+    // rejected (D10) — it would not dedupe against the base token, so both would paint.
+    expect(submit.className).not.toMatch(/(?:^|\s|:)shadow-(?:sm|md|lg)\b/);
+    expect(submit.className).not.toContain('hover:shadow-theme-lg ');
+    expect(/(?:^|\s)hover:shadow-/.test(submit.className)).toBe(false);
+    // D-30: the per-CTA floor is the primitive's now, not the call site's. `min-h-11`
+    // is still PRESENT on the element because the cva base emits it — what must be gone
+    // is a SECOND, call-site copy, so this arm pins the base's and not the duplicate.
+    expect(submit.className).toContain('min-h-11');
+    expect(submit.className.match(/\bmin-h-11\b/g)).toHaveLength(1);
+    // `uppercase` is ALIVE and survives: `.btn` declares no `text-transform`.
+    expect(submit.className).toContain('uppercase');
+    // Dead-on-`.btn` utilities are gone (§3.4 rule 3).
+    expect(submit.className).not.toContain('text-sm');
+    expect(submit.className).not.toContain('font-bold');
+    expect(submit.className).not.toContain('px-6');
+    expect(submit.className).not.toContain('disabled:opacity-50');
   });
 });
 
@@ -291,8 +415,10 @@ describe('createGroup in-flight guard (UAT row 447)', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 
     // The request FAILS: closability must come back — the person is not stuck.
+    // 88.6-33: the inline region now carries the RATIFIED register line, not the
+    // upstream `error.message`; the settle signal is unchanged in kind.
     deferred.reject(new Error('Group name already taken'));
-    expect(await screen.findByText('Group name already taken')).toBeInTheDocument();
+    expect(await screen.findByText(UNKNOWN_FAILURE_COPY)).toBeInTheDocument();
 
     await user.keyboard('{Escape}');
     expect(modaltoggle).toHaveBeenCalledTimes(1);

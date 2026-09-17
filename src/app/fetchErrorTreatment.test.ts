@@ -635,16 +635,28 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
   // answers a code-less failure, so no copy was authored (P1, the §6.2 W16 precedent). The FILE's
   // OTHER `.message` read is gone too — `grep -nE '\\.message' createEvent.js` returns nothing.
   // Entry DELETED rather than zeroed.
-  'app/components/createGroup.js': {
-    sites: 1,
-    why:
-      'RAW-MESSAGE assertion. :90 is the ASSIGNMENT where the upstream value enters ' +
-      '(`const errorMsg = error.message || "Failed to create group…"`); the six downstream ' +
-      '`errorMessage` local reads in this file are not offenders and are no longer matched ' +
-      'after the regex tightening. Fixing :90 fixes the renders. Closed by plan 88.6-33 ' +
-      '(wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-33' },
-  },
+  // DELETED by plan 88.6-33 task 1 (wave 7, 2026-09-16): `app/components/createGroup.js` carried
+  // `sites: 1` — `:90` pre-edit, `const errorMsg = error.message || 'Failed to create group.
+  // Please try again.';`. It now reads `getFetchErrorMessage(error)` with NO fallback: UI-SPEC
+  // §6.2.1 (§6.3) has no entry for this action, so the register's own `unknown` line answers and
+  // no copy was authored (P1, the §6.2 W16 precedent). The catch binds `error`, not `err`.
+  //
+  // A VALUE CHANGE ONLY — this is UI-SPEC §14 **A-30**'s NAMED §6.2 EXCEPTION, scoped to this
+  // file alone. The modal-submit TOAST arm (§6.2 `:552`) is deliberately DECLINED here, and the
+  // reason is in §6.2's own announcement clause (`:555-557`): "exactly one live region per
+  // failure … Do not add a second region". This surface already owns a single ASSERTIVE region
+  // WITH field association — `aria-invalid` / `aria-describedby` on the name input over the
+  // `<p id="create-group-error" role="alert">`, under the `DECISION Phase 88-29 (Req 11 /
+  // DEF-88-19-04 shape)` marker whose text records that without the role, replacing the native
+  // `alert()` would be "an a11y REGRESSION". A toast would BE that second region and would cost
+  // the association. So the inline presentation is byte-unchanged and `sonner` is NOT imported.
+  // Plan 31 task 2 and plan 32 task 2 classify sites against §6.2 too and DO NOT inherit this.
+  //
+  // The `:76` CLIENT-SIDE validation copy ("Please enter a group name") flows through the SAME
+  // `errorMessage` state and is UNCHANGED — `getFetchErrorMessage` governs the SERVER-failure
+  // path only, and routing validation copy through it would replace a specific instruction with
+  // the generic `unknown` line. Both arms are pinned behaviourally in createGroup.test.tsx.
+  // Entry DELETED rather than zeroed; the roster is exact in both directions.
   // DELETED by plan 88.6-23 task 2 (wave 7, 2026-09-16): `app/invite/accept/page.js` carried
   // `sites: 1` (:59 `const msg = err.message || "Something went wrong"`, then displayed). The
   // read is gone and the three outcomes it fed are keyed on `err.code` instead — `not_found`,
@@ -809,13 +821,11 @@ const FAILED_COPY_EXEMPT: ExemptionRoster = {
   // roster's site and closing it was required to delete the entry, so it was swept in the same
   // pass and recorded as a deviation. Both now read `getFetchErrorMessage(err)` with no fallback.
   // Entry DELETED rather than zeroed.
-  'app/components/createGroup.js': {
-    sites: 1,
-    why:
-      '"FAILED TO X" assertion. :90 — the same assignment line its raw-message entry ' +
-      'covers. Closed by plan 88.6-33 (wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-33' },
-  },
+  // DELETED by plan 88.6-33 task 1 (wave 7, 2026-09-16): `app/components/createGroup.js` carried
+  // `sites: 1` — `:90`, the SAME assignment line its raw-message entry covered. The hand-rolled
+  // "Failed to create group. Please try again." went with the `getFetchErrorMessage(error)`
+  // re-key; both halves of that one line (the raw `error.message` read and the ad-hoc fallback)
+  // closed in one edit. Entry DELETED rather than zeroed.
   // DELETED by plan 88.6-23 task 1 (wave 7, 2026-09-16). `app/invite/game/[token]/page.js`
   // carried `sites: 1` (:143 "Failed to join game night.") and
   // `app/invite/group/[token]/page.js` carried `sites: 1` (:109 "Failed to join group.") —
