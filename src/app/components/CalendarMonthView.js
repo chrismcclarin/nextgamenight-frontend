@@ -250,19 +250,72 @@ export default function CalendarMonthView({
 
           const cellClickable = !!date && (dayEvents.length > 0 || (isEmpty && showEmptyDayHint));
 
+          /* DECISION Phase 88.6-40 (W39, SPEC R5 / AC-5): the day's keyboard target is gated on
+             `cellClickable && dayEvents.length !== 1`, NOT on `cellClickable` alone.
+
+             REJECTED — gating on `cellClickable` alone. `cellClickable` is TRUE on a 1-event
+             day, and on a 1-event day the CELL's dispatch IS the TILE's: `EventCalendar.js`'s
+             `handleDayClick` forwards a single-event day straight into `handleEventClick`
+             (`if (dayEvents.length === 1) { handleEventClick(dayEvents[0]); return; }`), the
+             very handler the tile's `onEventClick` is bound to — and that tile is ALREADY
+             `role="button" tabIndex={0}`. So the rejected arm ships a SECOND tab stop for ONE
+             action, and a worse one, because the day target's name promises a day modal the
+             user is never taken to.
+
+             ALSO CONSIDERED AND NOT TAKEN: keeping the target on every clickable cell and
+             branching its `aria-label` on `dayEvents.length` the way `handleDayClick` branches.
+             That fixes the wrong NAME but leaves two stops for one action.
+
+             The narrowing costs nothing — every 1-event day is already fully keyboard-operable
+             through its tile — and it holds for every consumer: `<CalendarMonthView` has exactly
+             one render site in `src/` (`EventCalendar.js`). This is a decision, not a cleanup. */
+          const dayTargetActive = cellClickable && dayEvents.length !== 1;
+          const dayNumberLabel = dayTargetActive
+            ? `${monthNames?.[date.getMonth()] ?? ''} ${date.getDate()}`.trim() +
+              (dayEvents.length > 0
+                ? `, ${dayEvents.length} games. Open this day.`
+                : '. Add an event on this day.')
+            : undefined;
+
           return (
             <div
               key={index}
               onClick={() => {
                 if (date) onDayClick(date, dayEvents);
               }}
-              className={`${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} border border-line rounded-sm p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
+              /* DECISION Phase 88.6-40 (W39 / T-88.6-116): `group` is HOISTED here, onto the
+                 wrapper's static class string, out of the `cellClickable` arm of the ground
+                 ternary below where it used to be this file's only occurrence.
+
+                 WHY IT HAD TO MOVE: the ternary is ordered `!date` -> `isCurrentDay` ->
+                 past-date -> `cellClickable`, so an empty TODAY cell — which IS `cellClickable`
+                 — resolves at the `isCurrentDay` arm and carried no `group` at all. Its
+                 `group-hover:opacity-40` "+" hint was therefore dead on HOVER too: a SHIPPED
+                 defect this plan surfaces rather than introduces, and the new
+                 `group-focus-within:` reveal would have inherited exactly the same dead ancestor.
+
+                 UNCONDITIONAL, chosen OVER a `${cellClickable ? ' group' : ''}` interpolation:
+                 the two are equivalent by construction (the only `group-*` utility anywhere in
+                 this cell's subtree is the "+" hint, which renders only under
+                 `isEmpty && showEmptyDayHint`, a disjunct of `cellClickable`), and the
+                 unconditional form adds no fourth template interpolation — which REMOVES the
+                 88.6-09 chunk-walker hazard instead of merely warning about it.
+
+                 FENCED: `group` PAINTS NOTHING, which is the whole reason it may leave the
+                 ternary. `cursor-pointer`, `transition-colors` and every `bg-*` / `border-*` /
+                 `hover:*` token STAY in their arms and the arms stay mutually exclusive — see
+                 the `DECISION Phase 88.3` (D-09 cascade fix) marker below, which records that
+                 stacking a permanent PAINTING ground beside a conditional one is REJECTED for
+                 this file (an emission-order paint bug jsdom cannot see). Hoisting `group` is
+                 not that pattern; FLATTENING the chain would be. This is a decision, not a
+                 cleanup. */
+              className={`group ${variant === 'compact' ? 'min-h-[80px]' : 'min-h-[100px]'} border border-line rounded-sm p-1 ${variant === 'compact' ? 'flex flex-col' : ''} ${
                 isAdjacent ? 'opacity-60 ' : ''
               }${
                 !date ? 'bg-surface-page' :
                 isCurrentDay ? 'bg-surface-muted border-line-accent' :
                 variant === 'full' && isPastDate ? 'bg-surface-page' :
-                cellClickable ? 'bg-surface-card hover:bg-surface-hover hover:border-line-accent cursor-pointer transition-colors group' :
+                cellClickable ? 'bg-surface-card hover:bg-surface-hover hover:border-line-accent cursor-pointer transition-colors' :
                 'bg-surface-card'
               }`}
             >
@@ -275,12 +328,68 @@ export default function CalendarMonthView({
                      today's cell additionally has its own ground and accent border. Promoting to
                      700 instead would bold all 42 day numbers in the grid and flatten that fork
                      rather than support it. */}
-                  <div className={`${variant === 'compact' ? 'text-xs' : 'text-sm'} mb-1 ${
-                    isCurrentDay ? 'text-content-accent' :
-                    isAdjacent ? 'text-content-muted' :
-                    variant === 'full' && isPastDate ? 'text-content-muted' :
-                    'text-content-primary'
-                  }`}>
+                  {/* DECISION Phase 88.6-40 (W39, SPEC R5 / AC-5): THE DAY'S KEYBOARD TARGET IS
+                      THIS ELEMENT, not the cell that wraps it.
+
+                      REJECTED — `role`/`tabIndex`/`onKeyDown` on the cell `<div>`, and rejected
+                      again as a native `<button>` wrapper. The cell WRAPS two `role="button"
+                      tabIndex={0}` event tiles; promoting the wrapper is axe
+                      `nested-interactive` (WCAG 4.1.2), children-presentational hides the tiles
+                      from assistive tech, and it is the verbatim 88.3 run-3 H1 regression
+                      recorded in `groupColourRendering.test.ts`'s test 8. This is EventDayModal's
+                      H1 remedy — the same one plan 88.6-21 applied to the group card's title
+                      block, reused rather than forked into a second idiom.
+
+                      REJECTED — a native `<button>` here. A native button SYNTHESISES a bubbling
+                      click on Enter/Space, which would reach the cell's `onClick` and fire
+                      `handleDayClick` TWICE. A div + role synthesises neither, so each key is
+                      handled exactly once. For the same reason this element carries NO `onClick`
+                      of its own: a pointer click bubbles to the cell and fires once.
+
+                      NO 24px FLOOR IS DECLARED HERE, and the evidence is stated rather than the
+                      conclusion. WCAG 2.2 SC 2.5.8's "Equivalent" exception is CONDITIONAL — a
+                      target below 24x24 is exempt only when another control on the same page
+                      achieving the SAME FUNCTION does meet the minimum. That precondition is
+                      satisfied and readable from the class string above: the equivalent control
+                      is the day CELL itself, which carries the `onClick` for this same function
+                      and is `min-h-[80px]` in the compact variant, and which — as one of seven
+                      columns in `grid-cols-7 gap-1` — is ~53px wide at a 375px viewport
+                      (ARITHMETIC, not a measured render). Both axes clear 24 comfortably.
+                      REJECTED ARM: declaring `min-h-6` on the day number. It would move the tile
+                      stack down in every phone cell of the grid for a target that is already
+                      exempt on a checked precondition.
+
+                      The ARIA grid pattern (`heatmap/WeekGrid.tsx` + `useHeatmapCell.ts`) was
+                      also REJECTED: it requires the event tiles at `tabIndex={-1}`, which test 8
+                      pins against, and plan 41 edits those tiles next wave.
+
+                      Any of this is a decision, not a cleanup. */}
+                  <div
+                    {...(dayTargetActive
+                      ? {
+                          role: 'button',
+                          tabIndex: 0,
+                          'aria-label': dayNumberLabel,
+                          onKeyDown: (e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onDayClick(date, dayEvents);
+                            }
+                          },
+                        }
+                      : {})}
+                    className={`${variant === 'compact' ? 'text-xs' : 'text-sm'} mb-1 ${
+                      dayTargetActive
+                        ? 'rounded-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset '
+                        : ''
+                    }${
+                      isCurrentDay ? 'text-content-accent' :
+                      isAdjacent ? 'text-content-muted' :
+                      variant === 'full' && isPastDate ? 'text-content-muted' :
+                      'text-content-primary'
+                    }`}
+                  >
                     {date.getDate()}
                   </div>
                   {dayEvents.length > 0 ? (
@@ -571,6 +680,21 @@ export default function CalendarMonthView({
                                `<div onClick>` with no role/tabIndex/key handler. The owner ruled
                                "accept as is" for 88.3; Phase 88.6 owns it. Its absence is a recorded
                                decision, not an oversight — do not add a keyboard path to the cell.
+
+                               AMENDED Phase 88.6-40 — BOTH HALVES ABOVE ARE KEPT AS HISTORY.
+
+                               (a) KEYBOARD. 88.3 ruling B's "accept as is" ownership is
+                               DISCHARGED here, under SPEC 88.6 R5 / AC-5. The CELL IS STILL
+                               POINTER-ONLY — the sentence above stays literally true — but now
+                               for a DIFFERENT and stronger reason: the cell wraps these
+                               `role="button"` tiles, so promoting it would be axe
+                               `nested-interactive` (WCAG 4.1.2) and would hide the tiles from
+                               assistive tech under children-presentational. The day's keyboard
+                               path lives on the INNER day-number element instead (see its
+                               `DECISION Phase 88.6-40 (W39)` marker above), and it is withheld on
+                               a 1-EVENT day, whose stop for that same action is THIS tile. "Do
+                               not add a keyboard path to the cell" therefore still stands, and is
+                               now enforced by `groupColourRendering.test.ts`'s rewritten test 23.
 
                                Any of this is a decision, not a cleanup. */
                             <div
@@ -883,9 +1007,57 @@ export default function CalendarMonthView({
                        phase owns coaching). The cell itself STAYS tappable (cellClickable above)
                        and the v2.1 tutorial is expected to teach tap-to-create (todo:
                        2026-08-03-tutorial-teach-empty-day-tap-to-create). Making this hint
-                       touch-visible is a decision, not a cleanup. */
-                    <div className="flex items-center justify-center flex-1 opacity-0 group-hover:opacity-40 transition-opacity">
-                      <span className="text-2xl text-content-muted select-none">+</span>
+                       touch-visible is a decision, not a cleanup.
+
+                       AMENDED Phase 88.6-40 (W39 / T-88.6-116) — THE PARAGRAPH ABOVE IS KEPT AS
+                       HISTORY AND IS NOT REVERSED. Two things changed under it, and the owner is
+                       entitled to see both named.
+
+                       (1) A KEYBOARD PATH NOW EXISTS. Plan 88.6-40 makes the day-number element
+                       inside this cell a keyboard target, and `cellClickable`'s second branch is
+                       `isEmpty && showEmptyDayHint` — so empty days are now keyboard-reachable
+                       while this "+" was their ONLY affordance and was hover-gated. A
+                       `group-focus-within:opacity-40` reveal is added ALONGSIDE the existing
+                       `group-hover:` one, at the same opacity.
+
+                       WORDED ON THE RIGHT AXIS, DELIBERATELY: THE REVEAL FOLLOWS **FOCUS**, NOT
+                       "KEYBOARD ONLY". Adding the keyboard path is the REASON for it, but a tap
+                       or a click on the `tabIndex={0}` day-number target focuses that target
+                       too, so the "+" appears momentarily on the TAPPED cell — by the same tap
+                       that activates it, so it is still not a discoverable PRE-TAP affordance
+                       and R10's accepted cost ("invisible on touch") is unchanged. R10 was
+                       decided on the TOUCH axis, which is exactly what a "keyboard only"
+                       sentence here would misstate.
+
+                       `focus-within` AND NOT `focus-visible`: the keyboard target is the INNER
+                       day-number element, not the cell that carries `group`, so a
+                       `group-focus-visible:` variant on the wrapper would never fire.
+
+                       (2) A LATENT DEFECT IS DISCLOSED, NOT INTRODUCED. The `group` marker this
+                       hint depends on used to live in the `cellClickable` arm of the cell's
+                       ground ternary — an arm `isCurrentDay` is reached BEFORE — so today's
+                       EMPTY cell carried no `group` and has never revealed this "+" on HOVER
+                       either. It was silently excluded from the owner's hover-only decision. The
+                       hoist restores it. Still ONE hovered-or-focused cell at a time; the
+                       REJECTED always-visible low-opacity hint is NOT reinstated.
+
+                       (3) The glyph's ink moves `text-content-muted` -> `text-content-secondary`
+                       — see the `DECISION Phase 88.6-40 (D-16)` note at the span below. */
+                    <div className="flex items-center justify-center flex-1 opacity-0 group-hover:opacity-40 group-focus-within:opacity-40 transition-opacity">
+                      {/* DECISION Phase 88.6-40 (D-16, owner ARM A): `text-content-secondary`
+                          (6.9620) replaces `text-content-muted` (4.3725). `groundInk.test.ts`
+                          rostered this pairing as debt that was not renderable while the dead
+                          `group` arm kept the hint at opacity-0 on a today cell, and recorded
+                          that PLAN 40'S HOIST WOULD MAKE IT LIVE. It is now live, so the ink is
+                          fixed in the same commit as the hoist and the roster entry is deleted
+                          rather than carried. REJECTED: moving the day cell's muted GROUND
+                          instead — that ground is one arm of a five-arm ternary the tint
+                          decision (P6) pins, and it is the OI-5 exclusion shape. Honest residual:
+                          the glyph renders at `opacity-40`, so its COMPOSITED contrast is below
+                          AA either way; this fixes the token the gate measures and improves the
+                          hovered/focused reading, and the opacity is R10's accepted cost, not
+                          this plan's to reverse. */}
+                      <span className="text-2xl text-content-secondary select-none">+</span>
                     </div>
                   ) : null}
                 </>

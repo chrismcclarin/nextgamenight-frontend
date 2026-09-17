@@ -49,6 +49,7 @@ import ClickableMemberName from './ClickableMemberName';
 import MemberChipStack from './MemberChipStack';
 import KebabMenu from './KebabMenu';
 import GroupList from './grouplist';
+import CalendarMonthView from './CalendarMonthView';
 import { Modal } from './Modal';
 import { FriendshipContext } from './FriendshipStatusProvider';
 
@@ -1162,8 +1163,16 @@ async function renderGroupCard(overrides?: Record<string, unknown>) {
   const utils = render(
     <FriendshipContext.Provider value={friendshipValue as never}>
       {/* GroupList is untyped JS; a typed-any bag keeps JSX from demanding unrelated props —
-          the same shape `grouplist.identity.test.tsx:87` uses. */}
-      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+          the same shape `grouplist.identity.test.tsx:87` uses.
+
+          [Rule 3 fix, plan 88.6-40] The `eslint-disable-next-line
+          @typescript-eslint/no-explicit-any` line that used to sit here named a rule this
+          project does not load: `.eslintrc.json` extends `next` only, with no
+          `@typescript-eslint` plugin, so ESLint raised `Definition for rule … was not found`
+          as an ERROR and `npm run lint` — and therefore `npm run build` — exited 1 TREE-WIDE.
+          The comment suppressed nothing, because the rule it named was never running. Deleted
+          rather than replaced: `grouplist.identity.test.tsx:87` writes the identical `any` cast
+          with no disable comment at all, which is the house shape here. */}
       <GroupList {...({ user: { sub: 'auth0|self' }, onGroupSelect } as any)} />
     </FriendshipContext.Provider>,
   );
@@ -1288,4 +1297,225 @@ describe('grouplist row — the card and every control inside it are independent
     expect(block).not.toHaveAttribute('aria-label');
     expect(screen.getByRole('heading', { level: 3 })).toHaveTextContent(quoted);
   });
+});
+
+/*
+ * AC-5 / SPEC R5 (W39 + W41) — THE CALENDAR DAY CELL'S KEYBOARD PATH, plan 88.6-40.
+ *
+ * WHAT THIS SUITE ASSERTS AND WHY IT IS SHAPED THIS WAY
+ * ----------------------------------------------------
+ * The month grid was pointer-only: the day cell was a bare `<div onClick>` with no role, no
+ * tabIndex and no key handler, so a keyboard user could not open a day at all. The fix does NOT
+ * promote the cell — the cell WRAPS two `role="button" tabIndex={0}` event tiles, and promoting
+ * a wrapper over interactive descendants is axe `nested-interactive` (WCAG 4.1.2) and is the
+ * verbatim 88.3 run-3 H1 regression recorded at `groupColourRendering.test.ts`'s test 8. The
+ * keyboard target is the EXISTING day-number element INSIDE the cell — the EventDayModal H1
+ * remedy, the same one plan 88.6-21 applied to the group card's title block.
+ *
+ * BOTH POLARITIES, AND THE 1-EVENT NARROWING. A tab stop is added only where the action has no
+ * stop already. `cellClickable` alone is the WRONG gate: on a 1-event day the cell's own
+ * dispatch IS the tile's, so gating on it would ship a second tab stop for one action under a
+ * name promising a day modal the user never gets. Every polarity below is asserted by RENDER.
+ */
+const CAL_MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/** A fixed, far-future day so no arm here accidentally coincides with today. */
+const CAL_DAY = new Date(2031, 8, 15, 12, 0, 0, 0); // 15 September 2031
+
+function calEvent(id: string, on: Date, game: string, groupName: string) {
+  const y = on.getFullYear();
+  const m = String(on.getMonth() + 1).padStart(2, '0');
+  const d = String(on.getDate()).padStart(2, '0');
+  return {
+    id,
+    start_date: `${y}-${m}-${d}T19:00:00`,
+    Game: { name: game },
+    Group: { name: groupName, background_color: null },
+    rsvp_summary: null,
+  };
+}
+
+function renderMonth(opts: {
+  date?: Date;
+  events?: unknown[];
+  showEmptyDayHint?: boolean;
+  variant?: string;
+} = {}) {
+  const date = opts.date ?? CAL_DAY;
+  const onDayClick = vi.fn();
+  const onEventClick = vi.fn();
+  const utils = render(
+    <CalendarMonthView
+      days={[{ date, isCurrentMonth: true }]}
+      activeEvents={opts.events ?? []}
+      currentDate={date}
+      variant={opts.variant ?? 'compact'}
+      onDayClick={onDayClick}
+      onEventClick={onEventClick}
+      onNavigateMonth={vi.fn()}
+      onGoToday={vi.fn()}
+      showEmptyDayHint={opts.showEmptyDayHint ?? false}
+      monthNames={CAL_MONTHS}
+      tzLegend={null}
+    />,
+  );
+  return { ...utils, onDayClick, onEventClick, date };
+}
+
+/** The day CELL — the element that carries the pointer `onClick`, located via its day number. */
+function cellOf(date: Date): HTMLElement {
+  const dayNumber = screen.getByText(String(date.getDate()));
+  // The day number is a DIRECT child of the cell (`{date && (<>` is a fragment, no DOM node).
+  return dayNumber.parentElement as HTMLElement;
+}
+
+describe('Phase 88.6-40 AC-5 / R5 (W39): the calendar day cell has a keyboard path INSIDE it', () => {
+  afterEach(cleanup);
+
+  const MULTI = [
+    calEvent('e1', CAL_DAY, 'Catan', 'Tuesday Crew'),
+    calEvent('e2', CAL_DAY, 'Wingspan', 'Plain Group'),
+  ];
+  const OPEN_DAY_NAME = 'September 15, 2 games. Open this day.';
+  const ADD_EVENT_NAME = 'September 15. Add an event on this day.';
+
+  it('DC-1. a MULTI-EVENT day exposes a focusable day-number target naming the date AND the action', () => {
+    renderMonth({ events: MULTI });
+    const target = screen.getByRole('button', { name: OPEN_DAY_NAME });
+    expect(target).toHaveAttribute('tabindex', '0');
+    // The name carries BOTH halves — a bare date is not an action name.
+    expect(target.getAttribute('aria-label')).toContain('September 15');
+    expect(target.getAttribute('aria-label')).toContain('Open this day');
+  });
+
+  it('DC-2. a NON-ACTIONABLE day gets NO tab stop (42 empty stops is worse than none)', () => {
+    renderMonth({ events: [], showEmptyDayHint: false });
+    expect(screen.queryByRole('button', { name: /Open this day/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Add an event/ })).toBeNull();
+    // And the day number is still rendered — the cell is unchanged, only un-promoted.
+    const dayNumber = screen.getByText('15');
+    expect(dayNumber).not.toHaveAttribute('role');
+    expect(dayNumber).not.toHaveAttribute('tabindex');
+  });
+
+  it('DC-3. a 1-EVENT day exposes exactly ONE role="button" — the TILE — and no day-number stop', () => {
+    // THE NARROWING. `cellClickable` is TRUE here, so a `cellClickable`-only gate would put a
+    // SECOND stop on this cell for the SAME action: `EventCalendar.js`'s `handleDayClick`
+    // forwards a single-event day straight into `handleEventClick`, the handler the tile's
+    // `onEventClick` is already bound to — and the tile is already `role="button" tabIndex={0}`.
+    renderMonth({ events: [calEvent('e1', CAL_DAY, 'Catan', 'Tuesday Crew')] });
+    const cell = cellOf(CAL_DAY);
+    const inCell = within(cell).getAllByRole('button');
+    expect(
+      inCell,
+      'a 1-event day must expose exactly one role="button" inside the cell — its tile',
+    ).toHaveLength(1);
+    expect(inCell[0].getAttribute('aria-label')).toContain('Catan');
+    // …and nothing in the grid names a day modal the user would never be taken to.
+    expect(screen.queryByRole('button', { name: /Open this day/ })).toBeNull();
+  });
+
+  it('DC-4. an EMPTY day WITH the create hint is actionable and names the create action', () => {
+    renderMonth({ events: [], showEmptyDayHint: true });
+    const target = screen.getByRole('button', { name: ADD_EVENT_NAME });
+    expect(target).toHaveAttribute('tabindex', '0');
+  });
+
+  it('DC-5. Enter on the day target calls onDayClick ONCE and onEventClick NEVER', () => {
+    const { onDayClick, onEventClick, date } = renderMonth({ events: MULTI });
+    const target = screen.getByRole('button', { name: OPEN_DAY_NAME });
+    target.focus();
+    const defaultNotPrevented = fireEvent.keyDown(target, { key: 'Enter' });
+    expect(onDayClick).toHaveBeenCalledTimes(1);
+    expect(onDayClick.mock.calls[0][0]).toEqual(date);
+    expect(onDayClick.mock.calls[0][1]).toHaveLength(2);
+    expect(onEventClick).not.toHaveBeenCalled();
+    expect(defaultNotPrevented, 'Enter must be preventDefault-ed').toBe(false);
+  });
+
+  it('DC-6. Space likewise fires exactly once (Space default is PAGE SCROLL and must be suppressed)', () => {
+    const { onDayClick, onEventClick } = renderMonth({ events: MULTI });
+    const target = screen.getByRole('button', { name: OPEN_DAY_NAME });
+    target.focus();
+    const defaultNotPrevented = fireEvent.keyDown(target, { key: ' ' });
+    expect(onDayClick).toHaveBeenCalledTimes(1);
+    expect(onEventClick).not.toHaveBeenCalled();
+    expect(defaultNotPrevented, 'Space must be preventDefault-ed').toBe(false);
+  });
+
+  it('DC-7. a POINTER click on the day number fires onDayClick exactly ONCE (it bubbles, it does not double)', () => {
+    // The target deliberately carries no `onClick` of its own: the click bubbles to the cell's
+    // existing handler. A native <button> was rejected for the mirror-image reason — it
+    // SYNTHESISES a bubbling click on Enter/Space, which would fire the cell handler twice.
+    const { onDayClick } = renderMonth({ events: MULTI });
+    fireEvent.click(screen.getByRole('button', { name: OPEN_DAY_NAME }));
+    expect(onDayClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('DC-8. the day target carries a VISIBLE focus ring, inset like this file\'s two tiles', () => {
+    renderMonth({ events: MULTI });
+    const target = screen.getByRole('button', { name: OPEN_DAY_NAME });
+    expect(target.className).toContain('focus-visible:ring-focus-ring');
+    expect(target.className).toContain('focus-visible:ring-2');
+    // `ring-inset`, NOT `ring-offset-2`: both event tiles in this file use inset for the
+    // recorded reason (a dense grid cell has no room for an offset ring).
+    expect(target.className).toContain('focus-visible:ring-inset');
+  });
+
+  it('DC-9. a QUOTE-BEARING group name survives into the grid, and the day label stays intact (AC-5)', () => {
+    const quoted = 'Bob\'s "Board" Crew';
+    renderMonth({
+      events: [
+        calEvent('e1', CAL_DAY, 'Catan', quoted),
+        calEvent('e2', CAL_DAY, 'Wingspan', 'Plain Group'),
+      ],
+    });
+    // React sets `aria-label` as a DOM property, so there is no escaping question to get wrong —
+    // this pins that, rather than asserting it.
+    expect(screen.getByRole('button', { name: `Catan - ${quoted}` })).toBeTruthy();
+    expect(screen.getByRole('button', { name: OPEN_DAY_NAME })).toBeTruthy();
+  });
+
+  it('DC-10. the empty-day "+" hint follows FOCUS as well as hover, and focus lands on the inner target', () => {
+    const { container } = renderMonth({ events: [], showEmptyDayHint: true });
+    const target = screen.getByRole('button', { name: ADD_EVENT_NAME });
+    target.focus();
+    expect(document.activeElement).toBe(target);
+
+    // The wrapper carries the `group` marker UNCONDITIONALLY now — it used to sit in the
+    // `cellClickable` arm of the cell's ground ternary, which `isCurrentDay` and the past-date
+    // arm are reached BEFORE, so today's empty cell never revealed the hint on HOVER either.
+    const cell = cellOf(CAL_DAY);
+    expect(cell.className.split(/\s+/)).toContain('group');
+
+    const hint = container.querySelector('[class*="group-focus-within:opacity-40"]');
+    expect(hint, 'the "+" hint has no group-focus-within reveal').not.toBeNull();
+    expect((hint as HTMLElement).className).toContain('group-hover:opacity-40');
+    // THE REVEAL ITSELF IS A CSS VARIANT jsdom CANNOT EVALUATE — no stylesheet is applied here,
+    // so this arm pins the class pair and the focus target only. The rendered opacity is
+    // asserted in the `phone` Playwright project (`e2e/contrast.spec.ts`), which is the only
+    // place `group-focus-within:` can actually go red.
+  });
+
+  it('DC-11. axe: the rendered month grid has NO nested-interactive violation, and no control nests', () => {
+    const { container } = renderMonth({ events: MULTI });
+    // Anti-vacuity: the audited tree really does hold the day target plus both tiles.
+    const controls = container.querySelectorAll('button, [role="button"]');
+    expect(controls.length).toBeGreaterThanOrEqual(3);
+    for (const outer of Array.from(controls)) {
+      expect(
+        outer.querySelector('button, [role="button"]'),
+        `${outer.getAttribute('aria-label') ?? outer.textContent} CONTAINS another control`,
+      ).toBeNull();
+    }
+  });
+
+  it('DC-11b. axe agrees (nested-interactive / aria-allowed-role)', async () => {
+    const { container } = renderMonth({ events: MULTI });
+    expect(await axe(container, NESTED_INTERACTIVE)).toHaveNoViolations();
+  });
+
 });

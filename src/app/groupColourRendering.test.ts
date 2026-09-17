@@ -1821,25 +1821,55 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
     );
   });
 
-  it('23. no clickable bare <div> in the month view is unfocusable, except the day cell owner ruling B accepted', () => {
+  it('23. the month view\'s clickable divs are focusable, and the day cell\'s keyboard target is INSIDE it', () => {
+    /*
+     * 88.3 RULING B IS **SUPERSEDED** BY SPEC 88.6 R5 / AC-5 (plan 88.6-40).
+     *
+     * WHAT THIS TEST USED TO SAY, kept here as history because the supersession is the
+     * point: the day CELL was allow-listed as a pointer-only `<div onClick>` under owner
+     * ruling B (2026-08-27, "accept as is" for Phase 88.3, DEF-88.3-R1-01, receiving entry
+     * `.planning/deferred/phase-88.6.md`, "[a11y] Calendar day CELL has no keyboard path").
+     * That exception was DISCLOSURE, and it named Phase 88.6 as the owner. Phase 88.6 has
+     * now done the work, so the exception is discharged rather than carried.
+     *
+     * THE CELL IS STILL NOT PROMOTED, AND THAT IS NOT THE OLD RULING SURVIVING — IT IS A
+     * DIFFERENT AND STRONGER REASON. The cell WRAPS two `role="button" tabIndex={0}` event
+     * tiles. Putting role/tabIndex/onKeyDown on the wrapper is axe `nested-interactive`
+     * (WCAG 4.1.2) and flattens the tiles out of the accessibility tree under
+     * children-presentational — the verbatim 88.3 run-3 H1 regression test 8 above pins
+     * against on `EventDayModal.js`. So the cell keeps its pointer `onClick` and the
+     * keyboard target is the INNER day-number element: `KEYBOARD_TARGET_INSIDE`, the shape
+     * test 8 already models, and the same EventDayModal H1 remedy plan 88.6-21 applied to
+     * the group card's title block.
+     *
+     * THE `allowListed === 1` COUNT IS GONE, deliberately. It asserted only that a
+     * pointer-only cell still existed — vacuous once the fix landed, and it would have gone
+     * green on a cell with NO keyboard path anywhere near it. What replaces it is a POSITIVE
+     * pin on the inner target.
+     *
+     * A NESTING CHECK IS NOT POSSIBLE HERE: `openTags` is a FLAT walker with no parent
+     * links. Nesting is asserted by render and by axe, in
+     * `keyboardOperability.test.tsx`'s DC-11 / DC-11b.
+     */
     const src = code('app/components/CalendarMonthView.js');
     const offenders: string[] = [];
-    let allowListed = 0;
+    let dayCells = 0;
     for (const { line, tag, attrs } of openTags(src)) {
       if (tag !== 'div') continue;
       if (!/\bonClick\s*=/.test(attrs)) continue;
-      // ALLOW-LISTED BY NAME: the day CELL, identified by the one handler only it calls.
-      // Owner ruling B, 2026-08-27: "accept as is" for Phase 88.3 — after plans 16/17 a
-      // keyboard user can open an EVENT tile from the month grid but never the DAY modal
-      // (which hosts the Share-game-QR button) nor create an event from an empty day.
-      // Recorded as accepted-for-now and OWNED BY PHASE 88.6 (DEF-88.3-R1-01, receiving
-      // entry `.planning/deferred/phase-88.6.md`, "[a11y] Calendar day CELL has no
-      // keyboard path"). Plan 88.3-16 adding no keyboard path to it is deliberate, not a
-      // miss. An allow-listed exception with the ruling cited beside it is DISCLOSED; an
-      // un-scanned element is a hole. Removing the ruling without removing this entry
-      // would leave the gate lying — the entry is the disclosure.
+      // The day CELL, identified by the one handler only it calls.
       if (attrs.includes('onDayClick(date, dayEvents)')) {
-        allowListed += 1;
+        dayCells += 1;
+        expect(
+          /\brole\s*=/.test(attrs),
+          `CalendarMonthView.js:${line}: the day CELL must NOT carry a role — it wraps ` +
+            'interactive tiles, and promoting it is axe nested-interactive (the 88.3 run-3 H1 shape)',
+        ).toBe(false);
+        expect(
+          /\bonKeyDown\s*=/.test(attrs),
+          `CalendarMonthView.js:${line}: the day CELL must NOT carry onKeyDown — the keyboard ` +
+            'path belongs to the inner day-number target',
+        ).toBe(false);
         continue;
       }
       if (!/\brole\s*=/.test(attrs) || !/\btabIndex\s*=/.test(attrs)) {
@@ -1847,13 +1877,41 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
       }
     }
     expect(offenders).toEqual([]);
-    // Vacuity: the allow-listed cell must still BE there. If the day cell is ever given a
-    // keyboard path (88.6's job), this reds and the exception gets deleted with its
-    // deferred entry — which is the point.
+    expect(dayCells, 'the day cell moved — re-anchor this test on its onDayClick handler').toBe(1);
+
+    // THE POSITIVE HALF: the inner keyboard target, mirroring test 8's KEYBOARD_TARGET_INSIDE
+    // branch. Anchored on the conditional spread that carries the whole set, not on a line.
+    const at = src.indexOf('dayTargetActive');
+    expect(at, 'the day cell has no inner keyboard target — `dayTargetActive` is gone').toBeGreaterThan(-1);
+    const spreadAt = src.indexOf('{...(dayTargetActive');
+    expect(spreadAt, 'the inner target no longer spreads its interactive props conditionally').toBeGreaterThan(-1);
+    const targetTag = src.slice(spreadAt, src.indexOf('{date.getDate()}', spreadAt));
+    for (const need of ["role: 'button'", 'tabIndex: 0', "'aria-label'", 'onKeyDown']) {
+      expect(targetTag, `the INNER day keyboard target lost ${need}`).toContain(need);
+    }
+    // EXEMPT from test 8's EventDayModal-specific no-`aria-label` rule, and the reason is
+    // EventDayModal-specific: that remedy computes its name from a subtree carrying the start
+    // time. This subtree is ONE DIGIT, so it needs the explicit label.
+    expect(targetTag, 'the inner target must fire on Enter AND Space').toMatch(/'Enter'[\s\S]*' '/);
     expect(
-      allowListed,
-      'the owner-ruling-B day cell must still be present and still be the pointer-only shape this exception describes',
-    ).toBe(1);
+      targetTag,
+      'the inner handler must stopPropagation so the cell onClick does not double-fire',
+    ).toContain('stopPropagation');
+    // The ring is INSET here, like both tiles in this file — not EventDayModal's ring-offset-2.
+    const ringWindow = src.slice(spreadAt, src.indexOf('{date.getDate()}', spreadAt));
+    expect(ringWindow, 'the inner target lost its visible focus ring').toContain(
+      'focus-visible:ring-focus-ring',
+    );
+    expect(ringWindow, 'the inner target\'s ring must be INSET, as both tiles in this file are').toContain(
+      'focus-visible:ring-inset',
+    );
+    // THE NARROWING, pinned in source: a `cellClickable`-only gate would put a second stop on a
+    // 1-event day for the action its tile already owns.
+    expect(
+      src,
+      'the keyboard target is no longer narrowed by `dayEvents.length !== 1` — a 1-event day ' +
+        'would gain a duplicate tab stop naming a day modal the user never reaches',
+    ).toContain('cellClickable && dayEvents.length !== 1');
   });
 
   it('24. the day-modal row\'s Duration line forks its ink on the tint (88.3 UI-REVIEW fix 1)', () => {
