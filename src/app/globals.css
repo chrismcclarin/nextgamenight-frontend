@@ -694,7 +694,9 @@
   /* DECISION Phase 88.3 (Req 4 / UI-SPEC §5.6.2, §9.1): two NEW steps on the APP's own `--amber-*`
      ramp, minted so the re-meant `--color-accent-text` below has a pinned home. Chosen OVER
      (rejected) pointing the semantic token at `var(--color-amber-800)` / `var(--color-amber-900)`
-     in the D-17 Tailwind-palette pin block at `:216-217` — that block is TAILWIND's palette
+     in the D-17 Tailwind-palette pin block at `:255-256` (RE-DERIVED Phase 88.6-41, W67: the cite
+     read `:216-217`, which is now that block's closing prose; the two declarations themselves are
+     at `:255-256` and their hexes are unchanged) — that block is TAILWIND's palette
      namespace and this ramp is the APP's. A semantic token reaching across namespaces makes the
      app ramp look like it stops at 700, which is exactly the kind of thing a future reader
      "tidies" by deleting these two lines. The hexes are identical to the pinned Tailwind pair on
@@ -1193,8 +1195,32 @@
      RANGE — not a rule derived from a standard. The survey says exactly that, and this marker does
      not overstate it.
 
+     AMENDED Phase 88.6-41 (W67) — READ THIS BEFORE THE PARAGRAPH BELOW, which is kept verbatim as
+     the 2026-08-27 record and is NO LONGER TRUE of the tree. W67 said this block "cites a line and
+     a token value that are both now wrong"; verified INDEPENDENTLY, 2026-09-17, and both halves of
+     that finding hold — for the `--input` cite, while the `--color-bg-input` cite is half right:
+
+       claimed                                  measured 2026-09-17
+       `--input` aliases `--color-border`        `--input: var(--color-border-strong);` — the TOKEN
+                                                 changed: plan 88.6-05 (FE `4757ead`, "close three
+                                                 measured token defects — W29, D-14a, N1")
+                                                 re-pointed it. The 2.31:1 hairline consequence
+                                                 described below is therefore SPENT at the token.
+       at `:1323`                                the declaration is at `:2007`. LINE wrong.
+       `--color-bg-input: #ffffff`               VALUE correct, byte for byte.
+       at `:644`                                 the declaration is at `:900`. LINE wrong.
+
+     So: three of four halves had drifted, and the one that mattered most is the TOKEN — a reader
+     acting on the paragraph below would have "fixed" something 88.6-05 already fixed. What this
+     amendment does NOT claim: that the deferred entry it points at is closed. `--input` resolving
+     to `--color-border-strong` is the token half; whether the shared `Input`/`Textarea`/`Select`
+     primitive's own `border-input` box now lands >=3:1 is a RENDERED question about that component,
+     and that component is another plan's to speak for. Do not read this note as closing it.
+     The old values are recorded above rather than silently overwritten, so the drift stays legible.
+
      `--input` CONSEQUENCE, DISCLOSED HERE RATHER THAN DISCOVERED LATER (owner ruling C,
-     2026-08-27): `--input` aliases `--color-border` (`:1323`), so this edit hands every input box
+     2026-08-27; SEE THE AMENDMENT ABOVE — the token and both line cites have since moved):
+     `--input` aliases `--color-border` (`:1323`), so this edit hands every input box
      the same warm-400 edge — **2.31:1 on a white card, 2.04:1 on the page** — while the input's own
      fill is `--color-bg-input: #ffffff` (`:644`), which on a white card makes that border the SOLE
      boundary. Said plainly, because it sits against this marker's own claim that >=3:1 belongs to
@@ -1530,7 +1556,9 @@
      (7.09 / 6.26 / 6.05) and is the obvious pick because it is already on the ramp — but it is
      THE SAME HEX as `--color-accent-text` above. Shipping it would recreate OI-4's
      `--color-warning == --color-accent` collision one layer down, in a NEW light value, which is
-     precisely what SPEC Req 6 forbids. `#854d0e` (yellow-800, pinned at the D-17 block `:284`) is
+     precisely what SPEC Req 6 forbids. `#854d0e` (yellow-800, pinned at the D-17 block `:317`
+     — RE-DERIVED Phase 88.6-41, W67: the cite read `:284`, which is `--color-indigo-600`; the HEX
+     was verified correct and is unchanged, only the line had drifted) is
      measurably equivalent, visually distinct from both amber-800 and red-800, and already pinned.
      Re-pointing light warning at amber-800 "because it matches the accent" is a decision, not a
      cleanup.

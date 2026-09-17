@@ -27,8 +27,7 @@
         "src/app/components/TimezoneProvider.js",
         "src/app/components/UnreadNotificationProvider.js",
         "src/app/components/tutorial/TutorialProvider.js",
-        "src/app/groupPlanning/page.js",
-        "src/lib/api.ts"
+        "src/app/groupPlanning/page.js"
       ],
       "rules": {
         "no-console": "off"

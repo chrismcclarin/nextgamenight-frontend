@@ -41,6 +41,27 @@
 // strings (`bg-status-success-subtle` and friends). Do NOT "helpfully" correct it here.
 // Phase 88.6's docs pass owns that fix; editing it in this phase de-syncs the two phases'
 // records of the same decision.
+//
+// AMENDED Phase 88.6-41 (W68) — this IS that docs pass, and the fix lands here. The 87.7 D-18
+// text above is KEPT BYTE-VERBATIM as history (it is the record of why the tokens were removed
+// in the first place, and that reasoning is still correct); this note carries the correction.
+//
+// VERIFIED against the module's own exported values, 2026-09-17, by reading `statusConfig`
+// below rather than by trusting either marker. `activeBg`/`hoverBg` are NOT empty strings.
+// What the module exports today:
+//
+//   yes    activeBg 'bg-status-success-subtle'   hoverBg 'hover:bg-status-success-subtle'
+//   maybe  activeBg 'bg-status-warning-subtle'   hoverBg 'hover:bg-status-warning-subtle'
+//   no     activeBg 'bg-surface-elevated'        hoverBg 'hover:bg-status-error-subtle'
+//
+// Note the `no` row is deliberately ASYMMETRIC — its ACTIVE state is the neutral elevated
+// surface while only its HOVER is status-tinted. That is not a gap in the sweep that filled
+// these in; read it as a choice, and changing it is a decision, not a cleanup.
+//
+// The 88.5 note's de-sync worry is also RESOLVED rather than inherited: it was written while
+// `RsvpSection.js:105-117` still carried a verbatim twin of the 87.7 marker. Re-checked at this
+// edit — `RsvpSection.js` carries no D-18 marker any more, only a one-line pointer at its `:6`
+// saying the object moved here. There is exactly ONE home for this record now, and this is it.
 
 export interface RsvpStatusStyle {
   /** First-person confirmation shown above the button group. */

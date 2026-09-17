@@ -375,18 +375,73 @@ describe('gameDetail render harness', () => {
 // Game Sessions with their RSVP/Ballot/Bring surfaces intact; Game Sessions
 // renders ONLY the history partition, as pure session records.
 // ---------------------------------------------------------------------------
+/*
+ * DECISION Phase 88.6-41 (W64) — the ONE anchor this partition is measured
+ * against, both sides of the comparison.
+ *
+ * WHAT WAS WRONG. `FUTURE_SESSION.start_date` was
+ * `new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()` under the comment
+ * "Always in the future relative to the test run" — a fixture derived from the WALL
+ * CLOCK at module-evaluation time. That is the full-run-only, near-midnight failure
+ * signature W64 recorded: the module evaluates at one instant, the component computes
+ * the Upcoming-vs-history partition at another, and in a long full run those two can
+ * straddle a local-midnight boundary.
+ *
+ * WHY OBSERVATIONAL CLOSURE WAS REFUSED. "The full run passed" passes on essentially
+ * every non-midnight run, so it would have recorded W64 closed with the gate green and
+ * nothing actually verified. The cause was located, so the fix is the only path.
+ *
+ * BOTH HALVES ARE REQUIRED, and this is a requirement rather than a preference.
+ *   (1) the FIXTURE derives from `TEST_NOW`, never from `Date.now()`/`new Date()`;
+ *   (2) the CLOCK the partition is computed against is pinned to the SAME `TEST_NOW`
+ *       for this describe.
+ * A bare future-dated constant read against the live wall clock is NOT a fix — it
+ * converts a once-a-day flake into a one-time cliff on a fixed calendar date, which is
+ * strictly worse because nothing will be looking when it arrives. Both sides of the
+ * comparison have to move together.
+ *
+ * SCOPE IS LOAD-BEARING. The clock control lives in THIS describe's own
+ * `beforeEach`/`afterEach` and is never file-level. A file-level `useFakeTimers` in a
+ * global `beforeEach` would collide with the deliberately-scoped
+ * `vi.useFakeTimers({ shouldAdvanceTime: true })` in the two-tap describe below and its
+ * recorded reason (RTL's `waitFor` sniffs for JEST fake timers, does not recognise
+ * vitest's, and every `findBy*` in this file then hangs for 5s). `shouldAdvanceTime` is
+ * carried here for exactly that reason, and the two blocks stay separate.
+ *
+ * WHY THIS DATE. It is AFTER `SESSION`'s fixed `2026-01-15T18:00:00Z`, so the history
+ * event stays history; `TEST_NOW + 3d` is the upcoming one. Both fixtures are now fixed
+ * points, so the partition is arithmetic rather than a race with the calendar.
+ *
+ * HAND-OFF, plan 45 (wave 10, this same file, adds composed axe audits): do NOT
+ * re-introduce a `Date.now()`-derived fixture here, and confirm this anchoring survives
+ * the audit addition — lengthening this file's runtime is precisely what moved it
+ * across the boundary in the first place.
+ */
+const TEST_NOW = new Date('2026-06-15T12:00:00Z');
+
 const FUTURE_SESSION = {
   id: 'evt-future',
   game_id: GAME_ID,
   group_id: GROUP_ID,
-  // Always in the future relative to the test run.
-  start_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+  // Three days after TEST_NOW — a FIXED point, not "three days from whenever this
+  // module happened to evaluate". See the W64 marker above.
+  start_date: new Date(TEST_NOW.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString(),
   duration_minutes: 120,
   comments: 'The upcoming night',
   EventParticipations: [],
 };
 
 describe('gameDetail Upcoming/history split (fork G, 88-33 Task 7)', () => {
+  // W64, the COMPARISON half. The component computes this partition against the LIVE
+  // clock, so pinning only the fixture would relocate the cliff rather than remove it.
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(TEST_NOW);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('renders a future event in the Upcoming section WITH its RSVP surface, never in Game Sessions', async () => {
     renderGameDetail({ events: [SESSION, FUTURE_SESSION] });
 
