@@ -6,7 +6,16 @@
 // classification block, which stubs global fetch to pin the WR-04 contract.
 import { afterEach, vi } from 'vitest';
 
-import { ApiError, apiFetch, mapErrorToCode, rsvpAPI, usersAPI } from './api';
+import {
+  ApiError,
+  apiFetch,
+  availabilityFormAPI,
+  magicAuthAPI,
+  mapErrorToCode,
+  rsvpAPI,
+  rsvpPublicAPI,
+  usersAPI,
+} from './api';
 import { getFetchErrorMessage } from '@/components/ui/useFetchErrorState';
 
 describe('ApiError — shape', () => {
@@ -466,5 +475,134 @@ describe('88.6-42 — the FE reads code/message/details and nothing else', () =>
       expect(err.message).toBe('Name is required');
       expect(err.upstreamMessage).toBe('legacy too');
     });
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// Phase 88.6-42 task 2 — the FIVE apiFetch-BYPASSING helpers (T-88.6-122, T-88.6-123)
+// ---------------------------------------------------------------------------------------
+describe('88.6-42 — transport hardening on the apiFetch-bypassing public helpers', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  const jsonOnce = (status: number, bodyText: string) =>
+    vi.fn().mockResolvedValue({ ok: status >= 200 && status < 300, status, text: async () => bodyText, json: async () => JSON.parse(bodyText) });
+
+  const CALLS: Array<[string, () => Promise<unknown>]> = [
+    ['rsvpPublicAPI.respondViaToken', () => rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes')],
+    ['magicAuthAPI.validateToken', () => magicAuthAPI.validateToken('t')],
+    ['availabilityFormAPI.submitResponse', () => availabilityFormAPI.submitResponse({ a: 1 })],
+    [
+      'availabilityFormAPI.prefillFromGcal',
+      () => availabilityFormAPI.prefillFromGcal({ magicToken: 't', startDate: '2026-01-01', numDays: 7, timezone: 'UTC' }),
+    ],
+    [
+      'availabilityFormAPI.prefillFromSaved',
+      () => availabilityFormAPI.prefillFromSaved({ magicToken: 't', startDate: '2026-01-01', numDays: 7, timezone: 'UTC' }),
+    ],
+  ];
+
+  it.each(CALLS)('%s carries an AbortSignal — i.e. a timeout exists at all', async (_name, run) => {
+    // The honest cause (R8 §12 a): these five lacked a timeout because NOTHING in this
+    // module had one. This is the arm that proves one is now attached — per helper, not
+    // retrofitted into apiFetch, which is THE FENCE.
+    const fetchMock = jsonOnce(200, '{"slot_ids":[],"count":0}');
+    vi.stubGlobal('fetch', fetchMock);
+    await run();
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it.each(CALLS)('%s MAPS a transport rejection instead of swallowing it', async (_name, run) => {
+    // A SWALLOWED abort re-creates the stuck-button state the timeout exists to prevent
+    // (AvailabilityForm clears its in-flight flag only in `finally`), so the property under
+    // test is that the promise REJECTS — never that it resolves undefined.
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+    let caught: unknown = null;
+    try {
+      await run();
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(Error);
+  });
+
+  it.each(CALLS)('%s GUARDS the success parse — a proxy HTML 200 rejects, never SyntaxError', async (_name, run) => {
+    vi.stubGlobal('fetch', jsonOnce(200, '<!DOCTYPE html><html><body>gateway</body></html>'));
+    let caught: unknown = null;
+    try {
+      await run();
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).name).not.toBe('SyntaxError');
+  });
+
+  it('adds NO res.ok throw — a 410 body still resolves so its discriminant survives', async () => {
+    // D62 branch B (owner, 2026-09-09) KEEPS `rsvp/[token]/page.js`'s `result.error` read and
+    // `AvailabilityForm.js`'s. An res.ok throw here would strand both — that is branch A,
+    // which the owner rejected.
+    vi.stubGlobal('fetch', jsonOnce(410, '{"error":"event_cancelled","group_id":"g-1"}'));
+    await expect(rsvpPublicAPI.respondViaToken('t', 'e', 'u', 'yes')).resolves.toEqual({
+      error: 'event_cancelled',
+      group_id: 'g-1',
+    });
+
+    vi.stubGlobal('fetch', jsonOnce(400, '{"error":"This link is no longer valid.","action":"request_new"}'));
+    await expect(availabilityFormAPI.submitResponse({ a: 1 })).resolves.toMatchObject({
+      error: 'This link is no longer valid.',
+    });
+  });
+
+  it('keeps the prefill helpers resolving { slot_ids, count } and their error-branch copy', async () => {
+    vi.stubGlobal('fetch', jsonOnce(200, '{"slot_ids":["2026-01-01T00:00:00.000Z"],"count":1}'));
+    await expect(
+      availabilityFormAPI.prefillFromGcal({ magicToken: 't', startDate: '2026-01-01', numDays: 7, timezone: 'UTC' })
+    ).resolves.toEqual({ slot_ids: ['2026-01-01T00:00:00.000Z'], count: 1 });
+
+    // The D62-branch-B read is UNCHANGED: a code-less `{ error }` still supplies the copy.
+    vi.stubGlobal('fetch', jsonOnce(400, '{"error":"Google Calendar is not connected"}'));
+    await expect(
+      availabilityFormAPI.prefillFromGcal({ magicToken: 't', startDate: '2026-01-01', numDays: 7, timezone: 'UTC' })
+    ).rejects.toThrow('Google Calendar is not connected');
+  });
+
+  it('T-88.6-123 — respondViaToken percent-encodes ALL FOUR query arms', async () => {
+    const fetchMock = jsonOnce(200, '{"ok":true}');
+    vi.stubGlobal('fetch', fetchMock);
+    await rsvpPublicAPI.respondViaToken('tok en', 'ev/1', 'auth0|u 1', 'not going');
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).toContain('token=tok%20en');
+    // These two were the asymmetry (#103) — raw before this plan.
+    expect(url).toContain('&e=ev%2F1');
+    expect(url).toContain('&s=not%20going');
+    expect(url).toContain('&u=auth0%7Cu%201');
+    expect(url).not.toContain('ev/1');
+  });
+});
+
+describe('88.6-42 / D41 cluster C — usersAPI.deleteAccount takes an OPTIONAL AbortSignal', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('threads a caller-supplied signal into the fetch options', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '{"message":"ok"}' });
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+    await usersAPI.deleteAccount(controller.signal);
+    expect((fetchMock.mock.calls[0][1] as RequestInit).signal).toBe(controller.signal);
+  });
+
+  it('is OPTIONAL — the existing zero-argument callers are unaffected and get NO signal', async () => {
+    // Signature-only: no default timeout is introduced here. Plan 88.6-30 creates the signal
+    // at its own call site; this plan hosts the widening so ONE wave-8 plan owns api.ts (D41).
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '{"message":"ok"}' });
+    vi.stubGlobal('fetch', fetchMock);
+    await usersAPI.deleteAccount();
+    expect((fetchMock.mock.calls[0][1] as RequestInit).signal).toBeUndefined();
   });
 });

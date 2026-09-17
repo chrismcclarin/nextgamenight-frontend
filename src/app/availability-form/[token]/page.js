@@ -86,7 +86,12 @@ export default function AvailabilityFormPage() {
         const validation = await magicAuthAPI.validateToken(token, formLoadedAt);
         if (cancelled) return;
 
-        if (!validation || validation.error || !validation.valid) {
+        // The `validation.error` read that stood here is DELETED by plan 88.6-42 (cleanup,
+        // not a conversion, and unaffected by the D62 branch-B ruling). It was INERT:
+        // Sonnet/routes/magicAuth.js assigns `valid: true` ONLY on the success path (:208-209,
+        // the sole `valid:` assignment in that route) and never on any failure branch, so the
+        // `!validation.valid` arm beside it already caught every failure identically.
+        if (!validation || !validation.valid) {
           setErrorMessage('This link is no longer valid. It may have expired or already been used.');
           setPageState(PAGE_STATES.ERROR);
           return;
@@ -128,7 +133,11 @@ export default function AvailabilityFormPage() {
             token
           );
           if (cancelled) return;
-          if (existing && !existing.error) {
+          // The `existing.error` read that stood here is DELETED by plan 88.6-42 (cleanup).
+          // It was DEAD: `getExistingResponse` returns `null` on a non-2xx
+          // (api.ts, `res.ok ? res.json() : null`), so the truthy-`existing` guard could
+          // never be entered with an error body at all.
+          if (existing) {
             setExistingResponse(existing);
           }
         } catch (prefillError) {

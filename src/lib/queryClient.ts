@@ -166,8 +166,9 @@ export function queryCacheOnError(
   // would have dropped that string from the event ENTIRELY for the ~455 unconverted
   // raw-`{ error }` backend routes until Phase 93, leaving only "HTTP error! status: N"
   // to read in the app's only production error channel. GROUPING is unchanged either
-  // way: this capture carries tags and no `fingerprint` (there is none anywhere in
-  // src/), and Sentry's default grouping does not key on `extra` — so the field buys
+  // way: this capture carries tags and NO Sentry `fingerprint` — measured 2026-09-17, the
+  // three grep hits for that word under `src/` are all prose, none of them a Sentry option —
+  // and Sentry's default grouping does not key on `extra`, so the field buys
   // per-event READABILITY, not issue separation. Closing the grouping collapse is Phase
   // 93's emitter conversion, and T-88.6-121 says so.
   //

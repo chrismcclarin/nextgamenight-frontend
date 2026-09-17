@@ -338,7 +338,8 @@ function extractErrorMessage(body: any, status: number): string {
 // delete (arm B), which would have dropped that string from the event ENTIRELY
 // for the ~455 unconverted raw-`{ error }` routes until Phase 93, leaving only
 // "HTTP error! status: N" to read. GROUPING is unchanged either way: that capture
-// (queryClient.ts:162) carries tags and no fingerprint, and Sentry's default
+// (queryClient.ts:162) carries tags and no Sentry fingerprint (measured 2026-09-17: the
+// three grep hits for that word under src/ are all prose), and Sentry's default
 // grouping does not key on extra — so the field buys per-event READABILITY, not
 // issue separation. `ApiError.message` is the display contract and does NOT read
 // this field; the single by-name roster exemption in errorEnvelopeReads.test.ts
@@ -603,6 +604,85 @@ export async function apiFetch<T = unknown>(
   }
 }
 
+// -----------------------------------------------------------------------------
+// TRANSPORT FOR THE FIVE apiFetch-BYPASSING PUBLIC HELPERS (T-88.6-122)
+// -----------------------------------------------------------------------------
+/* DECISION Phase 88.6-42 (R8 §3 / §7 / §12): the five public helpers that BYPASS apiFetch
+   -- rsvpPublicAPI.respondViaToken, magicAuthAPI.validateToken,
+   availabilityFormAPI.submitResponse, prefillFromGcal and prefillFromSaved -- are hardened
+   IN PLACE at the TRANSPORT level, chosen OVER (a) rostering them for Phase 93, and OVER
+   (b) retrofitting a default timeout into apiFetch itself.
+
+   (a) is rejected because this is the only 88.6 plan that may legally edit this file, so
+   deferring means the next legal window is a BACKEND phase while the change is the same
+   five call sites either way. (b) is THE FENCE, and it matters: once the honest cause is
+   stated, a default at the shared boundary looks like the "proper" fix -- and it would
+   change EVERY fetch in the app, at wave 8, with no census and no owner.
+
+   THE HONEST CAUSE, because the wrong one invites the wrong fix: these helpers lack a
+   timeout NOT because they bypass apiFetch but because NOTHING in this module had one,
+   apiFetch included. (Measured 2026-09-17: the only AbortController/AbortSignal/timeout
+   token in this file before this plan was a COMMENT in apiFetch's catch.) The bypass is
+   why they ALSO lacked res.ok and a guarded success parse. The app-wide absence is an
+   OWNED RESIDUAL with Phase 93 named in .planning/deferred/phase-93.md.
+
+   WHY THIS IS NOT COSMETIC: AvailabilityForm.js sets setIsPrefilling(true) BEFORE the
+   await and clears it ONLY in finally, and both pre-fill buttons are disabled on that
+   flag. A request that never settles leaves TWO PERMANENTLY DISABLED BUTTONS on the
+   SMS/email magic-link flow, with no recovery short of a reload, on the phone-primary
+   surface. An AbortError that is SWALLOWED re-creates exactly that state, which is why it
+   is MAPPED to a rejection here and never absorbed.
+
+   BINDING CONSTRAINT -- NO res.ok THROW is added to any of the five, and no resolved body
+   SHAPE changes. Every consumer reads the parsed body's fields directly
+   (rsvp/[token]/page.js branches on result.error === 'event_cancelled';
+   AvailabilityForm.js reads response.error), and the owner's D62 branch-B ruling
+   (2026-09-09) KEEPS those reads. An res.ok throw would strand them -- that is branch A,
+   which the owner rejected. Adding one here is a decision, not a hardening. */
+const PUBLIC_TRANSPORT_TIMEOUT_MS = 20_000;
+
+/**
+ * `fetch` with a timeout whose abort is MAPPED to a rejection, never swallowed.
+ *
+ * Every rejection out of `fetch` is a transport-level failure (a network error, an abort,
+ * a DNS failure), and every consumer of these five helpers renders ONE failure outcome for
+ * all of them, so they are collapsed onto `failureMessage` rather than discriminated here.
+ * Telling a transport failure apart from a genuine token rejection needs a backend `code`
+ * these routes do not carry -- an owned residual with Phase 93 named.
+ */
+async function timedPublicFetch(
+  url: string,
+  init: RequestInit,
+  failureMessage: string
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PUBLIC_TRANSPORT_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch {
+    throw new Error(failureMessage);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Parse a response body as JSON, or REJECT with `failureMessage`.
+ *
+ * The gap this closes: `return res.json()` on the SUCCESS path threw an unhandled
+ * `SyntaxError` for a non-JSON 200 -- a proxy or gateway HTML page -- while the error path
+ * beside it was already guarded. The status is deliberately NOT inspected (see the binding
+ * constraint above): this reads the body the caller asked for and nothing else.
+ */
+async function guardedJson(res: Response, failureMessage: string): Promise<any> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(failureMessage);
+  }
+}
+
 /**
  * API functions for Groups
  */
@@ -860,13 +940,28 @@ export const rsvpAPI = {
  * API functions for public RSVP (magic link, no Auth0 required)
  * Uses direct fetch without Auth0 token injection
  */
+const RSVP_RESPOND_TRANSPORT_FAILURE = 'rsvp respond request did not complete';
+
 export const rsvpPublicAPI = {
   // Respond to RSVP via magic link token (no auth required) — direct-to-backend
   // (PUBLIC_API_BASE_URL), never the BFF proxy.
-  respondViaToken: (token: string, eventId: string, userId: string, status: string) =>
-    fetch(
-      `${PUBLIC_API_BASE_URL}/rsvp/respond?token=${encodeURIComponent(token)}&e=${eventId}&u=${encodeURIComponent(userId)}&s=${status}`
-    ).then(res => res.json()),
+  //
+  // T-88.6-123 (#103, routed here from plan 24 by D41): `eventId` and `status` are now
+  // percent-encoded like the `token` and `userId` arms beside them, which always were.
+  // DEFENCE-IN-DEPTH, not a live hole — verified at source: Sonnet/routes/rsvp.js:212
+  // allow-lists the status and :217-220 recomputes the HMAC over (eventId, userId, status)
+  // and 403s on mismatch. The asymmetry is closed because a reader would otherwise tidy it
+  // the WRONG way, by dropping the two encodings that are there.
+  respondViaToken: async (token: string, eventId: string, userId: string, status: string) => {
+    const res = await timedPublicFetch(
+      `${PUBLIC_API_BASE_URL}/rsvp/respond?token=${encodeURIComponent(token)}&e=${encodeURIComponent(eventId)}&u=${encodeURIComponent(userId)}&s=${encodeURIComponent(status)}`,
+      {},
+      RSVP_RESPOND_TRANSPORT_FAILURE
+    );
+    // NO res.ok throw — rsvp/[token]/page.js reads `result.error` off the parsed 410 body
+    // to tell "cancelled" from "already happened", and D62 branch B keeps that read.
+    return guardedJson(res, RSVP_RESPOND_TRANSPORT_FAILURE);
+  },
 };
 
 /**
@@ -969,8 +1064,18 @@ export const usersAPI = {
   // DELETE with same-origin CSRF checks; caller identity comes from the Auth0
   // token server-side. On success the caller MUST navigate to logout IMMEDIATELY
   // (no toast-then-wait) so no authenticated fetch re-provisions a JIT ghost row.
-  deleteAccount: () =>
-    apiFetch<{ message: string }>('/users/me', { method: 'DELETE' }),
+  //
+  // The OPTIONAL `signal` is hosted HERE rather than in plan 88.6-30, which threads a client
+  // timeout into this call but does not declare src/lib/api.ts (D41 / cluster C): two wave-8
+  // plans writing one file with no declared ordering is the sequencing hazard D41 exists to
+  // prevent. SIGNATURE-ONLY — no default timeout is introduced, no call site changes, and all
+  // three existing sites (DangerZoneDeleteAccount.tsx and its two mocks) are unaffected.
+  // apiFetch itself needs no change: it spreads {...options} into fetch, and its catch
+  // converts ONLY TypeError, rethrowing everything else raw — so an abort/timeout rejection
+  // (a DOMException) falls through to classifyDeleteError's non-ApiError branch and the
+  // 'ambiguous' lane, which already exists and is currently unreachable.
+  deleteAccount: (signal?: AbortSignal) =>
+    apiFetch<{ message: string }>('/users/me', { method: 'DELETE', signal }),
 
   // ── Email change (Phase 88.8 plan 13, SPEC R12 / D-09 as re-ruled) ─────────
   //
@@ -1201,28 +1306,59 @@ export const availabilityAPI = {
  * API functions for Magic Auth (no Auth0 required)
  * These use direct fetch without Auth0 token injection
  */
+const MAGIC_VALIDATE_TRANSPORT_FAILURE = 'magic-auth validate request did not complete';
+
 export const magicAuthAPI = {
-  // Validate a magic token (returns user info, prompt_id, expiry)
-  validateToken: (token: string, formLoadedAt = null) =>
-    fetch(`${PUBLIC_API_BASE_URL}/magic-auth/validate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, formLoadedAt }),
-    }).then(res => res.json()),
+  // Validate a magic token (returns user info, prompt_id, expiry).
+  //
+  // The FIRST call the availability magic-link page makes, and its consumer catches
+  // EVERYTHING this throws to render "This link is no longer valid. Please request a new
+  // one from your group organizer." — so before this hardening a hung request spun forever
+  // and a proxy HTML page told the user their link was permanently dead via an unhandled
+  // SyntaxError. The residual is named, not implied: a transport failure and a genuine
+  // token rejection still render the SAME copy, because telling them apart needs a backend
+  // `code` these rejects do not carry. Phase 93 owns it.
+  validateToken: async (token: string, formLoadedAt = null) => {
+    const res = await timedPublicFetch(
+      `${PUBLIC_API_BASE_URL}/magic-auth/validate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, formLoadedAt }),
+      },
+      MAGIC_VALIDATE_TRANSPORT_FAILURE
+    );
+    return guardedJson(res, MAGIC_VALIDATE_TRANSPORT_FAILURE);
+  },
 };
 
 /**
  * API functions for Availability Form submission (magic token auth, no Auth0)
  * These use direct fetch without Auth0 token injection
  */
+const AVAILABILITY_SUBMIT_TRANSPORT_FAILURE = 'availability response submission did not complete';
+const GCAL_PREFILL_FAILURE = 'Failed to import from Google Calendar';
+const SAVED_PREFILL_FAILURE = 'Failed to use saved availability';
+
 export const availabilityFormAPI = {
-  // Submit availability response via magic token
-  submitResponse: (data: Record<string, unknown>) =>
-    fetch(`${PUBLIC_API_BASE_URL}/availability-responses`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    }).then(res => res.json()),
+  // Submit availability response via magic token.
+  //
+  // NO res.ok check is added (D62 branch B, owner 2026-09-09): AvailabilityForm.js
+  // distinguishes a rejected submit from a successful one SOLELY by reading
+  // `response.error` off the parsed body, and that read deliberately SURVIVES this phase.
+  // Adding an res.ok throw here is branch A, which the owner rejected.
+  submitResponse: async (data: Record<string, unknown>) => {
+    const res = await timedPublicFetch(
+      `${PUBLIC_API_BASE_URL}/availability-responses`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      },
+      AVAILABILITY_SUBMIT_TRANSPORT_FAILURE
+    );
+    return guardedJson(res, AVAILABILITY_SUBMIT_TRANSPORT_FAILURE);
+  },
 
   // Get existing response for pre-fill (if user returns to edit)
   getExistingResponse: (promptId: string, token: string) =>
@@ -1245,21 +1381,33 @@ export const availabilityFormAPI = {
     numDays: number;
     timezone: string;
   }) => {
-    const res = await fetch(`${PUBLIC_API_BASE_URL}/availability-prefill/gcal`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        magic_token: magicToken,
-        start_date: startDate,
-        num_days: numDays,
-        timezone,
-      }),
-    });
+    const res = await timedPublicFetch(
+      `${PUBLIC_API_BASE_URL}/availability-prefill/gcal`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          magic_token: magicToken,
+          start_date: startDate,
+          num_days: numDays,
+          timezone,
+        }),
+      },
+      GCAL_PREFILL_FAILURE
+    );
     if (!res.ok) {
+      // RETAINED under D62 branch B (owner, 2026-09-09): availabilityPrefill.js emits
+      // { error: string } with NO code and NO message at every one of its eight error
+      // branches (re-opened at source 2026-09-17: :187, :190, :194, :197, :203-206, :213,
+      // :216, :241), so a mechanical conversion to body.code/body.message here produces an
+      // EMPTY message. Phase 93 owns the backend code; this read goes when that lands.
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to import from Google Calendar');
+      throw new Error(err.error || GCAL_PREFILL_FAILURE);
     }
-    return res.json(); // { slot_ids, count }
+    // An unparseable 200 (a proxy or gateway HTML page) now surfaces the SAME failure the
+    // error branch above produces, instead of an unhandled SyntaxError. The resolved SHAPE
+    // is unchanged — { slot_ids, count } — so AvailabilityForm's destructuring is untouched.
+    return guardedJson(res, GCAL_PREFILL_FAILURE);
   },
 
   // Phase 81 Plan 03 (CHKIN-06) — pre-fill the grid from the magic-token
@@ -1278,21 +1426,27 @@ export const availabilityFormAPI = {
     numDays: number;
     timezone: string;
   }) => {
-    const res = await fetch(`${PUBLIC_API_BASE_URL}/availability-prefill/saved`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        magic_token: magicToken,
-        start_date: startDate,
-        num_days: numDays,
-        timezone,
-      }),
-    });
+    const res = await timedPublicFetch(
+      `${PUBLIC_API_BASE_URL}/availability-prefill/saved`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          magic_token: magicToken,
+          start_date: startDate,
+          num_days: numDays,
+          timezone,
+        }),
+      },
+      SAVED_PREFILL_FAILURE
+    );
     if (!res.ok) {
+      // RETAINED under D62 branch B — see the twin comment in prefillFromGcal above.
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Failed to use saved availability');
+      throw new Error(err.error || SAVED_PREFILL_FAILURE);
     }
-    return res.json(); // { slot_ids, count }
+    // Same guard, same reason, same unchanged { slot_ids, count } shape.
+    return guardedJson(res, SAVED_PREFILL_FAILURE);
   },
 };
 

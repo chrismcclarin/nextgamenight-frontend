@@ -317,15 +317,17 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
         'removing the error alias',
     },
   },
-  'app/api/auth/google-connect/route.js': {
-    sites: 1,
-    why:
-      ':53 reads `errorData.error` inside a Next route handler that proxies an upstream ' +
-      'backend failure back to the browser. It lives under `src/`, so AC-9 scope includes ' +
-      'it — a route handler is not exempt just because it runs server-side. Plan 42 owns ' +
-      'the conversion once the upstream shape is confirmed.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R9 / AC-9' },
-  },
+  // DELETED by plan 88.6-42 task 2 (wave 8, 2026-09-17). This file carried `sites: 1` for
+  // `:53`'s `errorData.error` read inside the body returned to the browser. Under T-88.6-117
+  // that body now returns a FIXED string — the consumer is a NAVIGATION, so the user RENDERS
+  // it as a page — and the upstream envelope is no longer read as a property anywhere in the
+  // file. NOTE, because it differs from the plan's expected survivor set and the difference is
+  // an improvement, not a miss: the diagnostic is NOT lost. The unchanged `console.error
+  // ('Backend error:', errorData)` line one above it still puts the WHOLE upstream body into
+  // the Vercel function log, which on this server runtime is the only working channel there
+  // is (Sentry is never initialised here). So the route keeps its diagnosis without a `.error`
+  // read, and this roster entry is DELETED rather than re-worded. Assertion 7 below is what
+  // holds the redaction and the four-body census in place from here on.
   'app/components/AvailabilityForm.js': {
     sites: 2,
     why:
@@ -386,19 +388,12 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
         'removing the error alias',
     },
   },
-  'app/availability-form/[token]/page.js': {
-    sites: 2,
-    why:
-      'Rostered, but NEITHER is a Phase-93 blocker, and recording an inert read as a live ' +
-      'one is its own defect. :68 (`validation.error`) is INERT: magicAuth.js emits ' +
-      '`valid: true` ONLY on the success path (:208-209, the sole `valid:` assignment in ' +
-      'that route) and never on any failure branch, so the sibling `!validation.valid` arm ' +
-      'already catches every failure identically. :109 (`existing.error`) is DEAD: ' +
-      '`getExistingResponse` returns `null` on a non-2xx (api.ts:1095-1097, ' +
-      '`res.ok ? res.json() : null`), so the truthy-`existing` guard is never entered with ' +
-      'an error body at all. Plan 42 DELETES both as cleanup — this is not a conversion.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R9 / AC-9 — plan 42 owns the deletion' },
-  },
+  // DELETED by plan 88.6-42 task 2 (wave 8, 2026-09-17), exactly as this entry's own `why`
+  // said it would be: both reads were CLEANUP, not conversions, and branch-independent.
+  // `validation.error` was INERT (magicAuth.js assigns `valid: true` only on the success path,
+  // so the sibling `!validation.valid` arm already caught every failure) and `existing.error`
+  // was DEAD (`getExistingResponse` returns `null` on a non-2xx, so the truthy guard could
+  // never be entered with an error body). Both deleted with the entry, in one commit.
 };
 
 // ---------------------------------------------------------------------------------------
@@ -461,19 +456,17 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
     expect(assertRosterShape(ENVELOPE_READ_ROSTER)).toEqual([]);
   });
 
-  it('3. the roster covers exactly the six measured files, with the measured per-file counts', () => {
+  it('3. the roster covers exactly the measured files, with the measured per-file counts', () => {
     // Stated positively as well as by difference, so the census this plan asserts is
     // readable straight off a failure rather than reconstructed from a violations list.
     expect(MEASURED).toEqual({
       'lib/api.ts': 3,
       'app/components/SuggestionCard.js': 1,
       'app/rsvp/[token]/page.js': 2,
-      'app/api/auth/google-connect/route.js': 1,
       'app/components/AvailabilityForm.js': 2,
-      'app/availability-form/[token]/page.js': 2,
     });
     const total = Object.values(MEASURED).reduce((a, b) => a + b, 0);
-    expect(total).toBe(11);
+    expect(total).toBe(8);
     expect(Object.keys(ENVELOPE_READ_ROSTER).sort()).toEqual(Object.keys(MEASURED).sort());
   });
 
@@ -571,6 +564,73 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
     );
     expect(carriers.sort()).toEqual(['lib/api.ts', 'lib/queryClient.ts']);
     expect(apiSrc).toMatch(/return body\?\.message \?\? `HTTP error! status: \$\{status\}`;/);
+  });
+
+  it('7. T-88.6-117 — google-connect returns FIXED bodies, and exactly FOUR of them', () => {
+    // Added by plan 88.6-42 task 2 (2026-09-17). T-88.6-117 is severity HIGH and until this
+    // assertion its ONLY proof was that an executor read four bodies correctly: the route has
+    // no test file at all, and the first future edit reaching for `errorData.error` in a body
+    // would have re-opened it silently. This is the machine behind the prose criterion.
+    //
+    // It also enforces the `authUrl` arm's "no fifth body" constraint (R8 §8 / ACCEPT §12):
+    // the redirect-rejection branch reuses the SAME fixed 500 body the truthiness arm always
+    // returned, so the census stays at four. A fifth body reds here.
+    const file = 'app/api/auth/google-connect/route.js';
+    const src = withoutComments(fs.readFileSync(path.join(SRC, file), 'utf8'));
+
+    // Balanced read of every `NextResponse.json(` argument list, so a `{ ... }` containing a
+    // nested object or a template literal is captured whole rather than truncated at a comma.
+    const bodies: string[] = [];
+    const NEEDLE = 'NextResponse.json(';
+    for (let at = src.indexOf(NEEDLE); at !== -1; at = src.indexOf(NEEDLE, at + 1)) {
+      let depth = 0;
+      let end = at + NEEDLE.length - 1;
+      for (let i = at + NEEDLE.length - 1; i < src.length; i += 1) {
+        if (src[i] === '(') depth += 1;
+        else if (src[i] === ')') {
+          depth -= 1;
+          if (depth === 0) {
+            end = i;
+            break;
+          }
+        }
+      }
+      bodies.push(src.slice(at + NEEDLE.length, end));
+    }
+
+    // (b) THE CENSUS. Four client-visible bodies: the 401 no-token, the 4xx upstream-failure
+    // proxy, the 500 no/rejected auth URL, and the 500 catch-all.
+    expect(bodies.length, 'the client-visible body census for this route is FOUR').toBe(4);
+
+    // (a) NONE of them interpolates, reads the upstream envelope, or reads an exception.
+    for (const body of bodies) {
+      expect(body, 'a client-visible body must not interpolate — the user RENDERS it').not.toMatch(
+        /\$\{/,
+      );
+      expect(body, 'a client-visible body must not echo the upstream envelope').not.toContain(
+        'errorData.',
+      );
+      expect(body, 'a client-visible body must not carry a raw exception message').not.toMatch(
+        /\berror\.message\b/,
+      );
+    }
+
+    // …and the route is still DIAGNOSABLE: the console channel is this server runtime's only
+    // working one (Sentry is never initialised here), so a ZERO is a FAILURE, not a success.
+    expect(src.match(/console\.[a-zA-Z]+\s*\(/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    expect(src, 'this route is OUT of AC-2 conversion set on the runtime rule').not.toContain(
+      '@/lib/logger',
+    );
+
+    // R8 §8 — the redirect SINK is guarded, and its rejection arm is the SAME fixed body.
+    expect(src).toContain('const GOOGLE_CONSENT_ORIGIN = ');
+    expect(src).toMatch(/if \(!isGoogleConsentUrl\(authUrl\)\) \{/);
+    expect(src).toMatch(/parsed\.protocol === 'https:' && parsed\.origin === GOOGLE_CONSENT_ORIGIN/);
+    // The ONLY redirect in the file sits AFTER that guard.
+    expect(src.match(/NextResponse\.redirect\(/g)?.length).toBe(1);
+    expect(src.indexOf('NextResponse.redirect(')).toBeGreaterThan(
+      src.indexOf('if (!isGoogleConsentUrl(authUrl)) {'),
+    );
   });
 });
 
