@@ -970,3 +970,77 @@ describe('Phase 88.6-30 — source-level invariants', () => {
     expect(apiSource).toContain('deleteAccount: (signal?: AbortSignal)');
   });
 });
+
+describe('Phase 88.6-30 task 3 — the primitives sweep (D-30, one pass)', () => {
+  it('renders the card title through the Heading primitive at level 2 / 20px / 700', async () => {
+    // D-04 / UI-SPEC §4.4: h2 @ 18 -> Heading 20, LEVEL PRESERVED (P4). The only h2@18
+    // in the tree, so this is a one-site row of D-04's table.
+    mockGetBlockers.mockResolvedValue({ groups: [] });
+    render(<DangerZoneDeleteAccount />);
+    const title = screen.getByRole('heading', { level: 2, name: 'Danger Zone' });
+    expect(title.tagName).toBe('H2');
+    expect(title).toHaveClass('text-xl');
+    expect(title).toHaveClass('font-bold');
+    // The weight comes from the primitive's base; the colour rides on className.
+    expect(title).toHaveClass('text-content-status-error');
+    expect(title.className).not.toMatch(/\btext-lg\b/);
+  });
+
+  it('renders the Danger Zone trigger through the Button primitive with no dead utilities', async () => {
+    mockGetBlockers.mockResolvedValue({ groups: [] });
+    render(<DangerZoneDeleteAccount />);
+    const btn = trigger();
+    expect(btn).toHaveClass('btn');
+    expect(btn).toHaveClass('btn-danger');
+    // §3.4 rule 3 / AC-3: `px-4 py-2 text-sm` are dead under unlayered `.btn` and are
+    // deleted, not carried. A text-size utility on a Button is a btnCensus finding.
+    expect(btn.className).not.toMatch(/\btext-(xs|sm|base|lg)\b/);
+    expect(btn.className).not.toMatch(/\bp[xy]-\d/);
+  });
+
+  it('renders the destructive consequence copy at Body 16, not Label 14 (rule R2)', async () => {
+    // This is the text a user reads before permanently deleting their account. Under R2 it
+    // is running prose and goes to 16 — getting it wrong makes the most consequential text
+    // in the app smaller.
+    mockGetBlockers.mockResolvedValue({ groups: [] });
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await user.click(trigger());
+    await waitFor(() => expect(confirmInput()).not.toBeDisabled());
+
+    const lead = screen.getByText(/This permanently deletes your account/i);
+    expect(lead).toHaveClass('text-base');
+    const consequences = screen.getByText(
+      /The following are permanently destroyed/i
+    ).parentElement as HTMLElement;
+    expect(consequences).toHaveClass('text-base');
+    // The field label stays at Label 14 — a `<label>` is not running prose.
+    expect(screen.getByText(/To confirm, type/i)).toHaveClass('text-sm');
+  });
+
+  it('leaves NO off-scale weight utility in the file (§4.5: 400 / 700 only outside Button)', () => {
+    // All five sites resolved to the EMPHASIS outcome — 400 plus a colour token the site
+    // already carried — so all five are deletions. The `font-bold` on the confirm-phrase
+    // span is on-scale and is not in this population.
+    const swept = withoutComments(
+      readFileSync(
+        resolve(process.cwd(), 'src/app/components/DangerZoneDeleteAccount.tsx'),
+        'utf8'
+      )
+    );
+    expect(swept).not.toMatch(/\bfont-medium\b/);
+    expect(swept).not.toMatch(/\bfont-semibold\b/);
+    expect(swept).toMatch(/\bfont-bold\b/);
+  });
+
+  it('keeps the counter at Caption 12 — a counter is on §4.2 closed role list', async () => {
+    // Not swept UP to 14: "counters" is an enumerated Caption role, and this span is
+    // metadata beside a link, not the row's primary string.
+    mockGetBlockers.mockResolvedValue(CATAN);
+    const user = userEvent.setup();
+    render(<DangerZoneDeleteAccount />);
+    await user.click(trigger());
+    await screen.findByRole('link', { name: 'Catan Crew' });
+    expect(screen.getByText(/4 members/)).toHaveClass('text-xs');
+  });
+});

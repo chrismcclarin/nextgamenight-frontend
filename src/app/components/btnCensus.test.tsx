@@ -471,11 +471,20 @@ const BTN_EXEMPT: ExemptionRoster = {
   //     `Button` defaults `type` to `'button'` (`Button.tsx:267`), so the first one is a silent
   //     behaviour regression if forgotten; createGroup.test.tsx pins the SUBMIT, not the attribute.
   // Entry DELETED rather than zeroed; the roster is exact in both directions.
-  'app/components/DangerZoneDeleteAccount.tsx': {
-    sites: 1,
-    why: 'plan 88.6-30 hardens the deletion modal and sweeps DangerZoneDeleteAccount.tsx alongside it',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-30 task 3 (wave 9, 2026-09-17): `app/components/DangerZoneDeleteAccount.tsx`
+  // carried `sites: 1` and the count was EXACT — the Danger Zone card's own trigger, the
+  // `btn btn-danger px-4 py-2 text-sm` element, now `<Button type="button" variant="danger">`.
+  // `px-4 py-2 text-sm` are ALL dead under unlayered `.btn` (padding `globals.css:1963`,
+  // font-size `:1962`) and are deleted rather than carried; no live utility survived on that
+  // site. The two `Modal.Action` footer sites are NOT `.btn` element sites and never were —
+  // `Modal.Action` composes `Button` internally (plan 08 D-08), so this file's migration does
+  // not touch them; Cancel's `aria-disabled` gating landed in task 2 under AC-21/D52 and is a
+  // property, not a census site. Entry DELETED rather than zeroed; the roster is exact in both
+  // directions.
+  //
+  // THIS WAS THE LAST OPEN ENTRY. `BTN_EXEMPT` is now at its PERMANENT floor — the two 32x32
+  // BrowseMoreModal player-count steppers (D-10) and nothing else — which is the condition the
+  // anti-vacuity FLIP below was written for.
   // DELETED by plan 88.6-27 task 3 (wave 7, 2026-09-16): `app/components/EventCalendar.js`
   // carried `sites: 1` — the List/Month view toggle (`btn btn-secondary text-sm` plus the
   // per-site ring string), now `<Button variant="secondary">`. `text-sm` was DEAD under
@@ -564,20 +573,25 @@ describe('D-07 / AC-2: the `.btn` element census', () => {
     expect(FILES.length).toBeGreaterThanOrEqual(150);
   });
 
-  // ANTI-VACUITY FLOOR, half 2 of 2 — AND ITS PLANNED FLIP.
+  // ANTI-VACUITY FLOOR, half 2 of 2 — FLIPPED by plan 88.6-30 task 3 (wave 9, 2026-09-17),
+  // in the same commit as the migration that triggered the condition.
   //
-  // Today this asserts the scanner FOUND something, which is what catches a lexer regression
-  // while the roster is still full. It is deliberately written as `>= 1` and not as a count:
-  // the whole point of this phase is to drain the population, so once BTN_EXEMPT holds only the
-  // two permanent BrowseMoreModal steppers this assertion becomes a floor of 2, and when even
-  // those are the last thing standing the RIGHT assertion is the file-count floor above.
+  // It used to read `>= 1` and was deliberately NOT a count: the point of this phase was to
+  // drain the population, and the instruction written here said that once `BTN_EXEMPT` held
+  // only the two permanent BrowseMoreModal steppers this assertion becomes a FLOOR OF 2.
+  // `DangerZoneDeleteAccount.tsx` was the last open entry; deleting it reached that floor, so
+  // the flip is taken now rather than left as a fossil `>= 1` that could never fail.
   //
-  // THE FLIP: when `BTN_EXEMPT` reaches its permanent floor, replace the body of this test with
-  // the file-enumeration assertion (or delete it and keep the one above). Do NOT delete it and
-  // leave nothing — a scanner that finds nothing because it walked nothing must still red, and
-  // that is exactly what the test above is for.
-  it('found `.btn` sites to census (guards a lexer regression while the roster is non-empty)', () => {
-    expect(BTN_SITES.length).toBeGreaterThanOrEqual(1);
+  // WHY 2 AND NOT THE FILE-COUNT FLOOR ABOVE. The instruction offered replacing this body with
+  // the file-enumeration assertion or deleting the test outright, and both were REJECTED here:
+  // the first duplicates the test directly above it, and the second removes a live guard. At a
+  // floor of 2 this still catches exactly what it was written to catch — a lexer regression
+  // that makes `BTN_SITES` collapse to 0 while `FILES` stays full — which the file-count floor
+  // above structurally cannot see. If the two permanent steppers are ever themselves retired
+  // (a D-10 reversal, an owner-level decision), THEN the file-count floor is the right last
+  // assertion and this test goes. Lowering this number back to 1 is a decision, not a cleanup.
+  it('found `.btn` sites to census at the PERMANENT floor (guards a lexer regression)', () => {
+    expect(BTN_SITES.length).toBeGreaterThanOrEqual(2);
   });
 
   it('has a well-formed roster (every entry counted, reasoned and owned)', () => {

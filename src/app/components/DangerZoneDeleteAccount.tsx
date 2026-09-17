@@ -52,6 +52,8 @@
 import * as React from 'react';
 
 import { Modal } from './Modal';
+import { Button } from '@/components/ui/Button';
+import { Heading } from '@/components/ui/Heading';
 import { Input } from '@/components/ui/Input';
 import { StatusRegion } from '@/components/ui/StatusRegion';
 import { errCtx, logger } from '@/lib/logger';
@@ -440,18 +442,23 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
 
   return (
     <section className="card p-3 md:p-6 border border-status-error">
-      <h2 className="text-lg font-bold text-content-status-error mb-2">Danger Zone</h2>
-      <p className="text-sm text-content-secondary mb-4">
+      {/* D-04 / UI-SPEC §4.4: h2 @ 18 -> Heading 20. This is the ONLY h2@18 in the tree
+          (RESEARCH §B.3), so it is a ONE-SITE row of D-04's table. The LEVEL is preserved
+          (P4); the 700 weight now comes from the primitive's `font-bold` base, and the
+          colour rides on `className`. */}
+      <Heading level={2} size="heading" className="text-content-status-error mb-2">
+        Danger Zone
+      </Heading>
+      <p className="text-base text-content-secondary mb-4">
         Permanently delete your account and all associated data. This action
         cannot be undone.
       </p>
-      <button
-        type="button"
-        onClick={handleOpen}
-        className="btn btn-danger px-4 py-2 text-sm"
-      >
+      {/* UI-SPEC §3.2 danger row, §3.3 `size="default"`. `px-4 py-2 text-sm` are all DEAD
+          under unlayered `.btn` (padding, font-size) and are deleted rather than carried;
+          no live utility survives on this site. */}
+      <Button type="button" variant="danger" onClick={handleOpen}>
         Delete My Account
-      </button>
+      </Button>
 
       <Modal open={open} onClose={handleClose} dismissable={false}>
         <Modal.Header>Delete your account</Modal.Header>
@@ -489,7 +496,7 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
               <p
                 ref={blockedLeadRef}
                 tabIndex={-1}
-                className="text-sm font-medium text-content-primary"
+                className="text-base text-content-primary"
               >
                 You still own {blockedGroups!.length === 1 ? 'a group' : 'groups'}{' '}
                 with other members. Before you can delete your account, transfer
@@ -503,7 +510,7 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
                   >
                     <a
                       href={`/groupHomePage?id=${encodeURIComponent(group.id)}`}
-                      className="font-semibold text-content-link hover:underline"
+                      className="text-content-link hover:underline"
                     >
                       {group.name}
                     </a>
@@ -514,13 +521,13 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
                   </li>
                 ))}
               </ul>
-              <p className="text-sm text-content-secondary">
+              <p className="text-base text-content-secondary">
                 On each group&rsquo;s page, open Manage Members to transfer
                 ownership to another member or remove members, then return here
                 to delete your account.
               </p>
               {googleAccessRevoked && (
-                <p className="text-sm text-content-secondary">
+                <p className="text-base text-content-secondary">
                   Note: your Google Calendar connection was reset during this
                   attempt &mdash; reconnect it from your profile settings.
                 </p>
@@ -528,10 +535,14 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
             </div>
           ) : (
             <div className="space-y-4">
-              <p className="text-sm font-medium text-content-primary">
+              <p className="text-base text-content-primary">
                 This permanently deletes your account. It cannot be undone.
               </p>
-              <div className="space-y-2 text-sm text-content-secondary">
+              {/* R2 / UI-SPEC §4.3: this is the consequence copy a user reads before
+                  permanently deleting their account — RUNNING PROSE, so Body 16, not the
+                  Label 14 it shipped at. Classified explicitly because getting it wrong
+                  makes the most consequential text in the app smaller. */}
+              <div className="space-y-2 text-base text-content-secondary">
                 <p>The following are permanently destroyed:</p>
                 <ul className="list-disc space-y-1 pl-5">
                   <li>Your groups and group memberships</li>
@@ -549,7 +560,7 @@ export default function DangerZoneDeleteAccount(): React.JSX.Element {
               <div className="space-y-2">
                 <label
                   htmlFor="delete-account-confirm"
-                  className="block text-sm font-medium text-content-secondary"
+                  className="block text-sm text-content-secondary"
                 >
                   To confirm, type{' '}
                   <span className="font-bold text-content-primary">

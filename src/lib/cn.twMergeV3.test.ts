@@ -227,7 +227,28 @@ describe('primitive merges are byte-identical across the tailwind-merge bump', (
 
   it('Input: controlClass + a caller override', () => {
     expect(cn(controlClass, 'pr-11 rounded-card')).toBe(
-      'block w-full p-2 max-md:min-h-11 rounded-btn border border-input bg-surface-input text-base text-content-primary focus:outline-hidden focus-visible:border-line-strong focus-visible:ring-2 focus-visible:ring-focus-ring pr-11 rounded-card'
+      // RE-SEEDED Phase 88.6-30 task 1 (2026-09-17), and produced the way this file's
+      // header requires — by running the assertion and pasting the REAL output back, never
+      // hand-written from intent.
+      //   PRE : … text-base text-content-primary focus:outline-hidden …
+      //   POST: … text-base text-content-primary
+      //         [&:is([type=date],[type=time],[type=datetime-local])]:appearance-none
+      //         [&:is([type=date],[type=time],[type=datetime-local])]:min-w-0
+      //         focus:outline-hidden …
+      // The delta is PURELY ADDITIVE — two new attribute-gated W53 classes in
+      // `Input.tsx`'s `controlClass` — and it is a RE-SEED owned by the plan that made the
+      // edit, not a resolver finding: every pre-existing class survives, in byte-identical
+      // ORDER, and the caller's `pr-11 rounded-card` still beats `p-2`/`rounded-btn`
+      // exactly as before. Nothing was DROPPED, which is the thing this gate exists to
+      // catch — and notably `tailwind-merge` v3 does NOT fold the gated `min-w-0` against
+      // anything, i.e. the arbitrary variant is treated as its own group, which is what
+      // makes the attribute gating safe to compose with.
+      //
+      // `cn.twMergeV3.test.ts` is declared by NO plan in this phase (same situation plan 37
+      // was authorised for under owner ruling R6, and the same hazard carry-forward #2
+      // flagged for plan 06). Editing it here is FORCED by an exact-match freeze, not
+      // authorised in advance; disclosed in `.planning/WINDOWS.md` and `88.6-30-SUMMARY.md`.
+      'block w-full p-2 max-md:min-h-11 rounded-btn border border-input bg-surface-input text-base text-content-primary [&:is([type=date],[type=time],[type=datetime-local])]:appearance-none [&:is([type=date],[type=time],[type=datetime-local])]:min-w-0 focus:outline-hidden focus-visible:border-line-strong focus-visible:ring-2 focus-visible:ring-focus-ring pr-11 rounded-card'
     );
   });
 });

@@ -740,7 +740,7 @@ const EXPECTED_PROP_SEAMS = 5;
 // "h3 @ 14 and h3 @ 16 -> stay" row — so `EXPECTED_LEVELS`' `{ 3: 1 }` entry for this file is
 // byte-unchanged and only the SOURCE of the rung moved. Raised in the SAME commit as the
 // migration, per the docblock rule above.
-const EXPECTED_MIN_PRIMITIVES = 127;
+const EXPECTED_MIN_PRIMITIVES = 128;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -819,11 +819,13 @@ const RUNG_ROSTER: ExemptionRoster = {
   // PRESERVED, so `EXPECTED_LEVELS`' `{3:2, 4:2, 5:2, 6:2}` entry is byte-unchanged. The two
   // sub-section headers therefore move 12 -> 14, a disclosed visible delta. Entry DELETED rather
   // than zeroed; the roster is exact in both directions.
-  'app/components/DangerZoneDeleteAccount.tsx': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h2:259 text-lg) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-30 task 3 (wave 9, 2026-09-17): `app/components/DangerZoneDeleteAccount.tsx`
+  // carried `sites: 1` and the cite was EXACT — the `text-lg` h2 "Danger Zone", now
+  // `<Heading level={2} size="heading">` (18 -> 20, a disclosed visible delta). It is the ONLY
+  // h2@18 in the tree (RESEARCH §B.3), so this closes a ONE-SITE row of D-04's table. The LEVEL
+  // is preserved, so `EXPECTED_LEVELS`' `{ 2: 1 }` entry is byte-unchanged, and the migrated
+  // heading LEAVES this raw-only population entirely. `EXPECTED_MIN_PRIMITIVES` rises by one in
+  // this same commit, per this suite's own docblock rule. Entry DELETED rather than zeroed.
   // DELETED by plan 88.6-27 task 3 (wave 7, 2026-09-16): `app/components/EventCalendar.js`
   // carried `sites: 2` and both cites were EXACT. Both `text-2xl` h2s ("Game Sessions Calendar",
   // once in the identity-error branch and once in the render body) are
@@ -2068,12 +2070,22 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     700 was the wrong arm there — a transient confirmation is not a heading.
   // The file's `font-bold` at the mobile "+" glyph button is NOT in this population (700 is
   // on-scale) and is byte-unchanged; that control is marker-protected. Entry DELETED, not zeroed.
-  'app/components/DangerZoneDeleteAccount.tsx': {
-    sites: 5,
-    why:
-      '5 off-scale weight sites (4 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; emphasis (400 + a colour token) — confirmed per site by the owning sweep. Owning plans: 88.6-05, 88.6-08, 88.6-10, 88.6-29, 88.6-30, 88.6-42, 88.6-45.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-30 tasks 2+3 (wave 9, 2026-09-17): `app/components/DangerZoneDeleteAccount.tsx`
+  // carried `sites: 5` (4 font-medium, 1 font-semibold) and the count was EXACT. All five
+  // resolved to §4.5's EMPHASIS outcome — 400 plus a colour token the site already carried — so
+  // every one is a DELETION, not a move to 700:
+  //   - the blocked arm's lead `<p>` and the non-blocked arm's lead warning: both already
+  //     `text-content-primary`, both now Body 16 under R2. 700 was considered and REJECTED —
+  //     at 16px these are already more prominent than they shipped, and compounding a weight
+  //     jump on top would be an unsanctioned visible delta with no V-row.
+  //   - the group-transfer link's `font-semibold`: the same case as the primitive's own
+  //     link-buttons at `FetchErrorBanner.tsx:82,108,116` — `text-content-link` does the work.
+  //   - the confirm field's `<label>`: stays Label 14, weight only.
+  //   - the FIFTH was deleted one commit earlier, by task 2's in-place conversion of the
+  //     failure block to an assertive `StatusRegion` with a colour-only className. That is why
+  //     the sweep's own weight census is 4 and not 5; the two tasks agree.
+  // The `font-bold` on the confirm-phrase `<span>` is NOT in this population (700 is on-scale)
+  // and is byte-unchanged. Entry DELETED rather than zeroed.
   // DELETED by plan 88.6-27 task 2 (wave 7, 2026-09-16): `app/components/EventDayModal.js`
   // carried `sites: 2` (0 font-medium, 2 font-semibold) and BOTH of this entry's own outcome
   // leads were right, resolving OPPOSITE ways — which is why the entry could not close on one
