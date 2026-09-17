@@ -2085,12 +2085,14 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // colour-vision-deficiency cue over a green wash and took 600 -> 700 with its own marker. :313's
   // empty-state line took EMPHASIS (utility deleted; text-content-secondary against the helper's
   // text-content-muted does the work) and moved 12 -> 14 as a 4.2 misuse. Entry DELETED, not zeroed.
-  'app/components/EventResultFields.js': {
-    sites: 3,
-    why:
-      '3 off-scale weight sites (3 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-33.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-33 task 3 (wave 7, 2026-09-16): `app/components/EventResultFields.js`
+  // carried `sites: 3` (3 font-medium) — the "Winner", "Picked By" and "Group Win" `<label>`s.
+  // All three took §4.5's EMPHASIS outcome as an explicit `font-normal`: a field label beside
+  // its own control is not a heading, which is the same call plan 88.6-32 made on
+  // `BrowseMoreModal.js`'s "Sort:" label. The shipped twins of these exact class strings are
+  // `createEvent.js:1202`, `:1217` and `:1253` — and this fragment renders INSIDE that same
+  // create-event form, so anything else would put two label weights in one form.
+  // Entry DELETED, not zeroed.
   // DELETED by plan 88.6-26 task 2 (wave 7, 2026-09-16): 'app/components/EventScheduler.tsx'
   // carried sites: 3, resolved TWO ways. The view label beside the Back/Today/Next row and the
   // "Selected Time:" caption both took UI-SPEC §4.5's EMPHASIS outcome (utility deleted) — each
@@ -2123,12 +2125,19 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // is carried by the colour token each site already had. Plan 22 is this file's sweep owner;
   // the other eleven plans listed in the old `why` touch it for tokens, not weights.
   // Entry DELETED, not zeroed.
-  'app/components/GameSuggestionCard.js': {
-    sites: 2,
-    why:
-      '2 off-scale weight sites (1 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-33, 88.6-39.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-33 task 3 (wave 7, 2026-09-16): `app/components/GameSuggestionCard.js`
+  // carried `sites: 2` and they resolved TWO different ways, which is why the entry could not
+  // close on one rule:
+  //   - the `font-semibold` game NAME took HIERARCHY 700. It is the card's title — the one string
+  //     that identifies the card — and 400 would leave it reading as prose beside its own
+  //     metadata. It stays a `<p>` and is NOT converted to `<Heading>`: P4 preserves levels and
+  //     does not permit inventing one, so `GroupGamesList.js`'s swept card-title treatment (which
+  //     WAS an `<h3>`) is unavailable here. Its rung is already correct and unchanged — no size
+  //     utility means Body 16, §4.3's primary-string row.
+  //   - the `font-medium` group-rating annotation took EMPHASIS (`font-normal`). §4.5's pill/chip
+  //     row does NOT apply: it has no fill, and it already carries `text-yellow-600`, the only
+  //     yellow on the card, so the colour is doing the work.
+  // Markers at both sites. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-32 task 3 (wave 7, 2026-09-16): `app/components/GroupGamesList.js`
   // carried `sites: 8`, and all THREE of §4.5's outcomes applied:
   //   - HIERARCHY -> 700: the `font-semibold` h3 at `:39` (left the population by migrating onto
@@ -2213,12 +2222,17 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // D-01 had already rejected folding its 12px up to 14 on the same geometric grounds — so the
   // rung and the colour were both spent and the weight was the only lever left. Measured at this
   // commit: 0 sites remain. Entry DELETED, not zeroed; the roster is exact in both directions.
-  'app/components/MemberSelector.js': {
-    sites: 2,
-    why:
-      '2 off-scale weight sites (2 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plan: 88.6-33.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-33 task 3 (wave 7, 2026-09-16): `app/components/MemberSelector.js`
+  // carried `sites: 2` (2 font-medium) and the two took OPPOSITE outcomes, deliberately:
+  //   - the "Send to Members" SECTION LABEL took EMPHASIS (`font-normal`). Its own 88-33 Task 8
+  //     marker names `createEvent`'s Participants title as its treatment twin, and that site
+  //     ships this exact class string with an explicit `font-normal` (`createEvent.js:1290`).
+  //   - "Select All" took HIERARCHY 700. §4.5's emphasis arm needs a colour token to be doing
+  //     the work and there is NONE available here: this row carries the SAME
+  //     `text-content-secondary` as every individual member name below it, so 400 would erase
+  //     the only signal separating the select-all control from the members it governs.
+  //     Re-inking it instead was rejected at the site as a look change with no owner.
+  // Markers at both sites, each naming its rejected arm. Entry DELETED, not zeroed.
   'app/components/NextGameNightCard.tsx': {
     // 3 -> 2, plan 88.6-28 task 1 (wave 7, 2026-09-16). The ONE `font-semibold` — the hero
     // eyebrow — took 700 on §4.5's Eyebrow row, converging on the ratified role by moving the
