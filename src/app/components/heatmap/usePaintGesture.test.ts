@@ -15,7 +15,7 @@
 //   owner ruling that fixed the threshold could be revised; these pins must survive that, and
 //   must never be the reason someone "fixes" the value back to the pre-88.1 one.
 
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   LONG_PRESS_MS,
@@ -24,6 +24,13 @@ import {
   type GesturePointerEvent,
   type PaintGestureArgs,
 } from './usePaintGesture';
+import {
+  __resetPaintGestureActiveStore,
+  isPaintGestureActive,
+  setPaintGestureActive,
+  subscribePaintGestureActive,
+  usePaintGestureHold,
+} from './paintGestureActiveStore';
 
 /** A fixed, INJECTED bounds rect — never read from the DOM (P7). */
 const BOUNDS = { top: 0, left: 0, bottom: 1000, right: 1000 };
@@ -448,5 +455,120 @@ describe('usePaintGesture — 9. onActiveChange: the cases that must NOT fire', 
     }
 
     expect(onActiveChange.mock.calls.filter(([v]) => v === true)).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PLAN 88.6-39 (W52 / D-18) — the LEAF-MODULE store and the finger-up hold.
+//
+// The store is a leaf: it imports nothing from the component tree, which is what makes it
+// import-safe for `TimezoneNudgeBanner`'s two NON-scheduler mounts (`EventDayModal.js`,
+// `gameDetail/page.js`) and what keeps a `createEvent`-resident store — a module cycle with a
+// TDZ read, since `createEvent.js` imports both consumers — off the table.
+//
+// THE PROPERTY THAT MATTERS IS A NON-EVENT: nothing re-renders on the TRUE edge. That is why
+// the read seam is imperative rather than `useSyncExternalStore`, which re-renders every
+// subscriber on exactly that edge.
+// ---------------------------------------------------------------------------
+describe('paintGestureActiveStore — the flag itself', () => {
+  beforeEach(() => __resetPaintGestureActiveStore());
+
+  it('defaults to INACTIVE, so a surface with no scheduler in the tree is unaffected', () => {
+    expect(isPaintGestureActive()).toBe(false);
+  });
+
+  it('the setter is IDEMPOTENT — a redundant value notifies nobody', () => {
+    const listener = vi.fn();
+    subscribePaintGestureActive(listener);
+
+    setPaintGestureActive(false); // already false: the document-level settle case
+    expect(listener).not.toHaveBeenCalled();
+
+    setPaintGestureActive(true);
+    setPaintGestureActive(true);
+    expect(listener.mock.calls).toEqual([[true]]);
+
+    setPaintGestureActive(false);
+    setPaintGestureActive(false);
+    expect(listener.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('unsubscribing stops delivery, and a listener may unsubscribe itself mid-notify', () => {
+    const other = vi.fn();
+    const unsubOther = subscribePaintGestureActive(other);
+    const selfRemoving = vi.fn(() => unsubSelf());
+    const unsubSelf = subscribePaintGestureActive(selfRemoving);
+
+    setPaintGestureActive(true);
+    // The self-removing listener must not have starved its sibling.
+    expect(selfRemoving).toHaveBeenCalledTimes(1);
+    expect(other).toHaveBeenCalledTimes(1);
+
+    setPaintGestureActive(false);
+    expect(selfRemoving).toHaveBeenCalledTimes(1);
+    expect(other).toHaveBeenCalledTimes(2);
+    unsubOther();
+  });
+});
+
+describe('usePaintGestureHold — holds a change under the finger, applies it on finger-up', () => {
+  beforeEach(() => __resetPaintGestureActiveStore());
+
+  /** Render-counting harness: the count is the whole assertion in the engage case. */
+  function renderHold(initial: string) {
+    const renders: string[] = [];
+    const view = renderHook(
+      ({ value }: { value: string }) => {
+        const held = usePaintGestureHold(value);
+        renders.push(held);
+        return held;
+      },
+      { initialProps: { value: initial } }
+    );
+    return { ...view, renders };
+  }
+
+  it('passes the value straight through while no gesture is running', () => {
+    const { result, rerender } = renderHold('a');
+    expect(result.current).toBe('a');
+    act(() => rerender({ value: 'b' }));
+    expect(result.current).toBe('b');
+  });
+
+  it('re-renders ZERO times on the TRUE edge — the frame the hold exists to protect', () => {
+    const { renders } = renderHold('a');
+    const before = renders.length;
+
+    act(() => setPaintGestureActive(true));
+
+    expect(renders.length).toBe(before);
+  });
+
+  it('holds a change that lands mid-gesture and applies it on the FALSE edge', () => {
+    const { result, rerender } = renderHold('a');
+    act(() => setPaintGestureActive(true));
+
+    act(() => rerender({ value: 'b' }));
+    expect(result.current).toBe('a'); // held: the grid must not move under the finger
+
+    act(() => setPaintGestureActive(false));
+    expect(result.current).toBe('b'); // applied on finger-up
+  });
+
+  it('the FALSE edge with NO held change is a React bail-out, not a re-render', () => {
+    const { renders } = renderHold('a');
+    act(() => setPaintGestureActive(true));
+    const before = renders.length;
+
+    act(() => setPaintGestureActive(false));
+
+    expect(renders.length).toBe(before);
+  });
+
+  it('unmounting removes the listener, so a later edge reaches nothing', () => {
+    const { unmount } = renderHold('a');
+    unmount();
+    // No act() wrapper and no warning: with the listener gone this sets no state anywhere.
+    expect(() => setPaintGestureActive(true)).not.toThrow();
   });
 });

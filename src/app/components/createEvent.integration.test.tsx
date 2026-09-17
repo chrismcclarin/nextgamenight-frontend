@@ -55,6 +55,8 @@ const tz = vi.hoisted(() => {
   return { browserTz, profileTz };
 });
 
+const renderCounts = vi.hoisted(() => ({ quick: 0, banner: 0 }));
+
 const api = vi.hoisted(() => ({
   getGroupMembers: vi.fn(),
   searchAll: vi.fn(),
@@ -83,9 +85,36 @@ vi.mock('@/app/components/TimezoneProvider', () => ({
 // mode's surface, not the scheduler's, so it stays mocked.
 vi.mock('@/app/components/EventHeatmapBackground', () => ({ default: () => null }));
 vi.mock('@/app/components/GameComboInput', () => ({ default: () => <div>game input</div> }));
-vi.mock('@/app/components/QuickSuggestions', () => ({ default: () => null }));
+/* PLAN 88.6-39 (W52 / D-18) — RENDER COUNTERS, not null stubs.
+   These two are the height sources above the grid. Both now read the paint-gesture flag through
+   the REAL `usePaintGestureHold`, so this suite exercises the shipped subscription mechanism in
+   the shipped parent tree rather than a re-description of it.
+
+   THE COUNTS DO DOUBLE DUTY. Neither stub holds state of its own and neither is memoized, so a
+   render of `createEvent` is necessarily a render of both — which makes `renderCounts.quick` an
+   exact count of `createEvent`'s own renders. That is the only way to assert the parent does not
+   re-render at gesture engage: `EventScheduler` is rendered INLINE and unmemoized at
+   `createEvent.js`, so an `EventScheduler`-level assertion cannot see a subscription added in
+   the parent. */
+vi.mock('@/app/components/QuickSuggestions', async () => {
+  const { usePaintGestureHold } = await import('@/app/components/heatmap/paintGestureActiveStore');
+  const QuickSuggestionsRenderCounter = () => {
+    usePaintGestureHold('quick-suggestions-slot');
+    renderCounts.quick += 1;
+    return null;
+  };
+  return { default: QuickSuggestionsRenderCounter };
+});
 vi.mock('@/app/components/BallotOptionsEditor', () => ({ default: () => null }));
-vi.mock('@/app/components/TimezoneNudgeBanner', () => ({ default: () => null }));
+vi.mock('@/app/components/TimezoneNudgeBanner', async () => {
+  const { usePaintGestureHold } = await import('@/app/components/heatmap/paintGestureActiveStore');
+  const TimezoneNudgeBannerRenderCounter = () => {
+    usePaintGestureHold(false);
+    renderCounts.banner += 1;
+    return null;
+  };
+  return { default: TimezoneNudgeBannerRenderCounter };
+});
 vi.mock('@/app/components/useSwipeNavigation', () => ({ default: () => ({}) }));
 
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -541,5 +570,106 @@ describe('CreateEvent + real EventScheduler — the displayed day survives the h
     // THE FINDING, asserted as a negative on its own line: pre-fix the header reads the faked
     // Wednesday, because `isSameWeek(now, heatmapWeekStart)` substitutes today.
     expect(columnHeaders()[0]).not.toBe(format(WEDNESDAY, 'dd EEE'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PLAN 88.6-39 (W52 / D-18) — the active signal reaches the strip WITHOUT re-rendering the
+// parent it has to pass through.
+//
+// This layer is the only one that can answer the question. `EventScheduler` is rendered INLINE
+// and unmemoized inside `createEvent`, so a subscription accidentally added in the PARENT is
+// invisible to every `EventScheduler`-level assertion — and a parent re-render at gesture engage
+// reconciles the ~196 memoized scheduler cells, which is the jank this whole signal exists to
+// avoid causing.
+//
+// WHAT THE COUNTS PROVE: both stubs are unmemoized and stateless, so each is an exact count of
+// `createEvent`'s own renders, AND each exercises the real `usePaintGestureHold` subscription.
+// ---------------------------------------------------------------------------
+import { SLOP_PX } from './heatmap/usePaintGesture';
+import {
+  __resetPaintGestureActiveStore,
+  isPaintGestureActive,
+} from './heatmap/paintGestureActiveStore';
+
+describe('createEvent — the paint-gesture flag is WRITTEN here and subscribed nowhere here', () => {
+  let restoreResolver: () => void;
+
+  beforeEach(() => {
+    __resetPaintGestureActiveStore();
+    const doc = document as Document & {
+      elementFromPoint?: (x: number, y: number) => Element | null;
+    };
+    const original = doc.elementFromPoint;
+    // clientX = column, clientY = row, exactly as in EventScheduler.test.tsx.
+    doc.elementFromPoint = (x: number, y: number) =>
+      document.querySelector(`[data-coord="${y}:${x}"]`);
+    restoreResolver = () => {
+      doc.elementFromPoint = original;
+    };
+  });
+  afterEach(() => {
+    restoreResolver();
+    __resetPaintGestureActiveStore();
+  });
+
+  const gridEl = () => screen.getAllByRole('grid')[0];
+  const pointerAt = (
+    kind: 'pointerDown' | 'pointerMove' | 'pointerUp' | 'pointerCancel',
+    row: number,
+    col: number
+  ) => fireEvent[kind](gridEl(), { pointerId: 1, pointerType: 'mouse', clientX: col, clientY: row });
+
+  /** Switch the form into the visual scheduler so the grid is mounted. */
+  async function openVisualScheduler() {
+    await renderAndSettle();
+    return { quick: renderCounts.quick, banner: renderCounts.banner };
+  }
+
+  it('engaging a gesture sets the flag and re-renders NEITHER height source (nor createEvent)', async () => {
+    const before = await openVisualScheduler();
+    expect(isPaintGestureActive()).toBe(false);
+
+    pointerAt('pointerDown', 4, 2);
+
+    expect(isPaintGestureActive()).toBe(true);
+    expect(renderCounts.quick).toBe(before.quick);
+    expect(renderCounts.banner).toBe(before.banner);
+
+    pointerAt('pointerUp', 4, 2);
+    expect(isPaintGestureActive()).toBe(false);
+  });
+
+  it('a plain SCROLL (slop-cancel) touches neither the flag nor any subscriber', async () => {
+    const before = await openVisualScheduler();
+
+    // A TOUCH press that breaks slop before the hold threshold — the `:470` teardown, and the
+    // single most frequent way a pointer sequence over this grid ends. It never engaged, so
+    // there is no `true` and therefore no `false` either.
+    fireEvent.pointerDown(gridEl(), { pointerId: 2, pointerType: 'touch', clientX: 2, clientY: 4 });
+    fireEvent.pointerMove(gridEl(), {
+      pointerId: 2,
+      pointerType: 'touch',
+      clientX: 2,
+      clientY: 4 + SLOP_PX + 10,
+    });
+
+    expect(isPaintGestureActive()).toBe(false);
+    expect(renderCounts.quick).toBe(before.quick);
+    expect(renderCounts.banner).toBe(before.banner);
+  });
+
+  it('a pointerdown → pointercancel sequence settles the flag and re-renders no subscriber', async () => {
+    const before = await openVisualScheduler();
+
+    pointerAt('pointerDown', 4, 2);
+    expect(isPaintGestureActive()).toBe(true);
+    pointerAt('pointerCancel', 4, 2);
+
+    expect(isPaintGestureActive()).toBe(false);
+    // Neither edge carried a HELD change, so the false edge is a React bail-out at both
+    // subscribers — the count is unchanged across the whole cycle.
+    expect(renderCounts.quick).toBe(before.quick);
+    expect(renderCounts.banner).toBe(before.banner);
   });
 });

@@ -16,6 +16,7 @@ import EventResultFields from './EventResultFields';
 import { useTimezone } from './TimezoneProvider';
 import { utcToWallClock, wallClockToUtc } from '../../lib/tzUtils';
 import TimezoneNudgeBanner from './TimezoneNudgeBanner';
+import { setPaintGestureActive } from './heatmap/paintGestureActiveStore';
 import { Modal } from './Modal';
 import { toast } from 'sonner';
 import { Input, Textarea } from '@/components/ui/Input';
@@ -1094,6 +1095,22 @@ function CreateEvent({ group_id, modal, modaltoggle, onEventCreated, editingEven
             {useVisualCalendar && !hideVisualCalendar ? (
               <>
                 <EventScheduler
+                /* PLAN 88.6-39 (W52 / D-18): THIS COMPONENT IS A WRITER OF THE PAINT-GESTURE
+                   ACTIVE FLAG AND NEVER A READER OF IT. The flag goes straight into the leaf
+                   module store (`heatmap/paintGestureActiveStore.ts`); it is deliberately NOT
+                   held in `useState` here and this component never subscribes.
+
+                   THE REASON IS MEASURED, NOT STYLISTIC. A state update at gesture ENGAGE
+                   re-renders `createEvent`, and `EventScheduler` is rendered INLINE and
+                   unmemoized right here — so that one update reconciles the ~196 memoized
+                   scheduler cells whose per-coordinate payload cache exists precisely because
+                   of it (`EventScheduler.tsx`, DECISION Phase 88.1-11). The fix would cause a
+                   smaller copy of the bug it fixes, in the exact frame the user's finger goes
+                   down. Both height sources above the grid — `QuickSuggestions` and
+                   `TimezoneNudgeBanner` — read the flag from inside themselves for the same
+                   reason. Hoisting this into parent state is a decision to reintroduce that
+                   reconcile, not a simplification. */
+                onActiveChange={setPaintGestureActive}
                 onWeekChange={(date) => {
                   // The skip + clamp rule lives in `resolveWeekNav` (lib/eventFormUtils)
                   // as a pure, unit-tested function — null means "no-op". See its doc
