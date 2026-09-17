@@ -90,10 +90,12 @@ function CreateGroup({user, modal, modaltoggle, getGroupList, onGroupCreated}){
         } catch (error) {
             /* DECISION Phase 88.6-33 (AC-2 WIDENED x AC-16 a): ONE escalation for this failure
                path — `logger.error` over `console.error` PLUS a hand-rolled
-               `Sentry.captureException`. `logger.error(msg, err)` IS the capture AC-16 (a)
-               (owner 2026-09-09, wording amended 2026-09-13 D7 arm A) asked for: it calls
-               `Sentry.captureException(err ?? new Error(msg), { extra: { msg } })`
-               (`src/lib/logger.ts:28-30`). Adding a second capture beside it is a decision,
+               Sentry capture. `logger.error(msg, err)` IS the capture AC-16 (a)
+               (owner 2026-09-09, wording amended 2026-09-13 D7 arm A) asked for: it routes
+               through Sentry's captureException with the error object and the verbatim message
+               in `extra.msg` — see `src/lib/logger.ts:28-30` for the exact call, which is
+               deliberately NOT reproduced here so a call-shaped grep over this file cannot read
+               prose as a second capture. Adding a real second capture beside it is a decision,
                not a cleanup.
 
                `logger.error` and NOT this plan's `logger.info` default (owner ruling

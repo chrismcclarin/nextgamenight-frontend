@@ -165,11 +165,25 @@ const D15 = { kind: 'spec', id: 'SPEC-88.6 R4 / D-15' } as const;
  * sweep that fixes one of two sites in a file must decrement rather than leave a fossil.
  */
 const OFFENDERS: ExemptionRoster = {
-  'app/components/BringGamePicker.js': {
-    sites: 2,
-    why: 'text-content-muted (4.3725) at :195 on the certain thumbnail ground at :194, and at :204 under the selected-row ground at :180. NEWLY MEASURED by this scan — NOT one of D-16\'s six censused sites, and no sweep plan declares this file together with this roster. Routed to the owner in 88.6-09-SUMMARY.md.',
-    owner: D16,
-  },
+  // DELETED by plan 88.6-33 task 2 (wave 7, 2026-09-16), under OWNER RULING ARM A of
+  // 2026-09-16 — the same arm that closed `GroupSettings.js` for plan 88.6-20. The entry was
+  // `sites: 2`, BOTH `text-content-muted` (4.3725, below the AA 4.5 floor): the `?` placeholder
+  // glyph on the CERTAIN `bg-surface-muted` thumbnail-well ground one line above it, and the
+  // "N others bringing this" annotation under the selected-row arm's `bg-surface-muted` ground
+  // on the wrapping button. Both are `text-content-secondary` (6.9620) now, each with a
+  // `DECISION Phase 88.6-33 (D-16)` marker at its site recording that the INK moved and not the
+  // GROUND — the well's muted fill is what distinguishes a missing thumbnail from a present one,
+  // and the selected-row fill is the selection affordance, so lightening either would erase a
+  // real signal to fix a contrast number. The `?` keeps `text-xs`: it is ICON sizing (D-02) and
+  // never enters the type scale.
+  //
+  // DISCLOSED: `groundInk.test.ts` is NOT in plan 88.6-33's `files_modified`. The owner
+  // authorised this file's entry — and only this one — to be closed in the same commit as the
+  // fix, because 88.6-09 routed it as an offender no scheduled plan could reach: no plan
+  // declared BOTH `BringGamePicker.js` and this roster. Recorded in `.planning/WINDOWS.md`.
+  // The `NotificationBell.js` entry is NOT touched (plan 31), and neither are
+  // `CalendarMonthView.js` (plan 40) or `SuggestionCard.js` (plan 42).
+  // Entry DELETED, not zeroed — the roster is exact in both directions.
   'app/components/CalendarMonthView.js': {
     sites: 1,
     // 2 -> 1, plan 88.6-27 task 3 (wave 7, 2026-09-16). The D-16 CENSUS site is CLOSED: the

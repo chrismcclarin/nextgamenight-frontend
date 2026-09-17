@@ -354,11 +354,27 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'plan 88.6-31 sweeps the feedback and notification cluster, FeedbackForm.js included',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
-  'app/components/QRCodeModal.js': {
-    sites: 2,
-    why: 'plan 88.6-33 sweeps eight small modal-and-card components, QRCodeModal.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-33 task 2 (wave 7, 2026-09-16): `app/components/QRCodeModal.js`
+  // carried `sites: 2` and the count was EXACT — the "Copy Invite Link" CTA
+  // (`w-full btn btn-primary py-2.5 text-center mb-3`) and the full-width "Close"
+  // (`w-full btn btn-secondary`). Both are `<Button>`s now. `py-2.5` was DEAD under unlayered
+  // `.btn`'s `padding` (globals.css:2202) and is deleted rather than moved; `w-full`,
+  // `text-center` and `mb-3` all SURVIVE — `.btn` declares no width, no `text-align` and no
+  // margin, so none of the three was ever dead and deleting them would have been a look change.
+  //
+  // The file's OTHER TWO `<button>`s are deliberately NOT in this census and were NEVER `.btn`s:
+  //   - the corner `×` (D48) — STAYS BARE, left byte-unchanged, under UI-SPEC §3.2's
+  //     bare-`<button>` row, which names this site by name as the left-bare arm. `.btn`'s
+  //     unlayered padding would widen its tuned 44px box to ~56px and move the glyph off the
+  //     UAT-row-333 fleet-header edge; a variant-less `<Button>` would paint the purple fill
+  //     §3.2 forbids on a bare control; and `Modal.tsx`'s fleet close is bare and migrated by no
+  //     plan, so migrating this one alone would CREATE an inconsistency. Its DECISION marker
+  //     records all three, plus the focus-ring CONSISTENCY residual this commit creates (the ×
+  //     is now the only control here on the UA default outline — not an AA violation, and a
+  //     DIVERGENCE from the fleet close rather than something the fleet shares).
+  //   - the "Reset Token" tertiary — a bare text button; its `font-medium` was ALIVE and took
+  //     §4.5's EMPHASIS outcome in the same commit (see the `typeScaleTouchedSurfaces` note).
+  // Entry DELETED rather than zeroed; the roster is exact in both directions.
   // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ScheduleForm.js`
   // carried `sites: 2` — the modal footer's Cancel (`btn btn-secondary`) and the submit
   // (`btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed`). Both are
@@ -394,11 +410,15 @@ const BTN_EXEMPT: ExemptionRoster = {
   // className; `mt-2` survives (`.btn` declares no margin). The file's OTHER button — the
   // remove-option `×` at :33 — was never a `.btn` and is therefore not in this census at all; it
   // took the D-13 declared-at-the-site 44x44 floor in the same commit. Entry DELETED, not zeroed.
-  'app/components/BringGamePicker.js': {
-    sites: 1,
-    why: 'plan 88.6-33 sweeps eight small modal-and-card components, BringGamePicker.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-33 task 2 (wave 7, 2026-09-16): `app/components/BringGamePicker.js`
+  // carried `sites: 1` — the footer "Save" CTA (`btn btn-primary text-sm`), now
+  // `<Button variant="primary">`. `text-sm` was DEAD under unlayered `.btn`'s `font-size`
+  // (globals.css:2201) and is deleted rather than moved onto the className. The control KEEPS
+  // its NATIVE `disabled={saving}` — the plans 17-24 `aria-disabled` conversion is not this
+  // plan's work. NOTE this entry's own count was ONE, not the TWO the plan's task text predicted:
+  // the footer's other control ("Skip for now") is a bare text button that never wore `.btn`, and
+  // the picker ROWS are `<button>`s with no `.btn` either. Their ARIA is plan 44's, deliberately
+  // untouched here. Entry DELETED rather than zeroed; the roster is exact in both directions.
   // DELETED by plan 88.6-34 task 3 (wave 7, 2026-09-16): `app/components/ClickableMemberName.js`
   // carried `sites: 1` — the popover's "Add friend" CTA, `btn btn-primary text-sm px-3 py-1`
   // pre-edit. It is a `<Button variant="primary">` now. The three utilities that rode with the

@@ -729,7 +729,12 @@ const EXPECTED_PROP_SEAMS = 5;
  * in `EmailAddressSection.test.tsx` that resolve the reference rather than walking up from the
  * heading.
  */
-const EXPECTED_MIN_PRIMITIVES = 125;
+// 125 -> 126, plan 88.6-33 task 2 (wave 7, 2026-09-16): `BringSummary.js:97`'s class-less `<h3>`
+// migrated onto `<Heading level={3} size="body">`, so exactly ONE new `<Heading>` call site
+// landed. Raised in the SAME commit as the migration, per this file's own docblock rule — the
+// assertion is `>=`, so leaving the number unchanged after a sweep is silently green and is a RED
+// by that rule rather than by the arithmetic.
+const EXPECTED_MIN_PRIMITIVES = 126;
 
 /** Anti-vacuity: the enumeration must actually enumerate. Measured 192 at this commit. */
 const MIN_ENUMERATED_FILES = 150;
@@ -793,11 +798,13 @@ const RUNG_ROSTER: ExemptionRoster = {
   // at 20 as `size="heading"` — the ERROR branch ("Link No Longer Valid") and the SUBMITTED
   // confirmation ("Availability Submitted!"), both mutually exclusive with the title and
   // neither a loading branch. Entry DELETED, not zeroed.
-  'app/components/BringSummary.js': {
-    sites: 1,
-    why: '1 heading off the 4-size working set (h3:97 no size utility) — re-keyed to 30/20/16/14 by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-33 task 2 (wave 7, 2026-09-16): `app/components/BringSummary.js`
+  // carried `sites: 1` — the class-less `<h3>` at `:97` ("Bringing"), one of the four size-less
+  // headings D-04's table routes to Body 16 (RESEARCH §C.5 cut that list from six to five, one
+  // of which is permanently exempt). It is `<Heading level={3} size="body">` now, which
+  // reproduces its shipped rendered size EXACTLY — a class-less heading already renders at body
+  // size — so this closes with NO look delta on the rung. The LEVEL is preserved (P4), and a
+  // migrated heading leaves this RAW-only population. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-27 task 1 (wave 7, 2026-09-16): `app/components/CalendarListView.js`
   // carried `sites: 4` and all four cites were EXACT at HEAD. Both `text-lg` h3s ("Upcoming
   // events", once in the loading skeleton at :478 and once in the render body at :505) are
@@ -957,11 +964,9 @@ const HEADING_SEMIBOLD_ROSTER: ExemptionRoster = {
   // :238 — six copies of the same "Game Vote" header across six mutually-exclusive branches).
   // All seven are `<Heading level={3} size="label">` now and leave this RAW-only population.
   // h3@14 STAYS at 14 per D-04's table; `size="label"` is `text-sm`. Entries DELETED, not zeroed.
-  'app/components/BringSummary.js': {
-    sites: 1,
-    why: '1 heading carrying the prohibited 600 weight (h3:97) — UI-SPEC §4.2 gives 600 exactly one home, the Button primitive; these move to 700 in the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-33 task 2 (wave 7, 2026-09-16): the same `<h3>` at `:97` as the rung
+  // roster above. Its `font-semibold` left with the `Heading` migration — §4.2 gives 600 exactly
+  // one home, the `Button` primitive. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-27 task 1 (wave 7, 2026-09-16): the same four headings as the rung
   // roster above. Their 700 now comes from `Heading`'s `font-bold` base rather than a stated
   // utility, so a MIGRATED heading leaves this RAW-only population entirely. Entry DELETED,
@@ -1033,11 +1038,10 @@ const HEADING_WEIGHT_ROSTER: ExemptionRoster = {
   // DELETED by plan 88.6-22 task 2 (wave 7, 2026-09-16): the same seven headings as the
   // heading-semibold roster above. Their 700 now comes from the primitive's `font-bold` base
   // (Heading.tsx:60) rather than a stated utility. Entries DELETED, not zeroed.
-  'app/components/BringSummary.js': {
-    sites: 1,
-    why: '1 raw heading not stating the 700 weight (h3:97 font-semibold) — §4.2 requires 700 to be stated; closed by the Phase 88.6 sweep that owns this file',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3' },
-  },
+  // DELETED by plan 88.6-33 task 2 (wave 7, 2026-09-16): the same `<h3>` at `:97` as the
+  // heading-semibold roster above. Its 700 now comes from the primitive's `font-bold` base
+  // (`Heading.tsx`) rather than a stated utility, and a migrated heading leaves this RAW-only
+  // population. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-27 task 1 (wave 7, 2026-09-16): same four headings as the
   // heading-semibold roster above. Their 700 comes from the primitive's `font-bold` base now,
   // and a migrated heading leaves this RAW-only population. Entry DELETED, not zeroed.
@@ -1992,18 +1996,24 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //     buttons) took the EMPHASIS outcome, i.e. the utility deleted with the colour token each
   //     already carried doing the work.
   // Entries DELETED, not zeroed.
-  'app/components/BringGamePicker.js': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-10, 88.6-15, 88.6-33, 88.6-39, 88.6-43, 88.6-44.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
-  'app/components/BringSummary.js': {
-    sites: 2,
-    why:
-      '2 off-scale weight sites (1 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: hierarchy (700); outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-33, 88.6-43.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-33 task 2 (wave 7, 2026-09-16): `app/components/BringGamePicker.js`
+  // carried `sites: 1` (1 font-medium) — the picker row's game name. It took §4.5's EMPHASIS
+  // outcome, spelled as an explicit `font-normal` rather than a dropped utility (the shipped
+  // `createEvent.js:1290` idiom, which this plan converges all five of its emphasis sites on).
+  // 700 was REJECTED at the site and the marker says why: this is a dense scrolling picker row,
+  // the distinction is already carried by colour AND size against the annotation directly below
+  // it, and bolding every row in a list makes none of them read as emphasised. Entry DELETED.
+  //
+  // DELETED by plan 88.6-33 task 2 (wave 7, 2026-09-16): `app/components/BringSummary.js`
+  // carried `sites: 2`, and the entry's stated outcome lead ("hierarchy (700)") was right for
+  // ONE of the two and wrong for the other — recorded rather than absorbed:
+  //   - the `font-semibold` h3 at `:97` took HIERARCHY 700, but by MIGRATING onto `<Heading>`,
+  //     whose cva base supplies `font-bold`; it therefore leaves this population entirely.
+  //   - the `font-medium` on the person's name at `:111` took §4.5's EMPHASIS outcome instead
+  //     (`font-normal`): it already carries `text-content-secondary` while the game links on the
+  //     same line carry `text-content-link`, so the colour does the work. 700 was rejected
+  //     because every row's name would then compete with the "Bringing" heading above it.
+  // Entries DELETED rather than zeroed; the roster is exact in both directions.
   // DELETED by plan 88.6-32 task 1 (wave 7, 2026-09-16): `app/components/BrowseMoreModal.js`
   // carried `sites: 4` (4 font-medium, 0 font-semibold) and TWO of §4.5's three outcomes
   // applied, not one — the entry's stated lead ("dead on a .btn (delete)") was right for three
@@ -2258,12 +2268,15 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   //   chips (`font-medium` -> `font-bold`, §4.5's pill/chip row: 400 is rejected for a filled
   //   chip because the fill/ink pairing needs the weight). Markers at both sites.
   // Zero off-scale weight sites remain in either file, so both entries are deleted, not zeroed.
-  'app/components/QRCodeModal.js': {
-    sites: 1,
-    why:
-      '1 off-scale weight site (1 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-10, 88.6-33, 88.6-34, 88.6-43.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-33 task 2 (wave 7, 2026-09-16): `app/components/QRCodeModal.js`
+  // carried `sites: 1` (1 font-medium) — the owner/admin "Reset Token" label. It took §4.5's
+  // EMPHASIS outcome as an explicit `font-normal`. Note this site is NOT a `.btn` and never was,
+  // so its weight was ALIVE: deleting it is a real change and not a dead-class cleanup, which is
+  // why it carries a `DECISION Phase 88.6-33` marker. 700 was rejected at the site because it
+  // would give a destructive-adjacent TERTIARY action more visual weight than the filled primary
+  // CTA above it, and the distinction is already carried by colour — it is the only red control
+  // in a modal whose two other actions are now a `<Button variant="primary">` and a
+  // `<Button variant="secondary">`. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-32 task 2 (wave 7, 2026-09-16): `app/components/ResponseDashboard.js`
   // carried `sites: 1` (0 font-medium, 1 font-semibold) — the h3 at `:154`, and the entry's
   // stated outcome lead (hierarchy -> 700) is what it took: it migrated onto `<Heading>`, whose

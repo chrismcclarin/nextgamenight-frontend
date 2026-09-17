@@ -5,6 +5,8 @@ import { userGamesAPI, eventBringsAPI } from '../../lib/api';
 import SafeImage from './SafeImage';
 import { Modal } from './Modal';
 import { Input } from '../../components/ui/Input';
+import { Button } from '../../components/ui/Button';
+import { logger, errCtx } from '@/lib/logger';
 
 /**
  * BringGamePicker - Modal overlay for selecting games to bring to an event
@@ -74,7 +76,21 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
         setSelectedGameIds(myGameIds);
         setOthersBringing(othersCount);
       } catch (err) {
-        console.error('BringGamePicker: failed to load data', err);
+        /* DECISION Phase 88.6-33 (AC-2 WIDENED 2026-09-09; level AMENDED by the D2 ruling
+           2026-09-13): `logger.info` — a Sentry BREADCRUMB — over `logger.error`, AC-2's
+           original uniform arm, which was rejected because it buys Session Replay volume the
+           `no-console` milestone gate never asked for. `logger.warn` is not a cheaper arm
+           (`Sentry.captureMessage`, `src/lib/logger.ts:31-32`, is also an event). Egress delta
+           versus today: NIL — with no `captureConsoleIntegration` in `sentry.client.config.js`
+           this was already a breadcrumb and stays one.
+           `errCtx(err)` and never the raw `Error`: `info`'s second parameter is
+           `ctx?: Record<string, unknown>` (`src/lib/logger.ts:24`) and `checkJs: false` hides
+           that mistake at a `.js` call site. Converted IN PLACE — a catch inside an async
+           effect, not a render body, so no latch is required.
+           RECORDED, NOT FIXED (this commit's scope is the channel and the sweep): this path
+           reports NOTHING to the person. The picker is left showing an empty selection as
+           though nothing were bringable. Routed to `.planning/deferred/phase-88.6.md`. */
+        logger.info('BringGamePicker: failed to load data', errCtx(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -105,7 +121,15 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
       onSave?.();
       onClose();
     } catch (err) {
-      console.error('BringGamePicker: failed to save', err);
+      /* 88.6-33 (AC-2 WIDENED / D2 level ruling): `logger.info` + `errCtx(err)` — the same
+         call as the load path above, for the same reasons. Converted IN PLACE (a catch inside
+         an async handler).
+         RECORDED, NOT FIXED: this catch is reached with `onSave?.()` and `onClose()` SKIPPED —
+         they sit above it inside the `try` — so the modal simply stays open with no error
+         state, no toast and no live region, and the person cannot tell whether their brings
+         were saved. Routed to `.planning/deferred/phase-88.6.md` together with the load path;
+         changing the failure BEHAVIOUR is work this commit does not own. */
+      logger.info('BringGamePicker: failed to save', errCtx(err));
     } finally {
       setSaving(false);
     }
@@ -192,16 +216,45 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
                         />
                       ) : (
                         <div className="w-8 h-8 bg-surface-muted rounded-sm flex items-center justify-center">
-                          <span className="text-content-muted text-xs">?</span>
+                          {/* DECISION Phase 88.6-33 (D-16, owner ruling ARM A 2026-09-16):
+                              `text-content-secondary` (6.9620) over `text-content-muted`
+                              (4.3725) — this glyph sits on a CERTAIN `bg-surface-muted` ground
+                              (the thumbnail well one line above), where 4.3725 is below the AA
+                              4.5 floor. Re-inking the INK rather than moving the GROUND, the
+                              same disposition plans 88.6-20 and 88.6-27 took at their own D-16
+                              sites: the well's muted ground is what distinguishes a missing
+                              thumbnail from a present one, so lightening it would erase the
+                              affordance to fix the contrast.
+                              The `?` is ICON sizing (D-02) — `text-xs` stays and is never
+                              converged onto the type scale. Going back to `text-content-muted`
+                              is a decision, not a cleanup. */}
+                          <span className="text-content-secondary text-xs">?</span>
                         </div>
                       )}
                     </div>
 
-                    {/* Name + others indicator */}
+                    {/* Name + others indicator.
+                        DECISION Phase 88.6-33 (§4.5 EMPHASIS): the game name takes `font-normal`
+                        over `font-bold`. 400 is correct because the distinction is already
+                        carried by COLOUR and SIZE — `text-content-primary` at 14 against the
+                        annotation's `text-content-secondary` at 12 directly below. 700 was
+                        rejected: this is a dense scrolling picker row, not a card title, and
+                        bolding every row in a list makes none of them read as emphasised.
+                        The rung STAYS at 14: §4.3's primary-string clause reads to 16, but the
+                        shipped fleet keeps compact list-row names at 14 (`CalendarListView.js`,
+                        `BallotSection.js`), and folding this one row to 16 would be an
+                        unowned look change on a phone-primary dense list. Recorded for plan 46.
+
+                        DECISION Phase 88.6-33 (D-16, owner ruling ARM A 2026-09-16): the
+                        annotation below is `text-content-secondary` (6.9620), NOT
+                        `text-content-muted` (4.3725). Its ground is the selected-row arm's
+                        `bg-surface-muted` on the wrapping button, against which 4.3725 is below
+                        the AA 4.5 floor. Ink moved rather than ground, same as the thumbnail
+                        well above. Going back is a decision, not a cleanup. */}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-content-primary truncate">{gameName}</p>
+                      <p className="text-sm font-normal text-content-primary truncate">{gameName}</p>
                       {othersCount > 0 && (
-                        <p className="text-xs text-content-muted">
+                        <p className="text-xs text-content-secondary">
                           {othersCount} {othersCount === 1 ? 'other' : 'others'} bringing this
                         </p>
                       )}
@@ -233,13 +286,17 @@ export default function BringGamePicker({ isOpen, onClose, eventId, self, onSave
         >
           Skip for now
         </button>
-        <button
+        {/* 88.6-33 (§3.2/§3.3): `<Button variant="primary" size="default">`. `text-sm` was DEAD
+            under unlayered `.btn`'s `font-size` (globals.css:2201) and is deleted rather than
+            moved onto the className. The control KEEPS its NATIVE `disabled={saving}` — the
+            plans 17-24 `aria-disabled` conversion is not this plan's work. */}
+        <Button
+          variant="primary"
           onClick={handleSave}
           disabled={saving}
-          className="btn btn-primary text-sm"
         >
           {saving ? 'Saving...' : 'Save'}
-        </button>
+        </Button>
       </Modal.Footer>
     </Modal>
   );
