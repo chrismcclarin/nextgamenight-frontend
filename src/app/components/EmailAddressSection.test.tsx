@@ -34,6 +34,8 @@ import {
   NO_ADDRESS_ON_FILE,
   checkCode,
   normaliseEmailChangeCode,
+  shouldAnnounceCancelledMidSave,
+  shouldApplySaveRun,
 } from './EmailAddressSection';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -1864,5 +1866,206 @@ describe('EmailAddressSection — 88.6-38: the VERIFIED-state Change control (D-
     expect(change.className).toContain('btn');
     expect(change.className).toContain('max-md:min-h-11');
     expect(change).not.toHaveAttribute('disabled');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 88.6-38 task 3 — the two schema-drift arms, the suppression they wake,
+// and the two seams that make the remaining untested rules testable.
+// (88.8 code review round 7 #14/#24, #25, and the refuted-HIGH ordering guard,
+// routed into this phase by `.planning/deferred/phase-88.6.md`.)
+// ---------------------------------------------------------------------------
+
+/** Drive the section to a state where a session-local send has happened AND a live
+ *  pending row has been seen — the two refs the defensive expiry arm requires before it
+ *  may speak at all. Without this any "the arm did not fire" assertion is VACUOUS: the
+ *  arm returns at `!sentThisSessionRef.current` and the suppression is never consulted. */
+async function armTheExpiryArm(user: ReturnType<typeof userEvent.setup>) {
+  api.resendEmailChangeCode.mockResolvedValue(body());
+  await user.click(screen.getByRole('button', { name: 'Resend code' }));
+  await waitFor(() => expect(api.resendEmailChangeCode).toHaveBeenCalled());
+}
+
+/** Re-render with a self row whose pending change has gone null — the shipped `mockSelf`
+ *  + `rerender` idiom (this suite module-mocks `useSelfIdentity`, so `self` NEVER comes
+ *  from a QueryClient and a real-refetch test here would be vacuous or a harness rewrite). */
+function pushNullPendingRow(rerender: ReturnType<typeof render>['rerender']) {
+  mockSelf.mockReturnValue(selfState(ROW({ pending_email_change: null })));
+  const client = new QueryClient();
+  rerender(
+    <QueryClientProvider client={client}>
+      <EmailAddressSection />
+    </QueryClientProvider>
+  );
+}
+
+describe('EmailAddressSection — 88.6-38: both schema-drift arms refetch the self row', () => {
+  it('the VERIFY drift arm invalidates — a body the client cannot read still answers a request the server may have processed', async () => {
+    const user = userEvent.setup();
+    renderAwaiting();
+    api.verifyEmailChange.mockResolvedValue({ outcome: 'nope-not-a-real-shape' });
+
+    await user.type(screen.getByLabelText(/code from the email/i), 'ABCD2345');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    await waitFor(() => expect(screen.getByText(/couldn't read the answer/i)).toBeInTheDocument());
+    expect(cache.invalidate).toHaveBeenCalledTimes(1);
+    // Everything else in the arm is unchanged: the typed code SURVIVES and Verify is
+    // re-pressable. The round-4/round-5 decision this arm carries is not disturbed.
+    expect(screen.getByLabelText(/code from the email/i)).toHaveValue('ABCD2345');
+    expect(cache.patch).not.toHaveBeenCalled();
+  });
+
+  it('the SAVE drift arm invalidates on its NON-abandoned sub-branch, and still returns to editing', async () => {
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    api.requestEmailChange.mockResolvedValue({ outcome: 'nope-not-a-real-shape' });
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(cache.invalidate).toHaveBeenCalledTimes(1));
+    // Still `editing`, still a field error. The invalidation is additive.
+    expect(screen.getByLabelText(/new email address/i)).toBeInTheDocument();
+    expect(cache.patch).not.toHaveBeenCalled();
+  });
+
+  it('the SAVE drift arm invalidates on its ABANDONED sub-branch too — the one path with no other owner', async () => {
+    /* THE SUB-BRANCH THE PLACEMENT IS ABOUT. The user cancelled, so nothing downstream is
+       left to refresh — and the server may well have acted. A `return` before the
+       invalidation would leave exactly this path stale for the rest of the session. */
+    const user = userEvent.setup();
+    mockSelf.mockReturnValue(selfState(ROW()));
+    renderSection();
+    let release: (v: unknown) => void = () => {};
+    api.requestEmailChange.mockReturnValue(new Promise((res) => { release = res; }));
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.type(screen.getByLabelText(/new email address/i), NEW);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    release({ outcome: 'nope-not-a-real-shape' });
+
+    await waitFor(() => expect(cache.invalidate).toHaveBeenCalledTimes(1));
+    expect(cache.patch).not.toHaveBeenCalled();
+    // Abandoned: no notice, no state move. Only the refetch.
+    expect(screen.queryByText(/request had already reached us/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('EmailAddressSection — 88.6-38: the expiry arm the invalidation wakes is suppressed for nulls WE caused', () => {
+  it('a null that lands after the verify drift arm leaves the unreadable copy, the typed code and an unpromoted Resend alone', async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderAwaiting();
+    await armTheExpiryArm(user);
+
+    api.verifyEmailChange.mockResolvedValue({ outcome: 'nope-not-a-real-shape' });
+    await user.type(screen.getByLabelText(/code from the email/i), 'ABCD2345');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+
+    /* A POSITIVE SETTLE FIRST, and it is the ORDERING that every wrong placement fails on:
+       awaiting the UNREADABLE copy forces the `'verifying'` -> `'awaiting-code'` commit to
+       flush, which re-runs the expiry effect against a cache that still holds a NON-NULL
+       pending. A consume — or a disarm — placed above that branch is spent on this run and
+       gone before the null arrives. */
+    await waitFor(() => expect(screen.getByText(/couldn't read the answer/i)).toBeInTheDocument());
+
+    pushNullPendingRow(rerender);
+
+    await waitFor(() => expect(screen.getByText(/couldn't read the answer/i)).toBeInTheDocument());
+    expect(screen.queryByText('That code has expired')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/code from the email/i)).toHaveValue('ABCD2345');
+    // Not promoted: `ghost` emits NO variant class, `secondary` emits `btn-secondary`.
+    expect(screen.getByRole('button', { name: 'Resend code' }).className).not.toContain(
+      'btn-secondary'
+    );
+  });
+
+  it('THE MIRROR: the arm STILL fires on an UNARMED null — the guard does not kill the behaviour it guards', async () => {
+    /* The discriminating pair. Identical setup MINUS the drift verify, so the ONLY
+       difference is whether this section caused the null. Without this the suppression
+       could silently be "never report an expiry" and every other assertion would agree. */
+    const user = userEvent.setup();
+    const { rerender } = renderAwaiting();
+    await armTheExpiryArm(user);
+
+    pushNullPendingRow(rerender);
+
+    await waitFor(() => expect(screen.getByText('That code has expired')).toBeInTheDocument());
+    // And Resend IS promoted on this path, which is the other half of the arm.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Resend code' }).className).toContain(
+        'btn-secondary'
+      )
+    );
+  });
+
+  it('the suppression is ONE-SHOT: a SECOND null, with nothing new armed, reports the expiry', async () => {
+    /* The other failure mode of a suppression ref — one that nobody brings down turns the
+       arm off for the rest of the session. One local invalidation buys exactly one silent
+       null. */
+    const user = userEvent.setup();
+    const { rerender } = renderAwaiting();
+    await armTheExpiryArm(user);
+
+    api.verifyEmailChange.mockResolvedValue({ outcome: 'nope-not-a-real-shape' });
+    await user.type(screen.getByLabelText(/code from the email/i), 'ABCD2345');
+    await user.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(screen.getByText(/couldn't read the answer/i)).toBeInTheDocument());
+
+    pushNullPendingRow(rerender);
+    await waitFor(() => expect(screen.getByText(/couldn't read the answer/i)).toBeInTheDocument());
+
+    // Back to pending (the effect re-arms `sawPendingRef`), then null again — unarmed.
+    mockSelf.mockReturnValue(
+      selfState(ROW({ pending_email_change: { address: NEW, expires_at: 'z' } }))
+    );
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <EmailAddressSection />
+      </QueryClientProvider>
+    );
+    await waitFor(() => expect(screen.getByText(NEW)).toBeInTheDocument());
+    pushNullPendingRow(rerender);
+
+    await waitFor(() => expect(screen.getByText('That code has expired')).toBeInTheDocument());
+  });
+});
+
+describe('EmailAddressSection — 88.6-38: the two extracted rules (the `queryClient.ts:121` seam idiom)', () => {
+  // `shouldApplySaveRun` — the LAST-WRITE-WINS ordering rule. The interleave it defends
+  // against is unreachable through the UI (the `saveInFlight` lane keeps a second Save from
+  // starting; the shipped round-6 test pins that), so the RULE is what is testable and this
+  // is what "a seam into handleSave" honestly buys.
+  it('applies a run NEWER than the applied one', () => {
+    expect(shouldApplySaveRun(2, 1)).toBe(true);
+  });
+
+  it('applies a run EQUAL to the applied one — `>=`, not `>`; it is the same write, not an older one', () => {
+    expect(shouldApplySaveRun(1, 1)).toBe(true);
+  });
+
+  it('REFUSES an older run — the whole point, since `staleTime: Infinity` makes a wrong row survive the session', () => {
+    expect(shouldApplySaveRun(1, 2)).toBe(false);
+  });
+
+  // `shouldAnnounceCancelledMidSave` — BOTH polarities, which is what a suppression rule
+  // needs: a one-sided test cannot tell a correct rule from one that always suppresses.
+  it('SHOWS the cancelled-mid-save notice for a code_sent landing in idle', () => {
+    expect(shouldAnnounceCancelledMidSave('code_sent', 'idle')).toBe(true);
+  });
+
+  it.each(['editing', 'saving', 'awaiting-code', 'verifying', 'verified', 'unresolved', 'unavailable'] as const)(
+    'SUPPRESSES it when the user is standing in %s at landing time',
+    (stateAtLanding) => {
+      expect(shouldAnnounceCancelledMidSave('code_sent', stateAtLanding)).toBe(false);
+    }
+  );
+
+  it('SUPPRESSES it for an outcome that minted no change, even in idle', () => {
+    expect(shouldAnnounceCancelledMidSave('unchanged', 'idle')).toBe(false);
+    expect(shouldAnnounceCancelledMidSave('verified', 'idle')).toBe(false);
   });
 });
