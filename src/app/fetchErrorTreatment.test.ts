@@ -545,14 +545,17 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
       '(wave 7), which declares this file.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-31' },
   },
-  'app/components/FeedbackForm.js': {
-    sites: 1,
-    why:
-      'RAW-MESSAGE assertion. :241 `setError(err.message || …)`. D-21 names this file and ' +
-      'FeedbackButton.js as a pair; both are in the scanned set. Closed by plan 88.6-31 ' +
-      '(wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-31' },
-  },
+  // DELETED by plan 88.6-31 task 1 (wave 7, 2026-09-16): `app/components/FeedbackForm.js`
+  // carried `sites: 1` — `:241` pre-edit, `setError(err.message || 'Failed to submit feedback.
+  // Please try again.')`. It now reads `setError(getFetchErrorMessage(err))` with NO `fallback:`
+  // option, so the CLOSED register answers and no copy was authored (P1). THE SINK IS PINNED,
+  // NOT RE-CLASSIFIED: `setError` and the ASSERTIVE `errorId` StatusRegion stay — a NAMED,
+  // DATED UI-SPEC §6.2 mutation-row exception (2026-09-16), on the `88.6-UI-SPEC.md` §14 A-30 /
+  // D52 mechanism, because this is the one surface whose failing payload is the user's own
+  // written bug report and a 4-second toast loses it (the round-5 #37 comment at that region
+  // records exactly that harm). A-30's own exception is NOT inherited; it is `createGroup.js`-
+  // only by its own text. Entry DELETED rather than zeroed. This file's FAILED_COPY_EXEMPT
+  // entry (1, the same line) closed in the same commit.
   // DELETED by plan 88.6-22 task 1 (wave 7, 2026-09-16): `app/components/FriendInvitePanel.js`
   // carried `sites: 1` here — `:268` pre-edit, `toast.error(err.message || 'Failed to reset
   // invite link. Please try again.')`. It now routes through `getFetchErrorMessage(err)` with no
@@ -729,13 +732,12 @@ const FAILED_COPY_EXEMPT: ExemptionRoster = {
       'by plan 88.6-31 (wave 7), which declares this file.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-31' },
   },
-  'app/components/FeedbackForm.js': {
-    sites: 1,
-    why:
-      '"FAILED TO X" assertion. :241 "Failed to submit feedback. Please try again." Closed ' +
-      'by plan 88.6-31 (wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-31' },
-  },
+  // DELETED by plan 88.6-31 task 1 (wave 7, 2026-09-16): `app/components/FeedbackForm.js`
+  // carried `sites: 1` — `:241`'s "Failed to submit feedback. Please try again.", the authored
+  // half of the same line its raw-message entry covered. GONE rather than reworded:
+  // `getFetchErrorMessage(err)` is called with NO fallback, so the ratified register answers and
+  // no copy was authored (P1). Entry DELETED, not zeroed; its RAW_MESSAGE_EXEMPT sibling closed
+  // in the same commit, as that entry's `why` said it would.
   // DELETED by plan 88.6-22 task 1 (wave 7, 2026-09-16): `app/components/FriendInvitePanel.js`
   // carried `sites: 3` — `:223` "Failed to send invite" (the email-invite catch's else arm),
   // `:268` the reset toast (also its raw-message entry above), and `:427` "Failed to send

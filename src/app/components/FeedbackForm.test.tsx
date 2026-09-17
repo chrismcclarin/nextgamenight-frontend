@@ -57,6 +57,37 @@ const SESSION_EMAIL = 'session-only@example.com';
 const APP_EMAIL = 'app-address@example.com';
 const SYNTHETIC = 'google-oauth2-1|xyz@auth0.local';
 
+/* SELECTOR RULE (Phase 88.6-31). This form has TWO polite `role="status"` regions since the
+   attach-success region landed — the new one (`-screenshot-attached`) and the gate line
+   (`-submit-status`) — so EVERY bare `getByRole('status')` in this file was ambiguous and is
+   repointed here. Three spellings are forbidden and each for its own reason:
+     - `getByRole('status')`            — ambiguous; RTL throws "found multiple elements".
+     - `getAllByRole('status')[n]`      — DOM order puts the NEW attach region FIRST, so an
+                                          index-based repair silently retargets the wrong node.
+     - `querySelector('#' + id)`        — React is ^18.2.0, so `useId` ids contain COLONS and
+                                          that call is a `SyntaxError`.
+   The resolution is BY ID via `document.getElementById`. The id itself is discovered with an
+   ATTRIBUTE selector (`[id$="…"]`), which is colon-safe and, unlike the role query, unique per
+   form — one `-submit-status` node and one `-screenshot-attached` node each.
+
+   MEASURED CORRECTION to the plan text, recorded rather than absorbed: the plan expected
+   `:246`'s `toHaveTextContent('')` to pass SILENTLY against the new empty attach region. It does
+   not — `getByRole` is SINGULAR and throws on two matches, so all five sites failed LOUDLY
+   (run captured 2026-09-16). The silent-pass hazard is real but belongs to the `getAllByRole`
+   index spelling, which is why that spelling is forbidden above. Repointing is mandatory either
+   way: the round-5 #41 guard at `:246` must keep asserting on the GATE region. */
+const regionByIdSuffix = (suffix: string): HTMLElement => {
+  const seed = document.querySelector(`[id$="${suffix}"]`);
+  if (!seed) throw new Error(`no element whose id ends in "${suffix}"`);
+  const byId = document.getElementById(seed.id);
+  if (!byId) throw new Error(`getElementById("${seed.id}") resolved nothing`);
+  return byId;
+};
+/** The DR3 gate line / reply-to disclosure region. */
+const gateStatusRegion = () => regionByIdSuffix('-submit-status');
+/** The Phase 88.6-31 attach-success region. */
+const attachStatusRegion = () => regionByIdSuffix('-screenshot-attached');
+
 afterEach(cleanup);
 
 describe('FeedbackForm logged-out submission (87.6 D-08)', () => {
@@ -219,7 +250,7 @@ describe('FeedbackForm — round 3 DR3: the loading gate answers, the error case
     const submit = screen.getByRole('button', { name: /^Submit$/i });
     expect(submit).toHaveAttribute('aria-disabled', 'true');
     expect(submit).not.toHaveAttribute('disabled');
-    expect(screen.getByRole('status')).toHaveTextContent(/loading your details/i);
+    expect(gateStatusRegion()).toHaveTextContent(/loading your details/i);
 
     await user.click(submit);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -243,7 +274,7 @@ describe('FeedbackForm — round 3 DR3: the loading gate answers, the error case
   it('a settled row WITH a usable address shows neither the loading line nor the missing-reply-to line', () => {
     h.self = { id: 'u1', email: APP_EMAIL };
     render(<FeedbackForm onClose={() => {}} />);
-    expect(screen.getByRole('status')).toHaveTextContent('');
+    expect(gateStatusRegion()).toHaveTextContent('');
     expect(screen.queryByText(/couldn't load your email address/i)).not.toBeInTheDocument();
   });
 });
@@ -295,7 +326,7 @@ describe('FeedbackForm — post-merge fix set (round 5)', () => {
     const submit = screen.getByRole('button', { name: /^Submit$/i });
     expect(submit.getAttribute('aria-describedby')).toContain(submitError()!.id);
     // The gate line is still referenced too — the failure JOINS it, never replaces it.
-    expect(submit.getAttribute('aria-describedby')).toContain(screen.getByRole('status').id);
+    expect(submit.getAttribute('aria-describedby')).toContain(gateStatusRegion().id);
   });
 
   it('#3/#28 — a failed submit is REPORTED to Sentry, class-only, with none of the report body in the payload', async () => {
@@ -316,7 +347,7 @@ describe('FeedbackForm — post-merge fix set (round 5)', () => {
     ];
     expect(err).toBeInstanceOf(Error);
     expect(err.message).toMatch(/^feedback submit failed: /);
-    expect(ctx.tags).toEqual({ feature: 'feedback', op: 'submit' });
+    expect(ctx.tags).toEqual({ feature: 'feedback', op: 'submit', channel: 'public' });
     /* THE POINT OF "class-only": this is the app's own bug channel, so the body in flight
        is the reporter's prose, their address and possibly a screenshot. None of it may
        ride along to Sentry. */
@@ -337,13 +368,13 @@ describe('FeedbackForm — post-merge fix set (round 5)', () => {
     fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ success: true }) }));
     vi.stubGlobal('fetch', fetchMock);
     const { rerender } = render(<FeedbackForm onClose={() => {}} />);
-    const before = screen.getByRole('status');
+    const before = gateStatusRegion();
     expect(before).toHaveTextContent('');
 
     h.self = { id: 'u1', email: SYNTHETIC };
     rerender(<FeedbackForm onClose={() => {}} />);
 
-    const after = screen.getByRole('status');
+    const after = gateStatusRegion();
     expect(after).toBe(before);
     expect(after).toHaveTextContent(/couldn't load your email address/i);
   });
@@ -435,7 +466,11 @@ describe('FeedbackForm — post-merge fix set (round 5)', () => {
       </>
     );
 
-    const statuses = Array.from(document.querySelectorAll('[role="status"]'));
+    /* REPOINTED Phase 88.6-31 — this was `[role="status"]`, which is now FOUR nodes across two
+       forms (each form has a gate line AND an attach-success region). The selector moves to the
+       gate line's id SUFFIX, which is what this test was always about: one per form, distinct
+       between forms, and it is the one `aria-describedby` names. */
+    const statuses = Array.from(document.querySelectorAll('[id$="-submit-status"]'));
     expect(statuses).toHaveLength(2);
     const ids = statuses.map((n) => n.id);
     expect(ids[0]).toBeTruthy();
@@ -448,5 +483,226 @@ describe('FeedbackForm — post-merge fix set (round 5)', () => {
       expect(btn.getAttribute('aria-describedby')).toContain(ids[i]);
       expect(btn.getAttribute('aria-describedby')).not.toContain(ids[i === 0 ? 1 : 0]);
     });
+  });
+});
+
+/* ---------------------------------------------------------------------------
+   PHASE 88.6-31 — the round-7 D-21 residuals in this form.
+
+   Every arm below was run against the UNFIXED component (or a deliberately planted
+   wrong fix) before being accepted; the PRESERVATION halves are labelled as such so a
+   reader can tell the two apart.
+   --------------------------------------------------------------------------- */
+
+describe('FeedbackForm — Phase 88.6-31 (D-21 residuals)', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  const overSizeFile = (name: string) =>
+    new File([new Uint8Array(2 * 1024 * 1024 + 1)], name, { type: 'image/png' });
+  const goodFile = (name: string) => new File([new Uint8Array(8)], name, { type: 'image/png' });
+  const fileInput = () => document.querySelector('input[type="file"]') as HTMLInputElement;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.self = { id: 'u1', email: APP_EMAIL };
+    h.query = {};
+    fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ success: true }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    h.self = undefined;
+    h.query = {};
+  });
+
+  // ---- the migrated Remove-screenshot control (D48 / UI-SPEC §3.2 + §1.2 V-15) ----
+
+  it('the Remove control is findable BY ROLE AND NAME in the state that mounts it, and carries the ghost class list — not `btn-primary`', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    await user.upload(fileInput(), goodFile('shot.png'));
+
+    const remove = await screen.findByRole('button', { name: /remove screenshot/i });
+    // THE CLASS-LIST PIN that catches an OMITTED `variant` — Button's cva default is
+    // `primary`, so a variant-less `<Button size="icon">` would paint a purple close button.
+    expect(remove.className).toContain('bg-transparent');
+    expect(remove.className).not.toContain('btn-primary');
+    // `size="icon"` supplies the 44x44 floor this control had at NO width before.
+    expect(remove.className).toContain('min-h-11');
+    expect(remove.className).toContain('min-w-11');
+    // The glyph is a CHILD; no `text-*` size is authored on the button element (it would be
+    // DEAD under `.btn`'s unlayered font-size).
+    expect(remove.className).not.toMatch(/(^|\s)text-(xs|sm|base|lg|xl|2xl|3xl)(\s|$)/);
+    const glyph = remove.querySelector('span[aria-hidden="true"]');
+    expect(glyph).not.toBeNull();
+    expect(glyph!.className).toContain('text-lg');
+    expect(glyph!.textContent).toBe('×');
+  });
+
+  it('R2 #195 / WCAG 2.4.3 — activating Remove from its own handler hands focus to the re-mounted file input, not to <body>', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+    await user.upload(fileInput(), goodFile('shot.png'));
+    const remove = await screen.findByRole('button', { name: /remove screenshot/i });
+
+    await user.click(remove);
+
+    // Settle on the branch-specific element: the input only exists in the ELSE arm.
+    await waitFor(() => expect(fileInput()).toBeInTheDocument());
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(fileInput());
+  });
+
+  it('PRESERVATION — the decorative screenshot glyph is aria-hidden, and the round 6 #30 `sr-only peer` sibling structure is untouched', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+
+    // The else-arm structure first (preservation half).
+    const input = fileInput();
+    expect(input).toHaveClass('sr-only');
+    expect(input).toHaveClass('peer');
+    const label = document.querySelector(`label[for="${input.id}"]`)!;
+    expect(label.className).toMatch(/peer-focus-visible:ring-2/);
+
+    await user.upload(input, goodFile('shot.png'));
+    await screen.findByRole('button', { name: /remove screenshot/i });
+    const glyph = document.querySelector('svg.w-5.h-5');
+    expect(glyph).not.toBeNull();
+    expect(glyph).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  // ---- the attach-success region (V-18) ----
+
+  it('NODE IDENTITY — the attach region exists, is `status` (never `alert`), and is EMPTY before any attach; the SAME node carries the message after', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+
+    const before = attachStatusRegion();
+    expect(before).toHaveAttribute('role', 'status');
+    expect(before).not.toHaveAttribute('role', 'alert');
+    expect(before).toHaveTextContent('');
+    // NO idle delta: no margin and no min-height while empty (V-18).
+    expect(before.className).not.toMatch(/\bmt-\d/);
+    expect(before.className).not.toMatch(/\bmin-h-/);
+    // `sr-only` is the RECORDED REJECTED ARM — the line is VISIBLE when set.
+    expect(before.className).not.toContain('sr-only');
+
+    await user.upload(fileInput(), goodFile('evidence.png'));
+
+    // IDENTITY, not presence — this is what catches a conditionally-mounted region: a fresh
+    // look-up of the SAME id must return the IDENTICAL node object.
+    const after = attachStatusRegion();
+    expect(after).toBe(before);
+    expect(after).toHaveTextContent('evidence.png');
+    // Bounded visually, unbounded in text content.
+    expect(after.className).toContain('truncate');
+  });
+
+  it('THE DISCRIMINATING ASSERTION — a REJECTED file leaves the attach region EMPTY while `screenshotError` populates (a `screenshot`-derived region cannot tell these apart)', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+
+    /* The OVER-SIZE arm rather than the wrong-type one, for the reason the round-5 suite
+       already records: user-event filters an upload against the input's own `accept`, so a
+       text/plain file never reaches the handler and the assertion would pass vacuously. */
+    await user.upload(fileInput(), overSizeFile('huge.png'));
+
+    // POSITIVE settle signal first — an absence claim asserted on the first tick observes
+    // nothing. Wait for the rejection to land, THEN assert the attach region stayed empty.
+    await waitFor(() =>
+      expect(document.querySelector('[id$="-screenshot-error"]')).toHaveTextContent(/too large/i)
+    );
+    expect(attachStatusRegion()).toHaveTextContent('');
+  });
+
+  it('remove-then-reattach of the SAME file announces TWICE — the region clears on Remove and is re-set on the next attach', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+
+    await user.upload(fileInput(), goodFile('same.png'));
+    expect(attachStatusRegion()).toHaveTextContent('same.png');
+
+    await user.click(await screen.findByRole('button', { name: /remove screenshot/i }));
+    await waitFor(() => expect(fileInput()).toBeInTheDocument());
+    // CLEAR PATH 1 — a region still asserting an attachment after Remove is wrong, not stale.
+    expect(attachStatusRegion()).toHaveTextContent('');
+
+    await user.upload(fileInput(), goodFile('same.png'));
+    expect(attachStatusRegion()).toHaveTextContent('same.png');
+  });
+
+  // ---- the post-success reset ----
+
+  it('the post-success reset clears the submit error, the screenshot error AND the attach message — all three, today it clears none of them', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      render(<FeedbackForm onClose={() => {}} />);
+
+      // Populate BOTH error states and the attach region before the successful submit — a
+      // test that checks only `error` passes with two thirds of the bug intact.
+      await user.upload(fileInput(), overSizeFile('huge.png'));
+      await waitFor(() =>
+        expect(document.querySelector('[id$="-screenshot-error"]')).toHaveTextContent(/too large/i)
+      );
+      await user.upload(fileInput(), goodFile('ok.png'));
+      expect(attachStatusRegion()).toHaveTextContent('ok.png');
+
+      fetchMock.mockImplementationOnce(async () => {
+        throw new TypeError('Failed to fetch');
+      });
+      await user.type(screen.getByPlaceholderText(/Brief description/i), 'A subject');
+      await user.type(screen.getByPlaceholderText(/provide as much detail/i), 'A description.');
+      await user.click(screen.getByRole('button', { name: /^Submit$/i }));
+      await waitFor(() =>
+        expect((document.querySelector('[id$="-submit-error"]')?.textContent ?? '').length)
+          .toBeGreaterThan(0)
+      );
+
+      // Now succeed. The 2s timer body is what must clear all three.
+      await user.click(screen.getByRole('button', { name: /^Submit$/i }));
+      await waitFor(() => expect(screen.getByText(/Thank You/i)).toBeInTheDocument());
+      await vi.advanceTimersByTimeAsync(2500);
+
+      await waitFor(() => expect(screen.queryByText(/Thank You/i)).toBeNull());
+      expect(document.querySelector('[id$="-submit-error"]')).toHaveTextContent('');
+      expect(document.querySelector('[id$="-screenshot-error"]')).toHaveTextContent('');
+      expect(attachStatusRegion()).toHaveTextContent('');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // ---- R1: the raw read, and the NAMED §6.2 exception that keeps the region ----
+
+  it('SPEC R1 — a failed submit renders the RATIFIED register line in the ASSERTIVE errorId region, never the backend string, and no toast replaces it', async () => {
+    fetchMock.mockImplementation(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    const user = userEvent.setup();
+    render(<FeedbackForm onClose={() => {}} />);
+
+    await user.type(screen.getByPlaceholderText(/Brief description/i), 'A subject');
+    await user.type(screen.getByPlaceholderText(/provide as much detail/i), 'A description.');
+    await user.click(screen.getByRole('button', { name: /^Submit$/i }));
+
+    const box = () => document.querySelector('[id$="-submit-error"]')!;
+    await waitFor(() => expect((box().textContent ?? '').length).toBeGreaterThan(0));
+    // The NAMED §6.2 mutation-row exception: the region is PRESERVED at assertive politeness
+    // and only its VALUE moved onto the register.
+    expect(box()).toHaveAttribute('role', 'alert');
+    expect(box()).toHaveAttribute('aria-live', 'assertive');
+    // Neither the raw upstream string nor the retired authored fallback.
+    expect(box()).not.toHaveTextContent('Failed to fetch');
+    expect(box()).not.toHaveTextContent(/failed to submit feedback/i);
+    /* The register's own line for this failure shape. MEASURED, not assumed: a bare
+       `TypeError('Failed to fetch')` derives the `network` code, so `getFetchErrorMessage(err)`
+       — called with NO `fallback`, so no copy was authored (P1) — answers with
+       `MESSAGE_BY_CODE.network` (`useFetchErrorState.ts:47`). */
+    expect(box()).toHaveTextContent(/couldn't reach the server/i);
   });
 });

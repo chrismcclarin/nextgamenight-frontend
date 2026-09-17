@@ -2112,12 +2112,16 @@ const WEIGHT_ROSTER: ExemptionRoster = {
       '3 off-scale weight sites (3 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-05, 88.6-10, 88.6-12, 88.6-13, 88.6-15, 88.6-16, 88.6-31, 88.6-43.',
     owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
   },
-  'app/components/FeedbackForm.js': {
-    sites: 4,
-    why:
-      '4 off-scale weight sites (4 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-05, 88.6-10, 88.6-13, 88.6-18, 88.6-22, 88.6-31, 88.6-32, 88.6-33, 88.6-39, 88.6-43, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-31 task 1 (wave 7, 2026-09-16): `app/components/FeedbackForm.js`
+  // carried `sites: 4` and the count was EXACT — all four `font-medium`, all four the SAME site
+  // shape: the form's field labels (Type, Subject, Description, Screenshot), each already
+  // carrying `text-content-secondary` against body text that does not. §4.5's EMPHASIS outcome,
+  // so the utility is DELETED and the distinction is carried by the colour token each site
+  // already had. The file ships the DROPPED-UTILITY spelling of that outcome (plans 20 and 32's
+  // precedent), not the explicit `font-normal` one (plans 25 and 33) — both are gate-legal and
+  // the phase ships both; the house-shape question is plan 46's. `(optional)`'s existing
+  // explicit `font-normal` at the Screenshot label is byte-unchanged and was never in this count.
+  // Entry DELETED, not zeroed — the roster is exact in both directions.
   // DELETED by plan 88.6-22 task 1 (wave 7, 2026-09-16): `app/components/FriendInvitePanel.js`
   // carried `sites: 5` — 3 font-semibold on the h3s (:315, :445, :521), which left with the
   // `Heading` migration, and 2 font-medium (:364 the friend name, :412 the bulk-invite result

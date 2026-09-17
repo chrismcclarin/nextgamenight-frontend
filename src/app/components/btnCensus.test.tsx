@@ -349,11 +349,17 @@ const BTN_EXEMPT: ExemptionRoster = {
     why: 'plan 88.6-31 sweeps the feedback and notification cluster, FeedbackButton.js included',
     owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
   },
-  'app/components/FeedbackForm.js': {
-    sites: 2,
-    why: 'plan 88.6-31 sweeps the feedback and notification cluster, FeedbackForm.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-31 task 1 (wave 7, 2026-09-16): `app/components/FeedbackForm.js`
+  // carried `sites: 2` and the count was EXACT — the modal footer's Cancel (`btn btn-secondary`)
+  // and Submit (`btn btn-primary`). Both are `<Button size="default">` now; Submit carries an
+  // explicit `type="submit"`, because `Button.tsx` defaults `type` to `"button"` and dropping it
+  // would have silently un-submitted the form. NEITHER carried a dead utility to delete — the
+  // two className strings were the `.btn` pair and nothing else. A THIRD control in this file
+  // also migrated in the same commit and is NOT a census move: the remove-screenshot `×` was a
+  // BARE `<button>` with no `.btn` at all (so it was never in this population), and became
+  // `<Button variant="ghost" size="icon">` under UI-SPEC §3.2's bare-button row / §1.2 V-15.
+  // Entry DELETED rather than zeroed — the roster is exact in both directions, so a zeroed entry
+  // would red as a fossil permission.
   // DELETED by plan 88.6-33 task 2 (wave 7, 2026-09-16): `app/components/QRCodeModal.js`
   // carried `sites: 2` and the count was EXACT — the "Copy Invite Link" CTA
   // (`w-full btn btn-primary py-2.5 text-center mb-3`) and the full-width "Close"
