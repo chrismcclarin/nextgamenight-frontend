@@ -187,37 +187,42 @@ export default function EventDayModal({
                 const rowGroundPair = resolveGroupGround(storedGroupColour(event.Group));
                 const ground = rowGroundPair?.dark ?? null;
                 const tinted = rowGroundPair?.light ?? null;
-                const hasBgImage = !!groupBgImage;
                 /*
-                 * DECISION Phase 88.3.1 (plan 08, AMENDMENT AC): a SECOND image
-                 * flag, derived from the VALIDATED `safeBgImageStyle` result,
-                 * sits beside the raw `hasBgImage` above — and only
-                 * `groupInkVars` reads it.
+                 * DECISION Phase 88.6-41 (W49 / FSEC-03): ONE image flag, derived
+                 * from the VALIDATED `safeBgImageStyle` output. This replaces the
+                 * 88.3.1 plan-08 two-flag marker, whose REJECTED arm ("converging
+                 * `hasBgImage` onto the validated style here … converge all four
+                 * in one pass, with a rendered check") this plan discharged.
+                 * History, because it records why the divergence shipped:
+                 * `safeBgImageStyle` drops relative/invalid URLs, so a
+                 * truthy-but-rejected URL paints NO image — that row is a plain
+                 * coloured card and must get its ink. 88.3.1 fixed the INK half
+                 * with a second flag and left the TEXT half raw, because
+                 * converging it changes what those rows paint.
                  *
-                 * WHY TWO. `safeBgImageStyle` drops relative/invalid URLs
-                 * (FSEC-03), so a truthy-but-rejected URL paints NO image: that
-                 * row is a plain coloured card and must get its ink. Feeding
-                 * `groupInkVars` the raw flag would withhold the ink from exactly
-                 * those rows and leave Req 8's defect standing on them.
+                 * The surviving flag keeps the RAW NAME because that is the name
+                 * every treatment below already reads; the RHS moved onto the
+                 * validated side. `grouplist.js` is the reference shape.
                  *
-                 * REJECTED: converging `hasBgImage` onto the validated style
-                 * here, which is the wave-12 owner ruling already applied at
-                 * `grouplist.js`. It is the right end state, but it CHANGES WHAT
-                 * THOSE ROWS PAINT (white-on-image treatment -> plain contrast
-                 * maths) on a surface this plan was not scoped to re-look at, and
-                 * the same divergence exists at `CalendarListView.js`,
-                 * `CalendarMonthView.js` and `groupHomePage/page.js`. Registered
-                 * as one family in `.planning/deferred/phase-88.6.md`; converge
-                 * all four in one pass, with a rendered check. Deleting either
-                 * flag here is a decision, not a cleanup.
+                 * Its PAIRED raw-URL consumers converged in the SAME commit —
+                 * `isThemedRow` below and the 0.85 white wash further down. A
+                 * flag converged without its wash leaves TEXT_ON_DARK under a
+                 * still-raw white wash on an invalid-URL row over a dark preset:
+                 * white on near-white. A decision, not a cleanup.
                  */
                 const bgImageStyle = safeBgImageStyle(groupBgImage);
-                const hasValidBgImage = !!bgImageStyle;
+                const hasBgImage = !!bgImageStyle;
                 // No image and no group colour: the row is on the themed
                 // surface, so the shared fallback resolution owns its text.
                 // Keyed on `ground` (not the stored hex) and therefore declared
                 // AFTER it — see the CR-02 marker below.
-                const isThemedRow = !groupBgImage && !ground;
+                // AMENDED Phase 88.6-41 (W49): gated on the validated flag, not
+                // the raw URL. `CalendarListView.js`'s twin already read the flag,
+                // so the two files were ASYMMETRIC; they are one shape now. The
+                // VISIBLE delta is real and intended: an invalid-URL, no-colour
+                // row leaves the TEXT_ON_LIGHT + white-shadow branch and takes
+                // the plain-ground pole, which is what it always should have had.
+                const isThemedRow = !hasBgImage && !ground;
                 /*
                  * DECISION Phase 88.3 (R2-6): the title and subtitle treatments
                  * are computed TWICE — against the stored hex for dark mode and
@@ -389,12 +394,15 @@ export default function EventDayModal({
                        * `.js` file, so a forgotten option degrades silently to
                        * `false`, the UNSAFE direction (a preset's tinted ink
                        * painted over a user's photograph).
-                       * REJECTED: the raw `hasBgImage` — see the two-flag marker
-                       * above.
+                       * AMENDED Phase 88.6-41 (W49): the "REJECTED: the raw
+                       * `hasBgImage`" note that sat here is retired with its
+                       * parent two-flag marker. There is no raw flag left to
+                       * reject — `hasBgImage` IS `!!bgImageStyle` now; see the
+                       * marker at its declaration, and tests 29/31.
                        */
                       ...groupInkVars(rowGroundPair, {
                         surface: 'card',
-                        hasBackgroundImage: hasValidBgImage,
+                        hasBackgroundImage: hasBgImage,
                       }),
                       ...bgImageStyle,
                       backgroundSize: 'cover',
@@ -406,13 +414,17 @@ export default function EventDayModal({
                          above for the tokens it became and why. */
                     }}
                   >
+                    {/* AMENDED Phase 88.6-41 (W49): the contrast wash is gated on
+                        the VALIDATED flag, in the SAME commit as the treatments
+                        above — byte-identical change to `CalendarListView.js`'s
+                        twin wash, because it is the same designed pair. */}
                     <div style={{
                       position: 'absolute',
                       top: 0,
                       left: 0,
                       right: 0,
                       bottom: 0,
-                      backgroundColor: groupBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent',
+                      backgroundColor: hasBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent',
                       borderRadius: '0.5rem',
                     }} />
                     <div className="flex justify-between items-start relative z-10">

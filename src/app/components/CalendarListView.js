@@ -1093,28 +1093,31 @@ const EventRow = forwardRef(function EventRow(
   const groupBgImage = event.Group?.background_image_url;
   const groupProfilePic = event.Group?.profile_picture_url;
 
-  const hasBgImage = !!groupBgImage;
   /*
-   * DECISION Phase 88.3.1 (plan 08, AMENDMENT AC): a SECOND image flag, derived
-   * from the VALIDATED `safeBgImageStyle` result, sits beside the raw
-   * `hasBgImage` above — and only `groupInkVars` reads it.
+   * DECISION Phase 88.6-41 (W49 / FSEC-03): ONE image flag, derived from the
+   * VALIDATED `safeBgImageStyle` output. This replaces the 88.3.1 plan-08
+   * two-flag marker, whose REJECTED arm ("converging `hasBgImage` onto the
+   * validated style here … converge all four in one pass, with a rendered
+   * check") this plan discharged. History, because it is the record of why the
+   * divergence shipped: `safeBgImageStyle` drops relative/invalid URLs, so a
+   * truthy-but-rejected URL paints NO image — that row is a plain coloured card
+   * and must get its ink. 88.3.1 fixed the INK half with a second flag and left
+   * the TEXT half raw, because converging it changes what those rows paint.
    *
-   * WHY TWO. `safeBgImageStyle` drops relative/invalid URLs (FSEC-03), so a
-   * truthy-but-rejected URL paints NO image: that row is a plain coloured card
-   * and must get its ink. Feeding `groupInkVars` the raw flag would withhold the
-   * ink from exactly those rows and leave Req 8's defect standing on them.
+   * The surviving flag keeps the RAW NAME because that is the name every text
+   * treatment below already reads; it is the RHS that moved onto the validated
+   * side. `grouplist.js` is the reference shape (unchanged, and the control in
+   * `groupColourRendering.test.ts` test 31's source scan).
    *
-   * REJECTED: converging `hasBgImage` onto the validated style here, which is
-   * the wave-12 owner ruling already applied at `grouplist.js`. It is the right
-   * end state, but it CHANGES WHAT THOSE ROWS PAINT (white-on-image treatment ->
-   * plain contrast maths) on a surface this plan was not scoped to re-look at,
-   * and the same divergence exists at `CalendarMonthView.js` and
-   * `groupHomePage/page.js`. Registered as one family in
-   * `.planning/deferred/phase-88.6.md`; converge all four in one pass, with a
-   * rendered check. Deleting either flag here is a decision, not a cleanup.
+   * The 0.85 white wash below converged in the SAME commit, not in a follow-up:
+   * see the `onDarkGround` comment further down — the image case deliberately
+   * falls through to the DARK pole because the row washes the image white at
+   * 0.85. Converting the flag alone would put TEXT_ON_DARK under a still-raw
+   * white wash on an invalid-URL row over a dark preset — white on near-white.
+   * The flag and its wash are one designed pair. A decision, not a cleanup.
    */
   const bgImageStyle = safeBgImageStyle(groupBgImage);
-  const hasValidBgImage = !!bgImageStyle;
+  const hasBgImage = !!bgImageStyle;
   /*
    * DECISION Phase 88.3 (D-09, cascade fix): the row's ground is a MUTUALLY
    * EXCLUSIVE ternary gated on `tinted`, chosen OVER stacking the tint pair
@@ -1286,7 +1289,12 @@ const EventRow = forwardRef(function EventRow(
          * `hasBackgroundImage` is passed EXPLICITLY: this is a `.js` file, so a
          * forgotten option degrades silently to `false`, which is the UNSAFE
          * direction (a preset's tinted ink over a user's photograph).
-         * REJECTED: the raw `hasBgImage` — see the two-flag marker above.
+         * AMENDED Phase 88.6-41 (W49): the "REJECTED: the raw `hasBgImage` — see
+         * the two-flag marker above" note that sat here is retired with its
+         * parent. There is no raw flag left to reject: `hasBgImage` IS the
+         * validated flag now (`!!bgImageStyle`, see the marker at its
+         * declaration), and `groupColourRendering.test.ts` tests 29 and 31 are
+         * the machine check that it stays that way.
          *
          * KNOWN RESIDUAL, recorded so it is not read as an oversight: this row's
          * title and subtitle still fork on `--t-color*` from
@@ -1298,7 +1306,7 @@ const EventRow = forwardRef(function EventRow(
          */
         ...groupInkVars(rowGroundPair, {
           surface: 'card',
-          hasBackgroundImage: hasValidBgImage,
+          hasBackgroundImage: hasBgImage,
         }),
         ...bgImageStyle,
         backgroundSize: 'cover',
@@ -1308,12 +1316,16 @@ const EventRow = forwardRef(function EventRow(
         borderColor: 'rgba(0,0,0,0.2)',
       }}
     >
-      {/* contrast wash for bg images */}
+      {/* contrast wash for bg images.
+          AMENDED Phase 88.6-41 (W49): gated on the VALIDATED flag, in the SAME
+          commit as the text treatments above. An invalid URL paints no image, so
+          this used to wash a plain coloured row white at 0.85 while the treatment
+          (now converged) assumed no image — white text on near-white. */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
-          backgroundColor: groupBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent',
+          backgroundColor: hasBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent',
           borderRadius: '0.5rem',
         }}
       />

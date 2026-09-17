@@ -52,7 +52,7 @@ const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
  * the same custom-property + `dark:` mechanism as the ground, per the shipped
  * DECISION at EventScheduler.tsx. A decision, not a cleanup.
  *
- * DECISION Phase 88.3-16: this is a MODULE-LEVEL helper taking `groupBgImage`
+ * DECISION Phase 88.3-16: this is a MODULE-LEVEL helper taking the image flag
  * as an explicit second argument, chosen OVER the inner arrow function that
  * closed over it and was re-declared once per event inside
  * `dayEvents.slice(0, 2).map`. Both tile variants now need it, and one
@@ -104,16 +104,27 @@ const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
  * hoist is precisely what changed its blast radius. Gate B test 7 now asserts
  * that no identifier is ever assigned to `WebkitTextStroke` in these files.
  *
- * `groupBgImage` is passed as `null` for the COMPACT variant at the call site
- * (`tileBgImage`), because that tile deliberately paints no background image —
- * see the "NO BACKGROUND IMAGE HERE" marker further down. Passing the URL made
- * a coloured group that ALSO has an image take the heavy image-tuned black
+ * The flag is passed as `false` for the COMPACT variant at the call site
+ * (`tileHasBgImage`), because that tile deliberately paints no background image —
+ * see the "NO BACKGROUND IMAGE HERE" marker further down. Passing a truthy value
+ * made a coloured group that ALSO has an image take the heavy image-tuned black
  * shadow over a pale t = 0.70 tint. REJECTED: reading `variant` inside the
  * helper — it is deliberately module-level and argument-driven (marker above),
  * so the variant fork belongs at the call site.
+ *
+ * AMENDED Phase 88.6-41 (W49 / D-20 (i)): the second parameter is now the
+ * already-computed BOOLEAN `hasBgImage`, not the raw `background_image_url`
+ * string. Everything above is a NAMING correction only — 88.3-16's
+ * anti-memoization rejection and the call-site variant fork both stand
+ * unamended. REJECTED: calling `safeBgImageStyle` inside this helper — it runs
+ * `new URL()` twice per call and the helper runs twice per tile, so that would
+ * turn 1 validation per tile into 3 on a deliberately-unmemoized loop, and it
+ * would break `groupColourRendering.test.ts` test 29's `const F = !!X` /
+ * `const X = safeBgImageStyle(…)` derivation scan. The cheap boolean already
+ * exists at the call site.
  */
-const tileTextTreatment = (tileGround, groupBgImage) => {
-  if (groupBgImage) {
+const tileTextTreatment = (tileGround, hasBgImage) => {
+  if (hasBgImage) {
     return {
       textShadow: '2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 2px rgba(0, 0, 0, 0.9)',
       WebkitTextStroke: '0.5px rgba(0, 0, 0, 0.9)',
@@ -511,32 +522,55 @@ export default function CalendarMonthView({
                         const groupProfilePic = event.Group?.profile_picture_url;
                         const groupBgImage = event.Group?.background_image_url;
                         /*
-                         * DECISION Phase 88.3.1 (plan 09, AMENDMENT AC — the same
-                         * two-flag shape plan 08 shipped at `CalendarListView.js`
-                         * and `EventDayModal.js`): a SECOND image flag derived from
-                         * the VALIDATED `safeBgImageStyle` result, read ONLY by
-                         * `groupInkVars`.
+                         * DECISION Phase 88.6-41 (W49 / FSEC-03), replacing the
+                         * 88.3.1 plan-09 two-flag marker that stood here and whose
+                         * REJECTED arm ("converging `tileBgImage` onto the validated
+                         * style … converge all of them in one pass with a rendered
+                         * check") this plan DISCHARGED. History kept, because the
+                         * reasoning that made two flags correct in 88.3.1 is the
+                         * record of why the divergence shipped:
                          *
-                         * WHY TWO. `safeBgImageStyle` drops relative/invalid URLs
-                         * (FSEC-03), so a truthy-but-rejected URL paints NO image:
-                         * that tile IS a plain coloured tile and must get its ink.
-                         * Feeding `groupInkVars` the raw `groupBgImage` would
-                         * withhold the ink from exactly those tiles.
-                         * REJECTED: converging `tileBgImage` onto the validated
-                         * style here — it CHANGES WHAT AN INVALID-URL TILE PAINTS
-                         * (the image-tuned black shadow/stroke gives way to the
-                         * plain treatment) on a surface this plan was not scoped to
-                         * re-look at, and the same divergence is live at three
-                         * sibling files. Registered as one 4-site family in
-                         * `.planning/deferred/phase-88.6.md`; converge all of them in
-                         * one pass with a rendered check. Deleting either flag here
-                         * is a decision, not a cleanup.
+                         * WHY TWO, THEN. `safeBgImageStyle` drops relative/invalid
+                         * URLs (FSEC-03), so a truthy-but-rejected URL paints NO
+                         * image: that tile IS a plain coloured tile and must get its
+                         * ink. Feeding `groupInkVars` the RAW URL would withhold the
+                         * ink from exactly those tiles. 88.3.1 fixed the ink half and
+                         * deliberately left the TEXT-TREATMENT half raw, because
+                         * converging it changes what an invalid-URL tile paints and
+                         * that plan was not scoped to re-look at the surface.
+                         *
+                         * WHY ONE, NOW. This file is the fourth of a five-file family
+                         * (`grouplist.js` was already right, and is the reference);
+                         * all five now derive the flag from the VALIDATED style, and
+                         * the paired raw-URL consumers — the `rgba(255,255,255,0.7)`
+                         * overlay below and `tileTextTreatment`'s branch — converged
+                         * in the SAME commit, because a treatment converged without
+                         * its wash is white text under a still-raw white wash. The
+                         * rendered invalid-URL check the old marker demanded is in
+                         * `CalendarMonthView.test.tsx` and its three siblings, and the
+                         * source-scan that keeps this from silently regressing is
+                         * `groupColourRendering.test.ts` test 31 — the raw identifier
+                         * may appear TWICE in this file and no more: its own `const`
+                         * and the `safeBgImageStyle(` argument.
+                         * REJECTED: keeping the raw flag for the text treatment "so
+                         * the pixels do not move". The pixels moving IS the fix; a
+                         * treatment computed for an image the renderer refused to
+                         * apply is the defect. A decision, not a cleanup.
                          */
                         const bgImageStyle = safeBgImageStyle(groupBgImage);
                         const hasValidBgImage = !!bgImageStyle;
                         // CR-01 (88.3-cr): the COMPACT tile renders no image, so
                         // it must not take the image-tuned text treatment either.
-                        const tileBgImage = variant === 'compact' ? null : groupBgImage;
+                        // AMENDED Phase 88.6-41 (W49): the fork now carries the
+                        // BOOLEAN (and is named for it) instead of the raw URL. The
+                        // FORK ITSELF SURVIVES — dropping it would hand the compact
+                        // arm the full tile's flag and reinstate the image-tuned
+                        // shadow + stroke over a pale t = 0.70 tint, which is exactly
+                        // the regression CR-01 fixed, and nothing in the tree pins it.
+                        // REJECTED: `variant === 'compact' ? false : hasValidBgImage`
+                        // at the `groupInkVars` argument below — see the marker there;
+                        // same expression, different site, different consequence.
+                        const tileHasBgImage = variant === 'compact' ? false : hasValidBgImage;
                         // The R2-6 past-date theme-fork reasoning now lives with
                         // `tileTextTreatment` at module level (plan 88.3-16).
                         /*
@@ -620,7 +654,7 @@ export default function CalendarMonthView({
                          */
                         const tileTextVars = themedTextStyleVars(
                           {
-                            ...tileTextTreatment(ground, tileBgImage),
+                            ...tileTextTreatment(ground, tileHasBgImage),
                             color: isPastDate
                               ? (tinted
                                   ? (isDarkBackground(ground) ? SUBTEXT_MUTED_ON_DARK : SUBTEXT_MUTED_ON_LIGHT)
@@ -628,7 +662,7 @@ export default function CalendarMonthView({
                               : getEventTileTextColor(ground),
                           },
                           {
-                            ...tileTextTreatment(tinted, tileBgImage),
+                            ...tileTextTreatment(tinted, tileHasBgImage),
                             color: isPastDate
                               ? (tinted
                                   ? (isDarkBackground(tinted) ? SUBTEXT_MUTED_ON_DARK : SUBTEXT_MUTED_ON_LIGHT)
@@ -704,9 +738,10 @@ export default function CalendarMonthView({
                                full tile does — never a raw `url()`. The new Gate B `it(` asserts
                                every `url(`/`backgroundImage` in this file sits inside a
                                `safeBgImageStyle(` call. CR-01 (88.3-cr) extends the same rule to
-                               the TEXT treatment: this tile passes `tileBgImage` (null in the
-                               compact variant), so the image-tuned black shadow can no longer land
-                               on a pale t = 0.70 tint just because the group also has a photo.
+                               the TEXT treatment: this tile passes `tileHasBgImage` (`false` in the
+                               compact variant — `null` until 88.6-41 moved the fork onto the
+                               validated boolean), so the image-tuned black shadow can no longer
+                               land on a pale t = 0.70 tint just because the group also has a photo.
 
                                TARGET SIZE — INHERITED, disclosed, not resized (owner ruling
                                2026-08-27). `role="button"` promotes this to a first-class
@@ -970,8 +1005,10 @@ export default function CalendarMonthView({
                                *
                                * CAVEAT, recorded 2026-08-30 (code review #2/#28): the rule
                                * stated above does NOT hold for the COMPACT variant, and that
-                               * is accepted rather than fixed. `tileBgImage` is `null` when
-                               * `variant === 'compact'` (the compact tile paints no image),
+                               * is accepted rather than fixed. `tileHasBgImage` is `false` when
+                               * `variant === 'compact'` (the compact tile paints no image;
+                               * spelled `null` until 88.6-41 renamed the local and moved it
+                               * onto the boolean — a naming change, not a behaviour change),
                                * yet `hasValidBgImage` is derived from the FULL image — so a
                                * compact tile of an image-bearing group is handed
                                * `hasBackgroundImage: true` and gets `{}` back, i.e. it is
@@ -989,9 +1026,25 @@ export default function CalendarMonthView({
                                * call whose result is provably discarded, and test 9's
                                * derivation scan requires the literal
                                * `const F = !!X` / `const X = safeBgImageStyle(…)` chain — a
-                               * ternary on the flag itself reds it. Resolve this together with
-                               * the five-site `hasBackgroundImage` convergence that Phase 88.6
-                               * already owns (`.planning/deferred/phase-88.6.md`), not before.
+                               * ternary on the flag itself reds it.
+                               *
+                               * AMENDED Phase 88.6-41 (W49): the five-site
+                               * `hasBackgroundImage` convergence LANDED — all five files now
+                               * derive the flag from the validated `safeBgImageStyle` output
+                               * and their paired washes/scrims converged with it. The closing
+                               * sentence that used to sit here ("Resolve this together with the
+                               * five-site convergence … not before") is DISCHARGED and struck.
+                               * Everything above it is UNCHANGED and STILL ACCEPTED: the
+                               * convergence changed `tileTextTreatment`'s parameter and the
+                               * overlay gate, and it moved the compact fork onto the boolean,
+                               * but it did NOT touch THIS `groupInkVars` argument — so the
+                               * compact-variant caveat, its permanently-zero impact argument
+                               * and the REJECTED alternative above all still hold, for the same
+                               * reasons. The compact fork at the tile locals above now carries
+                               * `variant === 'compact' ? false : hasValidBgImage`; that is a
+                               * DIFFERENT SITE feeding `tileTextTreatment`, where the result is
+                               * consumed. Changing it did not license changing this one, and
+                               * keeping this one does not block that one.
                                */
                               ...groupInkVars(tileGroundPair, {
                                 surface: 'tile',
@@ -1007,7 +1060,13 @@ export default function CalendarMonthView({
                             }}
                             title={tileLabel}
                           >
-                            {groupBgImage && (
+                            {/* AMENDED Phase 88.6-41 (W49 / D-20 (i)): gated on the
+                                VALIDATED flag, not the raw URL. An invalid URL paints
+                                no image, so washing that tile at 70% white dulled a
+                                plain coloured tile for nothing — and paired with the
+                                converged text treatment above it is the white-on-white
+                                case. The two convert together, never separately. */}
+                            {hasValidBgImage && (
                               <div style={{
                                 position: 'absolute',
                                 top: 0,

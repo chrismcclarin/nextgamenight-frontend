@@ -403,28 +403,34 @@ function GroupHomePage(){
      */
     const ground = headerGroundPair?.dark ?? null;
     const tinted = headerGroundPair?.light ?? null;
-    const hasHeaderImage = !!Group?.background_image_url;
     /*
-     * DECISION Phase 88.3.1 (plan 09, AMENDMENT AC — the two-flag shape plan 08
-     * shipped at `CalendarListView.js` and `EventDayModal.js`): a SECOND image
-     * flag, derived from the VALIDATED `safeBgImageStyle` result, read ONLY by
-     * `groupInkVars`.
+     * DECISION Phase 88.6-41 (W49 / FSEC-03): ONE image flag, derived from the
+     * VALIDATED `safeBgImageStyle` output. This replaces the 88.3.1 plan-09
+     * two-flag marker, whose REJECTED arm ("converging `hasHeaderImage` onto the
+     * validated style here … converge all of them in one pass with a rendered
+     * check") this plan discharged. History, because it records why the
+     * divergence shipped: `safeBgImageStyle` drops relative/invalid URLs, so a
+     * truthy-but-rejected URL paints NO image — that header IS a plain coloured
+     * card and must get its ink. 88.3.1 fixed the INK half with a second flag and
+     * left the TITLE treatment raw, because converging it changes what an
+     * invalid-URL header paints.
      *
-     * WHY TWO. `safeBgImageStyle` drops relative/invalid URLs (FSEC-03), so a
-     * truthy-but-rejected URL paints NO image: that header IS a plain coloured
-     * card and must get its ink. Feeding `groupInkVars` the raw `hasHeaderImage`
-     * would withhold the ink from exactly those headers.
-     * REJECTED: converging `hasHeaderImage` onto the validated style here. It is
-     * the right end state and is the wave-12 ruling already applied at
-     * `grouplist.js`, but it CHANGES WHAT AN INVALID-URL HEADER PAINTS (the
-     * white-on-image title treatment gives way to plain contrast maths) on a
-     * surface this plan was not scoped to re-look at, and the same divergence is
-     * live at three sibling files. Registered as one 4-site family in
-     * `.planning/deferred/phase-88.6.md`; converge all of them in one pass with a
-     * rendered check. Deleting either flag here is a decision, not a cleanup.
+     * THE DECLARATION MOVED, and that is load-bearing, not tidying.
+     * `hasHeaderImage` used to sit TWENTY LINES ABOVE the `safeBgImageStyle`
+     * call; swapping its right-hand side in place would have been a TDZ
+     * "Cannot access 'headerBgImageStyle' before initialization" on EVERY
+     * group-home render. It is declared AT the validated style now.
+     *
+     * Its PAIRED raw-URL gates converged in the SAME commit — the `dark:` 0.15
+     * dim's class gate and the inline 0.4 photo dim below. That pair is a SWAP,
+     * not a removal: an invalid-URL group WITH a stored colour moves out of the
+     * dim marker's case (1) (image -> 0.4, INLINE, both themes) into its case (2)
+     * (stored colour, no image -> transparent in light, 0.15 in dark, via the
+     * class). The half that ARRIVES is `dark:`-only, which is why the rendered
+     * check for it has to observe dark mode. A decision, not a cleanup.
      */
     const headerBgImageStyle = safeBgImageStyle(Group?.background_image_url);
-    const hasValidHeaderImage = !!headerBgImageStyle;
+    const hasHeaderImage = !!headerBgImageStyle;
 
     /*
      * `darkArm` — the ground-brightness half of the three header controls' fork.
@@ -601,8 +607,11 @@ function GroupHomePage(){
                      * and is the VALIDATED flag: this is a `.js` file, so an omitted
                      * option degrades silently to `false` — the UNSAFE direction, a
                      * preset's tinted ink painted over a user's photograph.
-                     * REJECTED: the raw `hasHeaderImage` — see the two-flag marker
-                     * above.
+                     * AMENDED Phase 88.6-41 (W49): the "REJECTED: the raw
+                     * `hasHeaderImage`" note that sat here is retired with its
+                     * parent two-flag marker. There is no raw flag left to reject
+                     * — `hasHeaderImage` IS `!!headerBgImageStyle` now; see the
+                     * marker at its declaration, and tests 29/31.
                      *
                      * KNOWN RESIDUAL, recorded so it is not read as an oversight: the
                      * h1 and its subtitle below still fork on `--t-color*` from
@@ -621,7 +630,7 @@ function GroupHomePage(){
                      */
                     ...groupInkVars(headerGroundPair, {
                         surface: 'card',
-                        hasBackgroundImage: hasValidHeaderImage,
+                        hasBackgroundImage: hasHeaderImage,
                     }),
                     ...headerBgImageStyle,
                     backgroundSize: 'cover',
@@ -662,8 +671,20 @@ function GroupHomePage(){
                     // and silently delete the dark dim. The guard is `tinted`,
                     // not raw `headerBgColor`, so a legacy non-hex colour is
                     // "no colour" here too — same rule as the ground above.
+                    //
+                    // AMENDED Phase 88.6-41 (W49): both cases now gate on the
+                    // VALIDATED `hasHeaderImage`, never the raw URL. The three
+                    // cases are UNCHANGED as cases; what changed is which case an
+                    // invalid URL lands in. An invalid-URL group WITH a stored
+                    // colour was in case (1) (inline 0.4, both themes) and is now
+                    // in case (2) (transparent light / `dark:` 0.15). That is a
+                    // SWAP, and the arriving half is `dark:`-only — a light-mode
+                    // "no 0.4 dim" assertion can never observe it, which is why
+                    // the rendered check reads the class in dark mode too.
+                    // The class-vs-inline split is PRESERVED exactly: the 0.15
+                    // stays a `dark:` class and is never an inline value.
                     className={
-                        tinted && !Group?.background_image_url
+                        tinted && !hasHeaderImage
                             ? 'dark:bg-[rgb(0_0_0/0.15)]'
                             : undefined
                     }
@@ -675,7 +696,7 @@ function GroupHomePage(){
                         bottom: 0,
                         zIndex: 0,
                         borderRadius: 'inherit',
-                        ...(Group?.background_image_url && {
+                        ...(hasHeaderImage && {
                             backgroundColor: 'rgba(0, 0, 0, 0.4)',
                         }),
                     }}

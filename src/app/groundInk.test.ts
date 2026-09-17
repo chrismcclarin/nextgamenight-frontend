@@ -315,23 +315,28 @@ const FALSE_POSITIVES: Record<string, FalsePositive> = {
   // These keys are LINE-keyed, so a stale key silently reclassifies a declared false positive as
   // a REAL offender: test 1 reported 3 CalendarMonthView sites against a 2-site roster before
   // this re-point, which is the shape that failure takes.
-  'app/components/CalendarMonthView.js:433': {
+  // RE-POINTED AGAIN by plan 88.6-41 (wave 9, W49): ink 433 -> 444 and 434 -> 445, ground
+  // 316 -> 327. Line-move only, +11 throughout, caused by the W49 convergence markers this
+  // plan added ABOVE these lines. The MECHANISM is untouched: the ink ternary still tests
+  // isCurrentDay first and the muted ground candidate still requires isCurrentDay. Re-pointed,
+  // NOT re-engineered — this roster is nobody's sweep to redesign.
+  'app/components/CalendarMonthView.js:444': {
     sites: 1,
     why: 'The ink ternary tests isCurrentDay FIRST (-> text-content-accent), so the isAdjacent arm can only be reached when isCurrentDay is false — while the muted ground candidate requires isCurrentDay. Structurally impossible, not debt.',
     owner: {
       kind: 'false-positive',
-      inkLine: 'app/components/CalendarMonthView.js:433',
-      groundLine: 'app/components/CalendarMonthView.js:316',
+      inkLine: 'app/components/CalendarMonthView.js:444',
+      groundLine: 'app/components/CalendarMonthView.js:327',
       conditions: ['ink requires !isCurrentDay && isAdjacent', 'ground requires isCurrentDay'],
     },
   },
-  'app/components/CalendarMonthView.js:434': {
+  'app/components/CalendarMonthView.js:445': {
     sites: 1,
     why: 'Same ink ternary: the "variant === full && isPastDate" arm is reached only when isCurrentDay and isAdjacent are both false, while the muted ground candidate requires isCurrentDay. Structurally impossible, not debt.',
     owner: {
       kind: 'false-positive',
-      inkLine: 'app/components/CalendarMonthView.js:434',
-      groundLine: 'app/components/CalendarMonthView.js:316',
+      inkLine: 'app/components/CalendarMonthView.js:445',
+      groundLine: 'app/components/CalendarMonthView.js:327',
       conditions: [
         'ink requires !isCurrentDay && !isAdjacent && variant === "full" && isPastDate',
         'ground requires isCurrentDay',
@@ -481,15 +486,15 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     // candidate, which is a property of the WALK, not of whether the site is debt. Deleting the
     // block with the fixed site would quietly retire the only thing proving the walk fans out at
     // all, and the by-name set above is empty now, so nothing else here would notice.
-    const cell = FORBIDDEN_ON_MUTED.find((r) => siteOf(r) === 'app/components/CalendarMonthView.js:433');
+    const cell = FORBIDDEN_ON_MUTED.find((r) => siteOf(r) === 'app/components/CalendarMonthView.js:444');
     expect(cell, 'the day cell\'s reported ink site must still be visible to the walk').toBeDefined();
     expect(
       cell!.grounds.length,
       'the five-arm ternary must produce candidate fan-out, otherwise the membership assertion below is trivially satisfied',
     ).toBeGreaterThan(1);
     expect(
-      cell!.grounds.some((g) => g.token === MUTED && g.frameLine === 316),
-      `:433 must CONTAIN a ${MUTED} candidate whose frame line is 316; got ${JSON.stringify(cell!.grounds.map((g) => `${g.token}@${g.frameLine}`))}`,
+      cell!.grounds.some((g) => g.token === MUTED && g.frameLine === 327),
+      `:444 must CONTAIN a ${MUTED} candidate whose frame line is 327; got ${JSON.stringify(cell!.grounds.map((g) => `${g.token}@${g.frameLine}`))}`,
     ).toBe(true);
   });
 
@@ -540,8 +545,8 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     expect(Object.keys(FALSE_POSITIVES).sort()).toEqual([
       // RE-POINTED by plan 88.6-27 task 3 (2026-09-16), 259/260 -> 280/281. This literal is the
       // SECOND place the line pin is written; both must move together.
-      'app/components/CalendarMonthView.js:433',
-      'app/components/CalendarMonthView.js:434',
+      'app/components/CalendarMonthView.js:444',
+      'app/components/CalendarMonthView.js:445',
       // RE-POINTED by plan 88.6-22 task 1 (2026-09-16), 364/370 -> 484/490. This literal is the
       // SECOND place the line pin is written; both must move together. See the re-point note on
       // the entries themselves.

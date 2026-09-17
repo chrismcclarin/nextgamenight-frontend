@@ -1169,8 +1169,12 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         'dim costs ~11.5 L* on the t = 0.70 tint and would fail Req 9\'s own rendered-pixel L* >= 75',
     ).toBeTruthy();
     expect(overlay!.text, 'the dim is not guarded on the PARSED tint').toContain('tinted');
+    // RE-POINTED plan 88.6-41 (W49): the exclusion is the VALIDATED flag, not the raw
+    // `!Group?.background_image_url`. Same three cases; an invalid URL now lands in case
+    // (2) rather than case (1), which is the intended swap recorded at the site. Asserting
+    // the raw spelling here would pin the file to the defect FSEC-03 exists to prevent.
     expect(overlay!.text, 'the dim is not excluded on the image case').toContain(
-      '!Group?.background_image_url',
+      '!hasHeaderImage',
     );
     expect(overlay!.text).toContain('dark:bg-[rgb(0_0_0/0.15)]');
 
@@ -2518,5 +2522,97 @@ describe('Phase 88.3 Req 9 / D-09 — group-colour rendering', () => {
         'resolves its ink to WHITE through --t-color-l, painting white initials on a white ' +
         'chip. See the DECISION Phase 88.5 marker above this call site.',
     ).toMatch(/tinted=\{[^}]*!hasBgImage/);
+  });
+
+  /*
+   * Phase 88.6-41 (W49 / FSEC-03 / D-20 (i)) — the five-site `hasBackgroundImage`
+   * convergence, machine-checked.
+   *
+   * WHY A COUNT AND NOT "the identifier may appear only in the `safeBgImageStyle(`
+   * call". That rule is UNSATISFIABLE: `const groupBgImage = event.Group?.…` is
+   * itself an appearance. So this counts CODE appearances (comments blanked by
+   * `withoutComments` — every file here legitimately DISCUSSES the identifier in
+   * prose) and pins each one to a permitted POSITION.
+   *
+   * THE PERMITTED SHAPE, per file: the `const` that binds it, and the
+   * `safeBgImageStyle(` argument. Nothing else. There is deliberately NO
+   * `variant === 'compact'` exemption — plan 41 renamed `tileTextTreatment`'s
+   * parameter and moved the compact fork onto the boolean precisely so the file
+   * with the most raw-URL sinks does not keep a permanent spare slot.
+   *
+   * `grouplist.js` is the CONTROL: it was already correct before this phase and is
+   * unconverted, so it passes this rule TODAY, unchanged. That is what proves the
+   * scan is reading a real rule rather than an empty one.
+   *
+   * DEMONSTRATED RED, plan 88.6-41: `{groupBgImage && (` was temporarily restored
+   * at `CalendarMonthView.js`'s overlay gate; this test named the file and the third
+   * appearance, then went green on revert. A count gate nobody has watched fail is
+   * not known to be a gate.
+   */
+  it('31. the raw background-image URL reaches ONLY `safeBgImageStyle` — per-file COUNT over all five sites', () => {
+    const RAW_PROP = 'background_image_url';
+    /**
+     * `local` is the name each file binds the raw URL to, or `null` when the file
+     * binds none and passes the property expression straight to the validator.
+     */
+    const SITES: { file: string; local: string | null; expected: number; control?: true }[] = [
+      { file: 'app/components/CalendarMonthView.js', local: 'groupBgImage', expected: 2 },
+      { file: 'app/components/CalendarListView.js', local: 'groupBgImage', expected: 2 },
+      { file: 'app/components/EventDayModal.js', local: 'groupBgImage', expected: 2 },
+      { file: HEADER, local: null, expected: 1 },
+      { file: 'app/components/grouplist.js', local: 'bgImage', expected: 2, control: true },
+    ];
+
+    for (const { file, local, expected, control } of SITES) {
+      const src = code(file);
+      const token = local ?? RAW_PROP;
+      const hits = [...src.matchAll(new RegExp(`\\b${token}\\b`, 'g'))];
+
+      expect(
+        hits.length,
+        `${file}: expected ${expected} CODE appearance(s) of \`${token}\`, found ${hits.length}` +
+          (control
+            ? ' — this is the UNCONVERTED CONTROL and must pass unchanged; a failure here means ' +
+              'the scan itself broke, not that the file regressed'
+            : ' — the permitted set is the `const` that binds it plus the `safeBgImageStyle(` ' +
+              'argument, and nothing else (FSEC-03: a text treatment, wash, scrim or JSX gate ' +
+              'computed from the RAW url is computed against a background the renderer refused)'),
+      ).toBe(expected);
+
+      // …and each appearance sits in a permitted POSITION, which is what makes the
+      // count a rule rather than a budget a future edit could spend elsewhere.
+      for (const m of hits) {
+        const at = m.index ?? 0;
+        const before = src.slice(Math.max(0, at - 40), at);
+        const ok = /\bconst\s+$/.test(before) || /safeBgImageStyle\(\s*[\w?.]*$/.test(before);
+        expect(
+          ok,
+          `${file}:${lineAt(src, at)} — \`${token}\` appears outside its permitted positions ` +
+            '(its own `const`, or the `safeBgImageStyle(` argument). Derive from the VALIDATED ' +
+            'style instead: `const flag = !!bgImageStyle`.',
+        ).toBe(true);
+      }
+
+      // A file that binds a local must read the property EXACTLY ONCE — otherwise a
+      // second `event.Group?.background_image_url` read would evade the local count.
+      if (local) {
+        expect(
+          [...src.matchAll(new RegExp(`\\b${RAW_PROP}\\b`, 'g'))].length,
+          `${file}: the raw property is read more than once — the single read belongs on the ` +
+            `\`${local}\` declaration`,
+        ).toBe(1);
+      }
+
+      // The negative shape, asserted directly rather than left as a corollary of the
+      // count: no treatment, wash/scrim or JSX gate may name the raw identifier.
+      const SINKS = /textShadow|WebkitTextStroke|backgroundColor|color\s*:|&&\s*\(/;
+      for (const line of src.split('\n')) {
+        if (!new RegExp(`\\b${token}\\b`).test(line)) continue;
+        expect(
+          SINKS.test(line),
+          `${file}: a text treatment / wash / JSX gate reads \`${token}\` — line: ${line.trim()}`,
+        ).toBe(false);
+      }
+    }
   });
 });

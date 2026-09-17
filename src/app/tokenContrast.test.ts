@@ -1294,8 +1294,11 @@ describe('Phase 88.3 Gate A — token-layer WCAG floors (Reqs 1-8)', () => {
     // survived every gate. Both files are read.
     //
     // ⚠️ THE NEGATIVE ASSERTIONS ARE SCOPED TO THE BUTTON'S SLICE ON PURPOSE — a file-level version
-    // reds on day one. `EventDayModal.js:239` already carries
-    // `backgroundColor: groupBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent'` — the
+    // reds on day one. `EventDayModal.js:427` already carries
+    // `backgroundColor: hasBgImage ? 'rgba(255, 255, 255, 0.85)' : 'transparent'` — the
+    // (RE-DERIVED plan 88.6-41: the cite read `:239` and the gate was spelled `groupBgImage`.
+    // W49 moved that wash onto the VALIDATED flag and the line drifted. Same wash, same
+    // rationale, same out-of-scope-ness for this button's slice — only the record was stale.)
     // group-background-image wash on the event row, verified 2026-08-28, unrelated to this button
     // and out of scope by construction. A file-wide "no backgroundColor literal" pin would fail
     // against that line, and the predictable reaction is to weaken or delete the pin — leaving the
