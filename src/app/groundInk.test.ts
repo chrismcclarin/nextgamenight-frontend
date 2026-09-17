@@ -219,11 +219,12 @@ const OFFENDERS: ExemptionRoster = {
   // required them in ONE commit because this roster is exact in both directions). Disclosed in
   // `88.6-31-SUMMARY.md` and in `.planning/WINDOWS.md`. The `SuggestionCard.js` and
   // `CalendarMonthView.js` entries are NOT touched (plans 42 / 40). Entry DELETED, not zeroed.
-  'app/components/SuggestionCard.js': {
-    sites: 1,
-    why: 'text-content-muted (4.3725) at :141, the disabled Create-Event button, a SAME-CHUNK ground+ink pairing inside one JSX opening tag. This is the D-15 site, deliberately NOT folded into the UNRESOLVABLE entry below: the walk resolves it. Closed by plan 42.',
-    owner: D15,
-  },
+  // DELETED by plan 88.6-42 task 3 (wave 8, 2026-09-17). The D-15 site. `:141`, the DISABLED Create-Event
+  // button, took `text-content-secondary` (6.9620) with the rest of the file. Recorded at the
+  // site and here because it is the one site in this sweep that is NOT a compliance fix: a
+  // disabled control is AA-EXEMPT, so this one is swept for CONSISTENCY. `disabled` and
+  // `cursor-not-allowed` are what say "disabled", never the contrast. Entry DELETED, not
+  // zeroed — and it was the LAST entry on this roster.
   // `app/friends/page.js` CLOSED by plan 88.6-19 task 3 (wave 7, 2026-09-16): the tab-count pill
   // at :748 pre-edit carried `text-content-link` (3.9909) on `bg-surface-muted`. It took
   // `text-content-secondary` (6.9620) — it is a COUNT in a pill, not a link, and zero of the 61
@@ -256,11 +257,22 @@ const OFFENDERS: ExemptionRoster = {
  * stale silently, which is the "prose instead of a gate" failure D-16 exists to end.
  */
 const UNRESOLVABLE: ExemptionRoster = {
-  'app/components/SuggestionCard.js': {
-    sites: 3,
-    why: 'The ground is returned by getScoreColor() — declared :66, returning "bg-surface-muted border-line" at :67, applied at :75 — i.e. from a function body outside any JSX opening tag, which is limitation 2 of inkGroundPairs. THREE forbidden resting-ink sites sit under that one ground, at TWO ratios: :92 and :116 are text-content-muted (4.3725) and :122 is text-content-link (3.9909). All three close together when plan 42 lands, because they share one ground. :141 is NOT folded in here — that one is a same-chunk pairing the walk resolves, and it is on the OFFENDERS roster above.',
-    owner: D16,
-  },
+  // EMPTIED by plan 88.6-42 task 3 (wave 8, 2026-09-17). The entry carried sites: 3 — :92 and
+  // :116 (text-content-muted, 4.3725) and :122 (text-content-link, 3.9909), all three under the
+  // ONE ground getScoreColor() returns. All three took text-content-secondary (6.9620) in one
+  // commit, which is exactly what the entry own why said would happen: they share a ground, so
+  // they close together.
+  //
+  // THE BLIND SPOT ITSELF IS NOT GONE, and must not be recorded as gone. inkGroundPairs
+  // limitation 2 — a ground returned from a FUNCTION BODY is invisible to the walk — is
+  // STRUCTURAL, and SuggestionCard.js is still the live instance of it. Test 5 below is therefore
+  // KEPT AND INVERTED rather than deleted: it still pins the MECHANISM (the function really does
+  // supply the root ground) and now measures ZERO forbidden ink under it. A negative control over
+  // a real blind spot beats an empty list with no instance behind it, and it is what plan 09 own
+  // fallback design contemplated.
+  //
+  // A NEW blind-spot instance still has to be DECLARED here rather than dropped silently — test 4
+  // is what makes that a red rather than a shrug.
 };
 
 /**
@@ -481,14 +493,21 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     ).toBe(true);
   });
 
-  it('4. the unresolvable list is exactly ONE entry — a new blind spot cannot join it silently', () => {
+  it('4. the unresolvable list is EMPTY — a new blind spot cannot join it silently', () => {
     // Dropping an invisible site from the roster without recording it is the failure the
     // resolvable/unresolvable split exists to prevent, so the length is pinned.
+    //
+    // 88.6-42 task 3: the ONE entry (app/components/SuggestionCard.js, 3 sites under the
+    // getScoreColor() ground) was CLOSED, so the list is now empty. The pin stays EXACT rather
+    // than becoming a floor: an empty list is a claim that NO declared blind-spot debt survives,
+    // and a future plan adding one must add it here deliberately. Test 5 keeps the blind-spot
+    // MECHANISM exercised as a negative control, so 'empty list' cannot be reached by the walk
+    // quietly going blind.
     expect(assertRosterShape(UNRESOLVABLE)).toEqual([]);
-    expect(Object.keys(UNRESOLVABLE)).toEqual(['app/components/SuggestionCard.js']);
+    expect(Object.keys(UNRESOLVABLE)).toEqual([]);
   });
 
-  it('5. the SuggestionCard blind spot is MEASURED, not asserted from a hand-written number', () => {
+  it('5. the SuggestionCard blind spot is MEASURED — mechanism live, debt now ZERO', () => {
     const rel = 'app/components/SuggestionCard.js';
     const src = fs.readFileSync(path.join(SRC, rel), 'utf8');
 
@@ -502,8 +521,17 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
     const blind = [...new Set(
       ROWS.filter((r) => r.file === rel && FORBIDDEN.has(r.inkToken) && !onMuted(r)).map((r) => r.line),
     )].sort((a, b) => a - b);
-    expect(blind).toEqual([92, 116, 122]);
-    expect(blind.length).toBe(UNRESOLVABLE[rel].sites);
+    //
+    // INVERTED by plan 88.6-42 task 3 (2026-09-17): this was `[92, 116, 122]` cross-checked
+    // against `UNRESOLVABLE[rel].sites`. All three took `text-content-secondary`, so the roster
+    // entry is gone and the measurement is ZERO. The two MECHANISM pins above are what keep this
+    // row from being vacuous: they prove the walk really is blind here, so a zero means "no
+    // forbidden ink under a ground the walk cannot see" rather than "nothing was scanned".
+    expect(blind).toEqual([]);
+    expect(UNRESOLVABLE[rel]).toBeUndefined();
+    // Anti-vacuity for the scan itself: this file IS in the scanned corpus and DOES report ink
+    // rows — they are simply all sanctioned now.
+    expect(ROWS.filter((r) => r.file === rel).length).toBeGreaterThan(0);
   });
 
   it('6. the false-positive list is exact, live, and disjoint from the offender roster', () => {
@@ -542,9 +570,12 @@ describe('D-16 — no forbidden ink resolves onto the muted ground', () => {
       // same rule this list's own comment states. `CalendarMonthView.js` now holds no D-16 debt
       // at all; its two remaining reported sites are the declared false positives above, and
       // the disjointness check below is what proves they are not being used to hide debt.
-      'app/components/SuggestionCard.js:92',
-      'app/components/SuggestionCard.js:116',
-      'app/components/SuggestionCard.js:122',
+      //
+      // REMOVED by plan 88.6-42 task 3 (2026-09-17): all three SuggestionCard.js sites (:92,
+      // :116, :122) were FIXED under D-16 ARM A in one commit — they share the one
+      // getScoreColor() ground — so they LEFT the debt set with their fix, the same rule this
+      // list's own comment states. This file now holds no D-16 debt at all, and neither does
+      // any other: the debt set is EMPTY.
     ]);
     const both = Object.keys(FALSE_POSITIVES).filter((s) => debt.has(s));
     expect(both, 'a site cannot be both real debt and a declared false positive').toEqual([]);

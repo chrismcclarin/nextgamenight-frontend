@@ -2388,12 +2388,20 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // which is the shipped field primitive's own spelling (`FormField.tsx:98`), so the modal
   // converges onto the label treatment the rest of the app already uses rather than onto a
   // deletion. Entry DELETED, not zeroed.
-  'app/components/SuggestionCard.js': {
-    sites: 3,
-    why:
-      '3 off-scale weight sites (2 font-medium, 1 font-semibold). UI-SPEC §4.5 outcome leads: outcome set by the owning sweep; dead on a .btn (delete) — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-05, 88.6-09, 88.6-13, 88.6-14, 88.6-33, 88.6-39, 88.6-42, 88.6-46.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-42 task 3 (wave 8, 2026-09-17). The entry carried sites: 3 and all three
+  // resolved as EMPHASIS (UI-SPEC §4.5), i.e. the utility is DELETED and the colour token does the
+  // work — not raised to 700:
+  //   - the date line, font-semibold, already carrying text-content-primary against the
+  //     text-content-secondary time line beneath it. A second 700 would have competed with the
+  //     participant count, which IS the card one hierarchy cue.
+  //   - the two button labels, font-medium, on fills that already carry their own ink token. This
+  //     is the FetchErrorBanner precedent the SPEC names verbatim: the pairing carries the
+  //     control, so font-medium deletes with no look delta. Neither is a .btn, so the dead-on-a-btn
+  //     outcome did not apply and the emphasis outcome did.
+  // In the SAME commit the file also took its §4.3 size outcome: the non-heading text-2xl residue
+  // the SPEC names at SuggestionCard.js:89 became text-xl / 700 as a PSEUDO-HEADING, deliberately
+  // not a <Heading> (it is a number, not a section title, so EXPECTED_MIN_PRIMITIVES does not move).
+  // Entry DELETED, not zeroed.
   // DELETED by plan 88.6-25 task 2 (wave 7, 2026-09-16): `app/components/ThresholdSlider.js`
   // carried `sites: 2` (2 font-medium), and the two resolved OPPOSITE ways — which is why the
   // entry could not close on one rule. The `<label>` took EMPHASIS (utility deleted;

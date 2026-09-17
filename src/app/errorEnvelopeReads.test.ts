@@ -276,17 +276,16 @@ const ENVELOPE_READ_ROSTER: ExemptionRoster = {
         'error branches as the precondition for removing the error alias',
     },
   },
-  'app/components/SuggestionCard.js': {
-    sites: 1,
-    why:
-      ':53 reads `result.error` off a 2xx body in the suggestion-to-event convert path. ' +
-      'RESEARCH Assumptions Log A3 marks the backend shape behind it UNVERIFIED — the ' +
-      'suggestions route was NOT opened, so whether this is a legacy alias or a domain ' +
-      'field is unknown. Plan 42 opens the backend route FIRST and owns the outcome, which ' +
-      'may be a deletion rather than a conversion. Converting it blind would silently break ' +
-      'event-creation error copy.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R9 / AC-9 — pending RESEARCH assumption A3' },
-  },
+  // DELETED by plan 88.6-42 task 3 (wave 8, 2026-09-17). RESEARCH assumption A3 is ANSWERED by opening the
+  // route, and the answer is a THIRD outcome the plan text did not offer: `:53` was a DEAD
+  // read. `suggestionAPI.convert` goes through `apiFetch`, which THROWS on any non-ok
+  // response, and the route`s 201 body is `{ success, event_id, message, event }`
+  // (Sonnet/routes/availabilitySuggestion.js:110-115) — no body that could reach that line
+  // ever carried an `error` field, so the read could never be truthy. The READ is gone; the
+  // ELSE ARM it lived in STAYS, because it is the live guard for an unparseable 2xx that
+  // `apiFetch` returns as raw text, and a `DECISION Phase 88.6-42 (A3)` marker now sits there
+  // saying so. Entry DELETED, not zeroed. FOR THE RECORD: this makes `88.6-RESEARCH.md:1291`
+  // R9 inventory wrong by one — it counted this as a convertible alias read.
   'app/rsvp/[token]/page.js': {
     sites: 2,
     why:
@@ -461,12 +460,11 @@ describe('R9 / AC-9 — the FE reads the Phase 85 envelope and nothing else', ()
     // readable straight off a failure rather than reconstructed from a violations list.
     expect(MEASURED).toEqual({
       'lib/api.ts': 3,
-      'app/components/SuggestionCard.js': 1,
       'app/rsvp/[token]/page.js': 2,
       'app/components/AvailabilityForm.js': 2,
     });
     const total = Object.values(MEASURED).reduce((a, b) => a + b, 0);
-    expect(total).toBe(8);
+    expect(total).toBe(7);
     expect(Object.keys(ENVELOPE_READ_ROSTER).sort()).toEqual(Object.keys(MEASURED).sort());
   });
 

@@ -481,24 +481,17 @@ const CENSUS_SITES = [
 // plan that closes it, and `assertExactCounts` is checked in BOTH directions — so a
 // partial fix must DECREMENT the entry and the last fix must DELETE it.
 const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
-  'app/api/auth/google-connect/route.js': {
-    sites: 1,
-    why:
-      'RAW-MESSAGE assertion. :72 interpolates `error.message` into a route-handler JSON ' +
-      'error body. NO 88.6 sweep plan owns these copy sites — plan 88.6-42 task 2 (#82) ' +
-      'declares and edits this file for the envelope work, but not for this. Routed under ' +
-      'the AC-22 rule to .planning/deferred/phase-88.6.md with Phase 93 named as the ' +
-      'proposed owning phase, so plan 88.6-46 AC-11 forces a dated disposition at phase ' +
-      'close rather than letting the residual evaporate.',
-    owner: {
-      kind: 'owner',
-      date: '2026-09-09',
-      ruling:
-        'AC-22 routing: an unowned raw-backend-envelope read takes a roster entry AND a ' +
-        'durable deferred entry naming Phase 93 as the proposed owner — a bare "recorded" ' +
-        'disposition is what lets a residual evaporate.',
-    },
-  },
+  // DELETED by plan 88.6-42 task 3 (wave 8, 2026-09-17). The `:72` read is GONE, and NOT as a copy sweep.
+  // Under T-88.6-117 that body is RENDERED AS A PAGE by a user who NAVIGATED here (the consumer
+  // is `window.location.href` in userProfile/page.js, not a fetch), so interpolating a raw Node
+  // exception message into it was an information-disclosure defect, not a copy nit. It returns a
+  // FIXED string now, and the real exception stays in the Vercel function log through the
+  // UNCHANGED `console.error` line above it — this route runs on the server runtime, where
+  // Sentry is never initialised, so that line is its only working channel. The AC-22 deferred
+  // entry this row pointed at is answered BY the redaction rather than by a copy decision.
+  // FORCED ROSTER EDIT, disclosed: the deletion belongs with plan 42 task 2 and landed one
+  // commit late, because that task`s verify list named errorEnvelopeReads and api.test.ts but
+  // not this suite. Entry DELETED, not zeroed.
   // DELETED by plan 88.6-25 task 2 (wave 7, 2026-09-16): `app/components/AvailabilityForm.js`
   // carried `sites: 3` and ALL THREE closed in one commit, which is what the entry's own `why`
   // required — deleting it after :142 alone would have retired the only receipt that catches the
@@ -612,14 +605,12 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
   // regexes are gone and a `DECISION Phase 88.6-22` marker sits where the D-ADAPT-02
   // keep-in-sync comment was. This entry was the proof that a hand census cannot be the seed —
   // RESEARCH §B.5 does not contain this file at all. Entry DELETED rather than zeroed.
-  'app/components/SuggestionCard.js': {
-    sites: 1,
-    why:
-      'RAW-MESSAGE assertion. :56 `setError(err.message || "Failed to create event")`. Its ' +
-      'sibling :53 reads `result.error`, not a message, so it is on the "Failed to X" ' +
-      'roster only. Closed by plan 88.6-33 (wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-33' },
-  },
+  // DELETED by plan 88.6-42 task 3 (wave 8, 2026-09-17). RAW-MESSAGE. `:56` read
+  // `setError(err.message || ...)` and now reads `setError(getFetchErrorMessage(err))` with NO
+  // fallback — UI-SPEC §6.3 ratifies no string for this action, so the register`s own line
+  // answers (the P1 precedent plans 25/32/33 set). CORRECTION to this entry`s own text: it said
+  // plan 88.6-33 would close it; 33 does not declare this file and 42 does. Entry DELETED, not
+  // zeroed.
   // DELETED by plan 88.6-25 task 1 (wave 7, 2026-09-16): `app/components/createEvent.js` carried
   // `sites: 1` — :838 pre-edit,
   // `toast.error(\`Failed to ${…} event. ${error.message || 'Please try again.'}\`)`. It now reads
@@ -789,14 +780,13 @@ const FAILED_COPY_EXEMPT: ExemptionRoster = {
   // `getFetchErrorMessage(error)` is called with no fallback, so that hand-rolled string is
   // GONE rather than moved into a `fallback:` option, where it would still have counted here.
   // Entry DELETED, not zeroed.
-  'app/components/SuggestionCard.js': {
-    sites: 2,
-    why:
-      '"FAILED TO X" assertion. :53 and :56 both author "Failed to create event"; only :56 ' +
-      'reads a message, which is why the raw-message count for this file is 1. Closed by ' +
-      'plan 88.6-33 (wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-33' },
-  },
+  // DELETED by plan 88.6-42 task 3 (wave 8, 2026-09-17). FAILED-TO-X. BOTH literals go in ONE commit,
+  // which is exactly what this entry being 2 while its raw-message sibling was 1 recorded: `:53`
+  // authored the copy WITHOUT reading a message and `:56` did both. `:53` now renders
+  // `getFetchErrorMessage(undefined)` — the register`s generic line, which is the honest answer
+  // for an unparseable 2xx because it resolves to code `unknown` — and `:56` renders
+  // `getFetchErrorMessage(err)`. Same correction as the sibling above: plan 42 closes this, not
+  // plan 33. Entry DELETED, not zeroed.
   'app/components/TimezoneProvider.js': {
     sites: 1,
     why:
