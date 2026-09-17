@@ -322,3 +322,131 @@ describe('usePaintGesture — 7. non-primary mouse buttons are ignored (WR-01)',
     expect(onCommit).toHaveBeenCalledWith(anchor, end);
   });
 });
+
+// ---------------------------------------------------------------------------
+// PLAN 88.6-39 ADDITIONS (W52 / D-18) — `onActiveChange`.
+//
+// THE IMPLEMENTATION IS ONE GUARDED EMIT; THE COVERAGE IS FOUR PATHS. `teardown()` is the hook's
+// single shared exit and it is reached from four call sites — `finish()` (which both the commit
+// route and the `pointercancel` route funnel through), the stale-gesture safety in
+// `onPointerDown`, the slop-cancel in `onPointerMove`, and the unmount cleanup. One "it fires
+// false eventually" test cannot tell WHICH of those is wired, so each gets its own case.
+//
+// TWO OF THE FOUR MUST NOT FIRE, and that is not a gap in the coverage — it is the point. The
+// slop-cancel path is every scroll that begins over the grid; it never engaged, so an emit there
+// would be a `false` with no preceding `true`. The same is true of the TAP arm, which sets
+// `state.active` inline immediately before tearing down without ever passing through `engage()` —
+// which is why the guard is a flag set beside the `true` emit and NOT a bare `active` read.
+// ---------------------------------------------------------------------------
+describe('usePaintGesture — 8. onActiveChange: the four teardown paths through ONE emit', () => {
+  it('(:409, commit route) a held drag reports true once on engage and false once on release', () => {
+    const onActiveChange = vi.fn();
+    const { result } = renderGesture({ onActiveChange });
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y));
+    expect(onActiveChange).not.toHaveBeenCalled(); // pending is not active
+
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+    expect(onActiveChange.mock.calls).toEqual([[true]]);
+
+    result.current.handlers.onPointerMove(evt(MID.x + 20, MID.y + 20));
+    result.current.handlers.onPointerUp(evt(MID.x + 20, MID.y + 20));
+
+    // Exactly ONCE — not once from `finish` and again from `teardown`.
+    expect(onActiveChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('(:409, pointercancel route) an ACTIVE gesture taken by the browser still reports false', () => {
+    const onActiveChange = vi.fn();
+    const { result } = renderGesture({ onActiveChange });
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y));
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+    result.current.handlers.onPointerCancel(evt(MID.x, MID.y));
+
+    expect(onActiveChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('(:432, stale-gesture safety) a second pointerdown settles the first gesture with a false', () => {
+    const onActiveChange = vi.fn();
+    const { result } = renderGesture({ onActiveChange });
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y));
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+    expect(onActiveChange.mock.calls).toEqual([[true]]);
+
+    // A NEW press while the first gesture is still live. `onPointerDown` tears the stale one
+    // down before building its own state, so the pair closes before the next one opens.
+    result.current.handlers.onPointerDown(evt(MID.x + 5, MID.y + 5, 'touch', 2));
+
+    expect(onActiveChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('(:470, slop-cancel — THE SCROLL PATH) a pan that never engaged reports NOTHING', () => {
+    const onActiveChange = vi.fn();
+    const { result } = renderGesture({ onActiveChange });
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y));
+    // Past the slop distance while still UNDER the long-press threshold: the browser takes the
+    // pan. This is the single most frequent way a pointer sequence over this grid ends, and an
+    // unguarded emit here would fire an unpaired `false` on every scroll.
+    result.current.handlers.onPointerMove(evt(MID.x, MID.y + SLOP_PX + 10));
+
+    expect(onActiveChange).not.toHaveBeenCalled();
+  });
+
+  it('(:537, unmount) unmounting mid-drag reports false so no consumer is left frozen', () => {
+    const onActiveChange = vi.fn();
+    const { result, unmount } = renderGesture({ onActiveChange });
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y));
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+    onActiveChange.mockClear();
+
+    unmount();
+
+    expect(onActiveChange.mock.calls).toEqual([[false]]);
+  });
+});
+
+describe('usePaintGesture — 9. onActiveChange: the cases that must NOT fire', () => {
+  it('a sub-threshold TAP emits no unpaired false, even though it sets `active` inline', () => {
+    const onActiveChange = vi.fn();
+    const { result, onCommit } = renderGesture({ onActiveChange });
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y));
+    vi.advanceTimersByTime(LONG_PRESS_MS - 1); // still BEFORE the threshold
+    result.current.handlers.onPointerUp(evt(MID.x, MID.y));
+
+    // The tap DID commit — this is the real tap path, not a no-op fixture.
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    // …and it reported nothing: a bare `state.active` guard would have fired `[false]` here,
+    // because `finish()`'s tap arm sets `active = true` immediately before tearing down.
+    expect(onActiveChange).not.toHaveBeenCalled();
+  });
+
+  it('a settle with NO gesture in flight fires ZERO times', () => {
+    const onActiveChange = vi.fn();
+    const { result } = renderGesture({ onActiveChange });
+
+    // The hook installs `pointerup`/`pointercancel` on `document` for the whole mount, so this
+    // arrives routinely with nothing down.
+    result.current.handlers.onPointerUp(evt(MID.x, MID.y));
+    result.current.handlers.onPointerCancel(evt(MID.x, MID.y));
+
+    expect(onActiveChange).not.toHaveBeenCalled();
+  });
+
+  it('true fires exactly ONCE per engage, however many moves the drag makes', () => {
+    const onActiveChange = vi.fn();
+    const { result } = renderGesture({ onActiveChange });
+
+    result.current.handlers.onPointerDown(evt(MID.x, MID.y));
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+    for (let i = 1; i <= 6; i++) {
+      result.current.handlers.onPointerMove(evt(MID.x + i * 4, MID.y + i * 4));
+    }
+
+    expect(onActiveChange.mock.calls.filter(([v]) => v === true)).toHaveLength(1);
+  });
+});

@@ -116,6 +116,8 @@ type EventSchedulerProps = {
   scrollToTime?: Date | null;
   onWeekChange?: (date: Date) => void;
   onTimeSelected?: (start: Date, end: Date) => void;
+  /** Plan 88.6-39 (W52 / D-18): gesture engage/disengage, for the finger-up hold above the grid. */
+  onActiveChange?: (active: boolean) => void;
   heatmapData?: {
     slots: HeatmapSlot[];
     totalMembers?: number;
@@ -1572,5 +1574,115 @@ describe('EventScheduler — the per-coordinate payload is REFERENTIALLY STABLE 
     expect(after).not.toBe(before);
     expect(after(4, 2)).not.toBe(beforePayload);
     expect(after(4, 2)).toBe(after(4, 2));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PLAN 88.6-39 ADDITIONS (W52 / D-18) — the active-change seam.
+//
+// `EventScheduler` owns ONE local handler and the hook is wired to THAT, with the parent's
+// forwarded prop called THROUGH it. The composition is what these pins protect: a straight
+// pass-through of the parent prop into `usePaintGesture` would compile, forward correctly, and
+// silently drop the `dragRect` clear that rides on the false edge.
+// ---------------------------------------------------------------------------
+describe('EventScheduler — pointercancel clears the live rectangle (T-88.6-110)', () => {
+  let restoreResolver: () => void;
+  beforeEach(() => {
+    restoreResolver = stubPointResolution();
+  });
+  afterEach(() => restoreResolver());
+
+  const rect = () => screen.queryByTestId('scheduler-drag-rect');
+
+  it('a cancelled gesture leaves NO rectangle drawn over the grid', () => {
+    // `setDragRect(null)` used to have exactly one call site — inside `onCommit` — and
+    // `pointercancel` never reaches `onCommit`. The rectangle outlived the gesture.
+    render(<EventScheduler initialDate={WEEK_N} />);
+
+    pointerAt('pointerDown', 4, 2);
+    pointerAt('pointerMove', 7, 2);
+    expect(rect()).toBeInTheDocument();
+
+    pointerAt('pointerCancel', 7, 2);
+    expect(rect()).not.toBeInTheDocument();
+  });
+});
+
+describe('EventScheduler — onActiveChange is forwarded THROUGH the local handler', () => {
+  let restoreResolver: () => void;
+  beforeEach(() => {
+    restoreResolver = stubPointResolution();
+  });
+  afterEach(() => restoreResolver());
+
+  it('reports true on engage and false on release, once each', () => {
+    const onActiveChange = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onActiveChange={onActiveChange} />);
+
+    pointerAt('pointerDown', 4, 2); // the mouse arm engages immediately
+    expect(onActiveChange.mock.calls).toEqual([[true]]);
+
+    pointerAt('pointerMove', 7, 2);
+    pointerAt('pointerUp', 7, 2);
+    expect(onActiveChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('reports false on the CANCEL path too, in the same call that clears the rectangle', () => {
+    const onActiveChange = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onActiveChange={onActiveChange} />);
+
+    pointerAt('pointerDown', 4, 2);
+    pointerAt('pointerMove', 7, 2);
+    pointerAt('pointerCancel', 7, 2);
+
+    expect(onActiveChange.mock.calls).toEqual([[true], [false]]);
+    expect(screen.queryByTestId('scheduler-drag-rect')).not.toBeInTheDocument();
+  });
+});
+
+describe('EventScheduler — the active-change handler does NO state work of its own', () => {
+  let restoreResolver: () => void;
+  beforeEach(() => {
+    restoreResolver = stubPointResolution();
+  });
+  afterEach(() => restoreResolver());
+
+  it('an OFF-GRID gesture reports both edges and re-renders the grid ZERO times', () => {
+    /* THE DISCRIMINATING FIXTURE. Column -1 resolves to no `[data-coord]` element, so the hook
+       engages with a null target and `onExtend` never fires — which removes the pre-existing
+       `setDragRect` write from the picture and leaves ONLY the new handler on the path. If it
+       did state work on the true edge, or if its false-edge `setDragRect(null)` were not a
+       React bail-out against an already-null value, this count would move.
+
+       `capture.getCells` is pushed once per WeekGrid render (see the pass-through mock at the
+       top of this file), so its length IS the grid's render count. */
+    const onActiveChange = vi.fn();
+    render(<EventScheduler initialDate={WEEK_N} onActiveChange={onActiveChange} />);
+    capture.getCells.length = 0;
+
+    pointerAt('pointerDown', 4, -1);
+    expect(onActiveChange.mock.calls).toEqual([[true]]);
+    expect(capture.getCells).toHaveLength(0);
+
+    pointerAt('pointerUp', 4, -1);
+    expect(onActiveChange.mock.calls).toEqual([[true], [false]]);
+    expect(capture.getCells).toHaveLength(0);
+  });
+
+  it('the per-coordinate payload keeps its identity across an engage, so memoized cells hold', () => {
+    // The cells' `React.memo` is a shallow compare on `getCell`'s payload. Same identity in,
+    // no cell re-render — that is the ~196-cell reconcile this signal exists not to cause.
+    capture.getCells.length = 0;
+    render(<EventScheduler initialDate={WEEK_N} heatmapData={heatmapFixture} onActiveChange={vi.fn()} />);
+    const before = capture.getCells.at(-1)!;
+    const beforePayload = before(4, 2);
+
+    pointerAt('pointerDown', 4, 2);
+
+    const after = capture.getCells.at(-1)!;
+    expect(after).toBe(before);
+    expect(after(4, 2)).toBe(beforePayload);
+
+    pointerAt('pointerUp', 4, 2);
   });
 });

@@ -143,6 +143,12 @@ export interface EventSchedulerProps {
   scrollToTime?: Date | null;
   /** Bubbles navigation so the parent's heatmap fetch follows the user (SPEC Req 4). */
   onWeekChange?: (date: Date) => void;
+  /**
+   * Plan 88.6-39 (W52 / D-18): reports gesture engage/disengage to the parent, so blocks ABOVE
+   * the grid can hold a height change until the finger lifts. Called THROUGH this component's
+   * own active-change handler, never wired straight into the hook — see `handleActiveChange`.
+   */
+  onActiveChange?: (active: boolean) => void;
 }
 
 /** Wall-clock start of the slot at (row, col). setHours/setMinutes, so DST days stay honest. */
@@ -291,6 +297,7 @@ export default function EventScheduler({
   selectedSlot = null,
   scrollToTime = null,
   onWeekChange,
+  onActiveChange,
 }: EventSchedulerProps) {
   // ---------------------------------------------------------------------------
   // Displayed-date ownership. INTERNAL state seeded from `initialDate`, with exactly TWO writers
@@ -723,6 +730,32 @@ export default function EventScheduler({
     [measureDragRect]
   );
 
+  /**
+   * THE ONE ACTIVE-CHANGE HANDLER (Plan 88.6-39, W52 / D-18). The hook's `onActiveChange` is
+   * wired to THIS, and the parent's forwarded prop is called THROUGH it — never wired straight
+   * into the hook. Two things depend on that composition:
+   *
+   *   - The FALSE edge is also where `dragRect` gets cleared. `setDragRect(null)` had exactly one
+   *     call site, inside `handleRangeCommit` (the hook's `onCommit`), and `pointercancel` never
+   *     reaches `onCommit` — so a cancelled gesture used to leave its selection rectangle drawn
+   *     over the grid (threat T-88.6-110). Passing the parent's prop straight through drops this
+   *     clear, and the `pointercancel` pin in `EventScheduler.test.tsx` reds on it.
+   *   - The TRUE edge does NO state work here, deliberately. A `setState` at gesture engage
+   *     re-renders this component and reconciles ~196 memoized cells — the jank this whole
+   *     signal exists to prevent. On the false edge `setDragRect(null)` when `dragRect` is
+   *     already `null` is a React bail-out, so the quiet path stays quiet there too.
+   *
+   * Built once with a ref mirror for the parent prop (the `argsRef` idiom this file already uses
+   * for `commitRef`), because the hook keeps its handlers stable only if what it is given is.
+   */
+  const activeChangeRef = useRef(onActiveChange);
+  activeChangeRef.current = onActiveChange;
+
+  const handleActiveChange = useCallback((active: boolean) => {
+    if (!active) setDragRect(null);
+    activeChangeRef.current?.(active);
+  }, []);
+
   const handleRangeCommit = useCallback((anchorCoord: string, currentCoord: string) => {
     setDragRect(null);
     const anchor = parseCoord(anchorCoord);
@@ -779,6 +812,7 @@ export default function EventScheduler({
     resolvePoint,
     onExtend: handleExtend,
     onCommit: handleRangeCommit,
+    onActiveChange: handleActiveChange,
     edgeScroll,
   });
 
