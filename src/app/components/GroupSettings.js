@@ -830,7 +830,47 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                    separation available. Owner ruling R2-2 above rejected exactly
                    that, and this finding is not a reason to re-open it: the
                    ruling was about swatch IDENTITY being visible at t = 0.70,
-                   and it still is. A decision, not a cleanup. */
+                   and it still is. A decision, not a cleanup.
+
+                   ——— APPENDED Phase 88.6-20 (A10). CR-14's DECISION IS PRESERVED,
+                   NOT REVERSED: selection and focus remain two distinct
+                   affordances, selection a FLUSH frame and focus an OFFSET ring,
+                   and `content-primary` is still the selection colour on exactly
+                   the measurements recorded above. ONLY THE CSS SLOT MOVED.
+
+                   WHY IT HAD TO. `ring-2 ring-content-primary` (the selected arm)
+                   and `focus-visible:ring-2 focus-visible:ring-focus-ring` (the
+                   base classes) both write the SINGLE `--tw-ring-shadow` custom
+                   property on the SAME element. A swatch that is both selected
+                   and focused therefore shows only the focus ring — CR-14's flush
+                   frame is repainted away on the one swatch that has focus, which
+                   is the same class of defect CR-14 itself was written against.
+                   It was survivable while the resting-vs-selected BORDER delta was
+                   3.8172; D-17 (marker below) drops that to 2.1787, so it is not.
+
+                   SELECTION NOW USES `inset-ring-2 inset-ring-content-primary`,
+                   which writes `--tw-inset-ring-shadow` — a DIFFERENT variable that
+                   composes into the same `box-shadow` alongside the focus ring
+                   rather than replacing it. Verified by compiling both utilities
+                   through this project's own Tailwind 4.3.3
+                   (`package.json:61`): `.inset-ring-2` emits
+                   `--tw-inset-ring-shadow: inset 0 0 0 2px ...` and the composite
+                   reads `var(--tw-inset-shadow), var(--tw-inset-ring-shadow),
+                   var(--tw-ring-offset-shadow), var(--tw-ring-shadow),
+                   var(--tw-shadow)`. Not assumed from the docs.
+
+                   THE PROPERTY THAT NOW HOLDS, and the scope it is claimed at: a
+                   FOCUSED SELECTED swatch and a FOCUSED UNSELECTED swatch differ
+                   by a >= 3:1 NON-BORDER cue, IN THE LIGHT AND DARK THEMES.
+                   `content-primary` measured against the eight fills it bands:
+                   dark 10.6544-14.5319, light 13.2663-13.3918. "Light and dark" is
+                   deliberate wording and is NOT a stand-in for total coverage —
+                   see the forced-colors marker below, which is the mode it
+                   excludes.
+
+                   `aria-pressed` stays and is unchanged, but it is a PROGRAMMATIC
+                   cue. It is not a visual one and must not be cited as the
+                   compensating cue anywhere. A decision, not a cleanup. */
 
                 /* DECISION Phase 88.3.1 (D-05): THE SWATCH SHOWS THE CURRENT
                    THEME'S VALUE ONLY — the preset's light surface in light mode,
@@ -946,6 +986,44 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                  * across `src` and `globals.css:1073-1136` records it as the 3:1 control edge
                  * and forbids nudging it. Any future fix is a `dark:` variant HERE, and it
                  * updates test 15b in the same commit.
+                 *
+                 * ——— AMENDED Phase 88.6-20 (D-17, owner fork 2026-09-08). Every sentence
+                 * above is KEPT AS HISTORY: it is the record of the four measured
+                 * alternatives and of the ruling that was taken on them. What changed is the
+                 * ruling, not the measurements.
+                 *
+                 * THE 2026-08-30 RULING WAS "leave it, record it". The owner RE-EXAMINED it
+                 * on 2026-09-08 against Phase 88.6's zero-remaining doctrine — and against
+                 * the fact that the SPEC already names the `dark:` border variant as the
+                 * DEFAULT fix for this shape — and ruled the other way: a known fix beats an
+                 * accepted failure. The accepted-forever record
+                 * (`ACCEPTED-FOREVER-88.3.1-F2`) is RETIRED with that reason, not deleted.
+                 *
+                 * THE FIX IS `dark:border-content-muted` ON THE SHARED RESTING ARM, for ALL
+                 * EIGHT presets. Not green alone: a per-preset branch has no stateable rule,
+                 * and "the resting edge takes the muted ink in dark" is one. RE-MEASURED with
+                 * `src/lib/wcag.ts` on 2026-09-16, dark `content-muted` `#b8a898` against
+                 * each preset's dark band: red 6.1320, orange 6.2258, amber 6.1387, green
+                 * 4.8902, teal 5.8049, blue 6.5069, violet 5.8547, rose 6.6699. WORST 4.8902
+                 * (green), and every one of the eight is ABOVE its `purple-500` figure
+                 * (2.7912-3.8070) — so no preset regresses. Against the dark card itself it
+                 * reads 5.9962, up from `purple-500`'s 3.4225.
+                 *
+                 * REJECTED — `border-purple-400`, the 4.02 alternative named above. `@theme`
+                 * exposes only `--color-purple-100/300/700/800/900` (`globals.css:250-265`),
+                 * so `border-purple-400` would compile against TAILWIND'S DEFAULT purple
+                 * ramp — a colour that is not in this design system at all. Verified by
+                 * reading the `@theme` block, not assumed.
+                 * REJECTED — widening F2 on the adjacent-colour reading (the border measures
+                 * 3.4225 against the CARD, which satisfies one reading of WCAG 1.4.11's own
+                 * "adjacent colour"). Defensible, and it leaves an accepted failure on the
+                 * record for a fix that costs one class.
+                 *
+                 * THE COST, DISCLOSED AND NOT FREE: resting-vs-selected BORDER separation
+                 * drops from 3.8172 (`purple-500` vs `content-primary`) to 2.1787
+                 * (`content-muted` vs `content-primary`). That is acceptable ONLY because
+                 * selection stopped riding the border in the same commit — see the A10
+                 * marker below. The 2.1787 delta is NOT relied on to convey selection.
                  */
                 return (
                   <div key={preset.name} className="flex w-full max-w-16 flex-col items-center gap-1">
@@ -955,8 +1033,40 @@ export default function GroupSettings({ group, user, onClose, onUpdate, userRole
                          the very border whose 3:1 resting contrast the marker above measured
                          passing by 0.036 at its worst (round-3 #32, WCAG 1.4.11). The hover
                          colour is the selected state's own border, minus the ring. */
+                      /* DECISION Phase 88.6-20 (A10 + ACCEPT §4 / #152): the SELECTED cue is a
+                         flush INSET band plus a forced-colors-only outline, chosen OVER the
+                         outer `ring-2 ring-content-primary` it replaces and OVER relying on the
+                         inset band alone.
+
+                         SLOT SPLIT, because the two modes erase different things:
+                           - LIGHT and DARK carry `inset-ring-2 inset-ring-content-primary`.
+                             It writes `--tw-inset-ring-shadow`, which the focus ring's
+                             `--tw-ring-shadow` does not touch, so a focused selected swatch
+                             keeps its selection cue. That is the whole A10 fix.
+                           - `forced-colors: active` DISCARDS box-shadows and flattens borders
+                             to system colours, so the inset band is erased there and only the
+                             2.1787 border delta would remain. The selected arm therefore also
+                             carries an ADDITIVE `forced-colors:` outline in that mode's own
+                             idiom (a `Highlight`-coloured outline), following the house
+                             treatment recorded at `Button.tsx:82` rather than an invented one.
+                             It paints NOTHING outside `forced-colors: active`, so the
+                             light/dark cue, the 2.1787 border delta and the focus ring are all
+                             byte-unchanged and no measurement in this file moves.
+
+                         REJECTED — relying on the inset ring alone: that mode erases it, and
+                         this element is being re-specified from scratch here, so "today's ring
+                         is erased identically" is a reason it is not a REGRESSION, not a reason
+                         to leave the mode uncovered. Owner ruling 2026-09-14, option (1).
+                         REJECTED — a check glyph or disc instead of a band: a VISUAL decision
+                         needing the owner and a 375px mockup, and `:788-790` above already
+                         carries a prior rejection of that shape on different grounds.
+
+                         NOT MEASURED: the `forced-colors: active` box-shadow/border behaviour
+                         is asserted from the CSS specification, not from a Windows machine. */
                       className={`w-full max-w-16 aspect-square min-w-11 min-h-11 border-2 rounded-lg hover:border-content-primary transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
-                        isSelected ? 'border-content-primary ring-2 ring-content-primary' : 'border-line-strong'
+                        isSelected
+                          ? 'border-content-primary inset-ring-2 inset-ring-content-primary forced-colors:outline forced-colors:outline-2 forced-colors:outline-[Highlight]'
+                          : 'border-line-strong dark:border-content-muted'
                       } ${swatchGround ? 'bg-[var(--group-ground-light)] dark:bg-[var(--group-ground)]' : 'bg-surface-card'}`}
                       style={{
                         ...(swatchGround && {
