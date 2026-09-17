@@ -158,7 +158,14 @@ const PROVEN_LOCAL: readonly LocalReceiver[] = [
     // again by the DECISION marker plan 25 wrote at the submit latch. Assertion 4 red on BOTH
     // occasions and is the only reason either was noticed, which is exactly what it is for. Do not
     // 'stabilise' this by anchoring on text alone: the line number is what makes a MOVE visible.
-    declaredAt: 87,
+    // RE-DERIVED AGAIN by plan 88.6-42 (2026-09-17): 87 -> 96. Third move, third catch, and
+    // the declaration still has not moved on its own — this time plan 42 amended the
+    // `DECISION Phase 88.6-25` marker directly above it (recording that the aria-disabled
+    // conversion plan 25 routed IS now taken) and that comment pushed it down nine lines. The
+    // FULL `npm test` run is what surfaced it: the task-level verify lists did not name this
+    // suite, and every targeted run had happened before the AvailabilityForm edit. Do not
+    // "stabilise" this by anchoring on text alone — the line number is what makes a MOVE visible.
+    declaredAt: 96,
     declaration: 'const [prefillStatus, setPrefillStatus] = useState(',
     why:
       'Local pre-fill banner state shaped { source, count, failed? } — set only by this ' +
