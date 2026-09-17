@@ -344,11 +344,20 @@ const BTN_EXEMPT: ExemptionRoster = {
   // survived. Its per-site focus-ring string went in the SAME commit, which is what
   // `tokenContrast.test.ts` test 47's primitive branch requires. The control KEEPS its native
   // `disabled`. Entry DELETED rather than zeroed; the roster is exact in both directions.
-  'app/components/FeedbackButton.js': {
-    sites: 2,
-    why: 'plan 88.6-31 sweeps the feedback and notification cluster, FeedbackButton.js included',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R2 / AC-2' },
-  },
+  // DELETED by plan 88.6-31 task 2 (wave 7, 2026-09-16): `app/components/FeedbackButton.js`
+  // carried `sites: 2` and the count was EXACT — the floating feedback FAB and the modal's
+  // Submit. Both are `<Button variant="primary">` now; Submit carries an explicit `type="submit"`
+  // (the primitive defaults `type` to `"button"`), and the FAB is `size="icon"`. DEAD CLASSES
+  // DELETED AND ONLY THOSE: on the FAB, `rounded-full` (`.btn` sets `border-radius` unlayered,
+  // so it did nothing) and `flex items-center justify-center` (`.btn` declares `display:
+  // inline-flex`, `align-items` and `justify-content` unlayered) go, and the per-site focus
+  // string goes under plan 05's `A-2-ARM: A` — it was byte-identical to `Button.tsx`'s own ring.
+  // `fixed bottom-6 right-6 z-30` and `w-14 h-14` STAY: `.btn` declares no position, no z-index
+  // and no width/height, and the 56px box EXCEEDS the 44px floor `size="icon"` supplies, which is
+  // a FLOOR and not a size — dropping it would shrink the control by 12px. `shadow-lg` is
+  // respelled `shadow-theme-lg` with an `enabled-hover:` pin in the same commit (see
+  // `shadowTier.test.ts`). The `row` variant's trigger is NOT a census site and is untouched — it
+  // never wore `.btn`. Entry DELETED rather than zeroed; the roster is exact in both directions.
   // DELETED by plan 88.6-31 task 1 (wave 7, 2026-09-16): `app/components/FeedbackForm.js`
   // carried `sites: 2` and the count was EXACT — the modal footer's Cancel (`btn btn-secondary`)
   // and Submit (`btn btn-primary`). Both are `<Button size="default">` now; Submit carries an

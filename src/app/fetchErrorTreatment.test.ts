@@ -536,15 +536,19 @@ const RAW_MESSAGE_EXEMPT: ExemptionRoster = {
   // no other `Sentry` call, so genericising the copy alone would have deleted the surface's last
   // diagnostic. Entry DELETED rather than zeroed — the roster is exact in both directions. This
   // file's FAILED_COPY_EXEMPT entry (1, the same line) closed in the same commit.
-  'app/components/FeedbackButton.js': {
-    sites: 1,
-    why:
-      'RAW-MESSAGE assertion. :211 (the census says :208 — the file has moved; the ' +
-      'disagreement is recorded in 88.6-13-SUMMARY.md). D-21: its sibling FeedbackForm.js ' +
-      'has a Sentry capture on this path and this file does not. Closed by plan 88.6-31 ' +
-      '(wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-31' },
-  },
+  // DELETED by plan 88.6-31 task 2 (wave 7, 2026-09-16): `app/components/FeedbackButton.js`
+  // carried `sites: 1` — `:211` pre-edit (the census said `:208`; the file had moved, and that
+  // disagreement is recorded in `88.6-13-SUMMARY.md`), `setError(error.message || …)`. It now
+  // reads `setError(getFetchErrorMessage(err))` with NO `fallback:` option, so the CLOSED
+  // register answers and no copy was authored (P1). The D-21 ASYMMETRY this entry named is also
+  // closed in the same commit and is a SEPARATE defect from the raw read: the site gained the
+  // CLASS-ONLY `Sentry.captureException` its sibling `FeedbackForm.js:236-240` already had,
+  // REPLACING the `console.error` (AC-16 option (a) + AC-2 WIDENED, owner 2026-09-09) — one
+  // escalation per failure path, no `logger.error` beside it and no `logger` import. Both
+  // captures now carry a `channel` tag (`public` vs `github`) so a Sentry issue names WHICH
+  // feedback writer is broken; every tag value at both sites is a compile-time SOURCE LITERAL,
+  // because `scrubEvent` never walks `event.tags`. Entry DELETED rather than zeroed. This file's
+  // FAILED_COPY_EXEMPT entry (1, the same line) closed in the same commit.
   // DELETED by plan 88.6-31 task 1 (wave 7, 2026-09-16): `app/components/FeedbackForm.js`
   // carried `sites: 1` — `:241` pre-edit, `setError(err.message || 'Failed to submit feedback.
   // Please try again.')`. It now reads `setError(getFetchErrorMessage(err))` with NO `fallback:`
@@ -725,13 +729,12 @@ const FAILED_COPY_EXEMPT: ExemptionRoster = {
   // line its raw-message entry covered. GONE rather than reworded: `getFetchErrorMessage(err)`
   // is called with NO fallback, so the ratified register answers and no copy was authored (P1;
   // the same §6.2 W16 precedent AvailabilityForm.js took above). Entry DELETED, not zeroed.
-  'app/components/FeedbackButton.js': {
-    sites: 1,
-    why:
-      '"FAILED TO X" assertion. :211 "Failed to submit feedback. Please try again." Closed ' +
-      'by plan 88.6-31 (wave 7), which declares this file.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R1 / DEF-88-25-01 — closed by plan 88.6-31' },
-  },
+  // DELETED by plan 88.6-31 task 2 (wave 7, 2026-09-16): `app/components/FeedbackButton.js`
+  // carried `sites: 1` — `:211`'s "Failed to submit feedback. Please try again.", the authored
+  // half of the same line its raw-message entry covered. GONE rather than reworded:
+  // `getFetchErrorMessage(err)` is called with NO fallback, so the ratified register answers and
+  // no copy was authored (P1). Entry DELETED, not zeroed; its RAW_MESSAGE_EXEMPT sibling closed
+  // in the same commit, as that entry's `why` said it would.
   // DELETED by plan 88.6-31 task 1 (wave 7, 2026-09-16): `app/components/FeedbackForm.js`
   // carried `sites: 1` — `:241`'s "Failed to submit feedback. Please try again.", the authored
   // half of the same line its raw-message entry covered. GONE rather than reworded:

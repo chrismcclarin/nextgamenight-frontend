@@ -2106,12 +2106,21 @@ const WEIGHT_ROSTER: ExemptionRoster = {
   // colour-vision-deficiency cues, with a DECISION marker at the site. An inline declaration is
   // neither a class nor a token, so no roster can hold it — which is exactly why D-01 named that
   // element separately. Entry DELETED, not zeroed.
-  'app/components/FeedbackButton.js': {
-    sites: 3,
-    why:
-      '3 off-scale weight sites (3 font-medium, 0 font-semibold). UI-SPEC §4.5 outcome lead: outcome set by the owning sweep — confirmed per site by the owning sweep. Owning plans: 88.6-02, 88.6-05, 88.6-10, 88.6-12, 88.6-13, 88.6-15, 88.6-16, 88.6-31, 88.6-43.',
-    owner: { kind: 'spec', id: 'SPEC-88.6 R3 / AC-3 (UI-SPEC §4.5)' },
-  },
+  // DELETED by plan 88.6-31 task 2 (wave 7, 2026-09-16): `app/components/FeedbackButton.js`
+  // carried `sites: 3` and the count was EXACT — all three `font-medium`, resolving TWO ways,
+  // which is why the entry could not close on one rule:
+  //   - the success panel's "Thanks! Your feedback has been submitted." took §4.5's HIERARCHY
+  //     outcome, 500 -> 700, IN THE SAME EDIT as the §4.3 non-heading-residue move that UI-SPEC
+  //     §4.3 names this file for by line: `text-lg` -> `text-xl`. It is a pseudo-heading and
+  //     stays a `<p>` — P4 forbids inventing a heading level, so it is NOT a `<Heading>` and it
+  //     never entered the heading rosters.
+  //   - the Category and Feedback `<label>`s took §4.5's EMPHASIS outcome: each already carries
+  //     `text-content-secondary`, so the utility is DELETED and the distinction is colour-carried.
+  //     The DROPPED-UTILITY spelling (plans 20/32), matching this plan's sibling task 1 in
+  //     `FeedbackForm.js` — the two files are one surface pair and a split spelling between them
+  //     would be the inconsistency §4.5 exists to remove.
+  // The `row` variant's label and the FAB carry no weight utility and were never in this count.
+  // Entry DELETED, not zeroed — the roster is exact in both directions.
   // DELETED by plan 88.6-31 task 1 (wave 7, 2026-09-16): `app/components/FeedbackForm.js`
   // carried `sites: 4` and the count was EXACT — all four `font-medium`, all four the SAME site
   // shape: the form's field labels (Type, Subject, Description, Screenshot), each already

@@ -1,12 +1,15 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { useUser } from '@auth0/nextjs-auth0/client';
+import * as Sentry from '@sentry/nextjs';
 import { feedbackAPI } from '../../lib/api';
 import { scrubFeedbackPageUrl } from '../../lib/scrubFeedbackPageUrl';
 import { useFeedbackModal, CATEGORIES, getCategoryLabel } from './FeedbackModalProvider';
 import { Modal } from './Modal';
+import { Button } from '../../components/ui/Button';
 import { Textarea, SelectControl } from '@/components/ui/Input';
+import { getFetchErrorMessage } from '../../components/ui/useFetchErrorState';
 
 /**
  * Feedback entry points + modal (MOB-04, Plan 87.8-05, D-09).
@@ -53,6 +56,21 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
     setError(null);
     setSubmitted(false);
   }, [variant, isOpen]);
+
+  /* R2 #34, fixed Phase 88.6-31: the success panel's 2s timer is HELD IN A REF and cleared on
+     unmount — the treatment its sibling `FeedbackForm.js` has carried since round 6 #6, applied
+     here for the same reason and one worse one. The timer called the SHARED provider `close()`
+     off `useFeedbackModal()`, with no ref and no cleanup, and this component has TWO mount sites
+     (`src/app/layout.js` and `src/app/Header.js`), so an uncleared handle fired into an unmounted
+     component and shut a dialog the provider already believed closed. Any prior handle is cleared
+     BEFORE arming, so a double-submit cannot leave two live timers on one slot. */
+  const successTimerRef = useRef(null);
+  useEffect(
+    () => () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    },
+    []
+  );
 
   // Auth guard: invisible when not logged in. Precedes the variant switch so
   // the row branch is unreachable for a logged-out visitor — Footer.js:11-12
@@ -201,14 +219,47 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
       });
 
       setSubmitted(true);
-      setTimeout(() => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => {
         setSubmitted(false);
         setText('');
         close();
       }, 2000);
     } catch (err) {
-      console.error('Error submitting feedback:', err);
-      setError(err.message || 'Failed to submit feedback. Please try again.');
+      /* REPORTED, not stdout-only (Phase 88.6-31, AC-16 option (a) + AC-2 WIDENED, owner rulings
+         2026-09-09). This path had NO Sentry capture while its sibling `FeedbackForm.js` did, so
+         a broken GitHub-feedback writer was invisible to the owner — the half-applied round-7 #6
+         fix. The `console.error` that stood here is REPLACED by this capture rather than
+         respelled to `logger.error`: one escalation per failure path, and `logger.error` takes
+         only `(msg, err)` and forwards `extra: { msg }` (`logger.ts:20`, `:28-30`) — it has NO
+         tags channel, so it could not carry the `channel` discriminator below, and it forwards
+         the error object whose `.message` is the backend's extracted string. This file gains a
+         `Sentry` import and NO `logger` import.
+
+         CLASS-ONLY, matching `FeedbackForm.js`'s shape and its stated PII posture — a synthesized
+         Error naming the error CLASS and, when present, `err.code`. Never the raw error object,
+         never `err.message`, never a request-body field. That matters MORE here, not less: this
+         body carries `userName` and `navigator.userAgent`, and a scrubbed `pageUrl`. None of the
+         three is in this payload.
+
+         DECISION Phase 88.6-31 (review finding #83): EVERY TAG VALUE IS A COMPILE-TIME SOURCE
+         LITERAL — no variable, no interpolation, no error-derived text. `scrubEvent`
+         (`sentry.scrub.js`, `function scrubEvent(event)`) walks `event.message`,
+         `event.exception`, `event.breadcrumbs`, `event.user`, `event.request`, `event.extra` and
+         `event.contexts` and NEVER `event.tags` (`grep -c 'tags' sentry.scrub.js` -> 0, measured
+         2026-09-16), while Sentry INDEXES tags — so a dynamic tag value would bypass the entire
+         T-84-01 scrub layer. `channel: 'github'` names THIS writer, the auth-gated
+         `apiFetch('/feedback/github')`, against `FeedbackForm.js`'s `channel: 'public'`
+         (`publicFetch('/feedback')`); identical tags would leave a Sentry issue ambiguous about
+         which of the two feedback paths is broken, which is half the point of adding it. */
+      const cls = (err && err.name) || 'Error';
+      const code = err && typeof err.code === 'string' ? ` ${err.code}` : '';
+      Sentry.captureException(new Error(`feedback submit failed: ${cls}${code}`), {
+        tags: { feature: 'feedback', op: 'submit', channel: 'github' },
+      });
+      // SPEC R1: the raw `error.message ||` read is gone. Called with NO `fallback`, so the
+      // CLOSED ratified register answers and no copy is authored (P1).
+      setError(getFetchErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -255,9 +306,50 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
             still holds because the shared dialog's backdrop is ALSO z-50
             (ui/dialog.tsx DialogOverlay), so the tier the FAB must stay under
             did not move. `z-30` is still a decision, not a leftover. */}
-        <button
+        {/* DECISION Phase 88.6-31 (UI-SPEC §3.2 / §3.3): the FAB is
+            `<Button variant="primary" size="icon">`, and FIVE things about this line are
+            decisions rather than transcription.
+
+            (1) THE `variant` IS EXPLICIT even though `primary` is also the cva default. The site
+            shipped `btn btn-primary`, so `primary` is what PRESERVES the look — and writing it
+            down is what stops a later reader assuming the default was inspected rather than
+            inherited. `Button.tsx` itself is not modified by this plan.
+
+            (2) `w-14 h-14` IS KEPT. 56px EXCEEDS the 44px floor, and `size="icon"` contributes
+            `min-h-11 min-w-11`, which is a FLOOR, not a size. Dropping it on the belief that
+            "the primitive supplies the size" would shrink this control by 12px — a visible
+            change and a P6 breach. This is the case where that belief is wrong.
+
+            (3) `shadow-lg` -> `shadow-theme-lg`, with the hover PINNED as
+            `enabled-hover:shadow-theme-lg` (UI-SPEC §3.4 rule 2, spelled with plan 05's
+            `enabled-hover` variant so tailwind-merge dedupes it against the base's
+            `enabled-hover:shadow-theme-md` instead of racing it). Compiled `.shadow-lg` is
+            Tailwind v4's INLINED cold-black built-in; `.shadow-theme-lg` is `var(--shadow-lg)`,
+            the project's warm re-tinted tier. `DECISION Phase 87.7` in globals.css states the
+            mechanism: v4 inlines the literal values of its built-in scale into the built-in
+            utilities rather than reading the theme property. The two are NOT byte-equal.
+            LEAVING `shadow-lg` WOULD HAVE BEEN A REGRESSION, not a no-op: twMerge keeps BOTH it
+            and the base's `shadow-theme-sm` (different token families, so neither dedupes the
+            other) and the base's resting value wins in sheet order, so the migrated FAB would
+            REST with no shadow and lift only to `md`.
+
+            (4) THE PER-SITE FOCUS STRING IS DELETED — it was byte-identical to `Button.tsx`'s
+            own ring, so keeping it duplicated the ring rather than protecting it. Read from
+            plan 05's fixed token: `A-2-ARM: A` (`88.6-05-SUMMARY.md:186`), i.e. the ring lives
+            in the primitive, not in a global `.btn:focus-visible` rule.
+
+            (5) DEAD CLASSES DELETED AND ONLY THOSE: `rounded-full` (`.btn` sets `border-radius`
+            UNLAYERED, so it did nothing today — deleting it is not a shape change) and
+            `flex items-center justify-center` (`.btn` declares `display: inline-flex`,
+            `align-items` and `justify-content` unlayered). `fixed bottom-6 right-6 z-30` are
+            ALIVE and stay — `z-30` in particular is the shipped `DECISION Phase 87.8 D-09/D-10`
+            above. MEASURED while editing: `:257` carried NO separate `bg-*` utility, so the
+            purple fill travels entirely on `btn-primary` and no live fill was deleted. */}
+        <Button
+          variant="primary"
+          size="icon"
           onClick={(e) => open(e.currentTarget)}
-          className="fixed bottom-6 right-6 z-30 w-14 h-14 btn btn-primary rounded-full shadow-lg flex items-center justify-center focus:outline-hidden focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+          className="fixed bottom-6 right-6 z-30 w-14 h-14 shadow-theme-lg enabled-hover:shadow-theme-lg"
           aria-label="Send feedback"
         >
           <svg
@@ -269,10 +361,12 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
             strokeLinecap="round"
             strokeLinejoin="round"
             className="w-6 h-6"
+            aria-hidden="true"
+            focusable="false"
           >
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
-        </button>
+        </Button>
       </div>
 
       {/* Feedback modal — stays mounted on THIS (layout-root) instance at every
@@ -321,7 +415,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
                     <polyline points="22 4 12 14.01 9 11.01" />
                   </svg>
                 </div>
-                <p className="text-lg font-medium text-content-primary">
+                <p className="text-xl font-bold text-content-primary">
                   Thanks! Your feedback has been submitted.
                 </p>
               </div>
@@ -339,7 +433,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
                   <div>
                     <label
                       htmlFor="feedback-category"
-                      className="block text-sm font-medium text-content-secondary mb-1"
+                      className="block text-sm text-content-secondary mb-1"
                     >
                       Category
                     </label>
@@ -360,7 +454,7 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
                   <div>
                     <label
                       htmlFor="feedback-text"
-                      className="block text-sm font-medium text-content-secondary mb-1"
+                      className="block text-sm text-content-secondary mb-1"
                     >
                       Feedback
                     </label>
@@ -386,13 +480,13 @@ export default function FeedbackButton({ variant = 'floating', label, onOpen, in
 
                   {/* Submit */}
                   <div className="flex justify-end">
-                    <button
+                    <Button
                       type="submit"
+                      variant="primary"
                       disabled={submitting || text.trim().length < 10}
-                      className="btn btn-primary"
                     >
                       {submitting ? 'Submitting...' : 'Submit'}
-                    </button>
+                    </Button>
                   </div>
                 </form>
             )}

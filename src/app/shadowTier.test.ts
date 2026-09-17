@@ -233,6 +233,22 @@ const FIXTURE_OFF_TIER_SOURCE = `
   );
 `;
 
+/* FIXTURE POSITIVE CONTROL FOR FAMILY (b), added by plan 88.6-31 task 2 (wave 7, 2026-09-16).
+   The alias population reached ZERO in that same commit (see test 2), so the live tree can no
+   longer prove the ALIAS pattern still MATCHES anything — exactly the vacuity the off-tier
+   fixture above was added for when ITS population reached zero. This one runs the SAME
+   `elementsFrom` tokenizer over synthetic source and carries both polarities: two alias
+   spellings that MUST be flagged (one bare, one behind the `enabled-hover` variant, so
+   `STRIP_VARIANTS` is exercised) and the themed spelling that must NOT be. */
+const FIXTURE_ALIAS_SOURCE = `
+  export const F = () => (
+    <div className="shadow-lg">
+      <span className="enabled-hover:shadow-md" />
+      <button className="shadow-theme-lg">safe</button>
+    </div>
+  );
+`;
+
 /** Per-file occurrence counts, keyed the way `ExemptionRoster` is keyed. */
 function countByFile(sites: { rel: string }[]): Record<string, number> {
   const counts: Record<string, number> = {};
@@ -345,11 +361,22 @@ const ALIAS_ROSTER: ExemptionRoster = {
   // carrying the class was at `:1068`, and this scanner reports the OPENING TAG line, which is
   // why the pre-fix red named `:1057`. Entry DELETED rather than zeroed; the roster is exact in
   // both directions, so a zeroed entry would red as a fossil permission.
-  'app/components/FeedbackButton.js': {
-    sites: 1,
-    why: '`shadow-lg` on the floating feedback FAB (:258), which IS a `.btn` element — so if plan 31 adds a hover pin it must use `enabled-hover:`, never bare `hover:`.',
-    owner: D49B,
-  },
+  // DELETED by plan 88.6-31 task 2 (wave 7, 2026-09-16), in the SAME commit as the respelling
+  // because this roster is exact in both directions: `app/components/FeedbackButton.js` carried
+  // `sites: 1` — `shadow-lg` on the floating feedback FAB. It is `shadow-theme-lg` now, with the
+  // hover PINNED as `enabled-hover:shadow-theme-lg`: the FAB IS a `.btn` element, so §3.4 rule 2
+  // binds and the pin uses plan 05's `enabled-hover` variant on BOTH sides, which is what lets
+  // tailwind-merge dedupe it against `Button.tsx`'s base `enabled-hover:shadow-theme-md` instead
+  // of racing it. LEAVING the alias would have been a REGRESSION rather than a no-op: twMerge
+  // keeps `shadow-lg` AND the base's `shadow-theme-sm` (different token families, so neither
+  // dedupes the other) and the base's resting value wins in sheet order, so the migrated FAB
+  // would have RESTED with no shadow and lifted only to `md`. The hue changes in BOTH themes and
+  // that is the point of the snap: light gains the warm tint with no negative spread, dark
+  // renders as a purple hairline ring plus glow. Disclosed for `/gsd-ui-review` in
+  // `88.6-31-SUMMARY.md`; the phase-level V-row is UI-SPEC §1.2's V-16, which already names this
+  // site, so no new V-number was minted. THIS WAS THE LAST LIVE ENTRY IN THIS ROSTER — test 2's
+  // alias floor becomes an EXACT-ZERO assertion in the same commit and hands its anti-vacuity
+  // duty to `FIXTURE_ALIAS_SOURCE`. Entry DELETED, not zeroed.
   // `app/components/tutorial/simulated/AvailabilityPromptDemo.js` CLOSED by plan 88.6-35
   // task 3 (wave 7, 2026-09-16): the armed Save chip's `shadow-md` is now `shadow-theme-md`,
   // in the SAME commit as this deletion. ONE correction to this entry's own text, recorded
@@ -543,7 +570,27 @@ describe('D-14b / D49-b: the three-tier shadow rule', () => {
         'closed by plan 88.6-35; a new one needs a roster entry with an owner, or the class ' +
         'snapped to the ladder.',
     ).toHaveLength(0);
-    expect(aliasSites.length, 'the alias scan located nothing').toBeGreaterThan(0);
+    /* 1 -> 0, plan 88.6-31 task 2 (wave 7, 2026-09-16) — the TERMINAL step for family (b), the
+       same shape and the same rule the off-tier half above reached under plan 35, and lowered
+       only in the one form this floor permits: WITH THE DEPARTING SITE NAMED. The DEPARTING SITE
+       is `FeedbackButton.js`'s floating feedback FAB, whose `shadow-lg` is now
+       `shadow-theme-lg` with the hover PINNED as `enabled-hover:shadow-theme-lg` (UI-SPEC §3.4
+       rule 2 — the FAB IS a `.btn` element, so a bare `hover:` would not have deduped against
+       `Button.tsx`'s base and both tokens would have survived). Its ALIAS_ROSTER entry is
+       deleted in this same commit, as that entry's own `why` required.
+
+       ZERO live alias occurrences remain in the tree, so this half of the floor is now an
+       EXACT-ZERO assertion — a NEW alias-spelled site appearing anywhere reds it, which is the
+       direction that matters from here. The anti-vacuity duty it used to carry passes to
+       `FIXTURE_ALIAS_SOURCE` below, NOT to deleting this assertion: a scan that walked nothing,
+       or a `STRIP_VARIANTS` that stopped stripping, would otherwise leave tests 2 and 4 green
+       forever. That is the same handover the off-tier half made one plan earlier. */
+    expect(
+      aliasSites.map((s) => `${s.rel}:${s.line} ${s.token}`),
+      'an alias-spelled `shadow-(sm|md|lg)` site appeared in the tree. Every known one was ' +
+        'closed under D49-b option (i), the last by plan 88.6-31; a new one needs a roster ' +
+        'entry with an owner, or the class snapped to the themed tier.',
+    ).toHaveLength(0);
 
     // FIXTURE POSITIVE CONTROL (the anti-vacuity duty, inherited from the live population).
     // Runs `elementsFrom` — the SAME tokenizer the real scan uses — over synthetic source, so
@@ -559,6 +606,20 @@ describe('D-14b / D49-b: the three-tier shadow rule', () => {
     expect(
       sitesMatching(ALIAS, fixture),
       'the fixture`s `shadow-theme-lg` is the CORRECT spelling and must not be flagged',
+    ).toEqual([]);
+
+    // The family-(b) half of the same duty (plan 88.6-31): the live alias population is ZERO,
+    // so this fixture is the only thing standing between a broken scanner and a permanently
+    // green family-(b) rule. BOTH polarities, on one synthetic source.
+    const aliasFixture = elementsFrom('fixture/alias.tsx', FIXTURE_ALIAS_SOURCE);
+    expect(
+      sitesMatching(ALIAS, aliasFixture).map((s) => s.token),
+      'the alias scan no longer locates its own fixture — the token match, the element lexer or ' +
+        'STRIP_VARIANTS broke. The live population is ZERO, so nothing else would catch it.',
+    ).toEqual(['shadow-lg', 'enabled-hover:shadow-md']);
+    expect(
+      sitesMatching(OFF_TIER, aliasFixture),
+      'family (a) and family (b) must stay DISJOINT — an alias spelling is not an off-tier one',
     ).toEqual([]);
   });
 
